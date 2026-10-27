@@ -1,6 +1,6 @@
 # Bauherr
 
-**Bauherr** — an open-source AI software factory. Connect your repos and boards; agents take tickets through gated stages (spec → build → review → release) with human approvals, audit, and cost per workspace. Self-hosted, Postgres-only, one command to start.
+**Bauherr** (German for the client who commissions a building and approves the work, not the builder) — an open-source AI software factory. Connect your repos and boards; agents take tickets through gated stages (spec → build → review → release) with human approvals, audit, and cost per workspace. Self-hosted, Postgres-only, one command to start.
 
 ## Status
 
