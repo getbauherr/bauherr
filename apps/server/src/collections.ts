@@ -23,7 +23,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
   labels: { singular: 'Bauherr', plural: 'Bauherren' },
-  auth: true,
+  auth: { useAPIKey: true },
   admin: { useAsTitle: 'email' },
   access: {
     create: isAdmin,
@@ -50,6 +50,7 @@ const bauherren: CollectionConfig = {
       required: true,
       access: { create: isAdmin, update: isAdmin },
     },
+    text('githubLogin', { admin: { description: 'Assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN).' } }),
   ],
 }
 
@@ -72,6 +73,8 @@ const workspaces = col(
     },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
+    select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
+    { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
   ],
   {
     access: {
@@ -158,7 +161,7 @@ const tickets = col('tickets', [
   rel('blockedBy', 'tickets', { hasMany: true }),
 ])
 
-export const runStatuses = ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted']
+export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted']
 
 export const collections: CollectionConfig[] = [
   bauherren,
@@ -177,6 +180,10 @@ export const collections: CollectionConfig[] = [
     rel('ticket', 'tickets', { required: true }),
     select('stage', ['plan', 'build'], { required: true }),
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
+    select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
+    rel('sessionOwner', 'bauherren'),
+    date('heartbeatAt'),
+    text('evidence'),
     json('goal'),
     text('model'),
     num('tokensIn'),
@@ -199,10 +206,12 @@ export const collections: CollectionConfig[] = [
     num('tokensOut'),
     num('costEstimateUsd'),
     date('startedAt'),
+    text('summary'),
   ]),
   col('tool_calls', [
     text('toolUseId'),
-    rel('step', 'steps', { required: true }),
+    rel('step', 'steps'),
+    rel('run', 'runs'),
     text('name'),
     text('inputDigest'),
     select('status', ['ok', 'error']),

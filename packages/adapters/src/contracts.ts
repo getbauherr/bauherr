@@ -55,6 +55,7 @@ export interface TicketSource {
   create(t: NewTicket): Promise<Ticket>;
   comment(id: string, body: string): Promise<Comment>;
   listComments(id: string, since?: string): Promise<Comment[]>;
+  updateComment(id: string, commentId: string, body: string): Promise<Comment>;
   addLabels(id: string, labels: string[]): Promise<void>;
   /** Absent labels are tolerated. */
   removeLabels(id: string, labels: string[]): Promise<void>;

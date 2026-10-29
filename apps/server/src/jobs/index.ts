@@ -3,9 +3,12 @@ import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
 import type { ConnectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
+import { modeFor } from '../lib/mode'
 import { decrypt } from '../lib/secrets'
 
-const ACTIVE = ['queued', 'running']
+const ACTIVE = ['queued', 'awaiting_session', 'running']
+/** Session Runs without a heartbeat for this long go `needs_human`. */
+export const SESSION_TIMEOUT_MS = 30 * 60_000
 const STAGE_LABEL = /^bauherr:stage:(.+)$/
 
 export const stageOf = (labels: string[]): string | null =>
@@ -44,12 +47,43 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
     where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] },
   })
   if (active.totalDocs) return null
+  const workspace = id(ticket.workspace)
+  const mode = await modeFor(payload, workspace, stage)
   const run = await payload.create({
     collection: 'runs',
-    data: { ticket: ticket.id, stage, status: 'queued', workspace: id(ticket.workspace) },
+    data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace },
   })
-  await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
+  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
   return run
+}
+
+/** Moves session Runs without a heartbeat for SESSION_TIMEOUT_MS to `needs_human`; returns how many. */
+export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
+  const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
+  const stale = await payload.update({
+    collection: 'runs',
+    where: {
+      and: [
+        { mode: { equals: 'session' } },
+        {
+          or: [
+            { and: [{ status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
+            { and: [{ status: { equals: 'awaiting_session' } }, { createdAt: { less_than: before } }] },
+          ],
+        },
+      ],
+    },
+    data: { status: 'needs_human', error: 'session heartbeat timeout', finishedAt: new Date(now).toISOString() },
+    overrideAccess: true,
+  })
+  return stale.docs.length
+}
+
+export const expireSessions: TaskConfig<{ input: Record<string, never>; output: { expired: number } }> = {
+  slug: 'expire-sessions',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  handler: async ({ req }) => ({ output: { expired: await expireStaleSessions(req.payload) } }),
 }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
@@ -116,6 +150,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
     const { payload } = req
     const opts = { overrideAccess: true, depth: 0 } as const
     const run = await payload.findByID({ collection: 'runs', id: input.runId, ...opts })
+    if (run.status !== 'queued') return { output: { status: run.status } }
     const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...opts })
     const product = await payload.findByID({ collection: 'products', id: id(ticket.product), ...opts })
     const src = (
