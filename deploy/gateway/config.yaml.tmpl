@@ -31,5 +31,29 @@ llm:
   policies:
     apiKey:
       mode: strict
+      # Session keys arrive in x-agw-key (Claude Code ANTHROPIC_CUSTOM_HEADERS) so Authorization stays free for sub/*;
+      # the Runner proxy sends the Workspace key as Authorization: Bearer. An expression location deletes nothing.
+      location:
+        expression: 'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))'
       keys: []
-  models: []
+  # Bauherr owns only the ws-<slug>/* entries (apps/server/src/lib/gateway.ts); sub/* stays as rendered here.
+  models:
+  # Owner's own Claude Code session (docs/legal.md). No params.apiKey: that would win over auth and bill the Workspace
+  # credential. The caller's Authorization header is forwarded upstream; it is never stored (accessLog adds only the
+  # fields above, database.llm stays metadata). Only keys created by ensureSessionKey may use it.
+  - name: "sub/*"
+    provider: anthropic
+    auth:
+      passthrough:
+        location:
+          header:
+            name: authorization
+            prefix: "Bearer "
+    transformation:
+      model: llmRequest.model.stripPrefix("sub/")
+    authorization:
+      rules:
+      - allow: 'apiKey.kind == "owner-session"'
+    requestHeaders:
+      remove:
+      - x-agw-key
