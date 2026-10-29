@@ -42,9 +42,10 @@ A Run reads its Goal, reads the worklog first, ends only with an MR or a declare
 - Hook: [stop-goal-check](../../pack/hooks/stop-goal-check.ts)
 
 ## 5. Run states and retries
-`queued → running → succeeded | failed | cancelled | needs_human`.
+`queued → running → succeeded | failed | cancelled | needs_human | budget_exhausted`.
 - One automatic retry with the failure appended; a second failure → `needs_human` (`bauherr:blocked` + Comment).
 - `cancelled` when the Ticket is closed, moved back, or a human claims it.
+- `budget_exhausted`: the gateway answered 429 because the Workspace budget is used up. Terminal, no retry.
 - Concurrency key `ticket:<id>`; `retries: 0` at job level (retry is Bauherr's).
 
 ## 6. Human takeover
@@ -65,7 +66,7 @@ One agent per Run by default. Patterns only via stage config with a declared pro
 Enforcement: [write-scope-guard](../../pack/hooks/write-scope-guard.ts).
 
 ## 9. Model and effort policy
-Tiers, resolved to model names from the Workspace's gateway config. How to apply: [effort-policy](../../pack/skills/effort-policy/SKILL.md).
+Tiers, resolved to model names from the Workspace's tiers. How to apply: [effort-policy](../../pack/skills/effort-policy/SKILL.md).
 
 | Stage / step | Tier | Effort |
 |---|---|---|
@@ -80,12 +81,14 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 
 ## 10. Budgets
 - Per Run: `maxTurns` and `maxBudgetUsd` set by the Runner; the real cap is the gateway key budget (`maxBudgetUsd` can overshoot).
+- The gateway enforces the Workspace budget (USD, rolling 30 days); exhaustion ends the Run `budget_exhausted`.
 - Re-wakes draw from the same Run budget.
 - At 80% the Run converges or declares a blocker.
 - Defaults are config values per stage, not fixed here.
 
 ## 11. Egress and security context
 - Code and context leave only via the gateway: [egress](../../pack/rules/egress.md), [egress-guard](../../pack/hooks/egress-guard.sh).
+- The gateway is part of the instance, and the Workspace's provider credential never reaches an agent. Operator notes: [legal](../legal.md).
 - Each Product keeps a `SECURITY-CONTEXT.md` at the root of its main Repository; a copy under `products/<slug>/` in the Knowledge repo takes precedence: [security-context](../../pack/rules/security-context.md).
 
 ## 12. What the Bauherr sees

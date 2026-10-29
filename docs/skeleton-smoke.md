@@ -1,3 +1,5 @@
+> Superseded: the gateway Connection described here is replaced by the bundled gateway (#50). Kept as history.
+
 # Walking skeleton smoke run
 
 Chain: GitHub Ticket (sandbox repo) -> poll job -> `runs` row -> worker -> runner (clone, Agent SDK, credential proxy) -> stub gateway -> persisted Run + Ticket comment.
