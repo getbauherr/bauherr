@@ -17,7 +17,7 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 | Release | none; the Product's own CI | pipeline result |
 | Done | none | Ticket closed `completed` on merge |
 
-Config per stage: label, agent (skills from packs), gate-before (`none | human | checks`), max runs. Stored as versioned DB config.
+Config per stage: label, gate-before (`none | human | checks`), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
 
 ## 2. Gates and approvals
 | Gate | Before | Approval lives in |
@@ -101,3 +101,10 @@ Intake session, then the Ticket in the Ticket source with its Stage Label and Co
 
 ## 14. Pack artifacts index
 Manifest: [pack.yaml](../../pack/pack.yaml). Hooks map to SDK events in [hooks.yaml](../../pack/hooks/hooks.yaml).
+
+## 15. Steps and workflow config
+A stage is an ordered DAG of steps (decision #44). Step types: `agent-run` (a Run with a Goal), `external-service` (a connected agent service, e.g. a code-security scanner; callback with poll fallback; findings become Tickets, Comments or scorecard results), `ci-job` (wait for a named check), `human-gate`, `check` (scorecard rule). Step contract: `{id, type, needs, inputs, timeout, budget?, retries}` → `{status, outputs, evidence, started, finished, cost}`. A failed blocking step stops the stage; *repair run* re-runs failed steps only.
+
+Where the workflow lives (decision #45): base `pack/workflow.yaml` in the core pack (read-only in the UI), per-Product overlay `products/<slug>/workflow.yaml` in the Knowledge repo; the factory compiles the merged DAG into a `workflow_versions` row that Runs reference. Validated by `bauherr pack lint`.
+
+What the Bauherr sees per Ticket run: graph (nodes with status, duration, type, resource), timeline (nested sub-steps, dependency arrows), list (filterable), run details (launched by, started, ended, duration, status, cost), repair run. Per Product: the compiled workflow with the overlay diff highlighted.
