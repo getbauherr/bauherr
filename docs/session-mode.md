@@ -8,22 +8,26 @@ First match wins: `Workspace.modeByStage` (JSON, e.g. `{"plan":"session","build"
 
 ## Connect
 
-1. Admin UI → Bauherren → your user → enable API key → save, copy the key. Set `githubLogin` (assigned to the Ticket on claim; else `BAUHERR_BOT_LOGIN`).
-2. Export `BAUHERR_TOKEN=<key>` and add to the project's `.mcp.json`:
+`pnpm seed` (compose: `docker compose run … app pnpm seed`, see [gateway-smoke](gateway-smoke.md)) ensures the Admin user has an API key and, with `BAUHERR_MCP_KEY_FILE` set, writes it 0600 to a file; never printed. Mount `~/.config/bauherr` at `/run/bauherr` and set `BAUHERR_MCP_KEY_FILE=/run/bauherr/mcp-key`. Set `githubLogin` on the user (assigned to the Ticket on claim; else `BAUHERR_BOT_LOGIN`).
 
-```json
-{
-  "mcpServers": {
-    "bauherr": {
-      "type": "http",
-      "url": "http://localhost:3000/mcp",
-      "headers": { "Authorization": "Bearer ${BAUHERR_TOKEN}" }
-    }
-  }
-}
+```bash
+claude mcp add --transport http bauherr http://localhost:3000/mcp --header "Authorization: Bearer $(cat ~/.config/bauherr/mcp-key)"
 ```
 
 The token acts as you, inside your Workspaces only.
+
+## Route your own session through the gateway
+
+Budgeted, logged and attributed like the factory, billed to your own Claude login. Legal line: [legal.md](legal.md#owner-session-passthrough).
+
+The seed also creates the Workspace's second consumer key `workspace-<slug>-session` (`kind: owner-session`, only `sub/*`) and, with `BAUHERR_SESSION_KEY_FILE=/run/bauherr/session-key`, writes it 0600.
+
+```bash
+pnpm --filter server session:activate     # merges env into ~/.claude/settings.json, backup settings.json.bauherr-bak
+pnpm --filter server session:deactivate   # restores the backup
+```
+
+Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEADERS="x-agw-key: <session key>"` and maps the model tiers to `sub/claude-{haiku,sonnet,opus}-5-5`. Restart Claude Code afterwards. Claude Code keeps sending your own `Authorization`; the gateway forwards it to Anthropic and strips `x-agw-key`.
 
 ## Loop
 

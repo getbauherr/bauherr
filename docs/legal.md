@@ -27,6 +27,14 @@ Subscription credentials are allowed by Anthropic only for a person signing in t
 
 Bauherr ships the SDK and Claude Code binary unmodified. Do not modify them or remove or restrict a built-in auth method.
 
+## Owner-session passthrough
+
+The gateway's `sub/*` model family forwards the caller's own `Authorization` header to Anthropic. It is only for the Workspace owner's own, unmodified Claude Code session. Never for Product users, clients or spawned agents (the Runner uses `ws-<slug>/*` with the Workspace API key only). Bauherr never collects, stores or logs the token:
+
+- `deploy/gateway/config.yaml.tmpl`: `sub/*` has no `params.apiKey`, only `auth.passthrough` of the request header; `x-agw-key` is removed before upstream.
+- `frontendPolicies.accessLog` adds only run, stage, product and ticket headers; `database.llm` stays `metadata`, so no header or prompt is persisted.
+- Only keys with `metadata.kind: owner-session` (`allowedModels: ["sub/*"]`, created by `ensureSessionKey`) pass the `sub/*` authorization rule.
+
 ## What is stored
 
 - The gateway stores no prompts. `accessLog.database.llm` is never set to `full`.

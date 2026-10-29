@@ -10,6 +10,8 @@
     "jobs:poll": "payload jobs:run --queue poll --handle-schedules --cron \"*/5 * * * * *\"",
     "importmap": "payload generate:importmap",
     "seed": "tsx scripts/seed-workspace0.ts",
+    "session:activate": "tsx scripts/session-activate.ts activate",
+    "session:deactivate": "tsx scripts/session-activate.ts deactivate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts"

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { mkdir, rename, rm, writeFile, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { chown, mkdir, rename, rm, stat, writeFile, readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import pg from 'pg'
 import type { PayloadRequest } from 'payload'
 import { parse, stringify } from 'yaml'
@@ -9,7 +9,7 @@ import { decrypt, encrypt } from './secrets'
 export const DEFAULT_MODEL_BY_TIER = { cheap: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' }
 
 type Ws = { id: number | string; slug: string; gatewayKey?: string | null; budgetUsd30d?: number | null }
-type Resource = { id: string; value: { key: string; metadata?: { name?: string } } }
+type Resource = { id: string; value: { key: string; metadata?: { name?: string; kind?: string } } }
 
 /** Hooks no-op without a gateway (tests, seed outside compose). */
 export const gatewayEnabled = (): boolean => {
@@ -20,6 +20,7 @@ export const gatewayEnabled = (): boolean => {
 
 export const newKey = (): string => `sk-bauherr-${randomBytes(24).toString('hex')}`
 const keyName = (slug: string) => `workspace-${slug}`
+const sessionKeyName = (slug: string) => `${keyName(slug)}-session`
 const dir = () => process.env.GATEWAY_CONFIG_DIR ?? '/gateway'
 const providerFile = (slug: string) => join(dir(), 'providers', `ws-${slug}.key`)
 const KEYS = '/api/config/resources/llm.apiKey'
@@ -45,8 +46,23 @@ const call = async <T>(method: string, path: string, body?: unknown): Promise<T>
   throw new Error(`gateway ${method} ${path}: ${last}`)
 }
 
-const keyOf = async (slug: string): Promise<Resource | undefined> =>
-  (await call<{ resources: Resource[] }>('GET', KEYS)).resources.find((r) => r.value.metadata?.name === keyName(slug))
+const keyNamed = async (name: string): Promise<Resource | undefined> =>
+  (await call<{ resources: Resource[] }>('GET', KEYS)).resources.find((r) => r.value.metadata?.name === name)
+const keyOf = (slug: string) => keyNamed(keyName(slug))
+
+const budget = (ws: Ws) => [
+  { name: 'monthly', limit: { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' },
+]
+
+/** Writes a secret file (0600, owned by the directory's owner so a root container leaves it readable on the host). Never logs the value. */
+export const writeSecretFile = async (path: string, value: string): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, value, { mode: 0o600 })
+  if (process.getuid?.() === 0) {
+    const { uid, gid } = await stat(dirname(path))
+    await chown(path, uid, gid)
+  }
+}
 
 const loadWs = async (req: PayloadRequest, id: number | string): Promise<Ws> =>
   (await req.payload.findByID({ collection: 'workspaces', id, depth: 0, overrideAccess: true, req })) as unknown as Ws
@@ -59,13 +75,29 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
     key: decrypt(ws.gatewayKey),
     metadata: { name: keyName(ws.slug), user: keyName(ws.slug) },
     allowedModels: [`ws-${ws.slug}/*`],
-    budgets: [
-      { name: 'monthly', limit: { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' },
-    ],
+    budgets: budget(ws),
   }
   const existing = await keyOf(ws.slug)
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
   else await call('PUT', KEYS, { resources: [{ value }] })
+  await ensureSessionKey(ws)
+}
+
+/**
+ * Second consumer key per Workspace for the owner's own Claude Code session (`sub/*` only, see docs/legal.md).
+ * The value lives in the gateway only; an existing key is reused. With BAUHERR_SESSION_KEY_FILE set it is written there (0600).
+ */
+export const ensureSessionKey = async (ws: Ws): Promise<void> => {
+  const existing = await keyNamed(sessionKeyName(ws.slug))
+  const value = {
+    key: existing?.value.key ?? newKey(),
+    metadata: { name: sessionKeyName(ws.slug), user: keyName(ws.slug), kind: 'owner-session' },
+    allowedModels: ['sub/*'],
+    budgets: budget(ws),
+  }
+  if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
+  else await call('PUT', KEYS, { resources: [{ value }] })
+  if (process.env.BAUHERR_SESSION_KEY_FILE) await writeSecretFile(process.env.BAUHERR_SESSION_KEY_FILE, value.key)
 }
 
 /** Replaces the Workspace key; the old key stops working. */
@@ -75,8 +107,10 @@ export const rotateKey = async (req: PayloadRequest, id: number | string): Promi
 }
 
 export const deleteKey = async (slug: string): Promise<void> => {
-  const existing = await keyOf(slug)
-  if (existing) await call('DELETE', `${KEYS}/${existing.id}`)
+  for (const name of [keyName(slug), sessionKeyName(slug)]) {
+    const existing = await keyNamed(name)
+    if (existing) await call('DELETE', `${KEYS}/${existing.id}`)
+  }
 }
 
 const cache = new Map<string, { at: number; v: { spentUsd: number; limitUsd: number | null } }>()
@@ -111,7 +145,7 @@ export const writeProvider = async (slug: string, secret: string): Promise<void>
 
 export const removeProvider = (slug: string) => rm(providerFile(slug), { force: true })
 
-/** Rewrites the managed `llm.models` block (one `ws-<slug>/*` entry per anthropic llm-provider Connection), keeps the rest. */
+/** Rewrites the managed `ws-<slug>/*` entries of `llm.models` (one per anthropic llm-provider Connection), keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
     collection: 'connections',
@@ -134,7 +168,8 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   }))
   const path = join(dir(), 'config.yaml')
   const cfg = parse(await readFile(path, 'utf8'))
-  cfg.llm = { ...cfg.llm, models }
+  const kept = ((cfg.llm?.models ?? []) as { name: string }[]).filter((m) => !m.name.startsWith('ws-'))
+  cfg.llm = { ...cfg.llm, models: [...kept, ...models] }
   const out = stringify(cfg)
   const tmp = `${path}.tmp`
   await writeFile(tmp, out)

@@ -1,8 +1,10 @@
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { getPayload } from 'payload'
 import { parse } from 'yaml'
 import config from '../src/payload.config'
+import { ensureSessionKey, gatewayEnabled, writeSecretFile } from '../src/lib/gateway'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -31,8 +33,15 @@ const admin = await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }
 // ensure() never touches an existing user; re-seeding is how the password is reset.
 await payload.update({ collection: 'bauherren', id: admin.id, data: { password: adminPassword, role: 'admin' }, ...o })
 
+// MCP connect: the Admin's API key lets the owner's Claude Code session reach /mcp. Never printed.
+const keyed = (await payload.findByID({ collection: 'bauherren', id: admin.id, depth: 0, showHiddenFields: true, ...o })) as unknown as { enableAPIKey?: boolean; apiKey?: string }
+const mcpKey = keyed.enableAPIKey && keyed.apiKey ? keyed.apiKey : randomBytes(32).toString('hex')
+if (!keyed.enableAPIKey || !keyed.apiKey) await payload.update({ collection: 'bauherren', id: admin.id, data: { enableAPIKey: true, apiKey: mcpKey }, ...o })
+if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, mcpKey)
+
 const ws = await ensure('workspaces', eq({ slug: 'getbauherr' }), { name: 'getbauherr', slug: 'getbauherr' })
 const workspace = ws.id
+if (gatewayEnabled()) await ensureSessionKey({ id: ws.id, slug: ws.slug as string, budgetUsd30d: ws.budgetUsd30d as number | null })
 const scoped = (c: string, key: Record<string, unknown>, data: Record<string, unknown>) =>
   ensure(c, eq({ workspace, ...key }), { workspace, ...key, ...data })
 
