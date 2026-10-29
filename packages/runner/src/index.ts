@@ -1,10 +1,10 @@
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, type AgentState } from './agent.js';
 import { cloneRepo, commitAndPush } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { GOAL_FILE, WORKLOG_FILE, materialise } from './materialise.js';
+import { GOAL_FILE, PLAN_FILE, materialise } from './materialise.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
 
@@ -14,6 +14,14 @@ export { checkGoal } from './goal.js';
 export { materialise } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
+
+export const PLAN_MARKER = '<!-- bauherr:plan -->';
+export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
+/** Agent-verifiable Goal of a Plan Run; the Ticket's own Goal moves into the worklog. */
+const PLAN_GOAL = [`\`${PLAN_FILE}\` exists with the sections \`## Goal\` and \`## Steps\``, 'every Ticket acceptance criterion is covered by a step under `## Steps`'];
+
+const worklogBody = (statements: { text: string; done?: boolean }[], instructions: string) =>
+  `${WORKLOG_MARKER}\n## Worklog\n**Goal**\n${statements.map((s) => `- [${s.done ? 'x' : ' '}] ${s.text}`).join('\n')}\n\n**Current instructions**\n${instructions}\n`;
 
 const ZERO = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, costEstimateUsd: 0 };
 
@@ -50,13 +58,14 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       token: ctx.connection.gitToken,
       branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
     });
-    const agentsMd = materialise(clone.dir, ctx);
+    const agentCtx: RunCtx = ctx.run.stage === 'plan' ? { ...ctx, run: { ...ctx.run, goal: { statements: PLAN_GOAL } } } : ctx;
+    const agentsMd = materialise(clone.dir, agentCtx);
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
       ...(ctx.product.id ? { product: ctx.product.id } : {}), ...(ctx.ticket.id ? { ticket: ctx.ticket.id } : {}),
       onBudgetExceeded: () => { state.budgetExhausted = true; state.abort.abort(); },
     });
     mkdirSync(join(clone.home, 'agent'), { recursive: true });
-    await runAgent(ctx, buildOptions(ctx, { cwd: clone.dir, home: join(clone.home, 'agent'), proxyUrl: proxy.url, agentsMd }, state), state);
+    await runAgent(agentCtx, buildOptions(agentCtx, { cwd: clone.dir, home: join(clone.home, 'agent'), proxyUrl: proxy.url, agentsMd }, state), state);
 
     if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
     const r = state.result;
@@ -65,10 +74,12 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     if (state.verdict?.kind === 'needs_human') return finish('needs_human', state.verdict.reason);
 
     const goal = readGoal(join(clone.dir, GOAL_FILE));
-    const worklog = readFileSync(join(clone.dir, WORKLOG_FILE), 'utf8').trim();
     if (ctx.run.stage === 'plan') {
-      if (worklog === '' || worklog === (ctx.ticket.worklog ?? '').trim()) return finish('failed', 'plan run wrote no plan to the worklog');
-      await ctx.forge.comment(ctx.ticket.number, worklog);
+      const planFile = join(clone.dir, PLAN_FILE);
+      const plan = existsSync(planFile) ? readFileSync(planFile, 'utf8').replace(PLAN_MARKER, '').trim() : '';
+      if (!/^##\s+Goal\s*$/m.test(plan) || !/^##\s+Steps\s*$/m.test(plan)) return finish('failed', `plan run wrote no ${PLAN_FILE} with sections Goal and Steps`);
+      await ctx.forge.comment(ctx.ticket.number, `${PLAN_MARKER}\n${plan}\n`);
+      await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(ctx.run.goal.statements.map((text) => ({ text })), 'Plan posted; waiting for the label `bauherr:approved:plan`.'));
       artifacts.commentUrl = ctx.ticket.url;
       return finish('succeeded');
     }
@@ -83,6 +94,9 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       body: `Closes ${ctx.ticket.url}\n\n${artifacts.evidence}\n`,
     });
     artifacts.prUrl = pr.url;
+    await ctx.forge.comment(ctx.ticket.number, `Link: ${pr.url}`);
+    await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(goal.map((g) => ({ text: g.text, done: g.status === 'verified' })), `MR opened: ${pr.url}. Waiting for review.`));
+    await ctx.forge.setStage(ctx.ticket.number, 'review');
     return finish('succeeded');
   } catch (e) {
     ctx.recorder.log(`run ${ctx.run.id} failed: ${e instanceof Error ? e.message : String(e)}`);

@@ -22,11 +22,14 @@ const ensure = async (collection: string, where: Record<string, unknown>, data: 
 }
 const eq = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { equals: v }]))
 
-await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }), {
+const adminPassword = process.env.BAUHERR_ADMIN_PASSWORD_FILE ? readFileSync(process.env.BAUHERR_ADMIN_PASSWORD_FILE, 'utf8').trim() : env('BAUHERR_ADMIN_PASSWORD')
+const admin = await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }), {
   email: env('BAUHERR_ADMIN_EMAIL'),
-  password: env('BAUHERR_ADMIN_PASSWORD'),
+  password: adminPassword,
   role: 'admin',
 })
+// ensure() never touches an existing user; re-seeding is how the password is reset.
+await payload.update({ collection: 'bauherren', id: admin.id, data: { password: adminPassword, role: 'admin' }, ...o })
 
 const ws = await ensure('workspaces', eq({ slug: 'getbauherr' }), { name: 'getbauherr', slug: 'getbauherr' })
 const workspace = ws.id

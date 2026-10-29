@@ -1,4 +1,5 @@
 import type { Payload, TaskConfig } from 'payload'
+import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
 import type { ConnectionInput } from '../lib/connection'
@@ -106,7 +107,12 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             overrideAccess: true,
           })
           const prev = found.docs[0]
-          const stage = stageOf(t.labels)
+          let stage = stageOf(t.labels)
+          // Derived event (spec §3): approval label + stage plan advances the Ticket to build.
+          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
+            await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
+            stage = 'build'
+          }
           // Guard: unchanged pointers are not rewritten.
           if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
           const data = {

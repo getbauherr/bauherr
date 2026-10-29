@@ -1,19 +1,22 @@
 import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
+import { setStage } from '@bauherr/adapters'
 import { githubFor } from './adapters'
 import type { ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 
-const DEFAULT_GOAL = 'a plan comment is posted'
+const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'the change described in the plan is implemented and the checks pass' }
+const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
+const PLAN_MARKER = '<!-- bauherr:plan -->'
 const PACK_DIR = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 
 /** Statements from the Ticket's `## Acceptance criteria` bullets, else the default. */
-export const goalOf = (body: string): string[] => {
+export const goalOf = (body: string, stage: 'plan' | 'build' = 'plan'): string[] => {
   const section = /^##\s+Acceptance criteria\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/im.exec(body)?.[1] ?? ''
   const items = [...section.matchAll(/^\s*(?:[-*]|\d+\.)\s+(?:\[.\]\s+)?(.+)$/gm)].map((m) => m[1]!.trim())
   const text = section.trim()
-  return items.length ? items : text ? [text] : [DEFAULT_GOAL]
+  return items.length ? items : text ? [text] : [DEFAULT_GOAL[stage]]
 }
 
 type Doc = Record<string, any>
@@ -29,7 +32,9 @@ export const buildRunCtx = async (
   const backend = githubFor(d.github)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
-  const statements = goalOf(issue.body)
+  const statements = goalOf(issue.body, run.stage)
+  const comments = await tickets.listComments(String(ticket.number))
+  const lastWith = (marker: string) => comments.findLast((c) => c.body.startsWith(marker))
   let seq = 0
   let lastStep: number | string | undefined
   const gatewayUrl = process.env.GATEWAY_URL
@@ -41,7 +46,9 @@ export const buildRunCtx = async (
 
   return {
     run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 0.5, tier: 'cheap' },
-    ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body },
+    ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
+      ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
+      ...(run.stage === 'build' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
     product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
     connection: {
       gatewayUrl,
@@ -53,6 +60,11 @@ export const buildRunCtx = async (
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),
       comment: async (number, body) => void (await tickets.comment(String(number), body)),
+      upsertWorklog: async (number, body) => {
+        const existing = lastWith(WORKLOG_MARKER)
+        await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
+      },
+      setStage: (number, stage) => setStage(tickets, String(number), stage),
     },
     recorder: {
       step: async (s) => {

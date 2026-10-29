@@ -4,6 +4,7 @@ import type { GoalStatement, RunCtx } from './types.js';
 
 export const GOAL_FILE = '.bauherr/goal.json';
 export const WORKLOG_FILE = '.bauherr/worklog.md';
+export const PLAN_FILE = '.bauherr/plan.md';
 
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n/, '');
 
@@ -30,6 +31,7 @@ export function materialise(cwd: string, ctx: RunCtx): string {
     `## Goal\nEach statement is checkable. Track status in \`${GOAL_FILE}\` (unverified | verified | blocked + reason).\n` +
       ctx.run.goal.statements.map((s) => `- ${s}`).join('\n'),
     `## Worklog (\`${WORKLOG_FILE}\`)\n${worklog || '(empty)'}`,
+    ...(ctx.ticket.plan ? [`## Approved plan\n${ctx.ticket.plan}`] : []),
     `## Ticket #${ctx.ticket.number}: ${ctx.ticket.title}\n${ctx.ticket.url}\n\n${ctx.ticket.body}`,
     ...rules,
   ].join('\n\n');

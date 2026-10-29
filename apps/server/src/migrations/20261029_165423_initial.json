@@ -218,6 +218,12 @@
           "notNull": true,
           "default": "'bauherr'"
         },
+        "github_login": {
+          "name": "github_login",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp(3) with time zone",
@@ -231,6 +237,24 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "enable_a_p_i_key": {
+          "name": "enable_a_p_i_key",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "api_key_index": {
+          "name": "api_key_index",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
         },
         "email": {
           "name": "email",
@@ -377,6 +401,19 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'{\"cheap\":\"claude-haiku-5-5\",\"standard\":\"claude-sonnet-5-5\",\"strong\":\"claude-opus-5-5\"}'::jsonb"
+        },
+        "default_mode": {
+          "name": "default_mode",
+          "type": "enum_workspaces_default_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mode_by_stage": {
+          "name": "mode_by_stage",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -1499,6 +1536,32 @@
           "notNull": true,
           "default": "'queued'"
         },
+        "mode": {
+          "name": "mode",
+          "type": "enum_runs_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'autonomous'"
+        },
+        "session_owner_id": {
+          "name": "session_owner_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heartbeat_at": {
+          "name": "heartbeat_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
         "goal": {
           "name": "goal",
           "type": "jsonb",
@@ -1627,6 +1690,21 @@
           "method": "btree",
           "with": {}
         },
+        "runs_session_owner_idx": {
+          "name": "runs_session_owner_idx",
+          "columns": [
+            {
+              "expression": "session_owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "runs_updated_at_idx": {
           "name": "runs_updated_at_idx",
           "columns": [
@@ -1678,6 +1756,19 @@
           "tableTo": "tickets",
           "columnsFrom": [
             "ticket_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "runs_session_owner_id_bauherren_id_fk": {
+          "name": "runs_session_owner_id_bauherren_id_fk",
+          "tableFrom": "runs",
+          "tableTo": "bauherren",
+          "columnsFrom": [
+            "session_owner_id"
           ],
           "columnsTo": [
             "id"
@@ -1747,6 +1838,12 @@
         "started_at": {
           "name": "started_at",
           "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "varchar",
           "primaryKey": false,
           "notNull": false
         },
@@ -1887,7 +1984,13 @@
           "name": "step_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "name": {
           "name": "name",
@@ -1960,6 +2063,21 @@
           "method": "btree",
           "with": {}
         },
+        "tool_calls_run_idx": {
+          "name": "tool_calls_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "tool_calls_updated_at_idx": {
           "name": "tool_calls_updated_at_idx",
           "columns": [
@@ -2011,6 +2129,19 @@
           "tableTo": "steps",
           "columnsFrom": [
             "step_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "tool_calls_run_id_runs_id_fk": {
+          "name": "tool_calls_run_id_runs_id_fk",
+          "tableFrom": "tool_calls",
+          "tableTo": "runs",
+          "columnsFrom": [
+            "run_id"
           ],
           "columnsTo": [
             "id"
@@ -3718,6 +3849,14 @@
         "bauherr"
       ]
     },
+    "public.enum_workspaces_default_mode": {
+      "name": "enum_workspaces_default_mode",
+      "schema": "public",
+      "values": [
+        "session",
+        "autonomous"
+      ]
+    },
     "public.enum_connections_kind": {
       "name": "enum_connections_kind",
       "schema": "public",
@@ -3747,12 +3886,21 @@
       "schema": "public",
       "values": [
         "queued",
+        "awaiting_session",
         "running",
         "succeeded",
         "failed",
         "cancelled",
         "needs_human",
         "budget_exhausted"
+      ]
+    },
+    "public.enum_runs_mode": {
+      "name": "enum_runs_mode",
+      "schema": "public",
+      "values": [
+        "session",
+        "autonomous"
       ]
     },
     "public.enum_runs_cost_source": {
@@ -3786,7 +3934,8 @@
       "values": [
         "inline",
         "poll-tickets",
-        "run-stage"
+        "run-stage",
+        "expire-sessions"
       ]
     },
     "public.enum_payload_jobs_log_state": {
@@ -3803,7 +3952,8 @@
       "values": [
         "inline",
         "poll-tickets",
-        "run-stage"
+        "run-stage",
+        "expire-sessions"
       ]
     }
   },
@@ -3817,6 +3967,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "bbcf7efb-c4f1-4087-94ce-53741e54bf88",
+  "id": "38441b48-2021-4824-879d-8ce20114c527",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }
