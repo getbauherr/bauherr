@@ -25,7 +25,7 @@ Config per stage: label, agent (skills from packs), gate-before (`none | human |
 | Plan approval (human) | Build | label `bauherr:approved:plan`, set in the Bauherr UI or in the forge |
 | MR approval (human) | merge | native forge review + merge |
 
-Everything else is automated: CI green, reviewer agent. Bauherr mirrors both approvals into Run state for audit. Per-type autopilot: not in v0.1.
+Everything else is automated. The `checks` gate is the Product's **scorecard** (ordered rules with a guide each: build, tests, lint baseline, pack lint, security context, evidence section — decision #38): a failing blocking rule prevents Review, re-wakes the Build Run once, then `needs_human`. Bauherr mirrors both approvals into Run state for audit. Per-type autopilot: not in v0.1.
 
 ## 3. Triggers
 Only on factory-derived events (diffs of poll summaries against the stored Ticket pointer):
@@ -86,7 +86,7 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 
 ## 11. Egress and security context
 - Code and context leave only via the gateway: [egress](../../pack/rules/egress.md), [egress-guard](../../pack/hooks/egress-guard.sh).
-- Each Product keeps a `SECURITY-CONTEXT.md`: [security-context](../../pack/rules/security-context.md).
+- Each Product keeps a `SECURITY-CONTEXT.md` at the root of its main Repository; a copy under `products/<slug>/` in the Knowledge repo takes precedence: [security-context](../../pack/rules/security-context.md).
 
 ## 12. What the Bauherr sees
 | At | In the admin |

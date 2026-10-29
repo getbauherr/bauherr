@@ -2,11 +2,11 @@
 hooks:
   - name: stop-goal-check
     event: Stop
-    command: tsx hooks/stop-goal-check.ts
+    command: node hooks/stop-goal-check.ts
   - name: write-scope-guard
     event: PreToolUse
     matcher: "Edit|Write"
-    command: tsx hooks/write-scope-guard.ts
+    command: node hooks/write-scope-guard.ts
   - name: egress-guard
     event: PreToolUse
     matcher: "Bash|WebFetch|WebSearch"
