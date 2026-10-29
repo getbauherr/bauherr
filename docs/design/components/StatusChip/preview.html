@@ -1,0 +1,26 @@
+<!-- @dsCard group="Status" height=72 -->
+<!doctype html><html data-theme="light"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-4);background:var(--surface-000);color:var(--ink);font-family:var(--font-sans)}
+@media (prefers-reduced-motion:reduce){*{transition-duration:0s!important;animation:none!important}}
+.row{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:var(--space-1);padding:var(--space-1) var(--space-2);border:1px solid currentColor;border-radius:var(--radius-sm);background:var(--surface-100);font-size:12px;line-height:16px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;transition:color var(--duration-state) var(--ease-out),border-color var(--duration-state) var(--ease-out)}
+.queued{color:var(--ink-muted);border-color:var(--hairline)}
+.running{color:var(--accent)}
+.succeeded{color:var(--ok)}
+.failed{color:var(--danger)}
+.cancelled{color:var(--ink-muted)}
+.needs{color:var(--warn)}
+.spin{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--hairline);border-top-color:var(--accent);animation:turn 1.6s linear infinite}
+@keyframes turn{to{transform:rotate(360deg)}}
+</style></head><body>
+<div class="row">
+<span class="chip label queued">Queued</span>
+<span class="chip label running"><span class="spin"></span>Running</span>
+<span class="chip label succeeded">✓ Succeeded</span>
+<span class="chip label failed">× Failed</span>
+<span class="chip label cancelled">Cancelled</span>
+<span class="chip label needs">Needs human</span>
+</div></body></html>
