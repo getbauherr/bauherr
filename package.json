@@ -2,5 +2,12 @@
   "name": "bauherr-monorepo",
   "private": true,
   "packageManager": "pnpm@10.33.0",
-  "engines": { "node": ">=24" }
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build:packages": "pnpm --filter @bauherr/adapters --filter @bauherr/runner build",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "test": "pnpm build:packages && pnpm -r test"
+  }
 }

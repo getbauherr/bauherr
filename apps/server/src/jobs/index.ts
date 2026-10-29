@@ -1,5 +1,8 @@
 import type { Payload, TaskConfig } from 'payload'
-import type { Adapters, ConnectionInput, Recorder, Runner } from '../lib/contracts'
+import { runStage as exec } from '@bauherr/runner'
+import { githubFor } from '../lib/adapters'
+import type { ConnectionInput } from '../lib/connection'
+import { buildRunCtx } from '../lib/run-ctx'
 import { decrypt } from '../lib/secrets'
 
 const ACTIVE = ['queued', 'running']
@@ -23,6 +26,17 @@ export const connectionInput = async (payload: Payload, ref: unknown): Promise<C
   }
 }
 
+const findGateway = async (payload: Payload, workspace: unknown) =>
+  (
+    await payload.find({
+      collection: 'connections',
+      where: { and: [{ workspace: { equals: id(workspace) } }, { kind: { equals: 'gateway' } }] },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+  ).docs[0]
+
 /** Queues a Run for the Ticket unless one is already active for that stage. */
 export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string) => {
   const active = await payload.count({
@@ -44,17 +58,15 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
   retries: 0,
   handler: async ({ req }) => {
     const { payload } = req
-    // @ts-ignore package built by another lane; contract in ../lib/contracts
-    const { github } = (await import('@bauherr/adapters')) as unknown as Adapters
     const sources = await payload.find({ collection: 'ticket_sources', limit: 1000, pagination: false, depth: 0, overrideAccess: true })
     for (const src of sources.docs) {
       try {
         const conn = await connectionInput(payload, src.connection)
-        const { changes, next } = await github(conn).tickets(src.repo).poll(src.cursor ?? null)
+        const { changes, next } = await githubFor(conn).tickets(src.repo).poll(src.cursor ?? null)
         for (const t of changes) {
           const found = await payload.find({
             collection: 'tickets',
-            where: { and: [{ product: { equals: id(src.product) } }, { externalId: { equals: t.externalId } }] },
+            where: { and: [{ product: { equals: id(src.product) } }, { externalId: { equals: t.id } }] },
             limit: 1,
             depth: 0,
             overrideAccess: true,
@@ -66,7 +78,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const data = {
             workspace: id(src.workspace),
             product: id(src.product),
-            externalId: t.externalId,
+            externalId: t.id,
             number: t.number,
             url: t.url,
             title: t.title,
@@ -109,28 +121,29 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
     const src = (
       await payload.find({ collection: 'ticket_sources', where: { product: { equals: product.id } }, limit: 1, ...opts })
     ).docs[0]
-    const connection = await connectionInput(payload, src.connection)
-    const workspace = id(run.workspace)
+    const github = await connectionInput(payload, src.connection)
+    const gateway = await connectionInput(payload, await findGateway(payload, run.workspace))
     await payload.update({ collection: 'runs', id: run.id, data: { status: 'running', startedAt: new Date().toISOString() }, ...opts })
 
-    const recorder: Recorder = {
-      step: async (d) => {
-        const s = await payload.create({ collection: 'steps', data: { ...d, run: run.id, workspace }, ...opts })
-        return { id: s.id }
-      },
-      toolCall: async (d) => {
-        await payload.create({ collection: 'tool_calls', data: { ...d, workspace }, ...opts })
-      },
-      log: (msg) => payload.logger.info({ run: run.id }, msg),
-    }
     try {
-      // @ts-ignore package built by another lane; contract in ../lib/contracts
-      const { runStage: exec } = (await import('@bauherr/runner')) as unknown as Runner
-      const r = await exec({ run, ticket, product, connection, recorder })
+      const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gateway })
+      const r = await exec(ctx)
+      if (r.status === 'needs_human') {
+        await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
+      }
       await payload.update({
         collection: 'runs',
         id: run.id,
-        data: { status: r.status, artifacts: r.artifacts, finishedAt: new Date().toISOString() },
+        data: {
+          status: r.status,
+          artifacts: r.artifacts,
+          error: r.status === 'succeeded' ? null : r.reason,
+          tokensIn: r.usage.inputTokens,
+          tokensOut: r.usage.outputTokens,
+          tokensCache: r.usage.cacheRead + r.usage.cacheWrite,
+          costEstimateUsd: r.usage.costEstimateUsd,
+          finishedAt: new Date().toISOString(),
+        },
         ...opts,
       })
       return { output: { status: r.status } }

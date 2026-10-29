@@ -11,7 +11,7 @@ export const PACK_DIR = resolve(import.meta.dirname, '../../../../pack');
 export type Stub = { url: string; seen: { headers: IncomingHttpHeaders; body: string }[]; close(): Promise<void> };
 
 /** Plays the gateway: answers every /v1/messages with a minimal streamed end_turn message. */
-export async function startStubGateway(text = 'done'): Promise<Stub> {
+export async function startStubGateway(text = 'done', port = 0): Promise<Stub> {
   const seen: Stub['seen'] = [];
   let n = 0;
   const server: Server = createServer((req, res) => {
@@ -32,7 +32,7 @@ export async function startStubGateway(text = 'done'): Promise<Stub> {
       );
     });
   });
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise<void>((r) => server.listen(port, '127.0.0.1', r));
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     seen,

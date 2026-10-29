@@ -44,5 +44,13 @@ await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id
 const compiled = parse(readFileSync(fileURLToPath(new URL('../../../pack/workflow.yaml', import.meta.url)), 'utf8'))
 await scoped('workflow_versions', { product: product.id, version: 1 }, { compiled })
 
+const smoke = process.env.BAUHERR_SMOKE_REPO
+if (smoke) {
+  const sandbox = await scoped('products', { slug: 'sandbox' }, { name: 'sandbox' })
+  await scoped('repositories', { fullName: smoke }, { product: sandbox.id })
+  await scoped('ticket_sources', { repo: smoke, product: sandbox.id }, { connection: github.id })
+  await scoped('workflow_versions', { product: sandbox.id, version: 1 }, { compiled })
+}
+
 payload.logger.info(`seeded workspace ${workspace}`)
 process.exit(0)
