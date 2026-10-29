@@ -116,7 +116,7 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
 
 export async function runAgent(ctx: RunCtx, options: Options, state: AgentState): Promise<void> {
   const prompt = ctx.run.stage === 'plan'
-    ? `Plan Run for Ticket #${ctx.ticket.number}. Follow the run-contract and worklog skills. Write the plan and the Goal statements into .bauherr/worklog.md; set each statement in .bauherr/goal.json to verified (with evidence) or blocked (with reason). Do not implement.`
+    ? `Plan Run for Ticket #${ctx.ticket.number}. Follow the run-contract and worklog skills. Write the plan to .bauherr/plan.md with the sections "## Goal" and "## Steps" (the Runner posts it and updates the worklog); set each statement in .bauherr/goal.json to verified (with evidence) or blocked (with reason). Do not implement.`
     : `Build Run for Ticket #${ctx.ticket.number}. Follow the run-contract skill. Implement the Goal in the working tree, run the checks, record the result of each Goal statement in .bauherr/goal.json (verified or blocked), and update .bauherr/worklog.md last. Commit your work with git commit; do not push.`;
   const seen = new Set<string>();
   try {

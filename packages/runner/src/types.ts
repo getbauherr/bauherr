@@ -29,7 +29,7 @@ export type RunCtx = {
     maxBudgetUsd: number;
     tier: 'cheap' | 'standard' | 'strong';
   };
-  ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string };
+  ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string };
   product: { id?: string; repo: string; defaultBranch: string };
   connection: {
     gatewayUrl: string;
@@ -42,6 +42,10 @@ export type RunCtx = {
   forge: {
     openPullRequest(p: { repo: string; head: string; base: string; title: string; body: string }): Promise<{ url: string }>;
     comment(ticketNumber: number, body: string): Promise<void>;
+    /** Creates or updates the Ticket's `<!-- bauherr:worklog -->` Comment. */
+    upsertWorklog(ticketNumber: number, body: string): Promise<void>;
+    /** Replaces the Ticket's `bauherr:stage:*` Label. */
+    setStage(ticketNumber: number, stage: string): Promise<void>;
   };
   recorder: {
     step(d: StepRecord): Promise<void>;

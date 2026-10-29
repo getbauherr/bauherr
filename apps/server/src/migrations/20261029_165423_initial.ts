@@ -3,16 +3,18 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    CREATE TYPE "public"."enum_bauherren_role" AS ENUM('admin', 'bauherr');
+  CREATE TYPE "public"."enum_workspaces_default_mode" AS ENUM('session', 'autonomous');
   CREATE TYPE "public"."enum_connections_kind" AS ENUM('github', 'llm-provider');
   CREATE TYPE "public"."enum_tickets_state" AS ENUM('open', 'closed');
   CREATE TYPE "public"."enum_runs_stage" AS ENUM('plan', 'build');
-  CREATE TYPE "public"."enum_runs_status" AS ENUM('queued', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted');
+  CREATE TYPE "public"."enum_runs_status" AS ENUM('queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted');
+  CREATE TYPE "public"."enum_runs_mode" AS ENUM('session', 'autonomous');
   CREATE TYPE "public"."enum_runs_cost_source" AS ENUM('estimate', 'gateway');
   CREATE TYPE "public"."enum_runs_reconcile_status" AS ENUM('pending', 'matched', 'mismatch');
   CREATE TYPE "public"."enum_tool_calls_status" AS ENUM('ok', 'error');
-  CREATE TYPE "public"."enum_payload_jobs_log_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage');
+  CREATE TYPE "public"."enum_payload_jobs_log_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage', 'expire-sessions');
   CREATE TYPE "public"."enum_payload_jobs_log_state" AS ENUM('failed', 'succeeded');
-  CREATE TYPE "public"."enum_payload_jobs_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage');
+  CREATE TYPE "public"."enum_payload_jobs_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage', 'expire-sessions');
   CREATE TABLE "bauherren_tenants" (
   	"_order" integer NOT NULL,
   	"_parent_id" integer NOT NULL,
@@ -31,8 +33,12 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE TABLE "bauherren" (
   	"id" serial PRIMARY KEY NOT NULL,
   	"role" "enum_bauherren_role" DEFAULT 'bauherr' NOT NULL,
+  	"github_login" varchar,
   	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
   	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+  	"enable_a_p_i_key" boolean,
+  	"api_key" varchar,
+  	"api_key_index" varchar,
   	"email" varchar NOT NULL,
   	"reset_password_token" varchar,
   	"reset_password_expiration" timestamp(3) with time zone,
@@ -50,6 +56,8 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	"gateway_key" varchar,
   	"budget_usd30d" numeric DEFAULT 50,
   	"model_by_tier" jsonb DEFAULT '{"cheap":"claude-haiku-5-5","standard":"claude-sonnet-5-5","strong":"claude-opus-5-5"}'::jsonb,
+  	"default_mode" "enum_workspaces_default_mode",
+  	"mode_by_stage" jsonb,
   	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
   	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
@@ -134,6 +142,10 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	"ticket_id" integer NOT NULL,
   	"stage" "enum_runs_stage" NOT NULL,
   	"status" "enum_runs_status" DEFAULT 'queued' NOT NULL,
+  	"mode" "enum_runs_mode" DEFAULT 'autonomous' NOT NULL,
+  	"session_owner_id" integer,
+  	"heartbeat_at" timestamp(3) with time zone,
+  	"evidence" varchar,
   	"goal" jsonb,
   	"model" varchar,
   	"tokens_in" numeric,
@@ -161,6 +173,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	"tokens_out" numeric,
   	"cost_estimate_usd" numeric,
   	"started_at" timestamp(3) with time zone,
+  	"summary" varchar,
   	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
   	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
@@ -169,7 +182,8 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	"id" serial PRIMARY KEY NOT NULL,
   	"workspace_id" integer,
   	"tool_use_id" varchar,
-  	"step_id" integer NOT NULL,
+  	"step_id" integer,
+  	"run_id" integer,
   	"name" varchar,
   	"input_digest" varchar,
   	"status" "enum_tool_calls_status",
@@ -312,10 +326,12 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   ALTER TABLE "tickets_rels" ADD CONSTRAINT "tickets_rels_tickets_fk" FOREIGN KEY ("tickets_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "runs" ADD CONSTRAINT "runs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "runs" ADD CONSTRAINT "runs_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "runs" ADD CONSTRAINT "runs_session_owner_id_bauherren_id_fk" FOREIGN KEY ("session_owner_id") REFERENCES "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "steps" ADD CONSTRAINT "steps_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "steps" ADD CONSTRAINT "steps_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_step_id_steps_id_fk" FOREIGN KEY ("step_id") REFERENCES "public"."steps"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
@@ -377,6 +393,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "tickets_rels_tickets_id_idx" ON "tickets_rels" USING btree ("tickets_id");
   CREATE INDEX "runs_workspace_idx" ON "runs" USING btree ("workspace_id");
   CREATE INDEX "runs_ticket_idx" ON "runs" USING btree ("ticket_id");
+  CREATE INDEX "runs_session_owner_idx" ON "runs" USING btree ("session_owner_id");
   CREATE INDEX "runs_updated_at_idx" ON "runs" USING btree ("updated_at");
   CREATE INDEX "runs_created_at_idx" ON "runs" USING btree ("created_at");
   CREATE INDEX "steps_workspace_idx" ON "steps" USING btree ("workspace_id");
@@ -385,6 +402,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "steps_created_at_idx" ON "steps" USING btree ("created_at");
   CREATE INDEX "tool_calls_workspace_idx" ON "tool_calls" USING btree ("workspace_id");
   CREATE INDEX "tool_calls_step_idx" ON "tool_calls" USING btree ("step_id");
+  CREATE INDEX "tool_calls_run_idx" ON "tool_calls" USING btree ("run_id");
   CREATE INDEX "tool_calls_updated_at_idx" ON "tool_calls" USING btree ("updated_at");
   CREATE INDEX "tool_calls_created_at_idx" ON "tool_calls" USING btree ("created_at");
   CREATE INDEX "human_touches_workspace_idx" ON "human_touches" USING btree ("workspace_id");
@@ -466,10 +484,12 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   DROP TABLE "payload_migrations" CASCADE;
   DROP TABLE "payload_jobs_stats" CASCADE;
   DROP TYPE "public"."enum_bauherren_role";
+  DROP TYPE "public"."enum_workspaces_default_mode";
   DROP TYPE "public"."enum_connections_kind";
   DROP TYPE "public"."enum_tickets_state";
   DROP TYPE "public"."enum_runs_stage";
   DROP TYPE "public"."enum_runs_status";
+  DROP TYPE "public"."enum_runs_mode";
   DROP TYPE "public"."enum_runs_cost_source";
   DROP TYPE "public"."enum_runs_reconcile_status";
   DROP TYPE "public"."enum_tool_calls_status";

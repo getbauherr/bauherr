@@ -13,7 +13,7 @@ test('runStage via proxy: key injected upstream, Stop hook blocks once then need
   try {
     const res = await runStage(ctx);
     assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
-    assert.match(res.reason ?? '', /plan posted/);
+    assert.match(res.reason ?? '', /plan\.md/);
     assert.ok(gw.seen.length >= 2, 'second request is the Stop-hook re-prompt');
     for (const s of gw.seen) {
       assert.equal(s.headers.authorization, 'Bearer REAL-GATEWAY-KEY');

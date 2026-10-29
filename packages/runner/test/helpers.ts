@@ -60,9 +60,11 @@ export function makeBareRepo(): string {
   return `file://${root}`;
 }
 
-export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'plan' | 'build' }): RunCtx & { logs: string[]; comments: string[]; prs: { head: string; body: string }[] } {
+export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'plan' | 'build' }): RunCtx & { logs: string[]; comments: string[]; worklogs: string[]; stages: string[]; prs: { head: string; body: string }[] } {
   const logs: string[] = [];
   const comments: string[] = [];
+  const worklogs: string[] = [];
+  const stages: string[] = [];
   const prs: { head: string; body: string }[] = [];
   return {
     run: { id: 'r1', stage: over.stage ?? 'plan', goal: { statements: ['plan posted'] }, maxTurns: 5, maxBudgetUsd: 1, tier: 'cheap' },
@@ -72,9 +74,11 @@ export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl
     forge: {
       async openPullRequest(p) { prs.push({ head: p.head, body: p.body }); return { url: 'https://example.invalid/pr/1' }; },
       async comment(_n, b) { comments.push(b); },
+      async upsertWorklog(_n, b) { worklogs.push(b); },
+      async setStage(_n, st) { stages.push(st); },
     },
     recorder: { async step() {}, async toolCall() {}, log: (m) => logs.push(m) },
     packDir: PACK_DIR,
-    logs, comments, prs,
+    logs, comments, worklogs, stages, prs,
   };
 }

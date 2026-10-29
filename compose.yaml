@@ -67,6 +67,15 @@ services:
       test: [CMD-SHELL, "pgrep -f jobs:run"]
       interval: 15s
       retries: 3
+  poller: # own process: a long agent Run in `worker` must not delay polls
+    <<: *app
+    command: [pnpm, jobs:poll]
+    depends_on:
+      app: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "pgrep -f jobs:run"]
+      interval: 15s
+      retries: 3
 
 volumes:
   bauherr-pg:

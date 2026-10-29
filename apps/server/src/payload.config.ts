@@ -32,7 +32,6 @@ export default buildConfig({
     deleteJobOnComplete: false,
     enableConcurrencyControl: true,
     tasks: [pollTickets, runStage, expireSessions],
-    // The app only polls; agent Runs execute in the worker (`payload jobs:run --queue runs`).
-    autoRun: process.env.JOBS_AUTORUN === '0' ? [] : [{ cron: '*/5 * * * * *', queue: 'poll' }],
+    // No in-app autoRun: the `poller` (queue poll) and `worker` (queue runs) processes run the jobs (package.json).
   },
 })
