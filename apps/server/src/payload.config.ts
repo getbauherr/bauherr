@@ -13,6 +13,8 @@ export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),
   serverURL: process.env.PUBLIC_URL,
   admin: { user: 'bauherren' },
+  // People are added, not created: Bauherr (singular) / Bauherren (plural).
+  i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
   typescript: { autoGenerate: false },
   db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true }),
   collections,

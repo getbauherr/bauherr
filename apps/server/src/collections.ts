@@ -22,6 +22,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
 
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
+  labels: { singular: 'Bauherr', plural: 'Bauherren' },
   auth: true,
   admin: { useAsTitle: 'email' },
   access: {
