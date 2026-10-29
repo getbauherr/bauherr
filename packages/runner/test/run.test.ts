@@ -28,3 +28,16 @@ test('runStage via proxy: key injected upstream, Stop hook blocks once then need
     await gw.close();
   }
 });
+
+test('runStage ends budget_exhausted when the gateway answers 429 budget_exceeded', { timeout: 120_000 }, async () => {
+  const gw = await startStubGateway('x', 0, true);
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'plan' });
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'budget_exhausted', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(res.reason, 'gateway budget exceeded');
+    assert.equal(ctx.comments.length, 0);
+  } finally {
+    await gw.close();
+  }
+});

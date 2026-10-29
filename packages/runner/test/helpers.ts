@@ -11,7 +11,7 @@ export const PACK_DIR = resolve(import.meta.dirname, '../../../../pack');
 export type Stub = { url: string; seen: { headers: IncomingHttpHeaders; body: string }[]; close(): Promise<void> };
 
 /** Plays the gateway: answers every /v1/messages with a minimal streamed end_turn message. */
-export async function startStubGateway(text = 'done', port = 0): Promise<Stub> {
+export async function startStubGateway(text = 'done', port = 0, budgetExceeded = false): Promise<Stub> {
   const seen: Stub['seen'] = [];
   let n = 0;
   const server: Server = createServer((req, res) => {
@@ -19,6 +19,10 @@ export async function startStubGateway(text = 'done', port = 0): Promise<Stub> {
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       seen.push({ headers: req.headers, body });
+      if (budgetExceeded) {
+        res.writeHead(429, { 'content-type': 'application/json' }).end('{"error":{"code":"budget_exceeded"}}');
+        return;
+      }
       const id = `msg_stub_${++n}`;
       const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
       res.writeHead(200, { 'content-type': 'text/event-stream' });

@@ -10,6 +10,8 @@ export type AgentState = {
   toolCalls: ToolCallRecord[];
   steps: StepRecord[];
   result?: SDKResultMessage;
+  abort: AbortController;
+  budgetExhausted?: boolean;
 };
 
 const DISALLOWED = [
@@ -106,6 +108,7 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
     maxTurns: ctx.run.maxTurns,
     maxBudgetUsd: ctx.run.maxBudgetUsd,
     persistSession: false,
+    abortController: state.abort,
     env: agentEnv(o.home, o.proxyUrl),
     hooks,
   };
@@ -116,19 +119,23 @@ export async function runAgent(ctx: RunCtx, options: Options, state: AgentState)
     ? `Plan Run for Ticket #${ctx.ticket.number}. Follow the run-contract and worklog skills. Write the plan and the Goal statements into .bauherr/worklog.md; set each statement in .bauherr/goal.json to verified (with evidence) or blocked (with reason). Do not implement.`
     : `Build Run for Ticket #${ctx.ticket.number}. Follow the run-contract skill. Implement the Goal in the working tree, run the checks, record the result of each Goal statement in .bauherr/goal.json (verified or blocked), and update .bauherr/worklog.md last. Commit your work with git commit; do not push.`;
   const seen = new Set<string>();
-  for await (const m of query({ prompt, options })) {
-    if (m.type === 'assistant' && m.parent_tool_use_id === null && !seen.has(m.message.id)) {
-      seen.add(m.message.id);
-      const u = m.message.usage;
-      const step: StepRecord = {
-        runId: ctx.run.id, messageId: m.message.id, model: m.message.model,
-        inputTokens: u.input_tokens, outputTokens: u.output_tokens,
-        cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0,
-      };
-      state.steps.push(step);
-      await ctx.recorder.step(step);
-    } else if (m.type === 'result') {
-      state.result = m;
+  try {
+    for await (const m of query({ prompt, options })) {
+      if (m.type === 'assistant' && m.parent_tool_use_id === null && !seen.has(m.message.id)) {
+        seen.add(m.message.id);
+        const u = m.message.usage;
+        const step: StepRecord = {
+          runId: ctx.run.id, messageId: m.message.id, model: m.message.model,
+          inputTokens: u.input_tokens, outputTokens: u.output_tokens,
+          cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0,
+        };
+        state.steps.push(step);
+        await ctx.recorder.step(step);
+      } else if (m.type === 'result') {
+        state.result = m;
+      }
     }
+  } catch (e) {
+    if (!state.budgetExhausted) throw e;
   }
 }
