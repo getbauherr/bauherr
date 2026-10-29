@@ -5,6 +5,7 @@ import { githubFor } from '../lib/adapters'
 import type { ConnectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
+import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { decrypt } from '../lib/secrets'
 
 const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -192,6 +193,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         },
         ...opts,
       })
+      await queueReconcile(payload, run.id)
       return { output: { status: r.status } }
     } catch (e) {
       await payload.update({
@@ -200,7 +202,33 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         data: { status: 'failed', error: e instanceof Error ? e.message : String(e), finishedAt: new Date().toISOString() },
         ...opts,
       })
+      await queueReconcile(payload, run.id)
       throw e
     }
+  },
+}
+
+export const reconcileCosts: TaskConfig<{ input: { runId: number; attempt?: number }; output: { status: string } }> = {
+  slug: 'reconcile-costs',
+  retries: 0,
+  inputSchema: [
+    { name: 'runId', type: 'number', required: true },
+    { name: 'attempt', type: 'number' },
+  ],
+  handler: async ({ input, req }) => {
+    if (!gatewayDbEnabled()) return { output: { status: 'skipped' } }
+    return { output: { status: await reconcileRun(req.payload, input.runId, input.attempt ?? 1) } }
+  },
+}
+
+export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; output: { deleted: number } }> = {
+  slug: 'prune-request-logs',
+  schedule: [{ cron: '0 0 3 * * *', queue: 'poll' }],
+  retries: 0,
+  handler: async ({ req }) => {
+    if (!gatewayDbEnabled()) return { output: { deleted: 0 } }
+    const deleted = await pruneRequestLogs()
+    req.payload.logger.info({ deleted, retentionDays: retentionDays() }, 'prune-request-logs')
+    return { output: { deleted } }
   },
 }

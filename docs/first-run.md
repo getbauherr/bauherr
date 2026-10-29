@@ -40,7 +40,7 @@ gh api -X POST repos/getbauherr/bauherr/issues/70/labels --raw-field 'labels[]=b
 
 ## Open
 
-- `runs.cost_estimate_usd` is about 10x below gateway cost; `gateway_cost_usd` still null (reconcile not built).
+- `runs.cost_estimate_usd` is about 10x below gateway cost; `reconcile-costs` (5 min after a Run, retry at +10 min) now fills `gateway_cost_usd`; UI reads virtual `costUsd` = gateway else estimate.
 - `gh issue edit --add-label` fails while the label does not exist in the repo; the adapter creates labels on add.
 - Plan approval is not tied to the plan Run having succeeded.
 - Catalog rates for the 5.5 models are placeholders.
