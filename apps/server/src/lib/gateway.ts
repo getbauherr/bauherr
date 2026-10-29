@@ -50,8 +50,9 @@ const keyNamed = async (name: string): Promise<Resource | undefined> =>
   (await call<{ resources: Resource[] }>('GET', KEYS)).resources.find((r) => r.value.metadata?.name === name)
 const keyOf = (slug: string) => keyNamed(keyName(slug))
 
-const budget = (ws: Ws) => [
-  { name: 'monthly', limit: { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' },
+/** Workspace key: Block. Owner-session key: Audit — subscription traffic costs the Workspace nothing, the gateway only prices it. */
+const budget = (ws: Ws, onBudgetExceeded: 'Block' | 'Audit' = 'Block') => [
+  { name: 'monthly', limit: { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded },
 ]
 
 /** Writes a secret file (0600, owned by the directory's owner so a root container leaves it readable on the host). Never logs the value. */
@@ -93,7 +94,7 @@ export const ensureSessionKey = async (ws: Ws): Promise<void> => {
     key: existing?.value.key ?? newKey(),
     metadata: { name: sessionKeyName(ws.slug), user: keyName(ws.slug), kind: 'owner-session' },
     allowedModels: ['sub/*'],
-    budgets: budget(ws),
+    budgets: budget(ws, 'Audit'),
   }
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
   else await call('PUT', KEYS, { resources: [{ value }] })
