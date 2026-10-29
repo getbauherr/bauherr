@@ -1,8 +1,8 @@
 # GitLab driver (research, ticket #14)
 
 Scope: one driver = `Forge` + `TicketSource` over one Connection (#6). Probed 2026-10-29 on gitlab.com 19.6.0-pre
-(`GET /metadata` 200) with a **read-only** token (user `sbuckpesch`, Owner of group `einsfuenf.de`, Free plan,
-project `einsfuenf.de/klima-portal` id 67311433). No write token exists: every write is "?" = unverified (endpoint, role/scope and docs tier given).
+(`GET /metadata` 200) with a **read-only** token (the owner's user, Owner of the group, Free plan,
+project `klima-portal`). No write token exists: every write is "?" = unverified (endpoint, role/scope and docs tier given).
 "V" = verified live; "D" = docs only; "?" = unverified. Docs base: https://docs.gitlab.com.
 Caveat V: klima-portal has **0 issues** (`/issues?scope=all&state=all` -> `x-total: 0`, 200), so issue-level read probes ran on public
 `gitlab-org/gitlab` issue 628976 (token used, read-only). MR/pipeline/job probes ran on klima-portal MR !196.

@@ -1,7 +1,7 @@
 # Audit and cost model, gateway attribution
 
 Ticket: getbauherr/bauherr#18. Builds on `runner-execution-model.md` section 6 (SDK usage per Step; not repeated).
-Tags: [config] = read in `/home/sbuckpesch/projects/einsfuenf.de/ai-gateway`; [docs] = agentgateway.dev page read;
+Tags: [config] = read in the local gateway deployment repo; [docs] = agentgateway.dev page read;
 [unknown] = not found, needs a probe. Docs base: `https://agentgateway.dev/docs/standalone/latest/documentation/`.
 
 ## 1. What agentgateway exposes
