@@ -4,7 +4,6 @@ Proposal, nothing executed. Sources: #20, #7 resolution (items 6, 7, 9), `runner
 klima-portal `.gitlab-ci.yml` / `tools/docs-lint.sh`, ai-tooling `evals/README.md`. `[unverified]` = not checked.
 
 ## 1. Delivery mechanism
-
 | | GitHub | GitLab |
 |---|---|---|
 | Recommend | **Reusable workflow** `getbauherr/bauherr/.github/workflows/bauherr-ci.yml@v1` | **`include: project:`** with `ref: v1.x.y` from a gitlab.com mirror of the CI repo |
@@ -30,7 +29,6 @@ to trust forge JWTs (later). Use a **separate low-budget CI key**: the gateway b
 only a client estimate ("can overshoot", same doc).
 
 ## 2. Jobs
-
 Jobs: `lint` (`npx bauherr@$VER pack lint`), `eval` (`npx bauherr@$VER eval`), `secrets`, `test` (opt-in), `sast` (GitLab only).
 
 - **Tests.** No language-agnostic magic. Contract: one command, default `make test` (klima-portal has it; its CI
@@ -55,7 +53,6 @@ Jobs: `lint` (`npx bauherr@$VER pack lint`), `eval` (`npx bauherr@$VER eval`), `
   mandatory (client rules live there, #7 item 6).
 
 ## 3. Eval job
-
 **Case format**, next to the skill: `pack/skills/<skill>/evals/<case>.yaml` (client layer:
 `workspace/skills/<skill>/evals/`, `products/<slug>/...`).
 
@@ -100,7 +97,6 @@ Recommend **own runner for v0.1**; keep the case format neutral (`input`->`vars`
 [not covered in the fetched page]) so a converter is the switching cost.
 
 ## 4. Knowledge repo template
-
 `lint` + `eval` + `secrets` only (no tests, no SAST), triggered on pull/merge requests to the default branch.
 Eval scope: changed client skills, plus the core suite **with the client overlay applied** when `pack.yaml` changes.
 
