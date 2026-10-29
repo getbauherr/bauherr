@@ -61,6 +61,8 @@ services:
   worker:
     <<: *app
     command: [pnpm, jobs]
+    depends_on:
+      app: {condition: service_healthy} # app applies prod migrations on boot
     healthcheck:
       test: [CMD-SHELL, "pgrep -f jobs:run"]
       interval: 15s

@@ -3,6 +3,7 @@ import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
 import { pollTickets, runStage } from './jobs'
+import { migrations } from './migrations'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
@@ -14,7 +15,7 @@ export default buildConfig({
   serverURL: process.env.PUBLIC_URL,
   admin: { user: 'bauherren' },
   typescript: { autoGenerate: false },
-  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true }),
+  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true, prodMigrations: migrations }),
   collections,
   plugins: [
     multiTenantPlugin({

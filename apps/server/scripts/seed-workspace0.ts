@@ -10,6 +10,8 @@ const env = (k: string): string => {
   return v
 }
 
+const anthropicKey = process.env.ANTHROPIC_API_KEY_FILE ? readFileSync(process.env.ANTHROPIC_API_KEY_FILE, 'utf8').trim() : env('ANTHROPIC_API_KEY')
+
 const payload = await getPayload({ config })
 const o = { overrideAccess: true } as const
 
@@ -37,7 +39,7 @@ const github = await scoped('connections', { name: 'github' }, {
   secret: env('GITHUB_TOKEN'),
   capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false },
 })
-await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: env('ANTHROPIC_API_KEY') })
+await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
 const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr' })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })

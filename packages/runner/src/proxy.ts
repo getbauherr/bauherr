@@ -19,8 +19,8 @@ export async function startProxy(o: { gatewayUrl: string; gatewayKey: string; ru
       return;
     }
     const headers: IncomingHttpHeaders = { ...req.headers, host: target.host };
-    delete headers.authorization;
-    headers['x-api-key'] = o.gatewayKey;
+    delete headers['x-api-key']; // agentgateway apiKey auth reads only `Authorization: Bearer`
+    headers.authorization = `Bearer ${o.gatewayKey}`;
     headers['x-bauherr-run'] = o.runId;
     headers['x-bauherr-stage'] = o.stage;
     if (o.product) headers['x-bauherr-product'] = o.product;
