@@ -17,7 +17,9 @@ Every Workspace must use its own provider credential. One shared key across Work
 
 Bauherr runs Claude Code via the Claude Agent SDK, which is under Anthropic's Commercial Terms, not Apache-2.0 ([terms](https://code.claude.com/docs/en/legal-and-compliance)). The relevant rules:
 
-> Customers may not pay for, resell, or intermediate Claude usage on their end users' behalf. Each end user must authenticate with their own Anthropic API key or 3P inference provider credential.
+> Customers may not pay for, resell, or intermediate Claude usage on their end users' behalf. Each end user must authenticate with their own Anthropic API key, Claude subscription plan credentials, or 3P inference provider credential (Amazon Bedrock, Google Cloud's Agent Platform, Microsoft Foundry).
+
+Subscription credentials are allowed by Anthropic only for a person signing in to the unmodified Claude Code binary; Bauherr's Runner therefore uses API keys only.
 
 - Use API keys only. Never use subscription or OAuth credentials.
 - Developers may not collect or store Claude.ai credentials.
