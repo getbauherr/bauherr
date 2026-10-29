@@ -31,8 +31,20 @@ _Avoid_: User (bare), requester, client, customer
 ### External systems
 
 **Connection**:
-A credentialed link from a Workspace to one external system (a forge, a board tool, the LLM gateway), shared by that Workspace's Products.
+A credentialed link from a Workspace to one external system (a forge, a board tool, an LLM provider), shared by that Workspace's Products.
 _Avoid_: Integration, credential, account
+
+**Gateway**:
+The LLM gateway shipped inside every Bauherr instance; every agent request passes through it with the Workspace's own provider credential and key budget.
+_Avoid_: Proxy, LLM router
+
+**Tier**:
+One of cheap, standard, strong: a Workspace resolves each to a model name; stages pick a Tier, never a model.
+_Avoid_: Model (in config)
+
+**LLM provider**:
+The company or cloud whose models a Workspace pays for with its own credential.
+_Avoid_: Vendor, backend
 
 **Repository**:
 One code repository reached through a forge Connection; it belongs to exactly one Product, and a Product has one or more.

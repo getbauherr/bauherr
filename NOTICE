@@ -6,3 +6,20 @@ This product includes software developed by the Bauherr project
 
 "Bauherr" is a name of the project; Apache-2.0 Section 6 grants no
 trademark rights.
+
+Third-party components
+
+Bauherr runs Claude Code via the Claude Agent SDK.
+
+- agentgateway: Apache-2.0. Referenced as an upstream image, not redistributed.
+- vLLM Semantic Router and Envoy: Apache-2.0. Optional profile, upstream images, not redistributed.
+- Prometheus and Jaeger: Apache-2.0. Optional profile, upstream images, not redistributed.
+- PostgreSQL: PostgreSQL licence.
+- Payload and Next.js: MIT.
+- @anthropic-ai/claude-agent-sdk and the Claude Code binary it bundles:
+  NOT Apache-2.0. Governed by Anthropic's Commercial Terms
+  (https://code.claude.com/docs/en/legal-and-compliance). Included
+  unmodified. Operators must bring their own Anthropic API key or
+  third-party inference provider credential.
+
+See docs/legal.md.

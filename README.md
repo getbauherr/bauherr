@@ -6,6 +6,8 @@
 
 Pre-release. Architecture and v0.1 spec are being charted in [Bauherr v0.1 — way to a locked architecture and spec](https://github.com/getbauherr/bauherr/issues/1).
 
+The stack ships its own LLM gateway with per-Workspace budgets. Bauherr runs Claude Code via the Claude Agent SDK; see [docs/legal.md](docs/legal.md) for operators.
+
 ## Licence
 
 [Apache-2.0](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md).
