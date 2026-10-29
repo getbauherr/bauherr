@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="196" height="40" viewBox="0 0 196 40" role="img" aria-label="Bauherr">
+  <rect x="4" y="4" width="32" height="32" stroke="#171a1f" stroke-width="2.5" fill="none"/>
+  <rect x="4" y="22.5" width="13.5" height="13.5" fill="#2457c5"/>
+  <text x="50" y="30" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="600" letter-spacing="-0.3" fill="#171a1f">Bauherr</text>
+</svg>

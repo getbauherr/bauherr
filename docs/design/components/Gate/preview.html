@@ -1,0 +1,37 @@
+<!-- @dsCard group="Decisions" height=260 -->
+<!doctype html><html data-theme="light"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-4);background:var(--surface-000);color:var(--ink);font-family:var(--font-sans)}
+@media (prefers-reduced-motion:reduce){*{transition-duration:0s!important;animation:none!important}}
+.card{max-width:720px;display:flex;flex-direction:column;gap:var(--space-3);background:var(--surface-100);border:1px solid var(--hairline);border-radius:var(--radius-md);padding:var(--space-6)}
+h2{margin:0;font-size:17px;line-height:24px;font-weight:600}
+.meta{margin:0;color:var(--ink-muted);font-size:13px;line-height:18px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)}
+.goals{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--space-1);font-size:15px;line-height:22px}
+.goals li{display:flex;gap:var(--space-2);align-items:baseline}
+.mark{flex:none;padding:0 var(--space-1);border:1px solid currentColor;border-radius:var(--radius-sm);font-size:12px;line-height:16px;font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.ok{color:var(--ok)}.warn{color:var(--warn)}
+.ev{background:var(--surface-200);border-radius:var(--radius-sm);padding:var(--space-2) var(--space-3);font-family:var(--font-mono);font-size:13px;line-height:20px}
+.ev div{white-space:nowrap}
+.actions{display:flex;gap:var(--space-2)}
+.btn{height:36px;padding:0 var(--space-3);border-radius:var(--radius-md);border:1px solid var(--hairline);background:var(--surface-100);color:var(--ink);font:inherit;font-size:15px;line-height:22px;font-weight:500;cursor:pointer;transition:background-color var(--duration-state) var(--ease-out)}
+.btn:hover{background-color:var(--surface-200)}
+.btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.primary:hover{background-color:color-mix(in srgb,var(--accent),var(--ink) 15%)}
+</style></head><body>
+<div class="card">
+<h2>Plan approval</h2>
+<p class="meta">Ticket #41 · Build stage · budget $10 · model standard</p>
+<div class="cols">
+<ul class="goals">
+<li><span class="mark ok">✓ verified</span>Exports keep their column order</li>
+<li><span class="mark ok">✓ verified</span>Snapshot tests pass</li>
+<li><span class="mark warn">Unverified</span>Large files stay under 5 s</li>
+</ul>
+<div class="ev"><div>$ make test <span class="ok">exit 0</span></div><div>$ make check <span class="ok">exit 0</span></div></div>
+</div>
+<div class="actions"><button class="btn primary">Approve plan</button><button class="btn">Ask for changes</button></div>
+</div></body></html>
