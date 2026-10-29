@@ -1,5 +1,6 @@
 import type { CollectionConfig, Field } from 'payload'
-import { encrypt, isEncrypted } from './lib/secrets'
+import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, writeProvider } from './lib/gateway'
+import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -51,22 +52,59 @@ const bauherren: CollectionConfig = {
   ],
 }
 
-const workspaces = col('workspaces', [text('name', { required: true }), text('slug', { required: true, unique: true })], {
-  access: {
-    create: isAdmin,
-    delete: isAdmin,
-    read: ({ req }) =>
-      req.user?.role === 'admin'
-        ? true
-        : { id: { in: ((req.user?.tenants as { tenant: { id: number } | number }[]) ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant)) } },
+const workspaces = col(
+  'workspaces',
+  [
+    text('name', { required: true }),
+    text('slug', { required: true, unique: true }),
+    {
+      name: 'gatewayKey',
+      type: 'text',
+      admin: { description: 'Write-only. Consumer key at the gateway; generated on create, encrypted at rest.' },
+      access: { read: () => false },
+      hooks: {
+        beforeChange: [
+          ({ value, operation }) =>
+            operation === 'create' && !value ? encrypt(newKey()) : typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value,
+        ],
+      },
+    },
+    { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
+    { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
+  ],
+  {
+    access: {
+      create: isAdmin,
+      delete: isAdmin,
+      read: ({ req }) =>
+        req.user?.role === 'admin'
+          ? true
+          : { id: { in: ((req.user?.tenants as { tenant: { id: number } | number }[]) ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant)) } },
+    },
+    hooks: {
+      afterChange: [
+        async ({ doc, previousDoc, operation, req }) => {
+          if (!gatewayEnabled()) return
+          if (operation === 'create' || doc.budgetUsd30d !== previousDoc?.budgetUsd30d) await ensureKey(req, doc.id)
+        },
+      ],
+      afterDelete: [
+        async ({ doc, req }) => {
+          if (!gatewayEnabled()) return
+          await deleteKey(doc.slug)
+          await removeProvider(doc.slug)
+          await renderModels(req)
+        },
+      ],
+    },
   },
-})
+)
 
 const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'gateway'], { required: true }),
+    select('kind', ['github', 'llm-provider'], { required: true }),
     json('config'),
     {
       name: 'secret',
@@ -79,6 +117,29 @@ const connections = col(
     },
     json('capabilities'),
   ],
+  {
+    hooks: {
+      afterChange: [
+        async ({ doc, req }) => {
+          if (doc.kind !== 'llm-provider' || !gatewayEnabled()) return
+          const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
+            secret?: string
+            workspace: { slug: string }
+          }
+          if (raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret))
+          await renderModels(req)
+        },
+      ],
+      afterDelete: [
+        async ({ doc, req }) => {
+          if (doc.kind !== 'llm-provider' || !gatewayEnabled()) return
+          const ws = await req.payload.findByID({ collection: 'workspaces', id: typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace, depth: 0, overrideAccess: true, req })
+          await removeProvider(ws.slug)
+          await renderModels(req)
+        },
+      ],
+    },
+  },
 )
 
 const tickets = col('tickets', [
@@ -96,7 +157,7 @@ const tickets = col('tickets', [
   rel('blockedBy', 'tickets', { hasMany: true }),
 ])
 
-export const runStatuses = ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human']
+export const runStatuses = ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted']
 
 export const collections: CollectionConfig[] = [
   bauherren,
@@ -121,6 +182,9 @@ export const collections: CollectionConfig[] = [
     num('tokensOut'),
     num('tokensCache'),
     num('costEstimateUsd'),
+    num('gatewayCostUsd'),
+    select('costSource', ['estimate', 'gateway'], { defaultValue: 'estimate' }),
+    select('reconcileStatus', ['pending', 'matched', 'mismatch'], { defaultValue: 'pending' }),
     date('startedAt'),
     date('finishedAt'),
     text('error'),

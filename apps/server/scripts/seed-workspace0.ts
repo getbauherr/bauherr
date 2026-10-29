@@ -37,7 +37,7 @@ const github = await scoped('connections', { name: 'github' }, {
   secret: env('GITHUB_TOKEN'),
   capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false },
 })
-await scoped('connections', { name: 'gateway' }, { kind: 'gateway', config: { url: env('GATEWAY_URL') }, secret: env('GATEWAY_KEY') })
+await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: env('ANTHROPIC_API_KEY') })
 const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr' })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })

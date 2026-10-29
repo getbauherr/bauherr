@@ -29,8 +29,8 @@ export type RunCtx = {
     maxBudgetUsd: number;
     tier: 'cheap' | 'standard' | 'strong';
   };
-  ticket: { number: number; url: string; title: string; body: string; worklog?: string };
-  product: { repo: string; defaultBranch: string };
+  ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string };
+  product: { id?: string; repo: string; defaultBranch: string };
   connection: {
     gatewayUrl: string;
     gatewayKey: string;
@@ -53,7 +53,7 @@ export type RunCtx = {
 };
 
 export type RunResult = {
-  status: 'succeeded' | 'failed' | 'needs_human';
+  status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
   reason?: string;
   artifacts: { prUrl?: string; commentUrl?: string; evidence?: string };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };

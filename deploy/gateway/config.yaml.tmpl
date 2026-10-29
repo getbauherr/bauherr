@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# Rendered by the compose `init` service on first start; afterwards Bauherr owns llm.models
+# (apps/server/src/lib/gateway.ts) and keys live in the gateway database (hybrid storage).
+config:
+  adminAddr: "0.0.0.0:15000" # unauthenticated: never publish this port
+  storage:
+    mode: hybrid
+  database:
+    url: "__GATEWAY_DATABASE_URL__"
+  modelCatalog:
+  - file: /gateway/catalog.json
+  metrics:
+    fields:
+      add:
+        user_id: apiKey.user
+  __TRACING__
+gateways:
+  default:
+    port: 4000
+frontendPolicies:
+  accessLog:
+    database:
+      llm: metadata
+      add:
+        run: 'request.headers["x-bauherr-run"]'
+        stage: 'request.headers["x-bauherr-stage"]'
+        product: 'request.headers["x-bauherr-product"]'
+        ticket: 'request.headers["x-bauherr-ticket"]'
+llm:
+  gateways: default
+  policies:
+    apiKey:
+      mode: strict
+      keys: []
+  models: []

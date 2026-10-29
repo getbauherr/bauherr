@@ -3,9 +3,9 @@ import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
 import { githubFor } from './adapters'
 import type { ConnectionInput } from './connection'
+import { DEFAULT_MODEL_BY_TIER } from './gateway'
 
 const DEFAULT_GOAL = 'a plan comment is posted'
-const DEFAULT_MODELS = { cheap: 'claude-haiku-4-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-4-7' }
 const PACK_DIR = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 
 /** Statements from the Ticket's `## Acceptance criteria` bullets, else the default. */
@@ -21,7 +21,7 @@ type Doc = Record<string, any>
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
-  d: { run: Doc; ticket: Doc; repo: string; github: ConnectionInput; gateway: ConnectionInput; defaultBranch?: string },
+  d: { run: Doc; ticket: Doc; repo: string; github: ConnectionInput; gatewayKey: string; defaultBranch?: string },
 ): Promise<RunCtx> => {
   const { run, ticket, repo } = d
   const opts = { overrideAccess: true } as const
@@ -32,19 +32,22 @@ export const buildRunCtx = async (
   const statements = goalOf(issue.body)
   let seq = 0
   let lastStep: number | string | undefined
-  const cfg = d.gateway.config as { url?: string; modelByTier?: Record<string, string> }
-  if (!cfg.url || !d.gateway.secret) throw new Error('gateway connection needs config.url and a secret')
+  const gatewayUrl = process.env.GATEWAY_URL
+  if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
+  const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
+  const tiers = { ...DEFAULT_MODEL_BY_TIER, ...(ws.modelByTier as Record<string, string> | null) }
+  const modelByTier = Object.fromEntries(Object.entries(tiers).map(([t, m]) => [t, `ws-${ws.slug}/${m}`]))
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
     run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 1, tier: 'cheap' },
-    ticket: { number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body },
-    product: { repo, defaultBranch: repoInfo.defaultBranch },
+    ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body },
+    product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
     connection: {
-      gatewayUrl: cfg.url,
-      gatewayKey: d.gateway.secret,
+      gatewayUrl,
+      gatewayKey: d.gatewayKey,
       gitToken: d.github.secret!,
-      modelByTier: { ...DEFAULT_MODELS, ...cfg.modelByTier },
+      modelByTier,
       ...(process.env.BAUHERR_GIT_BASE_URL ? { gitBaseUrl: process.env.BAUHERR_GIT_BASE_URL } : {}),
     },
     forge: {

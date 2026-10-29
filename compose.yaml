@@ -3,9 +3,15 @@ x-app: &app
   depends_on:
     db: {condition: service_healthy}
     init: {condition: service_completed_successfully}
-  volumes: [bauherr-secrets:/run/secrets:ro]
+    gateway: {condition: service_started}
+  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway"]
   environment:
     DATABASE_URL: postgres://bauherr:bauherr@db:5432/bauherr
+    GATEWAY_URL: http://gateway:4000
+    GATEWAY_ADMIN_URL: http://gateway:15000
+    GATEWAY_DATABASE_URL: &gwdb postgres://bauherr:bauherr@db:5432/gateway
+    GATEWAY_CONFIG_DIR: /gateway
+    OTEL_ENABLED: ${OTEL_ENABLED:-0}
     PAYLOAD_SECRET_FILE: /run/secrets/payload_secret
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
@@ -13,20 +19,37 @@ x-app: &app
 services:
   init:
     image: alpine:3
-    volumes: [bauherr-secrets:/run/secrets]
+    volumes: [bauherr-secrets:/run/secrets, "bauherr-gateway:/gateway", "./deploy/gateway:/deploy/gateway:ro"]
+    environment:
+      GATEWAY_DATABASE_URL: *gwdb
+      OTEL_ENABLED: ${OTEL_ENABLED:-0}
     command: >
       sh -c "for n in payload_secret encryption_key; do
-      [ -s /run/secrets/$$n ] || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /run/secrets/$$n; done"
+      [ -s /run/secrets/$$n ] || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /run/secrets/$$n; done;
+      mkdir -p /gateway/providers; cp /deploy/gateway/catalog.json /gateway/catalog.json;
+      if [ ! -s /gateway/config.yaml ]; then
+      if [ \"$$OTEL_ENABLED\" = 1 ]; then T='tracing: {otlpEndpoint: \"http://jaeger:4317\"}'; else T=''; fi;
+      sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" -e \"s|__TRACING__|$$T|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi"
   db:
     image: postgres:17
     container_name: bauherr-db
     ports: ["127.0.0.1:54330:5432"]
     environment: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}
-    volumes: [bauherr-pg:/var/lib/postgresql/data]
+    volumes: [bauherr-pg:/var/lib/postgresql/data, "./deploy/db-init.sql:/docker-entrypoint-initdb.d/10-gateway.sql:ro"]
     healthcheck:
       test: [CMD-SHELL, pg_isready -U bauherr]
       interval: 5s
       retries: 10
+  gateway:
+    image: cr.agentgateway.dev/agentgateway:v1.6.0
+    user: "0" # provider key files are 0600 and written by root in app/worker
+    command: [-f, /gateway/config.yaml]
+    ports: ["127.0.0.1:4000:4000"] # admin API :15000 stays internal
+    volumes: ["bauherr-gateway:/gateway:ro"]
+    depends_on:
+      db: {condition: service_healthy}
+      init: {condition: service_completed_successfully}
+    restart: unless-stopped
   app:
     <<: *app
     ports: ["${PORT:-3000}:3000"]
@@ -46,3 +69,4 @@ services:
 volumes:
   bauherr-pg:
   bauherr-secrets:
+  bauherr-gateway:
