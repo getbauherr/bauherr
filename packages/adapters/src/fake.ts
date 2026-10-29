@@ -184,6 +184,14 @@ class FakeTickets implements TicketSource {
     this.touch(t);
     return c;
   }
+  async updateComment(id: string, commentId: string, body: string) {
+    const t = this.t(id);
+    const c = t.comments.find((x) => x.id === commentId);
+    if (!c) throw new Error(`no comment ${commentId}`);
+    c.body = body;
+    this.touch(t);
+    return c;
+  }
   async listComments(id: string, since?: string) {
     return this.t(id).comments.filter((c) => !since || c.createdAt >= since);
   }

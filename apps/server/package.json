@@ -10,11 +10,13 @@
     "importmap": "payload generate:importmap",
     "seed": "tsx scripts/seed-workspace0.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts"
   },
   "dependencies": {
     "@bauherr/adapters": "workspace:*",
     "@bauherr/runner": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@payloadcms/db-postgres": "3.92.1",
     "@payloadcms/next": "3.92.1",
     "@payloadcms/plugin-multi-tenant": "3.92.1",
@@ -28,9 +30,9 @@
   },
   "devDependencies": {
     "@types/node": "^24",
+    "@types/pg": "^8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/pg": "^8",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",
     "vitest": "^5.0.5"

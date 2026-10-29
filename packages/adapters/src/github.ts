@@ -195,6 +195,9 @@ class GithubTickets implements TicketSource {
   async comment(id: string, body: string) {
     return comment(await this.h.json('POST', `${this.p}/issues/${id}/comments`, { body }));
   }
+  async updateComment(id: string, commentId: string, body: string) {
+    return comment(await this.h.json('PATCH', `${this.p}/issues/comments/${commentId}`, { body }));
+  }
   async listComments(id: string, since?: string) {
     const q = since ? `&since=${enc(sinceParam(since))}` : '';
     return (await this.h.paginate(`${this.p}/issues/${id}/comments?per_page=100${q}`)).map(comment);

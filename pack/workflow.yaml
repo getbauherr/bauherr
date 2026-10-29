@@ -1,4 +1,6 @@
 # Minimal base workflow (v0.1 skeleton). Spec: docs/spec/workflow.md
+# Optional per stage: `mode: session|autonomous` (default autonomous). Workspace.modeByStage / defaultMode and
+# env BAUHERR_DEFAULT_MODE override it (apps/server/src/lib/mode.ts).
 stages:
   - {name: triage}
   - name: plan

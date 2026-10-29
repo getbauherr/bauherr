@@ -2,7 +2,7 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
-import { pollTickets, runStage } from './jobs'
+import { expireSessions, pollTickets, runStage } from './jobs'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
@@ -30,7 +30,7 @@ export default buildConfig({
     access: { queue: isAdmin, run: isAdmin, cancel: isAdmin },
     deleteJobOnComplete: false,
     enableConcurrencyControl: true,
-    tasks: [pollTickets, runStage],
+    tasks: [pollTickets, runStage, expireSessions],
     // The app only polls; agent Runs execute in the worker (`payload jobs:run --queue runs`).
     autoRun: process.env.JOBS_AUTORUN === '0' ? [] : [{ cron: '*/5 * * * * *', queue: 'poll' }],
   },
