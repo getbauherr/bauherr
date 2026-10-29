@@ -16,12 +16,12 @@ test('proxy injects key and run headers, drops client auth, streams body', async
     assert.equal(res.status, 200);
     assert.match(text, /message_stop/);
     const h = gw.seen[0]!.headers;
-    assert.equal(h['x-api-key'], 'REAL');
+    assert.equal(h.authorization, 'Bearer REAL');
     assert.equal(h['x-bauherr-run'], 'run-9');
     assert.equal(h['x-bauherr-stage'], 'build');
     assert.equal(h['x-bauherr-product'], 'p1');
     assert.equal(h['x-bauherr-ticket'], 't2');
-    assert.equal(h.authorization, undefined);
+    assert.equal(h['x-api-key'], undefined);
     assert.equal(gw.seen[0]!.body, '{"a":1}');
   } finally {
     await proxy.close();

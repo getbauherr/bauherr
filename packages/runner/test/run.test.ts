@@ -16,7 +16,7 @@ test('runStage via proxy: key injected upstream, Stop hook blocks once then need
     assert.match(res.reason ?? '', /plan posted/);
     assert.ok(gw.seen.length >= 2, 'second request is the Stop-hook re-prompt');
     for (const s of gw.seen) {
-      assert.equal(s.headers['x-api-key'], 'REAL-GATEWAY-KEY');
+      assert.equal(s.headers.authorization, 'Bearer REAL-GATEWAY-KEY');
       assert.equal(s.headers['x-bauherr-run'], 'r1');
       assert.equal(s.headers['x-bauherr-stage'], 'plan');
     }

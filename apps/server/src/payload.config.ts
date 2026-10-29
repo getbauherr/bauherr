@@ -3,6 +3,7 @@ import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
 import { expireSessions, pollTickets, runStage } from './jobs'
+import { migrations } from './migrations'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
@@ -16,7 +17,7 @@ export default buildConfig({
   // People are added, not created: Bauherr (singular) / Bauherren (plural).
   i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
   typescript: { autoGenerate: false },
-  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true }),
+  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true, prodMigrations: migrations }),
   collections,
   plugins: [
     multiTenantPlugin({
