@@ -1,0 +1,79 @@
+import { resolve } from 'node:path'
+import type { Payload } from 'payload'
+import type { RunCtx } from '@bauherr/runner'
+import { githubFor } from './adapters'
+import type { ConnectionInput } from './connection'
+
+const DEFAULT_GOAL = 'a plan comment is posted'
+const DEFAULT_MODELS = { cheap: 'claude-haiku-4-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-4-7' }
+const PACK_DIR = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
+
+/** Statements from the Ticket's `## Acceptance criteria` bullets, else the default. */
+export const goalOf = (body: string): string[] => {
+  const section = /^##\s+Acceptance criteria\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/im.exec(body)?.[1] ?? ''
+  const items = [...section.matchAll(/^\s*(?:[-*]|\d+\.)\s+(?:\[.\]\s+)?(.+)$/gm)].map((m) => m[1]!.trim())
+  const text = section.trim()
+  return items.length ? items : text ? [text] : [DEFAULT_GOAL]
+}
+
+type Doc = Record<string, any>
+
+/** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
+export const buildRunCtx = async (
+  payload: Payload,
+  d: { run: Doc; ticket: Doc; repo: string; github: ConnectionInput; gateway: ConnectionInput; defaultBranch?: string },
+): Promise<RunCtx> => {
+  const { run, ticket, repo } = d
+  const opts = { overrideAccess: true } as const
+  const workspace = typeof run.workspace === 'object' ? run.workspace.id : run.workspace
+  const backend = githubFor(d.github)
+  const tickets = backend.tickets(repo)
+  const issue = await tickets.get(String(ticket.number))
+  const statements = goalOf(issue.body)
+  let seq = 0
+  let lastStep: number | string | undefined
+  const cfg = d.gateway.config as { url?: string; modelByTier?: Record<string, string> }
+  if (!cfg.url || !d.gateway.secret) throw new Error('gateway connection needs config.url and a secret')
+  const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
+
+  return {
+    run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 1, tier: 'cheap' },
+    ticket: { number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body },
+    product: { repo, defaultBranch: repoInfo.defaultBranch },
+    connection: {
+      gatewayUrl: cfg.url,
+      gatewayKey: d.gateway.secret,
+      gitToken: d.github.secret!,
+      modelByTier: { ...DEFAULT_MODELS, ...cfg.modelByTier },
+      ...(process.env.BAUHERR_GIT_BASE_URL ? { gitBaseUrl: process.env.BAUHERR_GIT_BASE_URL } : {}),
+    },
+    forge: {
+      openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),
+      comment: async (number, body) => void (await tickets.comment(String(number), body)),
+    },
+    recorder: {
+      step: async (s) => {
+        const row = await payload.create({
+          collection: 'steps',
+          data: { run: run.id, workspace, messageId: s.messageId, tokensIn: s.inputTokens, tokensOut: s.outputTokens, seq: ++seq },
+          ...opts,
+        })
+        lastStep = row.id
+      },
+      toolCall: async (t) => {
+        const step = lastStep
+        if (step === undefined) return
+        await payload.create({
+          collection: 'tool_calls',
+          data: {
+            workspace, step, toolUseId: t.toolUseId, name: t.tool,
+            inputDigest: JSON.stringify(t.input).slice(0, 500), status: t.ok ? 'ok' : 'error', durationMs: t.durationMs,
+          },
+          ...opts,
+        })
+      },
+      log: (msg) => payload.logger.info({ run: run.id }, msg),
+    },
+    packDir: PACK_DIR,
+  }
+}

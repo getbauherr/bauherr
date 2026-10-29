@@ -1,0 +1,38 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start",
+    "jobs": "JOBS_AUTORUN=0 payload jobs:run --queue runs --cron \"*/5 * * * * *\"",
+    "importmap": "payload generate:importmap",
+    "seed": "tsx scripts/seed-workspace0.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bauherr/adapters": "workspace:*",
+    "@bauherr/runner": "workspace:*",
+    "@payloadcms/db-postgres": "3.92.1",
+    "@payloadcms/next": "3.92.1",
+    "@payloadcms/plugin-multi-tenant": "3.92.1",
+    "graphql": "^16.11.0",
+    "next": "16.4.3",
+    "payload": "3.92.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "pg": "^8.16.0",
+    "@types/pg": "^8",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.5"
+  }
+}
