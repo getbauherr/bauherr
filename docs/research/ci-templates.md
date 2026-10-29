@@ -17,14 +17,12 @@ GitHub ([reuse-workflows](https://docs.github.com/en/actions/how-tos/reuse-autom
   docs tell customers to pin the SHA with a `# v1.2.3` comment, Dependabot/Renovate bumps it.
 - Secrets: pass named (`secrets:`), not `inherit` (inherit is same-org/enterprise only; over-broad). Secrets reach
   only the directly called workflow.
-- Permissions "can only be maintained or reduced" down the chain. Template needs `contents: read` only
-  (+ `security-events: write` if CodeQL runs in the same file; not recommended, see 2).
+- Permissions "can only be maintained or reduced" down the chain; template needs `contents: read` only.
 - `paths:` filters belong to the caller's `on:`. Gate inside (a `changes` job) so the path list is versioned
   centrally and a required check never stays "pending" from a filtered-out workflow.
 
-GitLab specifics: `include:project` + `ref` + `file` ([includes](https://docs.gitlab.com/ci/yaml/includes/));
-`rules:changes` inside the included file is honoured, so gating also lives centrally. Self-Managed customers need
-the project on their instance (mirror) or `include:remote` to a raw URL pinned to a tag/SHA. [unverified]
+GitLab: `include:project` + `ref` + `file` ([includes](https://docs.gitlab.com/ci/yaml/includes/)); `rules:changes`
+in the included file gates centrally. Self-Managed: mirror, or `include:remote` to a pinned raw URL. [unverified]
 
 Gateway credential (both): CI secret `BAUHERR_GATEWAY_KEY` + variable `BAUHERR_GATEWAY_URL`. Not OIDC: the gateway
 holds per-Workspace consumer keys with a spend cap (`runner-execution-model.md` §4.5, §5); OIDC needs the gateway
