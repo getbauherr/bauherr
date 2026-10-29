@@ -133,6 +133,9 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       }
+      if (r.status === 'budget_exhausted') {
+        await githubFor(github).tickets(src.repo).comment(String(ticket.number), 'Bauherr stopped: the Workspace budget is exhausted')
+      }
       await payload.update({
         collection: 'runs',
         id: run.id,

@@ -37,7 +37,7 @@ function usageOf(state: AgentState): RunResult['usage'] {
 
 /** Runs one Plan or Build stage end to end. Never throws; infrastructure errors become `failed`. */
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
-  const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [] };
+  const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], abort: new AbortController() };
   const artifacts: RunResult['artifacts'] = {};
   const finish = (status: RunResult['status'], reason?: string): RunResult => ({ status, ...(reason ? { reason } : {}), artifacts, usage: usageOf(state) });
   let proxy: Awaited<ReturnType<typeof startProxy>> | undefined;
@@ -51,10 +51,14 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
     });
     const agentsMd = materialise(clone.dir, ctx);
-    proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage });
+    proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
+      ...(ctx.product.id ? { product: ctx.product.id } : {}), ...(ctx.ticket.id ? { ticket: ctx.ticket.id } : {}),
+      onBudgetExceeded: () => { state.budgetExhausted = true; state.abort.abort(); },
+    });
     mkdirSync(join(clone.home, 'agent'), { recursive: true });
     await runAgent(ctx, buildOptions(ctx, { cwd: clone.dir, home: join(clone.home, 'agent'), proxyUrl: proxy.url, agentsMd }, state), state);
 
+    if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
     const r = state.result;
     if (!r) return finish('failed', 'agent ended without a result');
     if (r.subtype !== 'success') return finish('failed', r.subtype);
