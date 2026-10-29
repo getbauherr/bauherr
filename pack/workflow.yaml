@@ -1,0 +1,11 @@
+# Minimal base workflow (v0.1 skeleton). Spec: docs/spec/workflow.md
+stages:
+  - {name: triage}
+  - name: plan
+    steps: [{kind: agent-run, skill: run-contract}]
+  - name: build
+    gate_before: human
+    steps: [{kind: agent-run, skill: run-contract}]
+  - {name: review}
+  - {name: release}
+  - {name: done}
