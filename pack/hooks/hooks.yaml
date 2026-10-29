@@ -1,0 +1,17 @@
+# Maps pack hooks to Agent SDK hook events. Runner passes the event JSON on stdin; hook prints a decision JSON on stdout.
+hooks:
+  - name: stop-goal-check
+    event: Stop
+    command: node hooks/stop-goal-check.ts
+  - name: write-scope-guard
+    event: PreToolUse
+    matcher: "Edit|Write"
+    command: node hooks/write-scope-guard.ts
+  - name: egress-guard
+    event: PreToolUse
+    matcher: "Bash|WebFetch|WebSearch"
+    command: sh hooks/egress-guard.sh
+env:   # supplied by the Runner, never by the agent
+  BAUHERR_GATEWAY_HOST: ""     # the only allowed network host
+  BAUHERR_GOAL_FILE: ""        # Goal statements with status (JSON)
+  BAUHERR_LANE_OWNED_PATHS: "" # colon-separated globs; empty = whole cwd
