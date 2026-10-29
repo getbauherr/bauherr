@@ -1,0 +1,27 @@
+name: core
+version: 0.1.0
+description: Bauherr core pack. Control patterns for Runs, worklog, team policy, human interaction.
+layers:
+  core: true            # this pack; ships with Bauherr
+  stack: []             # optional sub-packs under pack/stacks/<name>
+  client: workspace     # Workspace Knowledge repo; appended later, wins on conflict
+materialise: run-worktree   # at Run start; never committed to the Product repo
+skills:
+  - {path: skills/run-contract, purpose: How a Run reads its Goal, what counts as evidence, exit rule, blockers}
+  - {path: skills/worklog, purpose: Per-Ticket worklog template and reconciliation}
+  - {path: skills/coordinate, purpose: Parallel lanes with owners (research in v0.1)}
+  - {path: skills/manager, purpose: Manager thread over a queue of similar items (Review in v0.1)}
+  - {path: skills/decision-sheet, purpose: Human-interaction protocol}
+  - {path: skills/effort-policy, purpose: Model and effort selection}
+rules:
+  - {path: rules/team-policy.md, purpose: One agent per Run; patterns only via stage config; forbidden patterns}
+  - {path: rules/egress.md, purpose: Code and context leave only via the gateway}
+  - {path: rules/evidence.md, purpose: Required content of the MR ## Evidence section}
+  - {path: rules/security-context.md, purpose: Per-Product SECURITY-CONTEXT.md and template}
+hooks:
+  manifest: hooks/hooks.yaml
+  items:
+    - {path: hooks/stop-goal-check.ts, purpose: Block end of turn until each Goal statement is verified or blocked}
+    - {path: hooks/write-scope-guard.ts, purpose: Writes only inside cwd and the lane's owned paths}
+    - {path: hooks/egress-guard.sh, purpose: Block network tools except the gateway}
+lint: {config: null}   # bauherr pack lint, future
