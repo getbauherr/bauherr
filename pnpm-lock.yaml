@@ -34,6 +34,9 @@ importers:
       payload:
         specifier: 3.92.1
         version: 3.92.1(graphql@16.14.2)(typescript@5.9.3)
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.1
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -56,9 +59,6 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.3.0(@types/react@19.3.0)
-      pg:
-        specifier: ^8.16.0
-        version: 8.23.1
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

@@ -26,11 +26,11 @@ export const connectionInput = async (payload: Payload, ref: unknown): Promise<C
   }
 }
 
-const findGateway = async (payload: Payload, workspace: unknown) =>
+const findLlmProvider = async (payload: Payload, workspace: unknown) =>
   (
     await payload.find({
       collection: 'connections',
-      where: { and: [{ workspace: { equals: id(workspace) } }, { kind: { equals: 'gateway' } }] },
+      where: { and: [{ workspace: { equals: id(workspace) } }, { kind: { equals: 'llm-provider' } }] },
       limit: 1,
       depth: 0,
       overrideAccess: true,
@@ -122,11 +122,13 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await payload.find({ collection: 'ticket_sources', where: { product: { equals: product.id } }, limit: 1, ...opts })
     ).docs[0]
     const github = await connectionInput(payload, src.connection)
-    const gateway = await connectionInput(payload, await findGateway(payload, run.workspace))
     await payload.update({ collection: 'runs', id: run.id, data: { status: 'running', startedAt: new Date().toISOString() }, ...opts })
 
     try {
-      const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gateway })
+      if (!(await findLlmProvider(payload, run.workspace))) throw new Error('no LLM provider connected')
+      const ws = (await payload.findByID({ collection: 'workspaces', id: id(run.workspace), ...opts, showHiddenFields: true })) as { gatewayKey?: string }
+      if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
+      const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const r = await exec(ctx)
       if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
