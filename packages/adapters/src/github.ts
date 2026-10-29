@@ -83,6 +83,7 @@ export class Http {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
       const res = await this.doFetch(url, {
+        cache: 'no-store', // Next patches fetch; a cached poll response never advances the cursor
         method,
         headers: {
           authorization: `Bearer ${await this.o.auth.token()}`,

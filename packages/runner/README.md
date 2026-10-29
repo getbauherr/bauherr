@@ -11,7 +11,7 @@ const result: RunResult = await runStage(ctx);
 
 ## Flow
 1. Shallow clone into a temp dir, branch `bauherr/<ticket>-<run>`. Git token only via `GIT_CONFIG_*` on the Runner's own git commands.
-2. Localhost proxy (`src/proxy.ts`) injects `x-api-key`, `X-Bauherr-Run`, `X-Bauherr-Stage`. The agent env is `PATH`, `HOME`, `ANTHROPIC_BASE_URL`, dummy key.
+2. Localhost proxy (`src/proxy.ts`) injects `Authorization: Bearer <gateway key>`, `X-Bauherr-Run`, `X-Bauherr-Stage`. The agent env is `PATH`, `HOME`, `ANTHROPIC_BASE_URL`, dummy key.
 3. Materialise pack skills, `AGENTS.md`, `.bauherr/goal.json`, `.bauherr/worklog.md` (git-excluded).
 4. `query()` with hooks: write-scope + egress guards (in-process ports of the pack hooks), Stop goal check, tool-call recording.
 5. Plan: worklog is posted as a Ticket comment. Build: commit, push, PR with `## Evidence` from recorded Bash calls.
