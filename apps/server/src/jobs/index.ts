@@ -5,9 +5,10 @@ import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
-import { modeFor } from '../lib/mode'
+import { modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { concludeReview, normalizeReview, watchReviews } from '../lib/actions'
+import { concludeReview, normalizeReview, normalizeTriage, submitTriage, watchReviews } from '../lib/actions'
+import { NEEDS_REFINEMENT } from '../app/(app)/lib/needs-you'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
@@ -18,6 +19,12 @@ const STAGE_LABEL = /^bauherr:stage:(.+)$/
 
 export const stageOf = (labels: string[]): string | null =>
   labels.map((l) => STAGE_LABEL.exec(l)?.[1]).find(Boolean) ?? null
+
+const TRIAGE_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']
+
+/** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/workflow.yaml. */
+export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = packed().find((s) => s.name === 'triage')?.exclude_labels ?? TRIAGE_EXCLUDED): boolean =>
+  t.state === 'open' && !t.assignee && !stageOf(t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
 
@@ -53,6 +60,13 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   }
   if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
   return { run, created: true }
+}
+
+/** Starts a Triage Run for a triageable Ticket unless Triage already covered this `updatedAt` (a skipped or held Ticket is re-triaged only when it changes). */
+export const triageIfNeeded = async (payload: Payload, ticket: Record<string, any>, t: { state: string; labels: string[]; assignee?: string | null; updatedAt: string }) => {
+  if (!triageable(t) || (ticket.triagedAt && new Date(ticket.triagedAt).getTime() === new Date(t.updatedAt).getTime())) return
+  await startRunIfNeeded(payload, ticket as { id: number | string; workspace?: unknown }, 'triage')
+  await payload.update({ collection: 'tickets', id: ticket.id, data: { triagedAt: t.updatedAt }, overrideAccess: true })
 }
 
 /** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
@@ -177,7 +191,10 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             stage = 'build'
           }
           // Guard: unchanged pointers are not rewritten.
-          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) {
+            await triageIfNeeded(payload, prev, t)
+            continue
+          }
           const data = {
             workspace: id(src.workspace),
             product: id(src.product),
@@ -200,6 +217,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
+          await triageIfNeeded(payload, ticket, t)
         }
         await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
@@ -238,6 +256,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const r = await exec(ctx)
       const review = run.stage === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
+      const triage = run.stage === 'triage' && r.status === 'succeeded' ? normalizeTriage(r.artifacts.triage) : null
       if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       }
@@ -262,6 +281,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       })
       await queueReconcile(payload, run.id)
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
+      if (triage) await submitTriage(payload, ticket.id, triage)
       if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {

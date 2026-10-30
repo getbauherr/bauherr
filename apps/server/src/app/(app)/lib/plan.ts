@@ -1,5 +1,6 @@
 export const PLAN_MARKER = '<!-- bauherr:plan -->'
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
+export const TRIAGE_MARKER = '<!-- bauherr:triage -->'
 export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
 export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[] }
@@ -75,11 +76,14 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
   return { title: title.trim(), steps: (section(plan, /Steps\b/).match(/^\s*\d+\.\s/gm) ?? []).length }
 }
 
-/** Unanswered critical rows of the latest plan Comment against the latest decisions Comment. */
+/** The decision sheet in force: the newest plan or triage Comment (triage questions use the plan's `## Decisions` format). */
+export const sheetOf = <T extends Commentish>(comments: T[]): T | undefined => comments.findLast((c) => c.body.startsWith(PLAN_MARKER) || c.body.startsWith(TRIAGE_MARKER))
+
+/** Unanswered critical rows of the sheet in force against the latest decisions Comment. */
 export const openCritical = (comments: Commentish[]): Decision[] => {
-  const plan = latestWith(comments, PLAN_MARKER)
-  if (!plan) return []
-  return unansweredCritical(parseDecisions(plan.body), parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? ''))
+  const sheet = sheetOf(comments)
+  if (!sheet) return []
+  return unansweredCritical(parseDecisions(sheet.body), parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? ''))
 }
 
 export const unansweredCriticalCount = (comments: Commentish[]): number => openCritical(comments).length

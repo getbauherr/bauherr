@@ -2,7 +2,10 @@
 # Optional per stage: `mode: session|autonomous` (default autonomous). Workspace.modeByStage / defaultMode and
 # env BAUHERR_DEFAULT_MODE override it (apps/server/src/lib/mode.ts).
 stages:
-  - {name: triage}
+  # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
+  - name: triage
+    exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research]
+    steps: [{kind: agent-run, skill: triage}]
   - name: plan
     steps: [{kind: agent-run, skill: run-contract}]
   - name: build
