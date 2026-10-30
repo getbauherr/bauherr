@@ -15,6 +15,9 @@ export { materialise } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
 
+/** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
+export const mrBody = (ticketUrl: string, evidence: string): string => `Refs ${ticketUrl}\n\n${evidence}\n`;
+
 export const PLAN_MARKER = '<!-- bauherr:plan -->';
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
 /** Agent-verifiable Goal of a Plan Run; the Ticket's own Goal moves into the worklog. */
@@ -122,7 +125,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const pr = await ctx.forge.openPullRequest({
       repo: ctx.product.repo, head: clone.branch, base: ctx.product.defaultBranch,
       title: `${ctx.ticket.title} (#${ctx.ticket.number})`,
-      body: `Closes ${ctx.ticket.url}\n\n${artifacts.evidence}\n`,
+      body: mrBody(ctx.ticket.url, artifacts.evidence),
     });
     artifacts.prUrl = pr.url;
     await ctx.forge.comment(ctx.ticket.number, `Link: ${pr.url}`);

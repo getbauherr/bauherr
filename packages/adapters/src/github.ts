@@ -227,6 +227,9 @@ class GithubTickets implements TicketSource {
   async close(id: string, reason: CloseReason) {
     await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'closed', state_reason: reason });
   }
+  async reopen(id: string) {
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'open' });
+  }
   async addSubTicket(parentId: string, childId: string) {
     await this.h.json('POST', `${this.p}/issues/${parentId}/sub_issues`, { sub_issue_id: await this.globalId(childId) });
   }

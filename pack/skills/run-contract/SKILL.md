@@ -53,6 +53,8 @@ Write it in the worklog under "unfinished work" and as your final message. "Test
 Questions for the human go through the `decision-sheet` skill, never mid-Run chat.
 
 ## End
+Refer to the Ticket as `Refs #N` in the MR body and commit messages; never `Closes`, `Fixes` or `Resolves`: only acceptance on staging closes a Ticket.
+
 Update the worklog as your last action. Do not push or open the MR yourself: the Runner does after you exit.
 
 ## Do not
