@@ -29,6 +29,7 @@ const bauherren: CollectionConfig = {
   auth: { useAPIKey: true, strategies: [oidcStrategy] },
   admin: { useAsTitle: 'email' },
   access: {
+    admin: isAdmin,
     create: isAdmin,
     delete: isAdmin,
     read: ({ req }) => (req.user?.role === 'admin' ? true : { id: { equals: req.user?.id } }),
