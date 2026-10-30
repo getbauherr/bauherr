@@ -204,6 +204,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             state: t.state,
             labels: t.labels,
             assignee: t.assignee,
+            assignees: t.assignees.join(','),
             sourceUpdatedAt: t.updatedAt,
             stage,
             ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
@@ -213,7 +214,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await payload.create({ collection: 'tickets', data, overrideAccess: true })
           const entered = stage && stage !== (prev?.stage ?? null)
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && (!t.assignee || logins(prev?.gateAssignees).includes(t.assignee))) {
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(prev?.gateAssignees).includes(a))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)

@@ -7,7 +7,7 @@ import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
   number: number; title: string; body: string; state: 'open' | 'closed'; labels: string[];
-  assignee: string | null; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[];
+  assignees: string[]; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[];
 }
 interface FakeRepo {
   defaultBranch: string;
@@ -188,7 +188,7 @@ class FakeTickets implements TicketSource {
   private summary(t: FakeTicket): TicketSummary {
     return {
       id: String(t.number), number: t.number, url: `https://fake/${this.repo}/issues/${t.number}`, title: t.title,
-      state: t.state, labels: [...t.labels], assignee: t.assignee, updatedAt: t.updatedAt,
+      state: t.state, labels: [...t.labels], assignee: t.assignees[0] ?? null, assignees: [...t.assignees], updatedAt: t.updatedAt,
     };
   }
   private full(t: FakeTicket): Ticket {
@@ -216,7 +216,7 @@ class FakeTickets implements TicketSource {
   async create(n: NewTicket) {
     const number = this.items.size + 1;
     const t: FakeTicket = {
-      number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignee: null,
+      number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignees: [],
       updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] }, comments: [],
     };
     this.touch(t);
@@ -254,12 +254,17 @@ class FakeTickets implements TicketSource {
   async claim(id: string, assignee: string) {
     const t = this.t(id);
     if (!(this.b.opts.users ?? [this.b.opts.user ?? 'fake']).includes(assignee)) throw new Error(`claim failed: ${assignee} unknown`);
-    t.assignee = assignee;
+    if (!t.assignees.includes(assignee)) t.assignees.push(assignee);
     this.touch(t);
   }
   async release(id: string) {
     const t = this.t(id);
-    t.assignee = null;
+    t.assignees = [];
+    this.touch(t);
+  }
+  async unassign(id: string, assignees: string[]) {
+    const t = this.t(id);
+    t.assignees = t.assignees.filter((a) => !assignees.includes(a));
     this.touch(t);
   }
   async close(id: string, reason: CloseReason) {

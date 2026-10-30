@@ -224,6 +224,7 @@ const tickets = col('tickets', [
   select('state', ['open', 'closed']),
   text('labels', { hasMany: true }),
   text('assignee'),
+  text('assignees'),
   date('sourceUpdatedAt'),
   text('stage', { index: true }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
