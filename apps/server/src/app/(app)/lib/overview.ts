@@ -1,4 +1,6 @@
 import { cache } from 'react'
+import { sourceOf } from '../../../lib/actions'
+import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
 
@@ -26,6 +28,8 @@ export type TicketRow = {
 }
 
 export const RUNS_LIMIT = 100
+/** Plan comments are fetched from the forge only for tickets awaiting plan approval, at most this many per load. */
+export const DECISIONS_LOOKUPS = 20
 const CLOSED_LIMIT = 200
 
 /** Open tickets (plus the newest closed ones when `all`), their latest Runs, and the newest Runs of the Workspace. */
@@ -69,5 +73,16 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [] }, run) : null,
     }
   })
+  const awaiting = rows.filter((r) => r.needsYou === 'Approve plan').slice(0, DECISIONS_LOOKUPS)
+  await Promise.all(
+    awaiting.map(async (row) => {
+      try {
+        const { ts, n } = await sourceOf(payload, ticketDocs.find((t) => t.id === row.id)!)
+        if (unansweredCriticalCount(await ts.listComments(n))) row.needsYou = 'Answer decisions'
+      } catch {
+        // forge unreachable: keep "Approve plan"
+      }
+    }),
+  )
   return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows }
 })

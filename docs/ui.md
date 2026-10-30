@@ -9,7 +9,8 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 | `/login` | email + password (local `payload.login`, not the REST endpoint); plus "Sign in with …" when OIDC is configured, see [auth](auth.md) |
 | `/` | Tickets overview of the selected Workspace, views by `?view=list\|board\|runs` |
 | `/runs` | redirects to `/?view=runs` |
-| `/tickets/<id>`, `/runs/<id>` | stubs until the Ticket and Run pages land |
+| `/tickets/<id>` | Ticket page, see below |
+| `/runs/<id>` | stub until the Run page lands |
 
 Pages under `(shell)/` get the top bar and require a session; unauthenticated requests redirect to `/login`. Sign out and Workspace selection are server actions in `lib/actions.ts`.
 
@@ -21,7 +22,25 @@ Tabs **List**, **Board**, **Runs** on `/`, plus a Product filter and an Open/All
 - **Board**: one column per stage.
 - **Runs**: the newest 100 Workspace Runs first (duration, cost); a line says so when there are more.
 
-"Needs you" (`needsYou()` in `lib/needs-you.ts`, first match wins): `Approve plan` (stage `plan`, no `bauherr:approved:plan` label, latest Run is a succeeded plan Run), `Run needs you` (latest Run `needs_human`), `Review MR` (stage `review`), `Run failed` (an addition to D5). A plan Run that is `running`, `queued` or `awaiting_session` is "Plan in progress" and not needs-you; D5 (c), unanswered critical decisions, arrives with the Ticket page slice. The Tickets nav item shows the count over open tickets.
+"Needs you" (`needsYou()` in `lib/needs-you.ts`, first match wins): `Approve plan` (stage `plan`, no `bauherr:approved:plan` label, latest Run is a succeeded plan Run), `Run needs you` (latest Run `needs_human`), `Review MR` (stage `review`), `Run failed` (an addition to D5). A plan Run that is `running`, `queued` or `awaiting_session` is "Plan in progress" and not needs-you; D5 (c): when the plan has unanswered critical decisions it reads `Answer decisions` instead of `Approve plan`. The overview fetches the plan Comment from the forge only for tickets that would say `Approve plan`, at most 20 per load (`DECISIONS_LOOKUPS` in `lib/overview.ts`); beyond that they keep `Approve plan` there, the Ticket page is always exact. The Tickets nav item shows the count over open tickets.
+
+## Ticket page
+
+`/tickets/<id>` (Workspace-scoped, 404 otherwise): header with Product, forge link and the stage pipeline (`components/StagePipeline.tsx`, reused by the Run page), then in order: **Gate** (shown while needs-you is `Approve plan` or `Answer decisions`: what is approved, budget, model tiers, decision status, one primary button, disabled with the reason while critical rows are open; `Plan approved` once the label exists), **DecisionSheet**, **Plan**, **Worklog** (markdown, `lib/markdown.ts`: raw HTML escaped, images reduced to alt text, links only http(s)), **Runs** (evidence excerpt). Plan, worklog and labels are read live from the forge through the Product's ticket source; if it is unreachable the page says so.
+
+Writes are server actions in `lib/actions.ts` over `src/lib/actions.ts` (`approvePlan`, `updateWorklog`, `requestReview`, `postDecisions`), the same functions the MCP tools `approve`, `update_worklog`, `request_review` call. `approvePlanAction` refuses while critical rows are unanswered.
+
+### Decision-sheet format (D6)
+
+Rows come from the plan Comment's `## Decisions` block, one bullet each (continuation lines allowed):
+
+`- **D<n> <title>[, critical | — critical | (critical)]**. Default: <text>. Alternative: <text>. Alternative: <text>.`
+
+The options are the default plus each Alternative sentence; "critical" in the bold part marks the row. Saving posts one Comment `<!-- bauherr:decisions -->` with `D<n>: <answer>` lines (replaced on re-save) and appends `- <date> D<n> <title>: <answer>. By: <email>.` under `**Decisions**` in the worklog Comment (created from the worklog template when missing; unchanged answers are not appended again). Only listed options of rows in the live plan are accepted.
+
+### Fake forge (E2E only)
+
+`BAUHERR_E2E_FAKE_FORGE=1` makes `githubFor` (`src/lib/adapters.ts`) return an in-memory `FakeBackend` (`src/lib/fake-forge.ts`) holding ticket #1 of `acme/web` with a plan (two decisions, one critical) and a worklog; state lives in the server process only. `seed:e2e` adds the matching Connection and ticket source. Start the dev server with the variable and run Playwright with `E2E_FAKE_FORGE=1` to enable `e2e/ticket.spec.ts`. Never set it outside tests.
 
 ## Workspace
 
