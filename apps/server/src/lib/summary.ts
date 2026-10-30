@@ -21,8 +21,11 @@ const section = (md: string, name: string): string => {
   const start = rows.findIndex((l) => head(l)?.toLowerCase() === name.toLowerCase())
   if (start < 0) return ''
   const end = rows.findIndex((l, i) => i > start && head(l))
-  return rows.slice(start + 1, end < 0 ? undefined : end).join('\n').trim()
+  return rows.slice(start + 1, end < 0 ? undefined : end).filter((l) => !l.startsWith('🤖')).join('\n').trim()
 }
+
+/** Bullets of a section, or its prose as one item when it has none. */
+const items = (md: string): string[] => (bullets(md).length ? bullets(md) : md ? [md.replace(/\s*\n\s*/g, ' ')] : [])
 
 const bullets = (md: string): string[] =>
   md.split('\n').map((l) => /^\s*(?:[-*]|\d+\.)\s+(.*\S)/.exec(l)?.[1]).filter((x): x is string => !!x && x !== '-')
@@ -31,18 +34,18 @@ const list = (items: string[], empty: string): string => (items.length ? items.m
 
 /** Markdown staging summary from structured data; no model call. Starts with {@link SUMMARY_MARKER}. */
 export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stagingUrl, mergeSha }: SummaryInput): string => {
-  const steps = bullets(section(plan ?? '', 'Steps'))
+  const outcomes = bullets(section(plan ?? '', 'Goal'))
   const goals = bullets(section(worklog ?? '', 'Goal')).map((g) => g.replace(/^\[( |x)\]\s*/i, (_, m) => (m === ' ' ? '(open) ' : '(done) ')).trim())
   const decisions = bullets(section(worklog ?? '', 'Decisions'))
   const open = bullets(section(worklog ?? '', 'Unfinished work')).filter((x) => !/^none\.?$/i.test(x))
-  const findings = mrs.flatMap((m) => bullets(section(m.body, 'Review')).map((f) => `${f} (MR #${m.number})`))
+  const findings = mrs.flatMap((m) => items(section(m.body, 'Review')).map((f) => `${f} (MR #${m.number})`))
   const proof = evidence ?? mrs.map((m) => section(m.body, 'Evidence')).find(Boolean) ?? ''
   return [
     SUMMARY_MARKER,
     `# Staging summary: #${ticket.number} ${ticket.title}`,
     '## What you get',
-    ...(steps.length ? [list(steps, ''), ''] : []),
-    `**Goal**\n${list(goals, 'No Goal recorded.')}`,
+    ...(outcomes.length ? [list(outcomes, '')] : []),
+    `**Progress**\n${list(goals, 'No Goal recorded.')}`,
     `**Merge requests**\n${list(mrs.map((m) => `[#${m.number} ${m.title}](${m.url})`), 'None linked.')}`,
     ...(proof ? [`**Evidence**\n${proof}`] : []),
     '## Found on the way',
