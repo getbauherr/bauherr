@@ -19,7 +19,8 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(page.getByRole('navigation', { name: 'View' })).toHaveCount(0)
   await expect(main.getByRole('link', { name: /^Tickets/ })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByLabel(/need you/)).toBeVisible()
-  expect(await page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).count()).toBeGreaterThanOrEqual(1)
+  // decision sheets are read from the forge; the production image has no fake forge
+  if (process.env.E2E_FAKE_FORGE) expect(await page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).count()).toBeGreaterThanOrEqual(1)
 
   const cards = page.locator('.card')
   const before = await cards.count()
