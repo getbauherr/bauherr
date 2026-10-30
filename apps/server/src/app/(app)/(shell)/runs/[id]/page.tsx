@@ -8,6 +8,7 @@ import { rerunStage } from '../../../lib/actions'
 import type { Stage } from '../../../lib/needs-you'
 import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
 import { renderMarkdown } from '../../../lib/markdown'
+import '../../../ticket.css'
 import { currentWorkspace } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 
