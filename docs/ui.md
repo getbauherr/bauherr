@@ -6,7 +6,7 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 
 | Path | Page |
 |---|---|
-| `/login` | email + password (local `payload.login`, not the REST endpoint) |
+| `/login` | email + password (local `payload.login`, not the REST endpoint); plus "Sign in with …" when OIDC is configured, see [auth](auth.md) |
 | `/` | Tickets overview of the selected Workspace, views by `?view=list\|board\|runs` |
 | `/runs` | redirects to `/?view=runs` |
 | `/tickets/<id>`, `/runs/<id>` | stubs until the Ticket and Run pages land |

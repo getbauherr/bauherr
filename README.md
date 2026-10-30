@@ -8,7 +8,7 @@ Pre-release. Architecture and v0.1 spec are being charted in [Bauherr v0.1 — w
 
 The stack ships its own LLM gateway with per-Workspace budgets. Bauherr runs Claude Code via the Claude Agent SDK; see [docs/legal.md](docs/legal.md) for operators.
 
-UI routes, theming and e2e: [docs/ui.md](docs/ui.md).
+UI routes, theming and e2e: [docs/ui.md](docs/ui.md). Sign-in and optional OIDC: [docs/auth.md](docs/auth.md).
 
 ## Licence
 

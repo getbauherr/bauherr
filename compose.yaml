@@ -15,6 +15,10 @@ x-app: &app
     PAYLOAD_SECRET_FILE: /run/secrets/payload_secret
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+    # Optional OIDC sign-in, see docs/auth.md. Empty OIDC_ISSUER = password login only.
+    OIDC_ISSUER: ${OIDC_ISSUER:-}
+    OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+    OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
 
 services:
   init:
