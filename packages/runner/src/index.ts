@@ -4,7 +4,7 @@ import { runAgent, buildOptions, type AgentState } from './agent.js';
 import { cloneRepo, commitAndPush, git } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
 
@@ -19,6 +19,9 @@ export const PLAN_MARKER = '<!-- bauherr:plan -->';
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
 /** Agent-verifiable Goal of a Plan Run; the Ticket's own Goal moves into the worklog. */
 const PLAN_GOAL = [`\`${PLAN_FILE}\` exists with the sections \`## Goal\` and \`## Steps\``, 'every Ticket acceptance criterion is covered by a step under `## Steps`'];
+
+/** Agent-verifiable Goal of a Triage Run. */
+const TRIAGE_GOAL = [`\`${TRIAGE_FILE}\` exists with an outcome (plan, refine or skip) and a reason`];
 
 /** Agent-verifiable Goal of a Review Run. */
 const REVIEW_GOAL = [`\`${REVIEW_FILE}\` exists with a verdict, the findings and the review markdown`];
@@ -46,7 +49,7 @@ function usageOf(state: AgentState): RunResult['usage'] {
   );
 }
 
-/** Runs one Plan or Build stage end to end. Never throws; infrastructure errors become `failed`. */
+/** Runs one Triage, Plan, Build or Review stage end to end. Never throws; infrastructure errors become `failed`. */
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
   const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], abort: new AbortController() };
   const artifacts: RunResult['artifacts'] = {};
@@ -67,7 +70,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       await git(clone.dir, clone.env, 'fetch', '--depth', '200', 'origin', `${ctx.product.defaultBranch}:refs/remotes/origin/${ctx.product.defaultBranch}`);
       artifacts.reviewedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
     }
-    const fixedGoal = ctx.run.stage === 'plan' ? PLAN_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
+    const fixedGoal = ctx.run.stage === 'plan' ? PLAN_GOAL : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.stage === 'review') {
@@ -95,6 +98,16 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
         artifacts.review = JSON.parse(readFileSync(file, 'utf8'));
       } catch {
         return finish('failed', `${REVIEW_FILE} is not valid JSON`);
+      }
+      return finish('succeeded');
+    }
+    if (ctx.run.stage === 'triage') {
+      const file = join(clone.dir, TRIAGE_FILE);
+      if (!existsSync(file)) return finish('failed', `triage run wrote no ${TRIAGE_FILE}`);
+      try {
+        artifacts.triage = JSON.parse(readFileSync(file, 'utf8'));
+      } catch {
+        return finish('failed', `${TRIAGE_FILE} is not valid JSON`);
       }
       return finish('succeeded');
     }

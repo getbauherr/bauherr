@@ -10,7 +10,7 @@ import { SUMMARY_MARKER } from '../../../../../lib/summary'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import '../../../ticket.css'
@@ -54,7 +54,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   }
   const plan = latestWith(comments, PLAN_MARKER)?.body
   const worklog = firstWith(comments, WORKLOG_MARKER)?.body
-  const decisions = plan ? parseDecisions(plan) : []
+  const sheet = sheetOf(comments)?.body
+  const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
   const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)

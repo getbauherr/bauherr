@@ -23,7 +23,7 @@ export type ToolCallRecord = {
 export type RunCtx = {
   run: {
     id: string;
-    stage: 'plan' | 'build' | 'review';
+    stage: 'triage' | 'plan' | 'build' | 'review';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
@@ -61,7 +61,7 @@ export type RunCtx = {
 export type RunResult = {
   status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
   reason?: string;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; reviewedSha?: string };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; reviewedSha?: string };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

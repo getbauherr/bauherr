@@ -1,8 +1,9 @@
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
-import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
+import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
+import { NEEDS_REFINEMENT } from '../app/(app)/lib/needs-you'
+import { ACTIVE, RELEASED_BY, abandonRun, stageOf, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
@@ -174,8 +175,17 @@ export const postDecisions = async (
       if (log) await src.ts.updateComment(src.n, log.id, appendDecisions(log.body, lines))
       else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendDecisions(WORKLOG_TEMPLATE, lines)}`)
     }
+    await releaseIfAnswered(src)
     return { recorded: changed.length }
   })
+}
+
+/** A Ticket held by Triage (`needs-refinement`) whose critical questions are all answered leaves the hold and enters `plan`; the poller starts the Plan Run. */
+const releaseIfAnswered = async ({ ts, n }: Source) => {
+  const { labels } = await ts.get(n)
+  if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await ts.listComments(n)).length) return
+  await ts.removeLabels(n, [NEEDS_REFINEMENT])
+  await setStage(ts, n, 'plan')
 }
 
 export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
@@ -419,4 +429,48 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
     }
   }
   return merged
+}
+
+export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[] }
+export const MAX_QUESTIONS = 10
+
+/** One line without the characters the decision-sheet parser treats as structure. */
+const plain = (v: unknown, max: number): string => String(v).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
+
+/** Validates a triage outcome. `refine` needs 1..MAX_QUESTIONS questions (title, default, optional alternatives); `reason` is always required. */
+export const normalizeTriage = (raw: any): Triage => {
+  if (!raw || !['plan', 'refine', 'skip'].includes(raw.outcome) || typeof raw.reason !== 'string' || !raw.reason.trim()) throw new Error('a triage needs outcome (plan|refine|skip) and a reason')
+  const list = raw.outcome === 'refine' ? raw.questions : []
+  if (raw.outcome === 'refine' && (!Array.isArray(list) || !list.length || list.length > MAX_QUESTIONS)) throw new Error(`refine needs 1 to ${MAX_QUESTIONS} questions`)
+  const questions = list.map((q: any, i: number) => {
+    const [title, def] = [plain(q?.title ?? '', 200), plain(q?.default ?? '', 300)]
+    if (!title || !def) throw new Error(`question ${i} needs a title and a default`)
+    return { title, default: def, alternatives: (Array.isArray(q.alternatives) ? q.alternatives : []).map((a: unknown) => plain(a, 300)).filter(Boolean).slice(0, 5) }
+  })
+  return { outcome: raw.outcome, reason: plain(raw.reason, 1000), questions }
+}
+
+/** The questions as a decision sheet in the plan's format; every row is critical, so the owner answers all of them. */
+export const triageSheet = (t: Triage): string =>
+  `${TRIAGE_MARKER}\n## Questions\nTriage needs your answers before this Ticket can be planned: ${t.reason}\n\n## Decisions\n` +
+  t.questions.map((q, i) => `- **D${i + 1} ${q.title}, critical**. Default: ${q.default}.${q.alternatives.length ? ` Alternatives: ${q.alternatives.join('; ')}.` : ''}`).join('\n')
+
+/**
+ * Applies a triage outcome (system action, called after the Run's lease or autonomous finish is checked): `plan` sets the stage label (the poller starts the Plan Run);
+ * `refine` adds the hold label and posts the sheet; `skip` posts the reason. `refine` and `skip` record the Ticket's new `updatedAt` as triaged, so only a change re-triages.
+ * A Ticket that gained a stage label meanwhile is left alone.
+ */
+export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage): Promise<{ outcome: Triage['outcome'] | 'noop' }> => {
+  const doc = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
+  const { ts, n } = await sourceOf(payload, doc)
+  if (stageOf((await ts.get(n)).labels)) return { outcome: 'noop' }
+  if (t.outcome === 'plan') await setStage(ts, n, 'plan')
+  else {
+    if (t.outcome === 'refine') {
+      await ts.addLabels(n, [NEEDS_REFINEMENT])
+      await ts.comment(n, triageSheet(t))
+    } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
+    await payload.update({ collection: 'tickets', id: doc.id, data: { triagedAt: (await ts.get(n)).updatedAt }, overrideAccess: true })
+  }
+  return { outcome: t.outcome }
 }

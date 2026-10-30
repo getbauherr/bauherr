@@ -43,6 +43,7 @@ await ticket(7, 'Ship the invoice filter', 'release', product, rel)
 const blocker = await ticket(8, 'Blocker: migrate the invoice table', 'build', product)
 const blocked = await ticket(9, 'Blocked: add the invoice filter', 'build', product, { blockedBy: [blocker] })
 await ticket(10, 'Document the invoice filter', 'plan', product, { blockedBy: [blocked] })
+await ticket(11, 'Clarify the export scope', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
 await run(t1, 'plan', 'succeeded', { startedAt: '2026-10-30T09:00:00Z', finishedAt: '2026-10-30T09:02:30Z', costUsd: 0.1234 })
 const build = await run(t2, 'build', 'succeeded', { startedAt: '2026-10-30T09:10:00Z', finishedAt: '2026-10-30T09:25:12Z', gatewayCostUsd: 1.5, model: 'claude-sonnet-4-5', tokensIn: 12000, tokensOut: 3400, tokensCache: 8000, evidence: 'Checks: pass', artifacts: { prUrl: 'https://github.com/acme/web/pull/12' } })
 const steps = [['09:10:05', 'Read the plan and the repo'], ['09:14:00', 'Implement the CSV export'], ['09:21:30', 'Run the checks']] as const
