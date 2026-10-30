@@ -9,6 +9,7 @@ import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { concludeReview, normalizeReview, watchReviews } from '../lib/actions'
+import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
@@ -157,6 +158,14 @@ export const lastRankAfter = async (payload: Payload, workspace: number | string
   return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
 }
 
+export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {
+  slug: 'notify-gates',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'notify-gates',
+  handler: async ({ req }) => ({ output: { changed: await syncGates(req.payload) } }),
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -195,6 +204,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             state: t.state,
             labels: t.labels,
             assignee: t.assignee,
+            assignees: t.assignees.join(','),
             sourceUpdatedAt: t.updatedAt,
             stage,
             ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
@@ -204,8 +214,10 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await payload.create({ collection: 'tickets', data, overrideAccess: true })
           const entered = stage && stage !== (prev?.stage ?? null)
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !t.assignee) {
-            await startRunIfNeeded(payload, ticket, stage)
+          // Also when no Run of this stage exists yet: a gate assignee not yet recorded on entry blocked the start then.
+          const startable = (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(prev?.gateAssignees).includes(a))
+          if (startable && (entered || !(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }] }, overrideAccess: true })).totalDocs)) {
+            await startRunIfNeeded(payload, ticket, stage as string)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
         }

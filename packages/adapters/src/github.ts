@@ -134,7 +134,7 @@ const enc = encodeURIComponent;
 const summary = (i: any): TicketSummary => ({
   id: String(i.number), number: i.number, url: i.html_url, title: i.title, state: i.state,
   labels: i.labels.map((l: any) => (typeof l === 'string' ? l : l.name)),
-  assignee: i.assignee?.login ?? null, updatedAt: i.updated_at,
+  assignee: i.assignee?.login ?? null, assignees: (i.assignees ?? []).map((a: any) => a.login), updatedAt: i.updated_at,
 });
 const comment = (c: any): Comment => ({ id: String(c.id), author: c.user?.login ?? '', body: c.body ?? '', createdAt: c.created_at });
 const isIssue = (i: any): boolean => !i.pull_request;
@@ -222,6 +222,9 @@ class GithubTickets implements TicketSource {
   }
   async release(id: string) {
     const assignees = ((await this.issue(id)).assignees as any[]).map((a) => a.login);
+    if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
+  }
+  async unassign(id: string, assignees: string[]) {
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
   }
   async close(id: string, reason: CloseReason) {

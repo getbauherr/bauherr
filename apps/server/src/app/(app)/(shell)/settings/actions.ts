@@ -66,7 +66,7 @@ export const createProduct = create('products', (fd) => ({ name: s(fd, 'name'), 
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), autoMerge: fd.get('autoMerge') === 'on' }
+  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on' }
   const bad = (['stagingUrl', 'deployWebhookUrl'] as const).filter((k) => data[k] && !isWebUrl(data[k]))
   if (data.deployMode === 'webhook' && !data.deployWebhookUrl) bad.push('deployWebhookUrl')
   if (bad.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: bad.map((path) => ({ path, message: data[path] ? 'must be an http(s) URL' : 'required in webhook mode' })) } })

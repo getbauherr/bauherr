@@ -31,6 +31,8 @@ export type TicketRow = {
   /** Email local-part of the session owner of a live Run; null for scheduler Runs. */
   owner: string | null
   needsYou: string | null
+  /** Who the gate notified and since when; null before the notify job ran. */
+  gate: { people: string[]; since: string } | null
   /** Open Tickets this one is blocked by. */
   blockedBy: { id: number; number: number }[]
 }
@@ -95,6 +97,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
       needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run) : null,
+      gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
       blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
     }
   })

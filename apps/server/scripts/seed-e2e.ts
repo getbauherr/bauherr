@@ -16,7 +16,7 @@ const ensure = async (collection: string, where: Record<string, unknown>, data: 
 }
 
 const email = env('E2E_EMAIL')
-await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin' })
+await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-admin' })
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme' })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
@@ -32,7 +32,7 @@ const ticket = async (n: number, title: string, stage: string, p: string | numbe
 const run = async (t: string | number, stage: string, status: string, extra: Record<string, unknown> = {}) =>
   ensure('runs', { ticket: t, stage, status }, { ticket: t, stage, status, mode: 'autonomous', workspace, ...extra })
 
-const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product)
+const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product, { gateNotified: 'Answer decisions', gateNotifiedAt: new Date(Date.now() - 5 * 6e4).toISOString(), gateAssignees: 'e2e-admin' })
 const t2 = await ticket(2, 'Export invoices as CSV', 'build', product)
 const t3 = await ticket(3, 'Checkout fails for empty carts', 'build', shop)
 await ticket(4, 'Triage the onboarding feedback', 'triage', shop)

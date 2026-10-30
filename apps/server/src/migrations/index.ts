@@ -10,6 +10,7 @@ import * as migration_20261030_170000_watch_release_job from './20261030_170000_
 import * as migration_20261030_170000_ticket_lease from './20261030_170000_ticket_lease';
 import * as migration_20261030_180000_review_stage from './20261030_180000_review_stage';
 import * as migration_20261030_190000_ticket_rank from './20261030_190000_ticket_rank';
+import * as migration_20261030_191000_gate_notify from './20261030_191000_gate_notify';
 
 export const migrations = [
   {
@@ -71,5 +72,10 @@ export const migrations = [
     up: migration_20261030_190000_ticket_rank.up,
     down: migration_20261030_190000_ticket_rank.down,
     name: '20261030_190000_ticket_rank'
+  },
+  {
+    up: migration_20261030_191000_gate_notify.up,
+    down: migration_20261030_191000_gate_notify.down,
+    name: '20261030_191000_gate_notify'
   },
 ];

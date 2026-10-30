@@ -37,7 +37,7 @@ Check it on staging, then accept.
 `
 
 const build = (): FakeBackend => {
-  const fake = new FakeBackend({ native: true })
+  const fake = new FakeBackend({ native: true, users: ['fake', 'e2e-admin'] })
   const ts = fake.tickets('acme/web')
   // FakeBackend methods are async but never await, so these complete synchronously.
   void ts.create({ title: 'Add a dark theme to the dashboard', labels: ['bauherr:stage:plan'] })
