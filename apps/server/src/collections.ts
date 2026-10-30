@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import { ValidationError, type CollectionConfig, type Field } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, verifyProvider, writeProvider } from './lib/gateway'
-import { missingFields, PRESETS, presetOf, type Preset } from './lib/providers'
+import { missingFields, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { oidcStrategy } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 
@@ -117,7 +117,6 @@ const workspaces = col(
   },
 )
 
-const PRESET_FIELDS = ['baseUrl', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'] as const
 const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
   text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
 

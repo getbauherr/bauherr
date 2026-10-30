@@ -22,6 +22,8 @@ const entry = (slug: string, provider: unknown, params: Record<string, unknown>,
   transformation: { model: `llmRequest.model.stripPrefix("ws-${slug}/")` },
 })
 
+export const PRESET_FIELDS = ['baseUrl', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'] as const
+
 export const PRESETS: Record<Preset, Def> = {
   anthropic: {
     required: [],

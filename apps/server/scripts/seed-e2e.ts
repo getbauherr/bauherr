@@ -20,6 +20,9 @@ await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PA
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme' })).id
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
+const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
+await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
+await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) =>
   (await ensure('tickets', { externalId: `e2e-${n}` }, {
     title, externalId: `e2e-${n}`, number: n, url: `https://github.com/acme/web/issues/${n}`,
