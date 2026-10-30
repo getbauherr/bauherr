@@ -5,7 +5,7 @@ import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
 
 export type Workspace = { id: number; name: string; slug: string }
-export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; tenants?: { tenant: Workspace | number | null }[] }
+export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; tenants?: { tenant: Workspace | number | null }[]; uiPrefs?: { view?: string } | null }
 
 export const WS_COOKIE = 'bauherr-ws'
 

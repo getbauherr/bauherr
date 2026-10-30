@@ -7,10 +7,21 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 | Path | Page |
 |---|---|
 | `/login` | email + password (local `payload.login`, not the REST endpoint) |
-| `/` | open Tickets of the selected Workspace |
-| `/runs` | Runs of the selected Workspace |
+| `/` | Tickets overview of the selected Workspace, views by `?view=list\|board\|runs` |
+| `/runs` | redirects to `/?view=runs` |
+| `/tickets/<id>`, `/runs/<id>` | stubs until the Ticket and Run pages land |
 
 Pages under `(shell)/` get the top bar and require a session; unauthenticated requests redirect to `/login`. Sign out and Workspace selection are server actions in `lib/actions.ts`.
+
+## Overview
+
+Tabs **List**, **Board**, **Runs** on `/`, plus a Product filter and an Open/All toggle (`?product=<id>&state=all`). The chosen tab is stored per user in `bauherren.uiPrefs` (`{ view }`, written by the server action `setView`, which validates the view and merges into the freshly read prefs); `/` without `?view=` redirects to the saved one. Data comes from `lib/overview.ts` (`loadOverview(workspace, all)`: open tickets, plus the newest 200 closed ones when `all`; latest Run per ticket from one query; the newest 100 Runs of the Workspace; Products).
+
+- **List**: "Needs you" first, then one section per stage (`triage, plan, build, review, release, done`); empty sections are omitted and a ticket in "Needs you" is not repeated below. Tickets without a stage label count as `triage`, closed ones as `done`.
+- **Board**: one column per stage.
+- **Runs**: the newest 100 Workspace Runs first (duration, cost); a line says so when there are more.
+
+"Needs you" (`needsYou()` in `lib/needs-you.ts`, first match wins): `Approve plan` (stage `plan`, no `bauherr:approved:plan` label, latest Run is a succeeded plan Run), `Run needs you` (latest Run `needs_human`), `Review MR` (stage `review`), `Run failed` (an addition to D5). A plan Run that is `running`, `queued` or `awaiting_session` is "Plan in progress" and not needs-you; D5 (c), unanswered critical decisions, arrives with the Ticket page slice. The Tickets nav item shows the count over open tickets.
 
 ## Workspace
 
@@ -30,4 +41,4 @@ Create `(app)/(shell)/<path>/page.tsx` as a server component, call `currentWorks
 
 ## Smoke test
 
-`pnpm --filter server seed:e2e` seeds the e2e DB (admin, Workspace, one ticket). `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`.
+`pnpm --filter server seed:e2e` seeds the e2e DB (admin, Workspace, one ticket). `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`. Payload accepts the session cookie only from the `serverURL` origin (`PUBLIC_URL`); from another origin run Chromium with `--host-resolver-rules=MAP localhost <host-ip>` (or leave `PUBLIC_URL` unset on the dev server).

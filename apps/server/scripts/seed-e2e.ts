@@ -19,9 +19,22 @@ const email = env('E2E_EMAIL')
 await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin' })
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme' })).id
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace })).id
-await ensure('tickets', { externalId: 'e2e-1' }, {
-  title: 'Add a dark theme to the dashboard', externalId: 'e2e-1', number: 1, url: 'https://github.com/acme/web/issues/1',
-  state: 'open', labels: ['bauherr:stage:plan'], stage: 'plan', product, workspace,
-})
+const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
+const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) =>
+  (await ensure('tickets', { externalId: `e2e-${n}` }, {
+    title, externalId: `e2e-${n}`, number: n, url: `https://github.com/acme/web/issues/${n}`,
+    state: 'open', labels: [`bauherr:stage:${stage}`], stage, product: p, workspace, ...extra,
+  })).id
+const run = async (t: string | number, stage: string, status: string, extra: Record<string, unknown> = {}) =>
+  ensure('runs', { ticket: t, stage, status }, { ticket: t, stage, status, mode: 'autonomous', workspace, ...extra })
+
+const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product)
+const t2 = await ticket(2, 'Export invoices as CSV', 'build', product)
+const t3 = await ticket(3, 'Checkout fails for empty carts', 'build', shop)
+await ticket(4, 'Triage the onboarding feedback', 'triage', shop)
+await ticket(5, 'Upgrade the payment SDK', 'review', shop)
+await run(t1, 'plan', 'succeeded', { startedAt: '2026-10-30T09:00:00Z', finishedAt: '2026-10-30T09:02:30Z', costUsd: 0.1234 })
+await run(t2, 'build', 'succeeded', { startedAt: '2026-10-30T09:10:00Z', finishedAt: '2026-10-30T09:25:12Z', gatewayCostUsd: 1.5 })
+await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
 console.log('seeded')
 process.exit(0)

@@ -8,7 +8,7 @@ import { ThemeToggle } from './ThemeToggle'
 
 const initials = (email: string) => email.slice(0, 2).toUpperCase()
 
-export function TopBar({ user, workspaces, workspace }: { user: Bauherr; workspaces: Workspace[]; workspace: Workspace | null }) {
+export function TopBar({ user, workspaces, workspace, needsYou }: { needsYou: number; user: Bauherr; workspaces: Workspace[]; workspace: Workspace | null }) {
   return (
     <header className="topbar">
       <Link href="/" className="brand">
@@ -18,7 +18,7 @@ export function TopBar({ user, workspaces, workspace }: { user: Bauherr; workspa
         </svg>
         <span className="heading">Bauherr</span>
       </Link>
-      <Nav />
+      <Nav needsYou={needsYou} />
       <div className="tools">
         <Popover label={<>{workspace?.name ?? 'No Workspace'}<ChevronDown /></>}>
           {workspaces.map((w) => (
