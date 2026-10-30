@@ -96,7 +96,9 @@ class ClaimLost extends Error {}
 /** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string) => {
   const run = await getRun(c, runId)
-  if (run.mode !== 'session' || run.status !== 'awaiting_session') throw new Error(`run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`)
+  const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
+  if (run.mode !== 'session') throw new Error(notClaimable)
+  if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
@@ -129,7 +131,7 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; la
   const tickets = await c.payload.find({
     collection: 'tickets',
     where: { and: [{ state: { equals: 'open' } }, ...(product ? [{ product: { equals: product.id } }] : [])] },
-    limit: 100,
+    pagination: false,
     ...scoped(c),
     depth: 1,
   })
@@ -138,7 +140,7 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; la
     collection: 'runs',
     where: { ticket: { in: unblocked.map((t) => t.id) } },
     sort: '-createdAt',
-    limit: 500,
+    pagination: false,
     ...scoped(c),
   })
   const latest = new Map<unknown, Doc>()

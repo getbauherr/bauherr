@@ -16,12 +16,12 @@ export const rankBetween = (a: string | null, b: string | null): string => {
   }
 }
 
-export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean }
+export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean; reviewRounds?: number | null }
 export type FrontierRun = { stage: string; status: string; mode?: string; previousRun?: unknown }
 
-/** In flight: review/release, a Run that needs a human, or a Build Run that follows a previous one (changes requested, review fix, abandoned lease). */
+/** In flight: review/release, a latest Run that needs a human, or a Build Ticket the factory review sent back (`reviewRounds` > 0). */
 const inFlight = (t: FrontierTicket, r?: FrontierRun): boolean =>
-  t.stage === 'review' || t.stage === 'release' || r?.status === 'needs_human' || (r?.stage === 'build' && !!r.previousRun)
+  t.stage === 'review' || t.stage === 'release' || r?.status === 'needs_human' || (t.stage === 'build' && (t.reviewRounds ?? 0) > 0)
 
 const rankOf = (t: FrontierTicket, r?: FrontierRun): number => (t.blocked || (r?.status === 'running' && r.mode === 'session') ? 2 : inFlight(t, r) ? 0 : 1)
 

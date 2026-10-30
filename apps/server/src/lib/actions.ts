@@ -47,6 +47,7 @@ export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: Ticke
     const r = await payload.db.drizzle.execute(sql`SELECT max("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" COLLATE "C" < ${hi}`)
     lo = (r.rows[0]?.rank as string | null) ?? null
   }
+  // Known limitation: two concurrent drops between the same neighbours can get equal ranks; the order then falls back to the Ticket number.
   const rank = rankBetween(lo, hi)
   await payload.update({ collection: 'tickets', id: t.id, data: { rank }, overrideAccess: true })
   return { rank }

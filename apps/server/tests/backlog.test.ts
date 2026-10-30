@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import pg from 'pg'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 
 let payload: Payload
 let member: Record<string, any>
@@ -68,7 +68,7 @@ it('claim_next returns null when nothing is claimable', async () => {
 it('claim_next takes in-flight work before the top-ranked Ticket, skipping blocked ones', async () => {
   await reset()
   const top = await seed('a')
-  const flight = await seed('z', {}, { previousRun: (await seed('y', {}, { status: 'abandoned' })).run!.id })
+  const flight = await seed('z', { reviewRounds: 1 })
   const blocker = await seed('zz', {}, null)
   const blocked = await seed('A', { blockedBy: [blocker.ticket.id] })
   expect((await call(member, 'list_frontier', {})).map((t: any) => t.ticket).slice(0, 2)).toEqual([flight.ticket.id, top.ticket.id])
@@ -124,4 +124,27 @@ it('rankTicket drops the lower bound when the displayed neighbours are out of ra
   await actions.rankTicket(payload, member, { ticket: moved.ticket.id, before: flight.ticket.id, after: first.ticket.id, workspaceId: ws })
   const r = await rankOf(moved.ticket.id)
   expect(r > 'a' && r < 'b').toBe(true)
+})
+
+it('claim_next moves on when the snapshot\'s top Run was claimed meanwhile', async () => {
+  await reset()
+  const top = await seed('a')
+  const next = await seed('b')
+  const find = payload.find.bind(payload)
+  const spy = vi.spyOn(payload, 'find').mockImplementation((async (args: any) => {
+    const r = await find(args)
+    if (args.collection === 'runs') {
+      spy.mockRestore()
+      await payload.update({ collection: 'runs', id: top.run!.id, data: { status: 'running', sessionOwner: outsider.id }, ...o })
+    }
+    return r
+  }) as any)
+  expect((await call(member, 'claim_next', {})).run.id).toBe(next.run!.id)
+})
+
+it('frontier ranks before any limit: the top-ranked Ticket beyond the first 100 by id is still claimed', async () => {
+  await reset()
+  for (let i = 0; i < 100; i++) await seed('m', {}, null)
+  const top = await seed('a')
+  expect((await call(member, 'claim_next', {})).run.id).toBe(top.run!.id)
 })

@@ -40,13 +40,15 @@ describe('frontierOrder', () => {
   it('sorts uppercase before lowercase (byte order, not locale)', () => {
     expect(ids(frontierOrder([t(1, 'a'), t(2, 'B')], new Map()))).toEqual([2, 1])
   })
-  it('puts in-flight work before ranked work', () => {
+  it('puts in-flight work (review, release, needs_human, sent back by review) before ranked work', () => {
     const latest = new Map([
       [2, run('needs_human')],
-      [3, run('awaiting_session', { previousRun: 9 })],
     ])
-    const out = frontierOrder([t(1, 'a'), t(2, 'z'), t(3, 'y'), t(4, 'b', { stage: 'review' }), t(5, 'c', { stage: 'release' })], latest)
+    const out = frontierOrder([t(1, 'a'), t(2, 'z'), t(3, 'y', { reviewRounds: 1 }), t(4, 'b', { stage: 'review' }), t(5, 'c', { stage: 'release' })], latest)
     expect(ids(out)).toEqual([4, 5, 3, 2, 1])
+  })
+  it('does not count reviewRounds outside the build stage', () => {
+    expect(ids(frontierOrder([t(1, 'a'), t(2, 'b', { stage: 'plan', reviewRounds: 2 })], new Map()))).toEqual([1, 2])
   })
   it('puts blocked and leased Tickets last', () => {
     const latest = new Map([[2, run('running', { mode: 'session' })]])

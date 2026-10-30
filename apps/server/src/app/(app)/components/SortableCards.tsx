@@ -17,13 +17,15 @@ export function SortableCards({ items }: { items: Item[] }) {
   const router = useRouter()
   const [order, setOrder] = useState(items)
   const [drag, setDrag] = useState<number | null>(null)
+  const [failed, setFailed] = useState(false)
   useEffect(() => setOrder(items), [items])
 
   const drop = async (from: number, to: number) => {
     if (from === to) return
     const next = move(order, from, to)
     setOrder(next)
-    await rankTicketAction(next[to].id, next[to - 1]?.id ?? null, next[to + 1]?.id ?? null).catch(() => undefined)
+    setFailed(false)
+    await rankTicketAction(next[to].id, next[to - 1]?.id ?? null, next[to + 1]?.id ?? null).catch(() => setFailed(true))
     router.refresh()
   }
   const keys = (i: number) => (e: KeyboardEvent<HTMLElement>) => {
@@ -35,7 +37,10 @@ export function SortableCards({ items }: { items: Item[] }) {
   }
   const over = (e: DragEvent) => drag !== null && e.preventDefault()
 
-  return order.map((it, i) => (
+  return (
+    <>
+      {failed && <p className="muted small" role="alert">Could not save the new order.</p>}
+      {order.map((it, i) => (
     <article
       key={it.id}
       className={`card${drag === it.id ? ' dragging' : ''}`}
@@ -63,5 +68,7 @@ export function SortableCards({ items }: { items: Item[] }) {
       <span className="rank mono muted small" aria-label={`Position ${i + 1}`}>{i + 1}</span>
       {it.node}
     </article>
-  ))
+  ))}
+    </>
+  )
 }
