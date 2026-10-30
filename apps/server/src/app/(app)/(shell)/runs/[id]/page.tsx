@@ -5,7 +5,7 @@ import { ConfirmButton } from '../../../components/SettingsForm'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
 import { rerunStage } from '../../../lib/actions'
-import type { Stage } from '../../../lib/needs-you'
+import { releaseWord, type Stage } from '../../../lib/needs-you'
 import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
 import { renderMarkdown } from '../../../lib/markdown'
 import '../../../ticket.css'
@@ -49,7 +49,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           <nav className="tabs controls" aria-label="Run view">
             {TABS.map((t) => <Link key={t} href={`?tab=${t}`} aria-current={t === tab ? 'page' : undefined}>{t[0]!.toUpperCase() + t.slice(1)}</Link>)}
           </nav>
-          {tab === 'graph' && <GraphView run={run} stages={stages} latestByStage={latestByStage} />}
+          {tab === 'graph' && <GraphView run={run} stages={stages} latestByStage={latestByStage} release={releaseWord(ticket)} />}
           {tab === 'timeline' && <TimelineView run={run} steps={steps} calls={callsByStep} now={Date.now()} />}
           {tab === 'list' && <ListView run={run} steps={steps} total={stepsTotal} calls={callsByStep} />}
         </div>

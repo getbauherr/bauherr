@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, approvePlan, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, acceptStaging, approvePlan, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { VIEWS, type View } from './needs-you'
@@ -72,6 +72,20 @@ export async function approvePlanAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(approvePlan(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function acceptStagingAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(acceptStaging(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function requestChangesAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(requestChanges(payload, user, { ticket, note: String(form.get('note') ?? ''), workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
 }
 

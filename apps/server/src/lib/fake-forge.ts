@@ -23,6 +23,19 @@ const WORKLOG = `<!-- bauherr:worklog -->
 - 2026-10-30 Use CSS custom properties. Consequence: no runtime theme library. By: plan Run.
 `
 
+const summary = (n: number) => `<!-- bauherr:staging-summary -->
+
+# Staging summary: #${n} Ship the export
+
+## What you get
+
+CSV export for invoices.
+
+## Accept
+
+Check it on staging, then accept.
+`
+
 const build = (): FakeBackend => {
   const fake = new FakeBackend({ native: true })
   const ts = fake.tickets('acme/web')
@@ -30,6 +43,13 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Add a dark theme to the dashboard', labels: ['bauherr:stage:plan'] })
   void ts.comment('1', PLAN)
   void ts.comment('1', WORKLOG)
+  // #2-#5 are placeholders so that later seeded Tickets line up with their forge numbers.
+  for (const n of [2, 3, 4, 5]) void ts.create({ title: `Placeholder ${n}` })
+  for (const [n, title] of [[6, 'Ship the CSV export'], [7, 'Ship the invoice filter']] as const) {
+    void ts.create({ title, labels: ['bauherr:stage:release'] })
+    void ts.comment(String(n), WORKLOG)
+    void ts.comment(String(n), summary(n))
+  }
   return fake
 }
 
