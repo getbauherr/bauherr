@@ -252,6 +252,7 @@ class GithubTickets implements TicketSource {
 const pr = (p: any): PullRequest => ({
   number: p.number, url: p.html_url, title: p.title, body: p.body ?? '',
   state: p.merged_at ? 'merged' : p.state, head: p.head.ref, base: p.base.ref, headSha: p.head.sha,
+  headRepo: p.head.repo?.full_name ?? '', baseRepo: p.base.repo?.full_name ?? '', draft: !!p.draft,
   ...(p.merge_commit_sha && p.merged_at ? { mergeSha: p.merge_commit_sha } : {}),
 });
 
@@ -314,16 +315,26 @@ class GithubForge implements Forge {
     }));
   }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
+    const p = await this.getPullRequest(repo, n);
     const m = await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge`, { merge_method: o.method, ...(o.expectSha ? { sha: o.expectSha } : {}) });
-    if (o.deleteBranch) {
-      const head = (await this.getPullRequest(repo, n)).head;
-      await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${head.split('/').map(encodeURIComponent).join('/')}`).catch(() => {});
+    let branchDeleteError: string | undefined;
+    if (o.deleteBranch && p.headRepo.toLowerCase() === p.baseRepo.toLowerCase()) {
+      await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${p.head.split('/').map(encodeURIComponent).join('/')}`).catch((e) => {
+        if (!(e instanceof GithubError && [404, 422].includes(e.status))) branchDeleteError = e instanceof Error ? e.message : String(e);
+      });
     }
-    return { mergeSha: m.sha as string };
+    return { mergeSha: m.sha as string, ...(branchDeleteError ? { branchDeleteError } : {}) };
+  }
+  async getCommitDate(repo: RepoRef, sha: string) {
+    return (await this.h.json('GET', `/repos/${repo}/commits/${sha}`)).commit.committer.date as string;
   }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
-    return (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
+    const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
       id: c.id, name: c.name, status: c.status, conclusion: c.conclusion,
     }));
+    const statuses = (await this.h.json('GET', `/repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
+    return [...runs, ...statuses.map((s: any): Check => (s.state === 'pending'
+      ? { name: s.context, status: 'in_progress', conclusion: null }
+      : { name: s.context, status: 'completed', conclusion: s.state === 'success' ? 'success' : 'failure' }))];
   }
 }

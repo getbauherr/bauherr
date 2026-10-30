@@ -1,4 +1,4 @@
-import { setStage, type Check } from '@bauherr/adapters'
+import { setStage, type Check, type PullRequest } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { githubFor } from './adapters'
@@ -19,6 +19,10 @@ export const prNumber = (url: unknown, repo: string): number | null => {
   const m = typeof url === 'string' ? new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pull/(\\d+)$`).exec(url) : null
   return m ? Number(m[1]) : null
 }
+
+/** A PR the factory may review and merge: base and head in the Ticket's repo (no fork) and a head branch named `bauherr/<ticket number>-...`. */
+export const isFactoryPr = (pr: PullRequest, repo: string, ticketNumber: number): boolean =>
+  pr.baseRepo.toLowerCase() === repo.toLowerCase() && pr.headRepo.toLowerCase() === repo.toLowerCase() && pr.head.startsWith(`bauherr/${ticketNumber}-`)
 
 /** Ticket source of a Product, authenticated with the Workspace's github Connection. */
 export const forgeOf = async (payload: Payload, product: number | string) => {
@@ -72,19 +76,25 @@ const checksGreen = (checks: Check[], names: string[]): boolean => {
   return picked.length > 0 && picked.every(passed)
 }
 
-/** Merge gate view of a head's checks: red when a finished check failed, pending while one still runs, else green (no checks at all is green). */
-export const mergeChecks = (checks: Check[]): { state: 'green' | 'pending' | 'red'; failed: string[] } => {
+/** CI gets this long after the head commit to register its first check before "no checks" counts as green. */
+export const CHECKS_GRACE_MS = 10 * 60_000
+
+/** Merge gate view of a head's checks: red when a finished check failed, pending while one still runs, else green. No checks at all is green only once the head commit is older than the grace period. */
+export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'green' | 'pending' | 'red'; failed: string[] } => {
   const latest = latestChecks(checks)
   const failed = latest.filter((c) => c.status === 'completed' && !passed(c)).map((c) => c.name)
-  return { state: failed.length ? 'red' : latest.some((c) => c.status !== 'completed') ? 'pending' : 'green', failed }
+  const pending = latest.some((c) => c.status !== 'completed') || (!latest.length && headAgeMs < CHECKS_GRACE_MS)
+  return { state: failed.length ? 'red' : pending ? 'pending' : 'green', failed }
 }
 
-/** The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state; null when there is none. */
+/** The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state; null when there is none or it is not a factory PR (fork, foreign branch). */
 export const prOf = async (payload: Payload, t: Doc) => {
   const { backend, repo, tickets } = await forgeOf(payload, id(t.product))
   const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
   const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo)).find((x) => x !== null)
-  return num == null ? null : { backend, repo, tickets, pr: await backend.forge.getPullRequest(repo, num) }
+  if (num == null) return null
+  const pr = await backend.forge.getPullRequest(repo, num)
+  return isFactoryPr(pr, repo, t.number) ? { backend, repo, tickets, pr } : null
 }
 
 const stagingAnswers = async (url: string): Promise<boolean> => {

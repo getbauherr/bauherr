@@ -233,6 +233,8 @@ const tickets = col('tickets', [
   date('deployRequestedAt'),
   select('releaseState', ['waiting', 'on_staging', 'timed_out']),
   select('reviewState', ['waiting_checks', 'merged', 'ready_for_human', 'needs_human']),
+  date('reviewWaitingSince'),
+  { name: 'mergeFailures', type: 'number', defaultValue: 0, admin: { description: 'Consecutive failed merge attempts; the 3rd needs a human.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ])
 
@@ -275,6 +277,7 @@ export const collections: CollectionConfig[] = [
     json('goal'),
     select('verdict', ['clean', 'changes']),
     json('findings'),
+    text('reviewedSha'),
     text('model'),
     num('tokensIn'),
     num('tokensOut'),

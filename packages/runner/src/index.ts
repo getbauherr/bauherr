@@ -4,7 +4,7 @@ import { runAgent, buildOptions, type AgentState } from './agent.js';
 import { cloneRepo, commitAndPush, git } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { GOAL_FILE, PLAN_FILE, REVIEW_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, materialise } from './materialise.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
 
@@ -65,10 +65,15 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     if (ctx.run.stage === 'review') {
       if (!ctx.existingPr) return finish('failed', 'review run without an MR');
       await git(clone.dir, clone.env, 'fetch', '--depth', '200', 'origin', `${ctx.product.defaultBranch}:refs/remotes/origin/${ctx.product.defaultBranch}`);
+      artifacts.reviewedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
     }
     const fixedGoal = ctx.run.stage === 'plan' ? PLAN_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
+    if (ctx.run.stage === 'review') {
+      const base = `origin/${ctx.product.defaultBranch}`;
+      await git(clone.dir, clone.env, 'diff', `--output=${DIFF_FILE}`, `${base}...HEAD`).catch(() => git(clone!.dir, clone!.env, 'diff', `--output=${DIFF_FILE}`, base, 'HEAD'));
+    }
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
       ...(ctx.product.id ? { product: ctx.product.id } : {}), ...(ctx.ticket.id ? { ticket: ctx.ticket.id } : {}),
       onBudgetExceeded: () => { state.budgetExhausted = true; state.abort.abort(); },

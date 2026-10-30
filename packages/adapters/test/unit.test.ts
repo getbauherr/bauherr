@@ -139,7 +139,7 @@ describe('appAuth (fake key, fake GitHub)', () => {
 });
 
 describe('github mergePullRequest', () => {
-  it('PUTs a squash merge pinned to the head sha, then deletes the branch', async () => {
+  const run = async (headRepo: string, del: Response = new Response(null, { status: 204 })) => {
     const calls: { method: string; url: string; body: any }[] = [];
     const b = new GithubBackend({
       auth: patAuth('t'),
@@ -147,12 +147,40 @@ describe('github mergePullRequest', () => {
         const method = String(init?.method);
         calls.push({ method, url: new URL(String(u)).pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined });
         if (method === 'PUT') return json({ sha: 'm1', merged: true });
-        if (method === 'DELETE') return new Response(null, { status: 204 });
-        return json({ number: 7, html_url: 'u', title: 't', body: '', state: 'closed', merged_at: 'x', head: { ref: 'bauherr/7', sha: 'h' }, base: { ref: 'main' } });
+        if (method === 'DELETE') return del;
+        return json({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'bauherr/7', sha: 'h', repo: { full_name: headRepo } }, base: { ref: 'main', repo: { full_name: 'o/r' } } });
       },
     });
-    assert.deepEqual(await b.forge.mergePullRequest('o/r', 7, { method: 'squash', deleteBranch: true, expectSha: 'h' }), { mergeSha: 'm1' });
-    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['PUT /repos/o/r/pulls/7/merge', 'GET /repos/o/r/pulls/7', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
-    assert.deepEqual(calls[0]!.body, { merge_method: 'squash', sha: 'h' });
+    const res = await b.forge.mergePullRequest('o/r', 7, { method: 'squash', deleteBranch: true, expectSha: 'h' });
+    return { calls, res };
+  };
+  it('PUTs a squash merge pinned to the head sha, then deletes a same-repo branch', async () => {
+    const { calls, res } = await run('o/r');
+    assert.deepEqual(res, { mergeSha: 'm1' });
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['GET /repos/o/r/pulls/7', 'PUT /repos/o/r/pulls/7/merge', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
+    assert.deepEqual(calls[1]!.body, { merge_method: 'squash', sha: 'h' });
+  });
+  it('never deletes a fork head branch', async () => {
+    const { calls } = await run('evil/r');
+    assert.ok(!calls.some((c) => c.method === 'DELETE'));
+  });
+  it('reports a failed delete without failing the merge, and ignores 404', async () => {
+    assert.match((await run('o/r', new Response('boom', { status: 500 }))).res.branchDeleteError ?? '', /500/);
+    assert.equal((await run('o/r', new Response('gone', { status: 404 }))).res.branchDeleteError, undefined);
+  });
+});
+
+describe('github listChecks', () => {
+  it('maps commit statuses to checks next to the check runs', async () => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure' }, { context: 'ci/b', state: 'pending' }, { context: 'ci/c', state: 'success' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] }),
+    });
+    assert.deepEqual(await b.forge.listChecks('o/r', 'h'), [
+      { id: 1, name: 'build', status: 'completed', conclusion: 'success' },
+      { name: 'ci/a', status: 'completed', conclusion: 'failure' },
+      { name: 'ci/b', status: 'in_progress', conclusion: null },
+      { name: 'ci/c', status: 'completed', conclusion: 'success' },
+    ]);
   });
 });

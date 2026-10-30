@@ -251,7 +251,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
           status: r.status,
           artifacts: r.artifacts,
           error: r.status === 'succeeded' ? null : r.reason,
-          ...(review && { verdict: review.verdict, findings: review.findings }),
+          ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null }),
           tokensIn: r.usage.inputTokens,
           tokensOut: r.usage.outputTokens,
           tokensCache: r.usage.cacheRead + r.usage.cacheWrite,
@@ -261,8 +261,15 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         ...opts,
       })
       await queueReconcile(payload, run.id)
-      if (review) await concludeReview(payload, ticket.id, review)
-      if (run.stage === 'build' && r.status === 'succeeded') await startReviewIfReady(payload, await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts }))
+      if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
+      if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
+        // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
+        try {
+          await startReviewIfReady(payload, await payload.update({ collection: 'tickets', id: ticket.id, data: { stage: 'review' }, ...opts }))
+        } catch (e) {
+          payload.logger.error({ err: e, ticket: ticket.id }, 'starting the review failed')
+        }
+      }
       return { output: { status: r.status } }
     } catch (e) {
       await payload.update({

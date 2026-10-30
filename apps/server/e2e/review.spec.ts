@@ -14,7 +14,8 @@ test('Review Run page shows the verdict and findings; Product settings have the 
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Runs' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await page.goto('/runs')
   await page.locator('table tbody tr').filter({ hasText: 'Upgrade the payment SDK' }).getByRole('link', { name: /^#\d+$/ }).first().click()
 
   const review = page.getByLabel('Review', { exact: true })

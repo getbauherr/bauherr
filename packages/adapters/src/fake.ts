@@ -14,6 +14,7 @@ interface FakeRepo {
   branches: Map<string, { sha: string; files: Map<string, string> }>;
   prs: PullRequest[];
   checks: Map<string, Check[]>;
+  commitDates: Map<string, string>;
 }
 
 /** In-memory Backend. `native` = relations as fields; otherwise body convention + close-reason labels. */
@@ -72,10 +73,22 @@ export class FakeBackend implements Backend {
     this.repo(repo).checks.set(sha, checks);
   }
 
+  /** Test helper: overrides fields of a PR (draft, headRepo, head, ...). */
+  setPullRequest(repo: RepoRef, number: number, patch: Partial<PullRequest>): void {
+    const pr = this.repo(repo).prs.find((p) => p.number === number);
+    if (!pr) throw new Error(`no PR ${number}`);
+    Object.assign(pr, patch);
+  }
+
+  /** Test helper: sets the commit time reported for `sha` (unknown shas are old). */
+  setCommitDate(repo: RepoRef, sha: string, iso: string): void {
+    this.repo(repo).commitDates.set(sha, iso);
+  }
+
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map() };
       this.repos.set(name, r);
     }
     return r;
@@ -110,6 +123,7 @@ export class FakeBackend implements Backend {
         const created: PullRequest = {
           number: r.prs.length + 1, url: `https://github.com/${repo}/pull/${r.prs.length + 1}`, title: pr.title,
           body: pr.body ?? '', state: 'open', head: pr.head, base: pr.base, headSha: sha(r, pr.head),
+          headRepo: repo, baseRepo: repo, draft: false,
         };
         r.prs.push(created);
         return created;
@@ -136,11 +150,12 @@ export class FakeBackend implements Backend {
         return out;
       },
       listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
+      getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
         if (o.expectSha && o.expectSha !== sha(this.repo(repo), pr.head)) throw new Error(`PR ${n} head moved`);
-        if (o.deleteBranch) this.repo(repo).branches.delete(pr.head);
+        if (o.deleteBranch && pr.headRepo === pr.baseRepo) this.repo(repo).branches.delete(pr.head);
         return { mergeSha: this.merge(repo, n) };
       },
     };
