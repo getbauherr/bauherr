@@ -37,7 +37,7 @@ const bauherren: CollectionConfig = {
   hooks: {
     beforeChange: [
       async ({ data, operation, req }) => {
-        if (operation === 'create' && (await req.payload.count({ collection: 'bauherren' })).totalDocs === 0) {
+        if (operation === 'create' && !req.context.oidc && (await req.payload.count({ collection: 'bauherren' })).totalDocs === 0) {
           data.role = 'admin'
         }
         return data
@@ -55,7 +55,8 @@ const bauherren: CollectionConfig = {
     },
     json('uiPrefs'),
     text('githubLogin', { admin: { description: 'Assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN).' } }),
-    text('oidcSubject', { access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'issuer|sub of the OIDC identity, set on first OIDC sign-in.' } }),
+    text('oidcSubject', { index: true, access: { create: isAdmin, update: isAdmin }, admin: { description: 'issuer|sub of the OIDC identity (Keycloak: <issuer>|<user ID>). Set on first SSO sign-in; Admins can set it to link an existing Bauherr.' } }),
+    { name: 'sessionVersion', type: 'number', defaultValue: 0, access: { create: () => false, update: () => false }, admin: { hidden: true } },
     { name: 'oidcSynced', type: 'date', access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'Last OIDC sign-in that synced role and Workspaces.' } },
   ],
 }

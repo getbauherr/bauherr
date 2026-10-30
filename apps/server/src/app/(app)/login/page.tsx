@@ -24,7 +24,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <span className="small muted">Password</span>
           <input name="password" type="password" autoComplete="current-password" required />
         </label>
-        {error === 'oidc' ? (
+        {error === 'oidc-link' ? (
+          <p role="alert" className="err small">This email already has a Bauherr account. Ask an Admin to link it to your SSO identity.</p>
+        ) : error === 'oidc' ? (
           <p role="alert" className="err small">Single sign-on failed. Try again or use your password.</p>
         ) : (
           error && <p role="alert" className="err small">Email or password is wrong. Check both and try again.</p>

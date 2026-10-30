@@ -27,6 +27,7 @@ export async function logout() {
   const payload = await payloadClient()
   // Revoke this session server-side; the cookie goes regardless.
   const { user } = await payload.auth({ headers: await headers() })
+  if (user) await payload.update({ collection: 'bauherren', id: user.id, data: { sessionVersion: ((user as { sessionVersion?: number }).sessionVersion ?? 0) + 1 }, overrideAccess: true, depth: 0 }).catch(() => undefined)
   if (user) await logoutOperation({ collection: payload.collections.bauherren, req: await createLocalReq({ user }, payload) }).catch(() => undefined)
   const jar = await cookies()
   jar.delete(`${payload.config.cookiePrefix}-token`)

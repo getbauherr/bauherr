@@ -1,6 +1,6 @@
 # Sign-in
 
-Password login (Payload, email + password) works on a fresh clone with no configuration. OIDC single sign-on is additive: set `OIDC_ISSUER` and a "Sign in with …" button appears on `/login` under the password form.
+Password login (Payload, email + password) works on a fresh clone with no configuration. OIDC single sign-on is additive: set `OIDC_ISSUER` (https) and a "Sign in with …" button appears on `/login` under the password form.
 
 ## OIDC
 
@@ -8,7 +8,7 @@ Authorization code flow with PKCE, `state` and `nonce`; endpoints come from disc
 
 | Env | Default | Meaning |
 |---|---|---|
-| `OIDC_ISSUER` | unset | Issuer URL, e.g. `https://sso.example.com/realms/acme`. Enables the feature. |
+| `OIDC_ISSUER` | unset | Issuer URL, must be https, e.g. `https://sso.example.com/realms/acme`. |
 | `OIDC_CLIENT_ID` | | Client id |
 | `OIDC_CLIENT_SECRET` / `OIDC_CLIENT_SECRET_FILE` | | Client secret (confidential client); the file form wins |
 | `OIDC_ROLE_CLAIM` | `realm_access.roles` | Dot path into the ID token or userinfo |
@@ -16,13 +16,17 @@ Authorization code flow with PKCE, `state` and `nonce`; endpoints come from disc
 | `OIDC_WORKSPACE_CLAIM` | `groups` | Claim whose values are Workspace slugs (a leading `/` is stripped) |
 | `OIDC_DISPLAY_NAME` | issuer host | Label on the button |
 
+The feature is on only when `OIDC_ISSUER` (https), `OIDC_CLIENT_ID`, a client secret and `PUBLIC_URL` are all set (`PUBLIC_URL` builds the redirect URI and cookie flags). Otherwise the button is hidden, the routes return 404, and one warning naming the missing variable (never its value) is logged at first use.
+
 Sign-in rules:
 
-- The email claim is required and `email_verified` must not be `false`.
-- First sign-in creates the Bauherr by email (the very first Bauherr of an installation is always `admin`). Every later sign-in resyncs `role` and Workspace memberships (`tenants`) from the claims; slugs that match no Workspace are ignored.
-- The Bauherr stores `oidcSubject` (`issuer|sub`) and `oidcSynced`. An email already bound to a different subject is refused.
-- Session: cookie `bauherr-session`, an HS256 token signed with `PAYLOAD_SECRET` (7 days, HttpOnly, `Secure` when `PUBLIC_URL` is https), accepted by the UI, `/admin` and the REST API through the Payload auth strategy `oidc`. Sign out clears it.
-- Failures redirect to `/login?error=oidc`; tokens and claims are never logged.
+- `email` is required and `email_verified` must be exactly `true`; missing or non-boolean fails the login. Claims from the ID token win over userinfo; a userinfo failure fails the login.
+- Lookup is by `oidcSubject` (`<issuer>|<sub>`) first. A match logs in and resyncs. No match but a Bauherr with that email (case-insensitive) exists: refused, no automatic linking (`/login?error=oidc-link`). Nothing found: a Bauherr is created with the lowercased email. SSO creates are never made `admin` for being first; the role comes from the claim only.
+- Resync writes `role` only when the role claim is present, and `tenants` only when the workspace claim is present; an absent claim keeps the stored value. Slugs matching no Workspace are ignored.
+- Linking policy: an Admin opens the Bauherr in `/admin` and sets `oidcSubject` to `<issuer>|<id>`. In Keycloak the id is Users, the user, ID. The value is unique across Bauherren.
+- Session: cookie `bauherr-session`, an HS256 token signed with `PAYLOAD_SECRET` (claims `id`, `v`, `typ=bauherr-session`, `aud=bauherr`, 7 days, HttpOnly, `Secure` when `PUBLIC_URL` is https), accepted by the UI, `/admin` and the REST API through the Payload auth strategy `oidc`.
+- Revocation: the token carries the Bauherr's `sessionVersion`. It is rejected when the version differs, the account is locked, or the Bauherr no longer exists. Signing out of the UI increments `sessionVersion`, which ends every SSO session of that Bauherr. Logging out of `/admin` does not bump it.
+- Errors: `/login?error=oidc` (any failure) and `/login?error=oidc-link` (link required). Server logs carry `oidc_login_failed` or `oidc_callback_failed` plus the error name and message only; tokens, claims and emails are never logged.
 
 ## Keycloak example
 
