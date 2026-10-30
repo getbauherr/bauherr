@@ -73,6 +73,15 @@ export const updateWorklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   return { commentId: saved.id, created: !existing }
 }
 
+/** Posts or updates the Ticket's single plan Comment (`<!-- bauherr:plan -->`). */
+export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; markdown: string }) => {
+  const { ts, n } = await sourceOf(payload, await loadTicket(payload, user, a.ticket))
+  const body = `${PLAN_MARKER}\n${a.markdown.replace(PLAN_MARKER, '').trim()}`
+  const existing = latestWith(await ts.listComments(n), PLAN_MARKER)
+  const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
+  return { commentId: saved.id, created: !existing }
+}
+
 export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId }) => {
   const t = await loadTicket(payload, user, a.ticket)
   const { ts, n } = await sourceOf(payload, t)

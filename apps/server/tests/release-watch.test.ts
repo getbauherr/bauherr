@@ -162,3 +162,13 @@ it('still times out when the probe throws', async () => {
   }
   expect((await reload(t.id as number)).releaseState).toBe('timed_out')
 })
+
+it('notes a closed-unmerged MR once and leaves the Ticket in review', async () => {
+  const { t, pr, n } = await reviewTicket('closed')
+  fake.close(repo, pr.number)
+  await release.watchRelease(payload)
+  await release.watchRelease(payload)
+  const notes = (await fake.tickets(repo).listComments(n)).filter((c) => c.body.includes('closed without merge'))
+  expect(notes).toHaveLength(1)
+  expect((await reload(t.id as number)).stage).toBe('review')
+})

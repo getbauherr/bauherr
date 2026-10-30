@@ -3,9 +3,9 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, tenantsOf, updateWorklog } from './actions'
+import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS } from '../jobs'
-import { goalOf } from './run-ctx'
+import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -139,7 +139,7 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       const { ts, n } = await sourceOf(c.payload, t)
       const live = await ts.get(n)
-      return { ...t, body: live.body, goal: goalOf(live.body) }
+      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan') }
     },
   },
   {
@@ -152,10 +152,11 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       const body = (await ts.get(n)).body
+      const statements = await goalFor(c.payload, ticket, body, run.stage)
       const leaseToken = randomBytes(32).toString('base64url')
       // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
       const claimed = await c.payload.db.drizzle.execute(
-        sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements: goalOf(body) })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+        sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
       )
       if (!claimed.rows.length) throw new Error(`run ${run.id} was claimed by someone else`)
       const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -168,7 +169,7 @@ export const tools: Tool[] = [
           throw e
         }
       }
-      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: goalOf(body), assignedTo: login ?? null }
+      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: statements, assignedTo: login ?? null }
     },
   },
   {
@@ -228,6 +229,16 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'submit_plan',
+    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only.',
+    inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
+      return submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })
+    },
+  },
+  {
     name: 'request_review',
     description: 'Move the Ticket to the review stage label.',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
@@ -257,6 +268,7 @@ export const tools: Tool[] = [
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) await ts.addLink(n, a.prUrl)
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
+      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket) })
       await ownerWrite(
         c,
         run,

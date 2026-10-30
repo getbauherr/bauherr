@@ -96,6 +96,10 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
           continue
         }
         const pr = await backend.forge.getPullRequest(repo, num)
+        if (pr.state === 'closed') {
+          const marker = `<!-- bauherr:mr-closed:${num} -->`
+          if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the MR was closed without merge; re-run Build or close the Ticket.`)
+        }
         if (pr.state !== 'merged') continue
         Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'release', mergeSha: pr.mergeSha ?? null, releaseAt: new Date(now).toISOString(), deployRequestedAt: null, releaseState: 'waiting' }, ...o }))
         await setStage(ts, n, 'release')
