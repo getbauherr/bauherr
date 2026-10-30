@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, approvePlan, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { startRunIfNeeded } from '../../../jobs'
+import { RERUNNABLE } from './run'
 import { VIEWS, type View } from './needs-you'
 import { PLAN_MARKER, latestWith, parseDecisions } from './plan'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
@@ -91,4 +93,17 @@ export async function answerDecisions(form: FormData) {
     })(),
   )
   revalidatePath(`/tickets/${ticket}`)
+}
+
+/** Re-runs the stage of a failed or needs_human Run for an Admin or a member of its Workspace, records a human touch, opens the new Run. */
+export async function rerunStage(runId: number) {
+  const user = await requireBauherr()
+  const payload = await payloadClient()
+  const o = { depth: 0, overrideAccess: true } as const
+  const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number } | null
+  if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
+  const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
+  const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
+  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
+  redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
 }

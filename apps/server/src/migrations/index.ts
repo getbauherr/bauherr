@@ -3,6 +3,7 @@ import * as migration_20261030_000000_reconcile_costs from './20261030_000000_re
 import * as migration_20261030_120000_provider_presets from './20261030_120000_provider_presets';
 import * as migration_20261030_130000_ui_prefs from './20261030_130000_ui_prefs';
 import * as migration_20261030_130000_oidc from './20261030_130000_oidc';
+import * as migration_20261030_140000_active_run_unique from './20261030_140000_active_run_unique';
 
 export const migrations = [
   {
@@ -29,5 +30,10 @@ export const migrations = [
     up: migration_20261030_130000_oidc.up,
     down: migration_20261030_130000_oidc.down,
     name: '20261030_130000_oidc'
+  },
+  {
+    up: migration_20261030_140000_active_run_unique.up,
+    down: migration_20261030_140000_active_run_unique.down,
+    name: '20261030_140000_active_run_unique'
   },
 ];

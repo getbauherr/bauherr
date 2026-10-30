@@ -10,7 +10,7 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 | `/` | Tickets overview of the selected Workspace, views by `?view=list\|board\|runs` |
 | `/runs` | redirects to `/?view=runs` |
 | `/tickets/<id>` | Ticket page, see below |
-| `/runs/<id>` | stub until the Run page lands |
+| `/runs/<id>` | Run page, tab by `?tab=graph\|timeline\|list` |
 
 Pages under `(shell)/` get the top bar and require a session; unauthenticated requests redirect to `/login`. Sign out and Workspace selection are server actions in `lib/actions.ts`.
 
@@ -44,6 +44,16 @@ The options are the default plus each Alternative(s) item (split at `;` and sent
 
 `BAUHERR_E2E_FAKE_FORGE=1` makes `githubFor` (`src/lib/adapters.ts`) return an in-memory `FakeBackend` (`src/lib/fake-forge.ts`) holding ticket #1 of `acme/web` with a plan (two decisions, one critical) and a worklog; state lives in the server process only. `seed:e2e` adds the matching Connection and ticket source. Start the dev server with the variable and run Playwright with `E2E_FAKE_FORGE=1` to enable `e2e/ticket.spec.ts`. Never set it outside tests: `adapters.ts` throws at load when it is set with `NODE_ENV=production`, and imports the fake only in that branch.
 
+## Run page
+
+`/runs/<id>` (404 outside the selected Workspace), loaded by `lib/run.ts`. Header `Run <id> · #<ticket> <title>`, status chip, mode, stage pipeline; main column with tabs **Graph**, **Timeline**, **List**, details panel on the right (stacked on phones). No new tables (D5): flow = stage names of `pack/workflow.yaml` (`workflowStages()` in `lib/mode.ts`, fallback the six stages), data = `runs`, `steps` (by `seq`) and `tool_calls` (linked by `step`).
+
+- **Graph**: one node per stage with the ticket's latest Run status and duration, linking to that Run; the current Run's stage has the accent ring.
+- **Timeline**: one bar per Step from its `startedAt` (else `createdAt`) to the next Step (last: Run end, or now while running), scale start/mid/end; tool calls nested as thin bars, laid out back to back from the Step start by `durationMs` (the recorder stores no call start). Bars span step to next step, not the Step's own `createdAt`/duration (accepted drift).
+- **List**: Steps with tokens, start, duration; the tool-call count expands (`<details>`) to name, stored input digest, status.
+- **Details**: launched by (session owner's email for `session` mode, else "scheduler"), start/end/duration, status, model, tokens, cost with `costSource`, evidence (rendered with `lib/markdown.ts`), error, links to the Ticket and the MR (`artifacts.prUrl`).
+- **Re-run stage**: shown for `failed` and `needs_human` Runs. The server action `rerunStage` (`lib/actions.ts`) re-checks status and Workspace membership (Admins see all Workspaces), calls `startRunIfNeeded` (a Run already active for the stage is opened instead), records a `human_touches` row `rerun:<stage>` and redirects to the new Run. Two-click confirm via `ConfirmButton`.
+
 ## Workspace
 
 `currentWorkspace()` (`lib/session.ts`) returns `{ user, workspace, workspaces }`. Admins see all Workspaces, others those in `tenants`. The choice lives in the cookie `bauherr-ws` (slug); missing or invalid falls back to the first.
@@ -74,4 +84,4 @@ Create `(app)/(shell)/<path>/page.tsx` as a server component, call `currentWorks
 
 ## Smoke test
 
-`pnpm --filter server seed:e2e` seeds the e2e DB (admin, Workspace, one ticket). `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`. Payload accepts the session cookie only from the `serverURL` origin (`PUBLIC_URL`); from another origin run Chromium with `--host-resolver-rules=MAP localhost <host-ip>` (or leave `PUBLIC_URL` unset on the dev server).
+`pnpm --filter server seed:e2e` seeds the e2e DB (admin, Workspace, one ticket). The e2e suite expects a freshly seeded DB (re-runs leave active Runs behind). `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`. Payload accepts the session cookie only from the `serverURL` origin (`PUBLIC_URL`); from another origin run Chromium with `--host-resolver-rules=MAP localhost <host-ip>` (or leave `PUBLIC_URL` unset on the dev server).

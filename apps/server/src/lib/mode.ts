@@ -8,6 +8,21 @@ const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
 
 const WORKFLOW = resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'), 'workflow.yaml')
 
+type PackStage = { name: string; mode?: unknown }
+let packStages: PackStage[] | undefined
+
+/** Stages of pack/workflow.yaml, read once; unreadable or malformed file yields []. */
+const packed = (): PackStage[] => {
+  try {
+    return (packStages ??= (parse(readFileSync(WORKFLOW, 'utf8')) as { stages?: PackStage[] }).stages ?? [])
+  } catch {
+    return []
+  }
+}
+
+/** Stage names of pack/workflow.yaml, in order. */
+export const workflowStages = (): string[] => packed().map((s) => s.name)
+
 /**
  * Mode a Run of `stage` starts in. Precedence: Workspace.modeByStage[stage], Workspace.defaultMode,
  * env BAUHERR_DEFAULT_MODE, `mode` of the stage in pack/workflow.yaml, else autonomous.
@@ -17,6 +32,5 @@ export const modeFor = async (payload: Payload, workspace: number | string, stag
     defaultMode?: string | null
     modeByStage?: Record<string, unknown> | null
   }
-  const packed = (parse(readFileSync(WORKFLOW, 'utf8')) as { stages?: { name: string; mode?: unknown }[] }).stages?.find((s) => s.name === stage)?.mode
-  return [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed].find(isMode) ?? 'autonomous'
+  return [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed().find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
 }
