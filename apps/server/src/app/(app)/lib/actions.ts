@@ -1,13 +1,13 @@
 'use server'
 import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { approvePlan, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, approvePlan, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { VIEWS, type View } from './needs-you'
-import { PLAN_MARKER, latestWith, parseDecisions, unansweredCriticalCount } from './plan'
+import { PLAN_MARKER, latestWith, parseDecisions } from './plan'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
-import { payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
+import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
@@ -53,31 +53,42 @@ export async function setView(view: string) {
   await payload.update({ collection: 'bauherren', id: user.id, data: { uiPrefs: { ...current.uiPrefs, view } }, depth: 0, overrideAccess: true })
 }
 
-const ticketPlan = async (ticketId: number) => {
-  const user = await requireBauherr()
-  const payload = await payloadClient()
-  const ticket = await loadTicket(payload, user, ticketId)
-  const { ts, n } = await sourceOf(payload, ticket)
-  const comments = await ts.listComments(n)
-  return { user, payload, comments, plan: latestWith(comments, PLAN_MARKER)?.body ?? '' }
+/** The acting Bauherr and the selected Workspace; 404 when none is selected. */
+const acting = async () => {
+  const { workspace } = await currentWorkspace()
+  if (!workspace) notFound()
+  return { user: await requireBauherr(), payload: await payloadClient(), workspaceId: workspace.id }
 }
+
+const inWorkspace = <T>(run: Promise<T>): Promise<T> =>
+  run.catch((e) => {
+    if (e instanceof NotInWorkspace) notFound()
+    throw e
+  })
 
 export async function approvePlanAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
-  const { user, payload, comments } = await ticketPlan(ticket)
-  if (unansweredCriticalCount(comments)) throw new Error('critical decisions are unanswered')
-  await approvePlan(payload, user, { ticket })
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(approvePlan(payload, user, { ticket, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
 }
 
 /** Answers are re-validated against the live plan Comment: only known rows and listed options are recorded. */
 export async function answerDecisions(form: FormData) {
   const ticket = Number(form.get('ticket'))
-  const { user, payload, plan } = await ticketPlan(ticket)
-  const answers = parseDecisions(plan).flatMap((d) => {
-    const answer = form.get(d.id)
-    return typeof answer === 'string' && d.options.includes(answer) ? [{ id: d.id, title: d.title, answer }] : []
-  })
-  if (answers.length) await postDecisions(payload, user, { ticket, answers })
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(
+    (async () => {
+      const t = await loadTicket(payload, user, ticket)
+      if (String(t.workspace) !== String(workspaceId)) throw new NotInWorkspace()
+      const { ts, n } = await sourceOf(payload, t)
+      const plan = latestWith(await ts.listComments(n), PLAN_MARKER)?.body ?? ''
+      const answers = parseDecisions(plan).flatMap((d) => {
+        const answer = form.get(d.id)
+        return typeof answer === 'string' && d.options.includes(answer) ? [{ id: d.id, title: d.title, answer }] : []
+      })
+      if (answers.length) await postDecisions(payload, user, { ticket, workspaceId, answers })
+    })(),
+  )
   revalidatePath(`/tickets/${ticket}`)
 }

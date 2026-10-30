@@ -7,13 +7,38 @@ export type Decision = { id: string; title: string; critical: boolean; default: 
 type Commentish = { body: string }
 /** Newest comment starting with `marker`. */
 export const latestWith = <T extends Commentish>(comments: T[], marker: string): T | undefined => comments.findLast((c) => c.body.startsWith(marker))
+/** Oldest comment starting with `marker` (the worklog is one comment per ticket, first wins). */
+export const firstWith = <T extends Commentish>(comments: T[], marker: string): T | undefined => comments.find((c) => c.body.startsWith(marker))
 
 const section = (md: string, heading: RegExp): string =>
   new RegExp(`^##\\s+${heading.source}.*$([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'im').exec(md)?.[1] ?? ''
 
+/** Splits at `;` (when `semi`) and at `.` followed by whitespace, ignoring parentheses and code spans. */
+const split = (text: string, semi: boolean): string[] => {
+  const out: string[] = []
+  let cur = ''
+  let depth = 0
+  let code = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+    cur += c
+    if (c === '`') code = !code
+    else if (!code && c === '(') depth++
+    else if (!code && c === ')') depth = Math.max(0, depth - 1)
+    else if (!code && !depth && ((semi && c === ';') || (c === '.' && /\s/.test(text[i + 1] ?? ' ')))) {
+      out.push(cur)
+      cur = ''
+    }
+  }
+  out.push(cur)
+  return out.map((x) => x.replace(/[;.]$/, '').trim()).filter(Boolean)
+}
+
+const CRITICAL = /(?:,\s*|\s+[—–-]\s+)critical\s*\.?$|\s*\(critical\)\s*\.?$/i
+
 /**
- * Rows of the plan's `## Decisions` block: `- **D<n> <title>[, critical | — critical]**. Default: … Alternative: …`.
- * Options are the default followed by every Alternative sentence.
+ * Rows of the plan's `## Decisions` block: `- **D<n> <title>[, critical | — critical | - critical | (critical)]**. Default: … Alternative(s): …`.
+ * Without `Default:` the default is the first sentence. Alternatives split at `;` and sentence ends, one option each.
  */
 export const parseDecisions = (plan: string): Decision[] => {
   const bullets = section(plan, /Decisions\b/).split(/^(?=\s*[-*]\s+\*\*D\d+\b)/m)
@@ -22,12 +47,14 @@ export const parseDecisions = (plan: string): Decision[] => {
     if (!m) return []
     const [, id, head, rest] = m as unknown as [string, string, string, string]
     const body = rest.replace(/\s+/g, ' ').trim()
-    const alternatives = [...body.matchAll(/Alternatives?:\s*(.+?)(?:\.(?=\s|$)|$)/g)].map((a) => a[1]!.trim())
-    const def = /^(?:Default:\s*)?(.+?)(?=\s*Alternatives?:|$)/.exec(body)?.[1]?.trim().replace(/\.$/, '') ?? ''
+    const alternatives = [...body.matchAll(/Alternatives?:\s*(.+?)(?=\s*Alternatives?:|$)/g)].flatMap((a) => split(a[1]!, true))
+    const lead = /^(.*?)(?=\s*Alternatives?:|$)/.exec(body)![1]!.replace(/^Default:\s*/, '')
+    const def = (split(lead, false)[0] ?? '').trim()
+    const title = head.replace(/\.$/, '')
     return [{
       id,
-      title: head.replace(/\s*(?:[,—–-]\s*critical|\(critical\))\s*$/i, '').trim(),
-      critical: /critical/i.test(head),
+      title: title.replace(CRITICAL, '').trim(),
+      critical: CRITICAL.test(title),
       default: def,
       options: [def, ...alternatives],
     }]
@@ -49,8 +76,16 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
 }
 
 /** Unanswered critical rows of the latest plan Comment against the latest decisions Comment. */
-export const unansweredCriticalCount = (comments: Commentish[]): number => {
+export const openCritical = (comments: Commentish[]): Decision[] => {
   const plan = latestWith(comments, PLAN_MARKER)
-  if (!plan) return 0
-  return unansweredCritical(parseDecisions(plan.body), parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? '')).length
+  if (!plan) return []
+  return unansweredCritical(parseDecisions(plan.body), parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? ''))
 }
+
+export const unansweredCriticalCount = (comments: Commentish[]): number => openCritical(comments).length
+
+/** Plan markdown without its `## Decisions` block (the sheet shows it). */
+export const withoutDecisions = (plan: string): string => plan.replace(/^##\s+Decisions\b.*$[\s\S]*?(?=^##\s|(?![\s\S]))/im, '')
+
+/** Worklog markdown without its leading `## Worklog` heading (the page has one). */
+export const withoutWorklogHeading = (md: string): string => md.replace(/^\s*##\s+Worklog\s*\n/i, '')

@@ -18,7 +18,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
     redirect(`/?${next}`)
   }
   const view = sp.view as View
-  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all') : { tickets: [], runs: [], runsTotal: 0, products: [] }
+  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all') : { tickets: [], runs: [], runsTotal: 0, products: [], lookupsCapped: false }
   const product = Number(sp.product) || null
   const inProduct = data.tickets.filter((t) => !product || t.product?.id === product)
   const shown = sp.state === 'all' ? inProduct : inProduct.filter((t) => t.open)
@@ -35,7 +35,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
           action={{ href: '/settings/workspace', label: 'Open settings' }}
         />
       ) : view === 'list' ? (
-        <ListView tickets={shown} />
+        <ListView tickets={shown} capped={data.lookupsCapped} />
       ) : view === 'board' ? (
         <BoardView tickets={shown} />
       ) : (

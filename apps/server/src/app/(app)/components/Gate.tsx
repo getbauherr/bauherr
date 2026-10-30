@@ -1,4 +1,5 @@
 import { approvePlanAction } from '../lib/actions'
+import { SubmitButton } from './SubmitButton'
 
 type GateProps = {
   ticket: number
@@ -25,7 +26,7 @@ export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: Ga
       </dl>
       <form action={approvePlanAction}>
         <input type="hidden" name="ticket" value={ticket} />
-        <button type="submit" className="btn primary" disabled={!!blocked}>Approve plan</button>
+        <SubmitButton className="btn primary" disabled={!!blocked}>Approve plan</SubmitButton>
         {blocked && <span className="small muted">{blocked}</span>}
       </form>
     </section>

@@ -8,7 +8,7 @@ import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
 import { renderMarkdown } from '../../../lib/markdown'
 import { needsYou, stageOf } from '../../../lib/needs-you'
-import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, latestWith, parseAnswers, parseDecisions, planSummary, unansweredCritical } from '../../../lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import '../../../ticket.css'
@@ -49,7 +49,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     forgeError = true
   }
   const plan = latestWith(comments, PLAN_MARKER)?.body
-  const worklog = latestWith(comments, WORKLOG_MARKER)?.body
+  const worklog = firstWith(comments, WORKLOG_MARKER)?.body
   const decisions = plan ? parseDecisions(plan) : []
   const answers = parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
@@ -76,7 +76,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           plan={summary}
           budget={ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}
           model={tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}
-          sheet={decisions.length ? `${decisions.length - missing.length} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
+          sheet={decisions.length ? `${decisions.filter((d) => answers[d.id]).length} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
           blocked={missing.length ? `Answer ${missing.map((d) => d.id).join(', ')} first (critical).` : null}
         />
       )}
@@ -85,13 +85,13 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {plan && (
         <section className="stack" aria-labelledby="plan">
           <h2 className="heading" id="plan">Plan</h2>
-          <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(strip(plan, PLAN_MARKER)) }} />
+          <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER))) }} />
         </section>
       )}
       {worklog && (
         <section className="stack" aria-labelledby="worklog">
           <h2 className="heading" id="worklog">Worklog</h2>
-          <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(strip(worklog, WORKLOG_MARKER)) }} />
+          <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(withoutWorklogHeading(strip(worklog, WORKLOG_MARKER))) }} />
         </section>
       )}
 

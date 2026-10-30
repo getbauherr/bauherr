@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { STAGES } from '../lib/needs-you'
-import type { RunRow, TicketRow } from '../lib/overview'
+import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
 import { StatusChip } from './StatusChip'
 
@@ -24,11 +24,12 @@ const Row = ({ t }: { t: TicketRow }) => (
 
 const stageIndex = (t: TicketRow) => STAGES.indexOf(t.stage)
 
-export function ListView({ tickets }: { tickets: TicketRow[] }) {
+export function ListView({ tickets, capped }: { tickets: TicketRow[]; capped: boolean }) {
   const needs = tickets.filter((t) => t.needsYou).sort((a, b) => stageIndex(a) - stageIndex(b))
   const sections: [string, TicketRow[]][] = [['Needs you', needs], ...STAGES.map((s): [string, TicketRow[]] => [s, tickets.filter((t) => t.stage === s && !t.needsYou)])]
   return (
     <>
+      {capped && <p className="muted small">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
       {sections.filter(([, rows]) => rows.length).map(([name, rows]) => (
         <section key={name} className="stack">
           <h2 className="label">{name} <span className="muted">{rows.length}</span></h2>

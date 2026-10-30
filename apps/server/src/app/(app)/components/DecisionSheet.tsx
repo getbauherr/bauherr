@@ -1,5 +1,6 @@
 import { answerDecisions } from '../lib/actions'
 import type { Decision } from '../lib/plan'
+import { SubmitButton } from './SubmitButton'
 
 export function DecisionSheet({ ticket, decisions, answers }: { ticket: number; decisions: Decision[]; answers: Record<string, string> }) {
   return (
@@ -21,9 +22,9 @@ export function DecisionSheet({ ticket, decisions, answers }: { ticket: number; 
                       <legend className="body">{d.title}</legend>
                       {d.critical && <span className="label crit">★ critical</span>}
                       {d.options.map((o) => (
-                        <label key={o} className="opt small">
+                        <label key={o} className="opt small" data-answered={answers[d.id] === o || undefined}>
                           <input type="radio" name={d.id} value={o} defaultChecked={answers[d.id] === o} />
-                          {o}
+                          {d.options.length > 1 ? o : 'Accept the default'}
                         </label>
                       ))}
                     </fieldset>
@@ -35,7 +36,7 @@ export function DecisionSheet({ ticket, decisions, answers }: { ticket: number; 
           </table>
           <footer>
             <span className="small muted">Unanswered rows take their default.</span>
-            <button type="submit" className="btn">Save answers</button>
+            <SubmitButton>Save answers</SubmitButton>
           </footer>
         </form>
       </div>
