@@ -1,10 +1,8 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
-import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { connectionInput } from '../jobs'
-import { githubFor } from './adapters'
+import { approvePlan, readWorklog, requestReview, scoped as scopedUser, sourceOf, updateWorklog } from './actions'
 import { goalOf } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -23,14 +21,13 @@ export interface Tool {
 }
 
 const PACK = () => resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'))
-const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
 const now = () => new Date().toISOString()
 
 /** Workspace ids of a Bauherr's tenants. */
 export const tenantsOf = (user: Doc): (number | string)[] => ((user.tenants as { tenant: unknown }[]) ?? []).map((t) => id(t.tenant))
 
-const scoped = (c: Ctx) => ({ user: c.user as never, overrideAccess: false, depth: 0 }) as const
+const scoped = (c: Ctx) => scopedUser(c.user)
 
 const getRun = async (c: Ctx, runId: number | string, own = false): Promise<Doc> => {
   const run = (await c.payload.findByID({ collection: 'runs', id: runId, ...scoped(c) })) as Doc
@@ -47,18 +44,6 @@ const getTicket = async (c: Ctx, ticketId: number | string): Promise<Doc> => {
   c.workspace = id(t.workspace)
   return t
 }
-
-/** Ticket source for a Ticket's Product, authenticated with the Workspace's github Connection. */
-const sourceOf = async (c: Ctx, ticket: Doc) => {
-  const src = (
-    await c.payload.find({ collection: 'ticket_sources', where: { product: { equals: id(ticket.product) } }, limit: 1, depth: 0, overrideAccess: true })
-  ).docs[0]
-  if (!src) throw new Error('no ticket source for this Product')
-  return { ts: githubFor(await connectionInput(c.payload, src.connection)).tickets(src.repo), n: String(ticket.number) }
-}
-
-const worklogComment = async (ts: Awaited<ReturnType<typeof sourceOf>>['ts'], n: string) =>
-  (await ts.listComments(n)).find((m) => m.body.startsWith(WORKLOG_MARKER))
 
 const walk = (dir: string): string[] =>
   (readdirSync(dir, { recursive: true, withFileTypes: true }) as { name: string; parentPath: string; isFile(): boolean }[])
@@ -119,7 +104,7 @@ export const tools: Tool[] = [
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
       const t = await getTicket(c, a.ticket)
-      const { ts, n } = await sourceOf(c, t)
+      const { ts, n } = await sourceOf(c.payload, t)
       const live = await ts.get(n)
       return { ...t, body: live.body, goal: goalOf(live.body) }
     },
@@ -132,7 +117,7 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId)
       if (run.mode !== 'session' || run.status !== 'awaiting_session') throw new Error(`run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`)
       const ticket = await getTicket(c, id(run.ticket))
-      const { ts, n } = await sourceOf(c, ticket)
+      const { ts, n } = await sourceOf(c.payload, ticket)
       const body = (await ts.get(n)).body
       const won = await c.payload.update({
         collection: 'runs',
@@ -168,8 +153,8 @@ export const tools: Tool[] = [
     description: 'Markdown of the Ticket\'s factory worklog comment (empty if none).',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
-      const { ts, n } = await sourceOf(c, await getTicket(c, a.ticket))
-      return (await worklogComment(ts, n))?.body.slice(WORKLOG_MARKER.length).trimStart() ?? ''
+      await getTicket(c, a.ticket)
+      return readWorklog(c.payload, c.user, a)
     },
   },
   {
@@ -177,11 +162,8 @@ export const tools: Tool[] = [
     description: 'Create or replace the Ticket\'s worklog comment (one per Ticket, marked <!-- bauherr:worklog -->).',
     inputSchema: obj({ ...ticketId, markdown: str('Full worklog, see the worklog skill template') }, ['ticket', 'markdown']),
     async run(a, c) {
-      const { ts, n } = await sourceOf(c, await getTicket(c, a.ticket))
-      const body = `${WORKLOG_MARKER}\n${a.markdown}`
-      const existing = await worklogComment(ts, n)
-      const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
-      return { commentId: saved.id, created: !existing }
+      await getTicket(c, a.ticket)
+      return updateWorklog(c.payload, c.user, a)
     },
   },
   {
@@ -215,11 +197,7 @@ export const tools: Tool[] = [
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
       const run = await getRun(c, a.runId, true)
-      const ticket = await getTicket(c, id(run.ticket))
-      const { ts, n } = await sourceOf(c, ticket)
-      await setStage(ts, n, 'review')
-      await c.payload.update({ collection: 'tickets', id: ticket.id, data: { stage: 'review' }, overrideAccess: true })
-      return { stage: 'review' }
+      return requestReview(c.payload, c.user, { ticket: id(run.ticket) })
     },
   },
   {
@@ -240,7 +218,7 @@ export const tools: Tool[] = [
       if (a.status !== 'succeeded' && !a.reason) throw new Error('reason is required unless succeeded')
       const run = await getRun(c, a.runId, true)
       const ticket = await getTicket(c, id(run.ticket))
-      const { ts, n } = await sourceOf(c, ticket)
+      const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) await ts.addLink(n, a.prUrl)
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
       await c.payload.update({
@@ -261,7 +239,7 @@ export const tools: Tool[] = [
       const mine = run.status === 'running' && id(run.sessionOwner) === c.user.id
       if (run.mode !== 'session' || !(run.status === 'awaiting_session' || mine)) throw new Error(`run ${run.id} is not releasable`)
       if (mine) {
-        const { ts, n } = await sourceOf(c, await getTicket(c, id(run.ticket)))
+        const { ts, n } = await sourceOf(c.payload, await getTicket(c, id(run.ticket)))
         await ts.release(n)
       }
       const auto = a.takeover === 'autonomous'
@@ -281,15 +259,8 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...ticketId, gate: { enum: ['plan'] } }, ['ticket', 'gate']),
     async run(a, c) {
       if (a.gate !== 'plan') throw new Error("gate must be 'plan'")
-      const ticket = await getTicket(c, a.ticket)
-      const { ts, n } = await sourceOf(c, ticket)
-      await ts.addLabels(n, [APPROVED_PLAN])
-      await c.payload.create({
-        collection: 'human_touches',
-        data: { kind: 'approve:plan', ticket: ticket.id, workspace: id(ticket.workspace), actor: c.user.email, at: now() },
-        overrideAccess: true,
-      })
-      return { approved: APPROVED_PLAN }
+      await getTicket(c, a.ticket)
+      return approvePlan(c.payload, c.user, a)
     },
   },
   {

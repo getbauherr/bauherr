@@ -14,6 +14,7 @@ h1,h2,p{margin:0;text-wrap:balance}
 .btn:disabled{background:var(--surface-200);color:var(--ink-muted);cursor:not-allowed}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn.primary:hover{background-color:var(--accent-strong)}
+.btn.primary:disabled{background:var(--surface-200);border-color:var(--hairline);color:var(--ink-muted)}
 .btn.danger{color:var(--danger)}
 
 .chip{display:inline-flex;align-items:center;gap:var(--space-1);padding:var(--space-1) var(--space-2);border:1px solid currentColor;border-radius:var(--radius-sm);background:var(--surface-100);transition:color var(--duration-state) var(--ease-out),border-color var(--duration-state) var(--ease-out)}

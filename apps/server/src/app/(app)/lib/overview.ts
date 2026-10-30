@@ -1,4 +1,6 @@
 import { cache } from 'react'
+import { ticketsOf } from '../../../lib/actions'
+import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
 
@@ -26,10 +28,16 @@ export type TicketRow = {
 }
 
 export const RUNS_LIMIT = 100
+/** Plan comments are fetched from the forge only for tickets awaiting plan approval, at most this many per load. */
+export const DECISIONS_LOOKUPS = 20
 const CLOSED_LIMIT = 200
+const FORGE_TIMEOUT_MS = 3000
+
+const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
 /** Open tickets (plus the newest closed ones when `all`), their latest Runs, and the newest Runs of the Workspace. */
-export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[] }> => {
+export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; lookupsCapped: boolean }> => {
   const payload = await payloadClient()
   const q = { depth: 0, overrideAccess: true } as const
   const ws = { workspace: { equals: workspace } }
@@ -69,5 +77,19 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [] }, run) : null,
     }
   })
-  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows }
+  const waiting = rows.filter((r) => r.needsYou === 'Approve plan')
+  const sources = new Map<number, ReturnType<typeof ticketsOf>>()
+  await Promise.all(
+    waiting.slice(0, DECISIONS_LOOKUPS).map(async (row) => {
+      try {
+        const doc = ticketDocs.find((t) => t.id === row.id)!
+        if (!sources.has(doc.product)) sources.set(doc.product, ticketsOf(payload, doc.product))
+        const ts = await sources.get(doc.product)!
+        if (unansweredCriticalCount(await within(ts.listComments(String(doc.number)), FORGE_TIMEOUT_MS))) row.needsYou = 'Answer decisions'
+      } catch {
+        // forge unreachable or slow: keep "Approve plan"
+      }
+    }),
+  )
+  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, lookupsCapped: waiting.length > DECISIONS_LOOKUPS }
 })

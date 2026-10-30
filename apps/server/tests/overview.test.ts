@@ -11,6 +11,10 @@ describe('needsYou', () => {
     expect(needsYou(t('plan'), r('plan', 'running'))).toBeNull()
     expect(needsYou(t('plan'), null)).toBeNull()
   })
+  it('asks for the decisions first while critical rows are unanswered', () => {
+    expect(needsYou(t('plan'), r('plan', 'succeeded'), 1)).toBe('Answer decisions')
+    expect(needsYou(t('plan', ['bauherr:approved:plan']), r('plan', 'succeeded'), 1)).toBeNull()
+  })
   it('treats an in-progress plan Run as Plan in progress, not needs-you', () => {
     for (const status of ['running', 'queued', 'awaiting_session']) expect(needsYou(t('plan'), r('plan', status))).toBeNull()
   })
