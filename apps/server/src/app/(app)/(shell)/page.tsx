@@ -1,6 +1,14 @@
 import { EmptyState } from '../components/EmptyState'
 import { payloadClient, currentWorkspace } from '../lib/session'
 
+const isWebUrl = (url?: string | null): url is string => {
+  try {
+    return !!url && ['https:', 'http:'].includes(new URL(url).protocol)
+  } catch {
+    return false
+  }
+}
+
 export const dynamic = 'force-dynamic'
 
 export default async function Tickets() {
@@ -22,7 +30,7 @@ export default async function Tickets() {
         <ul className="list">
           {docs.map((t) => (
             <li key={t.id}>
-              <a className="mono link" href={t.url ?? undefined}>#{t.number}</a>
+              {isWebUrl(t.url) ? <a className="mono link" href={t.url}>#{t.number}</a> : <span className="mono">#{t.number}</span>}
               <span className="grow">{t.title}</span>
               <span className="label muted">{t.stage ?? 'triage'}</span>
             </li>

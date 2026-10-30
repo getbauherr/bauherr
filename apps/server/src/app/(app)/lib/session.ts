@@ -5,7 +5,7 @@ import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
 
 export type Workspace = { id: number; name: string; slug: string }
-export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; tenants?: { tenant: Workspace | number }[] }
+export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; tenants?: { tenant: Workspace | number | null }[] }
 
 export const WS_COOKIE = 'bauherr-ws'
 
@@ -21,7 +21,7 @@ export const requireBauherr = async (): Promise<Bauherr> => (await getBauherr())
 /** Admin: all Workspaces; otherwise those in the Bauherr's `tenants`. */
 export const workspacesOf = cache(async (user: Bauherr): Promise<Workspace[]> => {
   const payload = await payloadClient()
-  const ids = (user.tenants ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant))
+  const ids = (user.tenants ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant?.id : t.tenant)).filter((id) => id != null)
   if (user.role !== 'admin' && !ids.length) return []
   const { docs } = await payload.find({
     collection: 'workspaces',

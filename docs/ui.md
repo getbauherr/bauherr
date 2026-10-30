@@ -6,7 +6,7 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 
 | Path | Page |
 |---|---|
-| `/login` | email + password (Payload `bauherren` login) |
+| `/login` | email + password (local `payload.login`, not the REST endpoint) |
 | `/` | open Tickets of the selected Workspace |
 | `/runs` | Runs of the selected Workspace |
 
@@ -24,10 +24,10 @@ Pages under `(shell)/` get the top bar and require a session; unauthenticated re
 
 Create `(app)/(shell)/<path>/page.tsx` as a server component, call `currentWorkspace()`, build from `components/` and the token variables. Add a nav entry in `components/Nav.tsx` only for daily-business pages; settings are reached via the Workspace switcher and user menu.
 
-## OIDC slot
-
-`login/page.tsx` holds a marked placeholder guarded by `process.env.OIDC_ISSUER` where slice 5 (#90) renders "Sign in with <provider>". Nothing renders today.
-
 ## E2E
 
 `pnpm e2e` (Playwright, from `apps/server`) runs against `BASE_URL` (default `http://localhost:3000`) with `E2E_EMAIL` and `E2E_PASSWORD_FILE`. Needs `npx playwright install chromium` and the system libraries it lists.
+
+## Smoke test
+
+`pnpm --filter server seed:e2e` seeds the e2e DB (admin, Workspace, one ticket). `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`.

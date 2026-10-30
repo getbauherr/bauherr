@@ -31,7 +31,7 @@ export function ThemeToggle() {
   }
   const { Icon } = modes.find((m) => m.id === mode) ?? modes[0]
   return (
-    <Popover label={<><Icon /><span className="sr">Theme</span></>}>
+    <Popover label={<><Icon /><span className="sr">Theme: </span>{modes.find((m) => m.id === mode)?.label}</>}>
         {modes.map((m) => (
           <button key={m.id} className="row" aria-pressed={mode === m.id} onClick={() => pick(m.id)}>
             <m.Icon />

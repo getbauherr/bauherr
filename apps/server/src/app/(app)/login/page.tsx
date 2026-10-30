@@ -27,7 +27,6 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         <button className="btn primary" style={{ justifyContent: 'center' }}>Sign in</button>
       </form>
       {/* Slice 5 (#90): "Sign in with <provider>" button, rendered only when OIDC is configured. */}
-      {process.env.OIDC_ISSUER && null}
     </main>
   )
 }

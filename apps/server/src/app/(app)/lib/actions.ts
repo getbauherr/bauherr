@@ -1,5 +1,5 @@
 'use server'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { generatePayloadCookie } from 'payload'
 import { payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
@@ -12,7 +12,9 @@ export async function login(form: FormData) {
       collection: 'bauherren',
       data: { email: String(form.get('email')), password: String(form.get('password')) },
     }))
-  } catch {}
+  } catch (e) {
+    if ((e as { status?: number }).status !== 401) throw e
+  }
   if (!token) redirect('/login?error=1')
   const cookie = generatePayloadCookie({ collectionAuthConfig: payload.collections.bauherren.config.auth, cookiePrefix: payload.config.cookiePrefix, token, returnCookieAsObject: true })
   ;(await cookies()).set(cookie.name, cookie.value ?? token, { httpOnly: true, path: '/', sameSite: 'lax', secure: cookie.secure, expires: cookie.expires ? new Date(cookie.expires) : undefined })
@@ -20,7 +22,10 @@ export async function login(form: FormData) {
 }
 
 export async function logout() {
-  ;(await cookies()).delete('payload-token')
+  const h = await headers()
+  const payload = await payloadClient()
+  await fetch(`${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}/api/bauherren/logout`, { method: 'POST', headers: { cookie: h.get('cookie') ?? '' } })
+  ;(await cookies()).delete(`${payload.config.cookiePrefix}-token`)
   redirect('/login')
 }
 
