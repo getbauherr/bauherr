@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export default async function Tickets({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { view, ...sp } = await searchParams
   const rest = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][])
-  if (view === 'runs') redirect(`/runs${rest.has('product') ? `?product=${rest.get('product')}` : ''}`)
+  if (view === 'runs') redirect(`/runs${rest.has('product') ? `?product=${encodeURIComponent(rest.get('product')!)}` : ''}`)
   if (view) redirect(rest.size ? `/?${rest}` : '/')
   const { workspace } = await currentWorkspace()
   const data = workspace ? await loadOverview(workspace.id, sp.state === 'all') : { tickets: [], products: [], lookupsCapped: false }
