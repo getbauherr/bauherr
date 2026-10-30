@@ -27,6 +27,18 @@ Tabs **List**, **Board**, **Runs** on `/`, plus a Product filter and an Open/All
 
 `currentWorkspace()` (`lib/session.ts`) returns `{ user, workspace, workspaces }`. Admins see all Workspaces, others those in `tenants`. The choice lives in the cookie `bauherr-ws` (slug); missing or invalid falls back to the first.
 
+## Settings
+
+Routes `/settings/workspace`, `/products`, `/connections`, `/bauherren` (`/settings` redirects to the first), with a left sub-nav on desktop and tabs on phones. Entry points only: Workspace switcher "Workspace settings" and user menu "Bauherren" (D9).
+
+- **Who edits what** (D8): an Admin edits everything. A Bauherr sees the pages read-only, except `budgetUnit`, the budget amount and `modelByTier` of their own Workspaces on `/settings/workspace`. Every server action in `(shell)/settings/actions.ts` re-checks the role; the UI only hides controls.
+- **Writes** use the Payload local API with the current user as `user` and `overrideAccess: false` (not `fetch` to `/api`): same collection access, hooks and validation, no cookie/Origin round-trip. Reads in `lib/settings.ts` use `overrideAccess: true`, filtered by the current Workspace, and never select `secret` or `gatewayKey`.
+- **Validation errors**: `run()` in `lib/settings.ts` turns Payload's `ValidationError` (`errors[].path/message`, e.g. `awsRegion: required for bedrock`) into `FormState.fields`; `Field` renders the message under the input with the same `name`. Other errors show as one line next to the button; success shows "Saved". Forms submit with `startTransition` instead of a form action so a failed save keeps the typed values.
+- **Workspace**: budget amount is one input mapped to `budgetUsd30d` or `budgetTokens30d` by the unit. Spend shows when `GATEWAY_ADMIN_URL` and `GATEWAY_DATABASE_URL` are set. "Rotate key" needs a second click ("Confirm rotate"); with the gateway off it is replaced by a note.
+- **Products**: delete is offered only when no repository, ticket source or ticket references the Product (the reason is shown otherwise).
+- **Connections**: preset fields come from `PRESETS[preset].required`; the secret is write-only (empty = unchanged). "Verify again" re-saves unchanged, which runs the `afterChange` verify.
+- **Bauherren**: a new Bauherr gets a server-generated temporary password, shown once in the form result and never logged. `oidcSubject` links an existing Bauherr to SSO (`<issuer>|<user ID>`, see `docs/auth.md`). You cannot remove yourself.
+
 ## Theming
 
 `pnpm --filter server tokens` generates `(app)/tokens.css` from `docs/design/tokens.json` (also run by `predev`/`prebuild`; commit the result). Light and dark follow `prefers-color-scheme`; the top-bar toggle (System / Light / Dark) sets `data-theme` and stores it in `localStorage` (`bauherr-theme`). Shared classes are in `app.css`.
