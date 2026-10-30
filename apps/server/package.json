@@ -3,18 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm tokens",
     "dev": "next dev --port 3000",
+    "prebuild": "pnpm tokens",
     "build": "next build",
     "start": "next start",
     "jobs": "payload jobs:run --queue runs --cron \"*/5 * * * * *\"",
     "jobs:poll": "payload jobs:run --queue poll --handle-schedules --cron \"*/5 * * * * *\"",
     "importmap": "payload generate:importmap",
+    "seed:e2e": "tsx scripts/seed-e2e.ts",
     "seed": "tsx scripts/seed-workspace0.ts",
     "session:activate": "tsx scripts/session-activate.ts activate",
     "session:deactivate": "tsx scripts/session-activate.ts deactivate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts"
+    "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts",
+    "tokens": "tsx scripts/tokens.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@bauherr/adapters": "workspace:*",
