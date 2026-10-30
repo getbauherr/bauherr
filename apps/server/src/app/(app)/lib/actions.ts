@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, acceptStaging, approvePlan, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { VIEWS, type View } from './needs-you'
@@ -120,4 +120,13 @@ export async function rerunStage(runId: number) {
   const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
   if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
   redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
+}
+
+/** Force-releases the lease of a running session Run (Admin or Workspace member); the successor Run is claimable at once. */
+export async function releaseRunLock(runId: number) {
+  const user = await requireBauherr()
+  await releaseLock(await payloadClient(), user, { runId }).catch((e) => {
+    if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
+  })
+  redirect(`/runs/${runId}`)
 }

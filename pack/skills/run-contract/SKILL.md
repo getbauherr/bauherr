@@ -12,6 +12,15 @@ A Run works one Ticket toward its Goal and ends only with an MR or a declared bl
 2. Read the worklog (`.bauherr/worklog.md`) before any other action. Follow the `worklog` skill.
 3. If a statement is not checkable ("works well"), do not guess: declare a blocker asking for a checkable rewrite.
 
+## Lease
+One session coordinates a Ticket at a time. `claim_run` returns a `leaseToken` (shown once); every call on the Run (`heartbeat`, `report_step`, `attach_evidence`, `request_review`, `run_checks`, `finish_run`, `release_run`, and `update_worklog` while the Run is running) must pass it. Keep it out of the worklog, comments and commits.
+- Pick only Tickets with `claimable: true` in `list_frontier`. Never touch the branch or worktree of a Ticket with `leasedBy`.
+- Heartbeat at least every 10 minutes; the lease expires 30 minutes after the last heartbeat and the Run is `abandoned` (a fresh Run takes over from the pushed branch and the worklog).
+- Subagents get the run id and the token from you and heartbeat on your behalf; they never claim.
+- Lock file: at claim, write `.bauherr/lock` in the worktree as `<runId> <first 8 chars of sha256(token)>`. If a lock with another run id or prefix exists, stop: another session owns the worktree.
+- A call that fails with `lease lost` or `leased by another session` means you are no longer the owner: stop at once, no push, no `finish_run`, tell the human.
+- To stop on purpose: write the handoff into the worklog, push the branch, then `release_run`.
+
 ## Evidence
 A statement is verified only by a recorded result, never by your assertion:
 - command run + exit code (tests, build, lint)

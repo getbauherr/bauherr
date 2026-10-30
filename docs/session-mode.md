@@ -34,12 +34,12 @@ Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEAD
 ## Loop
 
 1. `list_frontier` → pick a Ticket whose run is `awaiting_session`. `load_skill run-contract`, `read_worklog`.
-2. `claim_run {runId}` → returns Ticket, body and Goal statements. Status `running`, Ticket assigned.
+2. `claim_run {runId}` → returns `leaseToken` (once), Ticket, body and Goal statements. Status `running`, Ticket assigned. Pass `leaseToken` on every later call on the Run (see the Lease section of [run-contract](../pack/skills/run-contract/SKILL.md)).
 3. Work in a local worktree. Meanwhile: `update_worklog` (full markdown), `report_step`, `attach_evidence` (commands with exit codes, test summary), `heartbeat`.
 4. `request_review` (moves the Ticket to the review stage), then `finish_run {runId, status, reason?, prUrl?}`. `succeeded` needs the MR/stage output; otherwise `failed` or `needs_human` with a reason.
 5. Plan gate: `approve {ticket, gate:'plan'}` is the only way to approve through MCP.
 
-Switch away: `release_run {runId}` puts the Run back to `awaiting_session`; `release_run {runId, takeover:'autonomous'}` hands it to the Runner.
+Switch away: `release_run {runId, leaseToken}` puts the Run back to `awaiting_session`; `release_run {runId, leaseToken, takeover:'autonomous'}` hands it to the Runner.
 
 ## What the factory does meanwhile
 
@@ -47,4 +47,4 @@ Polls the Ticket source, keeps Ticket state and labels current, records every to
 
 ## Heartbeat rule
 
-Call `heartbeat` at least every 10 minutes; only that tool counts. A session Run without a heartbeat for 30 minutes (unclaimed `awaiting_session` Runs: since creation) goes `needs_human`.
+Call `heartbeat` at least every 10 minutes; only that tool counts. A running session Run without a heartbeat for 30 minutes is `abandoned` and a new claimable Run takes over (a second one in a row: `needs_human`); an `awaiting_session` Run nobody claims goes `needs_human` 30 minutes after it was created or released. Migration `20261030_170000_ticket_lease` moves session Runs that were `running` without a lease back to `awaiting_session` (claimable again). A person can release the lock on the Run page.

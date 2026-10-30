@@ -7,6 +7,7 @@ const chips: Record<string, [cls: string, text: string]> = {
   needs_human: ['needs', 'Needs human'],
   awaiting_session: ['needs', 'Needs human'],
   budget_exhausted: ['needs', 'Needs human'],
+  abandoned: ['cancelled', 'Abandoned'],
 }
 
 export function StatusChip({ status }: { status: string }) {

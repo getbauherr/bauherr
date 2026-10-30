@@ -1,3 +1,4 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
@@ -6,11 +7,11 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { watchRelease } from '../lib/release'
+import { forgeOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
-/** Session Runs without a heartbeat for this long go `needs_human`. */
+/** The lease of a session Run lasts this long after its last heartbeat. */
 export const SESSION_TIMEOUT_MS = 30 * 60_000
 const STAGE_LABEL = /^bauherr:stage:(.+)$/
 
@@ -53,26 +54,74 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   return { run, created: true }
 }
 
-/** Moves session Runs without a heartbeat for SESSION_TIMEOUT_MS to `needs_human`; returns how many. */
+/** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
+export const RELEASED_BY = 'released by '
+
+/**
+ * Ends a leased session Run as `abandoned` and queues a successor Run (same Ticket, stage, mode, Workspace; `previousRun` set), in one transaction.
+ * With `escalate`, a Run whose predecessor was also abandoned (not by a human release) goes `needs_human` instead (no successor, Ticket Comment).
+ * The end is a conditional UPDATE (running, and with `staleBefore` still stale), so a heartbeat or finish that won the race keeps the Run.
+ * Returns the new status, or null if the Run was not (stale and) running.
+ */
+export const abandonRun = async (
+  payload: Payload,
+  run: Record<string, any>,
+  o: { reason: string; escalate: boolean; staleBefore?: string },
+): Promise<'abandoned' | 'needs_human' | null> => {
+  const prev = o.escalate && run.previousRun ? await payload.findByID({ collection: 'runs', id: id(run.previousRun), depth: 0, overrideAccess: true }) : null
+  const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
+  const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
+  const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
+  const ended = await payload.db.drizzle.transaction(async (tx: any) => {
+    const done = await tx.execute(
+      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
+    )
+    if (!done.rows.length) return false
+    // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
+    if (status === 'abandoned') {
+      await tx.execute(
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id})`,
+      )
+    }
+    return true
+  })
+  if (!ended) return null
+  if (status === 'needs_human') {
+    try {
+      const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
+      await (await forgeOf(payload, id(ticket.product))).tickets.comment(String(ticket.number), 'Bauherr needs a human: session lease expired twice in a row')
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'needs_human comment failed')
+    }
+  }
+  return status
+}
+
+/** Session Runs: unclaimed ones not touched for SESSION_TIMEOUT_MS (`updatedAt`: set at creation and again on release or revert) go `needs_human`; running ones without a heartbeat for that long are abandoned (see `abandonRun`). Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
-  const stale = await payload.update({
+  const unclaimed = await payload.update({
     collection: 'runs',
-    where: {
-      and: [
-        { mode: { equals: 'session' } },
-        {
-          or: [
-            { and: [{ status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
-            { and: [{ status: { equals: 'awaiting_session' } }, { createdAt: { less_than: before } }] },
-          ],
-        },
-      ],
-    },
+    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
     data: { status: 'needs_human', error: 'session heartbeat timeout', finishedAt: new Date(now).toISOString() },
     overrideAccess: true,
   })
-  return stale.docs.length
+  const stale = await payload.find({
+    collection: 'runs',
+    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
+    pagination: false,
+    depth: 0,
+    overrideAccess: true,
+  })
+  let handled = unclaimed.docs.length
+  for (const run of stale.docs) {
+    try {
+      if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: true, staleBefore: before })) handled++
+    } catch (e) {
+      payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
+    }
+  }
+  return handled
 }
 
 export const expireSessions: TaskConfig<{ input: Record<string, never>; output: { expired: number } }> = {
