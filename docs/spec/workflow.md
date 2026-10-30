@@ -10,7 +10,7 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 
 | Stage | Agent work | Ends with |
 |---|---|---|
-| Triage | cheap triage Run per open, unassigned Ticket without a stage label ([triage](../../pack/skills/triage/SKILL.md)); a Ticket carrying one of the stage's `exclude_labels` in `pack/workflow.yaml` (`wayfinder:map\|grilling\|research`) is not triaged; no gate | `plan`: stage label plan; `refine`: label `bauherr:needs-refinement` + a decision-sheet Comment for the owner, the stage label plan once every critical question is answered; `skip`: reason Comment, no stage. Re-triaged only when the Ticket changes |
+| Triage | cheap triage Run per open, unassigned Ticket without a stage label ([triage](../../pack/skills/triage/SKILL.md)); a Ticket carrying one of the stage's `exclude_labels` in `pack/workflow.yaml` (`wayfinder:map\|grilling\|research`) is not triaged; no gate | `plan`: stage label plan; `refine`: label `bauherr:needs-refinement` + a decision-sheet Comment for the owner, the stage label plan once every critical question is answered; `skip`: reason Comment, no stage. Re-triaged only when the Ticket changes; at most 5 new Triage Runs per Workspace per poll, and after 3 failed, invalid or expired attempts one Comment stops it until the Ticket changes. Session Runs end with `submit_triage`; autonomous Runs write `.bauherr/triage.json` (no shell, writes only under `.bauherr/`) and the server applies it through the same validation |
 | Plan | plan Run | plan Comment + Goal in the worklog (+ Sub-tickets if large) |
 | Build | build Run | MR Linked on the Ticket |
 | Review | review Run: reviewer without memory of the change ([review](../../pack/skills/review/SKILL.md)) | review Comment on the MR; merge or back to Build |
@@ -64,7 +64,7 @@ A Run reads its Goal, reads the worklog first, ends only with an MR or a declare
 A human assignee or a manual Label move cancels the active Run. Nothing restarts until `bauherr:go` or unassign. The next Run reconciles the worklog ([worklog](../../pack/skills/worklog/SKILL.md)).
 
 ## 7. Human interaction
-One decision sheet per Ticket per gate, with recommended defaults and a `critical` flag; at most one human touch. Protocol: [decision-sheet](../../pack/skills/decision-sheet/SKILL.md).
+One decision sheet per Ticket per gate (the newest plan or triage Comment; only answers posted after it count, so a new sheet starts unanswered), with recommended defaults and a `critical` flag; at most one human touch. Protocol: [decision-sheet](../../pack/skills/decision-sheet/SKILL.md).
 
 ## 8. Team patterns allowed in v0.1
 One agent per Run by default. Patterns only via stage config with a declared problem. Policy: [team-policy](../../pack/rules/team-policy.md).

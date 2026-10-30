@@ -21,8 +21,15 @@ const STAGE_LABEL = /^bauherr:stage:(.+)$/
 export const stageOf = (labels: string[]): string | null =>
   labels.map((l) => STAGE_LABEL.exec(l)?.[1]).find(Boolean) ?? null
 
+/** Decision D2. Fallback only: pack/workflow.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
+const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']
+export const excludedLabels = (stages: { name: string; exclude_labels?: string[] }[] = packed()): string[] => {
+  const list = stages.find((s) => s.name === 'triage')?.exclude_labels
+  return list?.length ? list : D2_EXCLUDED
+}
+
 /** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/workflow.yaml. */
-export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = packed().find((s) => s.name === 'triage')?.exclude_labels ?? []): boolean =>
+export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = excludedLabels()): boolean =>
   t.state === 'open' && !t.assignee && !stageOf(t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
@@ -63,25 +70,55 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
 
 /** New Triage Runs per Workspace per poll; the rest wait for the next poll. */
 export const TRIAGE_PER_POLL = 5
+/** Triage attempts (failed, invalid or expired included) per Ticket state before Bauherr stops and says so. */
+export const MAX_TRIAGE_ATTEMPTS = 3
 
 /** Forgets what Triage covered, so the next poll triages the Ticket again. */
 export const untriage = (payload: Payload, ticket: number | string) => payload.update({ collection: 'tickets', id: ticket, data: { triagedAt: null }, overrideAccess: true })
 
+/** After MAX_TRIAGE_ATTEMPTS: one Comment, then the Ticket counts as covered until it changes (the Comment's own `updatedAt` is recorded). */
+const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
+  try {
+    const { tickets: ts } = await forgeOf(payload, id(t.product))
+    const n = String(t.number)
+    await ts.comment(n, `Bauherr: triage failed ${MAX_TRIAGE_ATTEMPTS} times; label the Ticket or edit it to retry`)
+    const at = (await ts.get(n)).updatedAt
+    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at, sourceUpdatedAt: at }, overrideAccess: true })
+  } catch (e) {
+    payload.logger.warn({ err: e, ticket: t.id }, 'triage give-up comment failed')
+  }
+}
+
 /**
  * Starts a Triage Run (at most TRIAGE_PER_POLL per Workspace) for each open Ticket that is triageable and not yet covered at its current `sourceUpdatedAt`;
- * a skipped or held Ticket is triaged again only when it changes. Works from the stored Tickets, so a capped or untriaged Ticket is picked up by the next poll.
+ * a skipped or held Ticket is triaged again only when it changes. Candidates are ordered by last attempt (never tried first), so a backlog rotates;
+ * each new Run counts as an attempt, reset when the Ticket changes. Works from the stored Tickets, so a capped or untriaged Ticket is picked up by the next poll.
  */
+/** Returns how many Tickets it acted on (Runs started plus Tickets given up on). */
 export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
+  const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
+  const candidates = (open.docs as Record<string, any>[])
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
-  for (const t of open.docs as Record<string, any>[]) {
+  for (const t of candidates) {
     const ws = String(id(t.workspace))
-    const covered = t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()
-    if (covered || (per.get(ws) ?? 0) >= TRIAGE_PER_POLL || !triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee })) continue
+    if ((per.get(ws) ?? 0) >= TRIAGE_PER_POLL) continue
     per.set(ws, (per.get(ws) ?? 0) + 1)
-    await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'triage')
-    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: t.sourceUpdatedAt ?? new Date().toISOString() }, overrideAccess: true })
+    if ((t.triageAttempts ?? 0) >= MAX_TRIAGE_ATTEMPTS) {
+      await giveUpTriage(payload, t)
+      started++
+      continue
+    }
+    const { created } = await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'triage')
+    await payload.update({
+      collection: 'tickets',
+      id: t.id,
+      data: { triagedAt: t.sourceUpdatedAt ?? new Date().toISOString(), ...(created && { triageAttempts: (t.triageAttempts ?? 0) + 1, triageAttemptAt: new Date().toISOString() }) },
+      overrideAccess: true,
+    })
     started++
   }
   return started
@@ -235,6 +272,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             labels: t.labels,
             assignee: t.assignee,
             sourceUpdatedAt: t.updatedAt,
+            triageAttempts: 0,
             stage,
             ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
