@@ -39,6 +39,8 @@ beforeAll(async () => {
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
   member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
+  await poll()
+  await drain() // the fake forge's seeded Tickets are triaged first
 })
 
 afterAll(async () => {
@@ -46,6 +48,10 @@ afterAll(async () => {
 })
 
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
+/** Sweeps until every triageable Ticket has a Run (each sweep starts at most 5 per Workspace). */
+const drain = async () => {
+  while (await jobs.triageSweep(payload)) {}
+}
 const create = async (title: string, labels: string[] = []) => {
   const issue = await fake.tickets(repo).create({ title, labels })
   await poll()
@@ -152,4 +158,34 @@ it('a Ticket that gained a stage label meanwhile is left alone', async () => {
   await fake.tickets(repo).addLabels(t.n, ['bauherr:stage:build'])
   expect(await call(member, 'submit_triage', { ...r, ...refine })).toEqual({ outcome: 'noop' })
   expect(await labelsOf(t.n)).not.toContain('bauherr:needs-refinement')
+})
+
+it('an unclaimed triage Run expires to abandoned (no needs-you) and the next poll triages again', async () => {
+  const t = await create('nobody home')
+  const [run] = await triageRuns(t.id)
+  expect(await jobs.expireStaleSessions(payload, Date.now() + 31 * 60_000)).toBeGreaterThan(0)
+  expect(await payload.findByID({ collection: 'runs', id: run!.id, ...o })).toMatchObject({ status: 'abandoned' })
+  expect(needsYou({ stage: null, labels: [] }, { stage: 'triage', status: 'needs_human' })).toBeNull()
+  expect(needsYou({ stage: null, labels: [] }, { stage: 'triage', status: 'failed' })).toBeNull()
+  await drain()
+  expect(await triageRuns(t.id)).toHaveLength(2)
+})
+
+it('starts at most 5 triage Runs per Workspace per poll; the rest follow on the next poll', async () => {
+  await drain() // the expiry above re-queued every unclaimed Run
+  const issues: { number: number }[] = []
+  for (let i = 0; i < 7; i++) issues.push(await fake.tickets(repo).create({ title: `burst ${i}` }))
+  const ids = async () => (await payload.find({ collection: 'tickets', where: { number: { in: issues.map((x) => x.number) } }, pagination: false, depth: 0, ...o })).docs.map((d) => d.id as number)
+  const count = async () => (await payload.count({ collection: 'runs', where: { and: [{ stage: { equals: 'triage' } }, { ticket: { in: await ids() } }] }, ...o })).totalDocs
+  await poll()
+  expect(await count()).toBe(5)
+  await poll()
+  expect(await count()).toBe(7)
+})
+
+it('answers count only for the sheet they were posted after', () => {
+  const sheet = (m: string) => ({ body: `${m}\n## Decisions\n- **D1 Format, critical**. Default: CSV. Alternatives: XLSX.` })
+  const answer = { body: '<!-- bauherr:decisions -->\nD1: CSV' }
+  expect(openCritical([sheet('<!-- bauherr:triage -->'), answer])).toEqual([])
+  expect(openCritical([sheet('<!-- bauherr:triage -->'), answer, sheet('<!-- bauherr:plan -->')]).map((d) => d.id)).toEqual(['D1'])
 })

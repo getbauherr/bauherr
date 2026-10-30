@@ -58,10 +58,10 @@ const build = (): FakeBackend => {
     void ts.comment(String(n), WORKLOG)
     void ts.comment(String(n), summary(n))
   }
-  // #8 and #9 are placeholders; #10 is held by Triage with its questions.
-  for (const n of [8, 9]) void ts.create({ title: `Placeholder ${n}` })
+  // #8-#10 are placeholders; #11 is held by Triage with its questions.
+  for (const n of [8, 9, 10]) void ts.create({ title: `Placeholder ${n}` })
   void ts.create({ title: 'Clarify the export scope', labels: ['bauherr:needs-refinement'] })
-  void ts.comment('10', QUESTIONS)
+  void ts.comment('11', QUESTIONS)
   return fake
 }
 

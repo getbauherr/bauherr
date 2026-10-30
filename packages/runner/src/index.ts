@@ -11,7 +11,7 @@ import type { RunCtx, RunResult } from './types.js';
 export type * from './types.js';
 export { startProxy } from './proxy.js';
 export { checkGoal } from './goal.js';
-export { materialise } from './materialise.js';
+export { materialise, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
 

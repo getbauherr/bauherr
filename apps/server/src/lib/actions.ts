@@ -1,7 +1,7 @@
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
 import { NEEDS_REFINEMENT } from '../app/(app)/lib/needs-you'
 import { ACTIVE, RELEASED_BY, abandonRun, stageOf, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
@@ -161,7 +161,7 @@ export const postDecisions = async (
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   return exclusive(String(t.id), async () => {
     const src = await sourceOf(payload, t)
-    const existing = latestWith(await src.ts.listComments(src.n), DECISIONS_MARKER)
+    const existing = answersOf(await src.ts.listComments(src.n))
     const previous = existing ? parseAnswers(existing.body) : {}
     const changed = a.answers.filter((x) => previous[x.id] !== x.answer)
     const merged = { ...previous, ...Object.fromEntries(a.answers.map((x) => [x.id, x.answer])) }
@@ -467,8 +467,8 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   if (t.outcome === 'plan') await setStage(ts, n, 'plan')
   else {
     if (t.outcome === 'refine') {
-      await ts.addLabels(n, [NEEDS_REFINEMENT])
       await ts.comment(n, triageSheet(t))
+      await ts.addLabels(n, [NEEDS_REFINEMENT])
     } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
     await payload.update({ collection: 'tickets', id: doc.id, data: { triagedAt: (await ts.get(n)).updatedAt }, overrideAccess: true })
   }

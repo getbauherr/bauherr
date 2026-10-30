@@ -19,9 +19,11 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await expect(card.getByText('Answer questions')).toBeVisible()
   await card.getByRole('link', { name: 'Clarify the export scope' }).click()
 
+  const gate = page.getByRole('region', { name: 'Answer questions' })
+  await expect(gate).toContainText('0 of 1 answered')
   await expect(page.locator('.sheet tbody tr')).toHaveCount(1)
   await page.getByRole('radio', { name: 'XLSX' }).check()
   await page.getByRole('button', { name: 'Save answers' }).click()
   await expect(page.getByText('D1 Which export format: XLSX')).toBeVisible()
-  await expect(page.getByText('Answer questions')).toHaveCount(0)
+  await expect(gate).toHaveCount(0)
 })

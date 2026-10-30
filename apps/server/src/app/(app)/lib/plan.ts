@@ -79,11 +79,17 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
 /** The decision sheet in force: the newest plan or triage Comment (triage questions use the plan's `## Decisions` format). */
 export const sheetOf = <T extends Commentish>(comments: T[]): T | undefined => comments.findLast((c) => c.body.startsWith(PLAN_MARKER) || c.body.startsWith(TRIAGE_MARKER))
 
+/** The decisions Comment posted after the sheet in force: answers to an older sheet do not count for a newer one. */
+export const answersOf = <T extends Commentish>(comments: T[]): T | undefined => {
+  const sheet = sheetOf(comments)
+  return sheet ? latestWith(comments.slice(comments.indexOf(sheet) + 1), DECISIONS_MARKER) : undefined
+}
+
 /** Unanswered critical rows of the sheet in force against the latest decisions Comment. */
 export const openCritical = (comments: Commentish[]): Decision[] => {
   const sheet = sheetOf(comments)
   if (!sheet) return []
-  return unansweredCritical(parseDecisions(sheet.body), parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? ''))
+  return unansweredCritical(parseDecisions(sheet.body), parseAnswers(answersOf(comments)?.body ?? ''))
 }
 
 export const unansweredCriticalCount = (comments: Commentish[]): number => openCritical(comments).length

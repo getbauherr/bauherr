@@ -28,12 +28,12 @@ export const needsYou = (
   if (stage === 'plan' && run?.stage === 'plan' && IN_PROGRESS.includes(run.status)) return null
   if (stage === 'plan' && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
-  if (run?.status === 'needs_human') return 'Run needs you'
+  if (run?.status === 'needs_human' && run.stage !== 'triage') return 'Run needs you'
   if (stage === 'release' && !ticket.labels.includes(APPROVED_STAGING)) {
     if (ticket.releaseState === 'on_staging') return 'Accept on staging'
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
   }
-  if (run?.status === 'failed') return 'Run failed'
+  if (run?.status === 'failed' && run.stage !== 'triage') return 'Run failed'
   return null
 }
 

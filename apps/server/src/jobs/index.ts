@@ -20,10 +20,8 @@ const STAGE_LABEL = /^bauherr:stage:(.+)$/
 export const stageOf = (labels: string[]): string | null =>
   labels.map((l) => STAGE_LABEL.exec(l)?.[1]).find(Boolean) ?? null
 
-const TRIAGE_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']
-
 /** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/workflow.yaml. */
-export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = packed().find((s) => s.name === 'triage')?.exclude_labels ?? TRIAGE_EXCLUDED): boolean =>
+export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = packed().find((s) => s.name === 'triage')?.exclude_labels ?? []): boolean =>
   t.state === 'open' && !t.assignee && !stageOf(t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
@@ -62,11 +60,30 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   return { run, created: true }
 }
 
-/** Starts a Triage Run for a triageable Ticket unless Triage already covered this `updatedAt` (a skipped or held Ticket is re-triaged only when it changes). */
-export const triageIfNeeded = async (payload: Payload, ticket: Record<string, any>, t: { state: string; labels: string[]; assignee?: string | null; updatedAt: string }) => {
-  if (!triageable(t) || (ticket.triagedAt && new Date(ticket.triagedAt).getTime() === new Date(t.updatedAt).getTime())) return
-  await startRunIfNeeded(payload, ticket as { id: number | string; workspace?: unknown }, 'triage')
-  await payload.update({ collection: 'tickets', id: ticket.id, data: { triagedAt: t.updatedAt }, overrideAccess: true })
+/** New Triage Runs per Workspace per poll; the rest wait for the next poll. */
+export const TRIAGE_PER_POLL = 5
+
+/** Forgets what Triage covered, so the next poll triages the Ticket again. */
+export const untriage = (payload: Payload, ticket: number | string) => payload.update({ collection: 'tickets', id: ticket, data: { triagedAt: null }, overrideAccess: true })
+
+/**
+ * Starts a Triage Run (at most TRIAGE_PER_POLL per Workspace) for each open Ticket that is triageable and not yet covered at its current `sourceUpdatedAt`;
+ * a skipped or held Ticket is triaged again only when it changes. Works from the stored Tickets, so a capped or untriaged Ticket is picked up by the next poll.
+ */
+export const triageSweep = async (payload: Payload): Promise<number> => {
+  const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
+  const per = new Map<string, number>()
+  let started = 0
+  for (const t of open.docs as Record<string, any>[]) {
+    const ws = String(id(t.workspace))
+    const covered = t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()
+    if (covered || (per.get(ws) ?? 0) >= TRIAGE_PER_POLL || !triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee })) continue
+    per.set(ws, (per.get(ws) ?? 0) + 1)
+    await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'triage')
+    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: t.sourceUpdatedAt ?? new Date().toISOString() }, overrideAccess: true })
+    started++
+  }
+  return started
 }
 
 /** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
@@ -122,9 +139,17 @@ export const abandonRun = async (
 /** Session Runs: unclaimed ones not touched for SESSION_TIMEOUT_MS (`updatedAt`: set at creation and again on release or revert) go `needs_human`; running ones without a heartbeat for that long are abandoned (see `abandonRun`). Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
+  // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
+  const triage = await payload.update({
+    collection: 'runs',
+    where: { and: [{ stage: { equals: 'triage' } }, { mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
+    data: { status: 'abandoned', error: 'unclaimed triage expired', finishedAt: new Date(now).toISOString() },
+    overrideAccess: true,
+  })
+  for (const r of triage.docs) await untriage(payload, id(r.ticket))
   const unclaimed = await payload.update({
     collection: 'runs',
-    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
+    where: { and: [{ stage: { not_equals: 'triage' } }, { mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
     data: { status: 'needs_human', error: 'session heartbeat timeout', finishedAt: new Date(now).toISOString() },
     overrideAccess: true,
   })
@@ -135,10 +160,10 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
-  let handled = unclaimed.docs.length
+  let handled = unclaimed.docs.length + triage.docs.length
   for (const run of stale.docs) {
     try {
-      if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: true, staleBefore: before })) handled++
+      if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
@@ -191,10 +216,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             stage = 'build'
           }
           // Guard: unchanged pointers are not rewritten.
-          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) {
-            await triageIfNeeded(payload, prev, t)
-            continue
-          }
+          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
           const data = {
             workspace: id(src.workspace),
             product: id(src.product),
@@ -217,7 +239,6 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
-          await triageIfNeeded(payload, ticket, t)
         }
         await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
@@ -227,6 +248,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           .catch(() => {})
       }
     }
+    await triageSweep(payload)
     return { output: { polled: sources.docs.length } }
   },
 }
@@ -256,7 +278,16 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const r = await exec(ctx)
       const review = run.stage === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
-      const triage = run.stage === 'triage' && r.status === 'succeeded' ? normalizeTriage(r.artifacts.triage) : null
+      let triage = null
+      if (run.stage === 'triage' && r.status === 'succeeded') {
+        try {
+          triage = normalizeTriage(r.artifacts.triage)
+        } catch (e) {
+          await untriage(payload, ticket.id)
+          throw e
+        }
+      }
+      if (run.stage === 'triage' && r.status === 'failed' && r.reason?.includes('triage.json')) await untriage(payload, ticket.id)
       if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       }

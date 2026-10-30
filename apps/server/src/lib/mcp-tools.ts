@@ -6,6 +6,7 @@ import type { Payload } from 'payload'
 import { acceptStaging, approvePlan, concludeReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
+import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -172,7 +173,7 @@ export const tools: Tool[] = [
           throw e
         }
       }
-      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: statements, assignedTo: login ?? null }
+      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...(run.stage === 'triage' ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }) }, goal: statements, assignedTo: login ?? null }
     },
   },
   {

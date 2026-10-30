@@ -3,14 +3,14 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
 import { DecisionSheet } from '../../../components/DecisionSheet'
-import { Approved, Gate, ReleaseGate, RerunGate } from '../../../components/Gate'
+import { Approved, Gate, QuestionsGate, ReleaseGate, RerunGate } from '../../../components/Gate'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import '../../../ticket.css'
@@ -56,7 +56,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const worklog = firstWith(comments, WORKLOG_MARKER)?.body
   const sheet = sheetOf(comments)?.body
   const decisions = sheet ? parseDecisions(sheet) : []
-  const answers = parseAnswers(latestWith(comments, DECISIONS_MARKER)?.body ?? '')
+  const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
   const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
@@ -95,6 +95,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           blocked={missing.length ? `Answer ${missing.map((d) => d.id).join(', ')} first (critical).` : null}
         />
       )}
+      {gate?.kind === 'questions' && <QuestionsGate number={ticket.number} answered={decisions.length - missing.length} total={decisions.length} />}
       {gate?.kind === 'release' && (
         <ReleaseGate ticket={ticket.id} number={ticket.number} title={gate.title} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} stagingUrl={product.stagingUrl ?? null} />
       )}
