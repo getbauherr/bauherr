@@ -252,6 +252,7 @@ class GithubTickets implements TicketSource {
 const pr = (p: any): PullRequest => ({
   number: p.number, url: p.html_url, title: p.title, body: p.body ?? '',
   state: p.merged_at ? 'merged' : p.state, head: p.head.ref, base: p.base.ref, headSha: p.head.sha,
+  ...(p.merge_commit_sha && p.merged_at ? { mergeSha: p.merge_commit_sha } : {}),
 });
 
 export const githubWebhooks = (h: Http): Webhooks => ({
@@ -313,8 +314,8 @@ class GithubForge implements Forge {
     }));
   }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
-    return (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`, (p) => p.check_runs)).map((c) => ({
-      name: c.name, status: c.status, conclusion: c.conclusion,
+    return (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
+      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion,
     }));
   }
 }

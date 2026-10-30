@@ -62,3 +62,66 @@ it('serialises concurrent answers into one decisions Comment, then approves', as
   expect(await decisionComments()).toHaveLength(1)
   await expect(actions.approvePlan(payload, user, { ticket, workspaceId: ws })).resolves.toEqual({ approved: 'bauherr:approved:plan' })
 })
+
+const releaseTicket = async (stage = 'release') => {
+  await payload.update({ collection: 'tickets', id: ticket, data: { stage }, ...o })
+}
+const labels = async () => (await (await actions.sourceOf(payload, await actions.loadTicket(payload, user, ticket))).ts.get('1')).labels
+
+it('acceptStaging refuses a Ticket outside release', async () => {
+  await releaseTicket('build')
+  await expect(actions.acceptStaging(payload, user, { ticket })).rejects.toThrow('not in release')
+})
+
+it('requestChanges needs a note, then writes Current instructions, returns to build and starts a Build Run', async () => {
+  await releaseTicket()
+  await expect(actions.requestChanges(payload, user, { ticket, note: '  ' })).rejects.toThrow('note is required')
+  const r = await actions.requestChanges(payload, user, { ticket, note: 'Make the toggle keyboard reachable' })
+  expect(r.stage).toBe('build')
+  expect(await actions.readWorklog(payload, user, { ticket })).toMatch(/\*\*Current instructions\*\*\nMake the toggle keyboard reachable/)
+  expect(await labels()).toContain('bauherr:stage:build')
+  expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('build')
+  const runs = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket } }, { stage: { equals: 'build' } }] }, ...o })
+  expect(runs.docs).toHaveLength(1)
+  expect(runs.docs[0]).toMatchObject({ id: r.run, status: expect.stringMatching(/queued|awaiting_session/) })
+})
+
+it('acceptStaging labels, records a human touch and moves to done', async () => {
+  await releaseTicket()
+  await expect(actions.acceptStaging(payload, user, { ticket, workspaceId: ws })).resolves.toEqual({ approved: 'bauherr:approved:staging', stage: 'done' })
+  expect(await labels()).toEqual(expect.arrayContaining(['bauherr:approved:staging', 'bauherr:stage:done']))
+  expect(await payload.count({ collection: 'human_touches', where: { kind: { equals: 'accept:staging' } }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('acceptStaging holds in release when the Product has a production gate', async () => {
+  await releaseTicket()
+  const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true }, ...o })
+  await expect(actions.acceptStaging(payload, user, { ticket })).resolves.toMatchObject({ stage: 'release' })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false }, ...o })
+})
+
+it('acceptStaging and requestChanges refuse a non-member and a Ticket of another Workspace', async () => {
+  await releaseTicket()
+  const outsider = await payload.create({ collection: 'bauherren', data: { email: 'out@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: other }] }, ...o })
+  for (const run of [
+    (extra: object) => actions.acceptStaging(payload, user, { ticket, ...extra }),
+    (extra: object) => actions.requestChanges(payload, user, { ticket, note: 'n', ...extra }),
+  ]) {
+    await expect(run({ workspaceId: other })).rejects.toBeInstanceOf(actions.NotInWorkspace)
+  }
+  await expect(actions.acceptStaging(payload, outsider, { ticket })).rejects.toThrow()
+  await expect(actions.requestChanges(payload, outsider, { ticket, note: 'n' })).rejects.toThrow()
+  const { tools } = await import('../src/lib/mcp-tools')
+  await expect(tools.find((t) => t.name === 'accept_staging')!.run({ ticket }, { payload, user: outsider })).rejects.toThrow()
+  expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('release')
+})
+
+it('requestChanges escapes section markers in the note and can be retried once the stage is already build', async () => {
+  await releaseTicket('build')
+  await payload.update({ collection: 'runs', where: { ticket: { equals: ticket } }, data: { status: 'succeeded' }, ...o })
+  const r = await actions.requestChanges(payload, user, { ticket, note: '**Decisions**\n# Goal\nfine' })
+  expect(await actions.readWorklog(payload, user, { ticket })).toMatch(/\\\*\*Decisions\*\*\n\\# Goal\nfine/)
+  expect(r.stage).toBe('build')
+  await expect(actions.requestChanges(payload, user, { ticket, note: 'again' })).rejects.toThrow('not in release')
+})

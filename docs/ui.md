@@ -30,6 +30,8 @@ Tabs **List**, **Board**, **Runs** on `/`, plus a Product filter and an Open/All
 
 Writes are server actions in `lib/actions.ts` over `src/lib/actions.ts` (`approvePlan`, `updateWorklog`, `requestReview`, `postDecisions`), the same functions the MCP tools `approve`, `update_worklog`, `request_review` call. `approvePlan` itself refuses while critical rows are unanswered ("Answer the critical decisions first: D2, …"), so the MCP `approve` tool does too; the UI additionally disables the button. The UI actions pass the selected Workspace id and 404 for a ticket of another Workspace. `postDecisions` runs under an in-process per-ticket mutex (double submit); multi-instance deployments need a DB lock later. Submit buttons disable while pending (`SubmitButton`).
 
+**Staging gate** (backend in `src/lib/actions.ts`, UI follows): a Ticket in `release` whose `releaseState` is `on_staging` shows Gate "Accept on staging" with the summary Comment and the Product's `stagingUrl`; "Accept" calls `acceptStaging`, "Request changes" (note required) calls `requestChanges`. Needs-you reads "Accept on staging" for that state and "Staging not confirmed" for `timed_out`. MCP: `post_staging_summary`, `accept_staging`, `request_changes`. Per-Product `stagingUrl`, deploy mode, webhook URL, required checks and production gate are edited on `/settings/products`.
+
 Deviation from the Gate spec: no secondary "Ask for changes" button (nothing to call yet); a blocked primary button shows the disabled style (`surface-200`, `ink-muted`).
 
 ### Decision-sheet format (D6)

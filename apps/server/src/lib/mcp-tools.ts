@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import type { Payload } from 'payload'
-import { approvePlan, readWorklog, requestReview, scoped as scopedUser, sourceOf, updateWorklog } from './actions'
+import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, updateWorklog } from './actions'
 import { goalOf } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -261,6 +261,33 @@ export const tools: Tool[] = [
       if (a.gate !== 'plan') throw new Error("gate must be 'plan'")
       await getTicket(c, a.ticket)
       return approvePlan(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'post_staging_summary',
+    description: 'Post the templated staging summary Comment on a Ticket in release (once per merge commit).',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      await getTicket(c, a.ticket)
+      return postStagingSummary(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'accept_staging',
+    description: 'Accept the Ticket on staging as the Bauherr (adds bauherr:approved:staging, records a human touch, moves to done).',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      await getTicket(c, a.ticket)
+      return acceptStaging(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'request_changes',
+    description: 'Send a Ticket in release back to build with a note (becomes Current instructions); starts a Build Run.',
+    inputSchema: obj({ ...ticketId, note: str('What must change') }, ['ticket', 'note']),
+    async run(a, c) {
+      await getTicket(c, a.ticket)
+      return requestChanges(c.payload, c.user, a)
     },
   },
   {

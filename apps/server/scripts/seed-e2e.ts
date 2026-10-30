@@ -19,7 +19,7 @@ const email = env('E2E_EMAIL')
 await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin' })
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme' })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
-const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace })).id
+const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
@@ -37,6 +37,11 @@ const t2 = await ticket(2, 'Export invoices as CSV', 'build', product)
 const t3 = await ticket(3, 'Checkout fails for empty carts', 'build', shop)
 await ticket(4, 'Triage the onboarding feedback', 'triage', shop)
 await ticket(5, 'Upgrade the payment SDK', 'review', shop)
+const rel = { stage: 'release', releaseState: 'on_staging', mergeSha: 'abc1234def' }
+await ticket(6, 'Ship the CSV export', 'release', product, rel)
+await ticket(7, 'Ship the invoice filter', 'release', product, rel)
+const blocker = await ticket(8, 'Blocker: migrate the invoice table', 'build', product)
+await ticket(9, 'Blocked: add the invoice filter', 'build', product, { blockedBy: [blocker] })
 await run(t1, 'plan', 'succeeded', { startedAt: '2026-10-30T09:00:00Z', finishedAt: '2026-10-30T09:02:30Z', costUsd: 0.1234 })
 const build = await run(t2, 'build', 'succeeded', { startedAt: '2026-10-30T09:10:00Z', finishedAt: '2026-10-30T09:25:12Z', gatewayCostUsd: 1.5, model: 'claude-sonnet-4-5', tokensIn: 12000, tokensOut: 3400, tokensCache: 8000, evidence: 'Checks: pass', artifacts: { prUrl: 'https://github.com/acme/web/pull/12' } })
 const steps = [['09:10:05', 'Read the plan and the repo'], ['09:14:00', 'Implement the CSV export'], ['09:21:30', 'Run the checks']] as const

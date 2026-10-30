@@ -91,6 +91,8 @@ export interface PullRequest {
   head: string;
   base: string;
   headSha: string;
+  /** Set once merged. */
+  mergeSha?: string;
 }
 export interface PullRequestFile {
   filename: string;
@@ -99,6 +101,8 @@ export interface PullRequestFile {
   deletions: number;
 }
 export interface Check {
+  /** Check run id; a higher id is a later run of the same name. */
+  id?: number;
   name: string;
   status: string;
   conclusion: string | null;

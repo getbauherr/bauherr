@@ -7,7 +7,11 @@ import { StatusChip } from './StatusChip'
 const Num = ({ t }: { t: TicketRow }) =>
   isWebUrl(t.url) ? <a className="mono link" href={t.url}>#{t.number}</a> : <span className="mono">#{t.number}</span>
 
-const Needs = ({ t }: { t: TicketRow }) => (t.needsYou ? <span className="label needs">{t.needsYou}</span> : null)
+const Needs = ({ t }: { t: TicketRow }) =>
+  t.needsYou ? <span className="label needs">{t.needsYou}</span> : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
+
+const Blocked = ({ t }: { t: TicketRow }) =>
+  t.blockedBy.length ? <span className="chip label queued" title={`Blocked by ${t.blockedBy.map((n) => `#${n}`).join(', ')}`}>Blocked</span> : null
 
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
 
@@ -17,6 +21,7 @@ const Row = ({ t }: { t: TicketRow }) => (
     {title(t)}
     {t.product && <span className="muted small">{t.product.name}</span>}
     {t.run && <StatusChip status={t.run.status} />}
+    <Blocked t={t} />
     <Needs t={t} />
     <span className="label muted">{t.stage}</span>
   </li>
@@ -54,6 +59,7 @@ export function BoardView({ tickets }: { tickets: TicketRow[] }) {
                 {title(t)}
                 {t.product && <span className="muted small">{t.product.name}</span>}
                 {t.run && <StatusChip status={t.run.status} />}
+                <Blocked t={t} />
                 <Needs t={t} />
               </article>
             ))}

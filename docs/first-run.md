@@ -44,3 +44,4 @@ gh api -X POST repos/getbauherr/bauherr/issues/70/labels --raw-field 'labels[]=b
 - `gh issue edit --add-label` fails while the label does not exist in the repo; the adapter creates labels on add.
 - Plan approval is not tied to the plan Run having succeeded.
 - Catalog rates for the 5.5 models are placeholders.
+- Workspace #0 has no CI to observe yet (#101): its `release` Tickets stay `waiting` and time out after 60 minutes. Until then the session deploys the local stack and the owner accepts on staging after a manual `docker compose up`.

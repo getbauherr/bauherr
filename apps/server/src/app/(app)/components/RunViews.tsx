@@ -4,7 +4,7 @@ import { StatusChip } from './StatusChip'
 
 type Calls = Map<number, ToolCallDoc[]>
 
-export function GraphView({ run, stages, latestByStage }: { run: RunDoc; stages: string[]; latestByStage: Map<string, RunDoc> }) {
+export function GraphView({ run, stages, latestByStage, release }: { run: RunDoc; stages: string[]; latestByStage: Map<string, RunDoc>; release: string | null }) {
   return (
     <ol className="rgraph">
       {stages.map((s) => {
@@ -12,7 +12,7 @@ export function GraphView({ run, stages, latestByStage }: { run: RunDoc; stages:
         const body = (
           <>
             <span className="label">{s}</span>
-            {r ? <StatusChip status={r.status} /> : <span className="muted">—</span>}
+            {r ? <StatusChip status={r.status} /> : s === 'release' && release ? <span className="chip label queued">{release}</span> : <span className="muted">—</span>}
             <span className="mono small muted">{r ? fmtDuration(durationMs(r.startedAt, r.finishedAt)) : '—'}</span>
           </>
         )

@@ -228,6 +228,10 @@ const tickets = col('tickets', [
   text('stage', { index: true }),
   rel('parent', 'tickets'),
   rel('blockedBy', 'tickets', { hasMany: true }),
+  text('mergeSha'),
+  date('releaseAt'),
+  date('deployRequestedAt'),
+  select('releaseState', ['waiting', 'on_staging', 'timed_out']),
 ])
 
 export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted']
@@ -235,7 +239,15 @@ export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded'
 export const collections: CollectionConfig[] = [
   bauherren,
   workspaces,
-  col('products', [text('name', { required: true }), text('slug', { required: true })]),
+  col('products', [
+    text('name', { required: true }),
+    text('slug', { required: true }),
+    text('stagingUrl'),
+    select('deployMode', ['observe-ci', 'webhook'], { defaultValue: 'observe-ci', required: true }),
+    text('deployWebhookUrl'),
+    text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
+    { name: 'productionGate', type: 'checkbox', defaultValue: false, admin: { description: 'Reserved for the production gate: accepting on staging then waits for it instead of moving to done.' } },
+  ]),
   connections,
   col('repositories', [text('fullName', { required: true }), rel('product', 'products', { required: true })]),
   col('ticket_sources', [
