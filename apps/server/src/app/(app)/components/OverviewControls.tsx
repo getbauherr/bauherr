@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { setUiPref } from '../lib/actions'
+import { setView } from '../lib/actions'
 import { VIEWS, type View } from '../lib/needs-you'
 
 const names: Record<View, string> = { list: 'List', board: 'Board', runs: 'Runs' }
@@ -19,7 +19,7 @@ export function OverviewControls({ view, products }: { view: View; products: { i
     <div className="controls">
       <nav className="tabs" aria-label="View">
         {VIEWS.map((v) => (
-          <Link key={v} href={href({ view: v })} aria-current={v === view ? 'page' : undefined} onClick={() => void setUiPref('view', v)}>
+          <Link key={v} href={href({ view: v })} aria-current={v === view ? 'page' : undefined} onClick={() => void setView(v).catch(() => console.warn('Could not save the view preference'))}>
             {names[v]}
           </Link>
         ))}

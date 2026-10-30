@@ -1,14 +1,8 @@
 import Link from 'next/link'
-import { STAGES, type RunRow, type TicketRow } from '../lib/overview'
+import { STAGES } from '../lib/needs-you'
+import type { RunRow, TicketRow } from '../lib/overview'
+import { isWebUrl } from '../lib/url'
 import { StatusChip } from './StatusChip'
-
-const isWebUrl = (url?: string | null): url is string => {
-  try {
-    return !!url && ['https:', 'http:'].includes(new URL(url).protocol)
-  } catch {
-    return false
-  }
-}
 
 const Num = ({ t }: { t: TicketRow }) =>
   isWebUrl(t.url) ? <a className="mono link" href={t.url}>#{t.number}</a> : <span className="mono">#{t.number}</span>
@@ -24,7 +18,7 @@ const Row = ({ t }: { t: TicketRow }) => (
     {t.product && <span className="muted small">{t.product.name}</span>}
     {t.run && <StatusChip status={t.run.status} />}
     <Needs t={t} />
-    <span className="chip label queued">{t.stage}</span>
+    <span className="label muted">{t.stage}</span>
   </li>
 )
 

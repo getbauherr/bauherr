@@ -15,13 +15,13 @@ Pages under `(shell)/` get the top bar and require a session; unauthenticated re
 
 ## Overview
 
-Tabs **List**, **Board**, **Runs** on `/`, plus a Product filter and an Open/All toggle (`?product=<id>&state=all`). The chosen tab is stored per user in `bauherren.uiPrefs` (`{ view }`, written by the server action `setUiPref`); `/` without `?view=` redirects to the saved one. Data comes from `lib/overview.ts` (`loadOverview`: tickets, latest Run per ticket, Product).
+Tabs **List**, **Board**, **Runs** on `/`, plus a Product filter and an Open/All toggle (`?product=<id>&state=all`). The chosen tab is stored per user in `bauherren.uiPrefs` (`{ view }`, written by the server action `setView`, which validates the view and merges into the freshly read prefs); `/` without `?view=` redirects to the saved one. Data comes from `lib/overview.ts` (`loadOverview(workspace, all)`: open tickets, plus the newest 200 closed ones when `all`; latest Run per ticket from one query; the newest 100 Runs of the Workspace; Products).
 
 - **List**: "Needs you" first, then one section per stage (`triage, plan, build, review, release, done`); empty sections are omitted and a ticket in "Needs you" is not repeated below. Tickets without a stage label count as `triage`, closed ones as `done`.
 - **Board**: one column per stage.
-- **Runs**: Workspace Runs newest first (duration, cost).
+- **Runs**: the newest 100 Workspace Runs first (duration, cost); a line says so when there are more.
 
-"Needs you" (`needsYou()` in `lib/needs-you.ts`, first match wins): `Approve plan` (stage `plan`, no `bauherr:approved:plan` label, latest Run is a succeeded plan Run), `Run needs you` (latest Run `needs_human`), `Review MR` (stage `review`), `Run failed`. The Tickets nav item shows the count.
+"Needs you" (`needsYou()` in `lib/needs-you.ts`, first match wins): `Approve plan` (stage `plan`, no `bauherr:approved:plan` label, latest Run is a succeeded plan Run), `Run needs you` (latest Run `needs_human`), `Review MR` (stage `review`), `Run failed` (an addition to D5). A plan Run that is `running`, `queued` or `awaiting_session` is "Plan in progress" and not needs-you; D5 (c), unanswered critical decisions, arrives with the Ticket page slice. The Tickets nav item shows the count over open tickets.
 
 ## Workspace
 

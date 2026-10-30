@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import { EmptyState } from '../components/EmptyState'
 import { OverviewControls } from '../components/OverviewControls'
 import { BoardView, ListView, RunsTable } from '../components/OverviewViews'
-import { loadOverview, VIEWS, type View } from '../lib/overview'
+import { VIEWS, type View } from '../lib/needs-you'
+import { loadOverview, RUNS_LIMIT } from '../lib/overview'
 import { currentWorkspace } from '../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -10,14 +11,14 @@ export const dynamic = 'force-dynamic'
 export default async function Tickets({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams
   const { user, workspace } = await currentWorkspace()
-  const saved = (user as { uiPrefs?: { view?: string } | null }).uiPrefs?.view
+  const saved = user.uiPrefs?.view
   if (!VIEWS.includes(sp.view as View)) {
     const next = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][])
     next.set('view', VIEWS.includes(saved as View) ? saved! : 'list')
     redirect(`/?${next}`)
   }
   const view = sp.view as View
-  const data = workspace ? await loadOverview(workspace.id) : { tickets: [], runs: [], products: [] }
+  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all') : { tickets: [], runs: [], runsTotal: 0, products: [] }
   const product = Number(sp.product) || null
   const inProduct = data.tickets.filter((t) => !product || t.product?.id === product)
   const shown = sp.state === 'all' ? inProduct : inProduct.filter((t) => t.open)
@@ -38,7 +39,10 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       ) : view === 'board' ? (
         <BoardView tickets={shown} />
       ) : (
-        <RunsTable runs={runs} tickets={byId} />
+        <>
+          <RunsTable runs={runs} tickets={byId} />
+          {data.runsTotal > RUNS_LIMIT && <p className="muted small">Showing the newest {RUNS_LIMIT}</p>}
+        </>
       )}
     </>
   )

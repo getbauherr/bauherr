@@ -11,6 +11,9 @@ describe('needsYou', () => {
     expect(needsYou(t('plan'), r('plan', 'running'))).toBeNull()
     expect(needsYou(t('plan'), null)).toBeNull()
   })
+  it('treats an in-progress plan Run as Plan in progress, not needs-you', () => {
+    for (const status of ['running', 'queued', 'awaiting_session']) expect(needsYou(t('plan'), r('plan', status))).toBeNull()
+  })
   it('flags needs_human, review and failed Runs in that order', () => {
     expect(needsYou(t('build'), r('build', 'needs_human'))).toBe('Run needs you')
     expect(needsYou(t('review'), r('build', 'succeeded'))).toBe('Review MR')

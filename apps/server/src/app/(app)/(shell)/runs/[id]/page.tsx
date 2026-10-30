@@ -1,18 +1,20 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { StatusChip } from '../../../components/StatusChip'
-import { loadOverview } from '../../../lib/overview'
-import { currentWorkspace } from '../../../lib/session'
+import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
 
 export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { workspace } = await currentWorkspace()
-  const data = workspace && (await loadOverview(workspace.id))
-  const run = data && data.runs.find((r) => String(r.id) === id)
+  if (!workspace) notFound()
+  const payload = await payloadClient()
+  const q = { depth: 0, limit: 1, overrideAccess: true } as const
+  const inWorkspace = (key: string, value: string | number) => ({ and: [{ [key]: { equals: value } }, { workspace: { equals: workspace.id } }] })
+  const [run] = (await payload.find({ collection: 'runs', where: inWorkspace('id', id), ...q })).docs as unknown as { id: number; ticket: number; stage: string; status: string }[]
   if (!run) notFound()
-  const ticket = data.tickets.find((t) => t.id === run.ticket)
+  const [ticket] = (await payload.find({ collection: 'tickets', where: inWorkspace('id', run.ticket), ...q })).docs as unknown as { id: number; number: number; title: string }[]
   return (
     <>
       <h1 className="title">Run #{run.id}</h1>
