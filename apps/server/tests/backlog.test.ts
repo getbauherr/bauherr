@@ -148,3 +148,12 @@ it('frontier ranks before any limit: the top-ranked Ticket beyond the first 100 
   const top = await seed('a')
   expect((await call(member, 'claim_next', {})).run.id).toBe(top.run!.id)
 })
+
+it('rankTicket opens a gap when the neighbours leave no room, keeping the order', async () => {
+  await reset()
+  const [a, b, c] = [await seed('00001', {}, null), await seed('000010', {}, null), await seed('000011', {}, null)]
+  const moved = await seed('x', {}, null)
+  await actions.rankTicket(payload, member, { ticket: moved.ticket.id, before: a.ticket.id, after: b.ticket.id, workspaceId: ws })
+  const [ra, rm, rb, rc] = [await rankOf(a.ticket.id), await rankOf(moved.ticket.id), await rankOf(b.ticket.id), await rankOf(c.ticket.id)]
+  expect(ra < rm && rm < rb && rb < rc).toBe(true)
+})

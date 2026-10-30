@@ -3,7 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
-import { rankBetween } from './frontier'
+import { NoRoom, rankBetween } from './frontier'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
@@ -48,7 +48,17 @@ export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: Ticke
     lo = (r.rows[0]?.rank as string | null) ?? null
   }
   // Known limitation: two concurrent drops between the same neighbours can get equal ranks; the order then falls back to the Ticket number.
-  const rank = rankBetween(lo, hi)
+  let rank: string
+  try {
+    rank = rankBetween(lo, hi)
+  } catch (e) {
+    if (!(e instanceof NoRoom)) throw e
+    // `hi` is `lo` plus trailing zeros: move `after` up past its successor to open a gap, order unchanged.
+    const r = await payload.db.drizzle.execute(sql`SELECT min("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "rank" COLLATE "C" > ${hi}`)
+    const moved = rankBetween(hi, (r.rows[0]?.rank as string | null) ?? null)
+    await payload.update({ collection: 'tickets', id: id(a.after), data: { rank: moved }, overrideAccess: true })
+    rank = rankBetween(lo, moved)
+  }
   await payload.update({ collection: 'tickets', id: t.id, data: { rank }, overrideAccess: true })
   return { rank }
 }

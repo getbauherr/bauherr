@@ -1,13 +1,16 @@
 const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const digit = (s: string, i: number): number => (i < s.length ? ALPHABET.indexOf(s[i]) : 0)
 
-/** A key strictly between `a` and `b` (base-62 fractional index, ASCII order); `null` bounds are open. */
+export class NoRoom extends Error {}
+
+/** A key strictly between `a` and `b` (base-62 fractional index, ASCII order); `null` bounds are open. Throws `NoRoom` when `b` is `a` plus trailing zeros: no key exists between them. */
 export const rankBetween = (a: string | null, b: string | null): string => {
   const lo = a ?? ''
   if (b !== null && lo >= b) throw new Error(`rank bounds out of order: ${a} >= ${b}`)
   let out = ''
   let tight = b !== null
   for (let i = 0; ; i++) {
+    if (tight && i >= b!.length) throw new NoRoom(`no rank between ${a} and ${b}`)
     const l = digit(lo, i)
     const h = tight ? digit(b!, i) : ALPHABET.length
     if (h - l > 1) return out + ALPHABET[(l + h) >> 1]

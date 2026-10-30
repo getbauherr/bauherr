@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { frontierOrder, rankBetween } from '../src/lib/frontier'
+import { NoRoom, frontierOrder, rankBetween } from '../src/lib/frontier'
 
 describe('rankBetween', () => {
   it('starts in the middle and appends after the last key', () => {
@@ -21,6 +21,41 @@ describe('rankBetween', () => {
       const n = rankBetween(k, null)
       expect(n > k).toBe(true)
       k = n
+    }
+  })
+  it('terminates when `hi` is `lo` plus trailing zeros: no key exists between them', () => {
+    expect(() => rankBetween('00001', '000010')).toThrow('no rank between')
+    expect(() => rankBetween('a', 'a000')).toThrow('no rank between')
+    expect(rankBetween('00001', '000011') > '00001').toBe(true)
+  })
+  it('returns a key strictly between any pair, or throws NoRoom only when none exists', () => {
+    const migration = Array.from({ length: 120 }, (_, i) => String(i + 1).padStart(6, '0'))
+    let seed = 7
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n)
+    const alphabet = '0019AZaz'
+    const word = () => Array.from({ length: 1 + rnd(5) }, () => alphabet[rnd(alphabet.length)]).join('')
+    const pairs: [string | null, string | null][] = [[null, null], [null, 'a'], ['z', null]]
+    for (let i = 0; i < migration.length - 1; i++) pairs.push([migration[i], migration[i + 1]], [null, migration[i]], [migration[i], null])
+    for (let i = 0; i < 2000; i++) pairs.push([rnd(4) ? word() : null, rnd(4) ? word() : null])
+    let chained: [string, string] = [migration[0], migration[1]]
+    for (let i = 0; i < 200; i++) {
+      const m = rankBetween(...chained)
+      pairs.push([chained[0], m], [m, chained[1]])
+      chained = i % 3 ? [m, chained[1]] : [chained[0], m]
+    }
+    for (const [lo, hi] of pairs) {
+      if (hi !== null && (lo ?? '') >= hi) continue
+      let r: string
+      try {
+        r = rankBetween(lo, hi)
+      } catch (e) {
+        expect(e).toBeInstanceOf(NoRoom)
+        expect(hi!.slice((lo ?? '').length)).toMatch(/^0+$/)
+        expect(hi!.startsWith(lo ?? '')).toBe(true)
+        continue
+      }
+      expect(r > (lo ?? ''), `${lo} < ${r}`).toBe(true)
+      if (hi !== null) expect(r < hi, `${r} < ${hi}`).toBe(true)
     }
   })
   it('refuses out-of-order bounds', () => {
