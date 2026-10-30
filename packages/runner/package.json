@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "tsc -p tsconfig.json --outDir .test-dist && node --test .test-dist/test/"
+    "test": "tsc -p tsconfig.json --outDir .test-dist && node --test '.test-dist/test/*.test.js'"
   },
   "dependencies": { "@anthropic-ai/claude-agent-sdk": "0.3.312" },
   "devDependencies": { "typescript": "^5.9.0", "@types/node": "^24.0.0" },

@@ -5,3 +5,4 @@ node_modules
 dist
 .dev-secrets
 apps/server/e2e/results
+apps/server/playwright-report
