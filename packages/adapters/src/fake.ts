@@ -269,6 +269,13 @@ class FakeTickets implements TicketSource {
     if (!this.b.opts.native) t.labels.push(closeReasonLabel(reason));
     this.touch(t);
   }
+  async reopen(id: string) {
+    const t = this.t(id);
+    t.labels = t.labels.filter((l) => l !== closeReasonLabel(t.closeReason ?? 'completed'));
+    t.state = 'open';
+    t.closeReason = null;
+    this.touch(t);
+  }
   async addSubTicket(parentId: string, childId: string) {
     this.t(parentId);
     const c = this.t(childId);

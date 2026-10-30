@@ -14,8 +14,8 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 | Plan | plan Run | plan Comment + Goal in the worklog (+ Sub-tickets if large) |
 | Build | build Run | MR Linked on the Ticket |
 | Review | review Run: reviewer without memory of the change ([review](../../pack/skills/review/SKILL.md)) | review Comment on the MR; merge or back to Build |
-| Release | none; Bauherr observes the Product's CI (or a deploy webhook) after the MR merged | staging summary Comment + staging acceptance |
-| Done | none | Ticket closed `completed` on merge |
+| Release (shown as Staging) | none; Bauherr observes the Product's CI (or a deploy webhook) after the MR merged | staging summary Comment + staging acceptance |
+| Done | none | Ticket closed `completed` on staging acceptance (never on merge) |
 
 Config per stage: label, gate-before (`none | human | checks`), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
 
@@ -33,7 +33,7 @@ Review: a Ticket entering `review` with a factory MR gets a Review Run (mode fol
 - Round cap: each return to Build (changes verdict or red checks) is a round; after 2 rounds the next return goes to `needs_human` (Ticket Comment). `tickets.reviewRounds` counts them and is never reset.
 - A merge by the factory is no human touch; the next `watch-release` pass moves the Ticket to `release`.
 
-Release: the scheduled task `watch-release` (every minute) moves a `review` Ticket whose MR merged to `release` and stores the merge commit. `observe-ci` Products: the commit's check runs (all, or `deployChecks`) are green; `webhook` Products: the webhook is POSTed once and `stagingUrl` answers 200. Then the factory posts one `<!-- bauherr:staging-summary -->` Comment (templated, no model: What you get, Found on the way, Decisions taken, Open, Accept). Not confirmed after 60 minutes: `releaseState` `timed_out` and the Comment "staging not confirmed". A Workspace Bauherr accepts (stage `done`, or held when `products.productionGate`) or requests changes with a note (worklog Current instructions, stage `build`, new Build Run).
+Release: the scheduled task `watch-release` (every minute) moves a `review` Ticket whose MR merged to `release` and stores the merge commit. `observe-ci` Products: the commit's check runs (all, or `deployChecks`) are green; `webhook` Products: the webhook is POSTed once and `stagingUrl` answers 200. Then the factory posts one `<!-- bauherr:staging-summary -->` Comment (templated, no model: What you get, Found on the way, Decisions taken, Open, Accept). Not confirmed after 60 minutes: `releaseState` `timed_out` and the Comment "staging not confirmed". Only acceptance closes a Ticket: MRs reference it with `Refs <url>` and never `Closes/Fixes/Resolves`. If a merge closed it anyway (body keyword, commit message, manual close) and no acceptance label exists, `watch-release` reopens the Ticket once the factory MR is merged, posts one `<!-- bauherr:reopened -->` Comment and continues; a Ticket closed by a human before any factory MR merged stays closed. A Workspace Bauherr accepts (stage `done`, or held when `products.productionGate`) or requests changes with a note (worklog Current instructions, stage `build`, new Build Run).
 
 Everything else is automated. The `checks` gate is the Product's **scorecard** (ordered rules with a guide each: build, tests, lint baseline, pack lint, security context, evidence section — decision #38): a failing blocking rule prevents Review, re-wakes the Build Run once, then `needs_human`. Bauherr mirrors both approvals into Run state for audit. Per-type autopilot: not in v0.1.
 

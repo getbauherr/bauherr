@@ -4,9 +4,8 @@ import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
-import { forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
+import { APPROVED_STAGING, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
-export const APPROVED_STAGING = 'bauherr:approved:staging'
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
 type Doc = Record<string, any>

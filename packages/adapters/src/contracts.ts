@@ -63,6 +63,8 @@ export interface TicketSource {
   claim(id: string, assignee: string): Promise<void>;
   release(id: string): Promise<void>;
   close(id: string, reason: CloseReason): Promise<void>;
+  /** Idempotent. */
+  reopen(id: string): Promise<void>;
   addSubTicket(parentId: string, childId: string): Promise<void>;
   listSubTickets(parentId: string): Promise<TicketSummary[]>;
   addBlockedBy(id: string, blockerId: string): Promise<void>;

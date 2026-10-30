@@ -1,5 +1,7 @@
 export const STAGES = ['triage', 'plan', 'build', 'review', 'release', 'done'] as const
 export type Stage = (typeof STAGES)[number]
+/** The `release` stage is shown as Staging; the stage name itself stays. */
+export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : s)
 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
 import { heartbeatAge } from '../lib/format'
-import { STAGES } from '../lib/needs-you'
+import { STAGES, stageLabel } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
 import { frontierOrder } from '../../../lib/frontier'
@@ -47,7 +47,7 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
         const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
         return (
           <section key={s} className="col" data-stage={s}>
-            <h2 className="label">{s} <span className="muted">{rows.length}</span></h2>
+            <h2 className="label">{stageLabel(s)} <span className="muted">{rows.length}</span></h2>
             <SortableCards
               items={rows.map((t) => ({
                 id: t.id,
