@@ -13,10 +13,9 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('navigation', { name: 'View' })).toBeVisible()
-  await page.goto('/?view=list')
+  await expect(page.locator('.board')).toBeVisible()
 
-  const row = page.locator('ul.list li', { hasText: 'Add a dark theme to the dashboard' }).first()
+  const row = page.locator('.card', { hasText: 'Add a dark theme to the dashboard' }).first()
   await expect(row.getByText('Answer decisions')).toBeVisible()
   await row.getByRole('link', { name: 'Add a dark theme to the dashboard' }).click()
 

@@ -12,7 +12,7 @@ test('Run page: graph, timeline, list, details, re-run', async ({ page }) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Runs' }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Runs' }).click()
   const rows = page.locator('table tbody tr')
   await rows.filter({ hasText: 'Succeeded' }).filter({ hasText: 'build' }).getByRole('link', { name: /^#\d+$/ }).first().click()
 
@@ -28,7 +28,7 @@ test('Run page: graph, timeline, list, details, re-run', async ({ page }) => {
   await expect(panel).toContainText('Succeeded')
   await expect(panel.getByRole('button', { name: 'Re-run stage' })).toHaveCount(0)
 
-  await page.goto('/?view=runs')
+  await page.goto('/runs')
   await rows.filter({ hasText: 'Needs human' }).getByRole('link', { name: /^#\d+$/ }).first().click()
   await page.getByRole('button', { name: 'Re-run stage' }).click()
   await page.getByRole('button', { name: /Confirm re-run/ }).click()

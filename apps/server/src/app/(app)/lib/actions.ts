@@ -6,7 +6,6 @@ import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
-import { VIEWS, type View } from './needs-you'
 import { PLAN_MARKER, latestWith, parseDecisions } from './plan'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
@@ -45,14 +44,6 @@ export async function selectWorkspace(slug: string) {
     ;(await cookies()).set(WS_COOKIE, slug, { path: '/', sameSite: 'lax', maxAge: 31536000 })
   }
   redirect('/')
-}
-
-export async function setView(view: string) {
-  if (!VIEWS.includes(view as View)) return
-  const user = await requireBauherr()
-  const payload = await payloadClient()
-  const current = (await payload.findByID({ collection: 'bauherren', id: user.id, depth: 0, overrideAccess: true })) as { uiPrefs?: object | null }
-  await payload.update({ collection: 'bauherren', id: user.id, data: { uiPrefs: { ...current.uiPrefs, view } }, depth: 0, overrideAccess: true })
 }
 
 /** The acting Bauherr and the selected Workspace; 404 when none is selected. */

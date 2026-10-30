@@ -25,8 +25,8 @@ export type TicketRow = {
   product: { id: number; name: string } | null
   run: RunRow | null
   needsYou: string | null
-  /** Numbers of open Tickets this one is blocked by. */
-  blockedBy: number[]
+  /** Open Tickets this one is blocked by. */
+  blockedBy: { id: number; number: number }[]
 }
 
 export const RUNS_LIMIT = 100
@@ -58,9 +58,9 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
     ticketDocs.push(...(extra.docs as unknown as Record<string, any>[]))
   }
   const blockerIds = [...new Set(ticketDocs.flatMap((t) => (t.blockedBy ?? []) as number[]))]
-  const blockers = new Map<number, { number: number; open: boolean }>()
+  const blockers = new Map<number, { id: number; number: number; open: boolean }>()
   if (blockerIds.length) {
-    for (const b of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: blockerIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) blockers.set(b.id, { number: b.number, open: b.state !== 'closed' })
+    for (const b of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: blockerIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) blockers.set(b.id, { id: b.id, number: b.number, open: b.state !== 'closed' })
   }
   const latest = new Map<number, RunRow>()
   if (ticketDocs.length) {
@@ -82,7 +82,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       product: byId.get(t.product) ?? null,
       run,
       needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run) : null,
-      blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!.number] : [])) : [],
+      blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
     }
   })
   const waiting = rows.filter((r) => r.needsYou === 'Approve plan')

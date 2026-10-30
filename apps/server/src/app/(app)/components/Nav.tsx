@@ -1,13 +1,12 @@
 'use client'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 
 export function Nav({ needsYou }: { needsYou: number }) {
   const path = usePathname()
-  const runs = useSearchParams().get('view') === 'runs'
   const items = [
-    { href: '/', label: 'Tickets', current: path === '/' && !runs, badge: needsYou },
-    { href: '/?view=runs', label: 'Runs', current: path === '/' && runs || path.startsWith('/runs'), badge: 0 },
+    { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou },
+    { href: '/runs', label: 'Runs', current: path.startsWith('/runs'), badge: 0 },
   ]
   return (
     <nav className="nav" aria-label="Main">
