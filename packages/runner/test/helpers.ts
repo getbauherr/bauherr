@@ -60,7 +60,7 @@ export function makeBareRepo(): string {
   return `file://${root}`;
 }
 
-export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'plan' | 'build' }): RunCtx & { logs: string[]; comments: string[]; worklogs: string[]; stages: string[]; prs: { head: string; body: string }[] } {
+export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'triage' | 'plan' | 'build' }): RunCtx & { logs: string[]; comments: string[]; worklogs: string[]; stages: string[]; prs: { head: string; body: string }[] } {
   const logs: string[] = [];
   const comments: string[] = [];
   const worklogs: string[] = [];

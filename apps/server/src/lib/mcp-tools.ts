@@ -3,10 +3,11 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { acceptStaging, approvePlan, concludeReview, normalizeReview, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
+import { acceptStaging, approvePlan, concludeReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { frontierOrder } from './frontier'
+import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -119,7 +120,10 @@ const claimRun = async (c: Ctx, runId: number | string) => {
       throw e
     }
   }
-  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: statements, assignedTo: login ?? null }
+  // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
+  const fence = run.stage === 'triage' || run.stage === 'review'
+  const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
+  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 /** Open, unblocked Tickets in frontier order with their latest Run. */
@@ -358,6 +362,32 @@ export const tools: Tool[] = [
         sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown } })}::jsonb, ${U}`,
       )
       return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review, reviewedSha)) }
+    },
+  },
+  {
+    name: 'submit_triage',
+    description: 'End your Triage Run with the outcome. plan: the Ticket is ready (clear goal, acceptance criteria or derivable ones, no open product decision); it gets the plan stage label. refine: post questions for the owner (every one critical; title, default, alternatives) and hold the Ticket with bauherr:needs-refinement until they are answered. skip: post the reason, no stage; not re-triaged until the Ticket changes. reason is always required (one line). Never edit code in a Triage Run.',
+    inputSchema: obj(
+      {
+        ...runId,
+        ...leaseToken,
+        outcome: { enum: ['plan', 'refine', 'skip'] },
+        reason: str('One line'),
+        questions: { type: 'array', maxItems: 10, description: 'refine only', items: { type: 'object', properties: { title: str('The question'), default: str('Recommended answer'), alternatives: { type: 'array', maxItems: 5, items: { type: 'string' } } }, required: ['title', 'default'] } },
+      },
+      ['runId', 'leaseToken', 'outcome', 'reason'],
+    ),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'triage') throw new Error(`run ${run.id} is a ${run.stage} Run, not a triage Run`)
+      const triage = normalizeTriage(a)
+      await ownerWrite(
+        c,
+        run,
+        a.leaseToken,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ triage: { outcome: triage.outcome, reason: triage.reason } })}::jsonb, ${U}`,
+      )
+      return submitTriage(c.payload, id(run.ticket), triage)
     },
   },
   {

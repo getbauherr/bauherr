@@ -8,7 +8,7 @@ import type { ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { forgeOf, id } from './release'
 
-export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded' }
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)' }
 /** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
 const AUTONOMOUS_BUILD_GOAL = 'the change is implemented and the checks pass'
 export type GoalStage = keyof typeof DEFAULT_GOAL
@@ -67,7 +67,7 @@ export const buildRunCtx = async (
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
   const tiers = { ...DEFAULT_MODEL_BY_TIER, ...(ws.modelByTier as Record<string, string> | null) }
   const modelByTier = Object.fromEntries(Object.entries(tiers).map(([t, m]) => [t, `ws-${ws.slug}/${m}`]))
-  const mr = run.stage === 'plan' ? null : await prOf(payload, ticket)
+  const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)

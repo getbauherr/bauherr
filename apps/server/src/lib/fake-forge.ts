@@ -23,6 +23,14 @@ const WORKLOG = `<!-- bauherr:worklog -->
 - 2026-10-30 Use CSS custom properties. Consequence: no runtime theme library. By: plan Run.
 `
 
+const QUESTIONS = `<!-- bauherr:triage -->
+## Questions
+Triage needs your answers before this Ticket can be planned: the export scope is open.
+
+## Decisions
+- **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON.
+`
+
 const summary = (n: number) => `<!-- bauherr:staging-summary -->
 
 # Staging summary: #${n} Ship the export
@@ -50,6 +58,10 @@ const build = (): FakeBackend => {
     void ts.comment(String(n), WORKLOG)
     void ts.comment(String(n), summary(n))
   }
+  // #8-#10 are placeholders; #11 is held by Triage with its questions.
+  for (const n of [8, 9, 10]) void ts.create({ title: `Placeholder ${n}` })
+  void ts.create({ title: 'Clarify the export scope', labels: ['bauherr:needs-refinement'] })
+  void ts.comment('11', QUESTIONS)
   return fake
 }
 

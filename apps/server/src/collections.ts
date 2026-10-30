@@ -225,6 +225,7 @@ const tickets = col('tickets', [
   text('labels', { hasMany: true }),
   text('assignee'),
   date('sourceUpdatedAt'),
+  { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),
@@ -267,7 +268,7 @@ export const collections: CollectionConfig[] = [
   tickets,
   col('runs', [
     rel('ticket', 'tickets', { required: true }),
-    select('stage', ['plan', 'build', 'review'], { required: true }),
+    select('stage', ['triage', 'plan', 'build', 'review'], { required: true }),
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
