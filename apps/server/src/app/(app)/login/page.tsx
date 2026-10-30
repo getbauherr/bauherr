@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { oidcDisplayName, oidcEnabled } from '../../../lib/oidc'
 import { login } from '../lib/actions'
 import { getBauherr } from '../lib/session'
 
@@ -23,10 +24,19 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <span className="small muted">Password</span>
           <input name="password" type="password" autoComplete="current-password" required />
         </label>
-        {error && <p role="alert" className="err small">Email or password is wrong. Check both and try again.</p>}
+        {error === 'oidc' ? (
+          <p role="alert" className="err small">Single sign-on failed. Try again or use your password.</p>
+        ) : (
+          error && <p role="alert" className="err small">Email or password is wrong. Check both and try again.</p>
+        )}
         <button className="btn primary" style={{ justifyContent: 'center' }}>Sign in</button>
       </form>
-      {/* Slice 5 (#90): "Sign in with <provider>" button, rendered only when OIDC is configured. */}
+      {oidcEnabled() && (
+        <div className="or">
+          <span className="small muted">or</span>
+          <a className="btn" href="/auth/oidc/login" style={{ justifyContent: 'center' }}>Sign in with {oidcDisplayName()}</a>
+        </div>
+      )}
     </main>
   )
 }

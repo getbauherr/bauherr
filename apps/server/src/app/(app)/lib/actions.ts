@@ -3,6 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { VIEWS, type View } from './needs-you'
+import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
@@ -27,7 +28,9 @@ export async function logout() {
   // Revoke this session server-side; the cookie goes regardless.
   const { user } = await payload.auth({ headers: await headers() })
   if (user) await logoutOperation({ collection: payload.collections.bauherren, req: await createLocalReq({ user }, payload) }).catch(() => undefined)
-  ;(await cookies()).delete(`${payload.config.cookiePrefix}-token`)
+  const jar = await cookies()
+  jar.delete(`${payload.config.cookiePrefix}-token`)
+  jar.delete(SESSION_COOKIE)
   redirect('/login')
 }
 

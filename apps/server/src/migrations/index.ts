@@ -2,6 +2,7 @@ import * as migration_20261029_165423_initial from './20261029_165423_initial';
 import * as migration_20261030_000000_reconcile_costs from './20261030_000000_reconcile_costs';
 import * as migration_20261030_120000_provider_presets from './20261030_120000_provider_presets';
 import * as migration_20261030_130000_ui_prefs from './20261030_130000_ui_prefs';
+import * as migration_20261030_130000_oidc from './20261030_130000_oidc';
 
 export const migrations = [
   {
@@ -23,5 +24,10 @@ export const migrations = [
     up: migration_20261030_130000_ui_prefs.up,
     down: migration_20261030_130000_ui_prefs.down,
     name: '20261030_130000_ui_prefs'
+  },
+  {
+    up: migration_20261030_130000_oidc.up,
+    down: migration_20261030_130000_oidc.down,
+    name: '20261030_130000_oidc'
   },
 ];

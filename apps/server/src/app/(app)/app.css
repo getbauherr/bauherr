@@ -76,6 +76,9 @@ a.link{color:var(--accent)}
 
 .login{max-width:360px;margin:var(--space-12) auto;padding:0 var(--space-4);display:flex;flex-direction:column;gap:var(--space-6)}
 .login form{display:flex;flex-direction:column;gap:var(--space-4)}
+.or{display:flex;flex-direction:column;gap:var(--space-4);align-items:stretch;text-align:center}
+.or>span{display:flex;align-items:center;gap:var(--space-3)}
+.or>span::before,.or>span::after{content:"";flex:1;border-top:1px solid var(--hairline)}
 .field{display:flex;flex-direction:column;gap:var(--space-1)}
 .field input{height:36px;padding:0 var(--space-3);border:1px solid var(--hairline);border-radius:var(--radius-md);background:var(--surface-200);color:var(--ink);font:inherit}
 .err{color:var(--danger)}

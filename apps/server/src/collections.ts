@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { ValidationError, type CollectionConfig, type Field } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { missingFields, PRESETS, presetOf, type Preset } from './lib/providers'
+import { oidcStrategy } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
@@ -25,7 +26,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
   labels: { singular: 'Bauherr', plural: 'Bauherren' },
-  auth: { useAPIKey: true },
+  auth: { useAPIKey: true, strategies: [oidcStrategy] },
   admin: { useAsTitle: 'email' },
   access: {
     create: isAdmin,
@@ -54,6 +55,8 @@ const bauherren: CollectionConfig = {
     },
     json('uiPrefs'),
     text('githubLogin', { admin: { description: 'Assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN).' } }),
+    text('oidcSubject', { access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'issuer|sub of the OIDC identity, set on first OIDC sign-in.' } }),
+    { name: 'oidcSynced', type: 'date', access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'Last OIDC sign-in that synced role and Workspaces.' } },
   ],
 }
 
