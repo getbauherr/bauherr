@@ -4,6 +4,8 @@ import './tokens.css'
 import './app.css'
 
 export const metadata: Metadata = { title: 'Bauherr' }
+// Every page reads the session cookie; never prerender at build time (no DB there).
+export const dynamic = 'force-dynamic'
 
 const theme = `try{var t=localStorage.getItem('bauherr-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`
 
