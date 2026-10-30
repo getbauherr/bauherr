@@ -93,3 +93,5 @@ Create `(app)/(shell)/<path>/page.tsx` as a server component, call `currentWorks
 ## Smoke test
 
 `pnpm --filter server seed:e2e` seeds the e2e DB (admin, Workspace, one ticket). The e2e suite expects a freshly seeded DB (re-runs leave active Runs behind). `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`. Payload accepts the session cookie only from the `serverURL` origin (`PUBLIC_URL`); from another origin run Chromium with `--host-resolver-rules=MAP localhost <host-ip>` (or leave `PUBLIC_URL` unset on the dev server).
+
+CI (`.github/workflows/ci.yml`, job `e2e`) runs the suite against the production image with `docker compose up --build`, seeded via `seed:e2e`. The image refuses `BAUHERR_E2E_FAKE_FORGE`, so the fake-forge specs (`ticket`, `release`), OIDC and admin-disabled specs are skipped there.
