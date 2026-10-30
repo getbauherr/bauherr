@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
+import { heartbeatAge } from '../lib/format'
 import { STAGES } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
@@ -10,6 +11,19 @@ const Num = ({ t }: { t: TicketRow }) =>
 
 const Needs = ({ t }: { t: TicketRow }) =>
   t.needsYou ? <span className="label needs">{t.needsYou}</span> : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
+
+const Working = ({ t }: { t: TicketRow }) => {
+  const r = t.run
+  if (!r || (r.status !== 'running' && r.status !== 'awaiting_session')) return null
+  const at = r.heartbeatAt ?? r.startedAt
+  const age = at ? heartbeatAge(at) : null
+  const who = r.mode === 'session' ? (t.owner ?? 'session') : 'scheduler'
+  return (
+    <Link href={`/runs/${r.id}`} className={`label ${age?.stale ? 'queued' : 'running'}`}>
+      {r.stage} · {who}{age && ` · ${age.text}`}
+    </Link>
+  )
+}
 
 const Blocked = ({ t }: { t: TicketRow }) =>
   t.blockedBy.length ? (
@@ -37,6 +51,7 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
                 {title(t)}
                 {t.product && <span className="muted small">{t.product.name}</span>}
                 {t.run && <StatusChip status={t.run.status} />}
+                <Working t={t} />
                 <Blocked t={t} />
                 <Needs t={t} />
               </article>

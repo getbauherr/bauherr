@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { AutoRefresh } from '../components/AutoRefresh'
 import { EmptyState } from '../components/EmptyState'
 import { TicketControls } from '../components/OverviewControls'
 import { BoardView } from '../components/OverviewViews'
@@ -19,6 +20,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const shown = sp.state === 'all' ? inProduct : inProduct.filter((t) => t.open)
   return (
     <>
+      <AutoRefresh />
       <h1 className="title">Tickets</h1>
       <TicketControls products={data.products} />
       {shown.length ? (

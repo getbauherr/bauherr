@@ -10,6 +10,8 @@ export type RunRow = {
   stage: string
   status: string
   mode: string
+  sessionOwner: number | null
+  heartbeatAt: string | null
   startedAt: string | null
   finishedAt: string | null
   costUsd: number | null
@@ -24,11 +26,14 @@ export type TicketRow = {
   stage: Stage
   product: { id: number; name: string } | null
   run: RunRow | null
+  /** Email local-part of the session owner of a live Run; null for scheduler Runs. */
+  owner: string | null
   needsYou: string | null
   /** Open Tickets this one is blocked by. */
   blockedBy: { id: number; number: number }[]
 }
 
+const LIVE = ['running', 'awaiting_session']
 export const RUNS_LIMIT = 100
 /** Plan comments are fetched from the forge only for tickets awaiting plan approval, at most this many per load. */
 export const DECISIONS_LOOKUPS = 20
@@ -67,6 +72,9 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
     const runs = await payload.find({ collection: 'runs', where: { ticket: { in: ticketDocs.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...q })
     for (const r of runs.docs as unknown as RunRow[]) if (!latest.has(r.ticket)) latest.set(r.ticket, r)
   }
+  const ownerIds = [...new Set([...latest.values()].filter((r) => LIVE.includes(r.status) && r.mode === 'session' && r.sessionOwner).map((r) => r.sessionOwner!))]
+  const owners = new Map<number, string>()
+  if (ownerIds.length) for (const o of (await payload.find({ collection: 'bauherren', where: { id: { in: ownerIds } }, pagination: false, ...q })).docs as unknown as { id: number; email: string }[]) owners.set(o.id, o.email.split('@')[0])
   const productRows = products.docs as unknown as { id: number; name: string }[]
   const byId = new Map(productRows.map((p) => [p.id, p]))
   const rows = ticketDocs.map((t): TicketRow => {
@@ -81,6 +89,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       stage: stageOf(t),
       product: byId.get(t.product) ?? null,
       run,
+      owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
       needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run) : null,
       blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
     }

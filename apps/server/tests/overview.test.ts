@@ -1,5 +1,6 @@
 import { GATES } from '../src/app/(app)/lib/gates'
 import { describe, expect, it } from 'vitest'
+import { heartbeatAge } from '../src/app/(app)/lib/format'
 import { NEEDS, needsYou, releaseWord } from '../src/app/(app)/lib/needs-you'
 
 const t = (stage: string | null, labels: string[] = []) => ({ stage, labels })
@@ -46,5 +47,15 @@ describe('needsYou', () => {
   it('is quiet for healthy tickets and tickets without a stage', () => {
     expect(needsYou(t('build'), r('build', 'running'))).toBeNull()
     expect(needsYou(t(null), null)).toBeNull()
+  })
+})
+
+describe('heartbeatAge', () => {
+  const now = Date.parse('2026-01-01T00:10:00Z')
+  it('formats seconds, minutes, hours and flags >5 min as stale', () => {
+    expect(heartbeatAge('2026-01-01T00:09:20Z', now)).toEqual({ text: '40s ago', stale: false })
+    expect(heartbeatAge('2026-01-01T00:05:00Z', now)).toEqual({ text: '5m ago', stale: false })
+    expect(heartbeatAge('2026-01-01T00:04:00Z', now)).toEqual({ text: '6m ago', stale: true })
+    expect(heartbeatAge('2025-12-31T21:00:00Z', now)).toEqual({ text: '3h ago', stale: true })
   })
 })
