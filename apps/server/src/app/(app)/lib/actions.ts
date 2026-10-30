@@ -36,3 +36,15 @@ export async function selectWorkspace(slug: string) {
   }
   redirect('/')
 }
+
+export async function setUiPref(key: string, value: string) {
+  const user = await requireBauherr()
+  const payload = await payloadClient()
+  await payload.update({
+    collection: 'bauherren',
+    id: user.id,
+    data: { uiPrefs: { ...(((user as { uiPrefs?: object | null }).uiPrefs) ?? {}), [key]: value } },
+    depth: 0,
+    overrideAccess: true,
+  })
+}

@@ -33,6 +33,7 @@ h1,h2,p{margin:0;text-wrap:balance}
 .nav a{display:flex;align-items:center;height:56px;color:var(--ink-muted);border-bottom:1px solid transparent;margin-bottom:-1px;transition:color var(--duration-state) var(--ease-out),border-color var(--duration-state) var(--ease-out)}
 .nav a:hover{color:var(--ink)}
 .nav a[aria-current]{color:var(--ink);border-bottom-color:var(--accent)}
+.nav .badge{margin-left:var(--space-2);color:var(--warn);font:500 12px/16px var(--font-mono)}
 .tools{margin-left:auto;display:flex;align-items:center;gap:var(--space-2)}
 .avatar{display:grid;place-items:center;width:24px;height:24px;border-radius:var(--radius-sm);background:var(--surface-200);font:500 12px/16px var(--font-sans)}
 
@@ -56,6 +57,22 @@ a.link{color:var(--accent)}
 .table th{background:var(--surface-200);text-align:left;padding:var(--space-2) var(--space-4)}
 .table td{padding:var(--space-3) var(--space-4);border-top:1px solid var(--hairline)}
 .scroll{overflow-x:auto}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-4);border-bottom:1px solid var(--hairline)}
+.tabs{display:flex;gap:var(--space-4);margin-right:auto}
+.tabs a{display:flex;align-items:center;height:40px;color:var(--ink-muted);border-bottom:1px solid transparent;margin-bottom:-1px;transition:color var(--duration-state) var(--ease-out),border-color var(--duration-state) var(--ease-out)}
+.tabs a:hover{color:var(--ink)}
+.tabs a[aria-current]{color:var(--ink);border-bottom-color:var(--accent)}
+.filter{display:flex;align-items:center;gap:var(--space-2)}
+.filter select{height:32px;padding:0 var(--space-2);border:1px solid var(--hairline);border-radius:var(--radius-md);background:var(--surface-200);color:var(--ink);font:inherit}
+.seg{display:flex;border:1px solid var(--hairline);border-radius:var(--radius-md);overflow:hidden}
+.seg a{padding:var(--space-1) var(--space-3);color:var(--ink-muted)}
+.seg a[aria-pressed=true]{background:var(--accent-soft);color:var(--ink)}
+.ticket-title:hover{text-decoration:underline}
+.small{font-size:13px;line-height:20px}
+.board{display:flex;gap:var(--space-4);overflow-x:auto;align-items:flex-start}
+.col{flex:0 0 260px;display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3);background:var(--surface-100);border:1px solid var(--hairline);border-radius:var(--radius-md)}
+.card{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-1);padding:var(--space-3);background:var(--surface-000);border:1px solid var(--hairline);border-radius:var(--radius-md)}
 
 .login{max-width:360px;margin:var(--space-12) auto;padding:0 var(--space-4);display:flex;flex-direction:column;gap:var(--space-6)}
 .login form{display:flex;flex-direction:column;gap:var(--space-4)}

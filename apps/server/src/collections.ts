@@ -52,6 +52,7 @@ const bauherren: CollectionConfig = {
       required: true,
       access: { create: isAdmin, update: isAdmin },
     },
+    json('uiPrefs'),
     text('githubLogin', { admin: { description: 'Assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN).' } }),
   ],
 }
