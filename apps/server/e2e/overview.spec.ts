@@ -44,3 +44,24 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(page).toHaveURL(/\/runs\?product=/)
   await expect(page.locator('table tbody tr')).toHaveCount(2)
 })
+
+test('drag a Board card above another: the order survives a reload', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  const titles = () => page.locator('.col[data-stage=build] .card .ticket-title').allTextContents()
+  const a = 'Blocker: migrate the invoice table'
+  const b = 'Export invoices as CSV'
+  await expect(page.locator('.col[data-stage=build] .card')).not.toHaveCount(0)
+  const [first, second] = (await titles()).indexOf(a) < (await titles()).indexOf(b) ? [a, b] : [b, a]
+  await page.locator('.col[data-stage=build] .card', { hasText: second }).dragTo(page.locator('.col[data-stage=build] .card', { hasText: first }))
+  await expect.poll(async () => (await titles()).indexOf(second) < (await titles()).indexOf(first)).toBe(true)
+  await expect(async () => {
+    await page.reload()
+    const after = await titles()
+    expect(after.indexOf(second)).toBeLessThan(after.indexOf(first))
+  }).toPass()
+})

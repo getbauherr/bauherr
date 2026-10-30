@@ -4,6 +4,8 @@ import { heartbeatAge } from '../lib/format'
 import { STAGES } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
+import { frontierOrder } from '../../../lib/frontier'
+import { SortableCards } from './SortableCards'
 import { StatusChip } from './StatusChip'
 
 const Num = ({ t }: { t: TicketRow }) =>
@@ -36,26 +38,33 @@ const Blocked = ({ t }: { t: TicketRow }) =>
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
 
 export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: boolean }) {
+  const latest = new Map(tickets.flatMap((t) => (t.run ? [[t.id, t.run] as const] : [])))
   return (
     <>
     {capped && <p className="muted small">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
     <div className="board">
       {STAGES.map((s) => {
-        const rows = tickets.filter((t) => t.stage === s)
+        const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
         return (
           <section key={s} className="col" data-stage={s}>
             <h2 className="label">{s} <span className="muted">{rows.length}</span></h2>
-            {rows.map((t) => (
-              <article key={t.id} className="card">
-                <Num t={t} />
-                {title(t)}
-                {t.product && <span className="muted small">{t.product.name}</span>}
-                {t.run && <StatusChip status={t.run.status} />}
-                <Working t={t} />
-                <Blocked t={t} />
-                <Needs t={t} />
-              </article>
-            ))}
+            <SortableCards
+              items={rows.map((t) => ({
+                id: t.id,
+                movable: t.open,
+                node: (
+                  <>
+                    <Num t={t} />
+                    {title(t)}
+                    {t.product && <span className="muted small">{t.product.name}</span>}
+                    {t.run && <StatusChip status={t.run.status} />}
+                    <Working t={t} />
+                    <Blocked t={t} />
+                    <Needs t={t} />
+                  </>
+                ),
+              }))}
+            />
           </section>
         )
       })}

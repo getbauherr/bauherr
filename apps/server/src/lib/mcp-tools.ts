@@ -6,6 +6,7 @@ import type { Payload } from 'payload'
 import { acceptStaging, approvePlan, concludeReview, normalizeReview, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
+import { frontierOrder } from './frontier'
 import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -90,33 +91,74 @@ const runId = { runId: { type: ['number', 'string'], description: 'Run id' } }
 const leaseToken = { leaseToken: str('Lease token returned by claim_run') }
 const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id (Bauherr database id)' } }
 
+class ClaimLost extends Error {}
+
+/** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
+const claimRun = async (c: Ctx, runId: number | string) => {
+  const run = await getRun(c, runId)
+  const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
+  if (run.mode !== 'session') throw new Error(notClaimable)
+  if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
+  const ticket = await getTicket(c, id(run.ticket))
+  const { ts, n } = await sourceOf(c.payload, ticket)
+  const body = (await ts.get(n)).body
+  const statements = await goalFor(c.payload, ticket, body, run.stage)
+  const leaseToken = randomBytes(32).toString('base64url')
+  // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
+  const claimed = await c.payload.db.drizzle.execute(
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+  )
+  if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
+  const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
+  const login = (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
+  if (login) {
+    try {
+      await ts.claim(n, login)
+    } catch (e) {
+      await c.payload.update({ collection: 'runs', id: run.id, data: { status: 'awaiting_session', sessionOwner: null, leaseHash: null, heartbeatAt: null }, overrideAccess: true })
+      throw e
+    }
+  }
+  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: statements, assignedTo: login ?? null }
+}
+
+/** Open, unblocked Tickets in frontier order with their latest Run. */
+const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; latest: Map<unknown, Doc> } | null> => {
+  const product = productSlug
+    ? (await c.payload.find({ collection: 'products', where: { slug: { equals: productSlug } }, limit: 1, ...scoped(c) })).docs[0]
+    : null
+  if (productSlug && !product) return null
+  const tickets = await c.payload.find({
+    collection: 'tickets',
+    where: { and: [{ state: { equals: 'open' } }, ...(product ? [{ product: { equals: product.id } }] : [])] },
+    pagination: false,
+    ...scoped(c),
+    depth: 1,
+  })
+  const unblocked = tickets.docs.filter((t: Doc) => !((t.blockedBy as Doc[]) ?? []).some((b) => b.state === 'open'))
+  const runs = await c.payload.find({
+    collection: 'runs',
+    where: { ticket: { in: unblocked.map((t) => t.id) } },
+    sort: '-createdAt',
+    pagination: false,
+    ...scoped(c),
+  })
+  const latest = new Map<unknown, Doc>()
+  for (const r of runs.docs as Doc[]) if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
+  return { open: frontierOrder(unblocked as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest }
+}
+
+const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session'
+
 export const tools: Tool[] = [
   {
     name: 'list_frontier',
     description: 'Open, unblocked Tickets with stage and latest Run state. Only claim Tickets with claimable=true; leased ones show leasedBy + leaseExpiresAt: never touch their branch or worktree.',
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
-      const product = a.product
-        ? (await c.payload.find({ collection: 'products', where: { slug: { equals: a.product } }, limit: 1, ...scoped(c) })).docs[0]
-        : null
-      if (a.product && !product) return []
-      const tickets = await c.payload.find({
-        collection: 'tickets',
-        where: { and: [{ state: { equals: 'open' } }, ...(product ? [{ product: { equals: product.id } }] : [])] },
-        limit: 100,
-        ...scoped(c),
-        depth: 1,
-      })
-      const open = tickets.docs.filter((t: Doc) => !((t.blockedBy as Doc[]) ?? []).some((b) => b.state === 'open'))
-      const runs = await c.payload.find({
-        collection: 'runs',
-        where: { ticket: { in: open.map((t) => t.id) } },
-        sort: '-createdAt',
-        limit: 500,
-        ...scoped(c),
-      })
-      const latest = new Map<unknown, Doc>()
-      for (const r of runs.docs as Doc[]) if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
+      const f = await frontier(c, a.product)
+      if (!f) return []
+      const { open, latest } = f
       const leases = [...latest.values()].filter((r) => r.status === 'running' && r.mode === 'session')
       const owners = new Map<unknown, string>(
         (await c.payload.find({ collection: 'bauherren', where: { id: { in: leases.map((r) => id(r.sessionOwner)) } }, limit: 100, depth: 0, overrideAccess: true })).docs.map((u: Doc) => [u.id, u.name ?? u.email]),
@@ -126,7 +168,7 @@ export const tools: Tool[] = [
         return {
           ticket: t.id, number: t.number, title: t.title, url: t.url, stage: t.stage, labels: t.labels, assignee: t.assignee,
           run: r ? { id: r.id, stage: r.stage, status: r.status, mode: r.mode } : null,
-          claimable: r?.mode === 'session' && r.status === 'awaiting_session',
+          claimable: isClaimable(r),
           ...(leases.includes(r as Doc) && { leasedBy: owners.get(id(r!.sessionOwner)) ?? null, leaseExpiresAt: new Date(new Date(r!.heartbeatAt).getTime() + SESSION_TIMEOUT_MS).toISOString() }),
         }
       })
@@ -150,29 +192,25 @@ export const tools: Tool[] = [
     description: 'Claim an awaiting_session Run: status running, Ticket assigned. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
-      const run = await getRun(c, a.runId)
-      if (run.mode !== 'session' || run.status !== 'awaiting_session') throw new Error(`run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`)
-      const ticket = await getTicket(c, id(run.ticket))
-      const { ts, n } = await sourceOf(c.payload, ticket)
-      const body = (await ts.get(n)).body
-      const statements = await goalFor(c.payload, ticket, body, run.stage)
-      const leaseToken = randomBytes(32).toString('base64url')
-      // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
-      const claimed = await c.payload.db.drizzle.execute(
-        sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
-      )
-      if (!claimed.rows.length) throw new Error(`run ${run.id} was claimed by someone else`)
-      const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
-      const login = (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
-      if (login) {
+      return claimRun(c, a.runId)
+    },
+  },
+  {
+    name: 'claim_next',
+    description: 'Claim the top claimable Run in frontier order (in-flight work first, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
+    inputSchema: obj({ product: str('Product slug') }),
+    async run(a, c) {
+      const f = await frontier(c, a.product)
+      for (const t of f?.open ?? []) {
+        const r = f!.latest.get(t.id)
+        if (!isClaimable(r)) continue
         try {
-          await ts.claim(n, login)
+          return await claimRun(c, r!.id)
         } catch (e) {
-          await c.payload.update({ collection: 'runs', id: run.id, data: { status: 'awaiting_session', sessionOwner: null, leaseHash: null, heartbeatAt: null }, overrideAccess: true })
-          throw e
+          if (!(e instanceof ClaimLost)) throw e
         }
       }
-      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: statements, assignedTo: login ?? null }
+      return null
     },
   },
   {

@@ -24,6 +24,8 @@ export type TicketRow = {
   url: string | null
   open: boolean
   stage: Stage
+  rank: string | null
+  reviewRounds: number
   product: { id: number; name: string } | null
   run: RunRow | null
   /** Email local-part of the session owner of a live Run; null for scheduler Runs. */
@@ -87,6 +89,8 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       url: t.url ?? null,
       open: isOpen,
       stage: stageOf(t),
+      rank: t.rank ?? null,
+      reviewRounds: t.reviewRounds ?? 0,
       product: byId.get(t.product) ?? null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
