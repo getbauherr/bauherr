@@ -24,6 +24,7 @@ Subscription credentials are allowed by Anthropic only for a person signing in t
 - Use API keys only. Never use subscription or OAuth credentials.
 - Developers may not collect or store Claude.ai credentials.
 - If you operate Bauherr for a client, the client's key is used and billed to the client.
+- 3P credentials (Bedrock, Vertex, Foundry) and self-hosted or OpenAI-compatible endpoints are the Workspace's own; Bauherr never intermediates Claude for third parties.
 
 Bauherr ships the SDK and Claude Code binary unmodified. Do not modify them or remove or restrict a built-in auth method.
 

@@ -1,5 +1,7 @@
+import { isDeepStrictEqual } from 'node:util'
 import type { CollectionConfig, Field } from 'payload'
-import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, writeProvider } from './lib/gateway'
+import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, verifyProvider, writeProvider } from './lib/gateway'
+import { missingFields, PRESETS, presetOf, type Preset } from './lib/providers'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
@@ -72,6 +74,8 @@ const workspaces = col(
       },
     },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
+    select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
+    { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
     select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
@@ -89,7 +93,11 @@ const workspaces = col(
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
           if (!gatewayEnabled()) return
-          if (operation === 'create' || doc.budgetUsd30d !== previousDoc?.budgetUsd30d) await ensureKey(req, doc.id)
+          if (
+            operation === 'create' ||
+            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d'] as const).some((k) => doc[k] !== previousDoc?.[k])
+          )
+            await ensureKey(req, doc.id)
         },
       ],
       afterDelete: [
@@ -104,16 +112,29 @@ const workspaces = col(
   },
 )
 
+const PRESET_FIELDS = ['baseUrl', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'] as const
+const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
+  text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
+
 const connections = col(
   'connections',
   [
     text('name', { required: true }),
     select('kind', ['github', 'llm-provider'], { required: true }),
     json('config'),
+    select('provider', Object.keys(PRESETS), {
+      defaultValue: 'anthropic',
+      admin: {
+        description: Object.entries(PRESETS)
+          .map(([k, v]) => `${k}: ${v.secret.hint}`)
+          .join('\n'),
+      },
+    }),
+    ...PRESET_FIELDS.map(presetField),
     {
       name: 'secret',
       type: 'text',
-      admin: { description: 'Write-only. Encrypted at rest; leave empty to keep the stored value.' },
+      admin: { description: 'Write-only. Encrypted at rest; leave empty to keep the stored value. What to paste: see the provider hint.' },
       access: { read: () => false },
       hooks: {
         beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)],
@@ -123,15 +144,47 @@ const connections = col(
   ],
   {
     hooks: {
+      beforeValidate: [
+        ({ data, originalDoc }) => {
+          if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
+          const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
+          for (const k of ['provider', ...PRESET_FIELDS]) if (data?.[k] !== undefined && data[k] !== null) config[k] = data[k]
+          const missing = missingFields(presetOf(config), config)
+          if (missing.length) throw new Error(`missing for ${presetOf(config)}: ${missing.join(', ')}`)
+          return { ...data, config }
+        },
+      ],
       afterChange: [
         async ({ doc, req }) => {
-          if (doc.kind !== 'llm-provider' || !gatewayEnabled()) return
+          if (doc.kind !== 'llm-provider' || !gatewayEnabled() || req.context.skipVerify) return
           const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
             secret?: string
-            workspace: { slug: string }
+            workspace: { id: number | string; slug: string }
+            capabilities?: Record<string, unknown> | null
           }
-          if (raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret))
+          const preset = PRESETS[presetOf(doc.config)]
+          const o = { overrideAccess: true, req } as const
+          if (raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret), preset.secret.ext)
           await renderModels(req)
+          const ws = (await req.payload.findByID({ collection: 'workspaces', id: raw.workspace.id, depth: 0, ...o })) as unknown as {
+            gatewayKey: string
+            modelByTier: Record<string, string>
+            budgetUnit: string
+          }
+          const data: Record<string, unknown> = {}
+          if (!preset.catalog && ws.budgetUnit === 'usd') data.budgetUnit = 'tokens'
+          if (preset.defaultModels && isDeepStrictEqual(ws.modelByTier, DEFAULT_MODEL_BY_TIER)) data.modelByTier = preset.defaultModels
+          if (Object.keys(data).length) await req.payload.update({ collection: 'workspaces', id: raw.workspace.id, data, ...o })
+          if (!process.env.GATEWAY_URL) return
+          const cheap = { ...DEFAULT_MODEL_BY_TIER, ...ws.modelByTier, ...data.modelByTier as object }.cheap
+          const result = await verifyProvider(raw.workspace.slug, decrypt(ws.gatewayKey), cheap)
+          req.context.skipVerify = true
+          await req.payload.update({
+            collection: 'connections',
+            id: doc.id,
+            data: { capabilities: { ...raw.capabilities, verifiedAt: undefined, lastError: undefined, ...result } },
+            ...o,
+          })
         },
       ],
       afterDelete: [

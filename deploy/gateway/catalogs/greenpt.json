@@ -1,0 +1,386 @@
+{
+  "providers": {
+    "greenpt": {
+      "models": {
+        "green-l": {
+          "rates": {
+            "input": "0.2898",
+            "output": "0.9272"
+          }
+        },
+        "green-l-raw": {
+          "rates": {
+            "input": "0.2898",
+            "output": "0.9272"
+          }
+        },
+        "green-r": {
+          "rates": {
+            "input": "0.4057",
+            "output": "1.1011"
+          }
+        },
+        "green-r-raw": {
+          "rates": {
+            "input": "0.4057",
+            "output": "1.1011"
+          }
+        },
+        "gemma4": {
+          "rates": {
+            "input": "0.5795",
+            "output": "1.7385"
+          }
+        },
+        "glm-5.2": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.2-caveman": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.2-honey": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.2-ponytail": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.3": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.3-flash": {
+          "rates": {
+            "input": "0.1275",
+            "cacheRead": "0.0255",
+            "output": "0.51"
+          }
+        },
+        "kimi-k3": {
+          "rates": {
+            "input": "3.8247",
+            "cacheRead": "0.9562",
+            "output": "19.1235"
+          }
+        },
+        "kimi-k2.7-code": {
+          "rates": {
+            "input": "0.8924",
+            "cacheRead": "0.1912",
+            "output": "4.4622"
+          }
+        },
+        "kimi-k2.6": {
+          "rates": {
+            "input": "0.7649",
+            "cacheRead": "0.255",
+            "output": "4.3463"
+          }
+        },
+        "deepseek-v4-flash-0731": {
+          "rates": {
+            "input": "0.1623",
+            "cacheRead": "0.0464",
+            "output": "0.4057"
+          }
+        },
+        "deepseek-v4.1-flash": {
+          "rates": {
+            "input": "0.255",
+            "cacheRead": "0.0127",
+            "output": "1.2749"
+          }
+        },
+        "minimax-m2.5": {
+          "rates": {
+            "input": "0.3825",
+            "output": "1.5299"
+          }
+        },
+        "llama-3.3-70b-instruct": {
+          "rates": {
+            "input": "1.2749",
+            "output": "1.2749"
+          }
+        },
+        "qwen3-235b-a22b-instruct-2507": {
+          "rates": {
+            "input": "1.0431",
+            "output": "3.1293"
+          }
+        },
+        "qwen3-coder-30b-a3b-instruct": {
+          "rates": {
+            "input": "0.2898",
+            "output": "1.1011"
+          }
+        },
+        "qwen3.5-397b-a17b": {
+          "rates": {
+            "input": "0.8113",
+            "output": "5.0416"
+          }
+        },
+        "qwen3.6-35b-a3b": {
+          "rates": {
+            "input": "0.3477",
+            "output": "2.0862"
+          }
+        },
+        "mistral-small-3.2-24b-instruct-2506": {
+          "rates": {
+            "input": "0.2318",
+            "output": "0.4636"
+          }
+        },
+        "mistral-medium-3.5-128b": {
+          "rates": {
+            "input": "2.0862",
+            "output": "10.431"
+          }
+        },
+        "pixtral-12b-2409": {
+          "rates": {
+            "input": "0.2898",
+            "output": "0.2898"
+          }
+        },
+        "gpt-oss-120b": {
+          "rates": {
+            "input": "0.2318",
+            "output": "0.8113"
+          }
+        },
+        "green-embedding": {
+          "rates": {
+            "input": "0.2318"
+          }
+        },
+        "qwen3-embedding-8b": {
+          "rates": {
+            "input": "0.2898"
+          }
+        },
+        "bge-multilingual-gemma2": {
+          "rates": {
+            "input": "0.058"
+          }
+        },
+        "green-rerank": {
+          "rates": {
+            "input": "0.1391"
+          }
+        }
+      }
+    },
+    "custom": {
+      "models": {
+        "green-l": {
+          "rates": {
+            "input": "0.2898",
+            "output": "0.9272"
+          }
+        },
+        "green-l-raw": {
+          "rates": {
+            "input": "0.2898",
+            "output": "0.9272"
+          }
+        },
+        "green-r": {
+          "rates": {
+            "input": "0.4057",
+            "output": "1.1011"
+          }
+        },
+        "green-r-raw": {
+          "rates": {
+            "input": "0.4057",
+            "output": "1.1011"
+          }
+        },
+        "gemma4": {
+          "rates": {
+            "input": "0.5795",
+            "output": "1.7385"
+          }
+        },
+        "glm-5.2": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.2-caveman": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.2-honey": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.2-ponytail": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.3": {
+          "rates": {
+            "input": "1.2749",
+            "cacheRead": "0.3187",
+            "output": "5.0996"
+          }
+        },
+        "glm-5.3-flash": {
+          "rates": {
+            "input": "0.1275",
+            "cacheRead": "0.0255",
+            "output": "0.51"
+          }
+        },
+        "kimi-k3": {
+          "rates": {
+            "input": "3.8247",
+            "cacheRead": "0.9562",
+            "output": "19.1235"
+          }
+        },
+        "kimi-k2.7-code": {
+          "rates": {
+            "input": "0.8924",
+            "cacheRead": "0.1912",
+            "output": "4.4622"
+          }
+        },
+        "kimi-k2.6": {
+          "rates": {
+            "input": "0.7649",
+            "cacheRead": "0.255",
+            "output": "4.3463"
+          }
+        },
+        "deepseek-v4-flash-0731": {
+          "rates": {
+            "input": "0.1623",
+            "cacheRead": "0.0464",
+            "output": "0.4057"
+          }
+        },
+        "deepseek-v4.1-flash": {
+          "rates": {
+            "input": "0.255",
+            "cacheRead": "0.0127",
+            "output": "1.2749"
+          }
+        },
+        "minimax-m2.5": {
+          "rates": {
+            "input": "0.3825",
+            "output": "1.5299"
+          }
+        },
+        "llama-3.3-70b-instruct": {
+          "rates": {
+            "input": "1.2749",
+            "output": "1.2749"
+          }
+        },
+        "qwen3-235b-a22b-instruct-2507": {
+          "rates": {
+            "input": "1.0431",
+            "output": "3.1293"
+          }
+        },
+        "qwen3-coder-30b-a3b-instruct": {
+          "rates": {
+            "input": "0.2898",
+            "output": "1.1011"
+          }
+        },
+        "qwen3.5-397b-a17b": {
+          "rates": {
+            "input": "0.8113",
+            "output": "5.0416"
+          }
+        },
+        "qwen3.6-35b-a3b": {
+          "rates": {
+            "input": "0.3477",
+            "output": "2.0862"
+          }
+        },
+        "mistral-small-3.2-24b-instruct-2506": {
+          "rates": {
+            "input": "0.2318",
+            "output": "0.4636"
+          }
+        },
+        "mistral-medium-3.5-128b": {
+          "rates": {
+            "input": "2.0862",
+            "output": "10.431"
+          }
+        },
+        "pixtral-12b-2409": {
+          "rates": {
+            "input": "0.2898",
+            "output": "0.2898"
+          }
+        },
+        "gpt-oss-120b": {
+          "rates": {
+            "input": "0.2318",
+            "output": "0.8113"
+          }
+        },
+        "green-embedding": {
+          "rates": {
+            "input": "0.2318"
+          }
+        },
+        "qwen3-embedding-8b": {
+          "rates": {
+            "input": "0.2898"
+          }
+        },
+        "bge-multilingual-gemma2": {
+          "rates": {
+            "input": "0.058"
+          }
+        },
+        "green-rerank": {
+          "rates": {
+            "input": "0.1391"
+          }
+        }
+      }
+    }
+  }
+}
