@@ -1,7 +1,7 @@
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
-import { ACTIVE, startRunIfNeeded } from '../jobs'
+import { ACTIVE, abandonRun, startRunIfNeeded } from '../jobs'
 import { forgeOf, id, publishStagingSummary } from './release'
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
@@ -33,6 +33,20 @@ const loadIn = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId
   const t = await loadTicket(payload, user, ticket)
   if (workspaceId !== undefined && String(id(t.workspace)) !== String(workspaceId)) throw new NotInWorkspace()
   return t
+}
+
+/** Human force-release of a leased session Run (Admin or a member of its Workspace): ends it `abandoned`, queues the successor, records a human touch. Never escalates to needs_human. */
+export const releaseLock = async (payload: Payload, user: Doc, a: { runId: TicketId }) => {
+  const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
+  const member = (user.tenants ?? []).some((t: Doc) => String(id(t.tenant)) === String(id(run?.workspace)))
+  if (!run || (user.role !== 'admin' && !member)) throw new NotInWorkspace()
+  if ((await abandonRun(payload, run, { reason: `lease released by ${user.email}`, escalate: false })) === null) throw new Error(`run ${run.id} is not a running session Run`)
+  await payload.create({
+    collection: 'human_touches',
+    data: { kind: `release-lock:${run.stage}`, ticket: id(run.ticket), run: run.id, workspace: id(run.workspace), actor: user.email, at: now() },
+    overrideAccess: true,
+  })
+  return { status: 'abandoned' }
 }
 
 export const worklogComment = async ({ ts, n }: Source) => firstWith(await ts.listComments(n), WORKLOG_MARKER)

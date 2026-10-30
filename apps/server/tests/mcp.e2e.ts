@@ -94,6 +94,7 @@ test('list_frontier and claim_run over HTTP', { skip: !base }, async () => {
   const frontier = (await call('list_frontier', {})).json
   assert.equal(frontier.length, 1)
   assert.deepEqual(frontier[0].run, { id: runId, stage: 'plan', status: 'awaiting_session', mode: 'session' })
+  assert.equal(frontier[0].claimable, true)
 
   const claimed = await call('claim_run', { runId })
   assert.equal(claimed.json.run.status, 'running')
@@ -101,6 +102,7 @@ test('list_frontier and claim_run over HTTP', { skip: !base }, async () => {
   assert.equal(assigned.length, 1)
 
   assert.equal((await call('claim_run', { runId })).isError, true)
-  assert.equal((await call('heartbeat', { runId })).json.ok, true)
+  assert.equal((await call('heartbeat', { runId })).isError, true)
+  assert.equal((await call('heartbeat', { runId, leaseToken: claimed.json.leaseToken })).json.ok, true)
   assert.equal((await call('list_frontier', {})).json[0].run.status, 'running')
 })

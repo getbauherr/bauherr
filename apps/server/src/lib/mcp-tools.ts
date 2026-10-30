@@ -1,8 +1,10 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, updateWorklog } from './actions'
+import { SESSION_TIMEOUT_MS } from '../jobs'
 import { goalOf } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -29,13 +31,25 @@ export const tenantsOf = (user: Doc): (number | string)[] => ((user.tenants as {
 
 const scoped = (c: Ctx) => scopedUser(c.user)
 
-const getRun = async (c: Ctx, runId: number | string, own = false): Promise<Doc> => {
-  const run = (await c.payload.findByID({ collection: 'runs', id: runId, ...scoped(c) })) as Doc
+const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex')
+
+/** True when `token` hashes to the Run's `leaseHash`. */
+const holdsLease = (run: Doc, token: unknown): boolean =>
+  typeof token === 'string' && typeof run.leaseHash === 'string' && timingSafeEqual(Buffer.from(sha256(token)), Buffer.from(run.leaseHash))
+
+/** The live lease: session Run still running and `leaseToken` valid. */
+const assertLease = (run: Doc, a: { leaseToken?: unknown }): void => {
+  if (run.mode !== 'session') throw new Error(`run ${run.id} is not a session Run`)
+  if (run.status !== 'running') throw new Error(`lease lost: run ${run.id} is ${run.status}`)
+  if (!holdsLease(run, a.leaseToken)) throw new Error(`run ${run.id} is leased by another session`)
+}
+
+/** Loads a Run in the caller's Workspace; `own` additionally requires the live lease. */
+const getRun = async (c: Ctx, runId: number | string, own?: { leaseToken?: unknown }): Promise<Doc> => {
+  const run = (await c.payload.findByID({ collection: 'runs', id: runId, ...scoped(c), showHiddenFields: true })) as Doc
   c.workspace = id(run.workspace)
   c.run = run.id
-  if (own && (run.status !== 'running' || run.mode !== 'session' || id(run.sessionOwner) !== c.user.id)) {
-    throw new Error(`run ${runId} is not a running session Run owned by you`)
-  }
+  if (own) assertLease(run, own)
   return run
 }
 
@@ -60,12 +74,13 @@ const packFile = (path: string): string => {
 const obj = (properties: Record<string, unknown>, required: string[] = []): Tool['inputSchema'] => ({ type: 'object', properties, ...(required.length ? { required } : {}) })
 const str = (description: string) => ({ type: 'string', description })
 const runId = { runId: { type: ['number', 'string'], description: 'Run id' } }
+const leaseToken = { leaseToken: str('Lease token returned by claim_run') }
 const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id (Bauherr database id)' } }
 
 export const tools: Tool[] = [
   {
     name: 'list_frontier',
-    description: 'Open, unblocked Tickets with stage and latest Run state (awaiting_session = ready to claim).',
+    description: 'Open, unblocked Tickets with stage and latest Run state. Only claim Tickets with claimable=true; leased ones show leasedBy + leaseExpiresAt: never touch their branch or worktree.',
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
       const product = a.product
@@ -89,11 +104,17 @@ export const tools: Tool[] = [
       })
       const latest = new Map<unknown, Doc>()
       for (const r of runs.docs as Doc[]) if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
+      const leases = [...latest.values()].filter((r) => r.status === 'running' && r.mode === 'session')
+      const owners = new Map<unknown, string>(
+        (await c.payload.find({ collection: 'bauherren', where: { id: { in: leases.map((r) => id(r.sessionOwner)) } }, limit: 100, depth: 0, overrideAccess: true })).docs.map((u: Doc) => [u.id, u.name ?? u.email]),
+      )
       return open.map((t: Doc) => {
         const r = latest.get(t.id)
         return {
           ticket: t.id, number: t.number, title: t.title, url: t.url, stage: t.stage, labels: t.labels, assignee: t.assignee,
           run: r ? { id: r.id, stage: r.stage, status: r.status, mode: r.mode } : null,
+          claimable: r?.mode === 'session' && r.status === 'awaiting_session',
+          ...(leases.includes(r as Doc) && { leasedBy: owners.get(id(r!.sessionOwner)) ?? null, leaseExpiresAt: new Date(new Date(r!.heartbeatAt).getTime() + SESSION_TIMEOUT_MS).toISOString() }),
         }
       })
     },
@@ -111,7 +132,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'claim_run',
-    description: 'Claim an awaiting_session Run: you become sessionOwner, status running, Ticket assigned.',
+    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
       const run = await getRun(c, a.runId)
@@ -119,31 +140,31 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       const body = (await ts.get(n)).body
-      const won = await c.payload.update({
-        collection: 'runs',
-        where: { and: [{ id: { equals: run.id } }, { status: { equals: 'awaiting_session' } }] },
-        data: { status: 'running', sessionOwner: c.user.id, heartbeatAt: now(), startedAt: now(), goal: { statements: goalOf(body) } },
-        ...scoped(c),
-      })
-      if (!won.docs.length) throw new Error(`run ${run.id} was claimed by someone else`)
+      const leaseToken = randomBytes(32).toString('base64url')
+      // Single conditional UPDATE: Payload's update-by-where is find-then-update and lets two claimers both win.
+      const claimed = await c.payload.db.drizzle.execute(
+        sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now() WHERE "id" = ${run.id} AND "status" = 'awaiting_session' RETURNING "id"`,
+      )
+      if (!claimed.rows.length) throw new Error(`run ${run.id} was claimed by someone else`)
+      const won = await c.payload.update({ collection: 'runs', id: run.id, data: { goal: { statements: goalOf(body) } }, ...scoped(c) })
       const login = (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
       if (login) {
         try {
           await ts.claim(n, login)
         } catch (e) {
-          await c.payload.update({ collection: 'runs', id: run.id, data: { status: 'awaiting_session', sessionOwner: null, heartbeatAt: null }, overrideAccess: true })
+          await c.payload.update({ collection: 'runs', id: run.id, data: { status: 'awaiting_session', sessionOwner: null, leaseHash: null, heartbeatAt: null }, overrideAccess: true })
           throw e
         }
       }
-      return { run: won.docs[0], ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: goalOf(body), assignedTo: login ?? null }
+      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: goalOf(body), assignedTo: login ?? null }
     },
   },
   {
     name: 'heartbeat',
-    description: 'Keep a session Run alive. Send at least every 10 minutes; 30 minutes of silence ends it as needs_human.',
-    inputSchema: obj(runId, ['runId']),
+    description: 'Keep a session Run alive. Send at least every 10 minutes; 30 minutes of silence ends your lease: the Run is abandoned and a new claimable Run takes over.',
+    inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
-      const run = await getRun(c, a.runId, true)
+      const run = await getRun(c, a.runId, a)
       await c.payload.update({ collection: 'runs', id: run.id, data: { heartbeatAt: now() }, ...scoped(c) })
       return { ok: true }
     },
@@ -159,19 +180,21 @@ export const tools: Tool[] = [
   },
   {
     name: 'update_worklog',
-    description: 'Create or replace the Ticket\'s worklog comment (one per Ticket, marked <!-- bauherr:worklog -->).',
-    inputSchema: obj({ ...ticketId, markdown: str('Full worklog, see the worklog skill template') }, ['ticket', 'markdown']),
+    description: 'Create or replace the Ticket\'s worklog comment (one per Ticket, marked <!-- bauherr:worklog -->). While a session Run holds the Ticket\'s lease, its leaseToken is required.',
+    inputSchema: obj({ ...ticketId, ...leaseToken, markdown: str('Full worklog, see the worklog skill template') }, ['ticket', 'markdown']),
     async run(a, c) {
-      await getTicket(c, a.ticket)
+      const t = await getTicket(c, a.ticket)
+      const leased = (await c.payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, limit: 1, showHiddenFields: true, ...scoped(c) })).docs[0]
+      if (leased) assertLease(leased, a)
       return updateWorklog(c.payload, c.user, a)
     },
   },
   {
     name: 'report_step',
     description: 'Record a Step of your session Run.',
-    inputSchema: obj({ ...runId, summary: str('What was done'), tokens: { type: 'object', properties: { in: { type: 'number' }, out: { type: 'number' } } } }, ['runId', 'summary']),
+    inputSchema: obj({ ...runId, ...leaseToken, summary: str('What was done'), tokens: { type: 'object', properties: { in: { type: 'number' }, out: { type: 'number' } } } }, ['runId', 'leaseToken', 'summary']),
     async run(a, c) {
-      const run = await getRun(c, a.runId, true)
+      const run = await getRun(c, a.runId, a)
       const seq = (await c.payload.count({ collection: 'steps', where: { run: { equals: run.id } }, overrideAccess: true })).totalDocs + 1
       const step = await c.payload.create({
         collection: 'steps',
@@ -184,9 +207,9 @@ export const tools: Tool[] = [
   {
     name: 'attach_evidence',
     description: 'Append markdown to the Run\'s ## Evidence (commands with exit codes, test summary, lint diff, links).',
-    inputSchema: obj({ ...runId, markdown: str('Evidence to append') }, ['runId', 'markdown']),
+    inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Evidence to append') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
-      const run = await getRun(c, a.runId, true)
+      const run = await getRun(c, a.runId, a)
       await c.payload.update({ collection: 'runs', id: run.id, data: { evidence: [run.evidence, a.markdown].filter(Boolean).join('\n\n') }, ...scoped(c) })
       return { ok: true }
     },
@@ -194,29 +217,29 @@ export const tools: Tool[] = [
   {
     name: 'request_review',
     description: 'Move the Ticket to the review stage label.',
-    inputSchema: obj(runId, ['runId']),
+    inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
-      const run = await getRun(c, a.runId, true)
+      const run = await getRun(c, a.runId, a)
       return requestReview(c.payload, c.user, { ticket: id(run.ticket) })
     },
   },
   {
     name: 'run_checks',
     description: 'Scorecard rules for the Run (placeholder: every result is unknown).',
-    inputSchema: obj(runId, ['runId']),
+    inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
-      await getRun(c, a.runId, true)
+      await getRun(c, a.runId, a)
       return walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' }))
     },
   },
   {
     name: 'finish_run',
     description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason.',
-    inputSchema: obj({ ...runId, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'status']),
+    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
       if (a.status !== 'succeeded' && !a.reason) throw new Error('reason is required unless succeeded')
-      const run = await getRun(c, a.runId, true)
+      const run = await getRun(c, a.runId, a)
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) await ts.addLink(n, a.prUrl)
@@ -232,11 +255,12 @@ export const tools: Tool[] = [
   },
   {
     name: 'release_run',
-    description: "Give a Run back: to the queue as awaiting_session, or with takeover 'autonomous' hand it to the Runner. Works on awaiting_session Runs and your own.",
-    inputSchema: obj({ ...runId, takeover: { enum: ['autonomous'] } }, ['runId']),
+    description: "Give a Run back: to the queue as awaiting_session, or with takeover 'autonomous' hand it to the Runner. Works on awaiting_session Runs and your own (leaseToken required while running).",
+    inputSchema: obj({ ...runId, ...leaseToken, takeover: { enum: ['autonomous'] } }, ['runId']),
     async run(a, c) {
       const run = await getRun(c, a.runId)
-      const mine = run.status === 'running' && id(run.sessionOwner) === c.user.id
+      const mine = run.status === 'running'
+      if (mine) assertLease(run, a)
       if (run.mode !== 'session' || !(run.status === 'awaiting_session' || mine)) throw new Error(`run ${run.id} is not releasable`)
       if (mine) {
         const { ts, n } = await sourceOf(c.payload, await getTicket(c, id(run.ticket)))
@@ -246,7 +270,7 @@ export const tools: Tool[] = [
       await c.payload.update({
         collection: 'runs',
         id: run.id,
-        data: { sessionOwner: null, heartbeatAt: null, ...(auto ? { mode: 'autonomous', status: 'queued' } : { status: 'awaiting_session' }) },
+        data: { sessionOwner: null, leaseHash: null, heartbeatAt: null, ...(auto ? { mode: 'autonomous', status: 'queued' } : { status: 'awaiting_session' }) },
         ...scoped(c),
       })
       if (auto) await c.payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })

@@ -234,7 +234,7 @@ const tickets = col('tickets', [
   select('releaseState', ['waiting', 'on_staging', 'timed_out']),
 ])
 
-export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted']
+export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted', 'abandoned']
 
 export const collections: CollectionConfig[] = [
   bauherren,
@@ -266,6 +266,8 @@ export const collections: CollectionConfig[] = [
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
     date('heartbeatAt'),
+    text('leaseHash', { hidden: true }),
+    rel('previousRun', 'runs'),
     text('evidence'),
     json('goal'),
     text('model'),

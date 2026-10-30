@@ -4,7 +4,7 @@ import { GraphView, ListView, TimelineView } from '../../../components/RunViews'
 import { ConfirmButton } from '../../../components/SettingsForm'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
-import { rerunStage } from '../../../lib/actions'
+import { releaseRunLock, rerunStage } from '../../../lib/actions'
 import { releaseWord, type Stage } from '../../../lib/needs-you'
 import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
 import { renderMarkdown } from '../../../lib/markdown'
@@ -24,6 +24,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   if (!workspace) notFound()
   const { run, ticket, stages, latestByStage, steps, stepsTotal, callsByStep, owner } = await loadRun(workspace.id, id)
   const prUrl = run.artifacts?.prUrl
+  const leased = run.mode === 'session' && run.status === 'running'
   const rerun = RERUNNABLE.includes(run.status)
   const mayShowOwner = user.role === 'admin' || (user.tenants ?? []).some((t) => (typeof t.tenant === 'object' ? t.tenant?.id : t.tenant) === run.workspace)
   const details: [string, React.ReactNode][] = [
@@ -65,6 +66,9 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           </p>
           {rerun && (
             <form action={rerunStage.bind(null, run.id)} className="sform"><div className="actions"><ConfirmButton label="Re-run stage" confirm={`Confirm re-run ${run.stage}`} /></div></form>
+          )}
+          {leased && (
+            <form action={releaseRunLock.bind(null, run.id)} className="sform"><div className="actions"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${run.id}`} /></div></form>
           )}
         </aside>
       </div>
