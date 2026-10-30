@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { CollectionConfig, Field } from 'payload'
+import { ValidationError, type CollectionConfig, type Field } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { missingFields, PRESETS, presetOf, type Preset } from './lib/providers'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
@@ -148,14 +148,21 @@ const connections = col(
         ({ data, originalDoc }) => {
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
-          for (const k of ['provider', ...PRESET_FIELDS]) if (data?.[k] !== undefined && data[k] !== null) config[k] = data[k]
+          // The top-level field wins only when this request changed it; otherwise an explicit `config` value stands (API, seed).
+          for (const k of ['provider', ...PRESET_FIELDS]) {
+            const prev = originalDoc?.[k] ?? (k === 'provider' ? 'anthropic' : undefined)
+            if (data?.[k] != null && data[k] !== prev) config[k] = data[k]
+          }
           const missing = missingFields(presetOf(config), config)
-          if (missing.length) throw new Error(`missing for ${presetOf(config)}: ${missing.join(', ')}`)
-          return { ...data, config }
+          if (missing.length) {
+            throw new ValidationError({ collection: 'connections', errors: missing.map((path) => ({ path, message: `required for ${presetOf(config)}` })) })
+          }
+          const mirrored = Object.fromEntries(['provider', ...PRESET_FIELDS].filter((k) => config[k] !== undefined).map((k) => [k, config[k]]))
+          return { ...data, ...mirrored, config }
         },
       ],
       afterChange: [
-        async ({ doc, req }) => {
+        async ({ doc, previousDoc, operation, req }) => {
           if (doc.kind !== 'llm-provider' || !gatewayEnabled() || req.context.skipVerify) return
           const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
             secret?: string
@@ -165,15 +172,19 @@ const connections = col(
           const preset = PRESETS[presetOf(doc.config)]
           const o = { overrideAccess: true, req } as const
           if (raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret), preset.secret.ext)
+          await removeProvider(raw.workspace.slug, preset.secret.ext === 'key' ? 'json' : 'key')
           await renderModels(req)
           const ws = (await req.payload.findByID({ collection: 'workspaces', id: raw.workspace.id, depth: 0, ...o })) as unknown as {
             gatewayKey: string
             modelByTier: Record<string, string>
             budgetUnit: string
           }
+          // Preset change (or first Connection) sets the budget unit and, when the preset has defaults, the tiers.
+          const changed = operation === 'create' || presetOf(previousDoc?.config) !== presetOf(doc.config)
           const data: Record<string, unknown> = {}
-          if (!preset.catalog && ws.budgetUnit === 'usd') data.budgetUnit = 'tokens'
-          if (preset.defaultModels && isDeepStrictEqual(ws.modelByTier, DEFAULT_MODEL_BY_TIER)) data.modelByTier = preset.defaultModels
+          const unit = preset.catalog ? 'usd' : 'tokens'
+          if (changed && ws.budgetUnit !== unit) data.budgetUnit = unit
+          if (changed && preset.defaultModels && !isDeepStrictEqual(ws.modelByTier, preset.defaultModels)) data.modelByTier = preset.defaultModels
           if (Object.keys(data).length) await req.payload.update({ collection: 'workspaces', id: raw.workspace.id, data, ...o })
           if (!process.env.GATEWAY_URL) return
           const cheap = { ...DEFAULT_MODEL_BY_TIER, ...ws.modelByTier, ...data.modelByTier as object }.cheap

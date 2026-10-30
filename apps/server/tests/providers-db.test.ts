@@ -27,7 +27,9 @@ afterAll(async () => {
 it('an llm-provider Connection needs its preset fields and mirrors the provider into config', async () => {
   const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'p', slug: 'p' }, ...o })).id
   const data = { name: 'llm', kind: 'llm-provider' as const, provider: 'bedrock' as const, workspace }
-  await expect(payload.create({ collection: 'connections', data, ...o })).rejects.toThrow(/missing for bedrock: awsRegion/)
+  await expect(payload.create({ collection: 'connections', data, ...o })).rejects.toMatchObject({ status: 400 })
   const c = await payload.create({ collection: 'connections', data: { ...data, awsRegion: 'us-east-1' }, ...o })
   expect(c.config).toMatchObject({ provider: 'bedrock', awsRegion: 'us-east-1' })
+  const viaConfig = await payload.create({ collection: 'connections', data: { name: 'g', kind: 'llm-provider', workspace, config: { provider: 'greenpt' } }, ...o })
+  expect(viaConfig.provider).toBe('greenpt')
 })

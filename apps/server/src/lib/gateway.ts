@@ -145,7 +145,8 @@ export const writeProvider = async (slug: string, secret: string, ext: 'key' | '
   await rename(tmp, providerFile(slug, ext))
 }
 
-export const removeProvider = (slug: string) => Promise.all((['key', 'json'] as const).map((e) => rm(providerFile(slug, e), { force: true })))
+export const removeProvider = (slug: string, ...exts: ('key' | 'json')[]) =>
+  Promise.all((exts.length ? exts : (['key', 'json'] as const)).map((e) => rm(providerFile(slug, e), { force: true })))
 
 /** Rewrites the managed `ws-<slug>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
@@ -188,6 +189,7 @@ export const verifyProvider = async (slug: string, key: string, model: string): 
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
         body: JSON.stringify({ model: `ws-${slug}/${model}`, max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] }),
+        signal: AbortSignal.timeout(10_000),
       })
       if (res.ok) return { verifiedAt: new Date().toISOString() }
       last = `HTTP ${res.status}`
