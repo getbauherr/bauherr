@@ -1,7 +1,9 @@
 'use server'
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { createLocalReq } from 'payload'
+import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
@@ -133,3 +135,13 @@ export const saveBauherr = act({}, async (c, fd) => {
   if (target.role === 'admin' && (s(fd, 'role') !== 'admin' || (id(fd) === c.user.id && !ids.length))) await assertAnotherAdmin(c.payload, id(fd))
   await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
 })
+
+/** Own record only: the target is always the signed-in Bauherr, never a form value. The key appears once, as the ready-made `claude mcp add` line. */
+export const rotateOwnKey = act({}, async ({ user, payload }) => {
+  const key = await rotateApiKey(payload, user.id)
+  const h = await headers()
+  const origin = process.env.PUBLIC_URL ?? `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}`
+  return `claude mcp add --transport http bauherr ${origin}/mcp --header "Authorization: Bearer ${key}"`
+})
+
+export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user.id))

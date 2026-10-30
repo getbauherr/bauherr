@@ -1,5 +1,6 @@
 import { ValidationError } from 'payload'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
+import { modeFor, workflowPack } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
@@ -108,4 +109,68 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
     oidcLinked: !!b.oidcSubject,
     oidcSubject: admin ? ((b.oidcSubject ?? '') as string) : '',
   }))
+}
+
+type Doc = Record<string, any>
+const ref = (v: any) => (v && typeof v === 'object' ? (v as Doc) : null)
+
+/** Newest 200 rows of the Workspace's audit trail. `ticket` is the Ticket number, `run` a Run id; `actor` applies to human touches only. */
+export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: { ticket?: string; run?: string; actor?: string }) {
+  const payload = await payloadClient()
+  const where: Doc = { workspace: { equals: workspace } }
+  if (Number(f.run)) where.run = { equals: Number(f.run) }
+  if (Number(f.ticket)) where[tab === 'touches' ? 'ticket.number' : 'run.ticket.number'] = { equals: Number(f.ticket) }
+  if (tab === 'touches' && f.actor) where.actor = { like: f.actor }
+  const { docs } = await payload.find({ collection: tab === 'touches' ? 'human_touches' : 'tool_calls', where, sort: '-createdAt', limit: 200, depth: 2, pagination: false, overrideAccess: true } as never)
+  return (docs as unknown as Doc[]).map((d) => {
+    const run = ref(d.run)
+    const ticket = ref(tab === 'touches' ? d.ticket : run?.ticket)
+    return {
+      id: d.id as number,
+      at: (d.at ?? d.createdAt) as string,
+      kind: (d.kind ?? d.name) as string,
+      actor: (d.actor ?? '') as string,
+      status: (d.status ?? '') as string,
+      durationMs: d.durationMs as number | null,
+      digest: (d.inputDigest ?? '') as string,
+      runId: (run?.id ?? d.run ?? null) as number | null,
+      ticket: ticket ? { id: ticket.id as number, number: ticket.number as number } : null,
+    }
+  })
+}
+
+/** Base workflow with the mode each stage resolves to in this Workspace, plus the latest compiled version per Product. */
+export async function loadWorkflow(workspace: number) {
+  const payload = await payloadClient()
+  const base = workflowPack()
+  const stages = await Promise.all(base.map(async (s) => ({ name: s.name, mode: await modeFor(payload, workspace, s.name), gate: s.gate_before ?? '', steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) })))
+  const where = { workspace: { equals: workspace } }
+  const [products, versions] = await Promise.all([
+    payload.find({ collection: 'products', where, sort: 'name', pagination: false, ...o } as never),
+    payload.find({ collection: 'workflow_versions', where, sort: '-version', pagination: false, ...o } as never),
+  ])
+  const baseJson = JSON.stringify({ stages: base })
+  return {
+    stages,
+    versions: (products.docs as unknown as Doc[]).map((p) => {
+      const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)
+      return { product: p.name as string, version: (v?.version ?? null) as number | null, at: (v?.createdAt ?? null) as string | null, overlay: v ? JSON.stringify(v.compiled) !== baseJson : false }
+    }),
+  }
+}
+
+/** Factory health: instance-wide job counts of the last 24 h, the oldest queued job, last poll per Ticket source of the Workspace. */
+export async function loadHealth(workspace: number) {
+  const payload = await payloadClient()
+  const since = new Date(Date.now() - 864e5).toISOString()
+  const jobs = (await payload.find({ collection: 'payload-jobs', where: { createdAt: { greater_than: since } }, select: { completedAt: true, hasError: true, processing: true }, pagination: false, ...o } as never)).docs as unknown as Doc[]
+  const oldest = (await payload.find({ collection: 'payload-jobs', where: { completedAt: { exists: false }, processing: { not_equals: true }, hasError: { not_equals: true } }, sort: 'createdAt', limit: 1, select: { createdAt: true }, ...o } as never)).docs[0] as Doc | undefined
+  const sources = (await payload.find({ collection: 'ticket_sources', where: { workspace: { equals: workspace } }, sort: 'id', pagination: false, select: { repo: true, updatedAt: true }, ...o } as never)).docs as unknown as Doc[]
+  return {
+    queued: jobs.filter((j) => !j.completedAt && !j.hasError && !j.processing).length,
+    running: jobs.filter((j) => j.processing && !j.completedAt).length,
+    failed: jobs.filter((j) => j.hasError).length,
+    oldestQueued: (oldest?.createdAt ?? null) as string | null,
+    sources: sources.map((s) => ({ repo: s.repo as string, polledAt: s.updatedAt as string })),
+  }
 }

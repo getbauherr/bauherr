@@ -8,7 +8,7 @@ const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
 
 const WORKFLOW = resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'), 'workflow.yaml')
 
-type PackStage = { name: string; mode?: unknown }
+export type PackStage = { name: string; mode?: unknown; gate_before?: string; steps?: { kind: string; skill?: string }[] }
 let packStages: PackStage[] | undefined
 
 /** Stages of pack/workflow.yaml, read once; unreadable or malformed file yields []. */
@@ -19,6 +19,9 @@ const packed = (): PackStage[] => {
     return []
   }
 }
+
+/** Stages of pack/workflow.yaml with their steps, in order. */
+export const workflowPack = (): PackStage[] => packed()
 
 /** Stage names of pack/workflow.yaml, in order. */
 export const workflowStages = (): string[] => packed().map((s) => s.name)

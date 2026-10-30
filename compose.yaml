@@ -15,6 +15,7 @@ x-app: &app
     PAYLOAD_SECRET_FILE: /run/secrets/payload_secret
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+    BAUHERR_DISABLE_ADMIN: ${BAUHERR_DISABLE_ADMIN:-}
     # Optional OIDC sign-in, see docs/auth.md. Empty OIDC_ISSUER = password login only.
     OIDC_ISSUER: ${OIDC_ISSUER:-}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -58,7 +59,7 @@ services:
     <<: *app
     ports: ["${PORT:-3000}:3000"]
     healthcheck:
-      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/admin').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       retries: 12
       start_period: 30s

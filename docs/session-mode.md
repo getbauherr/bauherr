@@ -8,7 +8,9 @@ First match wins: `Workspace.modeByStage` (JSON, e.g. `{"plan":"session","build"
 
 ## Connect
 
-`pnpm seed` (compose: `docker compose run … app pnpm seed`, see [gateway-smoke](gateway-smoke.md)) ensures the Admin user has an API key and, with `BAUHERR_MCP_KEY_FILE` set, writes it 0600 to a file; never printed. Mount `~/.config/bauherr` at `/run/bauherr` and set `BAUHERR_MCP_KEY_FILE=/run/bauherr/mcp-key`. Set `githubLogin` on the user (assigned to the Ticket on claim; else `BAUHERR_BOT_LOGIN`).
+Create your key in the UI: user menu, **API key** (`/settings/api-key`). It is shown once as the ready-made `claude mcp add` line; rotate or revoke there. Set `githubLogin` on your user (assigned to the Ticket on claim; else `BAUHERR_BOT_LOGIN`).
+
+For headless setups `pnpm seed` ensures the Admin user has a key and, with `BAUHERR_MCP_KEY_FILE` set (compose: mount `~/.config/bauherr` at `/run/bauherr`, `BAUHERR_MCP_KEY_FILE=/run/bauherr/mcp-key`), writes it 0600 to a file; never printed. See [gateway-smoke](gateway-smoke.md).
 
 ```bash
 claude mcp add --transport http bauherr http://localhost:3000/mcp --header "Authorization: Bearer $(cat ~/.config/bauherr/mcp-key)"
