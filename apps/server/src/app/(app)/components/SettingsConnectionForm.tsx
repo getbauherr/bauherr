@@ -9,12 +9,12 @@ const GITHUB_HINT = 'GitHub token with access to the repositories and issues'
 export type Preset = { required: string[]; hint: string }
 export type ConnectionValue = { id?: number; name: string; kind: string; provider: string; config: Record<string, string> }
 
-export function ConnectionForm({ presets, value, submit = 'Save', reset }: { presets: Record<string, Preset>; value?: ConnectionValue; submit?: string; reset?: boolean }) {
+export function ConnectionForm({ presets, value, submit = 'Save', reset, primary }: { presets: Record<string, Preset>; value?: ConnectionValue; submit?: string; reset?: boolean; primary?: boolean }) {
   const [kind, setKind] = useState(value?.kind ?? 'github')
   const [provider, setProvider] = useState(value?.provider || 'anthropic')
   const preset = presets[provider]
   return (
-    <SettingsForm action={saveConnection} submit={submit} reset={reset}>
+    <SettingsForm action={saveConnection} submit={submit} reset={reset} primary={primary}>
       {value?.id && <input type="hidden" name="id" value={value.id} />}
       <Field name="name" label="Name" defaultValue={value?.name} required />
       <Field name="kind" label="Kind" options={['github', 'llm-provider']} defaultValue={kind} onChange={(e) => setKind(e.target.value)} />

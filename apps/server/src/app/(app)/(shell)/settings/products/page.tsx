@@ -71,7 +71,7 @@ export default async function ProductSettings() {
       {admin && (
         <section className="card-lg stack">
           <h2 className="heading">Add Product</h2>
-          <SettingsForm action={createProduct} submit="Add Product" reset>
+          <SettingsForm action={createProduct} submit="Add Product" reset primary>
             <Field name="name" label="Name" required />
             <Field name="slug" label="Slug" required />
           </SettingsForm>

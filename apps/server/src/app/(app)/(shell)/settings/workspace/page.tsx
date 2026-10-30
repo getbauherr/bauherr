@@ -16,7 +16,7 @@ export default async function WorkspaceSettings() {
     <>
       <h2 className="heading">{w.name}</h2>
       {!admin && <p className="small muted">You can change the budget and model tiers. The rest is read-only.</p>}
-      <SettingsForm action={saveWorkspace}>
+      <SettingsForm action={saveWorkspace} primary>
         <Field name="name" label="Name" defaultValue={w.name} disabled={!admin} />
         <div className="pair">
           <Field name="budgetUnit" label="Budget unit" options={[['usd', 'USD'], ['tokens', 'Tokens']]} defaultValue={w.budgetUnit} />
@@ -24,10 +24,10 @@ export default async function WorkspaceSettings() {
         </div>
         <p className="small muted">{w.gatewayOn ? (w.spend ? `Spent in the last 30 days: $${w.spend.spentUsd.toFixed(2)}` : 'Spend unavailable.') : 'Gateway off: spend is not tracked.'}</p>
         <fieldset className="checks">
-          <legend className="small muted">Model tiers (empty = preset default)</legend>
+          <legend className="small muted">Model tiers{w.tiersRequired ? '' : ' (empty = preset default)'}</legend>
           <div className="pair three">
             {(['cheap', 'standard', 'strong'] as const).map((t) => (
-              <Field key={t} name={`tier_${t}`} label={t[0].toUpperCase() + t.slice(1)} defaultValue={w.modelByTier[t] ?? ''} placeholder={w.placeholders[t]} />
+              <Field key={t} name={`tier_${t}`} label={t[0].toUpperCase() + t.slice(1)} defaultValue={w.modelByTier[t] ?? ''} placeholder={w.placeholders[t]} required={w.tiersRequired} />
             ))}
           </div>
         </fieldset>

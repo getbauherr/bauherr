@@ -25,7 +25,7 @@ export default async function BauherrenSettings() {
                 <td>{b.email}</td>
                 <td>{b.role}</td>
                 <td>{b.workspaces.map((w) => w.name).join(', ')}</td>
-                <td>{b.oidcSubject ? <>Linked{b.oidcSynced && <span className="small muted"> · synced {b.oidcSynced.slice(0, 16).replace('T', ' ')}</span>}</> : <span className="muted">Not linked</span>}</td>
+                <td>{b.oidcLinked ? 'linked' : <span className="muted">—</span>}</td>
                 {admin && (
                   <td>
                     <div className="row-between">
@@ -56,7 +56,7 @@ export default async function BauherrenSettings() {
       {admin && (
         <section className="card-lg stack">
           <h2 className="heading">Add Bauherr</h2>
-          <SettingsForm action={createBauherr} submit="Add Bauherr" reset>
+          <SettingsForm action={createBauherr} submit="Add Bauherr" reset primary>
             <Field name="email" label="Email" type="email" required />
             <Field name="role" label="Role" options={ROLES} defaultValue="bauherr" />
             <Checks name="workspaces" items={items} checked={workspace ? [workspace.id] : []} />

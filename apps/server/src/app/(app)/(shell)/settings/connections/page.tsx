@@ -58,7 +58,7 @@ export default async function ConnectionSettings() {
       {admin && (
         <section className="card-lg stack">
           <h2 className="heading">Add Connection</h2>
-          <ConnectionForm presets={presets} submit="Add Connection" reset />
+          <ConnectionForm presets={presets} submit="Add Connection" reset primary />
         </section>
       )}
     </>

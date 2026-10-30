@@ -4,8 +4,8 @@ import type { FormState } from '../lib/settings'
 
 const Ctx = createContext<FormState>({})
 
-/** One primary button, inline field errors from Payload, a "Saved" line. Submits without form-reset so a failed save keeps what was typed; `reset` clears it after success (add forms). */
-export function SettingsForm({ action, children, submit = 'Save', reset, danger, inline, confirm }: { confirm?: string; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; danger?: boolean; inline?: boolean }) {
+/** Plain buttons; `primary` marks the page's main form. inline field errors from Payload, a "Saved" line. Submits without form-reset so a failed save keeps what was typed; `reset` clears it after success (add forms). */
+export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm }: { confirm?: string; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {})
   const ref = useRef<HTMLFormElement>(null)
   useEffect(() => {
@@ -24,7 +24,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, danger,
       >
         {children}
         <div className="actions">
-          {confirm ? <ConfirmButton label={submit} confirm={confirm} /> : <button className={danger ? 'btn danger' : 'btn primary'} disabled={pending}>{submit}</button>}
+          {confirm ? <ConfirmButton label={submit} confirm={confirm} /> : <button className={primary ? 'btn primary' : 'btn'} disabled={pending}>{submit}</button>}
           {state.saved && <span role="status" className="small ok">Saved</span>}
           {state.error && <span role="alert" className="small err">{state.error}</span>}
         </div>
