@@ -33,13 +33,20 @@ export function RunsControls({ products }: { products: { id: number; name: strin
 export function TicketControls({ products }: { products: { id: number; name: string }[] }) {
   const { params, href } = useHref()
   const all = params.get('state') === 'all'
+  const graph = params.get('view') === 'graph'
   return (
     <div className="controls">
+      <nav className="tabs" aria-label="Tickets layout">
+        <Link href={href({ view: null })} aria-current={graph ? undefined : 'page'}>Board</Link>
+        <Link href={href({ view: 'graph' })} aria-current={graph ? 'page' : undefined}>Graph</Link>
+      </nav>
       <ProductSelect products={products} />
-      <div className="seg" role="group" aria-label="Tickets shown">
-        <Link href={href({ state: null })} aria-pressed={!all}>Open</Link>
-        <Link href={href({ state: 'all' })} aria-pressed={all}>All</Link>
-      </div>
+      {!graph && (
+        <div className="seg" role="group" aria-label="Tickets shown">
+          <Link href={href({ state: null })} aria-pressed={!all}>Open</Link>
+          <Link href={href({ state: 'all' })} aria-pressed={all}>All</Link>
+        </div>
+      )}
     </div>
   )
 }
