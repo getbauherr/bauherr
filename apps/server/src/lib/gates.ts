@@ -22,14 +22,16 @@ export const gateOwnersOf = async (payload: Payload, product: Doc): Promise<stri
 /**
  * Notifies the gate's person once per gate value: assigns them on the forge and posts one Comment that @mentions them (idempotent by marker).
  * `gateNotified` is only set once every owner is assigned (or already was), so failed claims are retried each minute.
- * A passed or changed gate unassigns exactly the logins the factory added (`gateAssignees`); other assignees stay.
+ * A passed or changed gate unassigns exactly the logins the factory added (`gateAssignees`) that do not own the next gate; other assignees stay.
  * Returns whether the Ticket row changed.
  */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string } | null): Promise<boolean> => {
-  const base = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run)
+  const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
-  if (!base && !held && !mine.length) return false
+  if (!candidate && !held && !mine.length) return false
+  const owners = candidate ? await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o })) : []
+  const base = owners.length ? candidate : null
   let forge: ReturnType<typeof forgeOf> | undefined
   const source = async () => (await (forge ??= forgeOf(payload, id(t.product)))).tickets
   let want = base
@@ -39,13 +41,12 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const n = String(t.number)
   let added = mine
   if (mine.length && (held || !want)) {
-    await (await source()).unassign(n, mine)
-    added = []
+    const gone = mine.filter((l) => !owners.includes(l))
+    if (gone.length) await (await source()).unassign(n, gone)
+    added = mine.filter((l) => owners.includes(l))
   }
-  let owners: string[] = []
   let complete = false
   if (want) {
-    owners = await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))
     const ts = await source()
     const assigned = logins(t.assignees)
     added = [...added]
@@ -57,12 +58,10 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
         payload.logger.warn({ err: e, ticket: t.id, login }, 'gate assignee failed')
       }
     }
-    complete = owners.length > 0 && owners.every((l) => assigned.includes(l) || added.includes(l))
-    if (owners.length) {
-      const marker = `<!-- bauherr:gate:${want}:${createHash('sha1').update(`${want}${run?.id ?? ''}`).digest('hex')} -->`
-      if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-        await ts.comment(n, `${marker}\n${owners.map((l) => `@${l}`).join(' ')}: ${want} — ${publicUrl()}/tickets/${t.id}`)
-      }
+    complete = owners.every((l) => assigned.includes(l) || added.includes(l))
+    const marker = `<!-- bauherr:gate:${want}:${createHash('sha1').update(`${want}${run?.id ?? ''}`).digest('hex')} -->`
+    if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
+      await ts.comment(n, `${marker}\n${owners.map((l) => `@${l}`).join(' ')}: ${want} — ${publicUrl()}/tickets/${t.id}`)
     }
   }
   const notified = complete ? want : null
@@ -70,7 +69,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   await payload.update({
     collection: 'tickets',
     id: t.id,
-    data: { gateNotified: notified, gateNotifiedAt: notified === held ? t.gateNotifiedAt : notified ? new Date().toISOString() : null, gateAssignees: added.join(',') },
+    data: { gateNotified: notified, gateNotifiedAt: notified === held ? t.gateNotifiedAt : notified ? new Date().toISOString() : null, gateAssignees: added.join(',') || null },
     ...o,
   })
   return true
@@ -78,7 +77,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
 
 /** Syncs the gate of every open Ticket and of closed ones still holding one; a failing Ticket does not stop the others. */
 export const syncGates = async (payload: Payload): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }] }, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }] }, pagination: false, ...o })).docs as Doc[]
   if (!tickets.length) return 0
   const latest = new Map<number, Doc>()
   for (const r of (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]) {

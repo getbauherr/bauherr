@@ -9,6 +9,7 @@ let ws: number
 let product: number
 let gates: typeof import('../src/lib/gates')
 let jobs: typeof import('../src/jobs')
+let call: (user: Record<string, any>, name: string, input: unknown) => Promise<any>
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
@@ -28,6 +29,8 @@ beforeAll(async () => {
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   gates = await import('../src/lib/gates')
   jobs = await import('../src/jobs')
+  const { callTool } = await import('../src/lib/mcp-tools')
+  call = (user, name, input) => callTool({ payload, user }, name, input)
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
@@ -64,7 +67,7 @@ it('assigns and mentions the Admin once per gate, and clears both when the gate 
   await payload.update({ collection: 'tickets', id, data: { labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] }, ...o })
   await gates.syncGates(payload)
   expect(issue(n).assignees).toEqual([])
-  expect(await reload(id)).toMatchObject({ gateNotified: null, gateNotifiedAt: null, gateAssignees: '' })
+  expect(await reload(id)).toMatchObject({ gateNotified: null, gateNotifiedAt: null, gateAssignees: null })
 })
 
 it('keeps a human co-assignee when the gate is passed', async () => {
@@ -74,15 +77,16 @@ it('keeps a human co-assignee when the gate is passed', async () => {
   await payload.update({ collection: 'tickets', id, data: { assignees: 'fake,e2e-admin', labels: ['bauherr:approved:plan'] }, ...o })
   await gates.syncGates(payload)
   expect(issue(n).assignees).toEqual(['e2e-admin'])
-  expect(await reload(id)).toMatchObject({ gateNotified: null, gateAssignees: '' })
+  expect(await reload(id)).toMatchObject({ gateNotified: null, gateAssignees: null })
 })
 
-it('retries a failed claim without a second Comment and notifies once complete', async () => {
+it('retries a failed claim on the next sweep without a second Comment and notifies once complete', async () => {
   await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin, late' }, ...o })
   const { id, n } = await planTicket('retry')
   await gates.syncGates(payload)
   expect(issue(n).assignees).toEqual(['e2e-admin'])
   expect(await reload(id)).toMatchObject({ gateNotified: null, gateAssignees: 'e2e-admin' })
+  expect(await gateComments(n)).toHaveLength(1)
   fake.opts.users!.push('late')
   await gates.syncGates(payload)
   expect(issue(n).assignees).toEqual(['e2e-admin', 'late'])
@@ -111,4 +115,38 @@ it('uses the Product gateOwners over the Admins and retries a login the forge re
   expect(issue(n).assignees).toEqual(['e2e-admin'])
   expect((await gateComments(n))[0].body).toContain('@ghost @e2e-admin: Approve plan')
   expect((await reload(id)).gateNotified).toBeNull()
+})
+
+/** A Ticket on staging (Accept on staging) with a finished build Run. */
+const stagingTicket = async (title: string) => {
+  const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:release'] })
+  const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, state: 'open', stage: 'release', releaseState: 'on_staging', labels: ['bauherr:stage:release'], product, workspace: ws }, ...o })
+  await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws }, ...o })
+  return { id: t.id as number, n: String(issue.number) }
+}
+
+it('keeps an owner of both gates assigned when the gate changes, with one new Comment', async () => {
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  const { id, n } = await stagingTicket('staging')
+  await gates.syncGates(payload)
+  expect(await reload(id)).toMatchObject({ gateNotified: 'Accept on staging', gateAssignees: 'e2e-admin' })
+  await payload.update({ collection: 'tickets', id, data: { assignees: 'e2e-admin', releaseState: 'timed_out' }, ...o })
+  await gates.syncGates(payload)
+  expect(issue(n).assignees).toEqual(['e2e-admin'])
+  expect(await reload(id)).toMatchObject({ gateNotified: 'Staging not confirmed', gateAssignees: 'e2e-admin' })
+  expect(await gateComments(n)).toHaveLength(2)
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+})
+
+it('a session release unassigns only its own login, not the gate owner', async () => {
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  const { id, n } = await stagingTicket('session')
+  await gates.syncGates(payload)
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'awaiting_session', mode: 'session', workspace: ws }, ...o })
+  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  expect(issue(n).assignees).toEqual(['e2e-admin', 'fake'])
+  await call(member, 'release_run', { runId: run.id, leaseToken })
+  expect(issue(n).assignees).toEqual(['e2e-admin'])
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
 })
