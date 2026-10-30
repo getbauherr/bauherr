@@ -1,8 +1,11 @@
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { DECISIONS_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
-import { connectionInput } from '../jobs'
+import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
+import { connectionInput, startRunIfNeeded } from '../jobs'
 import { githubFor } from './adapters'
+import { SUMMARY_MARKER, buildStagingSummary } from './summary'
+
+export const APPROVED_STAGING = 'bauherr:approved:staging'
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
 type Doc = Record<string, any>
@@ -16,13 +19,16 @@ export const loadTicket = (payload: Payload, user: Doc, ticket: TicketId): Promi
   payload.findByID({ collection: 'tickets', id: ticket, ...scoped(user) }) as Promise<Doc>
 
 /** Ticket source of a Product, authenticated with the Workspace's github Connection. */
-export const ticketsOf = async (payload: Payload, product: TicketId) => {
+export const forgeOf = async (payload: Payload, product: TicketId) => {
   const src = (
     await payload.find({ collection: 'ticket_sources', where: { product: { equals: product } }, limit: 1, depth: 0, overrideAccess: true })
   ).docs[0]
   if (!src) throw new Error('no ticket source for this Product')
-  return githubFor(await connectionInput(payload, src.connection)).tickets(src.repo)
+  const backend = githubFor(await connectionInput(payload, src.connection))
+  return { backend, repo: src.repo as string, tickets: backend.tickets(src.repo) }
 }
+
+export const ticketsOf = async (payload: Payload, product: TicketId) => (await forgeOf(payload, product)).tickets
 
 export const sourceOf = async (payload: Payload, ticket: Doc) => ({ ts: await ticketsOf(payload, id(ticket.product)), n: String(ticket.number) })
 
@@ -149,4 +155,80 @@ export const postDecisions = async (
     }
     return { recorded: changed.length }
   })
+}
+
+const PR_NUMBER = /\/pull\/(\d+)/
+
+/** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. */
+export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{ posted: boolean }> => {
+  const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))
+  const n = String(t.number)
+  const mergeSha: string | null = t.mergeSha || null
+  const comments = await ts.listComments(n)
+  if (latestWith(comments, SUMMARY_MARKER)?.body.includes(mergeSha ? `\`${mergeSha}\`` : SUMMARY_MARKER)) return { posted: false }
+  const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, depth: 0, overrideAccess: true })).docs as Doc[]
+  const numbers = [...new Set(runs.map((r) => PR_NUMBER.exec(r.artifacts?.prUrl ?? '')?.[1]).filter(Boolean))].map(Number)
+  const mrs = await Promise.all(numbers.map(async (num) => backend.forge.getPullRequest(repo, num)))
+  const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
+  const body = buildStagingSummary({
+    ticket: { number: t.number, title: t.title, url: t.url },
+    plan: latestWith(comments, PLAN_MARKER)?.body ?? null,
+    worklog: firstWith(comments, WORKLOG_MARKER)?.body ?? null,
+    mrs,
+    evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
+    stagingUrl: product.stagingUrl || null,
+    mergeSha,
+  })
+  await ts.comment(n, body)
+  await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: 'on_staging' }, overrideAccess: true })
+  return { posted: true }
+}
+
+export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) =>
+  publishStagingSummary(payload, await loadIn(payload, user, a.ticket, a.workspaceId))
+
+const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
+  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() }, overrideAccess: true })
+
+/** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless the Product has a production gate. */
+export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.stage !== 'release') throw new Error('the Ticket is not in release')
+  const { tickets: ts, } = await forgeOf(payload, id(t.product))
+  const n = String(t.number)
+  await ts.addLabels(n, [APPROVED_STAGING])
+  await touch(payload, user, t, 'accept:staging')
+  const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
+  if (product.productionGate) return { approved: APPROVED_STAGING, stage: 'release' }
+  await setStage(ts, n, 'done')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'done' }, overrideAccess: true })
+  return { approved: APPROVED_STAGING, stage: 'done' }
+}
+
+/** Writes `text` as the body of the worklog's `**Current instructions**` section (appended when missing). */
+const setInstructions = (worklog: string, text: string): string => {
+  const rows = worklog.split('\n')
+  const start = rows.findIndex((l) => l.trim() === '**Current instructions**')
+  if (start < 0) return [...rows, '', '**Current instructions**', text].join('\n')
+  let end = rows.findIndex((l, i) => i > start && /^\*\*.+\*\*\s*$/.test(l.trim()))
+  if (end < 0) end = rows.length
+  rows.splice(start + 1, end - start - 1, text, '')
+  return rows.join('\n')
+}
+
+/** Sends a released Ticket back: the note becomes the worklog's Current instructions, the stage `build`, and a Build Run starts. */
+export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
+  const note = a.note?.trim()
+  if (!note) throw new Error('a note is required')
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.stage !== 'release') throw new Error('the Ticket is not in release')
+  const src = await sourceOf(payload, t)
+  const log = await worklogComment(src)
+  if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
+  else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
+  await setStage(src.ts, src.n, 'build')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null }, overrideAccess: true })
+  await touch(payload, user, t, 'request-changes:staging')
+  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
+  return { stage: 'build', run: run.id as TicketId }
 }

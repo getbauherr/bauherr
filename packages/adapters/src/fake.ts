@@ -13,6 +13,7 @@ interface FakeRepo {
   defaultBranch: string;
   branches: Map<string, { sha: string; files: Map<string, string> }>;
   prs: PullRequest[];
+  checks: Map<string, Check[]>;
 }
 
 /** In-memory Backend. `native` = relations as fields; otherwise body convention + close-reason labels. */
@@ -49,10 +50,25 @@ export class FakeBackend implements Backend {
     b.sha = `sha${++this.seq}`;
   }
 
+  /** Test helper: merges an open PR (merge commit on the base branch). */
+  merge(repo: RepoRef, number: number): string {
+    const r = this.repo(repo);
+    const pr = r.prs.find((p) => p.number === number);
+    if (!pr) throw new Error(`no PR ${number}`);
+    pr.state = 'merged';
+    pr.mergeSha = `merge${++this.seq}`;
+    return pr.mergeSha;
+  }
+
+  /** Test helper: sets the check runs reported for `sha`. */
+  setChecks(repo: RepoRef, sha: string, checks: Check[]): void {
+    this.repo(repo).checks.set(sha, checks);
+  }
+
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [] };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map() };
       this.repos.set(name, r);
     }
     return r;
@@ -111,7 +127,7 @@ export class FakeBackend implements Backend {
         }
         return out;
       },
-      listChecks: async (): Promise<Check[]> => [],
+      listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
     };
   }
 }

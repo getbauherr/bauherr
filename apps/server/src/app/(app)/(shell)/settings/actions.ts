@@ -62,6 +62,13 @@ const create = (collection: string, build: (fd: FormData) => Record<string, unkn
   })
 
 export const createProduct = create('products', (fd) => ({ name: s(fd, 'name'), slug: s(fd, 'slug') }))
+export const saveDeploy = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), productionGate: fd.has('productionGate') }
+  if (data.deployMode === 'webhook' && !data.deployWebhookUrl) throw Object.assign(new Error('Webhook URL missing.'), { data: { errors: [{ path: 'deployWebhookUrl', message: 'required in webhook mode' }] } })
+  await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
+})
 export const createRepository = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))

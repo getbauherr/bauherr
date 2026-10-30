@@ -252,6 +252,7 @@ class GithubTickets implements TicketSource {
 const pr = (p: any): PullRequest => ({
   number: p.number, url: p.html_url, title: p.title, body: p.body ?? '',
   state: p.merged_at ? 'merged' : p.state, head: p.head.ref, base: p.base.ref, headSha: p.head.sha,
+  ...(p.merge_commit_sha && p.merged_at ? { mergeSha: p.merge_commit_sha } : {}),
 });
 
 export const githubWebhooks = (h: Http): Webhooks => ({

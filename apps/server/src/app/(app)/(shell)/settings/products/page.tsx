@@ -2,7 +2,7 @@ import { EmptyState } from '../../../components/EmptyState'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { isAdmin, loadProducts } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
-import { createProduct, createRepository, createSource, removeDoc } from '../actions'
+import { createProduct, createRepository, createSource, removeDoc, saveDeploy } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,6 +53,14 @@ export default async function ProductSettings() {
               </tbody>
             </table>
           </div>
+          <SettingsForm action={saveDeploy} submit="Save release settings">
+            <input type="hidden" name="id" value={p.id} />
+            <Field name="stagingUrl" label="Staging URL" type="url" defaultValue={p.deploy.stagingUrl} disabled={!admin} />
+            <Field name="deployMode" label="Deploy" options={[['observe-ci', 'Observe CI'], ['webhook', 'Webhook']]} defaultValue={p.deploy.mode} disabled={!admin} />
+            <Field name="deployWebhookUrl" label="Webhook URL (webhook mode)" type="url" defaultValue={p.deploy.webhookUrl} disabled={!admin} />
+            <Field name="deployChecks" label="Required checks" hint="Comma-separated; empty = all must be green." defaultValue={p.deploy.checks} disabled={!admin} />
+            <Field name="productionGate" label="Production gate" type="checkbox" defaultChecked={p.deploy.productionGate} disabled={!admin} />
+          </SettingsForm>
           {admin && (
             <div className="forms">
               <SettingsForm action={createRepository} submit="Add repository" reset>

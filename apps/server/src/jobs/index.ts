@@ -6,6 +6,7 @@ import type { ConnectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
+import { watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
 const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -92,6 +93,13 @@ export const expireSessions: TaskConfig<{ input: Record<string, never>; output: 
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
   retries: 0,
   handler: async ({ req }) => ({ output: { expired: await expireStaleSessions(req.payload) } }),
+}
+
+export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output: { released: number; confirmed: number; timedOut: number } }> = {
+  slug: 'watch-release',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  handler: async ({ req }) => ({ output: await watchRelease(req.payload) }),
 }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {

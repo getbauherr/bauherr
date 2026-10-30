@@ -9,5 +9,6 @@ stages:
     gate_before: human
     steps: [{kind: agent-run, skill: run-contract}]
   - {name: review}
-  - {name: release}
+  # gate: human = acceptance on staging before done (label bauherr:approved:staging)
+  - {name: release, gate: human}
   - {name: done}

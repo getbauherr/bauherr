@@ -91,6 +91,8 @@ export interface PullRequest {
   head: string;
   base: string;
   headSha: string;
+  /** Set once merged. */
+  mergeSha?: string;
 }
 export interface PullRequestFile {
   filename: string;

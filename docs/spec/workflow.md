@@ -6,7 +6,7 @@ The single human-readable spec of the Bauherr workflow. Rules live in the core p
 Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 
 - The Stage is a Label in the Ticket source: `bauherr:stage:<name>` (GitLab scoped: `stage::<name>`). Bauherr derives it and never stores it as truth.
-- Other labels: `bauherr:go` (start), `bauherr:approved:plan` (plan gate), `bauherr:blocked` (needs a person).
+- Other labels: `bauherr:go` (start), `bauherr:approved:plan` (plan gate), `bauherr:approved:staging` (staging gate), `bauherr:blocked` (needs a person).
 
 | Stage | Agent work | Ends with |
 |---|---|---|
@@ -14,7 +14,7 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 | Plan | plan Run | plan Comment + Goal in the worklog (+ Sub-tickets if large) |
 | Build | build Run | MR Linked on the Ticket |
 | Review | reviewer agent without memory of the change | review Comments on the MR |
-| Release | none; the Product's own CI | pipeline result |
+| Release | none; Bauherr observes the Product's CI (or a deploy webhook) after the MR merged | staging summary Comment + staging acceptance |
 | Done | none | Ticket closed `completed` on merge |
 
 Config per stage: label, gate-before (`none | human | checks`), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
@@ -24,6 +24,9 @@ Config per stage: label, gate-before (`none | human | checks`), max runs, and th
 |---|---|---|
 | Plan approval (human) | Build | label `bauherr:approved:plan`, set in the Bauherr UI or in the forge |
 | MR approval (human) | merge | native forge review + merge |
+| Staging acceptance (human) | Done | label `bauherr:approved:staging`, set in the UI |
+
+Release: the scheduled task `watch-release` (every minute) moves a `review` Ticket whose MR merged to `release` and stores the merge commit. `observe-ci` Products: the commit's check runs (all, or `deployChecks`) are green; `webhook` Products: the webhook is POSTed once and `stagingUrl` answers 200. Then the factory posts one `<!-- bauherr:staging-summary -->` Comment (templated, no model: What you get, Found on the way, Decisions taken, Open, Accept). Not confirmed after 60 minutes: `releaseState` `timed_out` and the Comment "staging not confirmed". A Workspace Bauherr accepts (stage `done`, or held when `products.productionGate`) or requests changes with a note (worklog Current instructions, stage `build`, new Build Run).
 
 Everything else is automated. The `checks` gate is the Product's **scorecard** (ordered rules with a guide each: build, tests, lint baseline, pack lint, security context, evidence section — decision #38): a failing blocking rule prevents Review, re-wakes the Build Run once, then `needs_human`. Bauherr mirrors both approvals into Run state for audit. Per-type autopilot: not in v0.1.
 
