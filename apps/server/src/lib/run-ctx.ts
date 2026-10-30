@@ -6,20 +6,36 @@ import { githubFor } from './adapters'
 import type { ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 
-export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'the change described in the plan is implemented and the checks pass' }
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'review comments posted' }
+export type GoalStage = keyof typeof DEFAULT_GOAL
 const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 const PLAN_MARKER = '<!-- bauherr:plan -->'
 const PACK_DIR = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 
-/** Statements from the Ticket's `## Acceptance criteria` bullets, else the default. */
-export const goalOf = (body: string, stage: 'plan' | 'build' = 'plan'): string[] => {
+/** Statements from a body's `## Acceptance criteria` bullets (or paragraph); empty when the section is missing. */
+const acceptance = (body: string): string[] => {
   const section = /^##\s+Acceptance criteria\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/im.exec(body)?.[1] ?? ''
   const items = [...section.matchAll(/^\s*(?:[-*]|\d+\.)\s+(?:\[.\]\s+)?(.+)$/gm)].map((m) => m[1]!.trim())
   const text = section.trim()
-  return items.length ? items : text ? [text] : [DEFAULT_GOAL[stage]]
+  return items.length ? items : text ? [text] : []
+}
+
+/** Own acceptance criteria, else the parent's, else the stage default. */
+export const goalOf = (body: string, stage: GoalStage = 'plan', parentBody = ''): string[] => {
+  const found = acceptance(body)
+  const inherited = found.length ? found : acceptance(parentBody)
+  return inherited.length ? inherited : [DEFAULT_GOAL[stage]]
 }
 
 type Doc = Record<string, any>
+
+/** `goalOf` for a Ticket row; loads the parent Ticket's body only when this one has no criteria. */
+export const goalFor = async (payload: Payload, ts: { get(id: string): Promise<{ body: string }> }, ticket: Doc, body: string, stage: string): Promise<string[]> => {
+  const known = (stage in DEFAULT_GOAL ? stage : 'plan') as GoalStage
+  if (acceptance(body).length || !ticket.parent) return goalOf(body, known)
+  const parent = (await payload.findByID({ collection: 'tickets', id: typeof ticket.parent === 'object' ? ticket.parent.id : ticket.parent, depth: 0, overrideAccess: true })) as Doc
+  return goalOf(body, known, (await ts.get(String(parent.number))).body)
+}
 
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
@@ -32,7 +48,7 @@ export const buildRunCtx = async (
   const backend = githubFor(d.github)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
-  const statements = goalOf(issue.body, run.stage)
+  const statements = await goalFor(payload, tickets, ticket, issue.body, run.stage)
   const comments = await tickets.listComments(String(ticket.number))
   const lastWith = (marker: string) => comments.findLast((c) => c.body.startsWith(marker))
   let seq = 0

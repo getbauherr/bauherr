@@ -5,7 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS } from '../jobs'
-import { DEFAULT_GOAL, goalOf } from './run-ctx'
+import { DEFAULT_GOAL, goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -139,7 +139,7 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       const { ts, n } = await sourceOf(c.payload, t)
       const live = await ts.get(n)
-      return { ...t, body: live.body, goal: goalOf(live.body) }
+      return { ...t, body: live.body, goal: await goalFor(c.payload, ts, t, live.body, t.stage) }
     },
   },
   {
@@ -152,10 +152,11 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       const body = (await ts.get(n)).body
+      const statements = await goalFor(c.payload, ts, ticket, body, run.stage)
       const leaseToken = randomBytes(32).toString('base64url')
       // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
       const claimed = await c.payload.db.drizzle.execute(
-        sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements: goalOf(body) })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+        sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
       )
       if (!claimed.rows.length) throw new Error(`run ${run.id} was claimed by someone else`)
       const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -168,7 +169,7 @@ export const tools: Tool[] = [
           throw e
         }
       }
-      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: goalOf(body), assignedTo: login ?? null }
+      return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, title: ticket.title, body }, goal: statements, assignedTo: login ?? null }
     },
   },
   {
