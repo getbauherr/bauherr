@@ -26,6 +26,8 @@ export type RunDoc = {
   evidence: string | null
   error: string | null
   artifacts: { prUrl?: string } | null
+  verdict: 'clean' | 'changes' | null
+  findings: { severity: string; file: string; line: number; msg: string; scenario: string }[] | null
 }
 export type StepDoc = { id: number; seq: number | null; summary: string | null; tokensIn: number | null; tokensOut: number | null; at: string }
 export type ToolCallDoc = { id: number; step: number; name: string | null; inputDigest: string | null; status: string | null; durationMs: number | null; createdAt: string }

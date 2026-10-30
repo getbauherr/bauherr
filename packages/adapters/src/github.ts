@@ -313,6 +313,14 @@ class GithubForge implements Forge {
       filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions,
     }));
   }
+  async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
+    const m = await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge`, { merge_method: o.method, ...(o.expectSha ? { sha: o.expectSha } : {}) });
+    if (o.deleteBranch) {
+      const head = (await this.getPullRequest(repo, n)).head;
+      await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${head.split('/').map(encodeURIComponent).join('/')}`).catch(() => {});
+    }
+    return { mergeSha: m.sha as string };
+  }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     return (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
       id: c.id, name: c.name, status: c.status, conclusion: c.conclusion,

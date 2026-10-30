@@ -47,6 +47,21 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       </header>
       <div className="runpage">
         <div className="stack">
+          {run.verdict && (
+            <section className="card-lg stack" aria-label="Review">
+              <h2 className="label muted">Review verdict <span className={`chip label ${run.verdict === 'clean' ? 'succeeded' : 'needs'}`}>{run.verdict === 'clean' ? 'Clean' : 'Changes requested'}</span></h2>
+              {run.findings?.length ? (
+                <ul className="stack" aria-label="Findings">
+                  {run.findings.map((f, i) => (
+                    <li key={i} className="small">
+                      <span className={`chip label ${f.severity === 'low' ? 'queued' : 'failed'}`}>{f.severity}</span> <span className="mono">{f.file}:{f.line}</span> {f.msg}
+                      <div className="muted">Scenario: {f.scenario}</div>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="small muted">No findings.</p>}
+            </section>
+          )}
           <nav className="tabs controls" aria-label="Run view">
             {TABS.map((t) => <Link key={t} href={`?tab=${t}`} aria-current={t === tab ? 'page' : undefined}>{t[0]!.toUpperCase() + t.slice(1)}</Link>)}
           </nav>

@@ -86,6 +86,7 @@ export class FakeBackend implements Backend {
     const find = (repo: RepoRef, n: number) => {
       const pr = this.repo(repo).prs.find((p) => p.number === n);
       if (!pr) throw new Error(`no PR ${n}`);
+      if (pr.state === 'open') pr.headSha = sha(this.repo(repo), pr.head) || pr.headSha;
       return pr;
     };
     const comments = new Map<string, Comment[]>();
@@ -135,6 +136,13 @@ export class FakeBackend implements Backend {
         return out;
       },
       listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
+      mergePullRequest: async (repo, n, o) => {
+        const pr = find(repo, n);
+        if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
+        if (o.expectSha && o.expectSha !== sha(this.repo(repo), pr.head)) throw new Error(`PR ${n} head moved`);
+        if (o.deleteBranch) this.repo(repo).branches.delete(pr.head);
+        return { mergeSha: this.merge(repo, n) };
+      },
     };
   }
 }

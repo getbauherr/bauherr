@@ -9,7 +9,7 @@ import { StatusChip } from '../../../components/StatusChip'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
-import { needsYou, stageOf } from '../../../lib/needs-you'
+import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
@@ -100,7 +100,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {gate?.kind === 'rerun' && runs[0] && <RerunGate run={runs[0].id} number={ticket.number} title={gate.title} stage={runs[0].stage} />}
       {acceptedStaging && <Approved number={ticket.number} label="Accepted on staging" />}
       {waitingForStaging && <p className="small muted">Waiting for staging deploy of <span className="mono">{ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}</span></p>}
-      {ticket.stage === 'review' && <p className="small muted">Factory reviewing</p>}
+      {ticket.stage === 'review' && <p className="small muted">{reviewWord(ticket.reviewState)}</p>}
       {decisions.length > 0 && <DecisionSheet ticket={ticket.id} decisions={decisions} answers={answers} />}
 
       {plan && (

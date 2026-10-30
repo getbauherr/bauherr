@@ -30,7 +30,7 @@ export function git(dir: string, env: NodeJS.ProcessEnv, ...args: string[]): Pro
   return exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: dir, env }).then((r) => r.stdout.trim());
 }
 
-export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranch: string; token: string; branch: string }): Promise<Clone & { env: NodeJS.ProcessEnv; home: string }> {
+export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranch: string; token: string; branch: string; checkout?: string }): Promise<Clone & { env: NodeJS.ProcessEnv; home: string }> {
   const root = await mkdtemp(join(tmpdir(), 'bauherr-run-'));
   const dir = join(root, 'repo');
   const home = join(root, 'home');
@@ -39,10 +39,10 @@ export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranc
   try {
     await exec('mkdir', ['-p', home]);
     const url = `${o.baseUrl.replace(/\/$/, '')}/${o.repo}.git`;
-    await git(root, env, 'clone', '--depth', '50', '--no-tags', '--branch', o.defaultBranch, url, dir);
-    await git(dir, env, 'switch', '-c', o.branch);
+    await git(root, env, 'clone', '--depth', '50', '--no-tags', '--branch', o.checkout ?? o.defaultBranch, url, dir);
+    if (!o.checkout) await git(dir, env, 'switch', '-c', o.branch);
     const baseSha = await git(dir, env, 'rev-parse', 'HEAD');
-    return { dir, branch: o.branch, baseSha, cleanup, env, home };
+    return { dir, branch: o.checkout ?? o.branch, baseSha, cleanup, env, home };
   } catch (e) {
     await cleanup();
     throw e;

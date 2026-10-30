@@ -132,6 +132,8 @@ export interface Forge {
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
   listChecks(repo: RepoRef, sha: string): Promise<Check[]>;
+  /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch; returns the merge commit sha. */
+  mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string }>;
   webhooks?: Webhooks;
 }
 

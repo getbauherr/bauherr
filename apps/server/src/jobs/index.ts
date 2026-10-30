@@ -7,7 +7,8 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { forgeOf, watchRelease } from '../lib/release'
+import { concludeReview, normalizeReview, watchReviews } from '../lib/actions'
+import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -52,6 +53,13 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   }
   if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
   return { run, created: true }
+}
+
+/** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
+export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
+  if (t.stage !== 'review' || t.state !== 'open' || t.reviewState) return null
+  const mr = await prOf(payload, t)
+  return mr?.pr.state === 'open' ? startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review') : null
 }
 
 /** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
@@ -136,7 +144,10 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
   retries: 0,
   concurrency: () => 'watch-release',
-  handler: async ({ req }) => ({ output: await watchRelease(req.payload) }),
+  handler: async ({ req }) => {
+    await watchReviews(req.payload)
+    return { output: await watchRelease(req.payload) }
+  },
 }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
@@ -188,6 +199,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !t.assignee) {
             await startRunIfNeeded(payload, ticket, stage)
           }
+          if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
         }
         await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
@@ -225,6 +237,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const r = await exec(ctx)
+      const review = run.stage === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
       if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       }
@@ -238,6 +251,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
           status: r.status,
           artifacts: r.artifacts,
           error: r.status === 'succeeded' ? null : r.reason,
+          ...(review && { verdict: review.verdict, findings: review.findings }),
           tokensIn: r.usage.inputTokens,
           tokensOut: r.usage.outputTokens,
           tokensCache: r.usage.cacheRead + r.usage.cacheWrite,
@@ -247,6 +261,8 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         ...opts,
       })
       await queueReconcile(payload, run.id)
+      if (review) await concludeReview(payload, ticket.id, review)
+      if (run.stage === 'build' && r.status === 'succeeded') await startReviewIfReady(payload, await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts }))
       return { output: { status: r.status } }
     } catch (e) {
       await payload.update({

@@ -57,12 +57,34 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
   return { posted }
 }
 
-/** Latest run per check name (highest id; later entry wins without ids), then every picked check must have passed. */
-const checksGreen = (checks: Check[], names: string[]): boolean => {
+/** Latest run per check name (highest id; later entry wins without ids). */
+const latestChecks = (checks: Check[]): Check[] => {
   const latest = new Map<string, Check>()
   for (const c of checks) if (!latest.has(c.name) || (c.id ?? 0) >= (latest.get(c.name)!.id ?? 0)) latest.set(c.name, c)
-  const picked = names.length ? names.map((n) => latest.get(n)) : [...latest.values()]
-  return picked.length > 0 && picked.every((c) => c?.status === 'completed' && ['success', 'neutral', 'skipped'].includes(c.conclusion ?? ''))
+  return [...latest.values()]
+}
+const passed = (c: Check | undefined): boolean => c?.status === 'completed' && ['success', 'neutral', 'skipped'].includes(c.conclusion ?? '')
+
+/** Latest run per check name, then every picked check must have passed. */
+const checksGreen = (checks: Check[], names: string[]): boolean => {
+  const latest = latestChecks(checks)
+  const picked = names.length ? names.map((n) => latest.find((c) => c.name === n)) : latest
+  return picked.length > 0 && picked.every(passed)
+}
+
+/** Merge gate view of a head's checks: red when a finished check failed, pending while one still runs, else green (no checks at all is green). */
+export const mergeChecks = (checks: Check[]): { state: 'green' | 'pending' | 'red'; failed: string[] } => {
+  const latest = latestChecks(checks)
+  const failed = latest.filter((c) => c.status === 'completed' && !passed(c)).map((c) => c.name)
+  return { state: failed.length ? 'red' : latest.some((c) => c.status !== 'completed') ? 'pending' : 'green', failed }
+}
+
+/** The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state; null when there is none. */
+export const prOf = async (payload: Payload, t: Doc) => {
+  const { backend, repo, tickets } = await forgeOf(payload, id(t.product))
+  const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
+  const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo)).find((x) => x !== null)
+  return num == null ? null : { backend, repo, tickets, pr: await backend.forge.getPullRequest(repo, num) }
 }
 
 const stagingAnswers = async (url: string): Promise<boolean> => {

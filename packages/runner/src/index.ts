@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, type AgentState } from './agent.js';
-import { cloneRepo, commitAndPush } from './clone.js';
+import { cloneRepo, commitAndPush, git } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { GOAL_FILE, PLAN_FILE, materialise } from './materialise.js';
+import { GOAL_FILE, PLAN_FILE, REVIEW_FILE, materialise } from './materialise.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
 
@@ -19,6 +19,9 @@ export const PLAN_MARKER = '<!-- bauherr:plan -->';
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
 /** Agent-verifiable Goal of a Plan Run; the Ticket's own Goal moves into the worklog. */
 const PLAN_GOAL = [`\`${PLAN_FILE}\` exists with the sections \`## Goal\` and \`## Steps\``, 'every Ticket acceptance criterion is covered by a step under `## Steps`'];
+
+/** Agent-verifiable Goal of a Review Run. */
+const REVIEW_GOAL = [`\`${REVIEW_FILE}\` exists with a verdict, the findings and the review markdown`];
 
 const worklogBody = (statements: { text: string; done?: boolean }[], instructions: string) =>
   `${WORKLOG_MARKER}\n## Worklog\n**Goal**\n${statements.map((s) => `- [${s.done ? 'x' : ' '}] ${s.text}`).join('\n')}\n\n**Current instructions**\n${instructions}\n`;
@@ -57,8 +60,14 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       defaultBranch: ctx.product.defaultBranch,
       token: ctx.connection.gitToken,
       branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
+      ...(ctx.existingPr && ctx.run.stage !== 'plan' ? { checkout: ctx.existingPr.branch } : {}),
     });
-    const agentCtx: RunCtx = ctx.run.stage === 'plan' ? { ...ctx, run: { ...ctx.run, goal: { statements: PLAN_GOAL } } } : ctx;
+    if (ctx.run.stage === 'review') {
+      if (!ctx.existingPr) return finish('failed', 'review run without an MR');
+      await git(clone.dir, clone.env, 'fetch', '--depth', '200', 'origin', `${ctx.product.defaultBranch}:refs/remotes/origin/${ctx.product.defaultBranch}`);
+    }
+    const fixedGoal = ctx.run.stage === 'plan' ? PLAN_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
+    const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
       ...(ctx.product.id ? { product: ctx.product.id } : {}), ...(ctx.ticket.id ? { ticket: ctx.ticket.id } : {}),
@@ -74,6 +83,16 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     if (state.verdict?.kind === 'needs_human') return finish('needs_human', state.verdict.reason);
 
     const goal = readGoal(join(clone.dir, GOAL_FILE));
+    if (ctx.run.stage === 'review') {
+      const file = join(clone.dir, REVIEW_FILE);
+      if (!existsSync(file)) return finish('failed', `review run wrote no ${REVIEW_FILE}`);
+      try {
+        artifacts.review = JSON.parse(readFileSync(file, 'utf8'));
+      } catch {
+        return finish('failed', `${REVIEW_FILE} is not valid JSON`);
+      }
+      return finish('succeeded');
+    }
     if (ctx.run.stage === 'plan') {
       const planFile = join(clone.dir, PLAN_FILE);
       const plan = existsSync(planFile) ? readFileSync(planFile, 'utf8').replace(PLAN_MARKER, '').trim() : '';
@@ -88,6 +107,13 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       return finish('failed', 'build run produced no commits');
     }
     artifacts.evidence = buildEvidence(goal, state.toolCalls);
+    if (ctx.existingPr) {
+      artifacts.prUrl = ctx.existingPr.url;
+      await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);
+      await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(goal.map((g) => ({ text: g.text, done: g.status === 'verified' })), `Pushed to ${ctx.existingPr.url}. Waiting for review.`));
+      await ctx.forge.setStage(ctx.ticket.number, 'review');
+      return finish('succeeded');
+    }
     const pr = await ctx.forge.openPullRequest({
       repo: ctx.product.repo, head: clone.branch, base: ctx.product.defaultBranch,
       title: `${ctx.ticket.title} (#${ctx.ticket.number})`,

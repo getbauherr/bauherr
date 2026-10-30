@@ -137,3 +137,22 @@ describe('appAuth (fake key, fake GitHub)', () => {
     assert.ok(createVerify('RSA-SHA256').update(`${h}.${p}`).verify(publicKey, Buffer.from(s, 'base64url')));
   });
 });
+
+describe('github mergePullRequest', () => {
+  it('PUTs a squash merge pinned to the head sha, then deletes the branch', async () => {
+    const calls: { method: string; url: string; body: any }[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        const method = String(init?.method);
+        calls.push({ method, url: new URL(String(u)).pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (method === 'PUT') return json({ sha: 'm1', merged: true });
+        if (method === 'DELETE') return new Response(null, { status: 204 });
+        return json({ number: 7, html_url: 'u', title: 't', body: '', state: 'closed', merged_at: 'x', head: { ref: 'bauherr/7', sha: 'h' }, base: { ref: 'main' } });
+      },
+    });
+    assert.deepEqual(await b.forge.mergePullRequest('o/r', 7, { method: 'squash', deleteBranch: true, expectSha: 'h' }), { mergeSha: 'm1' });
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['PUT /repos/o/r/pulls/7/merge', 'GET /repos/o/r/pulls/7', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
+    assert.deepEqual(calls[0]!.body, { merge_method: 'squash', sha: 'h' });
+  });
+});

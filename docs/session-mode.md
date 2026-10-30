@@ -37,7 +37,8 @@ Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEAD
 2. `claim_run {runId}` → returns `leaseToken` (once), Ticket, body and Goal statements. Status `running`, Ticket assigned. Pass `leaseToken` on every later call on the Run (see the Lease section of [run-contract](../pack/skills/run-contract/SKILL.md)).
 3. Work in a local worktree. Meanwhile: `update_worklog` (full markdown), `report_step`, `attach_evidence` (commands with exit codes, test summary), `heartbeat`.
 4. `request_review` (moves the Ticket to the review stage), then `finish_run {runId, status, reason?, prUrl?}`. `succeeded` needs the MR/stage output; otherwise `failed` or `needs_human` with a reason.
-5. Plan gate: `approve {ticket, gate:'plan'}` is the only way to approve through MCP.
+5. Review Runs (`stage: review`): `get_ticket` shows the open MR as `pr`; `load_skill review`, read the diff in your worktree, never edit code, then `submit_review {runId, leaseToken, verdict, findings:[{severity, file, line, msg, scenario}], markdown}`. It ends the Run `succeeded` in the same write and runs the conclusion (MR comment, back to Build, or merge gate). Build Runs on a Ticket whose `get_ticket` has a `pr`: check out `pr.branch` and push there; open no new MR.
+6. Plan gate: `approve {ticket, gate:'plan'}` is the only way to approve through MCP.
 
 Switch away: `release_run {runId, leaseToken}` puts the Run back to `awaiting_session`; `release_run {runId, leaseToken, takeover:'autonomous'}` hands it to the Runner.
 

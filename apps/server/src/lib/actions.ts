@@ -1,8 +1,9 @@
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
-import { ACTIVE, RELEASED_BY, abandonRun, startRunIfNeeded } from '../jobs'
-import { forgeOf, id, publishStagingSummary } from './release'
+import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
+import { forgeOf, id, mergeChecks, prOf, publishStagingSummary } from './release'
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 
@@ -87,6 +88,7 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
   const { ts, n } = await sourceOf(payload, t)
   await setStage(ts, n, 'review')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review' }, overrideAccess: true })
+  await startReviewIfReady(payload, { ...t, stage: 'review' })
   return { stage: 'review' }
 }
 
@@ -206,16 +208,17 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   return { approved: APPROVED_STAGING, stage }
 }
 
-/** Writes `text` as the body of the worklog's `**Current instructions**` section (appended when missing). */
-const setInstructions = (worklog: string, text: string): string => {
+/** Writes `text` as the body of the worklog section headed `heading` (appended when missing). */
+const setSection = (worklog: string, heading: string, text: string): string => {
   const rows = worklog.split('\n')
-  const start = rows.findIndex((l) => l.trim() === '**Current instructions**')
-  if (start < 0) return [...rows, '', '**Current instructions**', text].join('\n')
+  const start = rows.findIndex((l) => l.trim() === heading)
+  if (start < 0) return [...rows, '', heading, text].join('\n')
   let end = rows.findIndex((l, i) => i > start && /^\*\*.+\*\*\s*$/.test(l.trim()))
   if (end < 0) end = rows.length
   rows.splice(start + 1, end - start - 1, text, '')
   return rows.join('\n')
 }
+const setInstructions = (worklog: string, text: string): string => setSection(worklog, '**Current instructions**', text)
 
 /** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
 export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
@@ -234,4 +237,116 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null }, overrideAccess: true })
   await touch(payload, user, t, 'request-changes:staging')
   return { stage: 'build', run: run.id as TicketId }
+}
+
+export const REVIEW_MARKER = '<!-- bauherr:review -->'
+/** Returns from review to build per Ticket before it needs a human. */
+export const MAX_REVIEW_ROUNDS = 2
+const BLOCKING = ['high', 'medium']
+
+export type Finding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; msg: string; scenario: string }
+export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string }
+export type ReviewOutcome = 'merged' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human'
+
+/** Validates a reviewer's output. The verdict is derived: `changes` iff a high or medium finding exists. */
+export const normalizeReview = (raw: any): Review => {
+  if (!raw || !['clean', 'changes'].includes(raw.verdict) || !Array.isArray(raw.findings) || typeof raw.markdown !== 'string' || !raw.markdown.trim()) {
+    throw new Error('a review needs verdict (clean|changes), findings[] and markdown')
+  }
+  const findings = raw.findings.map((f: any, i: number): Finding => {
+    if (!f || !BLOCKING.concat('low').includes(f.severity) || typeof f.file !== 'string' || !Number.isInteger(f.line) || typeof f.msg !== 'string' || typeof f.scenario !== 'string') {
+      throw new Error(`finding ${i} needs severity (high|medium|low), file, line (integer), msg and scenario`)
+    }
+    return { severity: f.severity, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario }
+  })
+  return { verdict: findings.some((f: Finding) => BLOCKING.includes(f.severity)) ? 'changes' : 'clean', findings, markdown: raw.markdown }
+}
+
+const findingLine = (f: Finding) => `- [${f.severity}] ${f.file}:${f.line} ${f.msg.replace(/\s+/g, ' ')} Scenario: ${f.scenario.replace(/\s+/g, ' ')}`
+
+type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
+
+/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. */
+const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' = 'open'): Promise<boolean> =>
+  (
+    await payload.db.drizzle.execute(
+      sql`UPDATE "tickets" SET "review_state" = ${to}, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
+    )
+  ).rows.length > 0
+
+/** Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work. */
+const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[]): Promise<ReviewOutcome> => {
+  const rounds = Number(
+    (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + 1, "updated_at" = now() WHERE "id" = ${t.id} RETURNING "review_rounds"`)).rows[0]!.review_rounds,
+  )
+  const n = String(t.number)
+  if (rounds > MAX_REVIEW_ROUNDS) {
+    await payload.update({ collection: 'tickets', id: t.id, data: { reviewState: 'needs_human' }, overrideAccess: true })
+    await mr.tickets.comment(n, `Bauherr needs a human: ${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
+    return 'needs_human'
+  }
+  const src = { ts: mr.tickets, n }
+  const text = `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.\n${lines.join('\n')}`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
+  const log = await worklogComment(src)
+  const worklog = setSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines.join('\n'))
+  if (log) await src.ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
+  else await src.ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
+  await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
+  await setStage(mr.tickets, n, 'build')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
+  return 'build'
+}
+
+/** Merge gate for a clean review: auto-merge on, `## Evidence` present, checks on the head SHA green (none = green). Pending waits, red returns to Build. */
+export const mergeGate = async (payload: Payload, t: Doc, mr: Mr): Promise<ReviewOutcome> => {
+  const n = String(t.number)
+  const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
+  const handOver = async (why: string): Promise<ReviewOutcome> => {
+    if (await moveReview(payload, t.id, 'ready_for_human')) await mr.tickets.comment(n, `Review clean, ready to merge by a human: ${why}\n${mr.pr.url}`)
+    return 'ready_for_human'
+  }
+  if (product.autoMerge === false) return handOver('auto-merge is off for this Product.')
+  if (!/^#{2}\s+Evidence\b/im.test(mr.pr.body)) return handOver('the MR body has no `## Evidence` section.')
+  const checks = mergeChecks(await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha))
+  if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+  if (checks.state === 'pending') {
+    await moveReview(payload, t.id, 'waiting_checks')
+    return 'waiting_checks'
+  }
+  if (!(await moveReview(payload, t.id, 'merged'))) return 'waiting_checks'
+  try {
+    await mr.backend.forge.mergePullRequest(mr.repo, mr.pr.number, { method: 'squash', deleteBranch: true, expectSha: mr.pr.headSha })
+  } catch (e) {
+    await moveReview(payload, t.id, 'waiting_checks', 'merged')
+    throw e
+  }
+  return 'merged'
+}
+
+/** Both review paths end here, after the review Run holds its verdict: posts the MR comment, then returns to Build (blocking findings) or runs the merge gate. */
+export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review): Promise<{ outcome: ReviewOutcome }> => {
+  const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
+  const mr = await prOf(payload, t)
+  if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
+  await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, `${REVIEW_MARKER}\n${review.markdown}`)
+  const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
+  const outcome = blocking.length
+    ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine))
+    : await mergeGate(payload, t, mr)
+  return { outcome }
+}
+
+/** Per-minute pass: Tickets waiting on checks re-run the merge gate. */
+export const watchReviews = async (payload: Payload): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  let merged = 0
+  for (const t of tickets) {
+    try {
+      const mr = await prOf(payload, t)
+      if (mr?.pr.state === 'open' && (await mergeGate(payload, t, mr)) === 'merged') merged++
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'watch-reviews failed for ticket')
+    }
+  }
+  return merged
 }

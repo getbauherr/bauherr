@@ -13,7 +13,7 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 | Triage | none (dedupe hints only) | Bauherr moves to Plan or closes `not_planned` |
 | Plan | plan Run | plan Comment + Goal in the worklog (+ Sub-tickets if large) |
 | Build | build Run | MR Linked on the Ticket |
-| Review | reviewer agent without memory of the change | review Comments on the MR |
+| Review | review Run: reviewer without memory of the change ([review](../../pack/skills/review/SKILL.md)) | review Comment on the MR; merge or back to Build |
 | Release | none; Bauherr observes the Product's CI (or a deploy webhook) after the MR merged | staging summary Comment + staging acceptance |
 | Done | none | Ticket closed `completed` on merge |
 
@@ -23,8 +23,14 @@ Config per stage: label, gate-before (`none | human | checks`), max runs, and th
 | Gate | Before | Approval lives in |
 |---|---|---|
 | Plan approval (human) | Build | label `bauherr:approved:plan`, set in the Bauherr UI or in the forge |
-| MR approval (human) | merge | native forge review + merge |
+| MR gate (factory) | merge | clean review + green checks + `## Evidence` + Product `autoMerge` (below); no human |
 | Staging acceptance (human) | Done | label `bauherr:approved:staging`, set in the UI |
+
+Review: a Ticket entering `review` with a factory MR gets a Review Run (mode follows the Workspace; session Runs end with `submit_review`, autonomous Runs write `.bauherr/review.json`). It posts one `<!-- bauherr:review -->` Comment on the MR: verdict, findings (severity, file:line, defect, scenario), Open. The verdict is `changes` iff a high or medium finding exists.
+- `changes`: the findings become the worklog's Current instructions and Unfinished work, the stage goes to `build` and a Build Run starts on the **same MR branch** (no second MR).
+- `clean`: the merge gate squash-merges and deletes the branch when every check run on the head SHA passed (no checks counts as green), the MR body has `## Evidence` and Product `autoMerge` is on (default). Checks pending: `reviewState` `waiting_checks`, re-checked each minute by `watch-release`. Checks red: back to Build with the check names. `autoMerge` off, or no Evidence: a "ready to merge" Comment and `reviewState` `ready_for_human`; the merge stays with a human.
+- Round cap: each return to Build (changes verdict or red checks) is a round; the 3rd needs a human (`reviewState` `needs_human`, Ticket Comment). `tickets.reviewRounds` counts them and is never reset.
+- A merge by the factory is no human touch; the next `watch-release` pass moves the Ticket to `release`.
 
 Release: the scheduled task `watch-release` (every minute) moves a `review` Ticket whose MR merged to `release` and stores the merge commit. `observe-ci` Products: the commit's check runs (all, or `deployChecks`) are green; `webhook` Products: the webhook is POSTed once and `stagingUrl` answers 200. Then the factory posts one `<!-- bauherr:staging-summary -->` Comment (templated, no model: What you get, Found on the way, Decisions taken, Open, Accept). Not confirmed after 60 minutes: `releaseState` `timed_out` and the Comment "staging not confirmed". A Workspace Bauherr accepts (stage `done`, or held when `products.productionGate`) or requests changes with a note (worklog Current instructions, stage `build`, new Build Run).
 
@@ -33,7 +39,8 @@ Everything else is automated. The `checks` gate is the Product's **scorecard** (
 ## 3. Triggers
 Only on factory-derived events (diffs of poll summaries against the stored Ticket pointer):
 - entered-stage (Label change), label added (`bauherr:go`), manual (admin button sets the Label), schedule (creates a Ticket first)
-- `check_failed`: CI failure on a Build Run's MR; `mr_comment`: review comment on it. Each re-wakes the Build Run within its remaining budget. A second CI failure after a re-wake → `needs_human`.
+- `check_failed`: CI failure on a Build Run's MR; `mr_comment`: review comment on it. Each re-wakes the Build Run within its remaining budget. A second CI failure after a re-wake → `needs_human`. In `review` these are handled by the merge gate and the round cap above.
+- Review: entering `review` with an open factory MR (poller, `request_review`, or a Build Run finishing with an MR) starts the Review Run; returning from review starts a Build Run on the same branch.
 
 A Run starts when a Ticket enters a stage with an agent and has no human assignee. One Run per (Ticket, stage entry).
 

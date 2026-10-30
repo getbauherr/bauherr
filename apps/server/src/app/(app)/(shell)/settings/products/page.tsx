@@ -59,6 +59,7 @@ export default async function ProductSettings() {
             <Field name="deployMode" label="Deploy" options={[['observe-ci', 'Observe CI'], ['webhook', 'Webhook']]} defaultValue={p.deploy.mode} disabled={!admin} />
             <Field name="deployWebhookUrl" label="Webhook URL (webhook mode)" type="url" defaultValue={p.deploy.webhookUrl} disabled={!admin} />
             <Field name="deployChecks" label="Required checks" hint="Comma-separated; empty = all must be green." defaultValue={p.deploy.checks} disabled={!admin} />
+            <Field name="autoMerge" label="Auto-merge" type="checkbox" hint="Squash-merge the MR after a clean review and green checks." defaultChecked={p.deploy.autoMerge} disabled={!admin} />
           </SettingsForm>
           {admin && (
             <div className="forms">

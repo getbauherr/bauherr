@@ -1,7 +1,7 @@
 import { query, type HookCallbackMatcher, type Options, type SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { egressGuard, writeScopeGuard, type Decision } from './guards.js';
 import { checkGoal, readGoal, type GoalVerdict } from './goal.js';
-import { GOAL_FILE } from './materialise.js';
+import { GOAL_FILE, REVIEW_FILE } from './materialise.js';
 import type { RunCtx, StepRecord, ToolCallRecord } from './types.js';
 
 export type AgentState = {
@@ -39,10 +39,11 @@ export function agentEnv(home: string, proxyUrl: string): Record<string, string>
 }
 
 export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyUrl: string; agentsMd: string }, state: AgentState): Options {
+  const review = ctx.run.stage === 'review';
   const model = ctx.connection.modelByTier[ctx.run.tier];
   if (!model) throw new Error(`no model configured for tier ${ctx.run.tier}`);
   const gatewayHost = new URL(o.proxyUrl).host;
-  const owned = (process.env.BAUHERR_LANE_OWNED_PATHS ?? '').split(':').filter(Boolean);
+  const owned = review ? ['.bauherr/'] : (process.env.BAUHERR_LANE_OWNED_PATHS ?? '').split(':').filter(Boolean);
   const record = (r: Omit<ToolCallRecord, 'runId'>) => {
     const full = { runId: ctx.run.id, ...r };
     state.toolCalls.push(full);
@@ -102,8 +103,11 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
     strictMcpConfig: true,
     skills: 'all',
     permissionMode: 'dontAsk',
-    tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
-    allowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(npm test:*)', 'Bash(npm run:*)'],
+    // A Review Run is read-only: it may write only .bauherr/ (the write-scope guard) and runs no project commands.
+    tools: review ? ['Read', 'Grep', 'Glob', 'Write', 'Bash'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
+    allowedTools: review
+      ? ['Read', 'Grep', 'Glob', 'Write', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)']
+      : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(npm test:*)', 'Bash(npm run:*)'],
     disallowedTools: DISALLOWED,
     maxTurns: ctx.run.maxTurns,
     maxBudgetUsd: ctx.run.maxBudgetUsd,
@@ -115,7 +119,9 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
 }
 
 export async function runAgent(ctx: RunCtx, options: Options, state: AgentState): Promise<void> {
-  const prompt = ctx.run.stage === 'plan'
+  const prompt = ctx.run.stage === 'review'
+    ? `Review Run for Ticket #${ctx.ticket.number}, MR ${ctx.existingPr?.url} (title: ${ctx.existingPr?.title}). Follow the review skill and the run-contract. Diff: \`git diff origin/${ctx.product.defaultBranch}...HEAD\` (HEAD is the MR head; if that fails use \`git diff origin/${ctx.product.defaultBranch} HEAD\`). MR body:\n${ctx.existingPr?.body}\n\nNever edit code. Write ${REVIEW_FILE} as {"verdict":"clean"|"changes","findings":[{"severity":"high"|"medium"|"low","file","line","msg","scenario"}],"markdown":"..."}, then set the Goal statement in .bauherr/goal.json to verified.`
+    : ctx.run.stage === 'plan'
     ? `Plan Run for Ticket #${ctx.ticket.number}. Follow the run-contract and worklog skills. Write the plan to .bauherr/plan.md with the sections "## Goal" and "## Steps" (the Runner posts it and updates the worklog); set each statement in .bauherr/goal.json to verified (with evidence) or blocked (with reason). Do not implement.`
     : `Build Run for Ticket #${ctx.ticket.number}. Follow the run-contract skill. Implement the Goal in the working tree, run the checks, record the result of each Goal statement in .bauherr/goal.json (verified or blocked), and update .bauherr/worklog.md last. Commit your work with git commit; do not push.`;
   const seen = new Set<string>();

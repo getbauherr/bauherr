@@ -5,6 +5,7 @@ import type { GoalStatement, RunCtx } from './types.js';
 export const GOAL_FILE = '.bauherr/goal.json';
 export const WORKLOG_FILE = '.bauherr/worklog.md';
 export const PLAN_FILE = '.bauherr/plan.md';
+export const REVIEW_FILE = '.bauherr/review.json';
 
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n/, '');
 

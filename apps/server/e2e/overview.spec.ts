@@ -37,7 +37,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await page.goto('/?view=runs')
   await expect(page).toHaveURL(/\/runs$/)
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
-  await expect(page.locator('table tbody tr')).toHaveCount(3)
+  await expect(page.locator('table tbody tr')).toHaveCount(4)
   await expect(main.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByRole('link', { name: /^Tickets/ })).not.toHaveAttribute('aria-current', 'page')
   await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })

@@ -3,8 +3,9 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
-import { SESSION_TIMEOUT_MS } from '../jobs'
+import { acceptStaging, approvePlan, concludeReview, normalizeReview, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
+import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
+import { prOf } from './release'
 import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -133,13 +134,15 @@ export const tools: Tool[] = [
   },
   {
     name: 'get_ticket',
-    description: 'Ticket pointer plus live body and Goal statements.',
+    description: 'Ticket pointer plus live body and Goal statements. `pr` is the open factory MR (number, url, branch): a Build Run on a Ticket with a `pr` pushes to that branch and opens no new MR.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
       const t = await getTicket(c, a.ticket)
       const { ts, n } = await sourceOf(c.payload, t)
       const live = await ts.get(n)
-      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan') }
+      const mr = await prOf(c.payload, t)
+      const pr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head } : null
+      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan'), pr }
     },
   },
   {
@@ -275,7 +278,40 @@ export const tools: Tool[] = [
         a.leaseToken,
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
+      if (run.stage === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       return { status: a.status }
+    },
+  },
+  {
+    name: 'submit_review',
+    description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Never edit code in a Review Run.',
+    inputSchema: obj(
+      {
+        ...runId,
+        ...leaseToken,
+        verdict: { enum: ['clean', 'changes'] },
+        findings: { type: 'array', items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, file: { type: 'string' }, line: { type: 'number' }, msg: { type: 'string' }, scenario: { type: 'string' } }, required: ['severity', 'file', 'line', 'msg', 'scenario'] } },
+        markdown: str('Review comment: verdict, findings, Open (low findings)'),
+      },
+      ['runId', 'leaseToken', 'verdict', 'findings', 'markdown'],
+    ),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
+      const review = normalizeReview(a)
+      await ownerWrite(
+        c,
+        run,
+        a.leaseToken,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown } })}::jsonb, ${U}`,
+      )
+      try {
+        return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review)) }
+      } catch (e) {
+        const { ts, n } = await sourceOf(c.payload, await getTicket(c, id(run.ticket)))
+        await ts.comment(n, `Bauherr needs a human: concluding the review of run ${run.id} failed: ${e instanceof Error ? e.message : String(e)}`).catch(() => {})
+        throw e
+      }
     },
   },
   {

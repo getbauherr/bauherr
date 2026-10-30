@@ -69,7 +69,7 @@ export async function loadProducts(workspace: number) {
         id: p.id as number,
         name: p.name as string,
         slug: p.slug as string,
-        deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string },
+        deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false },
         blocked: await blockedBy(payload, 'products', p.id),
         repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
         sources: sources

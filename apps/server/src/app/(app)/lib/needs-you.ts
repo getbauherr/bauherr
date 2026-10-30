@@ -40,3 +40,12 @@ export const releaseWord = (t: { stage?: string | null; state?: string | null; l
   if (t.stage !== 'release') return null
   return t.releaseState === 'on_staging' ? 'on staging' : t.releaseState === 'timed_out' ? 'timed out' : 'waiting'
 }
+
+/** Where a Ticket in `review` stands: the factory's review and merge gate. */
+export const reviewWord = (reviewState?: string | null): string =>
+  ({
+    waiting_checks: 'Review clean, waiting for checks to finish',
+    merged: 'Merged by the factory',
+    ready_for_human: 'Review clean, ready for a human to merge',
+    needs_human: 'Needs a human after repeated review rounds',
+  })[reviewState ?? ''] ?? 'Factory reviewing'
