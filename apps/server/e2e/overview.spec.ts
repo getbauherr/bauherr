@@ -22,6 +22,8 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   // decision sheets are read from the forge; the production image has no fake forge
   if (process.env.E2E_FAKE_FORGE) await expect(page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).first()).toBeVisible()
 
+  await expect(page.locator('.col[data-stage=plan] .card [data-gate]').first()).toContainText(/@e2e-admin · waiting \d+[mh]/)
+
   const cards = page.locator('.card')
   const before = await cards.count()
   await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })

@@ -236,6 +236,9 @@ const tickets = col('tickets', [
   select('reviewState', ['waiting_checks', 'merged', 'ready_for_human', 'needs_human']),
   date('reviewWaitingSince'),
   { name: 'mergeFailures', type: 'number', defaultValue: 0, admin: { description: 'Consecutive failed merge attempts; the 3rd needs a human.' } },
+  text('gateNotified'),
+  date('gateNotifiedAt'),
+  text('gateAssignees'),
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ])
 
@@ -250,6 +253,7 @@ export const collections: CollectionConfig[] = [
     text('stagingUrl'),
     select('deployMode', ['observe-ci', 'webhook'], { defaultValue: 'observe-ci', required: true }),
     text('deployWebhookUrl'),
+    text('gateOwners', { admin: { description: 'Comma-separated GitHub logins assigned and mentioned at human gates; empty = Admin Bauherren with a githubLogin.' } }),
     text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
     { name: 'autoMerge', type: 'checkbox', defaultValue: true, admin: { description: 'Squash-merge the factory MR after a clean review and green checks.' } },
     { name: 'productionGate', type: 'checkbox', defaultValue: false, admin: { description: 'Reserved for the production gate: accepting on staging then waits for it instead of moving to done.' } },

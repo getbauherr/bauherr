@@ -1,0 +1,17 @@
+import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
+
+export async function up({ db }: MigrateUpArgs): Promise<void> {
+  await db.execute(sql`
+   ALTER TABLE "products" ADD COLUMN "gate_owners" varchar;
+  ALTER TABLE "tickets" ADD COLUMN "gate_notified" varchar;
+  ALTER TABLE "tickets" ADD COLUMN "gate_notified_at" timestamp(3) with time zone;
+  ALTER TABLE "tickets" ADD COLUMN "gate_assignees" varchar;`)
+}
+
+export async function down({ db }: MigrateDownArgs): Promise<void> {
+  await db.execute(sql`
+   ALTER TABLE "products" DROP COLUMN "gate_owners";
+  ALTER TABLE "tickets" DROP COLUMN "gate_notified";
+  ALTER TABLE "tickets" DROP COLUMN "gate_notified_at";
+  ALTER TABLE "tickets" DROP COLUMN "gate_assignees";`)
+}

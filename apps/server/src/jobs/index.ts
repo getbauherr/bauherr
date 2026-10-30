@@ -9,6 +9,7 @@ import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { concludeReview, normalizeReview, watchReviews } from '../lib/actions'
+import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
@@ -157,6 +158,14 @@ export const lastRankAfter = async (payload: Payload, workspace: number | string
   return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
 }
 
+export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {
+  slug: 'notify-gates',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'notify-gates',
+  handler: async ({ req }) => ({ output: { changed: await syncGates(req.payload) } }),
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -204,7 +213,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await payload.create({ collection: 'tickets', data, overrideAccess: true })
           const entered = stage && stage !== (prev?.stage ?? null)
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !t.assignee) {
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && (!t.assignee || logins(prev?.gateAssignees).includes(t.assignee))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
