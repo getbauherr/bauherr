@@ -8,6 +8,7 @@ layers:
 materialise: run-worktree   # at Run start; never committed to the Product repo
 skills:
   - {path: skills/run-contract, purpose: How a Run reads its Goal, what counts as evidence, exit rule, blockers}
+  - {path: skills/review, purpose: Review Run on a factory MR - checklist, severity rubric, verdict and findings format}
   - {path: skills/worklog, purpose: Per-Ticket worklog template and reconciliation}
   - {path: skills/coordinate, purpose: Parallel lanes with owners (research in v0.1)}
   - {path: skills/manager, purpose: Manager thread over a queue of similar items (Review in v0.1)}

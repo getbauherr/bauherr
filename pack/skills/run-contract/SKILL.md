@@ -13,7 +13,7 @@ A Run works one Ticket toward its Goal and ends only with an MR or a declared bl
 3. If a statement is not checkable ("works well"), do not guess: declare a blocker asking for a checkable rewrite.
 
 ## Lease
-One session coordinates a Ticket at a time. `claim_run` returns a `leaseToken` (shown once); every call on the Run (`heartbeat`, `report_step`, `attach_evidence`, `request_review`, `run_checks`, `finish_run`, `release_run`, and `update_worklog` while the Run is running) must pass it. Keep it out of the worklog, comments and commits.
+One session coordinates a Ticket at a time. `claim_run` returns a `leaseToken` (shown once); every call on the Run (`heartbeat`, `report_step`, `attach_evidence`, `request_review`, `run_checks`, `submit_review`, `finish_run`, `release_run`, and `update_worklog` while the Run is running) must pass it. Keep it out of the worklog, comments and commits.
 - Pick only Tickets with `claimable: true` in `list_frontier`. Never touch the branch or worktree of a Ticket with `leasedBy`.
 - Heartbeat at least every 10 minutes; the lease expires 30 minutes after the last heartbeat and the Run is `abandoned` (a fresh Run takes over from the pushed branch and the worklog).
 - Subagents get the run id and the token from you and heartbeat on your behalf; they never claim.
@@ -35,7 +35,7 @@ Re-run the check after the last edit; evidence from before the last edit is stal
 |---|---|
 | Plan | `.bauherr/plan.md` (the Runner posts the plan Comment and the worklog), or a blocker |
 | Build | MR Linked on the Ticket, or a blocker |
-| Review | review Comments on the MR, or a blocker |
+| Review | `submit_review` (session) or `.bauherr/review.json` (autonomous), or a blocker |
 
 The Stop hook (`hooks/stop-goal-check.ts`) refuses to end the turn while a statement is unverified and undeclared. It re-prompts once with the unmet list; a second miss ends the Run `needs_human`.
 

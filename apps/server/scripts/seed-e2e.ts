@@ -36,7 +36,7 @@ const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product)
 const t2 = await ticket(2, 'Export invoices as CSV', 'build', product)
 const t3 = await ticket(3, 'Checkout fails for empty carts', 'build', shop)
 await ticket(4, 'Triage the onboarding feedback', 'triage', shop)
-await ticket(5, 'Upgrade the payment SDK', 'review', shop)
+const t5 = await ticket(5, 'Upgrade the payment SDK', 'review', shop)
 const rel = { stage: 'release', releaseState: 'on_staging', mergeSha: 'abc1234def' }
 await ticket(6, 'Ship the CSV export', 'release', product, rel)
 await ticket(7, 'Ship the invoice filter', 'release', product, rel)
@@ -52,5 +52,12 @@ for (const [i, [at, summary]] of steps.entries()) {
 await ensure('human_touches', { kind: 'approve:plan', ticket: t2 }, { kind: 'approve:plan', ticket: t2, actor: email, at: '2026-10-30T09:05:00Z', workspace })
 await ensure('workflow_versions', { product }, { version: 1, product, compiled: { stages: [{ name: 'plan' }] }, workspace })
 await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
+await run(t5, 'review', 'succeeded', {
+  startedAt: '2026-10-30T11:00:00Z', finishedAt: '2026-10-30T11:04:00Z', verdict: 'changes',
+  findings: [
+    { severity: 'medium', file: 'src/payment.ts', line: 42, msg: 'The retry loop never stops on a permanent error.', scenario: 'when the gateway answers 402, then the call is retried forever instead of failing.' },
+    { severity: 'low', file: 'src/payment.ts', line: 7, msg: 'Unused import.', scenario: 'lint noise only.' },
+  ],
+})
 console.log('seeded')
 process.exit(0)

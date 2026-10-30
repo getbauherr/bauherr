@@ -3,8 +3,9 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
-import { SESSION_TIMEOUT_MS } from '../jobs'
+import { acceptStaging, approvePlan, concludeReview, normalizeReview, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
+import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
+import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
@@ -133,13 +134,15 @@ export const tools: Tool[] = [
   },
   {
     name: 'get_ticket',
-    description: 'Ticket pointer plus live body and Goal statements.',
+    description: 'Ticket pointer plus live body and Goal statements. `pr` is the open factory MR (number, url, branch): a Build Run on a Ticket with a `pr` pushes to that branch and opens no new MR.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
       const t = await getTicket(c, a.ticket)
       const { ts, n } = await sourceOf(c.payload, t)
       const live = await ts.get(n)
-      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan') }
+      const mr = await prOf(c.payload, t)
+      const pr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head } : null
+      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan'), pr }
     },
   },
   {
@@ -266,7 +269,15 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId, a)
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
-      if (a.prUrl) await ts.addLink(n, a.prUrl)
+      if (a.prUrl) {
+        const { backend, repo } = await forgeOf(c.payload, id(ticket.product))
+        const num = prNumber(a.prUrl, repo)
+        const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
+        if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
+          throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
+        }
+        await ts.addLink(n, a.prUrl)
+      }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
       if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket) })
       await ownerWrite(
@@ -275,7 +286,40 @@ export const tools: Tool[] = [
         a.leaseToken,
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
+      if (run.stage === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       return { status: a.status }
+    },
+  },
+  {
+    name: 'submit_review',
+    description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
+    inputSchema: obj(
+      {
+        ...runId,
+        ...leaseToken,
+        verdict: { enum: ['clean', 'changes'] },
+        findings: {
+          type: 'array',
+          maxItems: 50,
+          items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, file: { type: 'string', pattern: '^[\\w./@+-]{1,300}$' }, line: { type: 'integer', minimum: 0 }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'file', 'line', 'msg', 'scenario'] },
+        },
+        checked: { type: 'array', description: 'One entry per area: correctness, over-engineering, spec-vs-plan, evidence. A review without all four goes to a human.', items: { type: 'object', properties: { area: { enum: ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'] }, note: { type: 'string', maxLength: 1000, description: 'One-line justification' } }, required: ['area', 'note'] } },
+        markdown: { type: 'string', maxLength: 60000, description: 'Review comment: verdict, findings, Open (low findings)' },
+      },
+      ['runId', 'leaseToken', 'verdict', 'findings', 'checked', 'markdown'],
+    ),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
+      const review = normalizeReview(a)
+      const reviewedSha = (await prOf(c.payload, await getTicket(c, id(run.ticket))))?.pr.headSha ?? null
+      await ownerWrite(
+        c,
+        run,
+        a.leaseToken,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown } })}::jsonb, ${U}`,
+      )
+      return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review, reviewedSha)) }
     },
   },
   {

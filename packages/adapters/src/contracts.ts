@@ -91,6 +91,10 @@ export interface PullRequest {
   head: string;
   base: string;
   headSha: string;
+  /** `owner/name` of the repo the head branch lives in (differs from `baseRepo` for forks). */
+  headRepo: string;
+  baseRepo: string;
+  draft: boolean;
   /** Set once merged. */
   mergeSha?: string;
 }
@@ -131,7 +135,12 @@ export interface Forge {
   listPullRequests(repo: RepoRef, state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
+  /** Check runs plus legacy commit statuses (a status is a check named after its context). */
   listChecks(repo: RepoRef, sha: string): Promise<Check[]>;
+  /** ISO time the commit was made. */
+  getCommitDate(repo: RepoRef, sha: string): Promise<string>;
+  /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown); returns the merge commit sha. */
+  mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
   webhooks?: Webhooks;
 }
 

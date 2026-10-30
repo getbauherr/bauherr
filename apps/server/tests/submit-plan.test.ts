@@ -80,19 +80,25 @@ it('refuses a build Run', async () => {
 const finish = async (stage: 'plan' | 'build', input: Record<string, unknown>) => {
   const { n, run } = await seed(stage)
   const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  if (input.prUrl) {
+    const head = `bauherr/${n}-x`
+    await fake.forge.createBranch(repo, head)
+    fake.commit(repo, head, 'a.ts', n)
+    input = { ...input, prUrl: (await fake.forge.openPullRequest(repo, { title: 't', head, base: 'main' })).url }
+  }
   await call(member, 'finish_run', { runId: run.id, leaseToken, ...input })
   const ticket = (await payload.findByID({ collection: 'tickets', id: (run.ticket as any).id ?? run.ticket, ...o })) as Record<string, any>
   return { stage: ticket.stage, labels: (await fake.tickets(repo).get(n)).labels }
 }
 
 it('finish_run succeeded with a prUrl moves a built Ticket to review', async () => {
-  const r = await finish('build', { status: 'succeeded', prUrl: 'https://github.com/acme/web/pull/1' })
+  const r = await finish('build', { status: 'succeeded', prUrl: 'make' })
   expect(r.stage).toBe('review')
   expect(r.labels).toContain('bauherr:stage:review')
 })
 
 it('finish_run without a prUrl, failed, or on a plan Run leaves the stage', async () => {
   expect((await finish('build', { status: 'succeeded' })).stage).toBe('build')
-  expect((await finish('build', { status: 'failed', reason: 'r', prUrl: 'https://github.com/acme/web/pull/1' })).stage).toBe('build')
-  expect((await finish('plan', { status: 'succeeded', prUrl: 'https://github.com/acme/web/pull/1' })).stage).toBe('plan')
+  expect((await finish('build', { status: 'failed', reason: 'r', prUrl: 'make' })).stage).toBe('build')
+  expect((await finish('plan', { status: 'succeeded', prUrl: 'make' })).stage).toBe('plan')
 })

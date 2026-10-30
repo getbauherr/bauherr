@@ -20,7 +20,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(main.getByRole('link', { name: /^Tickets/ })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByLabel(/need you/)).toBeVisible()
   // decision sheets are read from the forge; the production image has no fake forge
-  if (process.env.E2E_FAKE_FORGE) expect(await page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).count()).toBeGreaterThanOrEqual(1)
+  if (process.env.E2E_FAKE_FORGE) await expect(page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).first()).toBeVisible()
 
   const cards = page.locator('.card')
   const before = await cards.count()
@@ -37,10 +37,10 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await page.goto('/?view=runs')
   await expect(page).toHaveURL(/\/runs$/)
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
-  await expect(page.locator('table tbody tr')).toHaveCount(3)
+  await expect(page.locator('table tbody tr')).toHaveCount(4)
   await expect(main.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByRole('link', { name: /^Tickets/ })).not.toHaveAttribute('aria-current', 'page')
   await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
   await expect(page).toHaveURL(/\/runs\?product=/)
-  await expect(page.locator('table tbody tr')).toHaveCount(1)
+  await expect(page.locator('table tbody tr')).toHaveCount(2)
 })

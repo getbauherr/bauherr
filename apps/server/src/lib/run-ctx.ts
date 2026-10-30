@@ -3,11 +3,12 @@ import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
 import { setStage } from '@bauherr/adapters'
 import { githubFor } from './adapters'
+import { prOf } from './release'
 import type { ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { forgeOf, id } from './release'
 
-export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket' }
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded' }
 /** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
 const AUTONOMOUS_BUILD_GOAL = 'the change is implemented and the checks pass'
 export type GoalStage = keyof typeof DEFAULT_GOAL
@@ -66,13 +67,17 @@ export const buildRunCtx = async (
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
   const tiers = { ...DEFAULT_MODEL_BY_TIER, ...(ws.modelByTier as Record<string, string> | null) }
   const modelByTier = Object.fromEntries(Object.entries(tiers).map(([t, m]) => [t, `ws-${ws.slug}/${m}`]))
+  const mr = run.stage === 'plan' ? null : await prOf(payload, ticket)
+  const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
+  if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 0.5, tier: 'cheap' },
+    run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 0.5, tier: run.stage === 'review' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
-      ...(run.stage === 'build' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
+      ...(run.stage !== 'plan' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
+    ...(existingPr && { existingPr }),
     product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
     connection: {
       gatewayUrl,

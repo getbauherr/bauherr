@@ -23,7 +23,7 @@ export type ToolCallRecord = {
 export type RunCtx = {
   run: {
     id: string;
-    stage: 'plan' | 'build';
+    stage: 'plan' | 'build' | 'review';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
@@ -31,6 +31,8 @@ export type RunCtx = {
   };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string };
   product: { id?: string; repo: string; defaultBranch: string };
+  /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */
+  existingPr?: { number: number; url: string; branch: string; title: string; body: string };
   connection: {
     gatewayUrl: string;
     gatewayKey: string;
@@ -59,7 +61,7 @@ export type RunCtx = {
 export type RunResult = {
   status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
   reason?: string;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; reviewedSha?: string };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 
