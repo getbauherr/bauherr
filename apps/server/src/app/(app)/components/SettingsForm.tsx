@@ -24,7 +24,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
       >
         {children}
         <div className="actions">
-          {confirm ? <ConfirmButton label={submit} confirm={confirm} /> : <button className={primary ? 'btn primary' : 'btn'} disabled={pending}>{submit}</button>}
+          {confirm ? <ConfirmButton label={submit} confirm={confirm} primary={primary} /> : <button className={primary ? 'btn primary' : 'btn'} disabled={pending}>{submit}</button>}
           {state.saved && <span role="status" className="small ok">Saved</span>}
           {state.error && <span role="alert" className="small err">{state.error}</span>}
         </div>
@@ -68,12 +68,12 @@ export function Checks({ name, items, checked }: { name: string; items: { id: nu
   )
 }
 
-/** Two clicks: the first arms, the second submits. No browser dialog. */
-export function ConfirmButton({ label, confirm }: { label: string; confirm: string }) {
+/** Two clicks: the first arms, the second submits. No browser dialog. `danger` text unless `primary`. */
+export function ConfirmButton({ label, confirm, primary }: { label: string; confirm: string; primary?: boolean }) {
   const [armed, setArmed] = useState(false)
   return (
     <>
-      <button type={armed ? 'submit' : 'button'} className="btn danger" onClick={() => setArmed(true)}>{armed ? confirm : label}</button>
+      <button type={armed ? 'submit' : 'button'} className={primary ? 'btn primary' : 'btn danger'} onClick={() => setArmed(true)}>{armed ? confirm : label}</button>
       {armed && <button type="button" className="btn" onClick={() => setArmed(false)}>Cancel</button>}
     </>
   )

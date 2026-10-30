@@ -31,17 +31,22 @@ it('rotating changes the stored key, touches only the own record, and revoking d
   const [a, b] = await Promise.all(['a', 'b'].map((n) => payload.create({ collection: 'bauherren', data: { email: `${n}@x.io`, password: 'pw-123456', role: 'bauherr' }, ...o })))
   expect(await hasApiKey(payload, a!.id)).toBe(false)
 
-  const first = await rotateApiKey(payload, a!.id)
+  const first = await rotateApiKey(payload, a!)
   expect(await hasApiKey(payload, a!.id)).toBe(true)
   expect((await authAs(first))?.email).toBe('a@x.io')
 
-  const second = await rotateApiKey(payload, a!.id)
+  const second = await rotateApiKey(payload, a!)
   expect(second).not.toBe(first)
   expect(await authAs(first)).toBeNull()
   expect((await authAs(second))?.email).toBe('a@x.io')
   expect(await hasApiKey(payload, b!.id)).toBe(false)
 
-  await revokeApiKey(payload, a!.id)
+  await revokeApiKey(payload, a!)
   expect(await hasApiKey(payload, a!.id)).toBe(false)
   expect(await authAs(second)).toBeNull()
+})
+
+it('refuses a missing Bauherr', async () => {
+  await expect(rotateApiKey(payload, {} as never)).rejects.toThrow('signed-in Bauherr')
+  await expect(revokeApiKey(payload, { id: '' })).rejects.toThrow('signed-in Bauherr')
 })

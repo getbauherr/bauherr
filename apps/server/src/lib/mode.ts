@@ -12,7 +12,7 @@ export type PackStage = { name: string; mode?: unknown; gate_before?: string; st
 let packStages: PackStage[] | undefined
 
 /** Stages of pack/workflow.yaml, read once; unreadable or malformed file yields []. */
-const packed = (): PackStage[] => {
+export const packed = (): PackStage[] => {
   try {
     return (packStages ??= (parse(readFileSync(WORKFLOW, 'utf8')) as { stages?: PackStage[] }).stages ?? [])
   } catch {
@@ -20,20 +20,18 @@ const packed = (): PackStage[] => {
   }
 }
 
-/** Stages of pack/workflow.yaml with their steps, in order. */
-export const workflowPack = (): PackStage[] => packed()
-
 /** Stage names of pack/workflow.yaml, in order. */
 export const workflowStages = (): string[] => packed().map((s) => s.name)
+
+type WorkspaceModes = { defaultMode?: string | null; modeByStage?: Record<string, unknown> | null }
+
+/** `modeFor` for an already loaded Workspace. */
+export const resolveMode = (ws: WorkspaceModes, stage: string): Mode =>
+  [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed().find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
 
 /**
  * Mode a Run of `stage` starts in. Precedence: Workspace.modeByStage[stage], Workspace.defaultMode,
  * env BAUHERR_DEFAULT_MODE, `mode` of the stage in pack/workflow.yaml, else autonomous.
  */
-export const modeFor = async (payload: Payload, workspace: number | string, stage: string): Promise<Mode> => {
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true })) as {
-    defaultMode?: string | null
-    modeByStage?: Record<string, unknown> | null
-  }
-  return [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed().find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
-}
+export const modeFor = async (payload: Payload, workspace: number | string, stage: string): Promise<Mode> =>
+  resolveMode((await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true })) as WorkspaceModes, stage)

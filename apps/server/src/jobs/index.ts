@@ -143,11 +143,12 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             await startRunIfNeeded(payload, ticket, stage)
           }
         }
-        if (next !== (src.cursor ?? null)) {
-          await payload.update({ collection: 'ticket_sources', id: src.id, data: { cursor: next }, overrideAccess: true })
-        }
+        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
         payload.logger.error({ err: e, source: src.id }, 'poll-tickets failed for source')
+        await payload
+          .update({ collection: 'ticket_sources', id: src.id, data: { lastPolledAt: new Date().toISOString(), lastError: String((e as Error).message ?? e).slice(0, 500) }, overrideAccess: true })
+          .catch(() => {})
       }
     }
     return { output: { polled: sources.docs.length } }

@@ -15,7 +15,9 @@ export default async function ApiKey() {
       {has ? (
         <>
           <p className="small">A key is active. It is shown once, when created; rotating replaces it and invalidates the old one.</p>
-          <SettingsForm action={rotateOwnKey} submit="Rotate key" confirm="Confirm rotate" />
+          <SettingsForm action={rotateOwnKey} submit="Rotate key" confirm="Confirm rotate" primary />
+          <h3 className="heading">Revoke</h3>
+          <p className="small muted">Stops the key working at once. No new key is created.</p>
           <SettingsForm action={revokeOwnKey} submit="Revoke key" confirm="Confirm revoke" />
         </>
       ) : (

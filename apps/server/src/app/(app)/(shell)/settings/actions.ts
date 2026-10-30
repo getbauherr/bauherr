@@ -1,7 +1,6 @@
 'use server'
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { createLocalReq } from 'payload'
 import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
 import { rotateKey } from '../../../../lib/gateway'
@@ -138,10 +137,9 @@ export const saveBauherr = act({}, async (c, fd) => {
 
 /** Own record only: the target is always the signed-in Bauherr, never a form value. The key appears once, as the ready-made `claude mcp add` line. */
 export const rotateOwnKey = act({}, async ({ user, payload }) => {
-  const key = await rotateApiKey(payload, user.id)
-  const h = await headers()
-  const origin = process.env.PUBLIC_URL ?? `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}`
+  const key = await rotateApiKey(payload, user)
+  const origin = process.env.PUBLIC_URL ?? 'http://localhost:3000'
   return `claude mcp add --transport http bauherr ${origin}/mcp --header "Authorization: Bearer ${key}"`
 })
 
-export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user.id))
+export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))

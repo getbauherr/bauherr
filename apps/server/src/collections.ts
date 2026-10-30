@@ -243,6 +243,8 @@ export const collections: CollectionConfig[] = [
     rel('product', 'products', { required: true }),
     rel('connection', 'connections', { required: true }),
     text('cursor'),
+    date('lastPolledAt'),
+    text('lastError'),
   ]),
   tickets,
   col('runs', [

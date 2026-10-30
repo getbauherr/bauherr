@@ -13,8 +13,8 @@ const tenantCollections = Object.fromEntries(
 export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),
   serverURL: process.env.PUBLIC_URL,
-  // The Factory UI is the product; /admin is a developer escape hatch (BAUHERR_DISABLE_ADMIN=1 turns it off, see the admin page).
-  admin: { user: 'bauherren', disable: process.env.BAUHERR_DISABLE_ADMIN === '1' },
+  // The Factory UI is the product; /admin is a developer escape hatch (BAUHERR_DISABLE_ADMIN=1 turns it off: the admin page and layout server functions answer 404).
+  admin: { user: 'bauherren' },
   // People are added, not created: Bauherr (singular) / Bauherren (plural).
   i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
   typescript: { autoGenerate: false },

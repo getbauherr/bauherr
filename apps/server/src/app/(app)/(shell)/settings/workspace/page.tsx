@@ -15,7 +15,7 @@ export default async function WorkspaceSettings() {
   const usd = w.budgetUnit === 'usd'
   const health = admin ? await loadHealth(workspace.id) : null
   const spend = w.spend
-  const budget = !w.gatewayOn ? ['Gateway off', 'muted'] : !spend ? ['Unavailable', 'muted'] : spend.limitUsd == null ? ['No limit', 'ok'] : spend.spentUsd >= spend.limitUsd ? ['Exhausted', 'err'] : spend.spentUsd >= 0.8 * spend.limitUsd ? ['Near limit', 'err'] : ['OK', 'ok']
+  const budget = !admin ? ([] as string[]) : !w.gatewayOn ? ['Gateway off', 'muted'] : !spend ? ['Unavailable', 'muted'] : spend.limitUsd == null ? ['No limit', 'ok'] : spend.spentUsd >= spend.limitUsd ? ['Exhausted', 'err'] : spend.spentUsd >= 0.8 * spend.limitUsd ? ['Near limit', 'warn'] : ['OK', 'ok']
   return (
     <>
       <h2 className="heading">{w.name}</h2>
@@ -61,10 +61,13 @@ export default async function WorkspaceSettings() {
           <div className="scroll">
             <table className="table">
               <tbody>
-                <tr><th>Jobs, last 24 h</th><td>{health.queued} queued · {health.running} running · <span className={health.failed ? 'err' : ''}>{health.failed} failed{health.failed ? ' (needs attention)' : ''}</span></td></tr>
-                <tr><th>Oldest queued job</th><td>{health.oldestQueued ? ago(health.oldestQueued) : 'none waiting'}</td></tr>
+                <tr><th>Jobs, last 24 h (instance-wide)</th><td>{health.queued} queued · {health.running} running · <span className={health.failed ? 'err' : ''}>{health.failed} failed{health.failed ? ' (needs attention)' : ''}</span></td></tr>
+                <tr><th>Oldest queued job (instance-wide)</th><td>{health.oldestQueued ? ago(health.oldestQueued) : 'none waiting'}</td></tr>
                 {health.sources.map((s) => (
-                  <tr key={s.repo}><th>Last poll, {s.repo}</th><td>{ago(s.polledAt)}</td></tr>
+                  <tr key={s.repo}>
+                    <th>Last poll, {s.repo}</th>
+                    <td>{s.polledAt ? ago(s.polledAt) : 'never'}{s.error && <span className="err"> · Failed: {s.error}</span>}</td>
+                  </tr>
                 ))}
                 <tr><th>Gateway budget</th><td><span className={budget[1]}>{budget[0]}</span>{spend ? ` · $${spend.spentUsd.toFixed(2)}${spend.limitUsd == null ? '' : ` of $${spend.limitUsd}`}` : ''}</td></tr>
               </tbody>

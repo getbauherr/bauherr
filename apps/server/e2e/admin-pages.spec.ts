@@ -45,9 +45,15 @@ test('Admin: API key shown once, Audit, Workflow, health; no /admin link', async
   await expect(page.getByRole('cell', { name: 'approve:plan' })).toBeVisible()
   await page.getByRole('link', { name: 'Tool calls' }).click()
   await expect(page.getByRole('cell', { name: 'run_checks' })).toBeVisible()
-  await page.getByLabel('Ticket number').fill('999')
+  await page.getByLabel('Ticket', { exact: true }).fill('#999')
   await page.getByRole('button', { name: 'Filter' }).click()
   await expect(page.getByText('No entries match.')).toBeVisible()
+  await page.getByLabel('Ticket', { exact: true }).fill('acme/web#x')
+  await page.getByRole('button', { name: 'Filter' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Enter #12 or repo#12.' })).toBeVisible()
+  await page.getByLabel('Ticket', { exact: true }).fill('acme/web#2')
+  await page.getByRole('button', { name: 'Filter' }).click()
+  await expect(page.getByRole('link', { name: 'acme/web#2' }).first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Workflow' }).click()
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeVisible()
@@ -67,4 +73,17 @@ test('a Bauherr gets 404 on Audit and Workflow and no admin nav', async ({ page 
   await expect(page.getByRole('heading', { name: 'Factory health' })).toHaveCount(0)
   await page.goto('/settings/api-key')
   await expect(page.getByRole('button', { name: 'Create key' })).toBeVisible()
+})
+
+// Needs a dev server started with BAUHERR_DISABLE_ADMIN=1; run with E2E_ADMIN_DISABLED=1.
+test('with BAUHERR_DISABLE_ADMIN=1 /admin and its server functions answer 404, /api stays up', async ({ page }) => {
+  test.skip(process.env.E2E_ADMIN_DISABLED !== '1', 'needs a server with BAUHERR_DISABLE_ADMIN=1')
+  await signIn(page, email)
+  const res = await page.request.get('/admin')
+  expect(res.status()).toBe(404)
+  const id = /([0-9a-f]{40,})\\?",\\?"bound\\?":null,\\?"name\\?":\\?"serverFunction/.exec(await res.text())?.[1]
+  expect(id, 'server function id in the /admin layout').toBeTruthy()
+  const fn = await page.request.post('/admin', { headers: { 'next-action': id!, 'content-type': 'text/plain;charset=UTF-8' }, data: '[]' })
+  expect(fn.status()).toBe(404)
+  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
 })
