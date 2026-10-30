@@ -39,6 +39,22 @@ Seeding on the network fires the gateway hooks (key, provider file, `llm.models`
 - GitHub fetch now `cache: 'no-store'`.
 - Seed accepts `ANTHROPIC_API_KEY_FILE`.
 
+## Providers
+
+A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`). The secret is written to `/gateway/providers/ws-<slug>.<ext>` (0600) and referenced by path; saving the Connection verifies it with a 1-token call and stores `capabilities.verifiedAt` or `lastError`.
+
+| Preset | Fields | Secret to paste | Model IDs / default tiers | Budget |
+|---|---|---|---|---|
+| `anthropic` | none | Anthropic API key | `claude-haiku-5-5` / `claude-sonnet-5-5` / `claude-opus-5-5` | USD |
+| `greenpt` | none | GreenPT API key | `glm-5.3-flash` / `glm-5.3` / `kimi-k3` | USD |
+| `bedrock` | `awsRegion` | Bedrock API key | e.g. `us.anthropic.claude-sonnet-5-5-v1:0`; set `modelByTier` | tokens |
+| `vertex` | `vertexProject`, `vertexRegion` | service-account JSON | e.g. `claude-sonnet-5-5@20260101`; set `modelByTier` | tokens |
+| `foundry` | `azureResource` | Foundry API key | Anthropic IDs | tokens |
+| `anthropic-compatible` | `baseUrl` | key of the Messages endpoint (e.g. upstream agentgateway) | upstream names; set `modelByTier` | tokens |
+| `openai-compatible` | `baseUrl` | key of the Chat Completions endpoint | upstream names; set `modelByTier` | tokens |
+
+Presets without a USD catalog flip the Workspace to `budgetUnit: tokens` (`budgetTokens30d`, default 20M); otherwise calls are priced at 0 and the budget never trips. To add prices, drop a catalog file into `deploy/gateway/catalogs/` (compose `init` copies every `*.json`; `renderModels` lists them all in `modelCatalog`) and set `catalog: true` on the preset.
+
 ## Open
 
 - In-app `poll-tickets` (Next process, autoRun) processed label changes late or not at all (minutes), while the same handler run via `tsx` saw them at once. Cause not found; smoke polls were triggered with the handler directly. Candidates: Next-patched fetch/job context.

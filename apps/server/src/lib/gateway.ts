@@ -1,14 +1,15 @@
 import { randomBytes } from 'node:crypto'
-import { chown, mkdir, rename, rm, stat, writeFile, readFile } from 'node:fs/promises'
+import { chown, mkdir, readdir, rename, rm, stat, writeFile, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
 import type { PayloadRequest } from 'payload'
 import { parse, stringify } from 'yaml'
+import { PRESETS, presetOf } from './providers'
 import { decrypt, encrypt } from './secrets'
 
 export const DEFAULT_MODEL_BY_TIER = { cheap: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' }
 
-type Ws = { id: number | string; slug: string; gatewayKey?: string | null; budgetUsd30d?: number | null }
+type Ws = { id: number | string; slug: string; gatewayKey?: string | null; budgetUsd30d?: number | null; budgetUnit?: string | null; budgetTokens30d?: number | null }
 type Resource = { id: string; value: { key: string; metadata?: { name?: string; kind?: string } } }
 
 /** Hooks no-op without a gateway (tests, seed outside compose). */
@@ -22,7 +23,7 @@ export const newKey = (): string => `sk-bauherr-${randomBytes(24).toString('hex'
 const keyName = (slug: string) => `workspace-${slug}`
 const sessionKeyName = (slug: string) => `${keyName(slug)}-session`
 const dir = () => process.env.GATEWAY_CONFIG_DIR ?? '/gateway'
-const providerFile = (slug: string) => join(dir(), 'providers', `ws-${slug}.key`)
+export const providerFile = (slug: string, ext: 'key' | 'json' = 'key') => join(dir(), 'providers', `ws-${slug}.${ext}`)
 const KEYS = '/api/config/resources/llm.apiKey'
 
 /** Admin API call; retries transient failures. Errors carry method, path and status only. */
@@ -52,7 +53,7 @@ const keyOf = (slug: string) => keyNamed(keyName(slug))
 
 /** Workspace key: Block. Owner-session key: Audit — subscription traffic costs the Workspace nothing, the gateway only prices it. */
 const budget = (ws: Ws, onBudgetExceeded: 'Block' | 'Audit' = 'Block') => [
-  { name: 'monthly', limit: { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded },
+  { name: 'monthly', limit: ws.budgetUnit === 'tokens' ? { unit: 'Tokens', amount: ws.budgetTokens30d ?? 20_000_000 } : { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded },
 ]
 
 /** Writes a secret file (0600, owned by the directory's owner so a root container leaves it readable on the host). Never logs the value. */
@@ -136,17 +137,18 @@ export const budgetStatus = async (slug: string): Promise<{ spentUsd: number; li
   }
 }
 
-/** Writes the provider credential as a 0600 file the gateway reads (`params.apiKey.file`). */
-export const writeProvider = async (slug: string, secret: string): Promise<void> => {
+/** Writes the provider credential as a 0600 file the gateway reads (`apiKey.file`, `auth.gcp.credential.file`). */
+export const writeProvider = async (slug: string, secret: string, ext: 'key' | 'json' = 'key'): Promise<void> => {
   await mkdir(join(dir(), 'providers'), { recursive: true })
-  const tmp = `${providerFile(slug)}.tmp`
+  const tmp = `${providerFile(slug, ext)}.tmp`
   await writeFile(tmp, secret, { mode: 0o600 })
-  await rename(tmp, providerFile(slug))
+  await rename(tmp, providerFile(slug, ext))
 }
 
-export const removeProvider = (slug: string) => rm(providerFile(slug), { force: true })
+export const removeProvider = (slug: string, ...exts: ('key' | 'json')[]) =>
+  Promise.all((exts.length ? exts : (['key', 'json'] as const)).map((e) => rm(providerFile(slug, e), { force: true })))
 
-/** Rewrites the managed `ws-<slug>/*` entries of `llm.models` (one per anthropic llm-provider Connection), keeps the rest (e.g. `sub/*`). */
+/** Rewrites the managed `ws-<slug>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
     collection: 'connections',
@@ -156,23 +158,42 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
     overrideAccess: true,
     req,
   })
-  const slugs = conns.docs
-    .filter((c) => ((c.config as { provider?: string } | null)?.provider ?? 'anthropic') === 'anthropic')
-    .map((c) => (c.workspace as unknown as Ws | undefined)?.slug)
-    .filter((s): s is string => !!s)
-    .sort()
-  const models = slugs.map((slug) => ({
-    name: `ws-${slug}/*`,
-    provider: 'anthropic',
-    params: { apiKey: { file: providerFile(slug) } },
-    transformation: { model: `llmRequest.model.stripPrefix("ws-${slug}/")` },
-  }))
+  const models = conns.docs
+    .flatMap((c) => {
+      const slug = (c.workspace as unknown as Ws | undefined)?.slug
+      const cfg = c.config as Record<string, string> | null
+      const preset = presetOf(cfg)
+      return slug ? [{ slug, entry: PRESETS[preset].render(slug, cfg ?? {}, providerFile(slug, PRESETS[preset].secret.ext)) }] : []
+    })
+    .sort((a, b) => a.slug.localeCompare(b.slug))
+    .map((m) => m.entry)
   const path = join(dir(), 'config.yaml')
   const cfg = parse(await readFile(path, 'utf8'))
   const kept = ((cfg.llm?.models ?? []) as { name: string }[]).filter((m) => !m.name.startsWith('ws-'))
   cfg.llm = { ...cfg.llm, models: [...kept, ...models] }
+  const catalogs = (await readdir(join(dir(), 'catalogs')).catch(() => [] as string[])).filter((f) => f.endsWith('.json')).sort()
+  if (catalogs.length) cfg.config = { ...cfg.config, modelCatalog: catalogs.map((f) => ({ file: join(dir(), 'catalogs', f) })) }
   const out = stringify(cfg)
   const tmp = `${path}.tmp`
   await writeFile(tmp, out)
   await rename(tmp, path)
+}
+
+/** One 1-token request through the local gateway as the Workspace; retries while the config hot-reloads. Returns the capability patch, never the response body. */
+export const verifyProvider = async (slug: string, key: string, model: string): Promise<{ verifiedAt: string } | { lastError: string }> => {
+  let last = 'network error'
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 500))
+    try {
+      const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: `ws-${slug}/${model}`, max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (res.ok) return { verifiedAt: new Date().toISOString() }
+      last = `HTTP ${res.status}`
+    } catch {}
+  }
+  return { lastError: last }
 }

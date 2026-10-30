@@ -26,7 +26,7 @@ services:
     command: >
       sh -c "for n in payload_secret encryption_key; do
       [ -s /run/secrets/$$n ] || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /run/secrets/$$n; done;
-      mkdir -p /gateway/providers; cp /deploy/gateway/catalog.json /gateway/catalog.json;
+      mkdir -p /gateway/providers /gateway/catalogs; cp /deploy/gateway/catalogs/*.json /gateway/catalogs/;
       if [ ! -s /gateway/config.yaml ]; then
       if [ \"$$OTEL_ENABLED\" = 1 ]; then T='tracing: {otlpEndpoint: \"http://jaeger:4317\"}'; else T=''; fi;
       sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" -e \"s|__TRACING__|$$T|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi"
