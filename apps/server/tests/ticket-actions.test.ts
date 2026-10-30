@@ -64,7 +64,7 @@ it('serialises concurrent answers into one decisions Comment, then approves', as
 })
 
 const releaseTicket = async (stage = 'release') => {
-  await payload.update({ collection: 'tickets', id: ticket, data: { stage }, ...o })
+  await payload.update({ collection: 'tickets', id: ticket, data: { stage, state: 'open' }, ...o })
 }
 const labels = async () => (await (await actions.sourceOf(payload, await actions.loadTicket(payload, user, ticket))).ts.get('1')).labels
 
@@ -86,11 +86,12 @@ it('requestChanges needs a note, then writes Current instructions, returns to bu
   expect(runs.docs[0]).toMatchObject({ id: r.run, status: expect.stringMatching(/queued|awaiting_session/) })
 })
 
-it('acceptStaging labels, records a human touch and moves to done', async () => {
+it('acceptStaging labels, records a human touch, moves to done and closes the Ticket', async () => {
   await releaseTicket()
   await expect(actions.acceptStaging(payload, user, { ticket, workspaceId: ws })).resolves.toEqual({ approved: 'bauherr:approved:staging', stage: 'done' })
   expect(await labels()).toEqual(expect.arrayContaining(['bauherr:approved:staging', 'bauherr:stage:done']))
   expect(await payload.count({ collection: 'human_touches', where: { kind: { equals: 'accept:staging' } }, ...o })).toMatchObject({ totalDocs: 1 })
+  expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ state: 'closed' })
 })
 
 it('acceptStaging holds in release when the Product has a production gate', async () => {

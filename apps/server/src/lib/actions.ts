@@ -190,6 +190,10 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   }
   await ts.addLabels(n, [APPROVED_STAGING])
   await touch(payload, user, t, 'accept:staging')
+  if (stage === 'done') {
+    await ts.close(n, 'completed')
+    await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, overrideAccess: true })
+  }
   return { approved: APPROVED_STAGING, stage }
 }
 
