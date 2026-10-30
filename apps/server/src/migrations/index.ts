@@ -6,6 +6,7 @@ import * as migration_20261030_130000_oidc from './20261030_130000_oidc';
 import * as migration_20261030_140000_active_run_unique from './20261030_140000_active_run_unique';
 import * as migration_20261030_150000_ticket_source_poll from './20261030_150000_ticket_source_poll';
 import * as migration_20261030_160000_release_stage from './20261030_160000_release_stage';
+import * as migration_20261030_170000_watch_release_job from './20261030_170000_watch_release_job';
 
 export const migrations = [
   {
@@ -47,5 +48,10 @@ export const migrations = [
     up: migration_20261030_160000_release_stage.up,
     down: migration_20261030_160000_release_stage.down,
     name: '20261030_160000_release_stage'
+  },
+  {
+    up: migration_20261030_170000_watch_release_job.up,
+    down: migration_20261030_170000_watch_release_job.down,
+    name: '20261030_170000_watch_release_job'
   },
 ];
