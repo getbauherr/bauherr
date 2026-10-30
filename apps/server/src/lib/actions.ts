@@ -1,7 +1,7 @@
-import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
 import { APPROVED_STAGING, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
@@ -130,7 +130,70 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
     data: { kind: 'approve:plan', ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() },
     overrideAccess: true,
   })
+  await spawnSubTickets(payload, t)
   return { approved: APPROVED_PLAN }
+}
+
+const PARENT = 'parent'
+const ro = { depth: 0, overrideAccess: true } as const
+
+/**
+ * Plan approval fan-out (D1): creates each item of the latest plan's `## Sub-tickets` as a sub-issue that inherits the plan approval,
+ * then moves the parent to stage `parent`. Runs only while the parent is not yet `parent` and only for items listed now (matched by title,
+ * so a retry after a partial failure completes the set and never adds later items). Serialised per ticket; true when the Ticket is a parent.
+ */
+export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean> =>
+  exclusive(`spawn:${id(parent.product)}:${parent.number}`, async () => {
+    const ts = await ticketsOf(payload, id(parent.product))
+    const n = String(parent.number)
+    if (stageOf((await ts.get(n)).labels) === PARENT) return true
+    const plan = latestWith(await ts.listComments(n), PLAN_MARKER)
+    const items = plan ? subTickets(plan.body) : []
+    if (!items.length) return false
+    const existing = await ts.listSubTickets(n)
+    for (const item of items) {
+      const found = existing.find((c) => c.title === item.title)
+      const child = found ?? (await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
+      if (!found) {
+        await ts.addSubTicket(n, String(child.number))
+        await ts.comment(String(child.number), `Approval inherited from #${n}: listed in its plan at approval.`)
+      }
+      const link = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
+      const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
+      if (doc) await payload.update({ collection: 'tickets', id: doc.id, data: link, ...ro })
+      else {
+        await payload.create({
+          collection: 'tickets',
+          data: { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: 'plan' },
+          ...ro,
+        })
+      }
+    }
+    await setStage(ts, n, PARENT)
+    await payload.update({ collection: 'tickets', id: parent.id, data: { stage: PARENT }, ...ro })
+    return true
+  })
+
+/** Closes every open parent whose sub-tickets are all closed, with a Comment listing them. Returns how many were closed. */
+export const closeFinishedParents = async (payload: Payload): Promise<number> => {
+  const parents = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: PARENT } }] }, pagination: false, ...ro })).docs as Doc[]
+  let closed = 0
+  for (const p of parents) {
+    try {
+      const ts = await ticketsOf(payload, id(p.product))
+      const n = String(p.number)
+      const kids = await ts.listSubTickets(n)
+      if (!kids.length || kids.some((k) => k.state !== 'closed')) continue
+      await setStage(ts, n, 'done')
+      await ts.close(n, 'completed')
+      await payload.update({ collection: 'tickets', id: p.id, data: { stage: 'done', state: 'closed' }, ...ro })
+      await ts.comment(n, `All sub-tickets are closed:\n${kids.map((k) => `- #${k.number} ${k.title}`).join('\n')}`)
+      closed++
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: p.id }, 'closing the parent failed')
+    }
+  }
+  return closed
 }
 
 const WORKLOG_TEMPLATE = `## Worklog

@@ -8,7 +8,7 @@ import { rankBetween } from '../lib/frontier'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { concludeReview, normalizeReview, watchReviews } from '../lib/actions'
+import { closeFinishedParents, concludeReview, normalizeReview, spawnSubTickets, watchReviews } from '../lib/actions'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
@@ -176,16 +176,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             depth: 0,
             overrideAccess: true,
           })
-          const prev = found.docs[0]
-          let stage = stageOf(t.labels)
-          // Derived event (spec §3): approval label + stage plan advances the Ticket to build.
-          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
-            await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
-            stage = 'build'
-          }
-          // Guard: unchanged pointers are not rewritten.
-          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
-          const data = {
+          let prev = found.docs[0]
+          const base = {
             workspace: id(src.workspace),
             product: id(src.product),
             externalId: t.id,
@@ -196,6 +188,21 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             labels: t.labels,
             assignee: t.assignee,
             sourceUpdatedAt: t.updatedAt,
+          }
+          let stage = stageOf(t.labels)
+          // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
+          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
+            prev ??= await payload.create({ collection: 'tickets', data: { ...base, sourceUpdatedAt: null, stage }, overrideAccess: true })
+            if (await spawnSubTickets(payload, prev)) stage = 'parent'
+            else {
+              await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
+              stage = 'build'
+            }
+          }
+          // Guard: unchanged pointers are not rewritten.
+          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          const data = {
+            ...base,
             stage,
             ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
@@ -217,6 +224,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           .catch(() => {})
       }
     }
+    await closeFinishedParents(payload)
     return { output: { polled: sources.docs.length } }
   },
 }
