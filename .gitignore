@@ -4,3 +4,4 @@ node_modules
 *.tsbuildinfo
 dist
 .dev-secrets
+apps/server/e2e/results

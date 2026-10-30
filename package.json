@@ -9,5 +9,8 @@
     "build:packages": "pnpm --filter @bauherr/adapters --filter @bauherr/runner build",
     "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "test": "pnpm build:packages && pnpm -r test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
   }
 }
