@@ -4,8 +4,10 @@ export type Stage = (typeof STAGES)[number]
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Accept on staging', 'Staging not confirmed', 'Run needs you', 'Run failed'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Run needs you', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
+/** Hold label: Triage asked the owner questions; answering them moves the Ticket to plan. */
+export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
 const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
 
 /** Closed tickets are `done`; open ones without a known stage label are `triage`. */
@@ -25,6 +27,7 @@ export const needsYou = (
   const stage = ticket.stage ?? 'triage'
   if (stage === 'plan' && run?.stage === 'plan' && IN_PROGRESS.includes(run.status)) return null
   if (stage === 'plan' && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
+  if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
   if (run?.status === 'needs_human') return 'Run needs you'
   if (stage === 'release' && !ticket.labels.includes(APPROVED_STAGING)) {
     if (ticket.releaseState === 'on_staging') return 'Accept on staging'

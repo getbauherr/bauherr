@@ -10,7 +10,7 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 
 | Stage | Agent work | Ends with |
 |---|---|---|
-| Triage | none (dedupe hints only) | Bauherr moves to Plan or closes `not_planned` |
+| Triage | cheap triage Run per open, unassigned Ticket without a stage label ([triage](../../pack/skills/triage/SKILL.md)); a Ticket carrying one of the stage's `exclude_labels` in `pack/workflow.yaml` (`wayfinder:map\|grilling\|research`) is not triaged; no gate | `plan`: stage label plan; `refine`: label `bauherr:needs-refinement` + a decision-sheet Comment for the owner, the stage label plan once every critical question is answered; `skip`: reason Comment, no stage. Re-triaged only when the Ticket changes |
 | Plan | plan Run | plan Comment + Goal in the worklog (+ Sub-tickets if large) |
 | Build | build Run | MR Linked on the Ticket |
 | Review | review Run: reviewer without memory of the change ([review](../../pack/skills/review/SKILL.md)) | review Comment on the MR; merge or back to Build |

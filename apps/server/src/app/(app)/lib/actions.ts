@@ -6,7 +6,7 @@ import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
-import { PLAN_MARKER, latestWith, parseDecisions } from './plan'
+import { parseDecisions, sheetOf } from './plan'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
@@ -80,7 +80,7 @@ export async function requestChangesAction(form: FormData) {
   revalidatePath(`/tickets/${ticket}`)
 }
 
-/** Answers are re-validated against the live plan Comment: only known rows and listed options are recorded. */
+/** Answers are re-validated against the live decision sheet: only known rows and listed options are recorded. */
 export async function answerDecisions(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
@@ -89,8 +89,8 @@ export async function answerDecisions(form: FormData) {
       const t = await loadTicket(payload, user, ticket)
       if (String(t.workspace) !== String(workspaceId)) throw new NotInWorkspace()
       const { ts, n } = await sourceOf(payload, t)
-      const plan = latestWith(await ts.listComments(n), PLAN_MARKER)?.body ?? ''
-      const answers = parseDecisions(plan).flatMap((d) => {
+      const sheet = sheetOf(await ts.listComments(n))?.body ?? ''
+      const answers = parseDecisions(sheet).flatMap((d) => {
         const answer = form.get(d.id)
         return typeof answer === 'string' && d.options.includes(answer) ? [{ id: d.id, title: d.title, answer }] : []
       })
