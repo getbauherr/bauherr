@@ -13,3 +13,5 @@ UI routes, theming and e2e: [docs/ui.md](docs/ui.md). Sign-in and optional OIDC:
 ## Licence
 
 [Apache-2.0](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Admin functions (API key, audit, workflow, factory health) are pages of the UI. Payload's `/admin` is a developer escape hatch only; set `BAUHERR_DISABLE_ADMIN=1` to switch it off.

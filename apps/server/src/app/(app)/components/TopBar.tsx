@@ -32,7 +32,7 @@ export function TopBar({ user, workspaces, workspace, needsYou }: { needsYou: nu
         <Popover label={<span className="avatar">{initials(user.email)}<span className="sr">User menu</span></span>}>
           <p className="small row muted">{user.email}</p>
           <Link href="/settings/bauherren" className="row">Bauherren</Link>
-          {user.role === 'admin' && <a href="/admin" className="row">Open /admin</a>}
+          <Link href="/settings/api-key" className="row">API key</Link>
           <form action={logout}>
             <button className="row sep"><LogOut />Sign out</button>
           </form>
