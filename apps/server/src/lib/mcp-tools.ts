@@ -5,7 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS } from '../jobs'
-import { DEFAULT_GOAL, goalFor } from './run-ctx'
+import { goalFor } from './run-ctx'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -139,7 +139,7 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       const { ts, n } = await sourceOf(c.payload, t)
       const live = await ts.get(n)
-      return { ...t, body: live.body, goal: await goalFor(c.payload, ts, t, live.body, t.stage) }
+      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan') }
     },
   },
   {
@@ -152,7 +152,7 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       const body = (await ts.get(n)).body
-      const statements = await goalFor(c.payload, ts, ticket, body, run.stage)
+      const statements = await goalFor(c.payload, ticket, body, run.stage)
       const leaseToken = randomBytes(32).toString('base64url')
       // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
       const claimed = await c.payload.db.drizzle.execute(
@@ -230,14 +230,12 @@ export const tools: Tool[] = [
   },
   {
     name: 'submit_plan',
-    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) and mark the Plan Goal verified. Plan Runs only.',
+    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only.',
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
       if (run.stage !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
-      const posted = await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })
-      await ownerWrite(c, run, a.leaseToken, sql`"goal" = COALESCE("goal", '{}'::jsonb) || ${JSON.stringify({ verified: [DEFAULT_GOAL.plan] })}::jsonb, ${U}`)
-      return posted
+      return submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })
     },
   },
   {
@@ -270,13 +268,13 @@ export const tools: Tool[] = [
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) await ts.addLink(n, a.prUrl)
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
+      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket) })
       await ownerWrite(
         c,
         run,
         a.leaseToken,
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
-      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket) })
       return { status: a.status }
     },
   },

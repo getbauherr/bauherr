@@ -52,7 +52,7 @@ const seed = async (stage: 'plan' | 'build' = 'plan') => {
 }
 const plans = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(MARKER))
 
-it('posts the plan comment once, updates it on a second call and marks the Goal verified', async () => {
+it('posts the plan comment once and updates it on a second call', async () => {
   const { n, run } = await seed()
   const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
   await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: '## Goal\none' })).resolves.toMatchObject({ created: true })
@@ -60,7 +60,6 @@ it('posts the plan comment once, updates it on a second call and marks the Goal 
   const comments = await plans(n)
   expect(comments).toHaveLength(1)
   expect(comments[0]!.body).toBe(`${MARKER}\n## Goal\ntwo`)
-  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).goal).toMatchObject({ verified: ['a plan comment is posted'] })
 })
 
 it('only the lease holder of a running plan Run may call it', async () => {

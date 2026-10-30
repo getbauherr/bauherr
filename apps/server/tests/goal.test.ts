@@ -11,15 +11,14 @@ it('uses the Acceptance criteria when present, whatever the stage', () => {
 it('falls back to the stage default without criteria', () => {
   expect(goalOf('no criteria', 'plan')).toEqual(['a plan comment is posted'])
   expect(goalOf('no criteria', 'build')).toEqual(['MR linked on the Ticket'])
-  expect(goalOf('no criteria', 'review')).toEqual(['review comments posted'])
 })
 
 it('inherits the parent criteria for child Tickets, own criteria win', async () => {
-  const payload = { findByID: async () => ({ number: 7 }) } as unknown as Payload
-  const ts = { get: async (n: string) => ({ body: n === '7' ? ac : '' }) }
-  expect(await goalFor(payload, ts, { parent: 3 }, 'child', 'build')).toEqual(['one', 'two'])
-  expect(await goalFor(payload, ts, { parent: 3 }, '## Acceptance criteria\n- own', 'build')).toEqual(['own'])
-  expect(await goalFor(payload, ts, { parent: 3 }, 'child', 'release')).toEqual(['one', 'two'])
-  expect(await goalFor(payload, { get: async () => ({ body: 'none' }) }, { parent: 3 }, 'child', 'build')).toEqual(['MR linked on the Ticket'])
-  expect(await goalFor(payload, ts, {}, 'orphan', 'build')).toEqual(['MR linked on the Ticket'])
+  const payload = { findByID: async () => ({ number: 7, workspace: 1, product: 1 }) } as unknown as Payload
+  expect(goalOf('child', 'build', ac)).toEqual(['one', 'two'])
+  expect(goalOf('## Acceptance criteria\n- own', 'build', ac)).toEqual(['own'])
+  // no parent, or a parent whose forge read fails: stage default
+  expect(await goalFor(payload, {}, 'orphan', 'build')).toEqual(['MR linked on the Ticket'])
+  expect(await goalFor(payload, { parent: 3, workspace: 2 }, 'child', 'build')).toEqual(['MR linked on the Ticket'])
+  expect(await goalFor(payload, { parent: 3, workspace: 1 }, 'child', 'build')).toEqual(['MR linked on the Ticket'])
 })

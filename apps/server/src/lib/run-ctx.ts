@@ -5,8 +5,11 @@ import { setStage } from '@bauherr/adapters'
 import { githubFor } from './adapters'
 import type { ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
+import { forgeOf, id } from './release'
 
-export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'review comments posted' }
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket' }
+/** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
+const AUTONOMOUS_BUILD_GOAL = 'the change is implemented and the checks pass'
 export type GoalStage = keyof typeof DEFAULT_GOAL
 const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 const PLAN_MARKER = '<!-- bauherr:plan -->'
@@ -29,12 +32,16 @@ export const goalOf = (body: string, stage: GoalStage = 'plan', parentBody = '')
 
 type Doc = Record<string, any>
 
-/** `goalOf` for a Ticket row; loads the parent Ticket's body only when this one has no criteria. */
-export const goalFor = async (payload: Payload, ts: { get(id: string): Promise<{ body: string }> }, ticket: Doc, body: string, stage: string): Promise<string[]> => {
-  const known = (stage in DEFAULT_GOAL ? stage : 'plan') as GoalStage
-  if (acceptance(body).length || !ticket.parent) return goalOf(body, known)
-  const parent = (await payload.findByID({ collection: 'tickets', id: typeof ticket.parent === 'object' ? ticket.parent.id : ticket.parent, depth: 0, overrideAccess: true })) as Doc
-  return goalOf(body, known, (await ts.get(String(parent.number))).body)
+/** `goalOf` for a Ticket row; loads the parent Ticket's body only when this one has no criteria, same Workspace only. Any failure falls back to the stage default. */
+export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage: GoalStage): Promise<string[]> => {
+  if (acceptance(body).length || !ticket.parent) return goalOf(body, stage)
+  try {
+    const parent = (await payload.findByID({ collection: 'tickets', id: typeof ticket.parent === 'object' ? ticket.parent.id : ticket.parent, depth: 0, overrideAccess: true })) as Doc
+    if (String(id(parent.workspace)) !== String(id(ticket.workspace))) return goalOf(body, stage)
+    return goalOf(body, stage, (await (await forgeOf(payload, id(parent.product))).tickets.get(String(parent.number))).body)
+  } catch {
+    return goalOf(body, stage)
+  }
 }
 
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
@@ -48,7 +55,8 @@ export const buildRunCtx = async (
   const backend = githubFor(d.github)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
-  const statements = await goalFor(payload, tickets, ticket, issue.body, run.stage)
+  const goal = await goalFor(payload, ticket, issue.body, run.stage)
+  const statements = goal.length === 1 && goal[0] === DEFAULT_GOAL.build ? [AUTONOMOUS_BUILD_GOAL] : goal
   const comments = await tickets.listComments(String(ticket.number))
   const lastWith = (marker: string) => comments.findLast((c) => c.body.startsWith(marker))
   let seq = 0
