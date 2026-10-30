@@ -6,7 +6,7 @@ import { githubFor } from './adapters'
 import type { ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 
-const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'the change described in the plan is implemented and the checks pass' }
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'the change described in the plan is implemented and the checks pass' }
 const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 const PLAN_MARKER = '<!-- bauherr:plan -->'
 const PACK_DIR = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')

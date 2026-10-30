@@ -3,9 +3,9 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, tenantsOf, updateWorklog } from './actions'
+import { acceptStaging, approvePlan, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS } from '../jobs'
-import { goalOf } from './run-ctx'
+import { DEFAULT_GOAL, goalOf } from './run-ctx'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -225,6 +225,18 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId, a)
       await ownerWrite(c, run, a.leaseToken, sql`"evidence" = concat_ws(E'\n\n', NULLIF("evidence", ''), ${a.markdown}::text), ${U}`)
       return { ok: true }
+    },
+  },
+  {
+    name: 'submit_plan',
+    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) and mark the Plan Goal verified. Plan Runs only.',
+    inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
+      const posted = await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })
+      await ownerWrite(c, run, a.leaseToken, sql`"goal" = COALESCE("goal", '{}'::jsonb) || ${JSON.stringify({ verified: [DEFAULT_GOAL.plan] })}::jsonb, ${U}`)
+      return posted
     },
   },
   {
