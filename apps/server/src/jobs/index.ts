@@ -4,6 +4,7 @@ import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
+import { rankBetween } from '../lib/frontier'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
@@ -150,6 +151,12 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
+/** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
+export const lastRankAfter = async (payload: Payload, workspace: number | string): Promise<string> => {
+  const r = await payload.db.drizzle.execute(sql`SELECT "rank" FROM "tickets" WHERE "workspace_id" = ${workspace} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C" DESC LIMIT 1`)
+  return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -190,6 +197,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             assignee: t.assignee,
             sourceUpdatedAt: t.updatedAt,
             stage,
+            ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev
