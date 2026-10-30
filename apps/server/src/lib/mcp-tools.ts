@@ -276,6 +276,7 @@ export const tools: Tool[] = [
         a.leaseToken,
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
+      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket) })
       return { status: a.status }
     },
   },

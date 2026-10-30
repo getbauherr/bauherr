@@ -60,6 +60,13 @@ export class FakeBackend implements Backend {
     return pr.mergeSha;
   }
 
+  /** Test helper: closes an open PR without merging. */
+  close(repo: RepoRef, number: number): void {
+    const pr = this.repo(repo).prs.find((p) => p.number === number);
+    if (!pr) throw new Error(`no PR ${number}`);
+    pr.state = 'closed';
+  }
+
   /** Test helper: sets the check runs reported for `sha`. */
   setChecks(repo: RepoRef, sha: string, checks: Check[]): void {
     this.repo(repo).checks.set(sha, checks);
