@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Fragment } from 'react'
 import { STAGES } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
@@ -11,42 +12,19 @@ const Needs = ({ t }: { t: TicketRow }) =>
   t.needsYou ? <span className="label needs">{t.needsYou}</span> : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
 
 const Blocked = ({ t }: { t: TicketRow }) =>
-  t.blockedBy.length ? <span className="chip label queued" title={`Blocked by ${t.blockedBy.map((n) => `#${n}`).join(', ')}`}>Blocked</span> : null
+  t.blockedBy.length ? (
+    <span className="label queued">
+      Blocked by{' '}
+      {t.blockedBy.map((b, i) => <Fragment key={b.id}>{i > 0 && ', '}<Link className="mono link" href={`/tickets/${b.id}`}>#{b.number}</Link></Fragment>)}
+    </span>
+  ) : null
 
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
 
-const Row = ({ t }: { t: TicketRow }) => (
-  <li>
-    <Num t={t} />
-    {title(t)}
-    {t.product && <span className="muted small">{t.product.name}</span>}
-    {t.run && <StatusChip status={t.run.status} />}
-    <Blocked t={t} />
-    <Needs t={t} />
-    <span className="label muted">{t.stage}</span>
-  </li>
-)
-
-const stageIndex = (t: TicketRow) => STAGES.indexOf(t.stage)
-
-export function ListView({ tickets, capped }: { tickets: TicketRow[]; capped: boolean }) {
-  const needs = tickets.filter((t) => t.needsYou).sort((a, b) => stageIndex(a) - stageIndex(b))
-  const sections: [string, TicketRow[]][] = [['Needs you', needs], ...STAGES.map((s): [string, TicketRow[]] => [s, tickets.filter((t) => t.stage === s && !t.needsYou)])]
+export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: boolean }) {
   return (
     <>
-      {capped && <p className="muted small">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
-      {sections.filter(([, rows]) => rows.length).map(([name, rows]) => (
-        <section key={name} className="stack">
-          <h2 className="label">{name} <span className="muted">{rows.length}</span></h2>
-          <ul className="list">{rows.map((t) => <Row key={t.id} t={t} />)}</ul>
-        </section>
-      ))}
-    </>
-  )
-}
-
-export function BoardView({ tickets }: { tickets: TicketRow[] }) {
-  return (
+    {capped && <p className="muted small">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
     <div className="board">
       {STAGES.map((s) => {
         const rows = tickets.filter((t) => t.stage === s)
@@ -67,6 +45,7 @@ export function BoardView({ tickets }: { tickets: TicketRow[] }) {
         )
       })}
     </div>
+    </>
   )
 }
 

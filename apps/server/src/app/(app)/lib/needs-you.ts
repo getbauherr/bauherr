@@ -1,7 +1,5 @@
 export const STAGES = ['triage', 'plan', 'build', 'review', 'release', 'done'] as const
 export type Stage = (typeof STAGES)[number]
-export const VIEWS = ['list', 'board', 'runs'] as const
-export type View = (typeof VIEWS)[number]
 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'

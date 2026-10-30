@@ -13,12 +13,11 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('navigation', { name: 'View' })).toBeVisible()
-  await page.goto('/?view=list')
+  await expect(page.locator('.board')).toBeVisible()
 })
 
 const open = async (page: import('@playwright/test').Page, title: string) => {
-  const row = page.locator('ul.list li', { hasText: title }).first()
+  const row = page.locator('.card', { hasText: title }).first()
   await expect(row.getByText('Accept on staging')).toBeVisible()
   await row.getByRole('link', { name: title }).click()
 }
@@ -42,9 +41,13 @@ test('request changes sends the Ticket back to build', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Accept on staging' })).toHaveCount(0)
 })
 
-test('dependencies are visible on rows and the Ticket page', async ({ page }) => {
-  const row = page.locator('ul.list li', { hasText: 'Blocked: add the invoice filter' }).first()
-  await expect(row.getByText('Blocked', { exact: true })).toHaveAttribute('title', 'Blocked by #8')
+test('dependencies are visible on cards and the Ticket page', async ({ page }) => {
+  const row = page.locator('.card', { hasText: 'Blocked: add the invoice filter' }).first()
+  await expect(row).toContainText('Blocked by #8')
+  await row.getByRole('link', { name: '#8', exact: true }).click()
+  await expect(page).toHaveURL(/\/tickets\/\d+$/)
+  await expect(page.getByText('Blocks #9')).toBeVisible()
+  await page.goBack()
   await row.getByRole('link', { name: 'Blocked: add the invoice filter' }).click()
   await expect(page.getByText('Blocked by #8 Blocker: migrate the invoice table')).toBeVisible()
   await page.getByRole('link', { name: '#8 Blocker: migrate the invoice table' }).click()

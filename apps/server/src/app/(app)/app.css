@@ -49,10 +49,6 @@ h1,h2,p{margin:0;text-wrap:balance}
 .menu form{display:contents}
 
 .empty{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-4);padding:var(--space-12) 0}
-.list{margin:0;padding:0;list-style:none;border:1px solid var(--hairline);border-radius:var(--radius-md);background:var(--surface-100)}
-.list li{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-3) var(--space-4)}
-.list li+li{border-top:1px solid var(--hairline)}
-.list .grow{flex:1;min-width:0}
 a.link{color:var(--accent)}
 .table{width:100%;border-collapse:collapse;background:var(--surface-100);border:1px solid var(--hairline)}
 .table th{background:var(--surface-200);text-align:left;padding:var(--space-2) var(--space-4)}
