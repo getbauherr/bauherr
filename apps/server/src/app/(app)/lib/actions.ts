@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, approvePlan, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
+import { RERUNNABLE } from './run'
 import { VIEWS, type View } from './needs-you'
 import { PLAN_MARKER, latestWith, parseDecisions } from './plan'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
@@ -100,9 +101,9 @@ export async function rerunStage(runId: number) {
   const payload = await payloadClient()
   const o = { depth: 0, overrideAccess: true } as const
   const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number } | null
-  if (!run || !['failed', 'needs_human'].includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
+  if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
-  const next = await startRunIfNeeded(payload, ticket, run.stage)
-  if (next) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
-  redirect(`/runs/${next?.id ?? runId}`)
+  const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
+  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
+  redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
 }

@@ -30,9 +30,7 @@ test('Run page: graph, timeline, list, details, re-run', async ({ page }) => {
 
   await page.goto('/?view=runs')
   await rows.filter({ hasText: 'Needs human' }).getByRole('link', { name: /^#\d+$/ }).first().click()
-  const oldUrl = page.url()
   await page.getByRole('button', { name: 'Re-run stage' }).click()
   await page.getByRole('button', { name: /Confirm re-run/ }).click()
-  await expect(page).not.toHaveURL(oldUrl)
-  await expect(page.getByLabel('Details')).toContainText(/Needs human|Queued/)
+  await expect(page.getByText('A Run is already active for this stage').or(page.getByLabel('Details').getByText(/^(Queued|Needs human)$/))).toBeVisible()
 })

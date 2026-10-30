@@ -42,21 +42,27 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
     })
   ).docs[0]
 
-/** Queues a Run for the Ticket unless one is already active for that stage. */
+/** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
 export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string) => {
-  const active = await payload.count({
-    collection: 'runs',
-    where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] },
-  })
-  if (active.totalDocs) return null
+  const findActive = async () =>
+    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  const existing = await findActive()
+  if (existing) return { run: existing, created: false }
   const workspace = id(ticket.workspace)
   const mode = await modeFor(payload, workspace, stage)
-  const run = await payload.create({
-    collection: 'runs',
-    data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace },
-  })
+  let run
+  try {
+    run = await payload.create({
+      collection: 'runs',
+      data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace },
+    })
+  } catch (e) {
+    const winner = (e as { name?: string }).name === 'ValidationError' && (await findActive())
+    if (!winner) throw e
+    return { run: winner, created: false }
+  }
   if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
-  return run
+  return { run, created: true }
 }
 
 /** Moves session Runs without a heartbeat for SESSION_TIMEOUT_MS to `needs_human`; returns how many. */

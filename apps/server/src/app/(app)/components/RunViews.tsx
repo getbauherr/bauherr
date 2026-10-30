@@ -64,11 +64,12 @@ export function TimelineView({ run, steps, calls, now }: { run: RunDoc; steps: S
   )
 }
 
-export function ListView({ run, steps, calls }: { run: RunDoc; steps: StepDoc[]; calls: Calls }) {
+export function ListView({ run, steps, total, calls }: { run: RunDoc; steps: StepDoc[]; total: number; calls: Calls }) {
   if (!steps.length) return <p className="muted">No steps recorded.</p>
   const end = run.finishedAt ?? null
   return (
     <div className="scroll">
+      {total > steps.length && <p className="muted small">Showing the first {steps.length} of {total} steps.</p>}
       <table className="table">
         <thead><tr className="label">{['#', 'Step', 'Tokens in/out', 'Started', 'Duration', 'Tool calls'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
         <tbody>

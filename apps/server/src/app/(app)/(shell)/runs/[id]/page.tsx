@@ -6,7 +6,7 @@ import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
 import { rerunStage } from '../../../lib/actions'
 import type { Stage } from '../../../lib/needs-you'
-import { durationMs, fmtDuration, loadRun } from '../../../lib/run'
+import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
 import { renderMarkdown } from '../../../lib/markdown'
 import { currentWorkspace } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
@@ -15,17 +15,18 @@ export const dynamic = 'force-dynamic'
 
 const TABS = ['graph', 'timeline', 'list'] as const
 
-export default async function RunPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function RunPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; notice?: string }> }) {
   const { id } = await params
-  const { tab: raw } = await searchParams
+  const { tab: raw, notice } = await searchParams
   const tab = TABS.find((t) => t === raw) ?? 'graph'
-  const { workspace } = await currentWorkspace()
+  const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()
-  const { run, ticket, stages, latestByStage, steps, callsByStep, owner } = await loadRun(workspace.id, id)
+  const { run, ticket, stages, latestByStage, steps, stepsTotal, callsByStep, owner } = await loadRun(workspace.id, id)
   const prUrl = run.artifacts?.prUrl
-  const rerun = ['failed', 'needs_human'].includes(run.status)
+  const rerun = RERUNNABLE.includes(run.status)
+  const mayShowOwner = user.role === 'admin' || (user.tenants ?? []).some((t) => (typeof t.tenant === 'object' ? t.tenant?.id : t.tenant) === run.workspace)
   const details: [string, React.ReactNode][] = [
-    ['Launched by', run.mode === 'session' ? (owner ?? 'session') : 'scheduler'],
+    ['Launched by', run.mode === 'session' ? (mayShowOwner && owner ? owner : 'session') : 'scheduler'],
     ['Started', run.startedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Ended', run.finishedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Duration', fmtDuration(durationMs(run.startedAt, run.finishedAt))],
@@ -40,6 +41,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         <h1 className="title">Run {run.id} · #{ticket.number} {ticket.title}</h1>
         <p className="body row-between"><span><StatusChip status={run.status} /> <span className="label muted">{run.mode}</span></span></p>
         <StagePipeline current={run.stage as Stage} />
+        {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}
       </header>
       <div className="runpage">
         <div className="stack">
@@ -48,7 +50,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           </nav>
           {tab === 'graph' && <GraphView run={run} stages={stages} latestByStage={latestByStage} />}
           {tab === 'timeline' && <TimelineView run={run} steps={steps} calls={callsByStep} now={Date.now()} />}
-          {tab === 'list' && <ListView run={run} steps={steps} calls={callsByStep} />}
+          {tab === 'list' && <ListView run={run} steps={steps} total={stepsTotal} calls={callsByStep} />}
         </div>
         <aside className="card-lg stack" aria-label="Details">
           <dl className="dl">

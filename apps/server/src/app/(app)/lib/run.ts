@@ -4,6 +4,9 @@ import { workflowStages } from '../../../lib/mode'
 import { STAGES } from './needs-you'
 import { payloadClient } from './session'
 
+export const RERUNNABLE = ['failed', 'needs_human']
+export const STEP_LIMIT = 500
+
 export type RunDoc = {
   id: number
   ticket: number
@@ -13,7 +16,7 @@ export type RunDoc = {
   sessionOwner: number | null
   startedAt: string | null
   finishedAt: string | null
-  createdAt: string
+  workspace: number
   model: string | null
   tokensIn: number | null
   tokensOut: number | null
@@ -31,24 +34,28 @@ export type ToolCallDoc = { id: number; step: number; name: string | null; input
 export const loadRun = cache(async (workspace: number, id: string) => {
   if (!/^\d+$/.test(id)) notFound()
   const payload = await payloadClient()
-  const q = { depth: 0, overrideAccess: true, pagination: false } as const
+  const q = { depth: 0, overrideAccess: true } as const
   const inWs = { workspace: { equals: workspace } }
-  const [run] = (await payload.find({ collection: 'runs', where: { and: [{ id: { equals: id } }, inWs] }, ...q })).docs as unknown as RunDoc[]
+  const [run] = (await payload.find({ collection: 'runs', where: { and: [{ id: { equals: id } }, inWs] }, limit: 1, ...q })).docs as unknown as RunDoc[]
   if (!run) notFound()
   const [[ticket], siblings, steps, owner] = await Promise.all([
-    payload.find({ collection: 'tickets', where: { and: [{ id: { equals: run.ticket } }, inWs] }, ...q }).then((r) => r.docs as unknown as { id: number; number: number; title: string }[]),
-    payload.find({ collection: 'runs', where: { ticket: { equals: run.ticket } }, sort: '-createdAt', ...q }).then((r) => r.docs as unknown as RunDoc[]),
-    payload.find({ collection: 'steps', where: { run: { equals: run.id } }, sort: 'seq', ...q }).then((r) => (r.docs as unknown as (StepDoc & { startedAt?: string; createdAt: string })[]).map((s) => ({ ...s, at: s.startedAt ?? s.createdAt }))),
-    run.sessionOwner ? payload.findByID({ collection: 'bauherren', id: run.sessionOwner, depth: 0, overrideAccess: true }).catch(() => null) : null,
+    payload.find({ collection: 'tickets', where: { and: [{ id: { equals: run.ticket } }, inWs] }, limit: 1, ...q }).then((r) => r.docs as unknown as { id: number; number: number; title: string }[]),
+    payload.find({ collection: 'runs', where: { ticket: { equals: run.ticket } }, sort: '-createdAt', limit: 50, ...q }).then((r) => r.docs as unknown as RunDoc[]),
+    payload.find({ collection: 'steps', where: { run: { equals: run.id } }, sort: 'seq', limit: STEP_LIMIT, ...q }).then((r) => ({ total: r.totalDocs, docs: (r.docs as unknown as (StepDoc & { startedAt?: string; createdAt: string })[]).map((s) => ({ ...s, at: s.startedAt ?? s.createdAt })) })),
+    run.sessionOwner ? payload.findByID({ collection: 'bauherren', id: run.sessionOwner, ...q }).catch(() => null) : null,
   ])
-  const calls = steps.length ? ((await payload.find({ collection: 'tool_calls', where: { step: { in: steps.map((s) => s.id) } }, sort: 'createdAt', ...q })).docs as unknown as ToolCallDoc[]) : []
+  if (!ticket) notFound()
+  const calls = steps.docs.length ? ((await payload.find({ collection: 'tool_calls', where: { step: { in: steps.docs.map((s) => s.id) } }, sort: 'createdAt', limit: 2000, ...q })).docs as unknown as ToolCallDoc[]) : []
   const stageNames = workflowStages()
+  const latestByStage = new Map<string, RunDoc>()
+  for (const r of siblings) if (!latestByStage.has(r.stage)) latestByStage.set(r.stage, r)
   return {
     run,
-    ticket: ticket!,
+    ticket,
     stages: stageNames.length ? stageNames : [...STAGES],
-    latestByStage: new Map(siblings.toReversed().map((r) => [r.stage, r])),
-    steps,
+    latestByStage,
+    steps: steps.docs,
+    stepsTotal: steps.total,
     callsByStep: calls.reduce((m, c) => m.set(c.step, [...(m.get(c.step) ?? []), c]), new Map<number, ToolCallDoc[]>()),
     owner: (owner as { email?: string } | null)?.email ?? null,
   }
@@ -58,6 +65,7 @@ export const durationMs = (from: string | null, to: string | null) => (from && t
 
 export const fmtDuration = (ms: number | null) => {
   if (ms == null) return '—'
+  ms = Math.max(0, ms)
   const s = Math.round(ms / 1000)
   return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : ms < 1000 ? `${ms}ms` : `${s}s`
 }
