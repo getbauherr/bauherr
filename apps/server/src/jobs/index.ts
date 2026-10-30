@@ -1,3 +1,4 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
@@ -53,10 +54,14 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   return { run, created: true }
 }
 
+/** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
+export const RELEASED_BY = 'released by '
+
 /**
- * Ends a leased session Run as `abandoned` and queues a successor Run (same Ticket, stage, mode, Workspace; `previousRun` set).
- * With `escalate`, a Run whose predecessor was also abandoned goes `needs_human` instead (no successor, Ticket Comment).
- * `staleBefore` keeps a Run whose heartbeat arrived meanwhile. Returns the new status, or null if the Run was not (stale and) running.
+ * Ends a leased session Run as `abandoned` and queues a successor Run (same Ticket, stage, mode, Workspace; `previousRun` set), in one transaction.
+ * With `escalate`, a Run whose predecessor was also abandoned (not by a human release) goes `needs_human` instead (no successor, Ticket Comment).
+ * The end is a conditional UPDATE (running, and with `staleBefore` still stale), so a heartbeat or finish that won the race keeps the Run.
+ * Returns the new status, or null if the Run was not (stale and) running.
  */
 export const abandonRun = async (
   payload: Payload,
@@ -64,15 +69,23 @@ export const abandonRun = async (
   o: { reason: string; escalate: boolean; staleBefore?: string },
 ): Promise<'abandoned' | 'needs_human' | null> => {
   const prev = o.escalate && run.previousRun ? await payload.findByID({ collection: 'runs', id: id(run.previousRun), depth: 0, overrideAccess: true }) : null
-  const status = prev?.status === 'abandoned' ? 'needs_human' : 'abandoned'
-  const done = await payload.update({
-    collection: 'runs',
-    where: { and: [{ id: { equals: run.id } }, { status: { equals: 'running' } }, ...(o.staleBefore ? [{ heartbeatAt: { less_than: o.staleBefore } }] : [])] },
-    data: { status, error: status === 'needs_human' ? 'session lease expired twice in a row' : o.reason, finishedAt: new Date().toISOString() },
-    depth: 0,
-    overrideAccess: true,
+  const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
+  const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
+  const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
+  const ended = await payload.db.drizzle.transaction(async (tx: any) => {
+    const done = await tx.execute(
+      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
+    )
+    if (!done.rows.length) return false
+    // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
+    if (status === 'abandoned') {
+      await tx.execute(
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id})`,
+      )
+    }
+    return true
   })
-  if (!done.docs.length) return null
+  if (!ended) return null
   if (status === 'needs_human') {
     try {
       const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
@@ -80,22 +93,16 @@ export const abandonRun = async (
     } catch (e) {
       payload.logger.warn({ err: e, run: run.id }, 'needs_human comment failed')
     }
-    return status
   }
-  await payload.create({
-    collection: 'runs',
-    data: { ticket: id(run.ticket), stage: run.stage, mode: run.mode, status: 'awaiting_session', workspace: id(run.workspace), previousRun: run.id },
-    overrideAccess: true,
-  })
   return status
 }
 
-/** Session Runs: unclaimed ones older than SESSION_TIMEOUT_MS go `needs_human`; running ones without a heartbeat for that long are abandoned (see `abandonRun`). Returns how many were handled. */
+/** Session Runs: unclaimed ones not touched for SESSION_TIMEOUT_MS (`updatedAt`: set at creation and again on release or revert) go `needs_human`; running ones without a heartbeat for that long are abandoned (see `abandonRun`). Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   const unclaimed = await payload.update({
     collection: 'runs',
-    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { createdAt: { less_than: before } }] },
+    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
     data: { status: 'needs_human', error: 'session heartbeat timeout', finishedAt: new Date(now).toISOString() },
     overrideAccess: true,
   })

@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, acceptStaging, approvePlan, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { VIEWS, type View } from './needs-you'
@@ -126,7 +126,7 @@ export async function rerunStage(runId: number) {
 export async function releaseRunLock(runId: number) {
   const user = await requireBauherr()
   await releaseLock(await payloadClient(), user, { runId }).catch((e) => {
-    if (!(e instanceof NotInWorkspace) && !String(e.message).includes('not a running session Run')) throw e
+    if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
   })
   redirect(`/runs/${runId}`)
 }

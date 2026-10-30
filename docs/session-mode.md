@@ -47,4 +47,4 @@ Polls the Ticket source, keeps Ticket state and labels current, records every to
 
 ## Heartbeat rule
 
-Call `heartbeat` at least every 10 minutes; only that tool counts. A running session Run without a heartbeat for 30 minutes is `abandoned` and a new claimable Run takes over (a second one in a row: `needs_human`); an unclaimed `awaiting_session` Run goes `needs_human` 30 minutes after creation. A person can release the lock on the Run page.
+Call `heartbeat` at least every 10 minutes; only that tool counts. A running session Run without a heartbeat for 30 minutes is `abandoned` and a new claimable Run takes over (a second one in a row: `needs_human`); an `awaiting_session` Run nobody claims goes `needs_human` 30 minutes after it was created or released. Migration `20261030_170000_ticket_lease` moves session Runs that were `running` without a lease back to `awaiting_session` (claimable again). A person can release the lock on the Run page.

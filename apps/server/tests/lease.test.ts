@@ -1,3 +1,4 @@
+import { sql } from '@payloadcms/db-postgres'
 import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -52,6 +53,7 @@ const seed = async () => {
 }
 const status = async (id: number | string) => (await payload.findByID({ collection: 'runs', id, ...o })).status
 const successorOf = async (id: number | string) => (await payload.find({ collection: 'runs', where: { previousRun: { equals: id } }, depth: 0, ...o })).docs[0]
+const raw = (q: ReturnType<typeof sql>) => (payload.db as any).drizzle.execute(q)
 const late = () => Date.now() + jobs.SESSION_TIMEOUT_MS + 60_000
 
 it('claim returns a token; the same user with another token or none is refused', async () => {
@@ -136,4 +138,75 @@ it('list_frontier flags claimable and leased Tickets', async () => {
   expect(f).toMatchObject({ claimable: false, leasedBy: 'm@x.io' })
   const beat = new Date((await payload.findByID({ collection: 'runs', id: run.id, ...o })).heartbeatAt).getTime()
   expect(new Date(f.leaseExpiresAt).getTime()).toBe(beat + jobs.SESSION_TIMEOUT_MS)
+})
+
+it('a Run handed back via release_run is not escalated by its age', async () => {
+  const { run } = await seed()
+  await raw(sql`UPDATE "runs" SET "created_at" = now() - interval '2 hours' WHERE "id" = ${run.id}`)
+  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  await call(member, 'release_run', { runId: run.id, leaseToken })
+  await jobs.expireStaleSessions(payload)
+  expect(await status(run.id)).toBe('awaiting_session')
+  await jobs.expireStaleSessions(payload, late())
+  expect(await status(run.id)).toBe('needs_human')
+})
+
+it('release lock refuses a Run that is not running', async () => {
+  const { run } = await seed()
+  await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toBeInstanceOf(actions.NotReleasable)
+  expect(await status(run.id)).toBe('awaiting_session')
+})
+
+it('abandon is conditional and creates exactly one successor, clearing the lease', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  const running = await payload.findByID({ collection: 'runs', id: run.id, ...o })
+  const fresh = new Date(Date.now() - 60_000).toISOString()
+  expect(await jobs.abandonRun(payload, running, { reason: 'r', escalate: true, staleBefore: fresh })).toBeNull()
+  expect(await status(run.id)).toBe('running')
+  const r = await Promise.all([jobs.abandonRun(payload, running, { reason: 'r', escalate: true }), jobs.abandonRun(payload, running, { reason: 'r', escalate: true })])
+  expect(r.filter(Boolean)).toEqual(['abandoned'])
+  expect((await payload.find({ collection: 'runs', where: { previousRun: { equals: run.id } }, depth: 0, ...o })).totalDocs).toBe(1)
+  expect((await raw(sql`SELECT "lease_hash", "session_owner_id" FROM "runs" WHERE "id" = ${run.id}`)).rows[0]).toEqual({ lease_hash: null, session_owner_id: null })
+})
+
+it('a human-released predecessor does not count toward the escalation', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  await actions.releaseLock(payload, member, { runId: run.id })
+  const second = await successorOf(run.id)
+  await call(member, 'claim_run', { runId: second.id })
+  await jobs.expireStaleSessions(payload, late())
+  expect(await status(second.id)).toBe('abandoned')
+})
+
+it('claim stores the goal in the claim and keeps the lease hash hidden', async () => {
+  const { run } = await seed()
+  const { run: claimed } = await call(member, 'claim_run', { runId: run.id })
+  expect(claimed.goal).toHaveProperty('statements')
+  expect(claimed.status).toBe('running')
+})
+
+it('an expired heartbeat cannot be revived or used for owner writes', async () => {
+  const { run } = await seed()
+  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  await raw(sql`UPDATE "runs" SET "heartbeat_at" = now() - interval '1 hour' WHERE "id" = ${run.id}`)
+  for (const [name, extra] of [['heartbeat', {}], ['attach_evidence', { markdown: 'm' }], ['report_step', { summary: 's' }], ['finish_run', { status: 'failed', reason: 'r' }]] as const) {
+    await expect(call(member, name, { runId: run.id, leaseToken, ...extra })).rejects.toThrow('lease lost: run')
+  }
+  expect(await status(run.id)).toBe('running')
+})
+
+it('concurrent attach_evidence calls both land; finish_run and release_run write through the lease', async () => {
+  const { run } = await seed()
+  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  await Promise.all(['a', 'b'].map((markdown) => call(member, 'attach_evidence', { runId: run.id, leaseToken, markdown })))
+  const ev = (await payload.findByID({ collection: 'runs', id: run.id, ...o })).evidence as string
+  expect(ev.split('\n\n').sort()).toEqual(['a', 'b'])
+  await call(member, 'finish_run', { runId: run.id, leaseToken, status: 'failed', reason: 'boom' })
+  expect(await payload.findByID({ collection: 'runs', id: run.id, ...o })).toMatchObject({ status: 'failed', error: 'boom' })
+  const again = await seed()
+  const t2 = (await call(member, 'claim_run', { runId: again.run.id })).leaseToken
+  await expect(call(member, 'release_run', { runId: again.run.id, leaseToken: t2 })).resolves.toEqual({ status: 'awaiting_session' })
+  await expect(call(member, 'release_run', { runId: again.run.id, leaseToken: t2 })).resolves.toEqual({ status: 'awaiting_session' })
 })
