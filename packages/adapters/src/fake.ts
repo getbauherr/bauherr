@@ -100,7 +100,7 @@ export class FakeBackend implements Backend {
       openPullRequest: async (repo, pr: NewPullRequest) => {
         const r = this.repo(repo);
         const created: PullRequest = {
-          number: r.prs.length + 1, url: `https://fake/${repo}/pull/${r.prs.length + 1}`, title: pr.title,
+          number: r.prs.length + 1, url: `https://github.com/${repo}/pull/${r.prs.length + 1}`, title: pr.title,
           body: pr.body ?? '', state: 'open', head: pr.head, base: pr.base, headSha: sha(r, pr.head),
         };
         r.prs.push(created);

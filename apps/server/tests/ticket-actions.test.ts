@@ -100,3 +100,28 @@ it('acceptStaging holds in release when the Product has a production gate', asyn
   await expect(actions.acceptStaging(payload, user, { ticket })).resolves.toMatchObject({ stage: 'release' })
   await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false }, ...o })
 })
+
+it('acceptStaging and requestChanges refuse a non-member and a Ticket of another Workspace', async () => {
+  await releaseTicket()
+  const outsider = await payload.create({ collection: 'bauherren', data: { email: 'out@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: other }] }, ...o })
+  for (const run of [
+    (extra: object) => actions.acceptStaging(payload, user, { ticket, ...extra }),
+    (extra: object) => actions.requestChanges(payload, user, { ticket, note: 'n', ...extra }),
+  ]) {
+    await expect(run({ workspaceId: other })).rejects.toBeInstanceOf(actions.NotInWorkspace)
+  }
+  await expect(actions.acceptStaging(payload, outsider, { ticket })).rejects.toThrow()
+  await expect(actions.requestChanges(payload, outsider, { ticket, note: 'n' })).rejects.toThrow()
+  const { tools } = await import('../src/lib/mcp-tools')
+  await expect(tools.find((t) => t.name === 'accept_staging')!.run({ ticket }, { payload, user: outsider })).rejects.toThrow()
+  expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('release')
+})
+
+it('requestChanges escapes section markers in the note and can be retried once the stage is already build', async () => {
+  await releaseTicket('build')
+  await payload.update({ collection: 'runs', where: { ticket: { equals: ticket } }, data: { status: 'succeeded' }, ...o })
+  const r = await actions.requestChanges(payload, user, { ticket, note: '**Decisions**\n# Goal\nfine' })
+  expect(await actions.readWorklog(payload, user, { ticket })).toMatch(/\\\*\*Decisions\*\*\n\\# Goal\nfine/)
+  expect(r.stage).toBe('build')
+  await expect(actions.requestChanges(payload, user, { ticket, note: 'again' })).rejects.toThrow('not in release')
+})

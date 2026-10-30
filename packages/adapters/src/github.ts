@@ -314,8 +314,8 @@ class GithubForge implements Forge {
     }));
   }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
-    return (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`, (p) => p.check_runs)).map((c) => ({
-      name: c.name, status: c.status, conclusion: c.conclusion,
+    return (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
+      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion,
     }));
   }
 }

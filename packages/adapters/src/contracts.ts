@@ -101,6 +101,8 @@ export interface PullRequestFile {
   deletions: number;
 }
 export interface Check {
+  /** Check run id; a higher id is a later run of the same name. */
+  id?: number;
   name: string;
   status: string;
   conclusion: string | null;

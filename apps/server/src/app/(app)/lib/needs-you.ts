@@ -38,7 +38,7 @@ export const needsYou = (
 
 /** Words for the `release` stage: where the Ticket is between merge and acceptance. */
 export const releaseWord = (t: { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null }): string | null => {
-  if (stageOf(t) === 'done' || t.labels?.includes(APPROVED_STAGING)) return 'accepted'
+  if (t.labels?.includes(APPROVED_STAGING)) return 'accepted'
   if (t.stage !== 'release') return null
   return t.releaseState === 'on_staging' ? 'on staging' : t.releaseState === 'timed_out' ? 'timed out' : 'waiting'
 }

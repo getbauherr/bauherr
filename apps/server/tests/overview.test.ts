@@ -39,7 +39,8 @@ describe('needsYou', () => {
     expect(releaseWord({ stage: 'release', releaseState: null })).toBe('waiting')
     expect(releaseWord({ stage: 'release', releaseState: 'on_staging' })).toBe('on staging')
     expect(releaseWord({ stage: 'release', releaseState: 'timed_out' })).toBe('timed out')
-    expect(releaseWord({ stage: 'done', state: 'closed' })).toBe('accepted')
+    expect(releaseWord({ stage: 'done', state: 'closed', labels: ['bauherr:approved:staging'] })).toBe('accepted')
+    expect(releaseWord({ stage: 'done', state: 'closed' })).toBeNull()
     expect(releaseWord({ stage: 'build' })).toBeNull()
   })
   it('is quiet for healthy tickets and tickets without a stage', () => {

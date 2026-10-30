@@ -83,11 +83,11 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {forgeError && <p className="small muted">The forge could not be reached; plan and worklog are unavailable.</p>}
 
       {summary && approved && <Approved number={ticket.number} />}
-      {summary && gate?.kind === 'plan' && (
+      {gate?.kind === 'plan' && (
         <Gate
           ticket={ticket.id}
           number={ticket.number}
-          plan={summary}
+          plan={summary ?? null}
           budget={ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}
           model={tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}
           sheet={decisions.length ? `${decisions.filter((d) => answers[d.id]).length} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}

@@ -1,7 +1,7 @@
 import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 
 let payload: Payload
 let fake: FakeBackend
@@ -101,4 +101,64 @@ it('honours deployChecks: a named check that has not reported keeps waiting', as
   await release.watchRelease(payload)
   expect(await summaries(n)).toHaveLength(1)
   expect((await reload(t.id as number)).releaseState).toBe('on_staging')
+})
+
+const setProduct = (data: Record<string, unknown>) => payload.update({ collection: 'products', id: product, data, ...o })
+
+it('ignores a pull request URL outside the ticket source repo', async () => {
+  const { t, pr } = await reviewTicket('foreign')
+  fake.merge(repo, pr.number)
+  await payload.update({ collection: 'runs', where: { ticket: { equals: t.id } }, data: { artifacts: { prUrl: `https://evil.example/acme/web/pull/${pr.number}` } }, ...o })
+  expect(await release.watchRelease(payload)).toMatchObject({ released: 0 })
+  expect((await reload(t.id as number)).stage).toBe('review')
+})
+
+it('evaluates only the latest run of a check name', async () => {
+  await setProduct({ deployChecks: '' })
+  const { pr, n } = await reviewTicket('rerun')
+  const sha = fake.merge(repo, pr.number)
+  await release.watchRelease(payload)
+  fake.setChecks(repo, sha, [{ id: 1, name: 'ci', status: 'completed', conclusion: 'failure' }, { id: 2, name: 'ci', status: 'completed', conclusion: 'success' }])
+  await release.watchRelease(payload)
+  expect(await summaries(n)).toHaveLength(1)
+})
+
+it('webhook mode: POSTs once, retries after a non-2xx, confirms only 2 minutes after the request', async () => {
+  await setProduct({ deployMode: 'webhook', deployWebhookUrl: 'https://hook.example/deploy', stagingUrl: 'https://staging.example' })
+  const status = { hook: 500, staging: 200 }
+  const fetchMock = vi.fn(async (url: string) => new Response(null, { status: url.includes('hook') ? status.hook : status.staging }))
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    const { t, pr, n } = await reviewTicket('hooked')
+    fake.merge(repo, pr.number)
+    const t0 = Date.now()
+    await release.watchRelease(payload, t0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(await reload(t.id as number)).toMatchObject({ stage: 'release', deployRequestedAt: null })
+    status.hook = 200
+    await release.watchRelease(payload, t0 + 1000)
+    await release.watchRelease(payload, t0 + 2000)
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('hook'))).toHaveLength(2)
+    await release.watchRelease(payload, t0 + release.WEBHOOK_SETTLE_MS - 1000)
+    expect(await summaries(n)).toHaveLength(0)
+    await release.watchRelease(payload, t0 + 1000 + release.WEBHOOK_SETTLE_MS)
+    expect(await summaries(n)).toHaveLength(1)
+  } finally {
+    vi.unstubAllGlobals()
+    await setProduct({ deployMode: 'observe-ci', deployWebhookUrl: null })
+  }
+})
+
+it('still times out when the probe throws', async () => {
+  const { t, pr } = await reviewTicket('probe')
+  fake.merge(repo, pr.number)
+  const t0 = Date.now()
+  await release.watchRelease(payload, t0)
+  const spy = vi.spyOn(fake.forge, 'listChecks').mockRejectedValue(new Error('boom'))
+  try {
+    await release.watchRelease(payload, t0 + release.STAGING_TIMEOUT_MS + 1000)
+  } finally {
+    spy.mockRestore()
+  }
+  expect((await reload(t.id as number)).releaseState).toBe('timed_out')
 })

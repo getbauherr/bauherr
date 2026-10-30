@@ -2,14 +2,14 @@ import type { Payload, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
-import type { ConnectionInput } from '../lib/connection'
+import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
-const ACTIVE = ['queued', 'awaiting_session', 'running']
+export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** Session Runs without a heartbeat for this long go `needs_human`. */
 export const SESSION_TIMEOUT_MS = 30 * 60_000
 const STAGE_LABEL = /^bauherr:stage:(.+)$/
@@ -18,19 +18,6 @@ export const stageOf = (labels: string[]): string | null =>
   labels.map((l) => STAGE_LABEL.exec(l)?.[1]).find(Boolean) ?? null
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
-
-/** Loads a Connection with its secret decrypted; the plaintext lives only in memory. */
-export const connectionInput = async (payload: Payload, ref: unknown): Promise<ConnectionInput> => {
-  const c = await payload.findByID({ collection: 'connections', id: id(ref), overrideAccess: true, showHiddenFields: true })
-  const raw = (c as { secret?: string }).secret
-  return {
-    id: c.id,
-    kind: c.kind,
-    config: c.config ?? {},
-    secret: raw ? decrypt(raw) : null,
-    capabilities: c.capabilities ?? {},
-  }
-}
 
 const findLlmProvider = async (payload: Payload, workspace: unknown) =>
   (
@@ -99,6 +86,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   slug: 'watch-release',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
   retries: 0,
+  concurrency: () => 'watch-release',
   handler: async ({ req }) => ({ output: await watchRelease(req.payload) }),
 }
 
@@ -142,6 +130,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             assignee: t.assignee,
             sourceUpdatedAt: t.updatedAt,
             stage,
+            ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })

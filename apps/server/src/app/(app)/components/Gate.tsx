@@ -5,7 +5,7 @@ import { SubmitButton } from './SubmitButton'
 type GateProps = {
   ticket: number
   number: number
-  plan: { title: string; steps: number }
+  plan: { title: string; steps: number } | null
   budget: string
   model: string
   sheet: string
@@ -20,7 +20,7 @@ export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: Ga
         <p className="small muted">#{number} · plan</p>
       </div>
       <dl className="body">
-        <dt>Approves</dt><dd>{plan.title} · {plan.steps} {plan.steps === 1 ? 'step' : 'steps'}</dd>
+        <dt>Approves</dt><dd>{plan ? `${plan.title} · ${plan.steps} ${plan.steps === 1 ? 'step' : 'steps'}` : 'Plan comment not readable, open it on the forge.'}</dd>
         <dt>Budget</dt><dd className="mono">{budget}</dd>
         <dt>Model</dt><dd className="mono">{model}</dd>
         <dt>Decisions</dt><dd>{sheet}</dd>
