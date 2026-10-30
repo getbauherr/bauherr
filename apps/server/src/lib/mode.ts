@@ -8,6 +8,10 @@ const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
 
 const WORKFLOW = resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'), 'workflow.yaml')
 
+/** Stage names of pack/workflow.yaml, in order. */
+export const workflowStages = (): string[] =>
+  (parse(readFileSync(WORKFLOW, 'utf8')) as { stages?: { name: string }[] }).stages?.map((s) => s.name) ?? []
+
 /**
  * Mode a Run of `stage` starts in. Precedence: Workspace.modeByStage[stage], Workspace.defaultMode,
  * env BAUHERR_DEFAULT_MODE, `mode` of the stage in pack/workflow.yaml, else autonomous.
