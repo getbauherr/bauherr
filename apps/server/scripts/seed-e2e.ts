@@ -27,7 +27,7 @@ await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product
 const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) =>
   (await ensure('tickets', { externalId: `e2e-${n}` }, {
     title, externalId: `e2e-${n}`, number: n, url: `https://github.com/acme/web/issues/${n}`,
-    state: 'open', labels: [`bauherr:stage:${stage}`], stage, product: p, workspace, ...extra,
+    state: 'open', labels: [`bauherr:stage:${stage}`], stage, product: p, workspace, rank: String(n).padStart(6, '0'), ...extra,
   })).id
 const run = async (t: string | number, stage: string, status: string, extra: Record<string, unknown> = {}) =>
   ensure('runs', { ticket: t, stage, status }, { ticket: t, stage, status, mode: 'autonomous', workspace, ...extra })

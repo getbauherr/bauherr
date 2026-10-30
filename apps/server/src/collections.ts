@@ -226,6 +226,7 @@ const tickets = col('tickets', [
   text('assignee'),
   date('sourceUpdatedAt'),
   text('stage', { index: true }),
+  text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),
   rel('blockedBy', 'tickets', { hasMany: true }),
   text('mergeSha'),

@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { PLAN_MARKER, latestWith, parseDecisions } from './plan'
@@ -120,4 +120,11 @@ export async function releaseRunLock(runId: number) {
     if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
   })
   redirect(`/runs/${runId}`)
+}
+
+/** Persists a Board drop: the Ticket now sits between `before` and `after` (Admin or Workspace member, selected Workspace only). */
+export async function rankTicketAction(ticket: number, before: number | null, after: number | null) {
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(rankTicket(payload, user, { ticket, before, after, workspaceId }))
+  revalidatePath('/')
 }

@@ -3,6 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, openCritical, parseAnswers } from '../app/(app)/lib/plan'
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
+import { rankBetween } from './frontier'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
@@ -34,6 +35,21 @@ const loadIn = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId
   const t = await loadTicket(payload, user, ticket)
   if (workspaceId !== undefined && String(id(t.workspace)) !== String(workspaceId)) throw new NotInWorkspace()
   return t
+}
+
+/** Moves a Ticket between two neighbours of its Workspace's Board order (`before` above, `after` below; either may be absent). */
+export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: TicketId; before?: TicketId | null; after?: TicketId | null; workspaceId: TicketId }): Promise<{ rank: string }> => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const rankOf = async (n?: TicketId | null) => (n == null ? null : ((await loadIn(payload, user, n, a.workspaceId)).rank as string | null) ?? null)
+  let [lo, hi] = [await rankOf(a.before), await rankOf(a.after)]
+  // At an in-flight/ranked group boundary the displayed neighbours can be out of rank order: the card then sits just above `after`, below its predecessor in rank.
+  if (lo !== null && hi !== null && lo >= hi) {
+    const r = await payload.db.drizzle.execute(sql`SELECT max("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" COLLATE "C" < ${hi}`)
+    lo = (r.rows[0]?.rank as string | null) ?? null
+  }
+  const rank = rankBetween(lo, hi)
+  await payload.update({ collection: 'tickets', id: t.id, data: { rank }, overrideAccess: true })
+  return { rank }
 }
 
 export class NotReleasable extends Error {
