@@ -1,7 +1,7 @@
 'use server'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { generatePayloadCookie } from 'payload'
+import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
@@ -22,9 +22,10 @@ export async function login(form: FormData) {
 }
 
 export async function logout() {
-  const h = await headers()
   const payload = await payloadClient()
-  await fetch(`${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}/api/bauherren/logout`, { method: 'POST', headers: { cookie: h.get('cookie') ?? '' } })
+  // Revoke this session server-side; the cookie goes regardless.
+  const { user } = await payload.auth({ headers: await headers() })
+  if (user) await logoutOperation({ collection: payload.collections.bauherren, req: await createLocalReq({ user }, payload) }).catch(() => undefined)
   ;(await cookies()).delete(`${payload.config.cookiePrefix}-token`)
   redirect('/login')
 }
