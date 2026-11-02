@@ -8,10 +8,12 @@ export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Run needs you', 'Run failed'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Round cap reached', 'Run needs you', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
 /** Hold label: Triage asked the owner questions; answering them moves the Ticket to plan. */
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
+/** Returns from review to build per Ticket before it needs a human. */
+export const MAX_REVIEW_ROUNDS = 2
 const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
 
 /** Closed tickets are `done`; open ones without a known stage label are `triage`. */
@@ -24,7 +26,7 @@ export const stageOf = (t: { state?: string | null; stage?: string | null }): St
  * D5 (c): a succeeded plan awaiting approval with `unansweredCritical` > 0 is "Answer decisions" (before "Approve plan").
  */
 export const needsYou = (
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null },
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; reviewState?: string | null; reviewRounds?: number | null },
   run: { stage: string; status: string } | null,
   unansweredCritical = 0,
 ): Need | null => {
@@ -32,6 +34,7 @@ export const needsYou = (
   if (stage === 'plan' && run?.stage === 'plan' && IN_PROGRESS.includes(run.status)) return null
   if (stage === 'plan' && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
+  if (stage === 'review' && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (run?.status === 'needs_human' && run.stage !== 'triage') return 'Run needs you'
   if (stage === 'release' && !ticket.labels.includes(APPROVED_STAGING)) {
     if (ticket.releaseState === 'on_staging') return 'Accept on staging'
@@ -54,5 +57,5 @@ export const reviewWord = (reviewState?: string | null): string =>
     waiting_checks: 'Review clean, waiting for checks to finish',
     merged: 'Merged by the factory',
     ready_for_human: 'Review clean, ready for a human to merge',
-    needs_human: 'Needs a human after repeated review rounds',
+    needs_human: 'Needs a human, see the latest Comment',
   })[reviewState ?? ''] ?? 'Factory reviewing'

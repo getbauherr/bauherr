@@ -39,6 +39,7 @@ Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEAD
 4. Write `Refs #N` in the MR body and commit messages, never `Closes/Fixes/Resolves`: only acceptance on staging closes a Ticket (a merge that closes it is reopened). `request_review` (moves the Ticket to the review stage), then `finish_run {runId, status, reason?, prUrl?}`. `succeeded` needs the MR/stage output; otherwise `failed` or `needs_human` with a reason.
 5. Review Runs (`stage: review`): `get_ticket` shows the open MR as `pr`; `load_skill review`, read the diff in your worktree, never edit code, then `submit_review {runId, leaseToken, verdict, findings:[{severity, file, line, msg, scenario}], checked:[{area, note}], markdown}`. It ends the Run `succeeded` in the same write and runs the conclusion (MR comment, back to Build, or merge gate). Build Runs on a Ticket whose `get_ticket` has a `pr`: check out `pr.branch` and push there; open no new MR.
 6. Plan gate: `approve {ticket, gate:'plan'}` is the only way to approve through MCP.
+7. Round cap: `grant_review_round {ticket}` and `stop_review {ticket, note?}` are owner-only; they are refused while a session Run holds the Ticket, so a session cannot lift its own cap.
 
 Switch away: `release_run {runId, leaseToken}` puts the Run back to `awaiting_session`; `release_run {runId, leaseToken, takeover:'autonomous'}` hands it to the Runner.
 
