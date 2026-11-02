@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Intake widget test page</title>
+<p>Static host page for the embeddable Intake widget. Open as <code>?token=bemb_...</code>; the widget is always loaded from this page's own origin.</p>
+<script>
+  const s = document.createElement('script')
+  s.src = '/intake/widget.js'
+  s.dataset.token = new URLSearchParams(location.search).get('token') ?? ''
+  document.body.append(s)
+</script>

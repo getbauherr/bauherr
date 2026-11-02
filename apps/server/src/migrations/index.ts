@@ -29,6 +29,9 @@ import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './202
 import * as migration_20261102_160000_production_approved_sha from './20261102_160000_production_approved_sha';
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 import * as migration_20261102_170000_production_label_at from './20261102_170000_production_label_at';
+import * as migration_20261102_170149_embed_tokens from './20261102_170149_embed_tokens';
+import * as migration_20261102_170152_knowledge_edit from './20261102_170152_knowledge_edit';
+import * as migration_20261102_171000_knowledge_edit_record from './20261102_171000_knowledge_edit_record';
 import * as migration_20261102_180000_gate_pending_attempts from './20261102_180000_gate_pending_attempts';
 
 export const migrations = [
@@ -188,8 +191,23 @@ export const migrations = [
     name: '20261102_170000_production_label_at'
   },
   {
+    up: migration_20261102_170149_embed_tokens.up,
+    down: migration_20261102_170149_embed_tokens.down,
+    name: '20261102_170149_embed_tokens'
+  },
+  {
+    up: migration_20261102_170152_knowledge_edit.up,
+    down: migration_20261102_170152_knowledge_edit.down,
+    name: '20261102_170152_knowledge_edit'
+  },
+  {
+    up: migration_20261102_171000_knowledge_edit_record.up,
+    down: migration_20261102_171000_knowledge_edit_record.down,
+    name: '20261102_171000_knowledge_edit_record'
+  },
+  {
     up: migration_20261102_180000_gate_pending_attempts.up,
     down: migration_20261102_180000_gate_pending_attempts.down,
     name: '20261102_180000_gate_pending_attempts'
-  },
+  }
 ];

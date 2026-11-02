@@ -13,6 +13,7 @@ import { logins, syncGates } from '../lib/gates'
 import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
+import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -262,6 +263,14 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
 
 /** Polls in which a Ticket's unverifiable gate label is retried before it waits for the next label change. */
 const MAX_GATE_ATTEMPTS = 30
+
+export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; output: { merged: number } }> = {
+  slug: 'watch-knowledge-prs',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'watch-knowledge-prs',
+  handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
+}
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',

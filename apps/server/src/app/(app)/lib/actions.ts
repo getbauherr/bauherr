@@ -7,6 +7,7 @@ import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProdu
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
+import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
@@ -161,4 +162,17 @@ export async function rankTicketAction(ticket: number, before: number | null, af
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(rankTicket(payload, user, { ticket, before, after, workspaceId }))
   revalidatePath('/')
+}
+
+export type EditState = { pr?: { number: number; url: string }; stale?: { sha: string; diff: string }; error?: string }
+
+/** Saves a Knowledge document as a PR (merged later by the watcher); a stale base returns the diff instead of writing. */
+export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Promise<EditState> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return await saveDocument(payload, user, { workspace: workspaceId, path: String(fd.get('path')), content: String(fd.get('content')).replace(/\r\n/g, '\n'), baseSha: String(fd.get('baseSha')) })
+  } catch (e) {
+    if (e instanceof EditRefused) return { error: e.message }
+    throw e
+  }
 }
