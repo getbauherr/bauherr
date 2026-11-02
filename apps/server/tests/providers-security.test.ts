@@ -55,9 +55,9 @@ it('renderModels skips a Connection with a corrupt stored secret and still rende
   await payload.update({ collection: 'connections', id: bad.id, data: { secret: encrypt(RAW) }, ...o })
   await renderModels({ payload } as unknown as PayloadRequest)
   const out = readFileSync(join(dir, 'config.yaml'), 'utf8')
-  expect(out).toContain('ws-good/*')
+  expect(out).toContain('ws-good/bedrock-iam/*')
   expect(out).toContain('AKIAGOOD')
-  expect(out).not.toContain('ws-bad/*')
+  expect(out).not.toContain('ws-bad/bedrock-iam/*')
 })
 
 it('azure fields are validated before they reach the gateway baseUrl', async () => {
@@ -83,7 +83,10 @@ it('inline and ambient presets can be set by Admins only; file presets stay open
 })
 
 it('concurrent ambient Connection create and Workspace create: exactly one succeeds', async () => {
-  for (const c of (await payload.find({ collection: 'connections', pagination: false, ...o })).docs) await payload.delete({ collection: 'connections', id: c.id, ...o })
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
+  await db.connect()
+  await db.query('DELETE FROM connections')
+  await db.end()
   const [keep, ...rest] = (await payload.find({ collection: 'workspaces', pagination: false, ...o })).docs
   for (const w of rest) await payload.delete({ collection: 'workspaces', id: w.id, ...o })
   const results = await Promise.allSettled([

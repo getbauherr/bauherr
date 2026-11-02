@@ -41,7 +41,7 @@ Seeding on the network fires the gateway hooks (key, provider file, `llm.models`
 
 ## Providers
 
-A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`). The secret is written to `/gateway/providers/ws-<slug>.<ext>` (0600) and referenced by path; saving the Connection verifies it with a 1-token call and stores `capabilities.verifiedAt` or `lastError`.
+A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`). The secret is written to `/gateway/providers/ws-<workspace>.<connection>.<ext>` (0600) and referenced by path; saving the Connection verifies it with a 1-token call and stores `capabilities.verifiedAt` or `lastError`.
 
 | Preset | Fields | Secret to paste | Model IDs / default tiers | Budget |
 |---|---|---|---|---|
@@ -57,6 +57,12 @@ A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`).
 | `foundry-ambient` | `azureResource` | none (gateway managed identity) | Anthropic IDs | tokens |
 | `anthropic-compatible` | `baseUrl` | key of the Messages endpoint (e.g. upstream agentgateway) | upstream names; set `modelByTier` | tokens |
 | `openai-compatible` | `baseUrl` | key of the Chat Completions endpoint | upstream names; set `modelByTier` | tokens |
+
+### Several providers per Workspace
+
+A Workspace can hold several `llm-provider` Connections. Each has a `slug` (`[a-z0-9-]`, default the preset name, `-2` on a clash, fixed after create) and is addressed as `ws-<workspace>/<connection>/<model>` (gateway entry `ws-<workspace>/<connection>/*`). `modelByTier` values are `<connection>/<model>` (e.g. `greenpt/glm-5.3-flash`), so each tier can use a different Connection; saving a tier with an unknown Connection is refused. The settings form qualifies a bare model id with the first Connection. The budget is in tokens as soon as one Connection has no USD catalog, USD otherwise.
+
+Upgrade: migration `20261102_150144_connection_slugs` gives existing Connections a slug (the preset name), prefixes the stored tiers with it and, when the gateway env is set, rewrites the provider files and `config.yaml` (best effort; saving any Connection redoes it). The Runner then sends `ws-<workspace>/<connection>/<model>`.
 
 ### Credentials in config.yaml
 
