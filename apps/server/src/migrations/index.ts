@@ -14,6 +14,7 @@ import * as migration_20261030_190000_ticket_rank from './20261030_190000_ticket
 import * as migration_20261030_191000_gate_notify from './20261030_191000_gate_notify';
 import * as migration_20261030_192000_triage_stage from './20261030_192000_triage_stage';
 import * as migration_20261030_194000_triage_attempts from './20261030_194000_triage_attempts';
+import * as migration_20261102_150119_gitlab_connection from './20261102_150119_gitlab_connection';
 import * as migration_20261102_150138_ticket_external_unique from './20261102_150138_ticket_external_unique';
 import * as migration_20261102_150143_provider_auth_modes from './20261102_150143_provider_auth_modes';
 import * as migration_20261102_150144_connection_slugs from './20261102_150144_connection_slugs';
@@ -99,6 +100,11 @@ export const migrations = [
     up: migration_20261030_194000_triage_attempts.up,
     down: migration_20261030_194000_triage_attempts.down,
     name: '20261030_194000_triage_attempts'
+  },
+  {
+    up: migration_20261102_150119_gitlab_connection.up,
+    down: migration_20261102_150119_gitlab_connection.down,
+    name: '20261102_150119_gitlab_connection'
   },
   {
     up: migration_20261102_150138_ticket_external_unique.up,

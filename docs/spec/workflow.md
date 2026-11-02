@@ -5,7 +5,7 @@ The single human-readable spec of the Bauherr workflow. Rules live in the core p
 ## 1. Stages and labels
 Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 
-- The Stage is a Label in the Ticket source: `bauherr:stage:<name>` (GitLab scoped: `stage::<name>`). Bauherr derives it and never stores it as truth.
+- The Stage is a Label in the Ticket source: `bauherr:stage:<name>` (the same on GitLab: scoped `stage::` labels are Premium+). Bauherr derives it and never stores it as truth.
 - Other labels: `bauherr:go` (start), `bauherr:approved:plan` (plan gate), `bauherr:approved:staging` (staging gate), `bauherr:blocked` (needs a person).
 
 | Stage | Agent work | Ends with |

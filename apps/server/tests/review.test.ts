@@ -1,5 +1,5 @@
 import pg from 'pg'
-import type { FakeBackend } from '@bauherr/adapters'
+import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 
@@ -435,6 +435,47 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('### Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('see ## Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
+})
+
+it('a pending (asynchronous) merge waits without counting a failure', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    for (let i = 0; i < 4; i++) {
+      await actions.watchReviews(payload)
+      expect((await reload(a.id)).reviewState).toBe('waiting_checks')
+    }
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+  expect(Number((await reload(a.id)).mergeFailures ?? 0)).toBe(0)
+  await actions.watchReviews(payload)
+  expect(await prState(a.pr.number)).toBe('merged')
+})
+
+it('a perpetually pending merge keeps its wait clock and escalates after 2 hours', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    const since = (await reload(a.id)).reviewWaitingSince
+    expect(since).toBeTruthy()
+    await actions.watchReviews(payload, Date.now() + 1.9 * 3_600_000)
+    expect((await reload(a.id)).reviewWaitingSince).toEqual(since)
+    await actions.watchReviews(payload, Date.now() + 2.1 * 3_600_000)
+    expect((await reload(a.id)).reviewState).toBe('needs_human')
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
 })
 
 /** The crash window: the review Run holds its verdict, the Ticket never moved. */

@@ -47,3 +47,9 @@ it('a workflow version blocks deleting its Product', async () => {
   await payload.create({ collection: 'workflow_versions', data: { version: 1, product: product.id as number, workspace: ws.id as number, compiled: {} }, ...o })
   expect(await blockedBy(payload, 'products', product.id as number)).toBe('1 workflow versions')
 })
+
+it('stores a gitlab Connection with its base URL', async () => {
+  const ws = await payload.create({ collection: 'workspaces', data: { name: 'gl', slug: 'gl' }, ...o })
+  const c = await payload.create({ collection: 'connections', data: { name: 'gl', kind: 'gitlab', config: { baseUrl: 'https://git.einsfuenf.de' }, secret: 'glpat', workspace: ws.id as number }, ...o })
+  expect(await payload.findByID({ collection: 'connections', id: c.id, ...o })).toMatchObject({ kind: 'gitlab', config: { baseUrl: 'https://git.einsfuenf.de' } })
+})

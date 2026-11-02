@@ -152,6 +152,9 @@ export interface Forge {
   webhooks?: Webhooks;
 }
 
+/** The forge accepted the merge but has not finished it; retry later without counting a failure. */
+export class MergePendingError extends Error {}
+
 export interface Backend {
   capabilities: Capabilities;
   forge: Forge;
