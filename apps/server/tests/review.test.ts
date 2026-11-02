@@ -125,6 +125,29 @@ it('a medium finding goes back to Build on the same MR branch with the findings 
   expect((await fake.forge.listPullRequests(repo)).filter((p) => p.head === branch)).toHaveLength(1)
 })
 
+it('a review round only touches Current instructions, Unfinished work and Open; findings appear once', async () => {
+  const { id, n } = await seed({ checks: green })
+  const kept = '**Goal**\n- [ ] g1\n\n'
+  const rest = '**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n'
+  const tail = '**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked'
+  await fake.tickets(repo).comment(n, `<!-- bauherr:worklog -->\n## Worklog\n${kept}**Current instructions**\nold\n\n${rest}**Unfinished work**\n- item\n\n**Open**\n-\n\n${tail}`)
+  const low = { severity: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }
+  for (const round of [1, 2]) {
+    expect(await submit(await review(id), [medium, low])).toMatchObject({ outcome: 'build' })
+    await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+    const w = await actions.readWorklog(payload, member, { ticket: id })
+    expect(w).toContain('**Goal**\n- [ ] g1')
+    expect(w).toContain('**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n**Unfinished work**')
+    expect(w).toContain('**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked')
+    expect(w).toContain(`Review round ${round}:`)
+    expect(w.match(/\[medium\] a\.ts:3/g)).toHaveLength(1)
+    expect(w.match(/\[low\] b\.ts:1/g)).toHaveLength(1)
+    expect(w).toMatch(/\*\*Unfinished work\*\*\n- item\n- \[medium\][^\n]*\n\n\*\*Open\*\*/)
+    expect(w).toMatch(/\*\*Open\*\*\n- \[low\][^\n]*\n\n\*\*Decisions/)
+    expect(w.match(/Review round/g)).toHaveLength(1)
+  }
+})
+
 it('the 3rd return to Build needs a human', async () => {
   const { id, n } = await seed({ checks: green })
   for (const round of [1, 2]) {
