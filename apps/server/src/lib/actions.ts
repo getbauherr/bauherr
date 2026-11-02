@@ -143,13 +143,35 @@ export const lastRankAfter = async (payload: Payload, workspace: number | string
   return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
 }
 
+/** Postgres unique violation (23505), also when wrapped by the ORM. */
+const isUniqueViolation = (e: unknown): boolean => {
+  for (let c: any = e; c; c = c.cause) if (c.code === '23505') return true
+  return false
+}
+
+/**
+ * Creates the Ticket row for `(product, externalId)`, or applies `update` (null: leave it) to the existing one.
+ * Losing a create race against the unique index re-reads the winner's row and merges `update` into it.
+ */
+export const upsertTicket = async (payload: Payload, create: Record<string, any>, update: Record<string, unknown> | null): Promise<Doc & { id: number | string }> => {
+  const find = async () => (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: create.product } }, { externalId: { equals: create.externalId } }] }, limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  const save = async (doc?: Doc): Promise<Doc & { id: number | string }> =>
+    (doc ? (update ? await payload.update({ collection: 'tickets', id: doc.id, data: update, overrideAccess: true }) : doc) : await payload.create({ collection: 'tickets', data: create as any, overrideAccess: true })) as Doc & { id: number | string }
+  try {
+    return await save(await find())
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e
+    return save(await find())
+  }
+}
+
 const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
 
 /**
  * Plan approval fan-out (D1): creates each item of the latest plan's `## Sub-tickets` as a sub-issue that inherits the plan approval,
  * then moves the parent to stage `parent`. Runs only while the parent is not yet `parent` and only for items listed now (matched by title,
- * so a retry after a partial failure completes the set and never adds later items). Serialised per ticket; true when the Ticket is a parent.
+ * so a retry after a partial failure completes the set and never adds later items; a child created but not yet linked is found by its local row and only linked). An item's `after:` sibling title becomes a forge + local blockedBy. Serialised per ticket; true when the Ticket is a parent.
  */
 export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean> =>
   exclusive(`spawn:${id(parent.product)}:${parent.number}`, async () => {
@@ -160,18 +182,21 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     const items = plan ? subTickets(plan.body) : []
     if (!items.length) return false
     const existing = await ts.listSubTickets(n)
+    const local = new Map(((await payload.find({ collection: 'tickets', where: { parent: { equals: parent.id } }, pagination: false, ...ro })).docs as Doc[]).map((d) => [d.title as string, d]))
+    const spawned = new Map<string, { id: string; docId: number | string }>()
     let prev = (parent.rank as string | null) ?? null
+    if (!prev) {
+      prev = await lastRankAfter(payload, id(parent.workspace))
+      await payload.update({ collection: 'tickets', id: parent.id, data: { rank: prev }, ...ro })
+    }
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
-      const child = found ?? (await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
-      if (!found) {
-        await ts.addSubTicket(n, String(child.number))
-        await ts.comment(String(child.number), `Approval inherited from #${n}: listed in its plan at approval.`)
-      }
+      const orphan = found ? undefined : local.get(item.title)
+      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
       const link: Record<string, unknown> = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
       const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
       if (doc?.rank) prev = doc.rank as string
-      else if (prev) {
+      else {
         const r = await payload.db.drizzle.execute(sql`SELECT min("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${id(parent.workspace)} AND "rank" COLLATE "C" > ${prev}`)
         try {
           prev = rankBetween(prev, (r.rows[0]?.rank as string | null) ?? null)
@@ -181,23 +206,33 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
         }
         link.rank = prev
       }
-      if (doc) await payload.update({ collection: 'tickets', id: doc.id, data: link, ...ro })
-      else {
-        await payload.create({
-          collection: 'tickets',
-          data: { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: 'plan' },
-          ...ro,
-        })
+      const row = await upsertTicket(
+        payload,
+        { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: 'plan' },
+        link,
+      )
+      spawned.set(item.title, { id: child.id, docId: row.id })
+      if (!found) {
+        await ts.addSubTicket(n, String(child.number))
+        await ts.comment(String(child.number), `Approval inherited from #${n}: listed in its plan at approval.`)
       }
+    }
+    for (const item of items) {
+      const after = item.after && spawned.get(item.after)
+      if (item.after && !after) payload.logger.warn({ ticket: parent.id, item: item.title, after: item.after }, 'sub-ticket after: names no sibling, ignored')
+      const me = spawned.get(item.title)
+      if (!after || !me || after === me) continue
+      if (!(await ts.get(me.id)).blockedBy.includes(after.id)) await ts.addBlockedBy(me.id, after.id)
+      await payload.update({ collection: 'tickets', id: me.docId, data: { blockedBy: [after.docId] }, ...ro })
     }
     await setStage(ts, n, PARENT)
     await payload.update({ collection: 'tickets', id: parent.id, data: { stage: PARENT }, ...ro })
     return true
   })
 
-/** Closes every open parent whose sub-tickets are all closed, with a Comment listing them. Returns how many were closed. */
+/** Finishes every parent (stage `parent`) whose sub-tickets are all closed, with a Comment listing them. Returns how many were closed. */
 export const closeFinishedParents = async (payload: Payload): Promise<number> => {
-  const parents = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: PARENT } }] }, pagination: false, ...ro })).docs as Doc[]
+  const parents = (await payload.find({ collection: 'tickets', where: { stage: { equals: PARENT } }, pagination: false, ...ro })).docs as Doc[]
   let closed = 0
   for (const p of parents) {
     try {
@@ -205,7 +240,7 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
       const n = String(p.number)
       const kids = await ts.listSubTickets(n)
       if (!kids.length || kids.some((k) => k.state !== 'closed')) continue
-      await ts.close(n, 'completed')
+      if ((await ts.get(n)).state !== 'closed') await ts.close(n, 'completed')
       await setStage(ts, n, 'done')
       await payload.update({ collection: 'tickets', id: p.id, data: { stage: 'done', state: 'closed' }, ...ro })
       await ts.comment(n, `All sub-tickets are closed:\n${kids.map((k) => `- #${k.number} ${k.title}`).join('\n')}`)
@@ -562,7 +597,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
  * returns to Build (blocking findings) or runs the merge gate. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
  */
 export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null): Promise<{ outcome: ReviewOutcome }> => {
-  const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
+  const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
   try {
     const mr = await prOf(payload, t)
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
