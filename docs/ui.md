@@ -11,6 +11,7 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 | `/runs` | redirects to `/?view=runs` |
 | `/tickets/<id>` | Ticket page, see below |
 | `/runs/<id>` | Run page, tab by `?tab=graph\|timeline\|list` |
+| `/knowledge` | Knowledge: documents, search, write-backs, see below |
 
 Pages under `(shell)/` get the top bar and require a session; unauthenticated requests redirect to `/login`. Sign out and Workspace selection are server actions in `lib/actions.ts`.
 
@@ -63,6 +64,10 @@ The options are the default plus each Alternative(s) item (split at `;` and sent
 ## Workspace
 
 `currentWorkspace()` (`lib/session.ts`) returns `{ user, workspace, workspaces }`. Admins see all Workspaces, others those in `tenants`. The choice lives in the cookie `bauherr-ws` (slug); missing or invalid falls back to the first.
+
+## Knowledge
+
+`/knowledge` (main nav, every Bauherr): left a document list per source (core pack, Knowledge repo; markdown only), right the search hits for `?q=` (same backend as `search_knowledge`, each with `source · path · commit`) or the document of `?doc=<source>:<path>` rendered with `renderMarkdown` (raw HTML escaped). Below, "Write-backs": open `bauherr/*` PRs of the Knowledge repo with the merge-gate checks (`mergeChecks`); a forge that does not answer within 3 s shows one line instead. Without a Knowledge repo only the core pack is listed, with a link to settings. Read-only; editing is a separate page. Loaders: `lib/knowledge.ts`.
 
 ## Settings
 
