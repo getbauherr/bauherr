@@ -118,6 +118,8 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 ## 13. What a Product user sees
 Intake session, then the Ticket in the Ticket source with its Stage Label and Comments (plan, review, decision sheets addressed to them). No Runs, worklogs, budgets or configuration.
 
+Intake: `POST /intake/api/sessions` (Product), `.../:id/messages` (one interview turn, SSE `turn` event), `.../:id/submit`. The engine asks one question per turn through the gateway (skill [intake](../../pack/skills/intake/SKILL.md), standard tier), at most 6 questions; completeness (problem, context, >= 2 criteria, screenshot for screen requests) is computed by the engine, not the model. Submit creates the Ticket without a stage label, so Triage picks it up, with `type:`/`product:` labels, an `## Open` section for gaps and the interview as a Comment.
+
 ## 14. Pack artifacts index
 Manifest: [pack.yaml](../../pack/pack.yaml). Hooks map to SDK events in [hooks.yaml](../../pack/hooks/hooks.yaml).
 

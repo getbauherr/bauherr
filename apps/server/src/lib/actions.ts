@@ -3,6 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
+import { questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -286,7 +287,7 @@ const appendDecisions = (worklog: string, lines: string[]): string => {
 
 const pending = new Map<string, Promise<unknown>>()
 /** In-process per-ticket mutex; multi-instance deployments need a DB lock instead. */
-const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+export const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
   const next = (pending.get(key) ?? Promise.resolve()).catch(() => undefined).then(fn)
   pending.set(key, next)
   try {
@@ -673,7 +674,7 @@ export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; ques
 export const MAX_QUESTIONS = 10
 
 /** One line without the characters the decision-sheet parser treats as structure. */
-const plain = (v: unknown, max: number): string => String(v).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
+const plain = (v: unknown, max: number): string => String(v).replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
 
 /** Validates a triage outcome. `refine` needs 1..MAX_QUESTIONS questions (title, default, optional alternatives); `reason` is always required. */
 export const normalizeTriage = (raw: any): Triage => {
@@ -712,3 +713,49 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   }
   return { outcome: t.outcome }
 }
+
+/** Escapes `<` and `>` so no requester text can form or close an HTML comment marker, and drops heading hashes. */
+const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
+
+/** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string): { title: string; body: string; labels: string[] } => ({
+  title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
+  body: [
+    '_Requester-supplied, untrusted._',
+    `## Problem\n${plainLine(draft.problem)}`,
+    `## Context\n${plainLine(draft.context)}`,
+    `## Acceptance criteria\n${draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n')}`,
+    ...(missing.length || draft.links.length ? [`## Open\n${[...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n')}`] : []),
+    `<!-- bauherr:intake session=${sessionId} -->`,
+  ].join('\n\n'),
+  labels: [`type:${draft.type}`, `product:${productSlug}`],
+})
+
+/**
+ * Creates the Ticket from a finished (or question-capped) Intake session: no stage label, so Triage picks it up; the interview is appended as a Comment.
+ * Idempotent: a submitted session returns its Ticket number.
+ */
+export const submitIntake = async (payload: Payload, sessionId: TicketId): Promise<{ number: number }> =>
+  exclusive(`intake:${sessionId}`, async () => {
+    const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 1, overrideAccess: true })) as Doc
+    if (s.status === 'submitted') return { number: s.ticketNumber }
+    if (s.status !== 'open') throw new Error('session is not open')
+    const session: Session = { messages: s.messages ?? [], draft: s.draft, screenshots: s.screenshots }
+    const r = readiness(session.draft, (s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session))
+    if (!session.draft?.problem.trim() || (!r.ready && !r.exhausted)) throw new Error(`draft incomplete: ${r.missing.join(', ')}`)
+    const ts = await ticketsOf(payload, id(s.product))
+    const marker = `<!-- bauherr:intake session=${s.id} -->`
+    let t: { number: number } | undefined
+    for (const c of (await ts.list({ state: 'all', labels: [`product:${s.product.slug}`] })).sort((a, b) => b.number - a.number).slice(0, 50)) {
+      if ((await ts.get(String(c.number))).body?.includes(marker)) {
+        t = c
+        break
+      }
+    }
+    t ??= await ts.create(intakeTicket(session.draft, s.id, r.missing, s.product.slug))
+    if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
+      await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
+    }
+    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
+    return { number: t.number }
+  })

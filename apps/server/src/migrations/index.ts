@@ -18,7 +18,9 @@ import * as migration_20261102_150119_gitlab_connection from './20261102_150119_
 import * as migration_20261102_150138_ticket_external_unique from './20261102_150138_ticket_external_unique';
 import * as migration_20261102_150143_provider_auth_modes from './20261102_150143_provider_auth_modes';
 import * as migration_20261102_150144_connection_slugs from './20261102_150144_connection_slugs';
+import * as migration_20261102_150145_intake_sessions from './20261102_150145_intake_sessions';
 import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './20261102_150170_requeue_expired_unclaimed_runs';
+import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 
 export const migrations = [
   {
@@ -122,8 +124,18 @@ export const migrations = [
     name: '20261102_150144_connection_slugs'
   },
   {
+    up: migration_20261102_150145_intake_sessions.up,
+    down: migration_20261102_150145_intake_sessions.down,
+    name: '20261102_150145_intake_sessions'
+  },
+  {
     up: migration_20261102_150170_requeue_expired_unclaimed_runs.up,
     down: migration_20261102_150170_requeue_expired_unclaimed_runs.down,
     name: '20261102_150170_requeue_expired_unclaimed_runs'
+  },
+  {
+    up: migration_20261102_170000_intake_session_user.up,
+    down: migration_20261102_170000_intake_session_user.down,
+    name: '20261102_170000_intake_session_user'
   },
 ];
