@@ -2,6 +2,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { LabelEvent } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { gateOwnersOf, logins } from './gates'
+import { humanGates } from './mode'
 import { id } from './release'
 
 type Doc = Record<string, any>
@@ -9,11 +10,14 @@ const o = { overrideAccess: true, depth: 0 } as const
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 
-/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them. Optional gates (#175) filter this list. */
+/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them. */
 export const GATE_LABELS = [
-  { label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'] },
-  { label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging'] },
+  { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'] },
+  { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging'] },
 ] as const
+
+/** Gate labels of the gates the workflow has on (#175); a label of a gate that is off is accepted without actor verification. */
+export const activeGateLabels = () => GATE_LABELS.filter((g) => humanGates().includes(g.gate))
 
 /** A recorded touch legitimises a factory-login label only when it was recorded shortly before the label event. */
 export const TOUCH_WINDOW_MS = 10 * 60_000
@@ -39,7 +43,10 @@ export interface GateVerdict {
 /** Verifies every gate label in `labels` against the forge's label events (spec workflow.md, "Gate labels"). */
 export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: string[], ts: Forge, gates: readonly (typeof GATE_LABELS)[number][] = GATE_LABELS): Promise<GateVerdict> => {
   const verdict: GateVerdict = { accepted: [], rejected: [], pending: [] }
-  const present = gates.filter((g) => labels.includes(g.label))
+  const active = activeGateLabels()
+  const inPlay = gates.filter((g) => labels.includes(g.label))
+  verdict.accepted.push(...inPlay.filter((g) => !active.some((a) => a.label === g.label)).map((g) => g.label))
+  const present = inPlay.filter((g) => active.some((a) => a.label === g.label))
   if (!present.length) return verdict
   const n = String(ticket.number)
   let events: LabelEvent[]

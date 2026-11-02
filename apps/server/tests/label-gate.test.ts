@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
@@ -24,6 +25,7 @@ beforeAll(async () => {
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
+  usePack('gated-pack')
   delete process.env.GATEWAY_ADMIN_URL
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
@@ -42,6 +44,9 @@ afterAll(async () => {
   await payload?.destroy()
 })
 
+const usePack = (name: 'gated-pack' | 'bare-pack') => {
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
+}
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
 const ts = () => fake.tickets(repo)
 const row = async (n: string) => (await payload.find({ collection: 'tickets', where: { number: { equals: Number(n) } }, limit: 1, ...o })).docs[0]!
@@ -228,4 +233,19 @@ it('keeps polling the source when a pending Ticket can no longer be read', async
   source.get = get
   expect((await row(ok)).stage).toBe('build')
   expect(failed).toBe(true)
+})
+
+it('plan gate off: the plan label is not verified or stripped; plan gate on: it is', async () => {
+  usePack('bare-pack')
+  const off = await planTicket()
+  await labelAs('intruder', off, PLAN)
+  await poll()
+  expect((await ts().get(off)).labels).toContain(PLAN)
+  expect(await rejections(off)).toHaveLength(0)
+  usePack('gated-pack')
+  const on = await planTicket()
+  await labelAs('intruder', on, PLAN)
+  await poll()
+  expect((await ts().get(on)).labels).not.toContain(PLAN)
+  expect(await rejections(on)).toHaveLength(1)
 })

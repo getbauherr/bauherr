@@ -165,12 +165,12 @@ export const passStaging = async (payload: Payload, t: Doc, touch?: () => Promis
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
+    await touch?.()
     await ts.addLabels(n, [APPROVED_STAGING])
-    if (touch && !(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).totalDocs) await touch()
     return { approved: APPROVED_STAGING, stage }
   }
-  await ts.addLabels(n, [APPROVED_STAGING])
   await touch?.()
+  await ts.addLabels(n, [APPROVED_STAGING])
   if (stage === 'done') {
     await ts.close(n, 'completed')
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })

@@ -10,7 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
+import { activeGateLabels, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
@@ -332,7 +332,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             gatePendingAttempts: 0,
           }
           let labels = t.labels
-          if (GATE_LABELS.some((g) => labels.includes(g.label))) {
+          if (activeGateLabels().some((g) => labels.includes(g.label))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
