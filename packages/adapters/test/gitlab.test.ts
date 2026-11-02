@@ -213,6 +213,12 @@ describe('gitlab forge', () => {
     assert.equal(calls.at(-1)!.path, `${P}/merge_requests/196/notes`);
   });
 
+  it('listPullRequestComments lists MR notes without system notes', async () => {
+    const { forge, calls } = setup(() => fx('notes'));
+    assert.deepEqual((await (forge as unknown as { listPullRequestComments(r: string, n: number): Promise<{ id: string; author: string }[]> }).listPullRequestComments('g/p', 196)).map((c) => [c.id, c.author]), [['12', 'bauherr-bot'], ['13', 'sebastian']]);
+    assert.equal(calls[0]!.path, `${P}/merge_requests/196/notes?sort=asc&order_by=created_at&per_page=100`);
+  });
+
   it('listPullRequestFiles counts diff lines and maps status', async () => {
     const { forge } = setup(() => fx('diffs'));
     assert.deepEqual(await forge.listPullRequestFiles('g/p', 196), [

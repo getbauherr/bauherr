@@ -301,6 +301,9 @@ class GitlabForge implements Forge {
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return note(await this.h.json('POST', `/projects/${enc(repo)}/merge_requests/${n}/notes`, { body }));
   }
+  async listPullRequestComments(repo: RepoRef, n: number) {
+    return (await this.h.paginate(`/projects/${enc(repo)}/merge_requests/${n}/notes?sort=asc&order_by=created_at&per_page=100`)).filter((m) => !m.system).map(note);
+  }
   async listPullRequestFiles(repo: RepoRef, n: number): Promise<PullRequestFile[]> {
     return (await this.h.paginate(`/projects/${enc(repo)}/merge_requests/${n}/diffs?per_page=100`)).map((d) => {
       const lines: string[] = (d.diff ?? '').split('\n');
