@@ -173,7 +173,7 @@ export interface Forge {
   getFile(repo: RepoRef, path: string, ref?: string): Promise<{ content: string; sha: string }>;
   /** Commits `content` to `branch`; with `expectSha` the file must still have that blob sha (`''` = must not exist), else throws `Conflict`. */
   putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }): Promise<{ sha: string }>;
-  /** Published (non-draft) release whose tag points at `sha`, or null. */
+  /** The first published (non-draft) release whose tag commit is `sha` or a descendant of it (the release that shipped it), or null. */
   findRelease(repo: RepoRef, o: { sha: string }): Promise<Release | null>;
   /** Creates the tag on `sha` and publishes the release. */
   createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }): Promise<Release>;

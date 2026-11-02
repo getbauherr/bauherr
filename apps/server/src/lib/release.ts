@@ -326,31 +326,51 @@ const changelogPr = async (forge: Forge, repo: string, release: Release, marker:
   if (!(await forge.listPullRequests(repo, 'all')).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
 }
 
+/** While a `notes-only` Product's tooling has not made the release yet, look again after this long. */
+export const RELEASE_POLL_MS = 10 * 60_000
+/** After a failed publish, retry after this long; the 3rd failure gives up. */
+export const RELEASE_RETRY_MS = 60 * 60_000
+export const RELEASE_MAX_ATTEMPTS = 3
+
+/** Tickets approved for production whose release is not published and not given up on, optionally narrowed. */
+const unreleased = (extra: Doc[] = []) => ({ and: [{ productionApprovedSha: { exists: true } }, { productionState: { in: ['deploying', 'deployed'] } }, { releasePublishedAt: { exists: false } }, { or: [{ releaseAttempts: { exists: false } }, { releaseAttempts: { less_than: RELEASE_MAX_ATTEMPTS } }] }, ...extra] })
+
+const retryAfter = (payload: Payload, tickets: Doc[], at: number, extra: Doc = {}) => Promise.all(tickets.map((t) => payload.update({ collection: 'tickets', id: t.id, data: { releaseRetryAt: new Date(at).toISOString(), ...extra }, ...o })))
+
 /**
- * Publishes the Release for the Product's Tickets that were approved for production and have none yet. The deployed commit is the newest approved merge sha. Idempotent by the marker `<!-- bauherr:release:<sha> -->` in the release body: a release for the sha is found before one is created. `notes-only` adds the notes to the release the Product's tooling made (waiting for it, then falling back to Ticket Comments); `factory` tags `v<semver>` itself and opens a CHANGELOG MR. The notes get one cheap-tier model pass, the deterministic text on any failure.
+ * Publishes the Release for the Product's Tickets that were approved for production and have none yet. The deployed commit is the newest (by commit date) approved merge sha. Idempotent by the marker `<!-- bauherr:release:<sha> -->` in the release body: the release that shipped the sha is found before one is created. `notes-only` adds the notes to the release the Product's tooling made (waiting for it, then falling back to Ticket Comments); `factory` tags `v<semver>` itself and opens a CHANGELOG MR. The notes get one cheap-tier model pass (deterministic text on any failure) and are cached on the Tickets before the publish step so a retry does not re-run the model.
  */
 export const publishRelease = async (payload: Payload, productId: number | string, now = Date.now()): Promise<{ state: 'none' | 'waiting' | 'published' | 'fallback'; url?: string }> => {
-  const batch = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: productId } }, { productionApprovedSha: { exists: true } }, { productionState: { in: ['deploying', 'deployed'] } }, { releasePublishedAt: { exists: false } }] }, sort: 'productionRequestedAt', limit: 200, pagination: false, ...o })).docs as Doc[]
+  const batch = (await payload.find({ collection: 'tickets', where: unreleased([{ product: { equals: productId } }]), sort: 'productionRequestedAt', limit: 200, pagination: false, ...o })).docs as Doc[]
   if (!batch.length) return { state: 'none' }
-  const sha = batch.at(-1)!.productionApprovedSha as string
-  const marker = releaseMarker(sha)
   const product = (await payload.findByID({ collection: 'products', id: productId, ...o })) as Doc
   const { backend, repo, tickets: ts } = await forgeOf(payload, productId)
   const forge = backend.forge
+  const shas = [...new Set(batch.map((t) => t.productionApprovedSha as string))]
+  const dates = await Promise.all(shas.map(async (s) => new Date(await forge.getCommitDate(repo, s)).getTime()))
+  const sha = shas.reduce((best, s, i) => (dates[i]! >= dates[shas.indexOf(best)]! ? s : best))
+  const marker = releaseMarker(sha)
   let release = await forge.findRelease(repo, { sha })
-  if (!release && product.releaseMode !== 'factory' && now - new Date(batch[0]!.productionRequestedAt).getTime() < RELEASE_WAIT_MS) return { state: 'waiting' }
+  if (!release && product.releaseMode !== 'factory' && now - new Date(batch[0]!.productionRequestedAt).getTime() < RELEASE_WAIT_MS) {
+    await retryAfter(payload, batch, now + RELEASE_POLL_MS)
+    return { state: 'waiting' }
+  }
   let notes = ''
   if (!release?.body.includes(marker)) {
-    const items = await Promise.all(batch.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: (await ts.get(String(t.number))).labels }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null)))
-    const deterministic = renderNotes(items)
-    const ws = (await payload.findByID({ collection: 'workspaces', id: id(product.workspace), ...o })) as Doc
-    notes = process.env.GATEWAY_URL ? await rewrite(deterministic, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user)) : deterministic
+    notes = batch[0]!.releaseNotes
+    if (!notes || batch.some((t) => t.releaseNotes !== notes)) {
+      const items = await Promise.all(batch.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: (await ts.get(String(t.number))).labels }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null)))
+      const deterministic = renderNotes(items)
+      const ws = (await payload.findByID({ collection: 'workspaces', id: id(product.workspace), ...o })) as Doc
+      notes = process.env.GATEWAY_URL ? await rewrite(deterministic, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user)) : deterministic
+      await Promise.all(batch.map((t) => payload.update({ collection: 'tickets', id: t.id, data: { releaseNotes: notes }, ...o })))
+    }
   }
   const done = new Date(now).toISOString()
   if (!release && product.releaseMode !== 'factory') {
     for (const t of batch) {
-      await payload.update({ collection: 'tickets', id: t.id, data: { releasePublishedAt: done }, ...o })
       await ts.comment(String(t.number), `Bauherr: no release found for \`${sha}\`, so the notes are posted here instead.\n\n${notes}`)
+      await payload.update({ collection: 'tickets', id: t.id, data: { releasePublishedAt: done }, ...o })
     }
     return { state: 'fallback' }
   }
@@ -361,21 +381,37 @@ export const publishRelease = async (payload: Payload, productId: number | strin
   } else if (notes) release = await forge.updateRelease(repo, release.id, { body: `${release.body.trimEnd()}\n\n## What's new\n\n${notes}\n\n${marker}` })
   if (product.releaseMode === 'factory') await changelogPr(forge, repo, release, marker, now)
   for (const t of batch) {
-    await payload.update({ collection: 'tickets', id: t.id, data: { releaseUrl: release.url, releasePublishedAt: done }, ...o })
     await ts.comment(String(t.number), `Released in [${release.tag}](${release.url})`)
+    await payload.update({ collection: 'tickets', id: t.id, data: { releaseUrl: release.url, releasePublishedAt: done }, ...o })
   }
   return { state: 'published', url: release.url }
 }
 
-/** One `publishRelease` per Product with unreleased approved Tickets; one failing Product does not stop the others. */
+/** Stores the error on the Product's pending Tickets and delays the next try by an hour; the 3rd failure gives up with a Comment. */
+const recordFailure = async (payload: Payload, productId: number | string, e: unknown, now: number) => {
+  const message = (e instanceof Error ? e.message : String(e)).slice(0, 500)
+  const batch = (await payload.find({ collection: 'tickets', where: unreleased([{ product: { equals: productId } }]), limit: 200, pagination: false, ...o })).docs as Doc[]
+  for (const t of batch) {
+    const attempts = ((t.releaseAttempts as number | undefined) ?? 0) + 1
+    await retryAfter(payload, [t], now + RELEASE_RETRY_MS, { releaseAttempts: attempts, releaseError: message })
+    if (attempts >= RELEASE_MAX_ATTEMPTS) {
+      const { tickets: ts } = await forgeOf(payload, productId)
+      await ts.comment(String(t.number), `Bauherr: publishing the release failed ${attempts} times and is given up. Last error: ${message}`).catch((err) => payload.logger.error({ err, ticket: t.id }, 'release give-up comment failed'))
+    }
+  }
+}
+
+/** One `publishRelease` per Product with unreleased approved Tickets that are due for a try; one failing Product does not stop the others. */
 export const publishReleases = async (payload: Payload, now = Date.now()): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ productionApprovedSha: { exists: true } }, { productionState: { in: ['deploying', 'deployed'] } }, { releasePublishedAt: { exists: false } }] }, limit: 1000, pagination: false, select: { product: true }, ...o })).docs as Doc[]
+  const due = { or: [{ releaseRetryAt: { exists: false } }, { releaseRetryAt: { less_than_equal: new Date(now).toISOString() } }] }
+  const tickets = (await payload.find({ collection: 'tickets', where: unreleased([due]), limit: 1000, pagination: false, select: { product: true }, ...o })).docs as Doc[]
   let published = 0
   for (const product of new Set(tickets.map((t) => id(t.product)))) {
     try {
       if ((await publishRelease(payload, product, now)).state === 'published') published++
     } catch (e) {
       payload.logger.error({ err: e, product }, 'publish-release failed for product')
+      await recordFailure(payload, product, e, now).catch((err) => payload.logger.error({ err, product }, 'recording release failure failed'))
     }
   }
   return published

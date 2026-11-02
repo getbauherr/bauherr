@@ -34,7 +34,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['fac', 'factory'], ['notes', 'notes-only'], ['late', 'notes-only'], ['down', 'factory']] as const) {
+  for (const [slug, releaseMode] of [['fac', 'factory'], ['notes', 'notes-only'], ['late', 'notes-only'], ['down', 'factory'], ['dt', 'factory'], ['ct', 'notes-only'], ['bad', 'factory']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, productionGate: true, productionChecks: 'deploy-prod', releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -117,4 +117,40 @@ it('publishes the deterministic notes when the gateway is down', async () => {
   delete process.env.GATEWAY_URL
   expect(down).toHaveBeenCalledOnce()
   expect(body('down')).toContain('### Features\n- Billing ([#1]')
+})
+
+it('tags the newest merge commit by date, not the newest approved sha', async () => {
+  fake.commit('acme/dt', 'main', 'CHANGELOG.md', '## Unreleased\n')
+  fake.setCommitDate('acme/dt', 'sha-x', '2026-01-02T00:00:00Z')
+  fake.setCommitDate('acme/dt', 'sha-y', '2026-01-01T00:00:00Z')
+  await approved('dt', 'First', 'sha-x')
+  await approved('dt', 'Second', 'sha-y')
+  expect(await release.publishRelease(payload, products.dt!)).toMatchObject({ state: 'published' })
+  expect(fake.listReleases('acme/dt')).toMatchObject([{ sha: 'sha-x' }])
+})
+
+it('notes-only matches the release whose tag commit contains the merge sha', async () => {
+  fake.addRelease('acme/ct', { tag: 'v3.0.0', sha: 'chore-release', body: 'notes', contains: ['sha-c'] })
+  const t = await approved('ct', 'Contained', 'sha-c')
+  expect(await release.publishRelease(payload, products.ct!)).toMatchObject({ state: 'published' })
+  expect(fake.listReleases('acme/ct')).toHaveLength(1)
+  expect(body('ct')).toContain('### Features\n- Contained')
+  expect((await reload(t.id)).releaseUrl).toBe(fake.listReleases('acme/ct')[0]!.url)
+})
+
+it('a persistent publish failure backs off for an hour, caches the notes, and gives up after 3 with a Comment', async () => {
+  const t = await approved('bad', 'Broken', 'sha-bad')
+  const at = Date.now()
+  await release.publishReleases(payload, at)
+  expect(await reload(t.id)).toMatchObject({ releaseAttempts: 1, releaseError: expect.stringContaining('CHANGELOG.md') })
+  expect((await reload(t.id)).releaseNotes).toContain('Broken')
+  await release.publishReleases(payload, at + 30 * 60_000)
+  expect((await reload(t.id)).releaseAttempts).toBe(1)
+  await release.publishReleases(payload, at + release.RELEASE_RETRY_MS + 1)
+  expect((await reload(t.id)).releaseAttempts).toBe(2)
+  await release.publishReleases(payload, at + 2 * release.RELEASE_RETRY_MS + 2)
+  expect((await reload(t.id)).releaseAttempts).toBe(3)
+  expect((await fake.tickets('acme/bad').listComments(t.n)).at(-1)!.body).toContain('given up')
+  await release.publishReleases(payload, at + 9 * release.RELEASE_RETRY_MS)
+  expect((await reload(t.id)).releaseAttempts).toBe(3)
 })

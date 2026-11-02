@@ -18,6 +18,8 @@ interface FakeRepo {
   checks: Map<string, Check[]>;
   commitDates: Map<string, string>;
   releases: Release[];
+  /** Commits a release tag contains besides its own (test helper `addRelease`). */
+  contains: Map<string, string[]>;
   commits: { sha: string; message: string }[];
 }
 
@@ -98,8 +100,9 @@ export class FakeBackend implements Backend {
   }
 
   /** Test helper: a release made by the Product's own tooling (or earlier by the factory). */
-  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string }): Release {
+  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[] }): Release {
     const r = this.repo(repo);
+    if (o.contains) r.contains.set(o.tag, o.contains);
     const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}` };
     r.releases.push(rel);
     return rel;
@@ -118,7 +121,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map(), releases: [], commits: [] };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map(), releases: [], contains: new Map(), commits: [] };
       this.repos.set(name, r);
     }
     return r;
@@ -204,7 +207,7 @@ export class FakeBackend implements Backend {
         this.commit(repo, o.branch, o.path, o.content);
         return { sha: blobSha(o.content) };
       },
-      findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha) ?? null,
+      findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha || this.repo(repo).contains.get(r.tag)?.includes(o.sha)) ?? null,
       createRelease: async (repo, o) => {
         if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
         return this.addRelease(repo, o);

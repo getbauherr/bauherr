@@ -372,23 +372,29 @@ class GithubForge implements Forge {
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/repos/${repo}/commits/${sha}`)).commit.committer.date as string;
   }
-  /** Release with the commit its tag points at (annotated tags are dereferenced); null when the tag is gone. */
+  /** Release with the commit its tag points at (one request); null when the tag is gone. */
   private async release(repo: RepoRef, r: any): Promise<Release | null> {
     try {
-      const { object } = await this.h.json('GET', `/repos/${repo}/git/ref/tags/${enc(r.tag_name)}`);
-      const sha = object.type === 'tag' ? (await this.h.json('GET', `/repos/${repo}/git/tags/${object.sha}`)).object.sha : object.sha;
+      const sha = (await this.h.json('GET', `/repos/${repo}/commits/${enc(r.tag_name)}`)).sha as string;
       return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url };
     } catch (e) {
       if (e instanceof GithubError && e.status === 404) return null;
       throw e;
     }
   }
+  /** One list request, then newest to oldest one compare each until a release no longer contains `sha`; the last one that did is the first to ship it. */
   async findRelease(repo: RepoRef, o: { sha: string }) {
+    let found: Release | null = null;
     for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
       const rel = await this.release(repo, r);
-      if (rel?.sha === o.sha) return rel;
+      if (!rel) continue;
+      if (rel.sha !== o.sha) {
+        const status = (await this.h.json('GET', `/repos/${repo}/compare/${enc(o.sha)}...${enc(rel.sha)}?per_page=1`)).status;
+        if (status !== 'ahead') break;
+      }
+      found = rel;
     }
-    return null;
+    return found;
   }
   async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
     const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body });

@@ -46,8 +46,10 @@ const SYSTEM = 'You rewrite release notes for end users in plain, short language
 /** One model pass over the deterministic notes; falls back to them on any error or when a link got lost. */
 export const rewrite = async (notes: string, complete: (system: string, user: string) => Promise<string>): Promise<string> => {
   try {
-    const out = (await complete(SYSTEM, `<notes>\n${notes}\n</notes>`)).trim()
-    return [...notes.matchAll(/\]\(([^)]+)\)/g)].every((m) => out.includes(m[1]!)) && out ? out : notes
+    const out = (await complete(SYSTEM, `<notes>\n${notes.replaceAll('</notes>', '')}\n</notes>`)).trim()
+    const links = (s: string) => new Set([...s.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]))
+    const [want, got] = [links(notes), links(out)]
+    return out && want.size === got.size && [...want].every((l) => got.has(l)) ? out : notes
   } catch {
     return notes
   }
