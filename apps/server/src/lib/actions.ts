@@ -227,6 +227,9 @@ const WORKLOG_TEMPLATE = `## Worklog
 **Unfinished work**
 -
 
+**Open**
+-
+
 **Decisions**
 
 **Affected Tickets**
@@ -335,6 +338,16 @@ const setSection = (worklog: string, heading: string, text: string): string => {
   rows.splice(start + 1, end - start - 1, text, '')
   return rows.join('\n')
 }
+/** Adds each of `lines` not yet in the section headed `heading` (exact match); drops the template placeholder; creates the section when missing. */
+const appendToSection = (worklog: string, heading: string, lines: string[]): string => {
+  const rows = worklog.split('\n')
+  const start = rows.findIndex((l) => l.trim() === heading)
+  if (start < 0) return [...rows, '', heading, ...lines].join('\n')
+  let end = rows.findIndex((l, i) => i > start && /^\*\*.+\*\*\s*$/.test(l.trim()))
+  if (end < 0) end = rows.length
+  const body = rows.slice(start + 1, end).filter((l) => l.trim() !== '' && l.trim() !== '-')
+  return setSection(worklog, heading, [...body, ...lines.filter((l) => !body.includes(l))].join('\n'))
+}
 const setInstructions = (worklog: string, text: string): string => setSection(worklog, '**Current instructions**', text)
 
 /** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
@@ -434,7 +447,7 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
  * Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work.
  * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
  */
-const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[]): Promise<ReviewOutcome> => {
+const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = []): Promise<ReviewOutcome> => {
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
     await payload.db.drizzle.execute(
@@ -446,9 +459,10 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   const n = String(t.number)
   if (rounds > MAX_REVIEW_ROUNDS) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
   const src = { ts: mr.tickets, n }
-  const text = `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.\n${lines.join('\n')}`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
+  const text = `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment(src)
-  const worklog = setSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines.join('\n'))
+  let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines)
+  if (low.length) worklog = appendToSection(worklog, '**Open**', low)
   if (log) await src.ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await src.ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, data: { status: 'cancelled' }, overrideAccess: true })
@@ -509,7 +523,7 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
     const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
     const outcome = blocking.length
-      ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine))
+      ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine), review.findings.filter((f) => f.severity === 'low').map(findingLine))
       : await mergeGate(payload, t, mr, reviewedSha)
     return { outcome }
   } catch (e) {

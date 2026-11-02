@@ -27,6 +27,9 @@ One pinned factory Comment per Ticket, mirrored to `.bauherr/worklog.md` in the 
 **Unfinished work**
 - <item> - state - next step - blocker, if any
 
+**Open**
+- <non-blocking (low) finding or thing not checked>
+
 **Decisions**
 - YYYY-MM-DD <decision>. Consequence: <what it changes>. By: <person or Run>.
 
