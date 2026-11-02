@@ -1,4 +1,5 @@
 import { setStage, type Check, type PullRequest, type TicketSource } from '@bauherr/adapters'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { githubFor } from './adapters'
@@ -109,6 +110,10 @@ const stagingAnswers = async (url: string): Promise<boolean> => {
 const claim = async (payload: Payload, ticket: number | string, field: 'deployRequestedAt' | 'releaseState', data: Doc): Promise<boolean> =>
   (await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: ticket } }, { or: field === 'releaseState' ? [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }] : [{ deployRequestedAt: { exists: false } }] }] }, data, ...o })).docs.length > 0
 
+/** One conditional UPDATE of a Ticket (`set` where the row still matches `where`); true when this call changed it. Payload's update-by-where is find-then-update and lets two callers both win. */
+export const cas = async (payload: Payload, ticket: number | string, set: ReturnType<typeof sql>, where: ReturnType<typeof sql>): Promise<boolean> =>
+  (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET ${set}, "updated_at" = now() WHERE "id" = ${ticket} AND ${where} RETURNING "id"`)).rows.length > 0
+
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 export const APPROVED_PRODUCTION = 'bauherr:approved:production'
 export const PRODUCTION_MARKER = '<!-- bauherr:production -->'
@@ -205,7 +210,7 @@ const succeeded = (c: Check | undefined): boolean => c?.status === 'completed' &
 /** Sets the output label once per approval: `productionLabelAt` records the delivery, so a later removal on the forge never re-triggers label-based pipelines. Only a `deploying` Ticket that has not been delivered yet gets it. */
 const deliverLabel = async (payload: Payload, ts: TicketSource, ticket: number | string, number: number): Promise<void> => {
   await ts.addLabels(String(number), [APPROVED_PRODUCTION])
-  await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: ticket } }, { productionState: { equals: 'deploying' } }, { productionLabelAt: { exists: false } }] }, data: { productionLabelAt: new Date().toISOString() }, ...o })
+  await cas(payload, ticket, sql`"production_label_at" = ${new Date().toISOString()}`, sql`"production_state" = 'deploying' AND "production_label_at" IS NULL`)
 }
 
 /** The approval label is only an output signal for label-triggered pipelines; a failed removal is logged, never trusted as state. */
@@ -219,8 +224,8 @@ export const beginProduction = async (payload: Payload, t: Doc, actor: string, n
   if (!t.mergeSha) throw new Error('the Ticket has no merge commit to deploy')
   const at = new Date(now).toISOString()
   const touch = await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor, at }, ...o })
-  const won = await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { mergeSha: { equals: t.mergeSha } }, { productionState: { in: ['awaiting_approval', 'failed', 'timed_out'] } }] }, data: { productionState: 'deploying', productionApprovedSha: t.mergeSha, productionRequestedAt: at, productionWebhookSentAt: null, productionLabelAt: null }, ...o })
-  if (!won.docs.length) {
+  const won = await cas(payload, t.id, sql`"production_state" = 'deploying', "production_approved_sha" = ${t.mergeSha}, "production_requested_at" = ${at}, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"merge_sha" = ${t.mergeSha} AND "production_state" IN ('awaiting_approval', 'failed', 'timed_out')`)
+  if (!won) {
     await payload.delete({ collection: 'human_touches', id: touch.id, ...o })
     throw new Error('the Ticket is not waiting for production approval')
   }
@@ -230,7 +235,7 @@ export const beginProduction = async (payload: Payload, t: Doc, actor: string, n
 
 /** Moves a `deploying` Ticket to `to` once; false when another pass already did. A failed or timed out deploy spends the approval (record and label). */
 const moveProduction = async (payload: Payload, t: Doc, ts: TicketSource, to: 'deployed' | 'failed' | 'timed_out'): Promise<boolean> => {
-  const won = (await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionState: { equals: 'deploying' } }] }, data: { productionState: to, ...(to !== 'deployed' && { productionApprovedSha: null }) }, ...o })).docs.length > 0
+  const won = await cas(payload, t.id, to === 'deployed' ? sql`"production_state" = ${to}` : sql`"production_state" = ${to}, "production_approved_sha" = NULL`, sql`"production_state" = 'deploying'`)
   if (won && to !== 'deployed') await clearApprovalLabel(payload, ts, String(t.number))
   return won
 }
@@ -276,7 +281,7 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
       if (fresh.productionState === 'deploying' && !fresh.productionLabelAt) await deliverLabel(payload, ts, t.id, t.number).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not set the production label, retrying'))
       const requested = new Date(t.productionRequestedAt).getTime()
       const since = requested - CLOCK_SKEW_MS
-      if (product.productionWebhookUrl && !t.productionWebhookSentAt && (await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionWebhookSentAt: { exists: false } }] }, data: { productionWebhookSentAt: new Date(now).toISOString() }, ...o })).docs.length) {
+      if (product.productionWebhookUrl && !t.productionWebhookSentAt && (await cas(payload, t.id, sql`"production_webhook_sent_at" = ${new Date(now).toISOString()}`, sql`"production_webhook_sent_at" IS NULL`))) {
         const res = await fetch(product.productionWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bauherr-delivery': `${t.number}-${t.mergeSha}` }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, environment: 'production' }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
         if (!res.ok) {
           payload.logger.error({ ticket: t.id, status: res.status }, 'production webhook failed, retrying next tick')

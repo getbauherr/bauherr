@@ -7,7 +7,7 @@ import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_PRODUCTION, APPROVED_STAGING, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
+import { APPROVED_PRODUCTION, APPROVED_STAGING, NO_PRODUCTION, beginProduction, cas, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -320,7 +320,7 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (stage === 'done') {
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
-  } else if (!(await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionState: { exists: false } }] }, data: { productionState: 'awaiting_approval' }, overrideAccess: true })).docs.length) {
+  } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
     await ts.addLabels(n, [APPROVED_STAGING])
     if (!(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, overrideAccess: true })).totalDocs) await touch(payload, user, t, 'accept:staging')
     return { approved: APPROVED_STAGING, stage }

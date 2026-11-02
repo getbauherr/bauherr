@@ -326,12 +326,25 @@ it('fails the deploy when the approved sha is not the merge sha any more', async
   expect((await comments(n))[0]!.body).toContain('does not match the merge commit')
 })
 
-it('a lost approval race leaves exactly one approval touch', async () => {
-  const { id } = await accepted('double click')
-  const stale = await reload(id)
-  await actions.approveProduction(payload, user, { ticket: id })
-  await expect(release.beginProduction(payload, stale, user.email)).rejects.toThrow('not waiting')
-  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+it('two parallel approvals: one wins, one touch, one label, one webhook', async () => {
+  const fetchMock = vi.fn(async () => new Response(null, { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await payload.update({ collection: 'products', id: product, data: { productionWebhookUrl: 'https://hook.example/prod' }, ...o })
+  const ts = fake.tickets(repo)
+  const spy = vi.spyOn(Object.getPrototypeOf(ts), 'addLabels')
+  try {
+    const { id, n } = await accepted('double click')
+    const results = await Promise.allSettled([actions.approveProduction(payload, user, { ticket: id }), actions.approveProduction(payload, user, { ticket: id })])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+    await Promise.all([release.watchProduction(payload, Date.now()), release.watchProduction(payload, Date.now())])
+    expect(adds(spy, n)).toBe(1)
+    expect(fetchMock.mock.calls.filter((c) => JSON.parse((c as unknown as [string, RequestInit])[1].body as string).ticket === Number(n))).toHaveLength(1)
+  } finally {
+    spy.mockRestore()
+    vi.unstubAllGlobals()
+    await payload.update({ collection: 'products', id: product, data: { productionWebhookUrl: null }, ...o })
+  }
 })
 
 it('accepting again repairs a staging label whose first add failed', async () => {
