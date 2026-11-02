@@ -7,8 +7,9 @@ export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : 
 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
+const APPROVED_PRODUCTION = 'bauherr:approved:production'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Run needs you', 'Run failed'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Approve production', 'Production deploy failed', 'Run needs you', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
 /** Hold label: Triage asked the owner questions; answering them moves the Ticket to plan. */
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
@@ -24,7 +25,7 @@ export const stageOf = (t: { state?: string | null; stage?: string | null }): St
  * D5 (c): a succeeded plan awaiting approval with `unansweredCritical` > 0 is "Answer decisions" (before "Approve plan").
  */
 export const needsYou = (
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null },
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null },
   run: { stage: string; status: string } | null,
   unansweredCritical = 0,
 ): Need | null => {
@@ -37,12 +38,19 @@ export const needsYou = (
     if (ticket.releaseState === 'on_staging') return 'Accept on staging'
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
   }
+  if (stage === 'release' && ticket.labels.includes(APPROVED_STAGING)) {
+    if (ticket.productionState === 'awaiting_approval' && !ticket.labels.includes(APPROVED_PRODUCTION)) return 'Approve production'
+    if (ticket.productionState === 'failed' || ticket.productionState === 'timed_out') return 'Production deploy failed'
+  }
   if (run?.status === 'failed' && run.stage !== 'triage') return 'Run failed'
   return null
 }
 
 /** Words for the `release` stage: where the Ticket is between merge and acceptance. */
-export const releaseWord = (t: { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null }): string | null => {
+export const releaseWord = (t: { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null }): string | null => {
+  if (t.productionState === 'deployed') return 'deployed'
+  if (t.stage === 'release' && t.productionState === 'awaiting_approval') return 'awaiting production approval'
+  if (t.stage === 'release' && t.productionState === 'deploying') return 'deploying'
   if (t.labels?.includes(APPROVED_STAGING)) return 'accepted'
   if (t.stage !== 'release') return null
   return t.releaseState === 'on_staging' ? 'on staging' : t.releaseState === 'timed_out' ? 'timed out' : 'waiting'

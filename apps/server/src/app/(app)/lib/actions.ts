@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
@@ -70,6 +70,13 @@ export async function acceptStagingAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(acceptStaging(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function approveProductionAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(approveProduction(payload, user, { ticket, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
 }
 

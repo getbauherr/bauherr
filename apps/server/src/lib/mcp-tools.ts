@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { acceptStaging, approvePlan, concludeReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { acceptStaging, approvePlan, approveProduction, concludeReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { ownsGate } from './gates'
@@ -445,6 +445,15 @@ export const tools: Tool[] = [
     async run(a, c) {
       await getTicket(c, a.ticket)
       return acceptStaging(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'approve_production',
+    description: 'Approve the production deploy of a Ticket accepted on staging, or retry after a failed one (adds bauherr:approved:production, records a human touch). The Product\'s own pipeline deploys; Bauherr observes the result.',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      await getTicket(c, a.ticket)
+      return approveProduction(c.payload, c.user, a)
     },
   },
   {

@@ -5,7 +5,7 @@ import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf
 import { NEEDS_REFINEMENT } from './needs-you'
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_STAGING, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
+import { APPROVED_PRODUCTION, APPROVED_STAGING, beginProduction, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -315,7 +315,7 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (stage === 'done') {
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
-  }
+  } else await payload.update({ collection: 'tickets', id: t.id, data: { productionState: 'awaiting_approval' }, overrideAccess: true })
   await ts.addLabels(n, [APPROVED_STAGING])
   await touch(payload, user, t, 'accept:staging')
   if (stage === 'done') {
@@ -323,6 +323,14 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, overrideAccess: true })
   }
   return { approved: APPROVED_STAGING, stage }
+}
+
+/** Production gate: a Workspace member approves the deploy; the Product's own pipeline deploys, `watchProduction` observes. Also the retry after a failed or timed out deploy. */
+export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.stage !== 'release' || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
+  await beginProduction(payload, t, user.email)
+  return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
 
 /** Writes `text` as the body of the worklog section headed `heading` (appended when missing). */

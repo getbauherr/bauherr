@@ -10,7 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { forgeOf, prOf, watchRelease } from '../lib/release'
+import { forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -223,6 +223,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   concurrency: () => 'watch-release',
   handler: async ({ req }) => {
     await watchReviews(req.payload)
+    await watchProduction(req.payload)
     return { output: await watchRelease(req.payload) }
   },
 }
