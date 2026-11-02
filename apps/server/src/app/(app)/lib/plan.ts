@@ -76,16 +76,19 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
   return { title: title.trim(), steps: (section(plan, /Steps\b/).match(/^\s*\d+\.\s/gm) ?? []).length }
 }
 
-export type SubTicket = { title: string; body: string }
+export type SubTicket = { title: string; body: string; after?: string }
 
-/** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines. */
+/** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines; an `after: <sibling title>` line orders it behind that sibling. */
 export const subTickets = (plan: string): SubTicket[] =>
   section(plan, /Sub-tickets\b/)
     .split(/^(?=[-*]\s+\*\*)/m)
     .flatMap((item) => {
       const m = /^[-*]\s+\*\*(.+?)\*\*\s*(?:[—–:-]\s*)?([\s\S]*)$/.exec(item.trim())
       const title = m?.[1]?.trim()
-      return title ? [{ title, body: m![2]!.split('\n').map((l) => l.trim()).filter(Boolean).join('\n') }] : []
+      if (!title) return []
+      const lines = m![2]!.split('\n').map((l) => l.trim()).filter(Boolean)
+      const after = lines.map((l) => /^after:\s*(.+)$/i.exec(l)?.[1]?.trim()).find(Boolean)
+      return [{ title, body: lines.filter((l) => !/^after:\s*\S/i.test(l)).join('\n'), ...(after && { after }) }]
     })
 
 /** The decision sheet in force: the newest plan or triage Comment (triage questions use the plan's `## Decisions` format). */
