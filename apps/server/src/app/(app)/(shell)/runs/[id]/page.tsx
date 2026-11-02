@@ -22,13 +22,14 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const tab = TABS.find((t) => t === raw) ?? 'graph'
   const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()
-  const { run, ticket, stages, latestByStage, steps, stepsTotal, callsByStep, owner } = await loadRun(workspace.id, id)
+  const { run, ticket, stages, latestByStage, steps, stepsTotal, callsByStep, owner, agentKeyLabel } = await loadRun(workspace.id, id)
   const prUrl = run.artifacts?.prUrl
   const leased = run.mode === 'session' && run.status === 'running'
   const rerun = RERUNNABLE.includes(run.status)
   const mayShowOwner = user.role === 'admin' || (user.tenants ?? []).some((t) => (typeof t.tenant === 'object' ? t.tenant?.id : t.tenant) === run.workspace)
   const details: [string, React.ReactNode][] = [
     ['Launched by', run.mode === 'session' ? (mayShowOwner && owner ? owner : 'session') : 'scheduler'],
+    ...(mayShowOwner && agentKeyLabel ? [['Claimed by', `agent key ${agentKeyLabel}`] as [string, React.ReactNode]] : []),
     ['Started', run.startedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Ended', run.finishedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Duration', fmtDuration(durationMs(run.startedAt, run.finishedAt))],

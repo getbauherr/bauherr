@@ -12,7 +12,7 @@ docker compose run --rm --no-deps -T \
   -e BAUHERR_ADMIN_EMAIL -e BAUHERR_ADMIN_PASSWORD -e GITHUB_TOKEN app sh -c 'cd /repo/apps/server && pnpm seed'
 ```
 
-Seeding on the network fires the gateway hooks (key, provider file, `llm.models`). Budget was set to 2 USD right after.
+With `BAUHERR_MCP_KEY_FILE` set the seed also writes a freshly minted agent key (not a personal key) there. Seeding on the network fires the gateway hooks (key, provider file, `llm.models`). Budget was set to 2 USD right after.
 
 ## Results
 

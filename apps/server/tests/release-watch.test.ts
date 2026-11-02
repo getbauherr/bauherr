@@ -173,6 +173,7 @@ it('notes a closed-unmerged MR once and leaves the Ticket in review', async () =
   expect((await reload(t.id as number)).stage).toBe('review')
 })
 
+const droppedNotes = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(release.DROPPED_MARKER))
 const reopenedNotes = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(release.REOPENED_MARKER))
 
 it('reopens a Ticket closed by its merged factory MR, comments once, then posts the staging summary', async () => {
@@ -185,20 +186,58 @@ it('reopens a Ticket closed by its merged factory MR, comments once, then posts 
   await release.watchRelease(payload)
   await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(1)
+  expect(await droppedNotes(n)).toHaveLength(0)
   expect((await fake.tickets(repo).get(n)).state).toBe('open')
   expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'release' })
   expect(await summaries(n)).toHaveLength(1)
   await setProduct({ productionGate: false, productionChecks: '' })
 })
 
-it('leaves a Ticket closed by a human without a merged factory MR closed', async () => {
+it('settles a Ticket closed by a human before any merge as done, noted once', async () => {
   const { t, n } = await reviewTicket('closed by hand', true)
   await fake.tickets(repo).close(n, 'not_planned')
   await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
   await release.watchRelease(payload)
+  await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(0)
+  expect(await droppedNotes(n)).toHaveLength(1)
   expect((await fake.tickets(repo).get(n)).state).toBe('closed')
-  expect((await reload(t.id as number)).state).toBe('closed')
+  expect(await reload(t.id as number)).toMatchObject({ state: 'closed', stage: 'done' })
+})
+
+it('keeps a not-planned close after the merge closed, sets stage done, notes once', async () => {
+  const { t, pr, n } = await reviewTicket('dropped after merge', true)
+  fake.merge(repo, pr.number)
+  await fake.tickets(repo).close(n, 'not_planned')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(0)
+  expect(await droppedNotes(n)).toHaveLength(1)
+  expect((await fake.tickets(repo).get(n)).state).toBe('closed')
+  expect(await reload(t.id as number)).toMatchObject({ state: 'closed', stage: 'done' })
+})
+
+it('does not settle a Ticket reopened on the forge before the next pass', async () => {
+  const { t, n } = await reviewTicket('reopened early', true)
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  expect(await droppedNotes(n)).toHaveLength(0)
+  expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'review' })
+})
+
+it('does not touch a decided closed Ticket again', async () => {
+  const { t, n } = await reviewTicket('decided', true)
+  await fake.tickets(repo).close(n, 'not_planned')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  const spy = vi.spyOn(fake.tickets(repo), 'get')
+  try {
+    await release.watchRelease(payload)
+    expect(spy.mock.calls.filter(([x]) => x === n)).toHaveLength(0)
+  } finally {
+    spy.mockRestore()
+  }
 })
 
 it('leaves an accepted Ticket closed', async () => {

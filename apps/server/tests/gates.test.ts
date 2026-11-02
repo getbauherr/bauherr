@@ -32,7 +32,7 @@ beforeAll(async () => {
   gates = await import('../src/lib/gates')
   jobs = await import('../src/jobs')
   const { callTool } = await import('../src/lib/mcp-tools')
-  call = (user, name, input) => callTool({ payload, user }, name, input)
+  call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
