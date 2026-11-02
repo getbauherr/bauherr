@@ -2,7 +2,7 @@ import { EmptyState } from '../../../components/EmptyState'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { isAdmin, loadProducts } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
-import { createProduct, createRepository, createSource, removeDoc, saveDeploy } from '../actions'
+import { createProduct, createRepository, createSource, mintEmbedToken, removeDoc, revokeEmbedToken, saveDeploy } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +65,38 @@ export default async function ProductSettings() {
             <Field name="productionChecks" label="Production checks" hint="Comma-separated check names on the merge commit that report the deploy; required with the production gate." defaultValue={p.deploy.productionChecks} disabled={!admin} />
             <Field name="autoMerge" label="Auto-merge" type="checkbox" hint="Squash-merge the MR after a clean review and green checks." defaultChecked={p.deploy.autoMerge} disabled={!admin} />
           </SettingsForm>
+          <h3 className="heading">Embed tokens</h3>
+          {p.embedTokens.length > 0 && (
+            <div className="scroll">
+              <table className="table">
+                <thead><tr><th>Name</th><th>Origins</th><th>Created</th><th>Revoked</th><th /></tr></thead>
+                <tbody>
+                  {p.embedTokens.map((e) => (
+                    <tr key={e.id}>
+                      <td>{e.name}</td>
+                      <td className="mono">{e.origins}</td>
+                      <td className="mono">{e.createdAt.slice(0, 16).replace('T', ' ')}</td>
+                      <td className="mono">{e.revokedAt ? e.revokedAt.slice(0, 16).replace('T', ' ') : <span className="muted">active</span>}</td>
+                      <td>
+                        {admin && !e.revokedAt && (
+                          <SettingsForm action={revokeEmbedToken} submit="Revoke" confirm="Confirm revoke" inline>
+                            <input type="hidden" name="id" value={e.id} />
+                          </SettingsForm>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {admin && (
+            <SettingsForm action={mintEmbedToken} submit="Create token" reset>
+              <input type="hidden" name="id" value={p.id} />
+              <Field name="name" label="Name" required />
+              <Field name="origins" label="Allowed origins" hint="Sites that may embed the widget, comma-separated, e.g. https://shop.example.com. The script tag is shown once." required />
+            </SettingsForm>
+          )}
           {admin && (
             <div className="forms">
               <SettingsForm action={createRepository} submit="Add repository" reset>
