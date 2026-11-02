@@ -3,6 +3,8 @@ import type {
   PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
+import { createHash } from 'node:crypto';
+import { Conflict } from './contracts.js';
 import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
@@ -16,6 +18,8 @@ interface FakeRepo {
   checks: Map<string, Check[]>;
   commitDates: Map<string, string>;
 }
+
+const blobSha = (c: string): string => createHash('sha1').update(c).digest('hex');
 
 /** In-memory Backend. `native` = relations as fields; otherwise body convention + close-reason labels. */
 export class FakeBackend implements Backend {
@@ -154,6 +158,26 @@ export class FakeBackend implements Backend {
         return out;
       },
       listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
+      listFiles: async (repo, ref) => {
+        const r = this.repo(repo);
+        const b = r.branches.get(ref ?? r.defaultBranch);
+        if (!b) throw new Error(`no branch ${ref}`);
+        return { commit: b.sha, paths: [...b.files.keys()] };
+      },
+      getFile: async (repo, path, ref) => {
+        const r = this.repo(repo);
+        const content = (r.branches.get(ref ?? r.defaultBranch) ?? [...r.branches.values()].find((b) => b.sha === ref))?.files.get(path);
+        if (content === undefined) throw new Error(`no file ${path}`);
+        return { content, sha: blobSha(content) };
+      },
+      putFile: async (repo, o) => {
+        const b = this.repo(repo).branches.get(o.branch);
+        if (!b) throw new Error(`no branch ${o.branch}`);
+        const old = b.files.get(o.path);
+        if (o.expectSha !== undefined && (old === undefined ? '' : blobSha(old)) !== o.expectSha) throw new Conflict(`${o.path} changed`);
+        this.commit(repo, o.branch, o.path, o.content);
+        return { sha: blobSha(o.content) };
+      },
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);

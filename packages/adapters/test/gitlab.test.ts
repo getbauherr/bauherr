@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { GitlabBackend, GitlabError, MergePendingError, gitlabPat } from '../src/index.js';
+import { Conflict, GitlabBackend, GitlabError, MergePendingError, gitlabPat } from '../src/index.js';
 
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../../test/fixtures/gitlab/${name}.json`, import.meta.url), 'utf8'));
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
@@ -173,6 +173,28 @@ describe('gitlab tickets', () => {
 });
 
 describe('gitlab forge', () => {
+  it('files: listFiles / getFile / putFile with expectSha', async () => {
+    let blob = 'b1';
+    const { forge, calls } = setup((m, path) => {
+      if (path.includes('/repository/commits/')) return { id: 'c1' };
+      if (path.includes('/repository/tree?')) return [{ type: 'tree', path: 'd' }, { type: 'blob', path: 'd/a.md' }];
+      if (path.includes('/missing.md?')) return new Response('{}', { status: 404 });
+      if (m === 'GET' && path.includes('/repository/files/')) return { content: Buffer.from('héllo').toString('base64'), blob_id: blob, last_commit_id: 'lc1' };
+      blob = 'b2';
+      return { file_path: 'x', branch: 'b' };
+    });
+    assert.deepEqual(await forge.listFiles('g/p', 'main'), { commit: 'c1', paths: ['d/a.md'] });
+    assert.ok(calls[1]!.path.includes('ref=c1&recursive=true'));
+    assert.deepEqual(await forge.getFile('g/p', 'd x/a.md', 'c1'), { content: 'héllo', sha: 'b1' });
+    assert.equal(calls.at(-1)!.path, `${P}/repository/files/d%20x%2Fa.md?ref=c1`);
+    await assert.rejects(forge.putFile('g/p', { branch: 'b', path: 'd/a.md', content: 'x', message: 'm', expectSha: '' }), Conflict);
+    await assert.rejects(forge.putFile('g/p', { branch: 'b', path: 'd/a.md', content: 'x', message: 'm', expectSha: 'old' }), Conflict);
+    assert.deepEqual(await forge.putFile('g/p', { branch: 'b', path: 'd/a.md', content: 'x', message: 'm', expectSha: 'b1' }), { sha: 'b2' });
+    assert.deepEqual(calls.find((c) => c.method === 'PUT')!.body, { branch: 'b', content: 'x', commit_message: 'm', last_commit_id: 'lc1' });
+    await forge.putFile('g/p', { branch: 'b', path: 'missing.md', content: 'x', message: 'm', expectSha: '' }).catch(() => {});
+    assert.equal(calls.filter((c) => c.method === 'POST').length, 1);
+  });
+
   it('repositories and branches', async () => {
     const { forge, calls } = setup((m, path) => {
       if (path.startsWith('/projects?')) return fx('projects');

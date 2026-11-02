@@ -1,9 +1,9 @@
 import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
-import { questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
+import { ownerQueue, questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -758,4 +758,45 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId): Promi
     }
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
     return { number: t.number }
+  })
+
+export type OwnerQuestion = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
+
+const ownerQuestion = (queue: { id: string; title: string; options: string[] }[]): OwnerQuestion | null =>
+  queue[0] ? { decision: queue[0].id, question: queue[0].title, options: queue[0].options.map((label, i) => ({ label, recommended: i === 0 })), left: queue.length } : null
+
+const openQueue = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId?: TicketId) => {
+  const { ts, n } = await sourceOf(payload, await loadIn(payload, user, ticket, workspaceId))
+  const comments = await ts.listComments(n)
+  const sheet = sheetOf(comments)
+  return ownerQueue(sheet ? parseDecisions(sheet.body) : [], parseAnswers(answersOf(comments)?.body ?? ''))
+}
+
+/** Persona `owner`: opens an Intake session over the open decision rows of a Ticket (critical first) and returns the first question. */
+export const startOwnerIntake = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }): Promise<{ session: number } & OwnerQuestion> => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const q = ownerQuestion(await openQueue(payload, user, a.ticket, a.workspaceId))
+  if (!q) throw new Error('no open questions')
+  const s = await payload.create({
+    collection: 'intake_sessions',
+    data: { product: id(t.product), workspace: id(t.workspace), persona: 'owner', status: 'open', messages: [{ role: 'assistant', content: q.question }], draft: { ticket: t.id }, user: user.id },
+    overrideAccess: true,
+  })
+  return { session: s.id as number, ...q }
+}
+
+/** Records the owner's pick for one row as a Decision (same path as the sheet form) and returns the next question, or null when none is left. */
+export const answerOwnerIntake = async (payload: Payload, user: Doc, a: { session: TicketId; decision: string; answer: string; workspaceId?: TicketId }): Promise<OwnerQuestion | null> =>
+  exclusive(`intake:${a.session}`, async () => {
+    const s = (await payload.findByID({ collection: 'intake_sessions', id: a.session, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
+    if (!s || s.persona !== 'owner' || s.status !== 'open' || String(id(s.user)) !== String(user.id)) throw new NotInWorkspace()
+    const ticket = s.draft.ticket as number
+    const queue = await openQueue(payload, user, ticket, a.workspaceId)
+    const d = queue.find((x) => x.id === a.decision)
+    if (!d || !d.options.includes(a.answer)) throw new Error('unknown question or option')
+    await postDecisions(payload, user, { ticket, workspaceId: a.workspaceId, answers: [{ id: d.id, title: d.title, answer: a.answer }] })
+    const next = ownerQuestion(queue.filter((x) => x !== d))
+    const messages = [...(s.messages ?? []), { role: 'user', content: `${d.id}: ${a.answer}` }, ...(next ? [{ role: 'assistant', content: next.question }] : [])]
+    await payload.update({ collection: 'intake_sessions', id: s.id, data: { messages, ...(!next && { status: 'submitted' }) }, overrideAccess: true })
+    return next
   })
