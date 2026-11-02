@@ -35,6 +35,10 @@ export type TicketRow = {
   gate: { people: string[]; since: string } | null
   /** Open Tickets this one is blocked by. */
   blockedBy: { id: number; number: number }[]
+  /** Parent Ticket of a sub-ticket. */
+  parent: { id: number; number: number } | null
+  /** Sub-tickets of a `parent`-stage Ticket (all states). */
+  children: { id: number; number: number; title: string; open: boolean }[]
 }
 
 const LIVE = ['running', 'awaiting_session']
@@ -71,6 +75,16 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
   if (blockerIds.length) {
     for (const b of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: blockerIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) blockers.set(b.id, { id: b.id, number: b.number, open: b.state !== 'closed' })
   }
+  const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
+  const parents = new Map<number, { id: number; number: number }>()
+  if (parentIds.length) for (const p of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: parentIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) parents.set(p.id, { id: p.id, number: p.number })
+  const childrenOf = new Map<number, TicketRow['children']>()
+  const parentStage = ticketDocs.filter((t) => t.stage === 'parent').map((t) => t.id as number)
+  if (parentStage.length) {
+    for (const c of (await payload.find({ collection: 'tickets', where: { and: [ws, { parent: { in: parentStage } }] }, sort: 'number', pagination: false, ...q })).docs as unknown as Record<string, any>[]) {
+      childrenOf.set(c.parent, [...(childrenOf.get(c.parent) ?? []), { id: c.id, number: c.number, title: c.title, open: c.state !== 'closed' }])
+    }
+  }
   const latest = new Map<number, RunRow>()
   if (ticketDocs.length) {
     const runs = await payload.find({ collection: 'runs', where: { ticket: { in: ticketDocs.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...q })
@@ -97,6 +111,8 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
       needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run) : null,
+      parent: parents.get(t.parent) ?? null,
+      children: childrenOf.get(t.id) ?? [],
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
       blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
     }

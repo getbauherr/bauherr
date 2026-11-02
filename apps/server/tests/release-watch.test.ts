@@ -38,11 +38,11 @@ afterAll(async () => {
 })
 
 /** A review Ticket (forge issue + Payload row) whose build Run opened an MR. */
-const reviewTicket = async (title: string) => {
+const reviewTicket = async (title: string, factory = false) => {
   const ts = fake.tickets(repo)
   const issue = await ts.create({ title, labels: ['bauherr:stage:review'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'review', product, workspace: ws }, ...o })
-  const branch = `feat-${issue.number}`
+  const branch = factory ? `bauherr/${issue.number}-x` : `feat-${issue.number}`
   await fake.forge.createBranch(repo, branch)
   const pr = await fake.forge.openPullRequest(repo, { title, head: branch, base: 'main' })
   await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws, artifacts: { prUrl: pr.url } }, ...o })
@@ -171,4 +171,42 @@ it('notes a closed-unmerged MR once and leaves the Ticket in review', async () =
   const notes = (await fake.tickets(repo).listComments(n)).filter((c) => c.body.includes('closed without merge'))
   expect(notes).toHaveLength(1)
   expect((await reload(t.id as number)).stage).toBe('review')
+})
+
+const reopenedNotes = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(release.REOPENED_MARKER))
+
+it('reopens a Ticket closed by its merged factory MR, comments once, then posts the staging summary', async () => {
+  await setProduct({ deployChecks: '' })
+  const { t, pr, n } = await reviewTicket('closed by merge', true)
+  const sha = fake.merge(repo, pr.number)
+  fake.setChecks(repo, sha, green)
+  await fake.tickets(repo).close(n, 'completed')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(1)
+  expect((await fake.tickets(repo).get(n)).state).toBe('open')
+  expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'release' })
+  expect(await summaries(n)).toHaveLength(1)
+})
+
+it('leaves a Ticket closed by a human without a merged factory MR closed', async () => {
+  const { t, n } = await reviewTicket('closed by hand', true)
+  await fake.tickets(repo).close(n, 'not_planned')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(0)
+  expect((await fake.tickets(repo).get(n)).state).toBe('closed')
+  expect((await reload(t.id as number)).state).toBe('closed')
+})
+
+it('leaves an accepted Ticket closed', async () => {
+  const { t, pr, n } = await reviewTicket('accepted', true)
+  fake.merge(repo, pr.number)
+  await fake.tickets(repo).addLabels(n, [release.APPROVED_STAGING])
+  await fake.tickets(repo).close(n, 'completed')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging' }, ...o })
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(0)
+  expect((await fake.tickets(repo).get(n)).state).toBe('closed')
 })

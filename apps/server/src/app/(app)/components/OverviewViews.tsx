@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
 import { heartbeatAge } from '../lib/format'
-import { STAGES } from '../lib/needs-you'
+import { BOARD_STAGES, stageLabel } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
 import { frontierOrder } from '../../../lib/frontier'
@@ -40,6 +40,16 @@ const Blocked = ({ t }: { t: TicketRow }) =>
     </span>
   ) : null
 
+const Family = ({ t }: { t: TicketRow }) =>
+  t.parent ? (
+    <Link className="mono link small" href={`/tickets/${t.parent.id}`}>↳ #{t.parent.number}</Link>
+  ) : t.children.length ? (
+    <details className="small">
+      <summary>{t.children.filter((c) => !c.open).length}/{t.children.length} done</summary>
+      <ul>{t.children.map((c) => <li key={c.id}><Link className="link" href={`/tickets/${c.id}`}>#{c.number} {c.title}</Link>{!c.open && ' ✓'}</li>)}</ul>
+    </details>
+  ) : null
+
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
 
 export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: boolean }) {
@@ -48,11 +58,11 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
     <>
     {capped && <p className="muted small">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
     <div className="board">
-      {STAGES.map((s) => {
+      {BOARD_STAGES.map((s) => {
         const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
         return (
           <section key={s} className="col" data-stage={s}>
-            <h2 className="label">{s} <span className="muted">{rows.length}</span></h2>
+            <h2 className="label">{s === 'parent' ? 'children' : stageLabel(s)} <span className="muted">{rows.length}</span></h2>
             <SortableCards
               items={rows.map((t) => ({
                 id: t.id,
@@ -64,6 +74,7 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
                     {t.product && <span className="muted small">{t.product.name}</span>}
                     {t.run && <StatusChip status={t.run.status} />}
                     <Working t={t} />
+                    <Family t={t} />
                     <Blocked t={t} />
                     <Needs t={t} />
                   </>

@@ -8,6 +8,7 @@ import { agentEnv } from '../src/agent.js';
 import { buildEvidence } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
+import { mrBody } from '../src/index.js';
 import { materialise } from '../src/materialise.js';
 import { makeCtx } from './helpers.js';
 
@@ -77,4 +78,10 @@ test('evidence lists commands with exit codes and unverified goals', () => {
   assert.match(ev, /`npm test` \| 1 \|/);
   assert.match(ev, /\*\*Not verified\*\*: lint/);
   assert.ok(!ev.includes('Read'));
+});
+
+test('MR body references the Ticket without a closing keyword', () => {
+  const body = mrBody('https://github.com/o/r/issues/7', '## Evidence');
+  assert.match(body, /^Refs https:\/\/github\.com\/o\/r\/issues\/7\n/);
+  assert.doesNotMatch(body, /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b/i);
 });

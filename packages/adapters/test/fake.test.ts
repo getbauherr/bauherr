@@ -34,3 +34,17 @@ describe('fake: mergePullRequest', () => {
     await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' }), /merged/);
   });
 });
+
+describe('fake: reopen', () => {
+  it('reopens a closed ticket, drops the close-reason label, and is idempotent', async () => {
+    const b = new FakeBackend({ native: false });
+    const ts = b.tickets('o/r');
+    const t = await ts.create({ title: 't' });
+    await ts.close(t.id, 'completed');
+    await ts.reopen(t.id);
+    await ts.reopen(t.id);
+    const got = await ts.get(t.id);
+    assert.equal(got.state, 'open');
+    assert.ok(!got.labels.some((l) => l.startsWith('bauherr:close-reason:')));
+  });
+});

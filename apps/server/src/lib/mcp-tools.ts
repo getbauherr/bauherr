@@ -6,7 +6,7 @@ import type { Payload } from 'payload'
 import { acceptStaging, approvePlan, concludeReview, normalizeReview, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
-import { logins } from './gates'
+import { ownsGate } from './gates'
 import { frontierOrder } from './frontier'
 import { goalFor } from './run-ctx'
 
@@ -380,7 +380,7 @@ export const tools: Tool[] = [
         const ticket = await getTicket(c, id(run.ticket))
         const { ts, n } = await sourceOf(c.payload, ticket)
         const login = sessionLogin(c)
-        if (login && !logins(ticket.gateAssignees).includes(login)) await ts.unassign(n, [login])
+        if (login && !(await ownsGate(c.payload, ticket, login))) await ts.unassign(n, [login])
       } else {
         const r = await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET ${reset} WHERE "id" = ${run.id} AND "status" = 'awaiting_session' RETURNING "id"`)
         if (!r.rows.length) throw new Error(`run ${run.id} is not releasable`)

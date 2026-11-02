@@ -9,6 +9,7 @@ import * as migration_20261030_160000_release_stage from './20261030_160000_rele
 import * as migration_20261030_170000_watch_release_job from './20261030_170000_watch_release_job';
 import * as migration_20261030_170000_ticket_lease from './20261030_170000_ticket_lease';
 import * as migration_20261030_180000_review_stage from './20261030_180000_review_stage';
+import * as migration_20261030_190000_sub_tickets from './20261030_190000_sub_tickets';
 import * as migration_20261030_190000_ticket_rank from './20261030_190000_ticket_rank';
 import * as migration_20261030_191000_gate_notify from './20261030_191000_gate_notify';
 
@@ -67,6 +68,11 @@ export const migrations = [
     up: migration_20261030_180000_review_stage.up,
     down: migration_20261030_180000_review_stage.down,
     name: '20261030_180000_review_stage'
+  },
+  {
+    up: migration_20261030_190000_sub_tickets.up,
+    down: migration_20261030_190000_sub_tickets.down,
+    name: '20261030_190000_sub_tickets'
   },
   {
     up: migration_20261030_190000_ticket_rank.up,

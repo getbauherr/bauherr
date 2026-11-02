@@ -170,6 +170,15 @@ describe('github mergePullRequest', () => {
   });
 });
 
+describe('github reopen', () => {
+  it('PATCHes the issue state to open', async () => {
+    const calls: { method: string; url: string; body: any }[] = [];
+    const b = new GithubBackend({ auth: patAuth('t'), fetch: async (u, init) => { calls.push({ method: String(init?.method), url: new URL(String(u)).pathname, body: JSON.parse(String(init?.body)) }); return json({}); } });
+    await b.tickets('o/r').reopen('7');
+    assert.deepEqual(calls, [{ method: 'PATCH', url: '/repos/o/r/issues/7', body: { state: 'open' } }]);
+  });
+});
+
 describe('github listChecks', () => {
   it('maps commit statuses to checks next to the check runs', async () => {
     const b = new GithubBackend({

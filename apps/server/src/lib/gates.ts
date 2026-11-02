@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
 import { type Need, needsYou } from './needs-you'
 import { publicUrl } from './oidc'
+import { startRunIfNeeded } from '../jobs'
 import { forgeOf, id } from './release'
 
 type Doc = Record<string, any>
@@ -18,6 +19,24 @@ export const gateOwnersOf = async (payload: Payload, product: Doc): Promise<stri
   const admins = await payload.find({ collection: 'bauherren', where: { and: [{ role: { equals: 'admin' } }, { githubLogin: { exists: true } }] }, pagination: false, ...o })
   return admins.docs.flatMap((a) => logins(a.githubLogin))
 }
+
+/** The logins in `next` that are new for the Product and unknown to its forge. */
+export const unknownLogins = async (payload: Payload, productId: number, next: string): Promise<string[]> => {
+  const known = logins((await payload.findByID({ collection: 'products', id: productId, ...o })).gateOwners)
+  const fresh = logins(next).filter((l) => !known.includes(l))
+  if (!fresh.length) return []
+  const { tickets } = await forgeOf(payload, productId)
+  const unknown: string[] = []
+  for (const l of fresh) if (!(await tickets.userExists(l))) unknown.push(l)
+  return unknown
+}
+
+/** Whether `login` owns the Ticket's current gate, so a session release must leave it assigned. */
+export const ownsGate = async (payload: Payload, t: Doc, login: string): Promise<boolean> =>
+  !!(t.gateNotified || logins(t.gateAssignees).length) && (await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))).includes(login)
+
+/** A claim the forge rejected for good (unknown or unassignable login): retrying cannot help. */
+const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?: number }).status ?? 0)
 
 /**
  * Notifies the gate's person once per gate value: assigns them on the forge and posts one Comment that @mentions them (idempotent by marker).
@@ -46,22 +65,26 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
     added = mine.filter((l) => owners.includes(l))
   }
   let complete = false
+  let mentioned = owners
   if (want) {
     const ts = await source()
     const assigned = logins(t.assignees)
     added = [...added]
+    const dropped: string[] = []
     for (const login of owners.filter((l) => !assigned.includes(l) && !added.includes(l))) {
       try {
         await ts.claim(n, login)
         added.push(login)
       } catch (e) {
         payload.logger.warn({ err: e, ticket: t.id, login }, 'gate assignee failed')
+        if (definitive(e)) dropped.push(login)
       }
     }
-    complete = owners.every((l) => assigned.includes(l) || added.includes(l))
+    mentioned = owners.filter((l) => !dropped.includes(l))
+    complete = mentioned.every((l) => assigned.includes(l) || added.includes(l))
     const marker = `<!-- bauherr:gate:${want}:${createHash('sha1').update(`${want}${run?.id ?? ''}`).digest('hex')} -->`
-    if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-      await ts.comment(n, `${marker}\n${owners.map((l) => `@${l}`).join(' ')}: ${want} — ${publicUrl()}/tickets/${t.id}`)
+    if (mentioned.length && !(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
+      await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${want} — ${publicUrl()}/tickets/${t.id}`)
     }
   }
   const notified = complete ? want : null
@@ -72,6 +95,12 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
     data: { gateNotified: notified, gateNotifiedAt: notified === held ? t.gateNotifiedAt : notified ? new Date().toISOString() : null, gateAssignees: added.join(',') || null },
     ...o,
   })
+  // Closes the claim/poll race: the poll may have seen the new assignee before it was recorded and skipped the Run start on stage entry.
+  const factory = [...mine, ...added]
+  if ((t.stage === 'plan' || t.stage === 'build') && t.state === 'open' && logins(t.assignees).every((a) => factory.includes(a))) {
+    const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, ...o })
+    if (!runs.totalDocs) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
+  }
   return true
 }
 

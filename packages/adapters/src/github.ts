@@ -218,17 +218,29 @@ class GithubTickets implements TicketSource {
   async claim(id: string, assignee: string) {
     const i = await this.h.json('POST', `${this.p}/issues/${id}/assignees`, { assignees: [assignee] });
     // GitHub silently drops invalid logins (201): verify.
-    if (!i.assignees.some((a: any) => a.login.toLowerCase() === assignee.toLowerCase())) throw new Error(`claim failed: ${assignee} not assigned to #${id}`);
+    if (!i.assignees.some((a: any) => a.login.toLowerCase() === assignee.toLowerCase())) throw Object.assign(new Error(`claim failed: ${assignee} not assigned to #${id}`), { status: 422 });
   }
   async release(id: string) {
     const assignees = ((await this.issue(id)).assignees as any[]).map((a) => a.login);
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
+  }
+  async userExists(login: string) {
+    try {
+      await this.h.json('GET', `/users/${encodeURIComponent(login)}`);
+      return true;
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return false;
+      throw e;
+    }
   }
   async unassign(id: string, assignees: string[]) {
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
   }
   async close(id: string, reason: CloseReason) {
     await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'closed', state_reason: reason });
+  }
+  async reopen(id: string) {
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'open' });
   }
   async addSubTicket(parentId: string, childId: string) {
     await this.h.json('POST', `${this.p}/issues/${parentId}/sub_issues`, { sub_issue_id: await this.globalId(childId) });

@@ -109,16 +109,36 @@ const stagingAnswers = async (url: string): Promise<boolean> => {
 const claim = async (payload: Payload, ticket: number | string, field: 'deployRequestedAt' | 'releaseState', data: Doc): Promise<boolean> =>
   (await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: ticket } }, { or: field === 'releaseState' ? [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }] : [{ deployRequestedAt: { exists: false } }] }] }, data, ...o })).docs.length > 0
 
+export const APPROVED_STAGING = 'bauherr:approved:staging'
+export const REOPENED_MARKER = '<!-- bauherr:reopened -->'
+
+/** A merged factory MR can close its Ticket (body keyword, commit message, manual close); only acceptance on staging may. Reopens such a Ticket unless it was accepted; the comment is posted once, the forge reopen is idempotent and retried until the local state follows. */
+const reopenIfClosedByMerge = async (payload: Payload, t: Doc, ts: { get(id: string): Promise<{ labels: string[] }>; listComments(id: string): Promise<{ body: string }[]>; comment(id: string, body: string): Promise<unknown>; reopen(id: string): Promise<void> }): Promise<boolean> => {
+  if (t.labels?.includes(APPROVED_STAGING)) return false
+  const mr = await prOf(payload, t)
+  if (mr?.pr.state !== 'merged') return false
+  const n = String(t.number)
+  if ((await ts.get(n)).labels.includes(APPROVED_STAGING)) return false
+  if (!(await ts.listComments(n)).some((c) => c.body.startsWith(REOPENED_MARKER))) {
+    await ts.comment(n, `${REOPENED_MARKER}\nBauherr reopened this Ticket: the merged MR closed it, but only acceptance on staging closes a Ticket.`)
+  }
+  await ts.reopen(n)
+  Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { state: 'open' }, ...o }))
+  return true
+}
+
 /** Review Tickets whose MR merged move to `release`; release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
   const waiting = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }] }
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: ['review', 'release'] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
       const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
+      if (t.state === 'closed' && !(await reopenIfClosedByMerge(payload, t, ts))) continue
+      if (t.stage === 'release' && t.releaseState && t.releaseState !== 'waiting') continue
       if (t.stage === 'review') {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
         const urls = runs.map((r) => r.artifacts?.prUrl).filter(Boolean)

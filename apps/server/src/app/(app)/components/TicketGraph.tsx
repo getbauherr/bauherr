@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { layoutGraph } from '../lib/graph'
+import { stageLabel } from '../lib/needs-you'
 import type { TicketRow } from '../lib/overview'
 
 const W = 220, H = 64, GX = 72, GY = 20, PAD = 4
@@ -8,7 +9,7 @@ const y = (row: number) => PAD + row * (H + GY)
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; critical: boolean }; x: number; y: number }) {
-  const label = `#${t.number} ${t.title}, stage ${t.stage}${n.ready ? ', ready' : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
+  const label = `#${t.number} ${t.title}, stage ${stageLabel(t.stage)}${n.ready ? ', ready' : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
   return (
     <Link href={`/tickets/${t.id}`} aria-label={label} className="gnode" data-stage={t.stage} data-ready={n.ready || undefined} data-critical={n.critical || undefined} data-ticket={t.number}>
       <rect className="box" x={nx} y={ny} width={W} height={H} rx={4} />

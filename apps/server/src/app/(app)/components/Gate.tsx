@@ -41,7 +41,7 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
     <section className="gate" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">{title}</h2>
-        <p className="small muted">#{number} · release</p>
+        <p className="small muted">#{number} · Staging</p>
       </div>
       {timedOut && <p className="body">The deploy was not observed on staging within 60 minutes. Check staging yourself; you can still accept.</p>}
       {summaryHtml && <div className="md" dangerouslySetInnerHTML={{ __html: summaryHtml }} />}

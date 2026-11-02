@@ -253,7 +253,7 @@ class FakeTickets implements TicketSource {
   }
   async claim(id: string, assignee: string) {
     const t = this.t(id);
-    if (!(this.b.opts.users ?? [this.b.opts.user ?? 'fake']).includes(assignee)) throw new Error(`claim failed: ${assignee} unknown`);
+    if (!(this.b.opts.users ?? [this.b.opts.user ?? 'fake']).includes(assignee)) throw Object.assign(new Error(`claim failed: ${assignee} unknown`), { status: 422 });
     if (!t.assignees.includes(assignee)) t.assignees.push(assignee);
     this.touch(t);
   }
@@ -261,6 +261,9 @@ class FakeTickets implements TicketSource {
     const t = this.t(id);
     t.assignees = [];
     this.touch(t);
+  }
+  async userExists(login: string) {
+    return (this.b.opts.users ?? [this.b.opts.user ?? 'fake']).includes(login);
   }
   async unassign(id: string, assignees: string[]) {
     const t = this.t(id);
@@ -272,6 +275,13 @@ class FakeTickets implements TicketSource {
     t.state = 'closed';
     t.closeReason = reason;
     if (!this.b.opts.native) t.labels.push(closeReasonLabel(reason));
+    this.touch(t);
+  }
+  async reopen(id: string) {
+    const t = this.t(id);
+    t.labels = t.labels.filter((l) => l !== closeReasonLabel(t.closeReason ?? 'completed'));
+    t.state = 'open';
+    t.closeReason = null;
     this.touch(t);
   }
   async addSubTicket(parentId: string, childId: string) {
