@@ -1,7 +1,7 @@
 import { GATES } from '../src/app/(app)/lib/gates'
 import { describe, expect, it } from 'vitest'
 import { heartbeatAge } from '../src/app/(app)/lib/format'
-import { NEEDS, needsYou, releaseWord } from '../src/app/(app)/lib/needs-you'
+import { NEEDS, needsYou, releaseWord, stageOf } from '../src/app/(app)/lib/needs-you'
 
 const t = (stage: string | null, labels: string[] = []) => ({ stage, labels })
 const r = (stage: string, status: string) => ({ stage, status })
@@ -57,5 +57,13 @@ describe('heartbeatAge', () => {
     expect(heartbeatAge('2026-01-01T00:05:00Z', now)).toEqual({ text: '5m ago', stale: false })
     expect(heartbeatAge('2026-01-01T00:04:00Z', now)).toEqual({ text: '6m ago', stale: true })
     expect(heartbeatAge('2025-12-31T21:00:00Z', now)).toEqual({ text: '3h ago', stale: true })
+  })
+})
+
+describe('parent stage', () => {
+  it('is a Board stage that needs nothing from the Bauherr', () => {
+    expect(stageOf({ stage: 'parent' })).toBe('parent')
+    expect(stageOf({ stage: 'parent', state: 'closed' })).toBe('done')
+    expect(needsYou(t('parent', ['bauherr:approved:plan']), null)).toBeNull()
   })
 })

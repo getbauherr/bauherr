@@ -228,6 +228,7 @@ const tickets = col('tickets', [
   text('stage', { index: true }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),
+  rel('inheritedApprovalFrom', 'tickets', { admin: { description: 'Parent whose plan listed this Ticket at approval; the plan approval was inherited.' } }),
   rel('blockedBy', 'tickets', { hasMany: true }),
   text('mergeSha'),
   date('releaseAt'),

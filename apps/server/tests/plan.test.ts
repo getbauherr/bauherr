@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAnswers, unansweredCriticalCount, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../src/app/(app)/lib/plan'
+import { parseAnswers, subTickets, unansweredCriticalCount, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../src/app/(app)/lib/plan'
 import { renderMarkdown } from '../src/app/(app)/lib/markdown'
 
 const plan = `<!-- bauherr:plan -->
@@ -105,4 +105,28 @@ it('counts unanswered critical rows across the latest plan and decisions Comment
   expect(unansweredCriticalCount(comments)).toBe(2)
   expect(unansweredCriticalCount([...comments, { body: '<!-- bauherr:decisions -->\nD2: x\nD3: y' }])).toBe(0)
   expect(unansweredCriticalCount([])).toBe(0)
+})
+
+describe('subTickets', () => {
+  const plan = `<!-- bauherr:plan -->
+## Steps
+1. x
+
+## Sub-tickets
+- **Invoice PDF** — Render invoices as PDF.
+  Accept: A4, one page.
+- **Numbering**: Sequential invoice numbers
+* **No body**
+
+## Out of scope
+- **Not a sub-ticket** — ignored
+`
+  it('lists title and body, continuing indented lines, up to the next section', () => {
+    expect(subTickets(plan)).toEqual([
+      { title: 'Invoice PDF', body: 'Render invoices as PDF.\nAccept: A4, one page.' },
+      { title: 'Numbering', body: 'Sequential invoice numbers' },
+      { title: 'No body', body: '' },
+    ])
+  })
+  it('is empty without the section', () => expect(subTickets('## Steps\n1. x')).toEqual([]))
 })
