@@ -1,7 +1,10 @@
+import { fileURLToPath } from 'node:url'
 import { GATES } from '../src/app/(app)/lib/gates'
 import { describe, expect, it } from 'vitest'
 import { heartbeatAge } from '../src/app/(app)/lib/format'
 import { NEEDS, needsYou, releaseWord, stageOf } from '../src/app/(app)/lib/needs-you'
+
+process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
 
 const t = (stage: string | null, labels: string[] = []) => ({ stage, labels })
 const r = (stage: string, status: string) => ({ stage, status })

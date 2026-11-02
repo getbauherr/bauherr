@@ -1,3 +1,5 @@
+import { type HumanGate, humanGates } from './mode'
+
 export const STAGES = ['triage', 'plan', 'build', 'review', 'release', 'done'] as const
 /** `parent`: a Ticket whose plan was split into sub-tickets; it has no Runs and closes with its last child. */
 export type Stage = (typeof STAGES)[number] | 'parent'
@@ -29,15 +31,16 @@ export const needsYou = (
   ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; reviewState?: string | null; reviewRounds?: number | null },
   run: { stage: string; status: string } | null,
   unansweredCritical = 0,
+  gates: readonly HumanGate[] = humanGates(),
 ): Need | null => {
   const stage = ticket.stage ?? 'triage'
   if (stage === 'plan' && run?.stage === 'plan' && IN_PROGRESS.includes(run.status)) return null
-  if (stage === 'plan' && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
+  if (stage === 'plan' && gates.includes('plan') && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
   if (stage === 'review' && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (run?.status === 'needs_human' && run.stage !== 'triage') return 'Run needs you'
   if (stage === 'release' && !ticket.labels.includes(APPROVED_STAGING)) {
-    if (ticket.releaseState === 'on_staging') return 'Accept on staging'
+    if (ticket.releaseState === 'on_staging' && gates.includes('staging')) return 'Accept on staging'
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
   }
   if (stage === 'release' && ticket.labels.includes(APPROVED_STAGING)) {

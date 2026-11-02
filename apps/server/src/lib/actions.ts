@@ -2,13 +2,15 @@ import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from 
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
+import { gateOn } from './mode'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
+import { logins } from './gates'
 import { ownerQueue, questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_PRODUCTION, APPROVED_STAGING, NO_PRODUCTION, beginProduction, cas, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
+import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -170,6 +172,36 @@ const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
 
 /**
+ * Plan gate off: moves a Ticket in `plan` whose latest Run is a succeeded plan Run on, without a label or human touch. Idempotent; a no-op while the gate is on.
+ * An unanswered critical decision puts the Ticket back on the refine hold instead (answering re-plans); otherwise it goes to `build` (or `parent`, its Sub-tickets going straight to Build).
+ */
+export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | 'parent' | 'refine' | null> => {
+  if (gateOn('plan') || t.stage !== 'plan' || t.state !== 'open' || t.labels?.includes(APPROVED_PLAN)) return null
+  const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
+  if (run?.stage !== 'plan' || run.status !== 'succeeded') return null
+  const { ts, n } = await sourceOf(payload, t)
+  const comments = await ts.listComments(n)
+  const plan = latestWith(comments, PLAN_MARKER)
+  if (!plan) return null
+  if (openCritical(comments).length) {
+    const marker = `<!-- bauherr:plan-refine:${plan.id} -->`
+    if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
+    await ts.removeLabels(n, [stageLabel('plan')])
+    await ts.addLabels(n, [NEEDS_REFINEMENT])
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', triagedAt: (await ts.get(n)).updatedAt }, ...ro })
+    return 'refine'
+  }
+  const parent = await spawnSubTickets(payload, t)
+  if (!parent) {
+    await setStage(ts, n, 'build')
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
+    if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
+  }
+  await ts.comment(n, 'Plan accepted automatically (plan gate off).')
+  return parent ? 'parent' : 'build'
+}
+
+/**
  * Plan approval fan-out (D1): creates each item of the latest plan's `## Sub-tickets` as a sub-issue that inherits the plan approval,
  * then moves the parent to stage `parent`. Runs only while the parent is not yet `parent` and only for items listed now (matched by title,
  * so a retry after a partial failure completes the set and never adds later items; a child created but not yet linked is found by its local row and only linked). An item's `after:` sibling title becomes a forge + local blockedBy. Serialised per ticket; true when the Ticket is a parent.
@@ -193,7 +225,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
       const orphan = found ? undefined : local.get(item.title)
-      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
+      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: gateOn('plan') ? [stageLabel('plan'), APPROVED_PLAN] : [stageLabel('build')] }))
       const link: Record<string, unknown> = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
       const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
       if (doc?.rank) prev = doc.rank as string
@@ -215,7 +247,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       spawned.set(item.title, { id: child.id, docId: row.id })
       if (!found) {
         await ts.addSubTicket(n, String(child.number))
-        await ts.comment(String(child.number), `Approval inherited from #${n}: listed in its plan at approval.`)
+        await ts.comment(String(child.number), gateOn('plan') ? `Approval inherited from #${n}: listed in its plan at approval.` : `Plan accepted automatically (plan gate off) with #${n}: listed in its plan.`)
       }
     }
     for (const item of items) {
@@ -345,29 +377,11 @@ export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticke
 const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
   payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() }, overrideAccess: true })
 
-/** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless the Product has a production gate. */
+/** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless a production gate is on. */
 export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.stage !== 'release') throw new Error('the Ticket is not in release')
-  const { tickets: ts } = await forgeOf(payload, id(t.product))
-  const n = String(t.number)
-  const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
-  const stage = product.productionGate ? 'release' : 'done'
-  if (stage === 'done') {
-    await setStage(ts, n, 'done')
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
-  } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
-    await ts.addLabels(n, [APPROVED_STAGING])
-    if (!(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, overrideAccess: true })).totalDocs) await touch(payload, user, t, 'accept:staging')
-    return { approved: APPROVED_STAGING, stage }
-  }
-  await ts.addLabels(n, [APPROVED_STAGING])
-  await touch(payload, user, t, 'accept:staging')
-  if (stage === 'done') {
-    await ts.close(n, 'completed')
-    await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, overrideAccess: true })
-  }
-  return { approved: APPROVED_STAGING, stage }
+  return passStaging(payload, t, () => touch(payload, user, t, 'accept:staging'))
 }
 
 /** Production gate: a Workspace member approves the deploy; the Product's own pipeline deploys, `watchProduction` observes. Also the retry after a failed or timed out deploy. */

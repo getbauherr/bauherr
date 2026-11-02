@@ -6,7 +6,7 @@ The single human-readable spec of the Bauherr workflow. Rules live in the core p
 Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 
 - The Stage is a Label in the Ticket source: `bauherr:stage:<name>` (the same on GitLab: scoped `stage::` labels are Premium+). Bauherr derives it and never stores it as truth.
-- Other labels: `bauherr:go` (start), `bauherr:approved:plan` (plan gate), `bauherr:approved:staging` (staging gate), `bauherr:blocked` (needs a person).
+- Other labels: `bauherr:go` (start), `bauherr:approved:plan` (plan gate, only with the plan gate on), `bauherr:approved:staging` (staging gate; with the release gate off the factory sets it itself when staging is confirmed), `bauherr:blocked` (needs a person).
 
 | Stage | Agent work | Ends with |
 |---|---|---|
@@ -17,15 +17,19 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 | Release (shown as Staging) | none; Bauherr observes the Product's CI (or a deploy webhook) after the MR merged | staging summary Comment + staging acceptance |
 | Done | none | Ticket closed `completed` on staging acceptance (never on merge) |
 
-Config per stage: label, gate-before (`none | human | checks`), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
+Config per stage: label, gate (`human` or absent; see §2), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
 
 ## 2. Gates and approvals
+Human gates are workflow config in `pack/workflow.yaml`. Default: exactly two human touch points, **refine** (Triage's questions, always on) and **production** (`production_gate: human` on `release`). **Plan** (`gate: human` on `plan`) and **staging** (`gate: human` on `release`) are optional and off by default: a Ticket triaged `plan` then reaches a merged MR and the production gate without an owner touch. `humanGates()` in `apps/server/src/lib/mode.ts` lists the enabled gates (also for the label-actor guard, #174). A Product's own `productionGate` adds the production gate where the workflow has none. Per-Product overlays are §15.
+
 | Gate | Before | Approval lives in |
 |---|---|---|
-| Plan approval (human) | Build | label `bauherr:approved:plan`, set in the Bauherr UI or in the forge |
+| Plan approval (human, optional: `plan` `gate: human`) | Build | label `bauherr:approved:plan`, set in the Bauherr UI or in the forge |
 | MR gate (factory) | merge | clean review + green checks + `## Evidence` + Product `autoMerge` (below); no human |
-| Staging acceptance (human) | Done, or Production approval with a production gate | label `bauherr:approved:staging`, set in the UI |
-| Production approval (human) | deploy | UI Gate or MCP `approve_production` (records the human touch); the label `bauherr:approved:production` is an output signal only, set by the factory after such an approval, never an approval itself |
+| Staging acceptance (human, optional: `release` `gate: human`) | Done, or Production approval with a production gate | label `bauherr:approved:staging`, set in the UI |
+| Production approval (human, default on: `release` `production_gate: human`) | deploy | UI Gate or MCP `approve_production` (records the human touch); the label `bauherr:approved:production` is an output signal only, set by the factory after such an approval, never an approval itself |
+
+Gate off: with the plan gate off, `poll-tickets` (`advancePlan`) moves a Ticket in `plan` whose latest Run is a succeeded plan Run to `build` (or `parent`) once a plan Comment exists and no critical decision is open; it adds no `bauherr:approved:plan` label, records no human touch and posts one audit Comment; Sub-tickets are created labelled `bauherr:stage:build` only. With the release gate off, `watch-release` runs the acceptance step itself once staging is confirmed (label `bauherr:approved:staging`, then the production gate if on, else `done` and closed), without a touch; `timed_out` stays a blocker. The needs-you values Approve plan, Answer decisions and Accept on staging appear only while their gate is on; the Board's "needs you" is then refine questions, the production gate and declared blockers (Run needs you, Staging not confirmed, Round cap reached, Run failed).
 
 Sub-tickets: a plan may end with a `## Sub-tickets` section, one list item per child: `- **Title** — one-line body` (body may continue on indented lines, e.g. acceptance criteria; an indented `after: <sibling title>` line, exact title of another item in the section, makes the child blocked by that sibling: forge `addBlockedBy` plus local `tickets.blockedBy`, so claim_next and the frontier skip it until the sibling is closed; an unknown title is ignored with a logged warning; no implicit chain). On plan approval (UI, MCP `approve`, or the `bauherr:approved:plan` label seen by `poll-tickets`) the factory creates each listed item as a forge sub-issue (`addSubTicket`; GitLab Free, which has none, uses a `Parent: #n` body line) labelled `bauherr:stage:plan` and `bauherr:approved:plan`, so Build starts without a second approval, and records `tickets.inheritedApprovalFrom`. Inheritance rule: only items listed at approval time inherit; the factory never adds `approved:plan` to a child created later, and an approval label a human sets on a child is an ordinary manual approval. Creation is idempotent (children matched by title, also against local child rows whose forge link failed, which are only linked, never created again; the parent leaves stage `plan` only after all exist). The parent moves to stage `parent` (shown as "Split" on the Board, n/m done, no Runs) and closes with a Comment listing the children once all are closed (`poll-tickets`). Nested children and moving children between parents are out of scope.
 
@@ -71,7 +75,7 @@ A Run reads its Goal, reads the worklog first, ends only with an MR or a declare
 A human assignee or a manual Label move cancels the active Run. Nothing restarts until `bauherr:go` or unassign. The next Run reconciles the worklog ([worklog](../../pack/skills/worklog/SKILL.md)).
 
 ## 7. Human interaction
-One decision sheet per Ticket per gate (the newest plan or triage Comment; only answers posted after it count, so a new sheet starts unanswered), with recommended defaults and a `critical` flag; at most one human touch. Protocol: [decision-sheet](../../pack/skills/decision-sheet/SKILL.md).
+One decision sheet per Ticket per gate (the newest plan or triage Comment; only answers posted after it count, so a new sheet starts unanswered), with recommended defaults and a `critical` flag; at most one human touch. With the plan gate off, an unanswered critical decision on a posted plan reopens the refine hold (stage label removed, `bauherr:needs-refinement`, one Comment): answering it re-plans and the Ticket then proceeds without approval. Protocol: [decision-sheet](../../pack/skills/decision-sheet/SKILL.md).
 
 ## 8. Team patterns allowed in v0.1
 One agent per Run by default. Patterns only via stage config with a declared problem. Policy: [team-policy](../../pack/rules/team-policy.md).
@@ -113,7 +117,7 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 ## 12. What the Bauherr sees
 | At | In the admin |
 |---|---|
-| Plan gate | plan Comment, Goal statements, worklog panel, decision sheet, Approve button (sets `bauherr:approved:plan`) |
+| Plan gate (when on) | plan Comment, Goal statements, worklog panel, decision sheet, Approve button (sets `bauherr:approved:plan`) |
 | MR gate | MR Link, `## Evidence` next to it, Goal with per-statement status, reviewer Comments, budget and model used |
 | Any Run page | Goal status, evidence, why it stopped, worklog, Steps, cost |
 | Blocked | `bauherr:blocked` reason and the decision sheet |
@@ -131,6 +135,6 @@ Manifest: [pack.yaml](../../pack/pack.yaml). Hooks map to SDK events in [hooks.y
 ## 15. Steps and workflow config
 A stage is an ordered DAG of steps (decision #44). Step types: `agent-run` (a Run with a Goal), `external-service` (a connected agent service, e.g. a code-security scanner; callback with poll fallback; findings become Tickets, Comments or scorecard results), `ci-job` (wait for a named check), `human-gate`, `check` (scorecard rule). Step contract: `{id, type, needs, inputs, timeout, budget?, retries}` → `{status, outputs, evidence, started, finished, cost}`. A failed blocking step stops the stage; *repair run* re-runs failed steps only.
 
-Where the workflow lives (decision #45): base `pack/workflow.yaml` in the core pack (read-only in the UI), per-Product overlay `products/<slug>/workflow.yaml` in the Knowledge repo; the factory compiles the merged DAG into a `workflow_versions` row that Runs reference. Validated by `bauherr pack lint`.
+Gate keys: `gate: human` on `plan` or `release` and `production_gate: human` on `release`; any other value is ignored. The compiled version records the enabled gates (`humanGates()`) with the DAG. Where the workflow lives (decision #45): base `pack/workflow.yaml` in the core pack (read-only in the UI), per-Product overlay `products/<slug>/workflow.yaml` in the Knowledge repo; the factory compiles the merged DAG into a `workflow_versions` row that Runs reference. Validated by `bauherr pack lint`.
 
 What the Bauherr sees per Ticket run: graph (nodes with status, duration, type, resource), timeline (nested sub-steps, dependency arrows), list (filterable), run details (launched by, started, ended, duration, status, cost), repair run. Per Product: the compiled workflow with the overlay diff highlighted.

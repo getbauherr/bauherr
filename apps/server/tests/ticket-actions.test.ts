@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -21,6 +22,7 @@ beforeAll(async () => {
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
   delete process.env.GATEWAY_ADMIN_URL
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })

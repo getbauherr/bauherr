@@ -14,9 +14,10 @@ export default async function Workflow() {
     <>
       <h2 className="heading">Stages</h2>
       <p className="small muted">The base workflow (pack/workflow.yaml) with the run mode each stage has in this Workspace. Read-only.</p>
+      <p className="small">Human gates: {w.gates.join(', ')}</p>
       <div className="scroll">
         <table className="table">
-          <thead><tr><th>Stage</th><th>Mode</th><th>Gate before</th><th>Steps</th></tr></thead>
+          <thead><tr><th>Stage</th><th>Mode</th><th>Gate</th><th>Steps</th></tr></thead>
           <tbody>
             {w.stages.map((s) => (
               <tr key={s.name}><td>{s.name}</td><td>{s.mode}</td><td>{s.gate || '—'}</td><td>{s.steps.join(', ') || '—'}</td></tr>

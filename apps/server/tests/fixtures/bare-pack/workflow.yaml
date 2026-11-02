@@ -1,0 +1,11 @@
+# No optional gate and no production gate: refine is the only human gate.
+stages:
+  - name: triage
+    steps: [{kind: agent-run, skill: triage}]
+  - {name: plan, steps: [{kind: agent-run, skill: run-contract}]}
+  - name: build
+    steps: [{kind: agent-run, skill: run-contract}]
+  - name: review
+    steps: [{kind: agent-run, skill: review}]
+  - {name: release}
+  - {name: done}

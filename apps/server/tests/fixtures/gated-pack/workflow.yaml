@@ -1,0 +1,11 @@
+# Both optional gates on: Approve plan and Accept on staging. No production gate.
+stages:
+  - name: triage
+    steps: [{kind: agent-run, skill: triage}]
+  - {name: plan, gate: human, steps: [{kind: agent-run, skill: run-contract}]}
+  - name: build
+    steps: [{kind: agent-run, skill: run-contract}]
+  - name: review
+    steps: [{kind: agent-run, skill: review}]
+  - {name: release, gate: human}
+  - {name: done}

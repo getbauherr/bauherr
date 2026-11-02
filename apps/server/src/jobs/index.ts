@@ -5,9 +5,9 @@ import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
-import { modeFor, packed } from '../lib/mode'
+import { gateOn, modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
@@ -260,6 +260,13 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
   },
 }
 
+/** Plan gate off: advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
+const advancePlans = async (payload: Payload): Promise<void> => {
+  if (gateOn('plan')) return
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
+  for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -331,6 +338,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       }
     }
     await closeFinishedParents(payload)
+    await advancePlans(payload)
     await triageSweep(payload)
     return { output: { polled: sources.docs.length } }
   },
