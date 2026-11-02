@@ -1,8 +1,9 @@
-import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
+import { questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -286,7 +287,7 @@ const appendDecisions = (worklog: string, lines: string[]): string => {
 
 const pending = new Map<string, Promise<unknown>>()
 /** In-process per-ticket mutex; multi-instance deployments need a DB lock instead. */
-const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+export const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
   const next = (pending.get(key) ?? Promise.resolve()).catch(() => undefined).then(fn)
   pending.set(key, next)
   try {
@@ -457,11 +458,11 @@ export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n
 
 type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
 
-/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait and clears on any other state. */
+/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state. */
 const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' = 'open'): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
+      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) WHEN ${to}::text = 'merged' THEN "review_waiting_since" END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
     )
   ).rows.length > 0
 
@@ -585,6 +586,10 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     if (merged.branchDeleteError) payload.logger.warn({ ticket: t.id, err: merged.branchDeleteError }, 'merged, but deleting the head branch failed')
   } catch (e) {
     await moveReview(payload, t.id, 'waiting_checks', 'merged')
+    if (e instanceof MergePendingError) {
+      payload.logger.info({ ticket: t.id }, 'the forge has not finished the merge yet; retrying')
+      return 'waiting_checks'
+    }
     payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `merging the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
@@ -594,14 +599,15 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
 
 /**
  * Both review paths end here, after the review Run holds its verdict on `reviewedSha`: posts the MR comment, then hands an unusable review to a human,
- * returns to Build (blocking findings) or runs the merge gate. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
+ * returns to Build (blocking findings) or runs the merge gate. `resume` (a retry by `resumeReviews`) posts the MR comment only when an identical one is missing. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
  */
-export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null): Promise<{ outcome: ReviewOutcome }> => {
+export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null, resume = false): Promise<{ outcome: ReviewOutcome }> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
   try {
     const mr = await prOf(payload, t)
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
-    await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`)
+    const body = `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`
+    if (!resume || !(await mr.backend.forge.listPullRequestComments(mr.repo, mr.pr.number)).some((c) => c.body === body)) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
     const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
     const outcome = blocking.length
@@ -635,11 +641,40 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
   return merged
 }
 
+const RESUME_GRACE_MS = 2 * 60_000
+
+/** Per-minute pass: a review Run of the current review (reviewed the MR head, finished after the last Build Run) holds its verdict but the Ticket never left review (crash between the Run write and the stage move); the verdict is applied again. A stale Run is not applied; a fresh review starts. A crash after the round claim in `returnToBuild` counts that round twice on resume (accepted, D3). */
+export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  let resumed = 0
+  for (const t of tickets) {
+    try {
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      if (last?.status !== 'succeeded' || !last.verdict || !last.finishedAt || at - Date.parse(last.finishedAt) < RESUME_GRACE_MS) continue
+      const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }, { finishedAt: { exists: true } }] }, sort: '-finishedAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const mr = await prOf(payload, t)
+      if (mr?.pr.state !== 'open') continue
+      if (mr.pr.headSha !== last.reviewedSha || (build && Date.parse(last.finishedAt) < Date.parse(build.finishedAt))) {
+        await startReviewIfReady(payload, t)
+        continue
+      }
+      const stored = last.artifacts?.review
+      if (typeof stored?.markdown !== 'string') continue
+      const review: Review = { verdict: last.verdict, findings: last.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }
+      await concludeReview(payload, t.id, review, last.reviewedSha ?? null, true)
+      resumed++
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'resume-reviews failed for ticket')
+    }
+  }
+  return resumed
+}
+
 export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[] }
 export const MAX_QUESTIONS = 10
 
 /** One line without the characters the decision-sheet parser treats as structure. */
-const plain = (v: unknown, max: number): string => String(v).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
+const plain = (v: unknown, max: number): string => String(v).replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
 
 /** Validates a triage outcome. `refine` needs 1..MAX_QUESTIONS questions (title, default, optional alternatives); `reason` is always required. */
 export const normalizeTriage = (raw: any): Triage => {
@@ -678,3 +713,49 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   }
   return { outcome: t.outcome }
 }
+
+/** Escapes `<` and `>` so no requester text can form or close an HTML comment marker, and drops heading hashes. */
+const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
+
+/** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string): { title: string; body: string; labels: string[] } => ({
+  title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
+  body: [
+    '_Requester-supplied, untrusted._',
+    `## Problem\n${plainLine(draft.problem)}`,
+    `## Context\n${plainLine(draft.context)}`,
+    `## Acceptance criteria\n${draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n')}`,
+    ...(missing.length || draft.links.length ? [`## Open\n${[...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n')}`] : []),
+    `<!-- bauherr:intake session=${sessionId} -->`,
+  ].join('\n\n'),
+  labels: [`type:${draft.type}`, `product:${productSlug}`],
+})
+
+/**
+ * Creates the Ticket from a finished (or question-capped) Intake session: no stage label, so Triage picks it up; the interview is appended as a Comment.
+ * Idempotent: a submitted session returns its Ticket number.
+ */
+export const submitIntake = async (payload: Payload, sessionId: TicketId): Promise<{ number: number }> =>
+  exclusive(`intake:${sessionId}`, async () => {
+    const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 1, overrideAccess: true })) as Doc
+    if (s.status === 'submitted') return { number: s.ticketNumber }
+    if (s.status !== 'open') throw new Error('session is not open')
+    const session: Session = { messages: s.messages ?? [], draft: s.draft, screenshots: s.screenshots }
+    const r = readiness(session.draft, (s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session))
+    if (!session.draft?.problem.trim() || (!r.ready && !r.exhausted)) throw new Error(`draft incomplete: ${r.missing.join(', ')}`)
+    const ts = await ticketsOf(payload, id(s.product))
+    const marker = `<!-- bauherr:intake session=${s.id} -->`
+    let t: { number: number } | undefined
+    for (const c of (await ts.list({ state: 'all', labels: [`product:${s.product.slug}`] })).sort((a, b) => b.number - a.number).slice(0, 50)) {
+      if ((await ts.get(String(c.number))).body?.includes(marker)) {
+        t = c
+        break
+      }
+    }
+    t ??= await ts.create(intakeTicket(session.draft, s.id, r.missing, s.product.slug))
+    if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
+      await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
+    }
+    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
+    return { number: t.number }
+  })

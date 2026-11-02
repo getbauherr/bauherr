@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { githubFor } from './adapters'
+import { backendFor } from './adapters'
 import { connectionInput } from './connection'
 
 type Doc = Record<string, any>
@@ -99,7 +99,7 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
   if (ws.knowledgeRepo && ws.knowledgeConnection) {
     if (Date.now() - failedAt < BACKOFF_MS) return changed && (await save(payload, ws.id, indexed))
     try {
-      const forge = githubFor(await connectionInput(payload, ws.knowledgeConnection)).forge
+      const forge = backendFor(await connectionInput(payload, ws.knowledgeConnection)).forge
       const { commit, paths, truncated } = await forge.listFiles(ws.knowledgeRepo)
       if (indexed.git !== `${ws.knowledgeRepo}@${commit}`) {
         if (truncated) payload.logger.warn({ workspace: ws.id, repo: ws.knowledgeRepo }, 'knowledge repo tree truncated by GitHub; indexing the files returned')

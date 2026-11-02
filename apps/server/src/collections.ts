@@ -165,7 +165,7 @@ const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'llm-provider'], { required: true }),
+    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
@@ -442,6 +442,16 @@ export const collections: CollectionConfig[] = [
     text('heading'),
     text('text', { required: true }),
     text('commit', { required: true }),
+  ]),
+  col('intake_sessions', [
+    rel('product', 'products', { required: true }),
+    select('persona', ['product-user', 'owner'], { required: true, defaultValue: 'product-user' }),
+    select('status', ['open', 'submitted', 'abandoned'], { required: true, defaultValue: 'open', index: true }),
+    json('messages'),
+    json('draft'),
+    { name: 'screenshots', type: 'number', defaultValue: 0 },
+    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
+    rel('user', 'bauherren'),
   ]),
   col('workflow_versions', [
     num('version'),

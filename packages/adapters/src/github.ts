@@ -65,7 +65,7 @@ export interface GithubOptions {
   maxRetries?: number;
 }
 
-const MAX_WAIT_MS = 300_000;
+export const MAX_WAIT_MS = 300_000;
 
 /** Minimal REST client: Link pagination, backoff on 403/429 honouring Retry-After. */
 export class Http {
@@ -324,6 +324,9 @@ class GithubForge implements Forge {
   }
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return comment(await this.h.json('POST', `/repos/${repo}/issues/${n}/comments`, { body }));
+  }
+  async listPullRequestComments(repo: RepoRef, n: number) {
+    return (await this.h.paginate(`/repos/${repo}/issues/${n}/comments?per_page=100`)).map(comment);
   }
   async listPullRequestFiles(repo: RepoRef, n: number): Promise<PullRequestFile[]> {
     return (await this.h.paginate(`/repos/${repo}/pulls/${n}/files?per_page=100`)).map((f) => ({

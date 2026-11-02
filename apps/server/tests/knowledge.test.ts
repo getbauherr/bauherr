@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FakeBackend } from '@bauherr/adapters'
 
 const backend = vi.hoisted(() => ({ current: null as unknown as FakeBackend }))
-vi.mock('../src/lib/adapters', () => ({ githubFor: () => backend.current }))
+vi.mock('../src/lib/adapters', () => ({ backendFor: () => backend.current }))
 
 const REPO = 'acme/knowledge'
 const o = { overrideAccess: true } as const

@@ -1,5 +1,7 @@
 # GitLab driver (research, ticket #14)
 
+Implemented in #119: `packages/adapters/src/gitlab.ts`; writes are fixture-authored until the sandbox project (#17) exists.
+
 Scope: one driver = `Forge` + `TicketSource` over one Connection (#6). Probed 2026-10-29 on gitlab.com 19.6.0-pre
 (`GET /metadata` 200) with a **read-only** token (the owner's user, Owner of the group, Free plan,
 project `klima-portal`). No write token exists: every write is "?" = unverified (endpoint, role/scope and docs tier given).

@@ -65,6 +65,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       repo: ctx.product.repo,
       defaultBranch: ctx.product.defaultBranch,
       token: ctx.connection.gitToken,
+      ...(ctx.connection.gitUser ? { user: ctx.connection.gitUser } : {}),
       branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
       ...(ctx.existingPr && ctx.run.stage !== 'plan' ? { checkout: ctx.existingPr.branch } : {}),
     });

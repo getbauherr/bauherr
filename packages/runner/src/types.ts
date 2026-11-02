@@ -40,6 +40,8 @@ export type RunCtx = {
     modelByTier: Record<string, string>;
     /** Forge base URL the repo path is appended to. Default `https://github.com`. */
     gitBaseUrl?: string;
+    /** Basic-auth username for the clone token. Default `x-access-token` (GitHub); GitLab uses `oauth2`. */
+    gitUser?: string;
   };
   forge: {
     openPullRequest(p: { repo: string; head: string; base: string; title: string; body: string }): Promise<{ url: string }>;
