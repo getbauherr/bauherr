@@ -1,6 +1,6 @@
 import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
-  PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
+  PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
 import { createHash } from 'node:crypto';
@@ -17,6 +17,8 @@ interface FakeRepo {
   prs: PullRequest[];
   checks: Map<string, Check[]>;
   commitDates: Map<string, string>;
+  releases: Release[];
+  commits: { sha: string; message: string }[];
 }
 
 const blobSha = (c: string): string => createHash('sha1').update(c).digest('hex');
@@ -89,10 +91,28 @@ export class FakeBackend implements Backend {
     this.repo(repo).commitDates.set(sha, iso);
   }
 
+  /** Test helper: a release made by the Product's own tooling (or earlier by the factory). */
+  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string }): Release {
+    const r = this.repo(repo);
+    const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}` };
+    r.releases.push(rel);
+    return rel;
+  }
+
+  /** Test helper: releases of `repo`, oldest first. */
+  listReleases(repo: RepoRef): Release[] {
+    return [...this.repo(repo).releases];
+  }
+
+  /** Test helper: the commits `listCommits` returns (newest first). */
+  setCommits(repo: RepoRef, commits: { sha: string; message: string }[]): void {
+    this.repo(repo).commits = commits;
+  }
+
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map(), releases: [], commits: [] };
       this.repos.set(name, r);
     }
     return r;
@@ -178,6 +198,19 @@ export class FakeBackend implements Backend {
         this.commit(repo, o.branch, o.path, o.content);
         return { sha: blobSha(o.content) };
       },
+      findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha) ?? null,
+      createRelease: async (repo, o) => {
+        if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
+        return this.addRelease(repo, o);
+      },
+      updateRelease: async (repo, id, o) => {
+        const rel = this.repo(repo).releases.find((r) => r.id === id);
+        if (!rel) throw new Error(`no release ${id}`);
+        rel.body = o.body;
+        return { ...rel };
+      },
+      latestRelease: async (repo) => this.repo(repo).releases.at(-1) ?? null,
+      listCommits: async (repo) => this.repo(repo).commits,
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);

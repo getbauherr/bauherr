@@ -375,6 +375,7 @@ export const approveProduction = async (payload: Payload, user: Doc, a: { ticket
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.stage !== 'release' || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
   await beginProduction(payload, t, user.email)
+  await payload.jobs.queue({ task: 'publish-release', queue: 'poll', input: {} }).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not queue publish-release, the scheduled run picks it up'))
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
 

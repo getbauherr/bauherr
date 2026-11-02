@@ -1,7 +1,7 @@
 import { createHmac, createSign, timingSafeEqual } from 'node:crypto';
 import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
-  PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
+  PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
 import { Conflict } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
@@ -370,6 +370,46 @@ class GithubForge implements Forge {
   }
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/repos/${repo}/commits/${sha}`)).commit.committer.date as string;
+  }
+  /** Release with the commit its tag points at (annotated tags are dereferenced); null when the tag is gone. */
+  private async release(repo: RepoRef, r: any): Promise<Release | null> {
+    try {
+      const { object } = await this.h.json('GET', `/repos/${repo}/git/ref/tags/${enc(r.tag_name)}`);
+      const sha = object.type === 'tag' ? (await this.h.json('GET', `/repos/${repo}/git/tags/${object.sha}`)).object.sha : object.sha;
+      return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url };
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
+  }
+  async findRelease(repo: RepoRef, o: { sha: string }) {
+    for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
+      const rel = await this.release(repo, r);
+      if (rel?.sha === o.sha) return rel;
+    }
+    return null;
+  }
+  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
+    const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body });
+    return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string };
+  }
+  async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
+    const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, { body: o.body });
+    return (await this.release(repo, r))!;
+  }
+  async latestRelease(repo: RepoRef) {
+    try {
+      return await this.release(repo, await this.h.json('GET', `/repos/${repo}/releases/latest`));
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
+  }
+  async listCommits(repo: RepoRef, o: { from?: string; to: string }) {
+    const commits: any[] = o.from
+      ? (await this.h.json('GET', `/repos/${repo}/compare/${enc(o.from)}...${enc(o.to)}`)).commits.reverse()
+      : await this.h.json('GET', `/repos/${repo}/commits?sha=${enc(o.to)}&per_page=100`);
+    return commits.map((c) => ({ sha: c.sha as string, message: c.commit.message as string }));
   }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({

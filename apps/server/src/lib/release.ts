@@ -1,9 +1,11 @@
-import { setStage, type Check, type PullRequest, type TicketSource } from '@bauherr/adapters'
+import { setStage, type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
 import { connectionInput, webOrigin } from './connection'
+import { completeCheap } from './gateway'
+import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 
 type Doc = Record<string, any>
@@ -306,4 +308,77 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
     }
   }
   return { released }
+}
+
+export const releaseMarker = (sha: string) => `<!-- bauherr:release:${sha} -->`
+/** `notes-only` Product with no release for the deployed commit after this long: the notes go on the Tickets, nothing is created. */
+export const RELEASE_WAIT_MS = 6 * 60 * 60_000
+
+/** Prepends the release to CHANGELOG.md (after `## Unreleased`) on `bauherr/release-<tag>` and opens an MR; a human merges it. Safe to repeat: an existing branch or MR is kept. */
+const changelogPr = async (forge: Forge, repo: string, release: Release, marker: string, now: number) => {
+  const branch = `bauherr/release-${release.tag}`
+  const base = (await forge.getRepository(repo)).defaultBranch
+  if (!(await forge.listBranches(repo)).some((b) => b.name === branch)) {
+    const file = await forge.getFile(repo, 'CHANGELOG.md', base)
+    if (!/^## Unreleased.*$/m.test(file.content)) throw new Error('CHANGELOG.md has no "## Unreleased" heading')
+    const entry = `## ${release.tag.replace(/^v/, '')} - ${new Date(now).toISOString().slice(0, 10)}\n\n${release.body.replace(marker, '').trim()}\n`
+    await forge.createBranch(repo, branch, base)
+    await forge.putFile(repo, { branch, path: 'CHANGELOG.md', content: file.content.replace(/^(## Unreleased.*)$/m, `$1\n\n${entry}`), message: `docs(changelog): ${release.tag}`, expectSha: file.sha })
+  }
+  if (!(await forge.listPullRequests(repo, 'all')).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
+}
+
+/**
+ * Publishes the Release for the Product's Tickets that were approved for production and have none yet. The deployed commit is the newest approved merge sha. Idempotent by the marker `<!-- bauherr:release:<sha> -->` in the release body: a release for the sha is found before one is created. `notes-only` adds the notes to the release the Product's tooling made (waiting for it, then falling back to Ticket Comments); `factory` tags `v<semver>` itself and opens a CHANGELOG MR. The notes get one cheap-tier model pass, the deterministic text on any failure.
+ */
+export const publishRelease = async (payload: Payload, productId: number | string, now = Date.now()): Promise<{ state: 'none' | 'waiting' | 'published' | 'fallback'; url?: string }> => {
+  const batch = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: productId } }, { productionApprovedSha: { exists: true } }, { productionState: { in: ['deploying', 'deployed'] } }, { releasePublishedAt: { exists: false } }] }, sort: 'productionRequestedAt', limit: 200, pagination: false, ...o })).docs as Doc[]
+  if (!batch.length) return { state: 'none' }
+  const sha = batch.at(-1)!.productionApprovedSha as string
+  const marker = releaseMarker(sha)
+  const product = (await payload.findByID({ collection: 'products', id: productId, ...o })) as Doc
+  const { backend, repo, tickets: ts } = await forgeOf(payload, productId)
+  const forge = backend.forge
+  let release = await forge.findRelease(repo, { sha })
+  if (!release && product.releaseMode !== 'factory' && now - new Date(batch[0]!.productionRequestedAt).getTime() < RELEASE_WAIT_MS) return { state: 'waiting' }
+  let notes = ''
+  if (!release?.body.includes(marker)) {
+    const items = await Promise.all(batch.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: (await ts.get(String(t.number))).labels }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null)))
+    const deterministic = renderNotes(items)
+    const ws = (await payload.findByID({ collection: 'workspaces', id: id(product.workspace), ...o })) as Doc
+    notes = process.env.GATEWAY_URL ? await rewrite(deterministic, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user)) : deterministic
+  }
+  const done = new Date(now).toISOString()
+  if (!release && product.releaseMode !== 'factory') {
+    for (const t of batch) {
+      await payload.update({ collection: 'tickets', id: t.id, data: { releasePublishedAt: done }, ...o })
+      await ts.comment(String(t.number), `Bauherr: no release found for \`${sha}\`, so the notes are posted here instead.\n\n${notes}`)
+    }
+    return { state: 'fallback' }
+  }
+  if (!release) {
+    const last = await forge.latestRelease(repo)
+    const tag = `v${nextVersion(last?.tag ?? null, (await forge.listCommits(repo, { from: last?.sha, to: sha })).map((c) => c.message))}`
+    release = await forge.createRelease(repo, { tag, sha, name: tag, body: `${notes}\n\n${marker}` })
+  } else if (notes) release = await forge.updateRelease(repo, release.id, { body: `${release.body.trimEnd()}\n\n## What's new\n\n${notes}\n\n${marker}` })
+  if (product.releaseMode === 'factory') await changelogPr(forge, repo, release, marker, now)
+  for (const t of batch) {
+    await payload.update({ collection: 'tickets', id: t.id, data: { releaseUrl: release.url, releasePublishedAt: done }, ...o })
+    await ts.comment(String(t.number), `Released in [${release.tag}](${release.url})`)
+  }
+  return { state: 'published', url: release.url }
+}
+
+/** One `publishRelease` per Product with unreleased approved Tickets; one failing Product does not stop the others. */
+export const publishReleases = async (payload: Payload, now = Date.now()): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ productionApprovedSha: { exists: true } }, { productionState: { in: ['deploying', 'deployed'] } }, { releasePublishedAt: { exists: false } }] }, limit: 1000, pagination: false, select: { product: true }, ...o })).docs as Doc[]
+  let published = 0
+  for (const product of new Set(tickets.map((t) => id(t.product)))) {
+    try {
+      if ((await publishRelease(payload, product, now)).state === 'published') published++
+    } catch (e) {
+      payload.logger.error({ err: e, product }, 'publish-release failed for product')
+    }
+  }
+  return published
 }

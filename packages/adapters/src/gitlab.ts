@@ -1,6 +1,6 @@
 import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
-  PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
+  PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
 import { Conflict, MergePendingError } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
@@ -326,6 +326,29 @@ class GitlabForge implements Forge {
   }
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
+  }
+  private release(r: any): Release {
+    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self };
+  }
+  async findRelease(repo: RepoRef, o: { sha: string }) {
+    const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=30`)).find((x: any) => x.commit?.id === o.sha);
+    return r ? this.release(r) : null;
+  }
+  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
+    return this.release(await this.h.json('POST', `/projects/${enc(repo)}/releases`, { tag_name: o.tag, ref: o.sha, name: o.name, description: o.body }));
+  }
+  async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
+    return this.release(await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }));
+  }
+  async latestRelease(repo: RepoRef) {
+    const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=1`))[0];
+    return r ? this.release(r) : null;
+  }
+  async listCommits(repo: RepoRef, o: { from?: string; to: string }) {
+    const commits: any[] = o.from
+      ? (await this.h.json('GET', `/projects/${enc(repo)}/repository/compare?from=${enc(o.from)}&to=${enc(o.to)}`)).commits.reverse()
+      : await this.h.json('GET', `/projects/${enc(repo)}/repository/commits?ref_name=${enc(o.to)}&per_page=100`);
+    return commits.map((c) => ({ sha: c.id as string, message: c.message as string }));
   }
   async listFiles(repo: RepoRef, ref?: string) {
     const c = await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
