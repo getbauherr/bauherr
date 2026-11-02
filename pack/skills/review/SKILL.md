@@ -46,6 +46,9 @@ Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to ver
 - [low] <nits and optional simplifications>
 ```
 
+## After a conflict merge
+If the worklog's Current instructions say the MR conflicted and main was merged in, review only the merge resolution (`git diff` of the merge commit against both parents) plus the usual checked list; do not reopen findings already reviewed.
+
 ## Do not
 - Edit, format or "fix" anything; write only `.bauherr/review.json`.
 - Approve what you could not verify; say what you could not check under Open.

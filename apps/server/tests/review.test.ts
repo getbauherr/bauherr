@@ -500,3 +500,67 @@ it('grant_review_round over MCP: refused while a session Run holds the Ticket, w
   await payload.update({ collection: 'runs', id: leased.id, data: { status: 'succeeded' }, ...o })
   expect(await call(member, 'grant_review_round', { ticket: id })).toMatchObject({ stage: 'build' })
 })
+
+const conflictCheck = async (id: number) => {
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, mergeFailures: 0 })
+  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('Merge `main` into')
+  const build = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })
+  expect(build.totalDocs).toBe(1)
+}
+
+it('F21: a clean review of a conflicting MR returns to Build without a round or a merge failure', async () => {
+  const { id, pr } = await seed({ checks: green })
+  fake.setMergeable(repo, pr.number, false)
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'build' })
+  expect(await prState(pr.number)).toBe('open')
+  await conflictCheck(id)
+})
+
+it('F22: a waiting_checks Ticket whose MR turned unmergeable returns to Build on the next watch pass', async () => {
+  const { id, pr } = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'waiting_checks' })
+  fake.setMergeable(repo, pr.number, false)
+  await actions.watchReviews(payload)
+  await conflictCheck(id)
+})
+
+it('F23: a merge that fails while the MR reads as conflicting takes the conflict route', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    fake.setMergeable(repo, pr.number, false)
+    throw new Error('merge commit cannot be cleanly created')
+  }
+  try {
+    expect(await submit(await review(id))).toMatchObject({ outcome: 'build' })
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+  await conflictCheck(id)
+})
+
+it('F24: two conflicting PRs: the first merges, the second merges main, is re-reviewed on the new head and merges', async () => {
+  const a = await seed({ checks: green })
+  const b = await seed({ checks: green })
+  expect(await submit(await review(a.id))).toMatchObject({ outcome: 'merged' })
+  fake.setMergeable(repo, b.pr.number, false)
+  expect(await submit(await review(b.id))).toMatchObject({ outcome: 'build' })
+  await conflictCheck(b.id)
+  const before = (await fake.forge.getPullRequest(repo, b.pr.number)).headSha
+  fake.commit(repo, b.branch, 'a.ts', 'merged')
+  const head = (await fake.forge.getPullRequest(repo, b.pr.number)).headSha
+  expect(head).not.toBe(before)
+  await payload.update({ collection: 'tickets', id: b.id, data: { stage: 'review' }, ...o })
+  const r = await review(b.id)
+  expect(await submit(r)).toMatchObject({ outcome: 'merged' })
+  expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: head })
+  expect(await prState(b.pr.number)).toBe('merged')
+})
+
+it('F25: a conflict return at the round cap still goes to Build', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await payload.update({ collection: 'tickets', id, data: { reviewRounds: 2 }, ...o })
+  fake.setMergeable(repo, pr.number, false)
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'build' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewRounds: 2 })
+})

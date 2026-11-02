@@ -482,19 +482,20 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
  * Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work.
  * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
  */
-const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = []): Promise<ReviewOutcome> => {
+const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string } = {}): Promise<ReviewOutcome> => {
+  const countRound = opts.countRound ?? true
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + 1, "merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
+      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, "merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
     )
   ).rows[0]
   if (!claimed) return 'noop'
   const rounds = Number(claimed.review_rounds)
   const n = String(t.number)
-  if (rounds > MAX_REVIEW_ROUNDS) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
+  if (countRound && rounds > MAX_REVIEW_ROUNDS) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
   const src = { ts: mr.tickets, n }
-  const text = `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
+  const text = (opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`).replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment(src)
   let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines)
   if (low.length) worklog = appendToSection(worklog, '**Open**', low)
@@ -505,6 +506,13 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   await setStage(mr.tickets, n, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
   return 'build'
+}
+
+/** The forge reports the MR as conflicting: back to Build to merge the base in. Neither a review round nor a failed merge. */
+const returnConflictToBuild = (payload: Payload, t: Doc, mr: Mr): Promise<ReviewOutcome> => {
+  const reason = `the MR conflicts with \`${mr.pr.base}\` after another merge`
+  const text = `${reason}. Merge \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} (git merge, no rebase, no force push), resolve the conflicts keeping both sides, rerun the checks, and push to that branch; do not open a new MR. The next review only checks the merge resolution.`
+  return returnToBuild(payload, t, mr, reason, [], [], { countRound: false, text })
 }
 
 const CAP_MARKER = 'Bauherr needs a human:'
@@ -571,6 +579,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
+  if (mr.pr.mergeable === false) return returnConflictToBuild(payload, t, mr)
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
   const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
   const checks = mergeChecks(list, age)
@@ -585,6 +594,8 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     if (merged.branchDeleteError) payload.logger.warn({ ticket: t.id, err: merged.branchDeleteError }, 'merged, but deleting the head branch failed')
   } catch (e) {
     await moveReview(payload, t.id, 'waiting_checks', 'merged')
+    const now = await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number).catch(() => null)
+    if (now?.mergeable === false) return returnConflictToBuild(payload, t, { ...mr, pr: now })
     payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `merging the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
