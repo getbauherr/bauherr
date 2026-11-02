@@ -4,6 +4,7 @@ import { tenantsOf } from '../actions'
 import { decrypt } from '../secrets'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
 import { gatewayModel, type ModelCall } from './engine'
+import { fakeModel } from './fake'
 
 /** Per-user cap; there is no trusted-proxy config (X-Forwarded-For is client-controlled), so no per-IP cap exists. */
 export const SESSIONS_PER_USER_HOUR = 20
@@ -27,6 +28,7 @@ export const ownSession = async (payload: Payload, user: Doc, sessionId: string)
 
 /** Model call as the session's Workspace (standard tier, D5). */
 export const modelFor = async (payload: Payload, session: Doc): Promise<ModelCall> => {
+  if (process.env.INTAKE_FAKE === '1') return fakeModel
   const w = (await payload.findByID({ collection: 'workspaces', id: ws(session), depth: 0, overrideAccess: true })) as Doc
   const model = { ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier }.standard
   return gatewayModel({ slug: w.slug, key: decrypt(w.gatewayKey), model })
