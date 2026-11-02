@@ -260,7 +260,7 @@ class GitlabForge implements Forge {
   }
   private async pr(repo: RepoRef, m: any): Promise<PullRequest> {
     const merged = m.state === 'merged';
-    const mergeSha = merged ? (m.merge_commit_sha ?? m.squash_commit_sha) : undefined;
+    const mergeSha = merged ? (m.merge_commit_sha ?? m.squash_commit_sha ?? m.sha) : undefined;
     return {
       number: m.iid, url: m.web_url, title: m.title, body: m.description ?? '',
       state: merged ? 'merged' : m.state === 'opened' ? 'open' : 'closed',

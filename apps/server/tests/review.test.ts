@@ -414,7 +414,7 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
 })
 
-it('a pending (asynchronous) merge waits without counting a failure; an already merged MR is a no-op', async () => {
+it('a pending (asynchronous) merge waits without counting a failure', async () => {
   const a = await seed({ checks: green })
   const r = await review(a.id)
   const spy = fake.forge.mergePullRequest
@@ -433,6 +433,24 @@ it('a pending (asynchronous) merge waits without counting a failure; an already 
   expect(Number((await reload(a.id)).mergeFailures ?? 0)).toBe(0)
   await actions.watchReviews(payload)
   expect(await prState(a.pr.number)).toBe('merged')
-  const mr = await release.prOf(payload, await reload(a.id))
-  expect(await actions.mergeGate(payload, await reload(a.id), mr!, a.pr.headSha)).toBe('merged')
+})
+
+it('a perpetually pending merge keeps its wait clock and escalates after 2 hours', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    const since = (await reload(a.id)).reviewWaitingSince
+    expect(since).toBeTruthy()
+    await actions.watchReviews(payload, Date.now() + 1.9 * 3_600_000)
+    expect((await reload(a.id)).reviewWaitingSince).toEqual(since)
+    await actions.watchReviews(payload, Date.now() + 2.1 * 3_600_000)
+    expect((await reload(a.id)).reviewState).toBe('needs_human')
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
 })

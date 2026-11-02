@@ -285,6 +285,12 @@ describe('gitlab forge', () => {
     assert.deepEqual(sleeps, [500, 1000, 2000]);
   });
 
+  it('merge: a fast-forward merge without merge/squash sha falls back to the MR head sha', async () => {
+    const ff = { ...fx('mr_merged'), squash_commit_sha: null, merge_commit_sha: null };
+    const { forge } = setup(() => ff);
+    assert.equal((await forge.mergePullRequest('g/p', 196, { method: 'squash' })).mergeSha, 'abc123');
+  });
+
   it('merge: a merge that never completes is a MergePendingError; an already merged MR is not re-PUT', async () => {
     const { forge, calls } = setup((_m, path) => (path === P ? {} : fx('mr')));
     await assert.rejects(forge.mergePullRequest('g/p', 196, { method: 'squash' }), MergePendingError);

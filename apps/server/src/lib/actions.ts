@@ -409,11 +409,11 @@ export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n
 
 type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
 
-/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait and clears on any other state. */
+/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state. */
 const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' = 'open'): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
+      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) WHEN ${to}::text = 'merged' THEN "review_waiting_since" END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
     )
   ).rows.length > 0
 
@@ -463,7 +463,6 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
  * auto-merge on, `## Evidence` present, not a draft, checks and statuses green (none = green once the head is 10 minutes old). Pending waits, red returns to Build.
  */
 export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null, at = Date.now()): Promise<ReviewOutcome> => {
-  if (mr.pr.state === 'merged' && mr.pr.headSha === reviewedSha && isFactoryPr(mr.pr, mr.repo, t.number)) return 'merged'
   if (!isFactoryPr(mr.pr, mr.repo, t.number) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
   if (mr.pr.headSha !== reviewedSha) {
     if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
