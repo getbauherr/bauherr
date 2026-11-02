@@ -1,8 +1,9 @@
-import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
+import { questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -286,7 +287,7 @@ const appendDecisions = (worklog: string, lines: string[]): string => {
 
 const pending = new Map<string, Promise<unknown>>()
 /** In-process per-ticket mutex; multi-instance deployments need a DB lock instead. */
-const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+export const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
   const next = (pending.get(key) ?? Promise.resolve()).catch(() => undefined).then(fn)
   pending.set(key, next)
   try {
@@ -459,11 +460,11 @@ export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n
 
 type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
 
-/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait and clears on any other state. */
+/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state. */
 const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' = 'open'): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
+      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) WHEN ${to}::text = 'merged' THEN "review_waiting_since" END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
     )
   ).rows.length > 0
 
@@ -598,6 +599,10 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     if (merged.branchDeleteError) payload.logger.warn({ ticket: t.id, err: merged.branchDeleteError }, 'merged, but deleting the head branch failed')
   } catch (e) {
     await moveReview(payload, t.id, 'waiting_checks', 'merged')
+    if (e instanceof MergePendingError) {
+      payload.logger.info({ ticket: t.id }, 'the forge has not finished the merge yet; retrying')
+      return 'waiting_checks'
+    }
     const now = await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number).catch(() => null)
     if (now?.mergeable === false) return returnConflictToBuild(payload, t, { ...mr, pr: now }, reviewedSha)
     payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
@@ -633,7 +638,7 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
 
 /**
  * One-off recovery: Tickets parked on `needs_human` by 3 failed merges before conflicts had their own route (`conflict_returns` still NULL, set by the migration only on old rows)
- * go back to `waiting_checks` when the MR conflicts or still has the reviewed head; `conflict_returns` = 0 marks them done, so a genuine merge error cannot loop.
+ * go back to `waiting_checks` only when the MR conflicts; every inspected row gets `conflict_returns` = 0, so each is checked once and a genuine merge error stays with the human.
  */
 const recoverMergeFailures = async (payload: Payload): Promise<void> => {
   const rows = (await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "stage" = 'review' AND "state" = 'open' AND "review_state" = 'needs_human' AND "merge_failures" >= ${MAX_MERGE_FAILURES} AND "conflict_returns" IS NULL`)).rows
@@ -641,10 +646,10 @@ const recoverMergeFailures = async (payload: Payload): Promise<void> => {
     try {
       const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
       const mr = await prOf(payload, t)
-      if (mr?.pr.state !== 'open') continue
-      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
-      if (mr.pr.mergeable !== false && mr.pr.headSha !== last?.reviewedSha) continue
-      await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = 'waiting_checks', "review_waiting_since" = now(), "merge_failures" = 0, "conflict_returns" = 0 WHERE "id" = ${t.id} AND "review_state" = 'needs_human'`)
+      const recover = mr?.pr.state === 'open' && mr.pr.mergeable === false
+      await payload.db.drizzle.execute(recover
+        ? sql`UPDATE "tickets" SET "review_state" = 'waiting_checks', "review_waiting_since" = now(), "merge_failures" = 0, "conflict_returns" = 0 WHERE "id" = ${t.id} AND "review_state" = 'needs_human'`
+        : sql`UPDATE "tickets" SET "conflict_returns" = 0 WHERE "id" = ${t.id}`)
     } catch (e) {
       payload.logger.error({ err: e, ticket }, 'recovering a Ticket parked on failed merges failed')
     }
@@ -706,7 +711,7 @@ export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; ques
 export const MAX_QUESTIONS = 10
 
 /** One line without the characters the decision-sheet parser treats as structure. */
-const plain = (v: unknown, max: number): string => String(v).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
+const plain = (v: unknown, max: number): string => String(v).replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
 
 /** Validates a triage outcome. `refine` needs 1..MAX_QUESTIONS questions (title, default, optional alternatives); `reason` is always required. */
 export const normalizeTriage = (raw: any): Triage => {
@@ -745,3 +750,49 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   }
   return { outcome: t.outcome }
 }
+
+/** Escapes `<` and `>` so no requester text can form or close an HTML comment marker, and drops heading hashes. */
+const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
+
+/** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string): { title: string; body: string; labels: string[] } => ({
+  title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
+  body: [
+    '_Requester-supplied, untrusted._',
+    `## Problem\n${plainLine(draft.problem)}`,
+    `## Context\n${plainLine(draft.context)}`,
+    `## Acceptance criteria\n${draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n')}`,
+    ...(missing.length || draft.links.length ? [`## Open\n${[...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n')}`] : []),
+    `<!-- bauherr:intake session=${sessionId} -->`,
+  ].join('\n\n'),
+  labels: [`type:${draft.type}`, `product:${productSlug}`],
+})
+
+/**
+ * Creates the Ticket from a finished (or question-capped) Intake session: no stage label, so Triage picks it up; the interview is appended as a Comment.
+ * Idempotent: a submitted session returns its Ticket number.
+ */
+export const submitIntake = async (payload: Payload, sessionId: TicketId): Promise<{ number: number }> =>
+  exclusive(`intake:${sessionId}`, async () => {
+    const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 1, overrideAccess: true })) as Doc
+    if (s.status === 'submitted') return { number: s.ticketNumber }
+    if (s.status !== 'open') throw new Error('session is not open')
+    const session: Session = { messages: s.messages ?? [], draft: s.draft, screenshots: s.screenshots }
+    const r = readiness(session.draft, (s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session))
+    if (!session.draft?.problem.trim() || (!r.ready && !r.exhausted)) throw new Error(`draft incomplete: ${r.missing.join(', ')}`)
+    const ts = await ticketsOf(payload, id(s.product))
+    const marker = `<!-- bauherr:intake session=${s.id} -->`
+    let t: { number: number } | undefined
+    for (const c of (await ts.list({ state: 'all', labels: [`product:${s.product.slug}`] })).sort((a, b) => b.number - a.number).slice(0, 50)) {
+      if ((await ts.get(String(c.number))).body?.includes(marker)) {
+        t = c
+        break
+      }
+    }
+    t ??= await ts.create(intakeTicket(session.draft, s.id, r.missing, s.product.slug))
+    if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
+      await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
+    }
+    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
+    return { number: t.number }
+  })

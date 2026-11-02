@@ -1,5 +1,5 @@
 import pg from 'pg'
-import type { FakeBackend } from '@bauherr/adapters'
+import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 
@@ -437,6 +437,47 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
 })
 
+it('a pending (asynchronous) merge waits without counting a failure', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    for (let i = 0; i < 4; i++) {
+      await actions.watchReviews(payload)
+      expect((await reload(a.id)).reviewState).toBe('waiting_checks')
+    }
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+  expect(Number((await reload(a.id)).mergeFailures ?? 0)).toBe(0)
+  await actions.watchReviews(payload)
+  expect(await prState(a.pr.number)).toBe('merged')
+})
+
+it('a perpetually pending merge keeps its wait clock and escalates after 2 hours', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    const since = (await reload(a.id)).reviewWaitingSince
+    expect(since).toBeTruthy()
+    await actions.watchReviews(payload, Date.now() + 1.9 * 3_600_000)
+    expect((await reload(a.id)).reviewWaitingSince).toEqual(since)
+    await actions.watchReviews(payload, Date.now() + 2.1 * 3_600_000)
+    expect((await reload(a.id)).reviewState).toBe('needs_human')
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+})
+
 /** The crash window: the review Run holds its verdict, the Ticket never moved. */
 const crashed = async (id: number, pr: { headSha: string }, findings: any[] = [], problem?: string) => {
   const r = await review(id)
@@ -694,7 +735,7 @@ it('F27: a 4th conflict return needs a human instead of looping', async () => {
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 3 })
 })
 
-it('F28: recovery: Tickets parked on 3 failed merges resume when the MR is mergeable, return to Build when it conflicts', async () => {
+it('F28: recovery: Tickets parked on 3 failed merges return to Build when the MR conflicts; others stay with the human and are checked once', async () => {
   const parked = async (conflicting: boolean) => {
     const s = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
     await submit(await review(s.id))
@@ -706,6 +747,7 @@ it('F28: recovery: Tickets parked on 3 failed merges resume when the MR is merge
   const ok = await parked(false)
   const bad = await parked(true)
   await actions.watchReviews(payload)
-  expect(await prState(ok.pr.number)).toBe('merged')
+  expect(await prState(ok.pr.number)).toBe('open')
   expect(await reload(bad.id)).toMatchObject({ stage: 'build', mergeFailures: 0, conflictReturns: 1 })
+  expect(await reload(ok.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
 })

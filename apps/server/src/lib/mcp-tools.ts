@@ -323,8 +323,8 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) {
-        const { backend, repo } = await forgeOf(c.payload, id(ticket.product))
-        const num = prNumber(a.prUrl, repo)
+        const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
+        const num = prNumber(a.prUrl, repo, web)
         const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
         if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
           throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)

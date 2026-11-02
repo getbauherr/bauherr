@@ -64,7 +64,7 @@ export interface GithubOptions {
   maxRetries?: number;
 }
 
-const MAX_WAIT_MS = 300_000;
+export const MAX_WAIT_MS = 300_000;
 
 /** Minimal REST client: Link pagination, backoff on 403/429 honouring Retry-After. */
 export class Http {
