@@ -376,7 +376,8 @@ export const MAX_FINDINGS = 50
 export const MAX_TEXT = 1000
 /** Fits GitHub's 65536-character comment limit with the marker. */
 export const MAX_MARKDOWN = 60_000
-const FILE = /^[\w./@+-]{1,300}$/
+export const FILE_PATTERN = '^(?!(?:.*/)?\\.\\.(?:/|$))[\\w./@+()\\[\\]-]{1,300}$'
+const FILE = new RegExp(FILE_PATTERN)
 /** Areas a review must account for, each with a one-line justification. */
 export const CHECKED_AREAS = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence']
 
@@ -397,7 +398,7 @@ export const normalizeReview = (raw: any): Review => {
       !f || !BLOCKING.concat('low').includes(f.severity) || typeof f.file !== 'string' || !FILE.test(f.file) || !Number.isInteger(f.line) || f.line < 0 ||
       typeof f.msg !== 'string' || f.msg.length > MAX_TEXT || typeof f.scenario !== 'string' || f.scenario.length > MAX_TEXT
     ) {
-      throw new Error(`finding ${i} needs severity (high|medium|low), file (path characters, max 300), line (integer >= 0), msg and scenario (max ${MAX_TEXT} characters)`)
+      throw new Error(`finding ${i} needs severity (high|medium|low), file (path characters incl. ()[], no "..", max 300), line (integer >= 0), msg and scenario (max ${MAX_TEXT} characters)`)
     }
     return { severity: f.severity, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario }
   })

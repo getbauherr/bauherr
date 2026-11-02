@@ -15,6 +15,7 @@ import * as migration_20261030_191000_gate_notify from './20261030_191000_gate_n
 import * as migration_20261030_192000_triage_stage from './20261030_192000_triage_stage';
 import * as migration_20261030_194000_triage_attempts from './20261030_194000_triage_attempts';
 import * as migration_20261102_150084_production_gate from './20261102_150084_production_gate';
+import * as migration_20261102_150143_provider_auth_modes from './20261102_150143_provider_auth_modes';
 
 export const migrations = [
   {
@@ -101,5 +102,10 @@ export const migrations = [
     up: migration_20261102_150084_production_gate.up,
     down: migration_20261102_150084_production_gate.down,
     name: '20261102_150084_production_gate'
+  },
+  {
+    up: migration_20261102_150143_provider_auth_modes.up,
+    down: migration_20261102_150143_provider_auth_modes.down,
+    name: '20261102_150143_provider_auth_modes'
   },
 ];
