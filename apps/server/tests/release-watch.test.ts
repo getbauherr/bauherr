@@ -217,6 +217,14 @@ it('keeps a not-planned close after the merge closed, sets stage done, notes onc
   expect(await reload(t.id as number)).toMatchObject({ state: 'closed', stage: 'done' })
 })
 
+it('does not settle a Ticket reopened on the forge before the next pass', async () => {
+  const { t, n } = await reviewTicket('reopened early', true)
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  expect(await droppedNotes(n)).toHaveLength(0)
+  expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'review' })
+})
+
 it('does not touch a decided closed Ticket again', async () => {
   const { t, n } = await reviewTicket('decided', true)
   await fake.tickets(repo).close(n, 'not_planned')
@@ -240,4 +248,27 @@ it('leaves an accepted Ticket closed', async () => {
   await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(0)
   expect((await fake.tickets(repo).get(n)).state).toBe('closed')
+})
+
+it('parallel passes: one webhook, one timeout comment, one release', async () => {
+  await setProduct({ deployMode: 'webhook', deployWebhookUrl: 'https://hook.example/deploy', stagingUrl: 'https://staging.example' })
+  const fetchMock = vi.fn(async (url: string) => new Response(null, { status: url.includes('hook') ? 200 : 500 }))
+  vi.stubGlobal('fetch', fetchMock)
+  const twice = (now: number) => Promise.all([release.watchRelease(payload, now), release.watchRelease(payload, now)])
+  try {
+    const { t, pr, n } = await reviewTicket('parallel')
+    fake.merge(repo, pr.number)
+    const t0 = Date.now()
+    const [a, b] = await twice(t0)
+    expect(a.released + b.released).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((await reload(t.id as number)).deployRequestedAt).not.toBeNull()
+    const [c, d] = await twice(t0 + release.STAGING_TIMEOUT_MS + 1000)
+    expect(c.timedOut + d.timedOut).toBe(1)
+    expect((await reload(t.id as number)).releaseState).toBe('timed_out')
+    expect((await fake.tickets(repo).listComments(n)).filter((x) => x.body.includes('staging not confirmed'))).toHaveLength(1)
+  } finally {
+    vi.unstubAllGlobals()
+    await setProduct({ deployMode: 'observe-ci', deployWebhookUrl: null })
+  }
 })

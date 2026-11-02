@@ -108,10 +108,6 @@ const stagingAnswers = async (url: string): Promise<boolean> => {
   }
 }
 
-/** Sets `data` on the Ticket only while `field` is still unset (or, for `releaseState`, still waiting); true when this call did it. */
-const claim = async (payload: Payload, ticket: number | string, field: 'deployRequestedAt' | 'releaseState', data: Doc): Promise<boolean> =>
-  (await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: ticket } }, { or: field === 'releaseState' ? [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }] : [{ deployRequestedAt: { exists: false } }] }] }, data, ...o })).docs.length > 0
-
 /** One conditional UPDATE of a Ticket (`set` where the row still matches `where`); true when this call changed it. Payload's update-by-where is find-then-update and lets two callers both win. */
 export const cas = async (payload: Payload, ticket: number | string, set: ReturnType<typeof sql>, where: ReturnType<typeof sql>): Promise<boolean> =>
   (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET ${set}, "updated_at" = now() WHERE "id" = ${ticket} AND ${where} RETURNING "id"`)).rows.length > 0
@@ -125,10 +121,15 @@ export const REOPENED_MARKER = '<!-- bauherr:reopened -->'
 
 export const DROPPED_MARKER = '<!-- bauherr:dropped -->'
 
-/** Decides a closed review/release Ticket once. A merged factory MR can close its Ticket (body keyword, commit message, manual close) but only acceptance on staging may: such a `completed` close is reopened (comment once, forge reopen retried until the local state follows). Accepted Tickets, `not_planned`/`duplicate` closes and closes before any merge are settled as `done` (note once, state written last so a failed forge call is retried) and no longer match the watcher query. A Ticket held for production approval is left alone. */
+/** Decides a closed review/release Ticket once. A Ticket reopened on the forge before this pass is only synced back to open. A merged factory MR can close its Ticket (body keyword, commit message, manual close) but only acceptance on staging may: such a `completed` close is reopened (comment once, forge reopen retried until the local state follows). Accepted Tickets, `not_planned`/`duplicate` closes and closes before any merge are settled as `done` (note once, state written last so a failed forge call is retried) and no longer match the watcher query. A Ticket held for production approval is left alone. */
 const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise<'reopened' | 'dropped' | 'held'> => {
   const n = String(t.number)
+  const syncOpen = async (): Promise<'reopened'> => {
+    if (await cas(payload, t.id, sql`"state" = 'open'`, sql`"state" = 'closed'`)) Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
+    return 'reopened'
+  }
   const issue = await ts.get(n)
+  if (issue.state === 'open') return syncOpen()
   const accepted = t.labels?.includes(APPROVED_STAGING) || issue.labels.includes(APPROVED_STAGING)
   if (accepted && t.productionState) return 'held'
   const merged = !accepted && (await prOf(payload, t))?.pr.state === 'merged'
@@ -139,12 +140,12 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   if (merged && reason === 'completed') {
     await note(REOPENED_MARKER, 'Bauherr reopened this Ticket: the merged MR closed it, but only acceptance on staging closes a Ticket. To drop it, close it as not planned.')
     await ts.reopen(n)
-    Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { state: 'open' }, ...o }))
-    return 'reopened'
+    return syncOpen()
   }
   if (!accepted) await note(DROPPED_MARKER, 'Bauherr: this Ticket was closed by a human, not by acceptance; it is left closed and set to done.')
   await setStage(ts, n, 'done')
-  Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'done' }, ...o }))
+  await cas(payload, t.id, sql`"stage" = 'done'`, sql`"state" = 'closed'`)
+  Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
   return 'dropped'
 }
 
@@ -174,7 +175,9 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
           if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the MR was closed without merge; re-run Build or close the Ticket.`)
         }
         if (pr.state !== 'merged') continue
-        Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'release', mergeSha: pr.mergeSha ?? null, releaseAt: new Date(now).toISOString(), deployRequestedAt: null, releaseState: 'waiting', ...NO_PRODUCTION }, ...o }))
+        const at = new Date(now).toISOString()
+        if (!(await cas(payload, t.id, sql`"stage" = 'release', "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = 'review'`))) continue
+        Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
         await setStage(ts, n, 'release')
         await clearApprovalLabel(payload, ts, n)
         out.released++
@@ -184,7 +187,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       try {
         if (product.deployMode !== 'webhook') onStaging = !!t.mergeSha && checksGreen(await backend.forge.listChecks(repo, t.mergeSha), names)
         else if (!t.deployRequestedAt) {
-          if (product.deployWebhookUrl && (await claim(payload, t.id, 'deployRequestedAt', { deployRequestedAt: new Date(now).toISOString() }))) {
+          if (product.deployWebhookUrl && (await cas(payload, t.id, sql`"deploy_requested_at" = ${new Date(now).toISOString()}`, sql`"deploy_requested_at" IS NULL`))) {
             const res = await fetch(product.deployWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bauherr-delivery': `${t.number}-${t.mergeSha}` }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, stagingUrl: product.stagingUrl ?? null }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
             if (!res.ok) {
               payload.logger.error({ ticket: t.id, status: res.status }, 'deploy webhook failed, retrying next tick')
@@ -198,7 +201,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       if (onStaging) {
         await publishStagingSummary(payload, t)
         out.confirmed++
-      } else if (now - new Date(t.releaseAt).getTime() > STAGING_TIMEOUT_MS && (await claim(payload, t.id, 'releaseState', { releaseState: 'timed_out' }))) {
+      } else if (now - new Date(t.releaseAt).getTime() > STAGING_TIMEOUT_MS && (await cas(payload, t.id, sql`"release_state" = 'timed_out'`, sql`("release_state" = 'waiting' OR "release_state" IS NULL)`))) {
         await ts.comment(n, 'Bauherr needs a human: staging not confirmed')
         out.timedOut++
       }

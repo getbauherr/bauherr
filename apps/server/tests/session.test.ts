@@ -78,3 +78,15 @@ it('the requeue migration gives a successor to Runs that expired unclaimed', asy
   await up({ db: payload.db.drizzle } as never)
   expect((await payload.count({ collection: 'runs', where: { ticket: { equals: ticket.id } }, ...o })).totalDocs).toBe(2)
 })
+
+it('two parallel expiry passes abandon an unclaimed Triage Run and untriage its Ticket once', async () => {
+  const { expireStaleSessions, startRunIfNeeded } = await import('../src/jobs')
+  const ticket = await seedTicket('p', 'session')
+  await payload.update({ collection: 'tickets', id: ticket.id, data: { triagedAt: new Date().toISOString() }, ...o })
+  const { run } = await startRunIfNeeded(payload, ticket, 'triage')
+  const later = Date.now() + 3 * 3600_000
+  const handled = await Promise.all([expireStaleSessions(payload, later), expireStaleSessions(payload, later)])
+  expect(handled[0] + handled[1]).toBe(1)
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('abandoned')
+  expect((await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })).triagedAt).toBeNull()
+})
