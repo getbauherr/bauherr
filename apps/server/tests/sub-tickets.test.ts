@@ -1,6 +1,6 @@
 import pg from 'pg'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 
 let payload: Payload
 let user: Record<string, any>
@@ -123,7 +123,10 @@ it('poll-tickets: a forge-side plan approval on an unseen Ticket fans out and pa
   await (pollTickets.handler as any)({ req: { payload } })
   const row = (await payload.find({ collection: 'tickets', where: { number: { equals: p.number } }, depth: 0, ...o })).docs[0]!
   expect(row.stage).toBe('parent')
-  expect((await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, depth: 0, ...o })).totalDocs).toBe(2)
+  const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, sort: 'number', depth: 0, ...o })).docs
+  expect(kids).toHaveLength(2)
+  expect(row.rank).toEqual(expect.any(String))
+  expect([row.rank, ...kids.map((k) => k.rank)].map(String)).toEqual([...new Set([row.rank, ...kids.map((k) => k.rank)].map(String))].sort())
   expect(await payload.count({ collection: 'runs', where: { ticket: { equals: row.id } }, ...o })).toMatchObject({ totalDocs: 0 })
   await (pollTickets.handler as any)({ req: { payload } })
   expect((await ts.listSubTickets(String(p.number))).map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
@@ -138,4 +141,34 @@ it('a manually approved child is not recorded as inherited', async () => {
   expect(row.inheritedApprovalFrom ?? null).toBeNull()
   expect(row.parent ?? null).toBeNull()
   expect(row.stage).toBe('build')
+})
+
+const approved = async (title: string, rank?: string) => {
+  const ts = await forge()
+  const f = await ts.create({ title, labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
+  await ts.comment(String(f.number), `<!-- bauherr:plan -->\n${PLAN}`)
+  const row = await payload.create({ collection: 'tickets', data: { title, externalId: f.id, number: f.number, url: f.url, state: 'open', labels: f.labels, stage: 'plan', product, workspace, ...(rank && { rank }) }, ...o })
+  return { ts, f, row }
+}
+
+it('fan-out falls back to a rank after the last Ticket when no key fits between neighbours', async () => {
+  const { row } = await approved('No room parent', 'k')
+  await payload.create({ collection: 'tickets', data: { title: 'Tight', externalId: 'tight', number: 900, url: 'https://x/900', state: 'open', labels: [], stage: 'plan', product, workspace, rank: 'k0' }, ...o })
+  expect(await actions.spawnSubTickets(payload, row)).toBe(true)
+  const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, depth: 0, ...o })).docs
+  expect(kids).toHaveLength(2)
+  for (const k of kids) expect(k.rank).toEqual(expect.any(String))
+})
+
+it('a parent whose forge close fails stays selectable and is closed on the next pass', async () => {
+  const { ts, f, row } = await approved('Close retry parent', 'p')
+  await actions.spawnSubTickets(payload, row)
+  for (const k of await ts.listSubTickets(String(f.number))) await ts.close(String(k.number), 'completed')
+  const spy = vi.spyOn(ts, 'close').mockRejectedValueOnce(new Error('forge down'))
+  expect(await actions.closeFinishedParents(payload)).toBe(0)
+  expect(await payload.findByID({ collection: 'tickets', id: row.id, ...o })).toMatchObject({ stage: 'parent', state: 'open' })
+  expect((await ts.get(String(f.number))).labels).not.toContain('bauherr:stage:done')
+  spy.mockRestore()
+  expect(await actions.closeFinishedParents(payload)).toBe(1)
+  expect((await ts.get(String(f.number))).state).toBe('closed')
 })

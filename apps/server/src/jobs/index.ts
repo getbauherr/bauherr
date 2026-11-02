@@ -4,11 +4,10 @@ import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
-import { rankBetween } from '../lib/frontier'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { closeFinishedParents, concludeReview, normalizeReview, spawnSubTickets, watchReviews } from '../lib/actions'
+import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, spawnSubTickets, watchReviews } from '../lib/actions'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
@@ -151,11 +150,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-/** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
-export const lastRankAfter = async (payload: Payload, workspace: number | string): Promise<string> => {
-  const r = await payload.db.drizzle.execute(sql`SELECT "rank" FROM "tickets" WHERE "workspace_id" = ${workspace} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C" DESC LIMIT 1`)
-  return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
-}
+export { lastRankAfter }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
@@ -192,7 +187,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           let stage = stageOf(t.labels)
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
           if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
-            prev ??= await payload.create({ collection: 'tickets', data: { ...base, sourceUpdatedAt: null, stage }, overrideAccess: true })
+            prev ??= await payload.create({ collection: 'tickets', data: { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, overrideAccess: true })
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
               await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')

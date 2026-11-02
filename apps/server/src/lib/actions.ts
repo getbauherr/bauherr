@@ -134,6 +134,12 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
   return { approved: APPROVED_PLAN }
 }
 
+/** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
+export const lastRankAfter = async (payload: Payload, workspace: number | string): Promise<string> => {
+  const r = await payload.db.drizzle.execute(sql`SELECT "rank" FROM "tickets" WHERE "workspace_id" = ${workspace} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C" DESC LIMIT 1`)
+  return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
+}
+
 const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
 
@@ -164,7 +170,12 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       if (doc?.rank) prev = doc.rank as string
       else if (prev) {
         const r = await payload.db.drizzle.execute(sql`SELECT min("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${id(parent.workspace)} AND "rank" COLLATE "C" > ${prev}`)
-        prev = rankBetween(prev, (r.rows[0]?.rank as string | null) ?? null)
+        try {
+          prev = rankBetween(prev, (r.rows[0]?.rank as string | null) ?? null)
+        } catch (e) {
+          if (!(e instanceof NoRoom)) throw e
+          prev = await lastRankAfter(payload, id(parent.workspace))
+        }
         link.rank = prev
       }
       if (doc) await payload.update({ collection: 'tickets', id: doc.id, data: link, ...ro })
@@ -191,8 +202,8 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
       const n = String(p.number)
       const kids = await ts.listSubTickets(n)
       if (!kids.length || kids.some((k) => k.state !== 'closed')) continue
-      await setStage(ts, n, 'done')
       await ts.close(n, 'completed')
+      await setStage(ts, n, 'done')
       await payload.update({ collection: 'tickets', id: p.id, data: { stage: 'done', state: 'closed' }, ...ro })
       await ts.comment(n, `All sub-tickets are closed:\n${kids.map((k) => `- #${k.number} ${k.title}`).join('\n')}`)
       closed++
