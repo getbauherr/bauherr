@@ -58,7 +58,8 @@ afterAll(async () => {
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
 const labelsOf = async (n: string) => (await fake.tickets(repo).get(n)).labels
-const touches = async () => (await payload.count({ collection: 'human_touches', ...o })).totalDocs
+const touches = async () => (await payload.count({ collection: 'human_touches', where: { kind: { not_equals: 'auto:staging' } }, ...o })).totalDocs
+const autoTouches = async (ticket: number) => (await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: ticket } }, { kind: { equals: 'auto:staging' } }] }, ...o })).totalDocs
 const runs = async (id: number, stage: string) => (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: stage } }] }, ...o })).docs
 
 const PLAN = '## Goal\n- Ship it\n\n## Steps\n1. Do it'
@@ -156,6 +157,47 @@ describe('default workflow (plan and release gates off)', () => {
   })
 })
 
+describe('staging gate off: the approved:staging label approves nothing', () => {
+  it('an agent-set label neither skips passStaging nor the production gate; the poll strips it', async () => {
+    usePack()
+    await payload.update({ collection: 'products', id: product, data: { productionChecks: 'deploy-prod' }, ...o })
+    const { id, n } = await releaseTicket('agent label')
+    fake.actingAs = 'intruder'
+    await fake.tickets(repo).addLabels(n, ['bauherr:approved:staging'])
+    fake.actingAs = 'factory'
+    await payload.update({ collection: 'tickets', id, data: { labels: ['bauherr:approved:staging'] }, ...o })
+    expect(await release.watchRelease(payload)).toMatchObject({ confirmed: 1 })
+    expect(await reload(id)).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
+    expect(await autoTouches(id)).toBe(1)
+    await release.watchRelease(payload)
+    expect(await autoTouches(id)).toBe(1)
+    await poll()
+    expect(await labelsOf(n)).toContain('bauherr:approved:staging')
+    expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
+  })
+
+  it('strips a label nobody recorded, with one Comment', async () => {
+    usePack()
+    const { n } = await releaseTicket('stripped')
+    fake.actingAs = 'intruder'
+    await fake.tickets(repo).addLabels(n, ['bauherr:approved:staging'])
+    fake.actingAs = 'factory'
+    await poll()
+    await poll()
+    expect(await labelsOf(n)).not.toContain('bauherr:approved:staging')
+    expect((await fake.tickets(repo).listComments(n)).filter((c) => c.body.includes('gate is off'))).toHaveLength(1)
+  })
+
+  it('decides on production state, not on the label', () => {
+    const t = { stage: 'release', labels: ['bauherr:approved:staging'], releaseState: 'on_staging' }
+    expect(needs.needsYou(t, null, 0, ['refine', 'production'])).toBeNull()
+    expect(needs.needsYou({ ...t, productionState: 'failed' }, null, 0, ['refine', 'production'])).toBe('Production deploy failed')
+    expect(needs.needsYou({ ...t, labels: [], productionState: 'awaiting_approval' }, null, 0, ['refine', 'production'])).toBe('Approve production')
+    expect(needs.needsYou({ ...t, labels: [] }, null, 0, ['refine', 'staging', 'production'])).toBe('Accept on staging')
+    expect(needs.needsYou(t, null, 0, ['refine', 'staging', 'production'])).toBeNull()
+  })
+})
+
 describe('production gate off or unconfigured', () => {
   afterEach(async () => {
     await payload.update({ collection: 'products', id: product, data: { productionChecks: '' }, ...o })
@@ -182,6 +224,7 @@ describe('production gate off or unconfigured', () => {
     expect(await reload(id)).toMatchObject({ stage: 'done', state: 'closed' })
     expect(await labelsOf(n)).toEqual(expect.arrayContaining(['bauherr:approved:staging', 'bauherr:stage:done']))
     expect(await touches()).toBe(0)
+    expect(await autoTouches(id)).toBe(1)
   })
 
   it('recovers a Ticket left on_staging when the gate is off', async () => {

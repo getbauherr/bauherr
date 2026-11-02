@@ -155,7 +155,7 @@ it('request_changes and a new merge reset the approval; accepting again needs a 
 it('accepting again never overwrites a deploying or deployed production state', async () => {
   const { id } = await accepted('twice')
   await actions.acceptStaging(payload, user, { ticket: id })
-  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 2 })
   await actions.approveProduction(payload, user, { ticket: id })
   await actions.acceptStaging(payload, user, { ticket: id })
   expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
@@ -368,7 +368,7 @@ it('accepting again repairs a staging label whose first add failed', async () =>
   await actions.acceptStaging(payload, user, { ticket: t.id as number })
   await actions.acceptStaging(payload, user, { ticket: t.id as number })
   expect(await labels(String(issue.number))).toContain('bauherr:approved:staging')
-  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 3 })
 })
 
 it('sends an idempotency header with the production webhook', async () => {

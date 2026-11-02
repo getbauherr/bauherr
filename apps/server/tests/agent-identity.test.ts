@@ -123,11 +123,12 @@ it('replaceAgentKey revokes the previous key with that label, so re-seeding does
   expect(await count('agent_keys', { label: { equals: 'seed' }, revokedAt: { exists: false } })).toBe(1)
 })
 
+/** Exempt: the poller records the forge login of a manual gate-owner label (`ev.actor`) copies the parent's approving person to inherited children (`approval?.actor`), and the factory records its own `auto:staging` path as 'factory'. */
 it('every human_touches writer names the person through personOf', () => {
   const files = execSync("grep -rl \"collection: 'human_touches'\" src --include=*.ts --include=*.tsx", { cwd: process.cwd(), encoding: 'utf8' }).trim().split('\n')
   expect(files.length).toBeGreaterThan(1)
   for (const f of files) {
-    for (const line of readFileSync(f, 'utf8').split('\n').filter((l, i, all) => all.slice(Math.max(0, i - 3), i + 4).some((x) => x.includes("collection: 'human_touches'")) && /\bactor\s*[:,}]/.test(l))) {
+    for (const line of readFileSync(f, 'utf8').split('\n').filter((l, i, all) => all.slice(Math.max(0, i - 3), i + 4).some((x) => x.includes("collection: 'human_touches'")) && /\bactor\s*[:,}]/.test(l) && !/actor: (ev\.actor|approval\?\.actor|'factory')/.test(l))) {
       expect(line, f).toContain('personOf(')
     }
   }

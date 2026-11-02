@@ -4,6 +4,7 @@ import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
 import { connectionInput, webOrigin } from './connection'
+import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gate-labels'
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
 import { gateOn, productionGateOn } from './mode'
@@ -116,7 +117,7 @@ const stagingAnswers = async (url: string): Promise<boolean> => {
 export const cas = async (payload: Payload, ticket: number | string, set: ReturnType<typeof sql>, where: ReturnType<typeof sql>): Promise<boolean> =>
   (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET ${set}, "updated_at" = now() WHERE "id" = ${ticket} AND ${where} RETURNING "id"`)).rows.length > 0
 
-export const APPROVED_STAGING = 'bauherr:approved:staging'
+export { APPROVED_STAGING }
 export const APPROVED_PRODUCTION = 'bauherr:approved:production'
 export const PRODUCTION_MARKER = '<!-- bauherr:production -->'
 /** A production deploy not reported by the Product's checks after this long needs a human. */
@@ -134,7 +135,9 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   }
   const issue = await ts.get(n)
   if (issue.state === 'open') return syncOpen()
-  const accepted = t.labels?.includes(APPROVED_STAGING) || issue.labels.includes(APPROVED_STAGING)
+  const accepted = gateIsOn('staging')
+    ? t.labels?.includes(APPROVED_STAGING) || (await verifyGateLabels(payload, t, issue.labels, ts, GATE_LABELS.filter((g) => g.label === APPROVED_STAGING))).accepted.length > 0
+    : !!t.productionState
   if (accepted && t.productionState) return 'held'
   const merged = !accepted && (await prOf(payload, t))?.pr.state === 'merged'
   const reason = issue.closeReason ?? 'completed'
@@ -155,23 +158,28 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
 
 /**
  * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (workflow `production_gate` or `Product.productionGate`), then it waits for production approval; without `productionChecks` the Ticket shows the "Configure production checks" gate instead (see `needsYou`).
- * `touch` records the human acceptance; the automatic path (release gate off) passes none.
+ * `touch` records the human acceptance; the automatic path (release gate off) records an `auto:staging` touch of the factory, which is also what makes its label verifiable.
  */
-export const passStaging = async (payload: Payload, t: Doc, touch?: () => Promise<unknown>): Promise<{ approved: string; stage: 'release' | 'done' }> => {
+export const passStaging = async (payload: Payload, t: Doc, human?: () => Promise<unknown>): Promise<{ approved: string; stage: 'release' | 'done' }> => {
   const { tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
+  const touch = human ?? (() => payload.create({ collection: 'human_touches', data: { kind: 'auto:staging', ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: new Date().toISOString() }, ...o }))
+  // remove first so the label event is the factory's own, not an earlier agent's
+  const label = async () => {
+    await touch()
+    await ts.removeLabels(n, [APPROVED_STAGING])
+    await ts.addLabels(n, [APPROVED_STAGING])
+  }
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
   const stage = productionGateOn(product) ? 'release' : 'done'
   if (stage === 'done') {
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
-    await ts.addLabels(n, [APPROVED_STAGING])
-    if (touch && !(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).totalDocs) await touch()
+    await label()
     return { approved: APPROVED_STAGING, stage }
   }
-  await ts.addLabels(n, [APPROVED_STAGING])
-  await touch?.()
+  await label()
   if (stage === 'done') {
     await ts.close(n, 'completed')
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
@@ -192,7 +200,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const n = String(t.number)
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
       if (t.stage === 'release' && auto && t.releaseState === 'on_staging') {
-        if (!t.labels?.includes(APPROVED_STAGING)) await passStaging(payload, t)
+        if (!t.productionState) await passStaging(payload, t)
         continue
       }
       if (t.stage === 'release' && t.releaseState && t.releaseState !== 'waiting') continue

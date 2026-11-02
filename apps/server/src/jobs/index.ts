@@ -10,6 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
+import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
@@ -268,6 +269,9 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
   },
 }
 
+/** Polls in which a Ticket's unverifiable gate label is retried before it waits for the next label change. */
+const MAX_GATE_ATTEMPTS = 30
+
 /** Plan gate off: advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
   if (gateOn('plan')) return
@@ -294,7 +298,24 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       try {
         const conn = await connectionInput(payload, src.connection)
         const { changes, next } = await backendFor(conn).tickets(src.repo).poll(src.cursor ?? null)
-        for (const t of changes) {
+        // Tickets whose gate label could not be verified yet are re-read on every poll, a bounded number of times.
+        const stuck = await payload.find({
+          collection: 'tickets',
+          where: { and: [{ product: { equals: id(src.product) } }, { gatePendingAttempts: { greater_than: 0 } }, { gatePendingAttempts: { less_than: MAX_GATE_ATTEMPTS } }, { number: { not_in: changes.map((c) => c.number) } }] },
+          pagination: false,
+          depth: 0,
+          overrideAccess: true,
+        })
+        const fetched = await Promise.allSettled(stuck.docs.map((d) => backendFor(conn).tickets(src.repo).get(String(d.number))))
+        const retried = []
+        for (const [i, r] of fetched.entries()) {
+          if (r.status === 'fulfilled') retried.push(r.value)
+          else {
+            payload.logger.warn({ err: r.reason, ticket: stuck.docs[i].id }, 'pending gate Ticket unreadable, no more retries')
+            await payload.update({ collection: 'tickets', id: stuck.docs[i].id, data: { gatePendingAttempts: MAX_GATE_ATTEMPTS }, depth: 0, overrideAccess: true })
+          }
+        }
+        for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
             where: { and: [{ product: { equals: id(src.product) } }, { externalId: { equals: t.id } }] },
@@ -316,10 +337,19 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             assignees: t.assignees.join(','),
             sourceUpdatedAt: t.updatedAt,
             triageAttempts: 0,
+            gatePendingAttempts: 0,
           }
-          let stage = stageOf(t.labels)
+          let labels = t.labels
+          if (GATE_LABELS.some((g) => labels.includes(g.label))) {
+            prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
+            const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
+            labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
+            base.labels = labels
+            base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
+          }
+          let stage = stageOf(labels)
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
-          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
+          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN)) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
@@ -328,7 +358,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             }
           }
           // Guard: unchanged pointers are not rewritten.
-          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          if (!base.gatePendingAttempts && !prev?.gatePendingAttempts && prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
           const data = {
             ...base,
             stage,

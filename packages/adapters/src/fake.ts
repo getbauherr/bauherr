@@ -1,5 +1,5 @@
 import type {
-  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
+  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
@@ -9,7 +9,7 @@ import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
   number: number; title: string; body: string; state: 'open' | 'closed'; labels: string[];
-  assignees: string[]; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[];
+  assignees: string[]; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[]; events: LabelEvent[];
 }
 interface FakeRepo {
   defaultBranch: string;
@@ -31,6 +31,10 @@ export class FakeBackend implements Backend {
   readonly forge: Forge;
   private ticketSources = new Map<string, FakeTickets>();
   private repos = new Map<string, FakeRepo>();
+  /** Login recorded as the actor of label changes. */
+  actingAs = 'factory';
+  /** What `whoami` reports: the factory credential's own login. */
+  login: string | null = 'factory';
   private tick = 0;
   private seq = 0;
 
@@ -247,6 +251,9 @@ class FakeTickets implements TicketSource {
     if (!t) throw new Error(`no ticket ${id}`);
     return t;
   }
+  private record(t: FakeTicket, action: LabelEvent['action'], labels: string[]): void {
+    for (const label of labels) t.events.push({ label, action, actor: this.b.actingAs, at: this.b.now() });
+  }
   private touch(t: FakeTicket): void {
     t.updatedAt = this.b.now();
   }
@@ -293,8 +300,9 @@ class FakeTickets implements TicketSource {
     const number = this.items.size + 1;
     const t: FakeTicket = {
       number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignees: [],
-      updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] }, comments: [],
+      updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] }, comments: [], events: [],
     };
+    this.record(t, 'labeled', t.labels);
     this.touch(t);
     this.items.set(number, t);
     return this.full(t);
@@ -319,13 +327,22 @@ class FakeTickets implements TicketSource {
   }
   async addLabels(id: string, labels: string[]) {
     const t = this.t(id);
-    for (const l of labels) if (!t.labels.includes(l)) t.labels.push(l);
+    const added = labels.filter((l) => !t.labels.includes(l));
+    t.labels.push(...added);
+    this.record(t, 'labeled', added);
     this.touch(t);
   }
   async removeLabels(id: string, labels: string[]) {
     const t = this.t(id);
+    this.record(t, 'unlabeled', t.labels.filter((l) => labels.includes(l)));
     t.labels = t.labels.filter((l) => !labels.includes(l));
     this.touch(t);
+  }
+  async labelEvents(id: string) {
+    return [...this.t(id).events];
+  }
+  async whoami() {
+    return this.b.login;
   }
   async claim(id: string, assignee: string) {
     const t = this.t(id);

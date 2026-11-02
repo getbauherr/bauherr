@@ -1,6 +1,6 @@
 import { createHmac, createSign, timingSafeEqual } from 'node:crypto';
 import type {
-  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
+  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
 import { Conflict } from './contracts.js';
@@ -73,6 +73,9 @@ export class Http {
   private doFetch: typeof fetch;
   private sleep: (ms: number) => Promise<void>;
   private maxRetries: number;
+  get authKind() {
+    return this.o.auth.kind;
+  }
   constructor(private o: GithubOptions) {
     this.base = o.baseUrl ?? 'https://api.github.com';
     this.doFetch = o.fetch ?? fetch;
@@ -233,6 +236,16 @@ class GithubTickets implements TicketSource {
       if (e instanceof GithubError && e.status === 404) return false;
       throw e;
     }
+  }
+  async labelEvents(id: string): Promise<LabelEvent[]> {
+    return (await this.h.paginate(`${this.p}/issues/${id}/events?per_page=100`))
+      .filter((e) => (e.event === 'labeled' || e.event === 'unlabeled') && e.label)
+      .map((e) => ({ label: e.label.name, action: e.event, actor: e.actor?.login ?? null, at: e.created_at }));
+  }
+  async whoami() {
+    // An App installation token has no user: the factory is then recognised by its `[bot]` actor.
+    if (this.h.authKind === 'app') return null;
+    return (await this.h.json('GET', '/user')).login;
   }
   async unassign(id: string, assignees: string[]) {
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });

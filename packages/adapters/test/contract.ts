@@ -82,6 +82,16 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.deepEqual((await ts.get(t.id)).labels, ['bauherr:b']);
     });
 
+    it('records label events with actor and order', async () => {
+      const t = await mk('label-events');
+      await ts.addLabels(t.id, ['bauherr:a']);
+      await ts.removeLabels(t.id, ['bauherr:a']);
+      const events = (await ts.labelEvents(t.id)).filter((e) => e.label === 'bauherr:a');
+      assert.deepEqual(events.map((e) => e.action), ['labeled', 'unlabeled']);
+      assert.ok(events.every((e) => e.actor && e.at));
+      assert.equal(events[0]!.actor, await ts.whoami());
+    });
+
     it('setStage keeps exactly one stage label', async () => {
       const t = await mk('stage', { labels: ['keep'] });
       await setStage(ts, t.id, 'plan');

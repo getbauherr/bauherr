@@ -28,7 +28,7 @@ beforeAll(async () => {
   release = await import('../src/lib/release')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
-  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, stagingUrl: 'https://staging.example' }, ...o })).id as number
+  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, gateOwners: 'owner', stagingUrl: 'https://staging.example' }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
 })
@@ -243,12 +243,27 @@ it('does not touch a decided closed Ticket again', async () => {
 it('leaves an accepted Ticket closed', async () => {
   const { t, pr, n } = await reviewTicket('accepted', true)
   fake.merge(repo, pr.number)
+  fake.actingAs = 'owner'
   await fake.tickets(repo).addLabels(n, [release.APPROVED_STAGING])
+  fake.actingAs = 'factory'
   await fake.tickets(repo).close(n, 'completed')
-  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging' }, ...o })
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging', productionState: 'awaiting_approval' }, ...o })
   await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(0)
   expect((await fake.tickets(repo).get(n)).state).toBe('closed')
+})
+
+it('does not settle a completed close as done on an agent-set staging label while the staging gate is off', async () => {
+  const { t, pr, n } = await reviewTicket('agent accepted', true)
+  fake.merge(repo, pr.number)
+  fake.actingAs = 'intruder'
+  await fake.tickets(repo).addLabels(n, [release.APPROVED_STAGING])
+  fake.actingAs = 'factory'
+  await fake.tickets(repo).close(n, 'completed')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging', labels: [release.APPROVED_STAGING] }, ...o })
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(1)
+  expect((await fake.tickets(repo).get(n)).state).toBe('open')
 })
 
 it('parallel passes: one webhook, one timeout comment, one release', async () => {

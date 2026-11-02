@@ -85,4 +85,10 @@ const build = (): FakeBackend => {
 }
 
 const g = globalThis as { __bauherrFakeForge?: FakeBackend }
-export const fakeForge = (): FakeBackend => (g.__bauherrFakeForge ??= build())
+export const fakeForge = (): FakeBackend => {
+  if (g.__bauherrFakeForge) return g.__bauherrFakeForge
+  const fake = build()
+  // Label events are compared with real-time touches; the fake's synthetic clock would never match (tests and e2e alike).
+  fake.now = () => new Date().toISOString()
+  return (g.__bauherrFakeForge = fake)
+}
