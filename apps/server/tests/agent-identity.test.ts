@@ -127,7 +127,7 @@ it('every human_touches writer names the person through personOf', () => {
   const files = execSync("grep -rl \"collection: 'human_touches'\" src --include=*.ts --include=*.tsx", { cwd: process.cwd(), encoding: 'utf8' }).trim().split('\n')
   expect(files.length).toBeGreaterThan(1)
   for (const f of files) {
-    for (const line of readFileSync(f, 'utf8').split('\n').filter((l, i, all) => all.slice(Math.max(0, i - 3), i + 4).some((x) => x.includes("collection: 'human_touches'")) && /actor:/.test(l))) {
+    for (const line of readFileSync(f, 'utf8').split('\n').filter((l, i, all) => all.slice(Math.max(0, i - 3), i + 4).some((x) => x.includes("collection: 'human_touches'")) && /\bactor\s*[:,}]/.test(l))) {
       expect(line, f).toContain('personOf(')
     }
   }

@@ -75,11 +75,8 @@ export class NotReleasable extends Error {
 /** Workspace ids of a Bauherr's tenants. */
 export const tenantsOf = (user: Doc): TicketId[] => ((user.tenants as { tenant: unknown }[]) ?? []).map((t) => id(t.tenant))
 
-/** The person a `human_touches` row names; defence in depth, an agent key never reaches a gate. */
-export const personOf = (user: Doc): string => {
-  if (typeof user.email !== 'string' || !user.email) throw new Error('a human touch needs a named person')
-  return user.email
-}
+import { personOf } from './person'
+export { personOf }
 
 /** Human force-release of a leased session Run (Admin or a member of its Workspace): ends it `abandoned`, queues the successor, records a human touch. Never escalates to needs_human. */
 export const releaseLock = async (payload: Payload, user: Doc, a: { runId: TicketId }) => {
@@ -380,7 +377,7 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
 export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.stage !== 'release' || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
-  await beginProduction(payload, t, user.email)
+  await beginProduction(payload, t, user)
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
 

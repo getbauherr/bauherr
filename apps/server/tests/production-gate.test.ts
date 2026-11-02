@@ -84,6 +84,13 @@ it('a label added on the forge by anyone does not start a deploy', async () => {
   expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 0 })
 })
 
+it('a production approval without a named person is refused and leaves no touch', async () => {
+  const { id } = await accepted('nameless')
+  await expect(actions.approveProduction(payload, { ...user, email: '' }, { ticket: id })).rejects.toThrow('a human touch needs a named person')
+  expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 0 })
+})
+
 it('the owner approval records the sha, deploys once on green checks, closes and comments once', async () => {
   const { id, n, sha } = await accepted('approved')
   await actions.approveProduction(payload, user, { ticket: id })
