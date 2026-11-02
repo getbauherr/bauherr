@@ -1,0 +1,18 @@
+{
+  "name": "bauherr",
+  "version": "0.0.1",
+  "description": "One-command start for the Bauherr AI software factory: npx bauherr init",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/getbauherr/bauherr" },
+  "homepage": "https://github.com/getbauherr/bauherr#readme",
+  "type": "module",
+  "bin": { "bauherr": "dist/cli.js" },
+  "files": ["dist", "templates"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && rm -rf templates && mkdir templates && cp ../../compose.yaml templates/ && cp -r ../../deploy templates/",
+    "typecheck": "pnpm build && tsc -p tsconfig.test.json --noEmit",
+    "test": "pnpm build && tsc -p tsconfig.test.json && cp -r package.json templates .test-dist/ && node --test .test-dist/test/*.test.js"
+  },
+  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" },
+  "engines": { "node": ">=22.14" }
+}

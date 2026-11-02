@@ -28,8 +28,10 @@ Total gateway cost 0.1135 USD.
 ## Commands
 
 ```bash
-docker compose build && docker compose up -d
+npx bauherr init   # or from a checkout: docker compose build && docker compose up -d
 export GITHUB_TOKEN="$(gh auth token)" BAUHERR_ADMIN_EMAIL=<email>
+npx bauherr seed --anthropic-key-file ~/.config/bauherr/anthropic-key --admin-password-file ~/.config/bauherr/admin-password
+# checkout equivalent of the seed line:
 docker compose run --rm --no-deps -T \
   -v ~/.config/bauherr/anthropic-key:/run/anthropic-key:ro -e ANTHROPIC_API_KEY_FILE=/run/anthropic-key \
   -v ~/.config/bauherr/admin-password:/run/admin-password:ro -e BAUHERR_ADMIN_PASSWORD_FILE=/run/admin-password \

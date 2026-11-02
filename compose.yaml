@@ -1,5 +1,6 @@
 x-app: &app
   build: .
+  image: ghcr.io/getbauherr/bauherr:${BAUHERR_VERSION:-dev}
   depends_on:
     db: {condition: service_healthy}
     init: {condition: service_completed_successfully}
