@@ -30,6 +30,7 @@ import * as migration_20261102_160000_production_approved_sha from './20261102_1
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 import * as migration_20261102_170000_production_label_at from './20261102_170000_production_label_at';
 import * as migration_20261102_170152_knowledge_edit from './20261102_170152_knowledge_edit';
+import * as migration_20261102_171000_knowledge_edit_record from './20261102_171000_knowledge_edit_record';
 
 export const migrations = [
   {
@@ -191,5 +192,10 @@ export const migrations = [
     up: migration_20261102_170152_knowledge_edit.up,
     down: migration_20261102_170152_knowledge_edit.down,
     name: '20261102_170152_knowledge_edit'
+  },
+  {
+    up: migration_20261102_171000_knowledge_edit_record.up,
+    down: migration_20261102_171000_knowledge_edit_record.down,
+    name: '20261102_171000_knowledge_edit_record'
   },
 ];

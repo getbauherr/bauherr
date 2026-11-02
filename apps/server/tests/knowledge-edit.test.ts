@@ -140,6 +140,53 @@ describe('watchKnowledgePrs', () => {
     expect((await forge().listPullRequestComments(REPO, second.number)).filter((c) => c.body.startsWith(edit.NEEDS_YOU))).toHaveLength(1)
     expect(merge).toHaveBeenCalledTimes(2)
   })
+
+  it('re-applies the edit on top of a non-overlapping change on main when recreating', async () => {
+    const n = await edited()
+    await green(n)
+    backend.current.commit(REPO, 'main', PATH, '# Style\n\nKeep it short.\n\nFooter.\n')
+    vi.spyOn(forge(), 'mergePullRequest').mockRejectedValue(new Error('not mergeable'))
+    await edit.watchKnowledgePrs(payload)
+    const [, second] = await editPrs()
+    expect((await forge().getFile(REPO, PATH, second!.head)).content).toBe('# Style\n\nKeep it very short.\n\nFooter.\n')
+    expect((await forge().getPullRequest(REPO, n)).state).toBe('closed')
+  })
+
+  it('flags needs-you with the diff when the same region changed on main, and writes nothing', async () => {
+    const n = await edited()
+    await green(n)
+    backend.current.commit(REPO, 'main', PATH, '# Style\n\nKeep it tiny.\n')
+    vi.spyOn(forge(), 'mergePullRequest').mockRejectedValue(new Error('not mergeable'))
+    await edit.watchKnowledgePrs(payload)
+    await edit.watchKnowledgePrs(payload)
+    expect(await editPrs()).toHaveLength(1)
+    expect((await forge().getFile(REPO, PATH)).content).toBe('# Style\n\nKeep it tiny.\n')
+    const needs = (await forge().listPullRequestComments(REPO, n)).filter((c) => c.body.startsWith(edit.NEEDS_YOU))
+    expect(needs).toHaveLength(1)
+    expect(needs[0]!.body).toContain('- Keep it tiny.\n+ Keep it very short.')
+  })
+
+  it('never merges a bauherr/edit-* PR the factory did not record, nor one whose head moved', async () => {
+    await forge().createBranch(REPO, 'bauherr/edit-evil')
+    backend.current.commit(REPO, 'bauherr/edit-evil', '.github/workflows/x.yml', 'run: evil')
+    const evil = await forge().openPullRequest(REPO, { title: 'evil', head: 'bauherr/edit-evil', base: 'main' })
+    await green(evil.number)
+    const n = await edited()
+    await green(n)
+    backend.current.commit(REPO, (await forge().getPullRequest(REPO, n)).head, '.github/workflows/y.yml', 'run: evil')
+    await green(n)
+    expect(await edit.watchKnowledgePrs(payload)).toBe(0)
+    expect((await forge().getPullRequest(REPO, evil.number)).state).toBe('open')
+    expect((await forge().getPullRequest(REPO, n)).state).toBe('open')
+  })
+})
+
+describe('merge3', () => {
+  it('merges distant changes and refuses overlapping or adjacent ones', () => {
+    expect(edit.merge3('a\nb\nc\nd', 'x\nb\nc\nd', 'a\nb\nc\ny')).toBe('x\nb\nc\ny')
+    expect(edit.merge3('a\nb\nc', 'a\nx\nc', 'a\ny\nc')).toBeNull()
+    expect(edit.merge3('a\nb\nc', 'x\nb\nc', 'a\ny\nc')).toBeNull()
+  })
 })
 
 describe('lineDiff', () => {

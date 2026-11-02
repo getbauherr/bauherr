@@ -459,6 +459,12 @@ export const collections: CollectionConfig[] = [
     rel('run', 'runs'),
     text('actor'),
     date('at'),
+    text('repo'),
+    text('path'),
+    num('prNumber'),
+    text('headSha'),
+    text('baseContent'),
+    text('status'),
   ]),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
