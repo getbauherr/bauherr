@@ -198,6 +198,65 @@ it('a session release keeps its login assigned when that login owns the gate', a
   await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
 })
 
+it('does not notify a gate whose owners are all rejected for good, and notifies once an owner is reachable', async () => {
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost' }, ...o })
+  const { id, n } = await planTicket('unreachable')
+  await gates.syncGates(payload)
+  await gates.syncGates(payload)
+  expect(await reload(id)).toMatchObject({ gateNotified: null, gateUnreachable: 'Approve plan' })
+  expect(await gateComments(n)).toHaveLength(0)
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost, e2e-admin' }, ...o })
+  await gates.syncGates(payload)
+  expect(await reload(id)).toMatchObject({ gateNotified: 'Approve plan', gateUnreachable: null })
+  expect(await gateComments(n)).toHaveLength(1)
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+})
+
+it('clears the unreachable flag when the gate passes', async () => {
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost' }, ...o })
+  const { id } = await planTicket('unreachable passed')
+  await gates.syncGates(payload)
+  expect((await reload(id)).gateUnreachable).toBe('Approve plan')
+  await payload.update({ collection: 'tickets', id, data: { labels: ['bauherr:approved:plan'] }, ...o })
+  await gates.syncGates(payload)
+  expect((await reload(id)).gateUnreachable).toBeNull()
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+})
+
+it('leaves the login of a running session Run assigned when the gate passes, and unassigns it after the Run', async () => {
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  const { id, n } = await stagingTicket('session login')
+  await gates.syncGates(payload)
+  await fake.tickets(repo).claim(n, 'fake')
+  await payload.update({ collection: 'tickets', id, data: { gateAssignees: 'e2e-admin,fake' }, ...o })
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'm3@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'running', mode: 'session', sessionOwner: member.id, workspace: ws }, ...o })
+  await payload.update({ collection: 'tickets', id, data: { releaseState: 'waiting' }, ...o })
+  await gates.syncGates(payload)
+  expect(issue(n).assignees).toEqual(['fake'])
+  await payload.update({ collection: 'runs', id: run.id, data: { status: 'succeeded' }, ...o })
+  await gates.syncGates(payload)
+  expect(issue(n).assignees).toEqual([])
+  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+})
+
+it('the poll starts a Run when the gate assignee was recorded after the poll read the Ticket', async () => {
+  const issue2 = await fake.tickets(repo).create({ title: 'stale guard', labels: [] })
+  await fake.tickets(repo).claim(String(issue2.number), 'fake')
+  const row = await payload.create({ collection: 'tickets', data: { title: 'stale guard', externalId: String(issue2.number), number: issue2.number, state: 'open', stage: 'triage', product, workspace: ws }, ...o })
+  await fake.tickets(repo).addLabels(String(issue2.number), ['bauherr:stage:plan'])
+  const proto = Object.getPrototypeOf(fake.tickets(repo)) as any
+  const orig = proto.poll
+  const spy = vi.spyOn(proto, 'poll').mockImplementation(async function (this: unknown, cursor: any) {
+    const r = await orig.call(this, cursor)
+    await payload.update({ collection: 'tickets', id: row.id, data: { gateAssignees: 'fake' }, ...o })
+    return r
+  })
+  await (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
+  spy.mockRestore()
+  expect((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: row.id } }, { stage: { equals: 'plan' } }] }, ...o })).totalDocs).toBe(1)
+})
+
 it('notifies the Round cap reached gate like the others', async () => {
   const issue2 = await fake.tickets(repo).create({ title: 'cap', labels: ['bauherr:stage:review'] })
   const t = await payload.create({ collection: 'tickets', data: { title: 'cap', externalId: String(issue2.number), number: issue2.number, url: issue2.url, state: 'open', stage: 'review', reviewState: 'needs_human', reviewRounds: 3, product, workspace: ws }, ...o })

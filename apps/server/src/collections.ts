@@ -337,6 +337,7 @@ const tickets = col('tickets', [
   text('gateNotified'),
   date('gateNotifiedAt'),
   text('gateAssignees'),
+  { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
