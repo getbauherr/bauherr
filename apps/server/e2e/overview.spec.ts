@@ -27,7 +27,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(parentCard).toContainText('1/2 done')
   await parentCard.locator('summary').click()
   await expect(parentCard.getByRole('link', { name: /Invoice PDF layout/ })).toBeVisible()
-  await expect(page.locator('.col[data-stage=build] .card').filter({ hasText: 'Invoice PDF layout' })).toContainText('↳ #10')
+  await expect(page.locator('.col[data-stage=build] .card').filter({ hasText: 'Invoice PDF layout' })).toContainText('↳ #11')
   const shots = process.env.SHOTS_DIR
   if (shots) {
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {
