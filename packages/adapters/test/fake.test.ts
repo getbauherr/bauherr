@@ -37,6 +37,16 @@ describe('fake: mergePullRequest', () => {
   });
 });
 
+describe('fake: closePullRequest', () => {
+  it('closes an open PR and leaves a merged one merged', async () => {
+    const b = new FakeBackend();
+    await b.forge.createBranch('o/r', 'feat');
+    const pr = await b.forge.openPullRequest('o/r', { title: 't', head: 'feat', base: 'main' });
+    await b.forge.closePullRequest('o/r', pr.number);
+    assert.equal((await b.forge.getPullRequest('o/r', pr.number)).state, 'closed');
+  });
+});
+
 describe('fake: mergeable', () => {
   it('setMergeable(false) makes the merge throw; a new commit on the head resets it', async () => {
     const b = new FakeBackend();

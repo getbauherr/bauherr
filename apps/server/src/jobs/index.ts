@@ -12,6 +12,7 @@ import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
+import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -264,6 +265,14 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   if (gateOn('plan')) return
   const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
+}
+
+export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; output: { merged: number } }> = {
+  slug: 'watch-knowledge-prs',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'watch-knowledge-prs',
+  handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
 }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {

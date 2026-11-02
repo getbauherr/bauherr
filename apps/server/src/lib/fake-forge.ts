@@ -1,6 +1,6 @@
 import { FakeBackend } from '@bauherr/adapters'
 
-/** E2E only (`BAUHERR_E2E_FAKE_FORGE=1`): in-memory forge holding the seeded Ticket #1 of `acme/web` with a plan and a worklog. */
+/** E2E only (`BAUHERR_E2E_FAKE_FORGE=1`): in-memory forge holding the seeded Ticket #1 of `acme/web` with a plan and a worklog, and the Knowledge repo `acme/knowledge`. */
 const PLAN = `<!-- bauherr:plan -->
 # Plan: dark theme for the dashboard
 
@@ -46,6 +46,7 @@ Check it on staging, then accept.
 
 const build = (): FakeBackend => {
   const fake = new FakeBackend({ native: true, users: ['fake', 'e2e-admin'] })
+  fake.commit('acme/knowledge', 'main', 'workspace/rules/style.md', '# Style\n\nKeep it short.\n')
   const ts = fake.tickets('acme/web')
   // FakeBackend methods are async but never await, so these complete synchronously.
   void ts.create({ title: 'Add a dark theme to the dashboard', labels: ['bauherr:stage:plan'] })

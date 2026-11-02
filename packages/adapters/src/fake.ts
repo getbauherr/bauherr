@@ -142,6 +142,10 @@ export class FakeBackend implements Backend {
       getPullRequest: async (repo, n) => find(repo, n),
       listPullRequests: async (repo, state = 'open') =>
         this.repo(repo).prs.filter((p) => state === 'all' || (state === 'open') === (p.state === 'open')),
+      closePullRequest: async (repo, n) => {
+        const pr = find(repo, n);
+        if (pr.state === 'open') pr.state = 'closed';
+      },
       commentOnPullRequest: async (repo, n, body) => {
         find(repo, n);
         const c: Comment = { id: String(++this.seq), author: this.opts.user ?? 'fake', body, createdAt: this.now() };
