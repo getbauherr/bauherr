@@ -429,7 +429,7 @@ export const collections: CollectionConfig[] = [
   ]),
   col('human_touches', [
     text('kind'),
-    rel('ticket', 'tickets', { required: true }),
+    rel('ticket', 'tickets'),
     rel('run', 'runs'),
     text('actor'),
     date('at'),

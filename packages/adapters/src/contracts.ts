@@ -143,6 +143,8 @@ export interface Forge {
   openPullRequest(repo: RepoRef, pr: NewPullRequest): Promise<PullRequest>;
   getPullRequest(repo: RepoRef, number: number): Promise<PullRequest>;
   listPullRequests(repo: RepoRef, state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>;
+  /** Closes an open PR without merging; idempotent. */
+  closePullRequest(repo: RepoRef, number: number): Promise<void>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
   listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;

@@ -24,6 +24,8 @@ import * as migration_20261102_150150_knowledge from './20261102_150150_knowledg
 import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './20261102_150170_requeue_expired_unclaimed_runs';
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 
+import * as migration_20261102_170152_knowledge_edit from './20261102_170152_knowledge_edit';
+
 export const migrations = [
   {
     up: migration_20261029_165423_initial.up,
@@ -149,5 +151,10 @@ export const migrations = [
     up: migration_20261102_170000_intake_session_user.up,
     down: migration_20261102_170000_intake_session_user.down,
     name: '20261102_170000_intake_session_user'
+  },
+  {
+    up: migration_20261102_170152_knowledge_edit.up,
+    down: migration_20261102_170152_knowledge_edit.down,
+    name: '20261102_170152_knowledge_edit'
   },
 ];

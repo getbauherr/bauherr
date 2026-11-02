@@ -322,6 +322,9 @@ class GithubForge implements Forge {
   async listPullRequests(repo: RepoRef, state: 'open' | 'closed' | 'all' = 'open') {
     return (await this.h.paginate(`/repos/${repo}/pulls?state=${state}&per_page=100`)).map(pr);
   }
+  async closePullRequest(repo: RepoRef, n: number) {
+    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { state: 'closed' });
+  }
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return comment(await this.h.json('POST', `/repos/${repo}/issues/${n}/comments`, { body }));
   }

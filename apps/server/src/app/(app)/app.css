@@ -172,3 +172,5 @@ a.link{color:var(--accent)}
 .legend .swatch.crit{border:0;height:3px;background:var(--accent);vertical-align:3px}
 .label.ready{color:var(--ok)}
 .label.crit{color:var(--accent)}
+.field textarea.editor{height:auto;padding:var(--space-3);width:100%;resize:vertical;line-height:1.5}
+.diff{padding:var(--space-3);background:var(--surface-200);border:1px solid var(--hairline);border-radius:var(--radius-md);overflow:auto;white-space:pre-wrap;word-break:break-word}
