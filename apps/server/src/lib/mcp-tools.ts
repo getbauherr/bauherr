@@ -15,6 +15,8 @@ type Doc = Record<string, any>
 export interface Ctx {
   payload: Payload
   user: Doc
+  /** Who is calling: only a personal API key (or the UI) is `human`; session Runs use an agent key. */
+  actor: { kind: 'agent'; keyId: number | string } | { kind: 'human' }
   /** Set by handlers once a Run or Ticket is loaded; used for the tool_calls row. */
   workspace?: number | string
   run?: number | string
@@ -23,6 +25,8 @@ export interface Tool {
   name: string
   description: string
   inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] }
+  /** An owner decision (gate): `callTool` refuses an agent key before `run`. */
+  humanOnly?: boolean
   run: (a: any, c: Ctx) => Promise<unknown>
 }
 
@@ -111,7 +115,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -120,7 +124,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
     try {
       await ts.claim(n, login)
     } catch (e) {
-      await c.payload.update({ collection: 'runs', id: run.id, data: { status: 'awaiting_session', sessionOwner: null, leaseHash: null, heartbeatAt: null }, overrideAccess: true })
+      await c.payload.update({ collection: 'runs', id: run.id, data: { status: 'awaiting_session', sessionOwner: null, agentKey: null, leaseHash: null, heartbeatAt: null }, overrideAccess: true })
       throw e
     }
   }
@@ -157,13 +161,6 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; la
 }
 
 const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session'
-
-/** Owner-only gates: like `approve` (scoped load), and refused while a session Run is working the Ticket, so an agent cannot lift its own cap. */
-const ownerOnly = async (c: Ctx, ticket: number | string): Promise<void> => {
-  const t = await getTicket(c, ticket)
-  const leased = await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })
-  if (leased.totalDocs) throw new Error('owner only: a session Run holds this Ticket')
-}
 
 export const tools: Tool[] = [
   {
@@ -411,7 +408,7 @@ export const tools: Tool[] = [
       if (mine) assertLease(run, a)
       if (run.mode !== 'session' || !(run.status === 'awaiting_session' || mine)) throw new Error(`run ${run.id} is not releasable`)
       const auto = a.takeover === 'autonomous'
-      const reset = sql`"session_owner_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, ${auto ? sql`"mode" = 'autonomous', "status" = 'queued'` : sql`"status" = 'awaiting_session'`}, ${U}`
+      const reset = sql`"session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, ${auto ? sql`"mode" = 'autonomous', "status" = 'queued'` : sql`"status" = 'awaiting_session'`}, ${U}`
       if (mine) {
         await ownerWrite(c, run, a.leaseToken, reset)
         const ticket = await getTicket(c, id(run.ticket))
@@ -428,7 +425,8 @@ export const tools: Tool[] = [
   },
   {
     name: 'approve',
-    description: 'Approve the plan gate as the Bauherr (adds bauherr:approved:plan, records a human touch). The only way to approve.',
+    humanOnly: true,
+    description: 'Human only: approve the plan gate as the Bauherr (adds bauherr:approved:plan, records a human touch). Refused for agent keys.',
     inputSchema: obj({ ...ticketId, gate: { enum: ['plan'] } }, ['ticket', 'gate']),
     async run(a, c) {
       if (a.gate !== 'plan') throw new Error("gate must be 'plan'")
@@ -447,7 +445,8 @@ export const tools: Tool[] = [
   },
   {
     name: 'accept_staging',
-    description: 'Accept the Ticket on staging as the Bauherr (adds bauherr:approved:staging, records a human touch, moves to done).',
+    humanOnly: true,
+    description: 'Human only: accept the Ticket on staging as the Bauherr (adds bauherr:approved:staging, records a human touch, moves to done).',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)
@@ -456,25 +455,28 @@ export const tools: Tool[] = [
   },
   {
     name: 'grant_review_round',
-    description: 'Owner only: at the review round cap, grant exactly one more round (back to Build on the same MR, records a human touch). Refused while a session Run holds the Ticket.',
+    humanOnly: true,
+    description: 'Human only: at the review round cap, grant exactly one more round (back to Build on the same MR, records a human touch). Refused for agent keys.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
-      await ownerOnly(c, a.ticket)
+      await getTicket(c, a.ticket)
       return grantReviewRound(c.payload, c.user, a)
     },
   },
   {
     name: 'stop_review',
-    description: 'Owner only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused while a session Run holds the Ticket.',
+    humanOnly: true,
+    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused for agent keys.',
     inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
     async run(a, c) {
-      await ownerOnly(c, a.ticket)
+      await getTicket(c, a.ticket)
       return stopReview(c.payload, c.user, a)
     },
   },
   {
     name: 'request_changes',
-    description: 'Send a Ticket in release back to build with a note (becomes Current instructions); starts a Build Run.',
+    humanOnly: true,
+    description: 'Human only: send a Ticket in release back to build with a note (becomes Current instructions); starts a Build Run.',
     inputSchema: obj({ ...ticketId, note: str('What must change') }, ['ticket', 'note']),
     async run(a, c) {
       await getTicket(c, a.ticket)
@@ -526,6 +528,7 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
   const t0 = Date.now()
   let ok = false
   try {
+    if (tool.humanOnly && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
     const out = await tool.run(input ?? {}, c)
     ok = true
     return out
@@ -534,7 +537,7 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
     if (workspace !== undefined) {
       await c.payload.create({
         collection: 'tool_calls',
-        data: { workspace, run: c.run, name, inputDigest: digest(input), status: ok ? 'ok' : 'error', durationMs: Date.now() - t0 },
+        data: { workspace, run: c.run, name, inputDigest: digest(input), status: ok ? 'ok' : 'error', agentKey: c.actor.kind === 'agent' ? c.actor.keyId : undefined, durationMs: Date.now() - t0 },
         overrideAccess: true,
       })
     }

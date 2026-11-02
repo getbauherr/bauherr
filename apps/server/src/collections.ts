@@ -79,6 +79,20 @@ const bauherren: CollectionConfig = {
   ],
 }
 
+const agentKeys = col(
+  'agent_keys',
+  [
+    rel('owner', 'bauherren', { required: true, index: true }),
+    text('label', { required: true }),
+    text('keyHash', { required: true, unique: true, hidden: true }),
+    text('prefix', { required: true, admin: { description: 'First characters of the key, to recognise it in lists.' } }),
+    date('lastUsedAt'),
+    date('revokedAt'),
+  ],
+  // Minted, used and revoked only through lib/api-key.ts (overrideAccess); never writable over the API.
+  { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }) => (req.user?.role === 'admin' ? true : { owner: { equals: req.user?.id } }) } },
+)
+
 const workspaces = col(
   'workspaces',
   [
@@ -344,6 +358,7 @@ export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded'
 
 export const collections: CollectionConfig[] = [
   bauherren,
+  agentKeys,
   workspaces,
   col('products', [
     text('name', { required: true }),
@@ -373,6 +388,7 @@ export const collections: CollectionConfig[] = [
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
+    rel('agentKey', 'agent_keys'),
     date('heartbeatAt'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
@@ -418,6 +434,7 @@ export const collections: CollectionConfig[] = [
     text('toolUseId'),
     rel('step', 'steps'),
     rel('run', 'runs'),
+    rel('agentKey', 'agent_keys'),
     text('name'),
     text('inputDigest'),
     select('status', ['ok', 'error']),

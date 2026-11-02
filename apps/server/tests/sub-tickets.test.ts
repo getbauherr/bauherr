@@ -281,7 +281,7 @@ it('after: blocks the child on its sibling in the forge and locally; unknown tit
   expect((await local(second.number)).blockedBy).toEqual([(await local(first.number)).id])
   expect((await local(loose.number)).blockedBy ?? []).toEqual([])
   const { callTool } = await import('../src/lib/mcp-tools')
-  const listed = async () => ((await callTool({ payload, user }, 'list_frontier', { product: 'web' })) as any[]).map((t: any) => t.ticket)
+  const listed = async () => ((await callTool({ payload, user, actor: { kind: 'human' } }, 'list_frontier', { product: 'web' })) as any[]).map((t: any) => t.ticket)
   expect(await listed()).not.toContain((await local(second.number)).id)
   expect(await listed()).toContain((await local(first.number)).id)
   await payload.update({ collection: 'tickets', id: (await local(first.number)).id, data: { state: 'closed' }, ...o })
