@@ -12,6 +12,8 @@ import * as migration_20261030_180000_review_stage from './20261030_180000_revie
 import * as migration_20261030_190000_sub_tickets from './20261030_190000_sub_tickets';
 import * as migration_20261030_190000_ticket_rank from './20261030_190000_ticket_rank';
 import * as migration_20261030_191000_gate_notify from './20261030_191000_gate_notify';
+import * as migration_20261030_192000_triage_stage from './20261030_192000_triage_stage';
+import * as migration_20261030_194000_triage_attempts from './20261030_194000_triage_attempts';
 
 export const migrations = [
   {
@@ -83,5 +85,15 @@ export const migrations = [
     up: migration_20261030_191000_gate_notify.up,
     down: migration_20261030_191000_gate_notify.down,
     name: '20261030_191000_gate_notify'
+  },
+  {
+    up: migration_20261030_192000_triage_stage.up,
+    down: migration_20261030_192000_triage_stage.down,
+    name: '20261030_192000_triage_stage'
+  },
+  {
+    up: migration_20261030_194000_triage_attempts.up,
+    down: migration_20261030_194000_triage_attempts.down,
+    name: '20261030_194000_triage_attempts'
   },
 ];

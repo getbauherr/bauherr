@@ -34,7 +34,7 @@ describe('needsYou', () => {
     expect(needsYou(rel('on_staging', ['bauherr:approved:staging']), r('build', 'succeeded'))).toBeNull()
   })
   it('gives every needs-you value a Gate with an action', () => {
-    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|release|rerun)$/), title: expect.any(String) })
+    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|rerun)$/), title: expect.any(String) })
   })
   it('words the release stage', () => {
     expect(releaseWord({ stage: 'release', releaseState: null })).toBe('waiting')

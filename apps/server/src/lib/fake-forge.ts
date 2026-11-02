@@ -23,6 +23,14 @@ const WORKLOG = `<!-- bauherr:worklog -->
 - 2026-10-30 Use CSS custom properties. Consequence: no runtime theme library. By: plan Run.
 `
 
+const QUESTIONS = `<!-- bauherr:triage -->
+## Questions
+Triage needs your answers before this Ticket can be planned: the export scope is open.
+
+## Decisions
+- **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON.
+`
+
 const summary = (n: number) => `<!-- bauherr:staging-summary -->
 
 # Staging summary: #${n} Ship the export
@@ -44,12 +52,18 @@ const build = (): FakeBackend => {
   void ts.comment('1', PLAN)
   void ts.comment('1', WORKLOG)
   // #2-#5 are placeholders so that later seeded Tickets line up with their forge numbers.
-  for (const n of [2, 3, 4, 5]) void ts.create({ title: `Placeholder ${n}` })
+  // They carry an excluded label so the Triage poller leaves them alone.
+  const placeholder = (n: number) => ts.create({ title: `Placeholder ${n}`, labels: ['wayfinder:map'] })
+  for (const n of [2, 3, 4, 5]) void placeholder(n)
   for (const [n, title] of [[6, 'Ship the CSV export'], [7, 'Ship the invoice filter']] as const) {
     void ts.create({ title, labels: ['bauherr:stage:release'] })
     void ts.comment(String(n), WORKLOG)
     void ts.comment(String(n), summary(n))
   }
+  // #8-#10 are placeholders; #11 is held by Triage with its questions.
+  for (const n of [8, 9, 10]) void placeholder(n)
+  void ts.create({ title: 'Clarify the export scope', labels: ['bauherr:needs-refinement'] })
+  void ts.comment('11', QUESTIONS)
   return fake
 }
 
