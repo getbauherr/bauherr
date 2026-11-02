@@ -40,9 +40,10 @@ beforeAll(async () => {
   await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/web', product, connection, workspace }, ...o })
   ticket = (await payload.create({
     collection: 'tickets',
-    data: { title: 'Overhaul invoicing', externalId: 'e2e-1', number: 1, url: 'https://x/1', state: 'open', labels: [], stage: 'plan', product, workspace },
+    data: { title: 'Overhaul invoicing', externalId: 'e2e-1', number: 1, url: 'https://x/1', state: 'open', labels: [], stage: 'plan', product, workspace, rank: 'm' },
     ...o,
   })).id as number
+  await payload.create({ collection: 'tickets', data: { title: 'Next in line', externalId: 'e2e-90', number: 90, url: 'https://x/90', state: 'open', labels: [], stage: 'plan', product, workspace, rank: 'n' }, ...o })
 })
 
 afterAll(async () => {
@@ -73,6 +74,14 @@ it('approval creates the listed children with inherited approval and moves the p
   expect(rows.map((r) => [r.title, r.inheritedApprovalFrom, r.stage])).toEqual([['Invoice PDF', ticket, 'plan'], ['Invoice numbering', ticket, 'plan']])
   expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('parent')
   expect((await (await forge()).listComments(String(kids[0]!.number))).at(-1)!.body).toContain('Approval inherited from #1')
+})
+
+it('children rank directly after the parent in section order and keep their rank on retry', async () => {
+  const rank = async () => (await payload.find({ collection: 'tickets', where: { parent: { equals: ticket } }, sort: 'number', depth: 0, ...o })).docs.map((r) => r.rank as string)
+  const [a, b] = await rank()
+  expect(a! > 'm' && a! < b! && b! < 'n').toBe(true)
+  await actions.spawnSubTickets(payload, await actions.loadTicket(payload, user, ticket))
+  expect(await rank()).toEqual([a, b])
 })
 
 it('is idempotent and never inherits for an item added after approval', async () => {
@@ -118,4 +127,15 @@ it('poll-tickets: a forge-side plan approval on an unseen Ticket fans out and pa
   expect(await payload.count({ collection: 'runs', where: { ticket: { equals: row.id } }, ...o })).toMatchObject({ totalDocs: 0 })
   await (pollTickets.handler as any)({ req: { payload } })
   expect((await ts.listSubTickets(String(p.number))).map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
+})
+
+it('a manually approved child is not recorded as inherited', async () => {
+  const ts = await forge()
+  const c = await ts.create({ title: 'Manually approved', body: 'Parent: #1', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
+  const { pollTickets } = await import('../src/jobs')
+  await (pollTickets.handler as any)({ req: { payload } })
+  const row = (await payload.find({ collection: 'tickets', where: { number: { equals: c.number } }, depth: 0, ...o })).docs[0]!
+  expect(row.inheritedApprovalFrom ?? null).toBeNull()
+  expect(row.parent ?? null).toBeNull()
+  expect(row.stage).toBe('build')
 })
