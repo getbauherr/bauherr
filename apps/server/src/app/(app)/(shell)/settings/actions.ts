@@ -38,10 +38,12 @@ export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d
   const wsId = inWorkspace({ workspace })
   const unit = s(fd, 'budgetUnit') === 'tokens' ? 'tokens' : 'usd'
   const amount = s(fd, 'budgetAmount')
-  const defaults = (await presetFor(wsId)).defaultModels
+  const { defaultModels: defaults, slugs } = await presetFor(wsId)
   const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
   if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })
-  const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, s(fd, `tier_${t}`) || defaults![t]]))
+  // Tiers are `<connection>/<model>`; a bare model id goes to the first Connection.
+  const qualify = (v: string) => (!slugs.length || slugs.some((c) => v.startsWith(`${c}/`)) ? v : `${slugs[0]}/${v}`)
+  const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount), modelByTier: tiers }
   if (isAdmin(user)) {
     const conn = Number(s(fd, 'knowledgeConnection')) || undefined

@@ -45,6 +45,21 @@ export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage
   }
 }
 
+/** Gateway model IDs per tier; a tier the Workspace never set gets the default model of its (first) LLM Connection, or fails the Run when it has none. */
+export const tierModels = async (payload: Payload, ws: Doc): Promise<Record<string, string>> => {
+  const set = (ws.modelByTier ?? {}) as Record<string, string>
+  const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t])
+    ? (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+    : undefined
+  return Object.fromEntries(
+    Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, def]) => {
+      if (set[t]) return [t, `ws-${ws.slug}/${set[t]}`]
+      if (!first) throw new Error(`Workspace ${ws.slug} has no LLM provider Connection for tier "${t}"`)
+      return [t, `ws-${ws.slug}/${first.slug}/${def}`]
+    }),
+  )
+}
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -65,8 +80,7 @@ export const buildRunCtx = async (
   const gatewayUrl = process.env.GATEWAY_URL
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
-  const tiers = { ...DEFAULT_MODEL_BY_TIER, ...(ws.modelByTier as Record<string, string> | null) }
-  const modelByTier = Object.fromEntries(Object.entries(tiers).map(([t, m]) => [t, `ws-${ws.slug}/${m}`]))
+  const modelByTier = await tierModels(payload, ws)
   const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')

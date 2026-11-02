@@ -7,7 +7,7 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, watchReviews } from '../lib/actions'
+import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
@@ -228,8 +228,6 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export { lastRankAfter }
-
 export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {
   slug: 'notify-gates',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -294,7 +292,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           let stage = stageOf(t.labels)
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
           if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
-            prev ??= await payload.create({ collection: 'tickets', data: { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, overrideAccess: true })
+            prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
               await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
@@ -306,12 +304,11 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const data = {
             ...base,
             stage,
-            ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
-            : await payload.create({ collection: 'tickets', data, overrideAccess: true })
+            : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
           const entered = stage && stage !== (prev?.stage ?? null)
           if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(prev?.gateAssignees).includes(a))) {
             await startRunIfNeeded(payload, ticket, stage)

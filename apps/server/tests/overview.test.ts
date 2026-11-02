@@ -7,6 +7,14 @@ const t = (stage: string | null, labels: string[] = []) => ({ stage, labels })
 const r = (stage: string, status: string) => ({ stage, status })
 
 describe('needsYou', () => {
+  it('asks for the round cap only past the cap', () => {
+    const rev = (reviewState: string, reviewRounds: number) => ({ ...t('review'), reviewState, reviewRounds })
+    expect(needsYou(rev('needs_human', 3), r('review', 'succeeded'))).toBe('Round cap reached')
+    expect(needsYou(rev('needs_human', 2), r('review', 'succeeded'))).toBeNull()
+    expect(needsYou(rev('needs_human', 0), r('review', 'succeeded'))).toBeNull()
+    expect(needsYou(rev('waiting_checks', 3), r('review', 'succeeded'))).toBeNull()
+  })
+
   it('asks for plan approval once a plan Run succeeded and no approval label exists', () => {
     expect(needsYou(t('plan'), r('plan', 'succeeded'))).toBe('Approve plan')
     expect(needsYou(t('plan', ['bauherr:approved:plan']), r('plan', 'succeeded'))).toBeNull()
@@ -34,7 +42,7 @@ describe('needsYou', () => {
     expect(needsYou(rel('on_staging', ['bauherr:approved:staging']), r('build', 'succeeded'))).toBeNull()
   })
   it('gives every needs-you value a Gate with an action', () => {
-    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|rerun)$/), title: expect.any(String) })
+    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|review-cap|rerun)$/), title: expect.any(String) })
   })
   it('words the release stage', () => {
     expect(releaseWord({ stage: 'release', releaseState: null })).toBe('waiting')

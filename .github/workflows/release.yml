@@ -74,4 +74,4 @@ jobs:
         run: |
           npm version "$VERSION" --no-git-tag-version
           pnpm build
-          npm publish --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"
+          npm stage publish . --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"

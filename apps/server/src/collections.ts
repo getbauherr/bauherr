@@ -1,11 +1,28 @@
 import { isDeepStrictEqual } from 'node:util'
-import { ValidationError, type CollectionConfig, type Field } from 'payload'
-import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, verifyProvider, writeProvider } from './lib/gateway'
-import { missingFields, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
+import { sql } from '@payloadcms/db-postgres'
+import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
+import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
+import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { oidcStrategy } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
+
+const AMBIENT_LOCK = 143
+
+/** Serialises the ambient-identity single-tenant check against the write it guards; released when the request transaction ends. */
+const lockAmbient = async (req: PayloadRequest): Promise<void> => {
+  const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
+  const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
+  await tx.execute(sql`select pg_advisory_xact_lock(${AMBIENT_LOCK})`)
+}
+
+const TIERS = ['cheap', 'standard', 'strong'] as const
+const llmConnections = async (req: PayloadRequest, workspace: number | string) =>
+  (await req.payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs
+
+/** USD only while every Connection ships a price catalog; an unpriced call would count 0 and never trip the budget. */
+const unitOf = (conns: Record<string, any>[]) => (conns.every((c) => PRESETS[presetOf(c.config)].catalog) ? 'usd' : 'tokens')
 
 const rel = (name: string, to: string, extra: Partial<Field> = {}): Field =>
   ({ name, type: 'relationship', relationTo: to, ...extra }) as Field
@@ -99,6 +116,26 @@ const workspaces = col(
           : { id: { in: ((req.user?.tenants as { tenant: { id: number } | number }[]) ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant)) } },
     },
     hooks: {
+      beforeValidate: [
+        async ({ data, operation, originalDoc, req }) => {
+          if (operation === 'update') {
+            if (!data?.modelByTier) return
+            const slugs = (await llmConnections(req, originalDoc.id)).map((c) => c.slug as string)
+            const bad = Object.entries(data.modelByTier as Record<string, string>).filter(([, v]) => !slugs.some((s) => String(v).startsWith(`${s}/`) && String(v).length > s.length + 1))
+            if (slugs.length && bad.length) {
+              throw new ValidationError({ collection: 'workspaces', errors: bad.map(([path]) => ({ path, message: `must be <connection>/<model>, connection one of: ${slugs.join(', ')}` })) })
+            }
+            return
+          }
+          if (operation !== 'create') return
+          await lockAmbient(req)
+          const ambient = Object.keys(PRESETS).filter((k) => PRESETS[k as Preset].auth === 'ambient')
+          const found = await req.payload.count({ collection: 'connections', where: { kind: { equals: 'llm-provider' }, provider: { in: ambient } }, overrideAccess: true, req })
+          if (found.totalDocs) {
+            throw new ValidationError({ collection: 'workspaces', errors: [{ path: 'name', message: 'a Connection uses the gateway ambient identity, shared by the whole gateway: no second Workspace allowed' }] })
+          }
+        },
+      ],
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
           if (!gatewayEnabled()) return
@@ -113,7 +150,7 @@ const workspaces = col(
         async ({ doc, req }) => {
           if (!gatewayEnabled()) return
           await deleteKey(doc.slug)
-          await removeProvider(doc.slug)
+          await removeWorkspaceProviders(doc.slug)
           await renderModels(req)
         },
       ],
@@ -130,6 +167,7 @@ const connections = col(
     text('name', { required: true }),
     select('kind', ['github', 'llm-provider'], { required: true }),
     json('config'),
+    text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
       defaultValue: 'anthropic',
       admin: {
@@ -142,7 +180,11 @@ const connections = col(
     {
       name: 'secret',
       type: 'text',
-      admin: { description: 'Write-only. Encrypted at rest; leave empty to keep the stored value. What to paste: see the provider hint.' },
+      admin: {
+        description:
+          'Write-only. Encrypted at rest; leave empty to keep the stored value. What to paste: see the provider hint. Warning: bedrock-iam and foundry-entra secrets are written in plain text into the gateway config.yaml (0600).',
+        condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].auth !== 'ambient',
+      },
       access: { read: () => false },
       hooks: {
         beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)],
@@ -151,9 +193,20 @@ const connections = col(
     json('capabilities'),
   ],
   {
+    indexes: [{ fields: ['workspace', 'slug'], unique: true }],
     hooks: {
+      beforeDelete: [
+        async ({ id, req }) => {
+          const doc = await req.payload.findByID({ collection: 'connections', id, depth: 0, overrideAccess: true, req })
+          if (doc.kind !== 'llm-provider') return
+          const wsId = typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace
+          const ws = await req.payload.findByID({ collection: 'workspaces', id: wsId, depth: 0, overrideAccess: true, req })
+          const used = TIERS.filter((t) => (ws.modelByTier as Record<string, string> | null)?.[t]?.startsWith(`${doc.slug}/`))
+          if (used.length) throw new APIError(`Connection "${doc.slug}" is used by the tier(s) ${used.join(', ')}; point them at another Connection first`, 400)
+        },
+      ],
       beforeValidate: [
-        ({ data, originalDoc }) => {
+        async ({ data, originalDoc, req }) => {
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
           // The top-level field wins only when this request changed it; otherwise an explicit `config` value stands (API, seed).
@@ -161,42 +214,78 @@ const connections = col(
             const prev = originalDoc?.[k] ?? (k === 'provider' ? 'anthropic' : undefined)
             if (data?.[k] != null && data[k] !== prev) config[k] = data[k]
           }
+          const def = PRESETS[presetOf(config)]
+          const prevAuth = originalDoc?.config ? PRESETS[presetOf(originalDoc.config)].auth : 'file'
+          if (req.user && (req.user as { role?: string }).role !== 'admin' && (def.auth !== 'file' || prevAuth !== 'file')) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'inline-secret and ambient providers can be set by Admins only' }] })
+          }
+          const workspace = data?.workspace ?? originalDoc?.workspace
+          const others = workspace ? (await llmConnections(req, typeof workspace === 'object' ? workspace.id : workspace)).filter((c) => c.id !== originalDoc?.id).map((c) => c.slug) : []
+          let slug = data?.slug || originalDoc?.slug
+          if (!slug) for (let n = 2, base = (slug = presetOf(config)); others.includes(slug); n++) slug = `${base}-${n}`
+          if (originalDoc?.slug && slug !== originalDoc.slug) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'slug', message: 'cannot change after create' }] })
+          }
+          if (!/^[a-z0-9-]+$/.test(slug) || others.includes(slug)) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'slug', message: others.includes(slug) ? 'already used by another Connection of this Workspace' : 'only a-z, 0-9 and -' }] })
+          }
+          const bad = invalidFields(config)
+          if (bad.length) throw new ValidationError({ collection: 'connections', errors: bad.map((path) => ({ path, message: 'malformed value' })) })
+          if (presetOf(config) === 'bedrock-iam' && typeof data?.secret === 'string' && data.secret && !isEncrypted(data.secret) && !parseIamSecret(data.secret)) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'secret', message: 'must be JSON {"accessKeyId":"...","secretAccessKey":"...","sessionToken":"..."} (sessionToken optional)' }] })
+          }
           const missing = missingFields(presetOf(config), config)
           if (missing.length) {
             throw new ValidationError({ collection: 'connections', errors: missing.map((path) => ({ path, message: `required for ${presetOf(config)}` })) })
           }
+          if (def.auth === 'ambient') await lockAmbient(req)
+          if (def.auth === 'ambient' && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'ambient identity is shared by the whole gateway: allowed only while the instance has exactly one Workspace' }] })
+          }
           const mirrored = Object.fromEntries(['provider', ...PRESET_FIELDS].filter((k) => config[k] !== undefined).map((k) => [k, config[k]]))
-          return { ...data, ...mirrored, config }
+          return { ...data, ...mirrored, config, slug }
         },
       ],
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
-          if (doc.kind !== 'llm-provider' || !gatewayEnabled() || req.context.skipVerify) return
+          if (doc.kind !== 'llm-provider' || req.context.skipVerify) return
           const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
             secret?: string
             workspace: { id: number | string; slug: string }
             capabilities?: Record<string, unknown> | null
           }
+          const slug = doc.slug as string
           const preset = PRESETS[presetOf(doc.config)]
           const o = { overrideAccess: true, req } as const
-          if (raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret), preset.secret.ext)
-          await removeProvider(raw.workspace.slug, preset.secret.ext === 'key' ? 'json' : 'key')
-          await renderModels(req)
           const ws = (await req.payload.findByID({ collection: 'workspaces', id: raw.workspace.id, depth: 0, ...o })) as unknown as {
             gatewayKey: string
             modelByTier: Record<string, string>
             budgetUnit: string
           }
-          // Preset change (or first Connection) sets the budget unit and, when the preset has defaults, the tiers.
+          const conns = await llmConnections(req, raw.workspace.id)
+          // Preset change (or new Connection) sets the budget unit and the tiers that point at this Connection or nowhere.
+          const own = (v?: string) => !!v?.startsWith(`${slug}/`)
+          const nowhere = (v?: string) => !conns.some((c) => v?.startsWith(`${c.slug}/`))
+          const tiers = Object.fromEntries(
+            TIERS.map((t) => {
+              const v = ws.modelByTier?.[t]
+              if (own(v)) return [t, operation === 'update' && preset.defaultModels ? `${slug}/${preset.defaultModels[t]}` : v]
+              return [t, nowhere(v) ? `${slug}/${preset.defaultModels?.[t] ?? v ?? DEFAULT_MODEL_BY_TIER[t]}` : v]
+            }),
+          )
           const changed = operation === 'create' || presetOf(previousDoc?.config) !== presetOf(doc.config)
           const data: Record<string, unknown> = {}
-          const unit = preset.catalog ? 'usd' : 'tokens'
-          if (changed && ws.budgetUnit !== unit) data.budgetUnit = unit
-          if (changed && preset.defaultModels && !isDeepStrictEqual(ws.modelByTier, preset.defaultModels)) data.modelByTier = preset.defaultModels
+          if (changed && ws.budgetUnit !== unitOf(conns)) data.budgetUnit = unitOf(conns)
+          if (changed && !isDeepStrictEqual(ws.modelByTier, tiers)) data.modelByTier = tiers
           if (Object.keys(data).length) await req.payload.update({ collection: 'workspaces', id: raw.workspace.id, data, ...o })
+          if (!gatewayEnabled()) return
+          if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, slug, decrypt(raw.secret), preset.secret.ext)
+          await removeProvider(raw.workspace.slug, slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
+          await renderModels(req)
           if (!process.env.GATEWAY_URL) return
-          const cheap = { ...DEFAULT_MODEL_BY_TIER, ...ws.modelByTier, ...data.modelByTier as object }.cheap
-          const result = await verifyProvider(raw.workspace.slug, decrypt(ws.gatewayKey), cheap)
+          const current = (data.modelByTier ?? ws.modelByTier) as Record<string, string>
+          const cheapest = TIERS.map((t) => current[t]).find(own) ?? `${slug}/${preset.defaultModels?.cheap ?? DEFAULT_MODEL_BY_TIER.cheap}`
+          const result = await verifyProvider(raw.workspace.slug, decrypt(ws.gatewayKey), cheapest)
           req.context.skipVerify = true
           await req.payload.update({
             collection: 'connections',
@@ -208,9 +297,13 @@ const connections = col(
       ],
       afterDelete: [
         async ({ doc, req }) => {
-          if (doc.kind !== 'llm-provider' || !gatewayEnabled()) return
-          const ws = await req.payload.findByID({ collection: 'workspaces', id: typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace, depth: 0, overrideAccess: true, req })
-          await removeProvider(ws.slug)
+          if (doc.kind !== 'llm-provider') return
+          const wsId = typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace
+          const ws = await req.payload.findByID({ collection: 'workspaces', id: wsId, depth: 0, overrideAccess: true, req })
+          const conns = await llmConnections(req, wsId)
+          if (conns.length && ws.budgetUnit !== unitOf(conns)) await req.payload.update({ collection: 'workspaces', id: wsId, data: { budgetUnit: unitOf(conns) }, overrideAccess: true, req })
+          if (!gatewayEnabled()) return
+          await removeProvider(ws.slug, doc.slug)
           await renderModels(req)
         },
       ],
@@ -248,7 +341,7 @@ const tickets = col('tickets', [
   date('gateNotifiedAt'),
   text('gateAssignees'),
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
-])
+], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
 export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted', 'abandoned']
 

@@ -1,4 +1,4 @@
-import { acceptStagingAction, approvePlanAction, rerunStage, requestChangesAction } from '../lib/actions'
+import { acceptStagingAction, approvePlanAction, grantReviewRoundAction, rerunStage, requestChangesAction, stopReviewAction } from '../lib/actions'
 import { isWebUrl } from '../lib/url'
 import { SubmitButton } from './SubmitButton'
 
@@ -71,6 +71,31 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
           <textarea name="note" required rows={3} />
         </label>
         <SubmitButton className="btn">Request changes</SubmitButton>
+      </form>
+    </section>
+  )
+}
+
+export function ReviewCapGate({ ticket, number, title, findingsHtml }: { ticket: number; number: number; title: string; findingsHtml: string | null }) {
+  return (
+    <section className="gate" aria-labelledby="gate">
+      <div>
+        <h2 className="heading" id="gate">{title}</h2>
+        <p className="small muted">#{number} · review</p>
+      </div>
+      <p className="body">The review sent this Ticket back to Build more often than allowed. Grant one more round, or stop; the MR stays open either way.</p>
+      {findingsHtml && <div className="md" dangerouslySetInnerHTML={{ __html: findingsHtml }} />}
+      <form action={grantReviewRoundAction}>
+        <input type="hidden" name="ticket" value={ticket} />
+        <SubmitButton className="btn primary">Grant one more round</SubmitButton>
+      </form>
+      <form action={stopReviewAction} className="changes">
+        <input type="hidden" name="ticket" value={ticket} />
+        <label className="field">
+          <span className="label muted">Note (optional)</span>
+          <textarea name="note" rows={2} />
+        </label>
+        <SubmitButton className="btn">Stop</SubmitButton>
       </form>
     </section>
   )

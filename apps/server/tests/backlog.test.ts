@@ -112,9 +112,9 @@ it('new Tickets rank after the last one of their Workspace only', async () => {
   await reset()
   await seed('m', {}, null)
   await seed('Z', {}, null)
-  const next = await jobs.lastRankAfter(payload, ws)
+  const next = await actions.lastRankAfter(payload, ws)
   expect(next > 'm').toBe(true)
-  expect(await jobs.lastRankAfter(payload, other)).toBe('V')
+  expect(await actions.lastRankAfter(payload, other)).toBe('V')
 })
 
 it('rankTicket drops the lower bound when the displayed neighbours are out of rank order', async () => {
