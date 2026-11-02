@@ -177,7 +177,7 @@ export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
   const base = packed()
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true }, ...o } as never)) as Doc
-  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`, s.production_gate && `production: ${s.production_gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
+  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
   const where = { workspace: { equals: workspace } }
   const [products, versions] = await Promise.all([
     payload.find({ collection: 'products', where, sort: 'name', pagination: false, ...o } as never),

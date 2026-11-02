@@ -41,7 +41,7 @@ flowchart LR
 Human gates (configured in [`pack/workflow.yaml`](pack/workflow.yaml)):
 
 - **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
-- **Production deploy approval** (default on, `production_gate: human` on `release`): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
+- **Production deploy approval** (per Product, off by default: setting "Production gate" plus `productionChecks`; without it a staging-confirmed Ticket goes to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
 - **Plan approval** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
 - **Staging acceptance** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
 - **Merge request review**: the factory reviews and merges ([#82](https://github.com/getbauherr/bauherr/issues/82)); no human.

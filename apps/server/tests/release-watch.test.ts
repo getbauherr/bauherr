@@ -176,7 +176,7 @@ it('notes a closed-unmerged MR once and leaves the Ticket in review', async () =
 const reopenedNotes = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(release.REOPENED_MARKER))
 
 it('reopens a Ticket closed by its merged factory MR, comments once, then posts the staging summary', async () => {
-  await setProduct({ deployChecks: '' })
+  await setProduct({ deployChecks: '', productionGate: true, productionChecks: 'deploy-prod' })
   const { t, pr, n } = await reviewTicket('closed by merge', true)
   const sha = fake.merge(repo, pr.number)
   fake.setChecks(repo, sha, green)
@@ -188,6 +188,7 @@ it('reopens a Ticket closed by its merged factory MR, comments once, then posts 
   expect((await fake.tickets(repo).get(n)).state).toBe('open')
   expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'release' })
   expect(await summaries(n)).toHaveLength(1)
+  await setProduct({ productionGate: false, productionChecks: '' })
 })
 
 it('leaves a Ticket closed by a human without a merged factory MR closed', async () => {

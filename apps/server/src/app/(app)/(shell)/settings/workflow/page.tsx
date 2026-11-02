@@ -14,7 +14,7 @@ export default async function Workflow() {
     <>
       <h2 className="heading">Stages</h2>
       <p className="small muted">The base workflow (pack/workflow.yaml) with the run mode each stage has in this Workspace. Read-only.</p>
-      <p className="small">Human gates: {w.gates.join(', ')}</p>
+      <p className="small">Human gates: {w.gates.join(', ')}; production approval is set per Product (Production gate and checks, otherwise a confirmed Ticket goes to done)</p>
       <div className="scroll">
         <table className="table">
           <thead><tr><th>Stage</th><th>Mode</th><th>Gate</th><th>Steps</th></tr></thead>

@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 let payload: Payload
 let fake: FakeBackend
@@ -83,9 +83,9 @@ const releaseTicket = async (title: string) => {
 }
 
 describe('default workflow (plan and release gates off)', () => {
-  it('lists refine and production as the human gates', () => {
+  it('lists refine as the only always-on human gate', () => {
     usePack()
-    expect(mode.humanGates()).toEqual(['refine', 'production'])
+    expect(mode.humanGates()).toEqual(['refine'])
     expect([mode.gateOn('plan'), mode.gateOn('release')]).toEqual([false, false])
   })
 
@@ -141,8 +141,9 @@ describe('default workflow (plan and release gates off)', () => {
     expect(await touches()).toBe(0)
   })
 
-  it('moves a merged Ticket confirmed on staging to the production gate without an acceptance', async () => {
+  it('moves a merged Ticket confirmed on staging to the production gate of a Product that has it on', async () => {
     usePack()
+    await payload.update({ collection: 'products', id: product, data: { productionGate: true, productionChecks: 'deploy-prod' }, ...o })
     const { id, n } = await releaseTicket('prod gate')
     expect(await release.watchRelease(payload)).toMatchObject({ confirmed: 1 })
     expect(await reload(id)).toMatchObject({ stage: 'release', state: 'open', releaseState: 'on_staging', productionState: 'awaiting_approval' })
@@ -156,6 +157,24 @@ describe('default workflow (plan and release gates off)', () => {
 })
 
 describe('no production gate', () => {
+  afterEach(async () => {
+    await payload.update({ collection: 'products', id: product, data: { productionGate: false, productionChecks: '' }, ...o })
+  })
+
+  it('goes to done when the Product has the gate on but no productionChecks', async () => {
+    await payload.update({ collection: 'products', id: product, data: { productionGate: true, productionChecks: '' }, ...o })
+    const { id } = await releaseTicket('no checks')
+    await release.watchRelease(payload)
+    expect(await reload(id)).toMatchObject({ stage: 'done', state: 'closed' })
+  })
+
+  it('goes to done with the default workflow when the Product gate is off', async () => {
+    usePack()
+    const { id } = await releaseTicket('gate off')
+    await release.watchRelease(payload)
+    expect(await reload(id)).toMatchObject({ stage: 'done', state: 'closed' })
+  })
+
   it('finishes a Ticket confirmed on staging: done and closed, no touch', async () => {
     usePack('bare-pack')
     expect(mode.humanGates()).toEqual(['refine'])
@@ -200,7 +219,7 @@ describe('needsYou by gates', () => {
   const rel = { stage: 'release', labels: [] as string[], releaseState: 'on_staging' }
   const succeeded = { stage: 'plan', status: 'succeeded' }
   it.each([
-    [['refine', 'production'], null, null, null],
+    [['refine'], null, null, null],
     [['refine', 'plan'], 'Approve plan', 'Answer decisions', null],
     [['refine', 'staging'], null, null, 'Accept on staging'],
   ] as const)('%j', (gates, approve, decisions, accept) => {

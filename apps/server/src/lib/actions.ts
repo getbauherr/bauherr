@@ -186,8 +186,8 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
   if (openCritical(comments).length) {
     const marker = `<!-- bauherr:plan-refine:${plan.id} -->`
     if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
-    await ts.removeLabels(n, [stageLabel('plan')])
     await ts.addLabels(n, [NEEDS_REFINEMENT])
+    await ts.removeLabels(n, [stageLabel('plan')])
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', triagedAt: (await ts.get(n)).updatedAt }, ...ro })
     return 'refine'
   }

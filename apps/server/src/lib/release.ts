@@ -136,7 +136,7 @@ const reopenIfClosedByMerge = async (payload: Payload, t: Doc, ts: { get(id: str
 }
 
 /**
- * Staging passes: the Ticket moves to `done` (closed) unless the production gate is on (workflow `production_gate` or the Product's own), then it waits for production approval.
+ * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (`productionGate` with `productionChecks`), then it waits for production approval.
  * `touch` records the human acceptance; the automatic path (release gate off) passes none.
  */
 export const passStaging = async (payload: Payload, t: Doc, touch?: () => Promise<unknown>): Promise<{ approved: string; stage: 'release' | 'done' }> => {

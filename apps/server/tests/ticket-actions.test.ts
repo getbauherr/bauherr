@@ -99,10 +99,10 @@ it('acceptStaging labels, records a human touch, moves to done and closes the Ti
 it('acceptStaging holds in release when the Product has a production gate', async () => {
   await releaseTicket()
   const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
-  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true }, ...o })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true, productionChecks: 'deploy-prod' }, ...o })
   await expect(actions.acceptStaging(payload, user, { ticket })).resolves.toMatchObject({ stage: 'release' })
   expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
-  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false }, ...o })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false, productionChecks: '' }, ...o })
 })
 
 it('approveProduction refuses a Ticket not awaiting approval, a non-member, another Workspace and a Product without productionChecks', async () => {
