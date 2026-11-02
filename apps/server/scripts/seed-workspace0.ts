@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { getPayload } from 'payload'
 import { parse } from 'yaml'
 import config from '../src/payload.config'
-import { mintAgentKey } from '../src/lib/api-key'
+import { replaceAgentKey } from '../src/lib/api-key'
 import { ensureSessionKey, gatewayEnabled, writeSecretFile } from '../src/lib/gateway'
 
 const env = (k: string): string => {
@@ -33,8 +33,8 @@ const admin = await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }
 // ensure() never touches an existing user; re-seeding is how the password is reset.
 await payload.update({ collection: 'bauherren', id: admin.id, data: { password: adminPassword, role: 'admin' }, ...o })
 
-// MCP connect: an agent key for the Admin lets the owner's Claude Code session reach /mcp (it cannot approve gates). Minted per seed run when a key file is asked for; never printed.
-if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, await mintAgentKey(payload, admin, 'seed'))
+// MCP connect: an agent key for the Admin lets the owner's Claude Code session reach /mcp (it cannot approve gates). A key file asked for replaces the previous 'seed' key (no accumulation); never printed.
+if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, await replaceAgentKey(payload, admin, 'seed'))
 
 const ws = await ensure('workspaces', eq({ slug: 'getbauherr' }), { name: 'getbauherr', slug: 'getbauherr' })
 const workspace = ws.id

@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
@@ -16,7 +18,7 @@ const human = { kind: 'human' } as const
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
-/** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `humanOnly: true` on the tool. */
+/** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `access: 'human'` on the tool. */
 const GATES = ['approve', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes']
 
 beforeAll(async () => {
@@ -93,10 +95,41 @@ it('with a human actor the gate tools work and every human touch names a person'
   expect(row).toMatchObject({ status: 'ok', agentKey: null })
 })
 
-it('registry: the humanOnly set is exactly the gate set, Run mechanics stay open to agents', () => {
-  expect(mcp.tools.filter((t) => t.humanOnly).map((t) => t.name).sort()).toEqual([...GATES].sort())
+it('registry: every tool carries an explicit classification, gate-like names are human, the human set is exactly GATES', () => {
+  for (const t of mcp.tools) expect(['agent', 'human'], `${t.name} needs access: 'agent' | 'human'`).toContain((t as { access?: string }).access)
+  for (const t of mcp.tools.filter((t) => /approve|accept|grant|stop_review|request_changes|production/.test(t.name))) expect(t.access, t.name).toBe('human')
+  expect(mcp.tools.filter((t) => t.access === 'human').map((t) => t.name).sort()).toEqual([...GATES].sort())
   for (const name of ['claim_run', 'claim_next', 'submit_plan', 'finish_run', 'submit_review', 'release_run', 'post_staging_summary']) {
-    expect(mcp.tools.find((t) => t.name === name)?.humanOnly).toBeFalsy()
+    expect(mcp.tools.find((t) => t.name === name)?.access).toBe('agent')
+  }
+})
+
+it('callTool is fail-closed: an unclassified tool is refused for an agent key', async () => {
+  const run = async () => 'ran'
+  mcp.tools.push({ name: 'unclassified_probe', description: '', inputSchema: { type: 'object', properties: {} }, run } as never)
+  try {
+    await expect(call(agent, 'unclassified_probe', {})).rejects.toThrow('forbidden: unclassified_probe needs a human')
+    await expect(call(human, 'unclassified_probe', {})).resolves.toBe('ran')
+  } finally {
+    mcp.tools.pop()
+  }
+})
+
+it('replaceAgentKey revokes the previous key with that label, so re-seeding does not accumulate', async () => {
+  const first = await keyLib.replaceAgentKey(payload, owner, 'seed')
+  const second = await keyLib.replaceAgentKey(payload, owner, 'seed')
+  expect(await keyLib.resolveAgentKey(payload, first)).toBeNull()
+  expect(await keyLib.resolveAgentKey(payload, second)).not.toBeNull()
+  expect(await count('agent_keys', { label: { equals: 'seed' }, revokedAt: { exists: false } })).toBe(1)
+})
+
+it('every human_touches writer names the person through personOf', () => {
+  const files = execSync("grep -rl \"collection: 'human_touches'\" src --include=*.ts --include=*.tsx", { cwd: process.cwd(), encoding: 'utf8' }).trim().split('\n')
+  expect(files.length).toBeGreaterThan(1)
+  for (const f of files) {
+    for (const line of readFileSync(f, 'utf8').split('\n').filter((l, i, all) => all.slice(Math.max(0, i - 3), i + 4).some((x) => x.includes("collection: 'human_touches'")) && /actor:/.test(l))) {
+      expect(line, f).toContain('personOf(')
+    }
   }
 })
 

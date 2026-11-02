@@ -22,13 +22,15 @@ The token acts as you, inside your Workspaces only.
 
 `/mcp` knows two kinds of caller. An **agent key** (`bha_...`, stored as a hash in `agent_keys`, many per user, revocable one by one) is what a session uses. The Bauherr's **personal key** (`enableAPIKey`, the old single key) is a *human* credential, opt-in, never minted by default: never give it to an agent. An unknown token is a 401.
 
-Gate tools are refused for an agent key with `forbidden: <tool> needs a human`: `approve`, `accept_staging`, `grant_review_round`, `stop_review`, `request_changes` (and `approve_production` once it lands). Gates stay in the UI, or in the forge for the plan label. Every `human_touches` row names a person (`actor` is a user email). The key used is recorded on the Run (`runs.agentKey`, shown as "Claimed by" on the Run page) and on every `tool_calls` row.
+Gate tools are refused for an agent key with `forbidden: <tool> needs a human`: `approve`, `accept_staging`, `grant_review_round`, `stop_review`, `request_changes` (and `approve_production` once it lands). Fail-closed: every tool declares `access: 'agent' | 'human'` (required); an agent key may call only `'agent'` tools. Gates stay in the UI, or in the forge for the plan label. Every `human_touches` row names a person (`actor` is a user email). The key used is recorded on the Run (`runs.agentKey`, shown as "Claimed by" on the Run page) and on every `tool_calls` row.
 
 Upgrading: migration `20261102_150166_agent_keys` disables every existing personal key (they were handed to agents under the old setup). Mint an agent key and re-add the server:
 
 ```bash
 claude mcp remove bauherr && <the line shown once on /settings/api-key>
 ```
+
+Rolling the migration back drops `agent_keys` but does not restore the disabled personal keys; create a new one on `/settings/api-key`.
 
 ## Route your own session through the gateway
 

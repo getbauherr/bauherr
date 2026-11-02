@@ -31,6 +31,7 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   UPDATE "bauherren" SET "enable_a_p_i_key" = false, "api_key" = NULL, "api_key_index" = NULL WHERE "enable_a_p_i_key" = true OR "api_key_index" IS NOT NULL;`)
 }
 
+/** Rollback drops agent keys; personal keys disabled by `up` are NOT restored (mint a new one on /settings/api-key). */
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
    ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "agent_keys_id";

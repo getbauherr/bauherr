@@ -25,8 +25,8 @@ export interface Tool {
   name: string
   description: string
   inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] }
-  /** An owner decision (gate): `callTool` refuses an agent key before `run`. */
-  humanOnly?: boolean
+  /** Required, no default: `callTool` lets an agent key call only `'agent'` tools; owner decisions (gates) are `'human'`. */
+  access: 'agent' | 'human'
   run: (a: any, c: Ctx) => Promise<unknown>
 }
 
@@ -165,6 +165,7 @@ const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 
 export const tools: Tool[] = [
   {
     name: 'list_frontier',
+    access: 'agent',
     description: 'Open, unblocked Tickets with stage and latest Run state. Only claim Tickets with claimable=true; leased ones show leasedBy + leaseExpiresAt: never touch their branch or worktree.',
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
@@ -188,6 +189,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'get_ticket',
+    access: 'agent',
     description: 'Ticket pointer plus live body and Goal statements. `pr` is the open factory MR (number, url, branch): a Build Run on a Ticket with a `pr` pushes to that branch and opens no new MR.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
@@ -201,6 +203,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'claim_run',
+    access: 'agent',
     description: 'Claim an awaiting_session Run: status running, Ticket assigned. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
@@ -209,6 +212,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'claim_next',
+    access: 'agent',
     description: 'Claim the top claimable Run in frontier order (in-flight work first, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
@@ -227,6 +231,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'heartbeat',
+    access: 'agent',
     description: 'Keep a session Run alive. Send at least every 10 minutes; 30 minutes of silence ends your lease: the Run is abandoned and a new claimable Run takes over.',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
@@ -237,6 +242,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'read_worklog',
+    access: 'agent',
     description: 'Markdown of the Ticket\'s factory worklog comment (empty if none).',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
@@ -246,6 +252,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'update_worklog',
+    access: 'agent',
     description: 'Create or replace the Ticket\'s worklog comment (one per Ticket, marked <!-- bauherr:worklog -->). While a session Run holds the Ticket\'s lease, its leaseToken is required.',
     inputSchema: obj({ ...ticketId, ...leaseToken, markdown: str('Full worklog, see the worklog skill template') }, ['ticket', 'markdown']),
     async run(a, c) {
@@ -257,6 +264,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'report_step',
+    access: 'agent',
     description: 'Record a Step of your session Run.',
     inputSchema: obj({ ...runId, ...leaseToken, summary: str('What was done'), tokens: { type: 'object', properties: { in: { type: 'number' }, out: { type: 'number' } } } }, ['runId', 'leaseToken', 'summary']),
     async run(a, c) {
@@ -273,6 +281,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'attach_evidence',
+    access: 'agent',
     description: 'Append markdown to the Run\'s ## Evidence (commands with exit codes, test summary, lint diff, links).',
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Evidence to append') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
@@ -283,6 +292,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'submit_plan',
+    access: 'agent',
     description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only.',
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
@@ -293,6 +303,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'request_review',
+    access: 'agent',
     description: 'Move the Ticket to the review stage label.',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
@@ -302,6 +313,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'run_checks',
+    access: 'agent',
     description: 'Scorecard rules for the Run (placeholder: every result is unknown).',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
@@ -311,6 +323,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'finish_run',
+    access: 'agent',
     description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason.',
     inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
@@ -342,6 +355,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'submit_review',
+    access: 'agent',
     description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
     inputSchema: obj(
       {
@@ -374,6 +388,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'submit_triage',
+    access: 'agent',
     description: 'End your Triage Run with the outcome. plan: the Ticket is ready (clear goal, acceptance criteria or derivable ones, no open product decision); it gets the plan stage label. refine: post questions for the owner (every one critical; title, default, alternatives) and hold the Ticket with bauherr:needs-refinement until they are answered. skip: post the reason, no stage; not re-triaged until the Ticket changes. reason is always required (one line). Never edit code in a Triage Run.',
     inputSchema: obj(
       {
@@ -400,6 +415,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'release_run',
+    access: 'agent',
     description: "Give a Run back: to the queue as awaiting_session, or with takeover 'autonomous' hand it to the Runner. Works on awaiting_session Runs and your own (leaseToken required while running).",
     inputSchema: obj({ ...runId, ...leaseToken, takeover: { enum: ['autonomous'] } }, ['runId']),
     async run(a, c) {
@@ -425,7 +441,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'approve',
-    humanOnly: true,
+    access: 'human',
     description: 'Human only: approve the plan gate as the Bauherr (adds bauherr:approved:plan, records a human touch). Refused for agent keys.',
     inputSchema: obj({ ...ticketId, gate: { enum: ['plan'] } }, ['ticket', 'gate']),
     async run(a, c) {
@@ -436,6 +452,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'post_staging_summary',
+    access: 'agent',
     description: 'Post the templated staging summary Comment on a Ticket in release (once per merge commit).',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
@@ -445,7 +462,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'accept_staging',
-    humanOnly: true,
+    access: 'human',
     description: 'Human only: accept the Ticket on staging as the Bauherr (adds bauherr:approved:staging, records a human touch, moves to done).',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
@@ -455,7 +472,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'grant_review_round',
-    humanOnly: true,
+    access: 'human',
     description: 'Human only: at the review round cap, grant exactly one more round (back to Build on the same MR, records a human touch). Refused for agent keys.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
@@ -465,7 +482,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'stop_review',
-    humanOnly: true,
+    access: 'human',
     description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused for agent keys.',
     inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
     async run(a, c) {
@@ -475,7 +492,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'request_changes',
-    humanOnly: true,
+    access: 'human',
     description: 'Human only: send a Ticket in release back to build with a note (becomes Current instructions); starts a Build Run.',
     inputSchema: obj({ ...ticketId, note: str('What must change') }, ['ticket', 'note']),
     async run(a, c) {
@@ -485,6 +502,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'load_skill',
+    access: 'agent',
     description: 'Read a pack skill (SKILL.md) by name, e.g. run-contract, worklog.',
     inputSchema: obj({ name: str('Skill name') }, ['name']),
     async run(a) {
@@ -494,6 +512,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'read_knowledge',
+    access: 'agent',
     description: 'Read a file of the core pack by path relative to pack/ (e.g. rules/evidence.md).',
     inputSchema: obj({ path: str('Path relative to pack/') }, ['path']),
     async run(a) {
@@ -502,6 +521,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'search_knowledge',
+    access: 'agent',
     description: 'Case-insensitive substring search over the core pack; returns up to 20 {path, line, text}.',
     inputSchema: obj({ query: str('Text to find') }, ['query']),
     async run(a) {
@@ -528,7 +548,7 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
   const t0 = Date.now()
   let ok = false
   try {
-    if (tool.humanOnly && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
+    if (tool.access !== 'agent' && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
     const out = await tool.run(input ?? {}, c)
     ok = true
     return out

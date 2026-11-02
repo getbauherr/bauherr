@@ -35,6 +35,13 @@ export const mintAgentKey = async (payload: Payload, user: Owner, label: string)
   return token
 }
 
+/** Revokes the owner's active keys with this label, then mints a fresh one (idempotent seeding). */
+export const replaceAgentKey = async (payload: Payload, user: Owner, label: string): Promise<string> => {
+  const { docs } = await payload.find({ ...ak, where: { owner: { equals: own(user) }, label: { equals: label }, revokedAt: { exists: false } }, pagination: false })
+  for (const k of docs) await revokeAgentKey(payload, user, k.id)
+  return mintAgentKey(payload, user, label)
+}
+
 /** Revokes one of the owner's agent keys; the id must belong to `user`. */
 export const revokeAgentKey = async (payload: Payload, user: Owner, keyId: number | string): Promise<void> => {
   const { docs } = await payload.find({ ...ak, where: { id: { equals: keyId }, owner: { equals: own(user) } }, limit: 1 })

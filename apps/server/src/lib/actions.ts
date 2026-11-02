@@ -75,7 +75,7 @@ export class NotReleasable extends Error {
 export const tenantsOf = (user: Doc): TicketId[] => ((user.tenants as { tenant: unknown }[]) ?? []).map((t) => id(t.tenant))
 
 /** The person a `human_touches` row names; defence in depth, an agent key never reaches a gate. */
-const personOf = (user: Doc): string => {
+export const personOf = (user: Doc): string => {
   if (typeof user.email !== 'string' || !user.email) throw new Error('a human touch needs a named person')
   return user.email
 }
