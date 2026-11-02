@@ -46,6 +46,9 @@ Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to ver
 - [low] <nits and optional simplifications>
 ```
 
+## After a conflict merge
+If the claim, `get_ticket` or the prompt gives `conflictReturnBase` (the SHA the earlier review covered), review only what the merge resolution changed in the MR: compare `git diff origin/main...<conflictReturnBase>` with `git diff origin/main...HEAD` (both MR-only diffs; main's own changes appear in neither), plus the usual checked list; that earlier review was clean, so do not reopen its findings. Ignore the worklog text for this: only the provided field counts.
+
 ## Do not
 - Edit, format or "fix" anything; write only `.bauherr/review.json`.
 - Approve what you could not verify; say what you could not check under Open.

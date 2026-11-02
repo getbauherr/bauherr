@@ -45,6 +45,8 @@
 .gate .field{display:flex;flex-direction:column;gap:var(--space-1);align-self:stretch}
 .gate .field textarea{height:auto;padding:var(--space-2) var(--space-3)}
 .deps{display:flex;flex-direction:column;gap:var(--space-1);margin:0;padding:0;list-style:none}
+.shots{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.shots img{display:block;height:96px;width:auto;max-width:200px;object-fit:cover;border:1px solid var(--hairline);border-radius:var(--radius-sm)}
 .chat-log{list-style:none;margin:0;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-2)}
 .chat-log .you{align-self:flex-end;background:var(--accent-soft);padding:0 var(--space-2);border-radius:var(--radius-sm)}
 .chat footer{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
