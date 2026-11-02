@@ -49,7 +49,7 @@ export const DECISIONS_LOOKUPS = 20
 const CLOSED_LIMIT = 200
 const FORGE_TIMEOUT_MS = 3000
 
-const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
+export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
 /** Open tickets (plus the newest closed ones when `all`), their latest Runs, and the newest Runs of the Workspace. */

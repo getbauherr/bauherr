@@ -184,3 +184,48 @@ it('retries a pending label on later polls even when the Ticket is not among the
   expect((await row(n)).stage).toBe('build')
   expect((await row(n)).gatePendingAttempts).toBe(0)
 })
+
+it('writes a fresh touch before the label on an acceptStaging retry', async () => {
+  fake.actingAs = 'factory'
+  const t = await ts().create({ title: 'z', labels: ['bauherr:stage:release'] })
+  await poll()
+  const r = await row(t.id)
+  await payload.update({ collection: 'products', id: r.product, data: { productionGate: true }, ...o })
+  await payload.update({ collection: 'tickets', id: r.id, data: { productionState: 'awaiting_approval' }, ...o })
+  await actions.acceptStaging(payload, admin, { ticket: r.id })
+  for (const touch of await touches(t.id)) await payload.update({ collection: 'human_touches', id: touch.id, data: { at: new Date(Date.now() - 3_600_000).toISOString() }, ...o })
+  await ts().removeLabels(t.id, [STAGING])
+  await actions.acceptStaging(payload, admin, { ticket: r.id })
+  await poll()
+  expect((await ts().get(t.id)).labels).toContain(STAGING)
+  expect(await rejections(t.id)).toHaveLength(0)
+})
+
+it('keeps polling the source when a pending Ticket can no longer be read', async () => {
+  const gone = await planTicket()
+  const ok = await planTicket()
+  await labelAs('owner', gone, PLAN)
+  await new Promise((r) => setTimeout(r, 5))
+  await labelAs('owner', ok, PLAN)
+  const source = ts()
+  const real = source.labelEvents.bind(source)
+  const get = source.get.bind(source)
+  source.labelEvents = async () => {
+    throw new Error('events down')
+  }
+  await poll()
+  await poll()
+  source.labelEvents = real
+  let failed = false
+  source.get = async (id: string) => {
+    if (id === gone && !failed) {
+      failed = true
+      throw new Error('404')
+    }
+    return get(id)
+  }
+  await poll()
+  source.get = get
+  expect((await row(ok)).stage).toBe('build')
+  expect(failed).toBe(true)
+})

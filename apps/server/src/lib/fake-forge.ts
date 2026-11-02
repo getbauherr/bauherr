@@ -72,6 +72,14 @@ const build = (): FakeBackend => {
   // #15 sits at the review round cap with its escalation Comment.
   void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })
   void ts.comment('15', 'Bauherr needs a human: the review found 1 blocking issue(s), after 2 review rounds.\n\n- [medium] src/retry.ts:12 The loop never stops on a permanent error. Scenario: when the gateway answers 402, then the call is retried forever.')
+  // Knowledge repo of the seeded Workspace: two documents on main and one open write-back PR with red checks.
+  const kb = 'acme/knowledge'
+  fake.commit(kb, 'main', 'handbook/release-policy.md', '# Release policy\n\nEvery release waits for **staging acceptance**.\n\n## Rollback\n\nRoll back with the previous image tag.\n')
+  fake.commit(kb, 'main', 'workspace/rules/naming.md', '# Naming\n\nName branches after the ticket.\n')
+  void fake.forge.createBranch(kb, 'bauherr/42')
+  const head = fake.commit(kb, 'bauherr/42', 'handbook/lessons.md', '# Lessons\n\nRetries need a stop condition.\n')
+  void fake.forge.openPullRequest(kb, { title: 'Write back: lessons from #42', head: 'bauherr/42', base: 'main' })
+  fake.setChecks(kb, head, [{ name: 'lint', status: 'completed', conclusion: 'failure' }])
   return fake
 }
 
@@ -79,7 +87,7 @@ const g = globalThis as { __bauherrFakeForge?: FakeBackend }
 export const fakeForge = (): FakeBackend => {
   if (g.__bauherrFakeForge) return g.__bauherrFakeForge
   const fake = build()
-  // Label events are compared with real-time touches; the fake's synthetic clock would never match.
-  if (process.env.VITEST) fake.now = () => new Date().toISOString()
+  // Label events are compared with real-time touches; the fake's synthetic clock would never match (tests and e2e alike).
+  fake.now = () => new Date().toISOString()
   return (g.__bauherrFakeForge = fake)
 }

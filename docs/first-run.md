@@ -40,6 +40,10 @@ gh issue create -R getbauherr/bauherr --title "Add CHANGELOG.md" --label bauherr
 gh api -X POST repos/getbauherr/bauherr/issues/70/labels --raw-field 'labels[]=bauherr:approved:plan'
 ```
 
+## Agent key
+
+`seed` no longer creates a personal MCP key. With `BAUHERR_MCP_KEY_FILE` it mints an agent key (cannot approve gates) into that file; otherwise create one on `/settings/api-key`. Existing personal keys are disabled by migration `20261102_150166_agent_keys`.
+
 ## Open
 
 - `runs.cost_estimate_usd` is about 10x below gateway cost; `reconcile-costs` (5 min after a Run, retry at +10 min) now fills `gateway_cost_usd`; UI reads virtual `costUsd` = gateway else estimate.

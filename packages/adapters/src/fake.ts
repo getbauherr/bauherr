@@ -52,12 +52,13 @@ export class FakeBackend implements Backend {
   }
 
   /** Test helper: writes a file on a branch (creates the repo with branch `main` if unknown). */
-  commit(repo: RepoRef, branch: string, path: string, content: string): void {
+  commit(repo: RepoRef, branch: string, path: string, content: string): string {
     const b = this.repo(repo).branches.get(branch);
     if (!b) throw new Error(`no branch ${branch}`);
     b.files.set(path, content);
     b.sha = `sha${++this.seq}`;
     for (const p of this.repo(repo).prs) if (p.head === branch) delete p.mergeable;
+    return b.sha;
   }
 
   /** Test helper: sets whether the forge reports an open PR as mergeable (false = conflicts). */

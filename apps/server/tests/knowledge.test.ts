@@ -137,7 +137,7 @@ describe('resync', () => {
 describe('MCP tools', () => {
   it('search_knowledge returns citations and read_knowledge resolves layers for the callers Workspace', async () => {
     const { callTool } = await import('../src/lib/mcp-tools')
-    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] } })
+    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
     const hits = (await callTool(ctx(withoutRepo), 'search_knowledge', { query: 'zebra' })) as Record<string, unknown>[]
     expect(hits[0]).toMatchObject({ source: 'core', path: 'rules/evidence.md', heading: 'Evidence', commit: 'core-pack' })
     expect(await callTool(ctx(withoutRepo), 'read_knowledge', { path: 'rules/evidence.md' })).toContain('zebra')
@@ -179,7 +179,7 @@ describe('repo switch, failure back-off and fencing', () => {
 
   it('fences repo text for agents and leaves core text plain', async () => {
     const { callTool } = await import('../src/lib/mcp-tools')
-    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] } })
+    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
     const repoHits = (await callTool(ctx(switched), 'search_knowledge', { query: 'bonobo' })) as { text: string }[]
     expect(repoHits[0]!.text).toContain('<untrusted-data>')
     expect(await callTool(ctx(switched), 'read_knowledge', { path: 'b.md' })).toContain('<untrusted-data>')

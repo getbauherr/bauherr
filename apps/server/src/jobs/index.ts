@@ -282,7 +282,15 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           depth: 0,
           overrideAccess: true,
         })
-        const retried = await Promise.all(stuck.docs.map((d) => backendFor(conn).tickets(src.repo).get(String(d.number))))
+        const fetched = await Promise.allSettled(stuck.docs.map((d) => backendFor(conn).tickets(src.repo).get(String(d.number))))
+        const retried = []
+        for (const [i, r] of fetched.entries()) {
+          if (r.status === 'fulfilled') retried.push(r.value)
+          else {
+            payload.logger.warn({ err: r.reason, ticket: stuck.docs[i].id }, 'pending gate Ticket unreadable, no more retries')
+            await payload.update({ collection: 'tickets', id: stuck.docs[i].id, data: { gatePendingAttempts: MAX_GATE_ATTEMPTS }, depth: 0, overrideAccess: true })
+          }
+        }
         for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
