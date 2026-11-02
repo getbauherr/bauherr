@@ -158,6 +158,8 @@ it('fan-out falls back to a rank after the last Ticket when no key fits between 
   const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, depth: 0, ...o })).docs
   expect(kids).toHaveLength(2)
   for (const k of kids) expect(k.rank).toEqual(expect.any(String))
+  const ranks = kids.sort((a, b) => (a.number as number) - (b.number as number)).map((k) => k.rank as string)
+  expect(ranks[0]! < ranks[1]! && ranks[0]! > 'k0').toBe(true)
 })
 
 it('a parent whose forge close fails stays selectable and is closed on the next pass', async () => {
@@ -171,4 +173,73 @@ it('a parent whose forge close fails stays selectable and is closed on the next 
   spy.mockRestore()
   expect(await actions.closeFinishedParents(payload)).toBe(1)
   expect((await ts.get(String(f.number))).state).toBe('closed')
+})
+
+it('a legacy parent without a rank gets one and its children rank after it', async () => {
+  const { row } = await approved('Legacy parent')
+  await actions.spawnSubTickets(payload, row)
+  const parent = await payload.findByID({ collection: 'tickets', id: row.id, ...o })
+  const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, sort: 'number', depth: 0, ...o })).docs
+  const ranks = [parent.rank, ...kids.map((k) => k.rank)] as string[]
+  expect(ranks.every((r) => typeof r === 'string')).toBe(true)
+  expect(ranks.every((r, i) => i === 0 || ranks[i - 1]! < r)).toBe(true)
+})
+
+it('a parent whose forge close succeeded but setStage failed is finished on the next pass without a second close', async () => {
+  const { ts, f, row } = await approved('Done retry parent', 'q')
+  await actions.spawnSubTickets(payload, row)
+  for (const k of await ts.listSubTickets(String(f.number))) await ts.close(String(k.number), 'completed')
+  const close = vi.spyOn(ts, 'close')
+  const stage = vi.spyOn(ts, 'removeLabels').mockRejectedValueOnce(new Error('forge down'))
+  expect(await actions.closeFinishedParents(payload)).toBe(0)
+  expect(close).toHaveBeenCalledTimes(1)
+  expect((await ts.get(String(f.number))).state).toBe('closed')
+  expect(await payload.findByID({ collection: 'tickets', id: row.id, ...o })).toMatchObject({ stage: 'parent' })
+  stage.mockRestore()
+  expect(await actions.closeFinishedParents(payload)).toBe(1)
+  expect(close).toHaveBeenCalledTimes(1)
+  expect(await payload.findByID({ collection: 'tickets', id: row.id, ...o })).toMatchObject({ stage: 'done', state: 'closed' })
+  close.mockRestore()
+})
+
+it('the child record is stored before addSubTicket, so a crash there keeps it and a retry completes the set', async () => {
+  const { ts, f, row } = await approved('Crash parent', 'r')
+  const spy = vi.spyOn(ts, 'addSubTicket').mockRejectedValueOnce(new Error('forge down'))
+  await expect(actions.spawnSubTickets(payload, row)).rejects.toThrow('forge down')
+  spy.mockRestore()
+  const orphan = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, depth: 0, ...o })).docs
+  expect(orphan).toHaveLength(1)
+  expect(orphan[0]!.inheritedApprovalFrom).toBe(row.id)
+  await expect(actions.spawnSubTickets(payload, row)).resolves.toBe(true)
+  expect((await ts.listSubTickets(String(f.number))).map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
+  expect(await payload.findByID({ collection: 'tickets', id: orphan[0]!.id, depth: 0, ...o })).toMatchObject({ parent: row.id, inheritedApprovalFrom: row.id })
+})
+
+it('one row per forge issue: a duplicate create is rejected and a racing poll keeps the spawned inheritance', async () => {
+  const ts = await forge()
+  const f = await ts.create({ title: 'Raced child', labels: ['bauherr:stage:plan'] })
+  const create = { workspace, product, externalId: f.id, number: f.number, url: f.url, title: f.title, state: 'open', labels: f.labels, stage: 'plan', parent: ticket, inheritedApprovalFrom: ticket }
+  const { pollTickets } = await import('../src/jobs')
+  await Promise.all([actions.upsertTicket(payload, create, { parent: ticket, inheritedApprovalFrom: ticket }), (pollTickets.handler as any)({ req: { payload } })])
+  const rows = (await payload.find({ collection: 'tickets', where: { externalId: { equals: f.id } }, depth: 0, ...o })).docs
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ parent: ticket, inheritedApprovalFrom: ticket })
+  await expect(payload.create({ collection: 'tickets', data: create, ...o })).rejects.toThrow()
+})
+
+it('the migration merges existing duplicates into the lowest id, repoints references, then enforces uniqueness', async () => {
+  const { sql } = await import('@payloadcms/db-postgres')
+  const db = (payload.db as any).drizzle
+  for (const r of (await db.execute(sql`SELECT indexname FROM pg_indexes WHERE tablename = 'tickets' AND indexdef LIKE 'CREATE UNIQUE%external_id%'`)).rows) await db.execute(sql.raw(`DROP INDEX "${r.indexname}"`))
+  const ins = async (ext: string, parent?: number) =>
+    (await db.execute(sql`INSERT INTO "tickets" ("title","product_id","workspace_id","external_id","parent_id","updated_at","created_at") VALUES ('d', ${product}, ${workspace}, ${ext}, ${parent ?? null}, now(), now()) RETURNING id`)).rows[0].id as number
+  const keep = await ins('dupe-1')
+  const dupe = await ins('dupe-1')
+  const child = await ins('dupe-child', dupe)
+  const { up } = await import('../src/migrations/20261102_150138_ticket_external_unique')
+  await up({ db, payload } as any)
+  const ids = (await db.execute(sql`SELECT id FROM "tickets" WHERE "external_id" = 'dupe-1'`)).rows.map((r: any) => r.id)
+  expect(ids).toEqual([keep])
+  expect((await db.execute(sql`SELECT parent_id FROM "tickets" WHERE id = ${child}`)).rows[0].parent_id).toBe(keep)
+  await expect(ins('dupe-1')).rejects.toThrow()
 })
