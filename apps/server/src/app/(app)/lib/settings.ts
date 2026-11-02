@@ -74,7 +74,7 @@ export async function loadProducts(workspace: number) {
         id: p.id as number,
         name: p.name as string,
         slug: p.slug as string,
-        deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string },
+        deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string },
         blocked: await blockedBy(payload, 'products', p.id),
         embedTokens: embedTokens
           .filter((e) => (e.product?.id ?? e.product) === p.id)

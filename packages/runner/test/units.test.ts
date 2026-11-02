@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agentEnv, buildOptions } from '../src/agent.js';
+import { agentEnv, buildOptions, promptFor } from '../src/agent.js';
 import { buildEvidence } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
@@ -113,4 +113,14 @@ test('triage run: no shell, no Edit, writes only under .bauherr/', async () => {
   };
   assert.equal(await decide(join(cwd, TRIAGE_FILE)), 'allow');
   assert.equal(await decide(join(cwd, 'src/a.ts')), 'deny');
+});
+
+test('conflictBase scopes the review prompt, not the triage prompt', () => {
+  const base = { gatewayUrl: 'http://x', gitBaseUrl: 'http://y' };
+  const review = makeCtx(base);
+  review.run.stage = 'review';
+  const triage = makeCtx({ ...base, stage: 'triage' });
+  review.conflictBase = triage.conflictBase = 'abc123';
+  assert.match(promptFor(review), /earlier review of abc123 was clean/);
+  assert.doesNotMatch(promptFor(triage), /abc123/);
 });

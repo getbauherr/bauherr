@@ -1,4 +1,4 @@
-import { acceptStagingAction, approvePlanAction, grantReviewRoundAction, rerunStage, requestChangesAction, stopReviewAction } from '../lib/actions'
+import { acceptStagingAction, approvePlanAction, approveProductionAction, grantReviewRoundAction, rerunStage, requestChangesAction, stopReviewAction } from '../lib/actions'
 import { isWebUrl } from '../lib/url'
 import { SubmitButton } from './SubmitButton'
 
@@ -71,6 +71,22 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
           <textarea name="note" required rows={3} />
         </label>
         <SubmitButton className="btn">Request changes</SubmitButton>
+      </form>
+    </section>
+  )
+}
+
+export function ProductionGate({ ticket, number, title, failed }: { ticket: number; number: number; title: string; failed: boolean }) {
+  return (
+    <section className="gate" aria-labelledby="gate">
+      <div>
+        <h2 className="heading" id="gate">{title}</h2>
+        <p className="small muted">#{number} · Production</p>
+      </div>
+      <p className="body">{failed ? 'The production deploy failed or was not reported within 60 minutes. See the production Comment on the forge; approving again retries it.' : "Approving lets the Product's own pipeline deploy this Ticket to production."}</p>
+      <form action={approveProductionAction}>
+        <input type="hidden" name="ticket" value={ticket} />
+        <SubmitButton className="btn primary">{failed ? 'Approve again' : 'Approve production deploy'}</SubmitButton>
       </form>
     </section>
   )

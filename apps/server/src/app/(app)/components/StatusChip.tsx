@@ -5,8 +5,8 @@ const chips: Record<string, [cls: string, text: string]> = {
   failed: ['failed', '× Failed'],
   cancelled: ['cancelled', 'Cancelled'],
   needs_human: ['needs', 'Needs human'],
-  awaiting_session: ['needs', 'Needs human'],
-  budget_exhausted: ['needs', 'Needs human'],
+  awaiting_session: ['queued', 'Waiting for a session'],
+  budget_exhausted: ['needs', 'Budget exhausted'],
   abandoned: ['cancelled', 'Abandoned'],
 }
 

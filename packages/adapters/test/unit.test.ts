@@ -170,6 +170,22 @@ describe('github mergePullRequest', () => {
   });
 });
 
+describe('github pull request mergeable', () => {
+  const get = async (extra: object) => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async () => json({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'f', sha: 'h', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } }, ...extra }),
+    });
+    return (await b.forge.getPullRequest('o/r', 7)).mergeable;
+  };
+  it('maps mergeable false, mergeable_state dirty, true and null', async () => {
+    assert.equal(await get({ mergeable: false }), false);
+    assert.equal(await get({ mergeable: null, mergeable_state: 'dirty' }), false);
+    assert.equal(await get({ mergeable: true, mergeable_state: 'clean' }), true);
+    assert.equal(await get({ mergeable: null }), undefined);
+  });
+});
+
 describe('github reopen', () => {
   it('PATCHes the issue state to open', async () => {
     const calls: { method: string; url: string; body: any }[] = [];
@@ -183,13 +199,13 @@ describe('github listChecks', () => {
   it('maps commit statuses to checks next to the check runs', async () => {
     const b = new GithubBackend({
       auth: patAuth('t'),
-      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure' }, { context: 'ci/b', state: 'pending' }, { context: 'ci/c', state: 'success' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] }),
+      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure', created_at: 'T2' }, { context: 'ci/b', state: 'pending', created_at: 'T3' }, { context: 'ci/c', state: 'success', created_at: 'T4' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success', started_at: 'T1' }] }),
     });
     assert.deepEqual(await b.forge.listChecks('o/r', 'h'), [
-      { id: 1, name: 'build', status: 'completed', conclusion: 'success' },
-      { name: 'ci/a', status: 'completed', conclusion: 'failure' },
-      { name: 'ci/b', status: 'in_progress', conclusion: null },
-      { name: 'ci/c', status: 'completed', conclusion: 'success' },
+      { id: 1, name: 'build', status: 'completed', conclusion: 'success', startedAt: 'T1' },
+      { name: 'ci/a', status: 'completed', conclusion: 'failure', startedAt: 'T2' },
+      { name: 'ci/b', status: 'in_progress', conclusion: null, startedAt: 'T3' },
+      { name: 'ci/c', status: 'completed', conclusion: 'success', startedAt: 'T4' },
     ]);
   });
 });
