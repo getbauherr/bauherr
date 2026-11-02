@@ -344,11 +344,12 @@ class GithubForge implements Forge {
   async listFiles(repo: RepoRef, ref?: string) {
     const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
     const tree = await this.h.json('GET', `/repos/${repo}/git/trees/${c.commit.tree.sha}?recursive=1`);
-    return { commit: c.sha as string, paths: (tree.tree as any[]).filter((t) => t.type === 'blob').map((t) => t.path as string) };
+    return { commit: c.sha as string, paths: (tree.tree as any[]).filter((t) => t.type === 'blob').map((t) => t.path as string), truncated: tree.truncated === true };
   }
   async getFile(repo: RepoRef, path: string, ref?: string) {
     const f = await this.h.json('GET', `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}${ref ? `?ref=${enc(ref)}` : ''}`);
-    return { content: Buffer.from(f.content, 'base64').toString('utf8'), sha: f.sha as string };
+    const data = f.encoding === 'base64' ? f.content : (await this.h.json('GET', `/repos/${repo}/git/blobs/${f.sha}`)).content; // contents API omits files over 1 MB
+    return { content: Buffer.from(data, 'base64').toString('utf8'), sha: f.sha as string };
   }
   async putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }) {
     const url = `/repos/${repo}/contents/${o.path.split('/').map(enc).join('/')}`;

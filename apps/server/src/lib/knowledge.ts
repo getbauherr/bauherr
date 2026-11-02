@@ -73,7 +73,13 @@ const replaceSource = async (payload: Payload, workspace: number, source: string
   })
 }
 
-/** Re-indexes the core pack (when its content changed) and the Knowledge repo (when its default-branch commit changed); a source that fails keeps its old index. Returns whether anything was indexed. */
+const BACKOFF_MS = 10 * 60_000
+const save = async (payload: Payload, workspace: number, indexed: Record<string, string>): Promise<true> => {
+  await payload.update({ collection: 'workspaces', id: workspace, data: { knowledgeIndexed: indexed }, overrideAccess: true })
+  return true
+}
+
+/** Re-indexes the core pack (when its content changed) and the Knowledge repo (when its default-branch commit changed); a repo that fails keeps its old index and is not retried for 10 minutes; chunks of any other repo are dropped. Returns whether anything was indexed. */
 export const resync = async (payload: Payload, workspaceId: number | string): Promise<boolean> => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspaceId, depth: 0, overrideAccess: true })) as Doc
   const indexed: Record<string, string> = { ...ws.knowledgeIndexed }
@@ -87,28 +93,38 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
     changed = true
   }
 
+  await payload.db.drizzle.execute(sql`DELETE FROM "knowledge_chunks" WHERE "workspace_id" = ${ws.id} AND "source" NOT IN ('core', ${ws.knowledgeRepo ?? ''})`)
+
+  const failedAt = indexed.gitFailed?.startsWith(`${ws.knowledgeRepo}|`) ? Date.parse(indexed.gitFailed.split('|')[1]!) : 0
   if (ws.knowledgeRepo && ws.knowledgeConnection) {
+    if (Date.now() - failedAt < BACKOFF_MS) return changed && (await save(payload, ws.id, indexed))
     try {
       const forge = githubFor(await connectionInput(payload, ws.knowledgeConnection)).forge
-      const { commit, paths } = await forge.listFiles(ws.knowledgeRepo)
+      const { commit, paths, truncated } = await forge.listFiles(ws.knowledgeRepo)
       if (indexed.git !== `${ws.knowledgeRepo}@${commit}`) {
+        if (truncated) payload.logger.warn({ workspace: ws.id, repo: ws.knowledgeRepo }, 'knowledge repo tree truncated by GitHub; indexing the files returned')
         const files: { path: string; text: string }[] = []
         for (const path of paths.filter(isMd)) files.push({ path, text: (await forge.getFile(ws.knowledgeRepo, path, commit)).content })
         await replaceSource(payload, ws.id, ws.knowledgeRepo, commit, files, false)
         indexed.git = `${ws.knowledgeRepo}@${commit}`
         changed = true
       }
+      if (indexed.gitFailed) {
+        delete indexed.gitFailed
+        changed = true
+      }
     } catch (e) {
       payload.logger.error({ err: e, workspace: ws.id }, 'knowledge resync failed')
+      indexed.gitFailed = `${ws.knowledgeRepo}|${new Date().toISOString()}`
+      await save(payload, ws.id, indexed)
     }
-  } else if (indexed.git) {
-    await payload.db.drizzle.execute(sql`DELETE FROM "knowledge_chunks" WHERE "workspace_id" = ${ws.id} AND "source" <> 'core'`)
+  } else if (indexed.git || indexed.gitFailed) {
     delete indexed.git
+    delete indexed.gitFailed
     changed = true
   }
 
-  if (changed) await payload.update({ collection: 'workspaces', id: ws.id, data: { knowledgeIndexed: indexed }, overrideAccess: true })
-  return changed
+  return changed && (await save(payload, ws.id, indexed))
 }
 
 const indexedOnce = async (payload: Payload, workspace: number): Promise<void> => {
@@ -138,15 +154,15 @@ export const search = async (payload: Payload, workspace: number | string, q: st
 }
 
 /** A document by logical path (`rules/evidence.md`): the highest visible layer wins. Null when the index has none. */
-export const read = async (payload: Payload, workspace: number | string, path: string, product?: string): Promise<string | null> => {
+export const read = async (payload: Payload, workspace: number | string, path: string, product?: string): Promise<{ source: string; text: string } | null> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
   const r = await payload.db.drizzle.execute(sql`
-    SELECT c."text" FROM "knowledge_chunks" c
+    SELECT c."source", c."text" FROM "knowledge_chunks" c
     WHERE c."workspace_id" = ${ws} AND c."logical" = ${path} AND ${visible('c', product)}
       AND NOT EXISTS (
         SELECT 1 FROM "knowledge_chunks" o
         WHERE o."workspace_id" = c."workspace_id" AND o."logical" = c."logical" AND ${visible('o', product)} AND ${rank('o')} > ${rank('c')})
     ORDER BY c."id"`)
-  return r.rows.length ? r.rows.map((x: any) => x.text).join('') : null
+  return r.rows.length ? { source: (r.rows[0] as any).source, text: r.rows.map((x: any) => x.text).join('') } : null
 }

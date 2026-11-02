@@ -152,7 +152,7 @@ export interface Forge {
   /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown); returns the merge commit sha. */
   mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
   /** Blob paths of `ref` (default branch when omitted) and the commit sha they belong to. */
-  listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[] }>;
+  listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[]; truncated?: boolean }>;
   /** `sha` is the blob sha, to be passed back as `putFile`'s `expectSha`. */
   getFile(repo: RepoRef, path: string, ref?: string): Promise<{ content: string; sha: string }>;
   /** Commits `content` to `branch`; with `expectSha` the file must still have that blob sha (`''` = must not exist), else throws `Conflict`. */

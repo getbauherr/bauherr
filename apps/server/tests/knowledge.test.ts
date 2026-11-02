@@ -84,8 +84,8 @@ describe('search', () => {
 
   it('a later layer shadows the earlier one at the same logical path', async () => {
     expect((await knowledge.search(payload, withRepo, 'zebra')).length).toBe(0)
-    expect(await knowledge.read(payload, withRepo, 'rules/evidence.md')).toContain('giraffe')
-    expect(await knowledge.read(payload, withoutRepo, 'rules/evidence.md')).toContain('zebra')
+    expect((await knowledge.read(payload, withRepo, 'rules/evidence.md'))?.text).toContain('giraffe')
+    expect((await knowledge.read(payload, withoutRepo, 'rules/evidence.md'))?.text).toContain('zebra')
   })
 
   it('shows a product layer only to that product', async () => {
@@ -142,5 +142,48 @@ describe('MCP tools', () => {
     expect(hits[0]).toMatchObject({ source: 'core', path: 'rules/evidence.md', heading: 'Evidence', commit: 'core-pack' })
     expect(await callTool(ctx(withoutRepo), 'read_knowledge', { path: 'rules/evidence.md' })).toContain('zebra')
     expect(await callTool(ctx(withoutRepo), 'read_knowledge', { path: 'rules/style.md' })).toContain('Keep it short')
+  })
+})
+
+describe('repo switch, failure back-off and fencing', () => {
+  const OTHER = 'acme/other'
+  let switched: number
+  const makeWs = async (slug: string, repo: string) => {
+    const w = Number((await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id)
+    const conn = await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: w }, ...o } as never)
+    await payload.update({ collection: 'workspaces', id: w, data: { knowledgeConnection: conn.id, knowledgeRepo: repo }, ...o })
+    return w
+  }
+
+  it('switching knowledgeRepo A to B drops As chunks', async () => {
+    backend.current.commit('acme/a', 'main', 'a.md', '# A\n\naardvark\n')
+    backend.current.commit('acme/b', 'main', 'b.md', '# B\n\nbonobo\n')
+    const w = (switched = await makeWs('switch', 'acme/a'))
+    await knowledge.resync(payload, w)
+    expect((await knowledge.search(payload, w, 'aardvark')).length).toBe(1)
+    await payload.update({ collection: 'workspaces', id: w, data: { knowledgeRepo: 'acme/b' }, ...o })
+    await knowledge.resync(payload, w)
+    expect(await knowledge.search(payload, w, 'aardvark')).toEqual([])
+    expect((await knowledge.search(payload, w, 'bonobo')).length).toBe(1)
+  })
+
+  it('does not refetch a failing repo until the back-off passed', async () => {
+    backend.current.commit(OTHER, 'main', 'x.md', '# X\n\nx\n')
+    const w = await makeWs('backoff', OTHER)
+    const list = vi.spyOn(backend.current.forge, 'listFiles').mockRejectedValue(new Error('down'))
+    await knowledge.resync(payload, w)
+    await knowledge.resync(payload, w)
+    expect(list).toHaveBeenCalledTimes(1)
+    list.mockRestore()
+  })
+
+  it('fences repo text for agents and leaves core text plain', async () => {
+    const { callTool } = await import('../src/lib/mcp-tools')
+    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] } })
+    const repoHits = (await callTool(ctx(switched), 'search_knowledge', { query: 'bonobo' })) as { text: string }[]
+    expect(repoHits[0]!.text).toContain('<untrusted-data>')
+    expect(await callTool(ctx(switched), 'read_knowledge', { path: 'b.md' })).toContain('<untrusted-data>')
+    const core = (await callTool(ctx(withoutRepo), 'search_knowledge', { query: 'zebra' })) as { text: string }[]
+    expect(core[0]!.text).not.toContain('untrusted-data')
   })
 })
