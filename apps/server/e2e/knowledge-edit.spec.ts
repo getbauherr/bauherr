@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
+test.skip(!email || !process.env.E2E_PASSWORD_FILE || !process.env.E2E_FAKE_FORGE, 'set E2E_EMAIL, E2E_PASSWORD_FILE and E2E_FAKE_FORGE')
 
 test('edit a Knowledge document: save opens a PR', async ({ page }) => {
   await page.goto('/login')

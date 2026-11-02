@@ -144,7 +144,7 @@ export const watchKnowledgePrs = async (payload: Payload, now = Date.now()): Pro
       const forge = backendFor(await connectionInput(payload, id(ws.knowledgeConnection))).forge
       const done = (rec: Doc) => payload.update({ collection: 'human_touches', id: rec.id, data: { status: 'done' }, overrideAccess: true } as never)
       let mergedHere = false
-      const prs = await forge.listPullRequests(repo, 'all')
+      const prs = (await forge.listPullRequests(repo, 'open')).filter((p) => p.head.startsWith(EDIT_PREFIX))
       for (const rec of open) {
         const pr = prs.find((p) => p.number === rec.prNumber)
         try {

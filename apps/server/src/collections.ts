@@ -465,7 +465,7 @@ export const collections: CollectionConfig[] = [
     text('headSha'),
     text('baseContent'),
     text('status'),
-  ]),
+  ], { access: { create: () => false, update: () => false, delete: () => false } }),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
     select('layer', ['core', 'workspace', 'product'], { required: true }),
