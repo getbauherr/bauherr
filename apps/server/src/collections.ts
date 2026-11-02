@@ -281,6 +281,7 @@ const tickets = col('tickets', [
   text('productionApprovedSha'),
   date('productionRequestedAt'),
   date('productionWebhookSentAt'),
+  date('productionLabelAt'),
   select('reviewState', ['waiting_checks', 'merged', 'ready_for_human', 'needs_human']),
   date('reviewWaitingSince'),
   { name: 'mergeFailures', type: 'number', defaultValue: 0, admin: { description: 'Consecutive failed merge attempts; the 3rd needs a human.' } },

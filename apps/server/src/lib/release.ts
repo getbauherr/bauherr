@@ -168,7 +168,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         if (product.deployMode !== 'webhook') onStaging = !!t.mergeSha && checksGreen(await backend.forge.listChecks(repo, t.mergeSha), names)
         else if (!t.deployRequestedAt) {
           if (product.deployWebhookUrl && (await claim(payload, t.id, 'deployRequestedAt', { deployRequestedAt: new Date(now).toISOString() }))) {
-            const res = await fetch(product.deployWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, stagingUrl: product.stagingUrl ?? null }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
+            const res = await fetch(product.deployWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bauherr-delivery': `${t.number}-${t.mergeSha}` }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, stagingUrl: product.stagingUrl ?? null }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
             if (!res.ok) {
               payload.logger.error({ ticket: t.id, status: res.status }, 'deploy webhook failed, retrying next tick')
               await payload.update({ collection: 'tickets', id: t.id, data: { deployRequestedAt: null }, ...o })
@@ -195,23 +195,37 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
 const productionNames = (product: Doc): string[] => String(product.productionChecks ?? '').split(',').map((x) => x.trim()).filter(Boolean)
 
 /** Ticket fields that drop any production approval and deploy; used wherever the merge commit or the gate is reset. */
-export const NO_PRODUCTION = { productionState: null, productionApprovedSha: null, productionRequestedAt: null, productionWebhookSentAt: null } as const
+export const NO_PRODUCTION = { productionState: null, productionApprovedSha: null, productionRequestedAt: null, productionWebhookSentAt: null, productionLabelAt: null } as const
+
+/** Check runs older than the approval by more than this still count (forge and server clocks differ). */
+export const CLOCK_SKEW_MS = 60_000
+/** Production checks pass only on `success`: a skipped or neutral deploy job deployed nothing. */
+const succeeded = (c: Check | undefined): boolean => c?.status === 'completed' && c.conclusion === 'success'
+
+/** Sets the output label once per approval: `productionLabelAt` records the delivery, so a later removal on the forge never re-triggers label-based pipelines. Only a `deploying` Ticket that has not been delivered yet gets it. */
+const deliverLabel = async (payload: Payload, ts: TicketSource, ticket: number | string, number: number): Promise<void> => {
+  await ts.addLabels(String(number), [APPROVED_PRODUCTION])
+  await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: ticket } }, { productionState: { equals: 'deploying' } }, { productionLabelAt: { exists: false } }] }, data: { productionLabelAt: new Date().toISOString() }, ...o })
+}
 
 /** The approval label is only an output signal for label-triggered pipelines; a failed removal is logged, never trusted as state. */
 export const clearApprovalLabel = (payload: Payload, ts: TicketSource, n: string) =>
   ts.removeLabels(n, [APPROVED_PRODUCTION]).catch((e) => payload.logger.error({ err: e, ticket: n }, 'could not remove the production label'))
 
-/** Starts the production deploy of a Ticket in `awaiting_approval | failed | timed_out` after an explicit approval by a person: one CAS records the approval for the current merge sha and moves to `deploying` (a lost race or a changed merge sha changes nothing), then the human touch and the output label. A label failure is retried by `watchProduction`. The Product's pipeline reacts to the label or the webhook; the factory deploys nothing. */
+/** Starts the production deploy of a Ticket in `awaiting_approval | failed | timed_out` after an explicit approval by a person: the human touch is written first (no deploy without an audit row; removed again when the CAS is lost), then one CAS records the approval for the current merge sha and moves to `deploying` (a lost race or a changed merge sha changes nothing), then the output label. A label failure is retried by `watchProduction`. The Product's pipeline reacts to the label or the webhook; the factory deploys nothing. */
 export const beginProduction = async (payload: Payload, t: Doc, actor: string, now = Date.now()): Promise<void> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
   if (!productionNames(product).length) throw new Error('configure productionChecks on the Product first')
   if (!t.mergeSha) throw new Error('the Ticket has no merge commit to deploy')
   const at = new Date(now).toISOString()
-  const won = await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { mergeSha: { equals: t.mergeSha } }, { productionState: { in: ['awaiting_approval', 'failed', 'timed_out'] } }] }, data: { productionState: 'deploying', productionApprovedSha: t.mergeSha, productionRequestedAt: at, productionWebhookSentAt: null }, ...o })
-  if (!won.docs.length) throw new Error('the Ticket is not waiting for production approval')
-  await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor, at }, ...o })
+  const touch = await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor, at }, ...o })
+  const won = await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { mergeSha: { equals: t.mergeSha } }, { productionState: { in: ['awaiting_approval', 'failed', 'timed_out'] } }] }, data: { productionState: 'deploying', productionApprovedSha: t.mergeSha, productionRequestedAt: at, productionWebhookSentAt: null, productionLabelAt: null }, ...o })
+  if (!won.docs.length) {
+    await payload.delete({ collection: 'human_touches', id: touch.id, ...o })
+    throw new Error('the Ticket is not waiting for production approval')
+  }
   const { tickets: ts } = await forgeOf(payload, id(t.product))
-  await ts.addLabels(String(t.number), [APPROVED_PRODUCTION]).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not set the production label, retrying'))
+  await deliverLabel(payload, ts, t.id, t.number).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not set the production label, retrying'))
 }
 
 /** Moves a `deploying` Ticket to `to` once; false when another pass already did. A failed or timed out deploy spends the approval (record and label). */
@@ -240,7 +254,7 @@ const finishDeployed = async (payload: Payload, t: Doc, ts: TicketSource, names:
 }
 
 /**
- * Production observer. The deploy starts only through `beginProduction` (owner approval); a forge label never starts it. A `deploying` Ticket gets the optional webhook once and its output label re-set when missing, then the Product's `productionChecks` on the merge commit decide, counting only runs that started at or after `productionRequestedAt` (older runs are a previous attempt): all green is `deployed` (done, closed), a finished red one `failed`, nothing after 60 minutes `timed_out`. State is claimed before side effects. Returns the Tickets that just became `deployed`.
+ * Production observer. The deploy starts only through `beginProduction` (owner approval); a forge label never starts it. A `deploying` Ticket gets the optional webhook once and its output label until one add succeeded (never again afterwards), then the Product's `productionChecks` on the merge commit decide, counting only runs that started at or after `productionRequestedAt` minus a 60 s clock-skew margin (older runs are a previous attempt): all `success` is `deployed` (done, closed), a finished red one `failed`, nothing after 60 minutes `timed_out`. State is claimed before side effects. Returns the Tickets that just became `deployed`.
  */
 export const watchProduction = async (payload: Payload, now = Date.now()): Promise<{ released: Doc[] }> => {
   const released: Doc[] = []
@@ -254,10 +268,16 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
         await finishDeployed(payload, t, ts, names)
         continue
       }
-      if (!(await ts.get(String(t.number))).labels.includes(APPROVED_PRODUCTION)) await ts.addLabels(String(t.number), [APPROVED_PRODUCTION])
-      const since = new Date(t.productionRequestedAt).getTime()
+      if (!t.mergeSha || t.productionApprovedSha !== t.mergeSha) {
+        if (await moveProduction(payload, t, ts, 'failed')) await postProduction(payload, t, ts, 'failed: the approval does not match the merge commit', names)
+        continue
+      }
+      const fresh = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc
+      if (fresh.productionState === 'deploying' && !fresh.productionLabelAt) await deliverLabel(payload, ts, t.id, t.number).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not set the production label, retrying'))
+      const requested = new Date(t.productionRequestedAt).getTime()
+      const since = requested - CLOCK_SKEW_MS
       if (product.productionWebhookUrl && !t.productionWebhookSentAt && (await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionWebhookSentAt: { exists: false } }] }, data: { productionWebhookSentAt: new Date(now).toISOString() }, ...o })).docs.length) {
-        const res = await fetch(product.productionWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, environment: 'production' }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
+        const res = await fetch(product.productionWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bauherr-delivery': `${t.number}-${t.mergeSha}` }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, environment: 'production' }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
         if (!res.ok) {
           payload.logger.error({ ticket: t.id, status: res.status }, 'production webhook failed, retrying next tick')
           await payload.update({ collection: 'tickets', id: t.id, data: { productionWebhookSentAt: null }, ...o })
@@ -265,14 +285,15 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
       }
       const latest = latestChecks(t.mergeSha ? (await backend.forge.listChecks(repo, t.mergeSha)).filter((c) => c.startedAt && new Date(c.startedAt).getTime() >= since) : [])
       const picked = names.map((n) => latest.find((c) => c.name === n))
-      if (picked.length && picked.every(passed)) {
+      const bad = picked.find((c) => c?.status === 'completed' && c.conclusion !== 'success')
+      if (picked.length && picked.every(succeeded)) {
         if (await moveProduction(payload, t, ts, 'deployed')) {
           await finishDeployed(payload, t, ts, names)
           released.push(t)
         }
-      } else if (picked.some((c) => c?.status === 'completed' && !passed(c))) {
-        if (await moveProduction(payload, t, ts, 'failed')) await postProduction(payload, t, ts, 'failed', names)
-      } else if (now - since > PRODUCTION_TIMEOUT_MS && (await moveProduction(payload, t, ts, 'timed_out'))) await postProduction(payload, t, ts, 'timed out', names)
+      } else if (bad) {
+        if (await moveProduction(payload, t, ts, 'failed')) await postProduction(payload, t, ts, ['skipped', 'neutral'].includes(bad.conclusion ?? '') ? `failed: deploy check skipped (${bad.name})` : 'failed', names)
+      } else if (now - requested > PRODUCTION_TIMEOUT_MS && (await moveProduction(payload, t, ts, 'timed_out'))) await postProduction(payload, t, ts, 'timed out', names)
     } catch (e) {
       payload.logger.error({ err: e, ticket: t.id }, 'watch-production failed for ticket')
     }

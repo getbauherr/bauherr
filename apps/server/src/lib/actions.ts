@@ -320,7 +320,11 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (stage === 'done') {
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
-  } else if (!(await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionState: { exists: false } }] }, data: { productionState: 'awaiting_approval' }, overrideAccess: true })).docs.length) return { approved: APPROVED_STAGING, stage }
+  } else if (!(await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionState: { exists: false } }] }, data: { productionState: 'awaiting_approval' }, overrideAccess: true })).docs.length) {
+    await ts.addLabels(n, [APPROVED_STAGING])
+    if (!(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, overrideAccess: true })).totalDocs) await touch(payload, user, t, 'accept:staging')
+    return { approved: APPROVED_STAGING, stage }
+  }
   await ts.addLabels(n, [APPROVED_STAGING])
   await touch(payload, user, t, 'accept:staging')
   if (stage === 'done') {

@@ -106,14 +106,14 @@ it('the owner approval records the sha, deploys once on green checks, closes and
 
 it('a check that predates the approval does not deploy; an old red run does not fail the retry', async () => {
   const { id, sha } = await accepted('stale checks')
-  fake.setChecks(repo, sha, ok('deploy-prod', at(-60_000)))
+  fake.setChecks(repo, sha, ok('deploy-prod', at(-120_000)))
   await actions.approveProduction(payload, user, { ticket: id })
   await release.watchProduction(payload, Date.now() + 1000)
   expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
-  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(-60_000) }])
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(-120_000) }])
   await release.watchProduction(payload, Date.now() + 1000)
   expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
-  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(-60_000) }, { id: 2, name: 'deploy-prod', status: 'completed', conclusion: 'success', startedAt: at(5000) }])
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(-120_000) }, { id: 2, name: 'deploy-prod', status: 'completed', conclusion: 'success', startedAt: at(5000) }])
   await release.watchProduction(payload, Date.now() + 2000)
   expect(await reload(id)).toMatchObject({ productionState: 'deployed' })
 })
@@ -236,4 +236,133 @@ it('the approve_production tool is refused while a session Run holds the Ticket'
   expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
   await payload.update({ collection: 'runs', id: run.id, data: { status: 'succeeded' }, ...o })
   await expect(approve.run({ ticket: id }, { payload, user })).resolves.toMatchObject({ productionState: 'deploying' })
+})
+
+const failOnce = (ts: object) => vi.spyOn(Object.getPrototypeOf(ts), 'addLabels').mockRejectedValueOnce(new Error('forge down'))
+const adds = (spy: ReturnType<typeof vi.spyOn>, n: string) => spy.mock.calls.filter((c: unknown[]) => (c[0] as string) === n && (c[1] as string[]).includes('bauherr:approved:production')).length
+
+it('delivers the output label once: a removal after a successful add is never undone', async () => {
+  const { id, n } = await accepted('label once')
+  const ts = fake.tickets(repo)
+  const spy = vi.spyOn(Object.getPrototypeOf(ts), 'addLabels')
+  try {
+    await actions.approveProduction(payload, user, { ticket: id })
+    expect((await reload(id)).productionLabelAt).toBeTruthy()
+    await ts.removeLabels(n, ['bauherr:approved:production'])
+    await release.watchProduction(payload, Date.now())
+    await release.watchProduction(payload, Date.now() + 1000)
+    expect(adds(spy, n)).toBe(1)
+    expect(await labels(n)).not.toContain('bauherr:approved:production')
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+it('retries a failed first label add until one succeeds, then never again', async () => {
+  const { id, n } = await accepted('label retry')
+  const ts = fake.tickets(repo)
+  const spy = failOnce(ts)
+  try {
+    await actions.approveProduction(payload, user, { ticket: id })
+    expect((await reload(id)).productionLabelAt).toBeFalsy()
+    await release.watchProduction(payload, Date.now())
+    expect((await reload(id)).productionLabelAt).toBeTruthy()
+    await ts.removeLabels(n, ['bauherr:approved:production'])
+    await release.watchProduction(payload, Date.now() + 1000)
+    expect(adds(spy, n)).toBe(2)
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+it('never adds the label to a Ticket that stopped deploying since the tick listed it', async () => {
+  const { id, n } = await accepted('no longer deploying')
+  const ts = fake.tickets(repo)
+  const spy = failOnce(ts)
+  try {
+    await actions.approveProduction(payload, user, { ticket: id })
+    const stale = await payload.find({ collection: 'tickets', where: { id: { equals: id } }, depth: 0, ...o })
+    await payload.update({ collection: 'tickets', id, data: { productionState: 'failed', productionApprovedSha: null }, ...o })
+    const find = vi.spyOn(payload, 'find').mockResolvedValueOnce(stale as never)
+    await release.watchProduction(payload, Date.now())
+    find.mockRestore()
+    expect(adds(spy, n)).toBe(1)
+    expect(await labels(n)).not.toContain('bauherr:approved:production')
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+it('a skipped or neutral deploy check is not a deploy: the Ticket fails with a reason', async () => {
+  for (const conclusion of ['skipped', 'neutral']) {
+    const { id, n, sha } = await accepted(`not ${conclusion}`)
+    await actions.approveProduction(payload, user, { ticket: id })
+    fake.setChecks(repo, sha, [{ name: 'deploy-prod', status: 'completed', conclusion, startedAt: at(5000) }])
+    await release.watchProduction(payload, Date.now() + 1000)
+    expect(await reload(id)).toMatchObject({ productionState: 'failed', stage: 'release', state: 'open' })
+    expect((await comments(n))[0]!.body).toContain('deploy check skipped')
+  }
+})
+
+it('counts a check that started up to 60 s before the approval, not earlier', async () => {
+  const { id, sha } = await accepted('skew')
+  await actions.approveProduction(payload, user, { ticket: id })
+  fake.setChecks(repo, sha, ok('deploy-prod', at(-90_000)))
+  await release.watchProduction(payload, Date.now() + 1000)
+  expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
+  fake.setChecks(repo, sha, ok('deploy-prod', at(-30_000)))
+  await release.watchProduction(payload, Date.now() + 2000)
+  expect(await reload(id)).toMatchObject({ productionState: 'deployed' })
+})
+
+it('fails the deploy when the approved sha is not the merge sha any more', async () => {
+  const { id, n, sha } = await accepted('sha drift')
+  await actions.approveProduction(payload, user, { ticket: id })
+  await payload.update({ collection: 'tickets', id, data: { mergeSha: 'sha-other' }, ...o })
+  fake.setChecks(repo, 'sha-other', ok())
+  fake.setChecks(repo, sha, ok())
+  await release.watchProduction(payload, Date.now() + 1000)
+  expect(await reload(id)).toMatchObject({ productionState: 'failed', stage: 'release' })
+  expect((await comments(n))[0]!.body).toContain('does not match the merge commit')
+})
+
+it('a lost approval race leaves exactly one approval touch', async () => {
+  const { id } = await accepted('double click')
+  const stale = await reload(id)
+  await actions.approveProduction(payload, user, { ticket: id })
+  await expect(release.beginProduction(payload, stale, user.email)).rejects.toThrow('not waiting')
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('accepting again repairs a staging label whose first add failed', async () => {
+  const ts = fake.tickets(repo)
+  const issue = await ts.create({ title: 'accept flaky', labels: ['bauherr:stage:release'] })
+  const t = await payload.create({ collection: 'tickets', data: { title: 'accept flaky', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', releaseState: 'on_staging', mergeSha: 'sha-af', product, workspace: ws }, ...o })
+  const spy = failOnce(ts)
+  try {
+    await expect(actions.acceptStaging(payload, user, { ticket: t.id as number })).rejects.toThrow('forge down')
+  } finally {
+    spy.mockRestore()
+  }
+  expect(await labels(String(issue.number))).not.toContain('bauherr:approved:staging')
+  await actions.acceptStaging(payload, user, { ticket: t.id as number })
+  await actions.acceptStaging(payload, user, { ticket: t.id as number })
+  expect(await labels(String(issue.number))).toContain('bauherr:approved:staging')
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('sends an idempotency header with the production webhook', async () => {
+  const fetchMock = vi.fn(async () => new Response(null, { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await payload.update({ collection: 'products', id: product, data: { productionWebhookUrl: 'https://hook.example/prod' }, ...o })
+  try {
+    const { id, n, sha } = await accepted('delivery header')
+    await actions.approveProduction(payload, user, { ticket: id })
+    await release.watchProduction(payload, Date.now())
+    const call = fetchMock.mock.calls.find((c) => JSON.parse((c as unknown as [string, RequestInit])[1].body as string).ticket === Number(n)) as unknown as [string, RequestInit]
+    expect((call[1].headers as Record<string, string>)['x-bauherr-delivery']).toBe(`${n}-${sha}`)
+  } finally {
+    vi.unstubAllGlobals()
+    await payload.update({ collection: 'products', id: product, data: { productionWebhookUrl: null }, ...o })
+  }
 })

@@ -17,6 +17,7 @@ import * as migration_20261030_194000_triage_attempts from './20261030_194000_tr
 import * as migration_20261102_150084_production_gate from './20261102_150084_production_gate';
 import * as migration_20261102_150143_provider_auth_modes from './20261102_150143_provider_auth_modes';
 import * as migration_20261102_160000_production_approved_sha from './20261102_160000_production_approved_sha';
+import * as migration_20261102_170000_production_label_at from './20261102_170000_production_label_at';
 
 export const migrations = [
   {
@@ -113,5 +114,10 @@ export const migrations = [
     up: migration_20261102_160000_production_approved_sha.up,
     down: migration_20261102_160000_production_approved_sha.down,
     name: '20261102_160000_production_approved_sha'
+  },
+  {
+    up: migration_20261102_170000_production_label_at.up,
+    down: migration_20261102_170000_production_label_at.down,
+    name: '20261102_170000_production_label_at'
   },
 ];
