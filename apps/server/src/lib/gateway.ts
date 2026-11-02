@@ -194,6 +194,18 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   await rename(tmp, path)
 }
 
+/** One Messages call as the Workspace on its `cheap` tier (the key's budget applies); throws on any non-2xx. */
+export const completeCheap = async (w: { slug: string; gatewayKey: string; modelByTier?: Partial<typeof DEFAULT_MODEL_BY_TIER> | null }, system: string, user: string): Promise<string> => {
+  const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${decrypt(w.gatewayKey)}` },
+    body: JSON.stringify({ model: `ws-${w.slug}/${{ ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier }.cheap}`, max_tokens: 2000, system, messages: [{ role: 'user', content: user }] }),
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!res.ok) throw new Error(`gateway completion failed: HTTP ${res.status}`)
+  return ((await res.json()) as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text ?? ''
+}
+
 /** One 1-token request through the local gateway as the Workspace; retries while the config hot-reloads. Returns the capability patch, never the response body. */
 export const verifyProvider = async (slug: string, key: string, model: string /* `<connection>/<model>` */): Promise<{ verifiedAt: string } | { lastError: string }> => {
   let last = 'network error'

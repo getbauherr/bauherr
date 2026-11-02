@@ -10,8 +10,8 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { activeGateLabels, verifyGateLabels } from '../lib/gate-labels'
-import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
+import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
+import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
@@ -234,6 +234,14 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
+export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
+  slug: 'publish-release',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'publish-release',
+  handler: async ({ req }) => ({ output: { published: await publishReleases(req.payload) } }),
+}
+
 export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {
   slug: 'notify-gates',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -332,7 +340,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             gatePendingAttempts: 0,
           }
           let labels = t.labels
-          if (activeGateLabels().some((g) => labels.includes(g.label))) {
+          if (GATE_LABELS.some((g) => labels.includes(g.label))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))

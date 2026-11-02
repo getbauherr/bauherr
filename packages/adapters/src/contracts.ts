@@ -142,6 +142,17 @@ export interface NewPullRequest {
   base: string;
 }
 
+export interface Release {
+  /** Forge id (GitHub numeric id, GitLab tag name), to be passed back to `updateRelease`. */
+  id: string;
+  tag: string;
+  /** Commit the tag points at. */
+  sha: string;
+  name: string;
+  body: string;
+  url: string;
+}
+
 /** Thrown by `putFile` when `expectSha` no longer matches the file. */
 export class Conflict extends Error {}
 
@@ -177,6 +188,15 @@ export interface Forge {
   getFile(repo: RepoRef, path: string, ref?: string): Promise<{ content: string; sha: string }>;
   /** Commits `content` to `branch`; with `expectSha` the file must still have that blob sha (`''` = must not exist), else throws `Conflict`. */
   putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }): Promise<{ sha: string }>;
+  /** The first published (non-draft) release whose tag commit is `sha` or a descendant of it (the release that shipped it), or null. */
+  findRelease(repo: RepoRef, o: { sha: string }): Promise<Release | null>;
+  /** Creates the tag on `sha` and publishes the release. */
+  createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }): Promise<Release>;
+  updateRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
+  /** The newest published release, or null. */
+  latestRelease(repo: RepoRef): Promise<Release | null>;
+  /** Commits after `from` up to `to` (newest first; the last 100 of `to` without `from`). */
+  listCommits(repo: RepoRef, o: { from?: string; to: string }): Promise<{ sha: string; message: string }[]>;
   webhooks?: Webhooks;
 }
 

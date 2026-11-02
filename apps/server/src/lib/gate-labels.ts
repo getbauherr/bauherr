@@ -10,14 +10,14 @@ const o = { overrideAccess: true, depth: 0 } as const
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 
-/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them. */
+/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is left alone, the Ticket advances anyway. */
 export const GATE_LABELS = [
-  { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'] },
-  { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging'] },
+  { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: false },
+  { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging'], strictWhenOff: true },
 ] as const
 
-/** Gate labels of the gates the workflow has on (#175); a label of a gate that is off is accepted without actor verification. */
-export const activeGateLabels = () => GATE_LABELS.filter((g) => humanGates().includes(g.gate))
+/** Whether the workflow has the gate on (#175). */
+export const gateIsOn = (gate: (typeof GATE_LABELS)[number]['gate']) => humanGates().includes(gate)
 
 /** A recorded touch legitimises a factory-login label only when it was recorded shortly before the label event. */
 export const TOUCH_WINDOW_MS = 10 * 60_000
@@ -43,10 +43,9 @@ export interface GateVerdict {
 /** Verifies every gate label in `labels` against the forge's label events (spec workflow.md, "Gate labels"). */
 export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: string[], ts: Forge, gates: readonly (typeof GATE_LABELS)[number][] = GATE_LABELS): Promise<GateVerdict> => {
   const verdict: GateVerdict = { accepted: [], rejected: [], pending: [] }
-  const active = activeGateLabels()
   const inPlay = gates.filter((g) => labels.includes(g.label))
-  verdict.accepted.push(...inPlay.filter((g) => !active.some((a) => a.label === g.label)).map((g) => g.label))
-  const present = inPlay.filter((g) => active.some((a) => a.label === g.label))
+  verdict.accepted.push(...inPlay.filter((g) => !g.strictWhenOff && !gateIsOn(g.gate)).map((g) => g.label))
+  const present = inPlay.filter((g) => g.strictWhenOff || gateIsOn(g.gate))
   if (!present.length) return verdict
   const n = String(ticket.number)
   let events: LabelEvent[]
@@ -75,7 +74,8 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
       where: { and: [{ ticket: { equals: ticket.id } }, { kind: { in: [...g.recorded] } }, { at: { greater_than_equal: new Date(at - TOUCH_WINDOW_MS).toISOString() } }, { at: { less_than_equal: new Date(at + SKEW_MS).toISOString() } }] },
       ...o,
     })).totalDocs > 0
-    if (factory ? touched : owners.has(actor)) {
+    const on = gateIsOn(g.gate)
+    if (factory ? touched : on && owners.has(actor)) {
       verdict.accepted.push(g.label)
       if (!factory && !touched) {
         await payload.create({ collection: 'human_touches', data: { kind: g.kind, ticket: ticket.id, workspace: id(ticket.workspace), actor: ev.actor, at: ev.at }, ...o })
@@ -86,7 +86,7 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
     await ts.removeLabels(n, [g.label])
     const marker = REJECTED_MARKER(g.label, ev.at)
     if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-      await ts.comment(n, `${marker}\nBauherr removed \`${g.label}\`: it was set by ${ev.actor}, who is not a gate owner or Admin of this Product. Use the Approve button on the Ticket page.`)
+      await ts.comment(n, `${marker}\nBauherr removed \`${g.label}\`: ${on ? `it was set by ${ev.actor}, who is not a gate owner or Admin of this Product. Use the Approve button on the Ticket page.` : `the ${g.gate} gate is off, so the label approves nothing.`}`)
     }
   }
   return verdict

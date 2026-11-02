@@ -34,16 +34,17 @@ export const needsYou = (
   gates: readonly HumanGate[] = humanGates(),
 ): Need | null => {
   const stage = ticket.stage ?? 'triage'
+  const accepted = gates.includes('staging') ? ticket.labels.includes(APPROVED_STAGING) : !!ticket.productionState
   if (stage === 'plan' && run?.stage === 'plan' && IN_PROGRESS.includes(run.status)) return null
   if (stage === 'plan' && gates.includes('plan') && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
   if (stage === 'review' && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (run?.status === 'needs_human' && run.stage !== 'triage') return 'Run needs you'
-  if (stage === 'release' && !ticket.labels.includes(APPROVED_STAGING)) {
+  if (stage === 'release' && !accepted) {
     if (ticket.releaseState === 'on_staging' && gates.includes('staging')) return 'Accept on staging'
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
   }
-  if (stage === 'release' && ticket.labels.includes(APPROVED_STAGING)) {
+  if (stage === 'release' && accepted) {
     if (ticket.productionState === 'awaiting_approval') return ticket.productionChecksMissing ? 'Configure production checks' : 'Approve production'
     if (ticket.productionState === 'failed' || ticket.productionState === 'timed_out') return 'Production deploy failed'
   }
