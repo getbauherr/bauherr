@@ -162,7 +162,7 @@ const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'llm-provider'], { required: true }),
+    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {

@@ -9,8 +9,8 @@ const exec = promisify(execFile);
 export type Clone = { dir: string; branch: string; baseSha: string; cleanup(): Promise<void> };
 
 /** Env for the Runner's own git commands only; the token never reaches the agent env or .git/config. */
-export function gitEnv(token: string, home: string): NodeJS.ProcessEnv {
-  const basic = Buffer.from(`x-access-token:${token}`).toString('base64');
+export function gitEnv(token: string, home: string, user = 'x-access-token'): NodeJS.ProcessEnv {
+  const basic = Buffer.from(`${user}:${token}`).toString('base64');
   return {
     PATH: process.env.PATH,
     HOME: home,
@@ -30,11 +30,11 @@ export function git(dir: string, env: NodeJS.ProcessEnv, ...args: string[]): Pro
   return exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: dir, env }).then((r) => r.stdout.trim());
 }
 
-export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranch: string; token: string; branch: string; checkout?: string }): Promise<Clone & { env: NodeJS.ProcessEnv; home: string }> {
+export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranch: string; token: string; user?: string; branch: string; checkout?: string }): Promise<Clone & { env: NodeJS.ProcessEnv; home: string }> {
   const root = await mkdtemp(join(tmpdir(), 'bauherr-run-'));
   const dir = join(root, 'repo');
   const home = join(root, 'home');
-  const env = gitEnv(o.token, home);
+  const env = gitEnv(o.token, home, o.user);
   const cleanup = () => rm(root, { recursive: true, force: true });
   try {
     await exec('mkdir', ['-p', home]);

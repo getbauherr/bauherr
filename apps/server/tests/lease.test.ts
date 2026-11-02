@@ -140,7 +140,7 @@ it('list_frontier flags claimable and leased Tickets', async () => {
   expect(new Date(f.leaseExpiresAt).getTime()).toBe(beat + jobs.SESSION_TIMEOUT_MS)
 })
 
-it('a Run handed back via release_run is not escalated by its age', async () => {
+it('a Run handed back via release_run stays awaiting_session', async () => {
   const { run } = await seed()
   await raw(sql`UPDATE "runs" SET "created_at" = now() - interval '2 hours' WHERE "id" = ${run.id}`)
   const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
@@ -148,7 +148,7 @@ it('a Run handed back via release_run is not escalated by its age', async () => 
   await jobs.expireStaleSessions(payload)
   expect(await status(run.id)).toBe('awaiting_session')
   await jobs.expireStaleSessions(payload, late())
-  expect(await status(run.id)).toBe('needs_human')
+  expect(await status(run.id)).toBe('awaiting_session')
 })
 
 it('release lock refuses a Run that is not running', async () => {

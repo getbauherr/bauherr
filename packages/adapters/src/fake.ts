@@ -137,6 +137,10 @@ export class FakeBackend implements Backend {
         comments.set(`${repo}#${n}`, [...(comments.get(`${repo}#${n}`) ?? []), c]);
         return c;
       },
+      listPullRequestComments: async (repo, n) => {
+        find(repo, n);
+        return comments.get(`${repo}#${n}`) ?? [];
+      },
       listPullRequestFiles: async (repo, n) => {
         const r = this.repo(repo);
         const pr = find(repo, n);
