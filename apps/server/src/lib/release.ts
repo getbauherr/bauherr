@@ -6,6 +6,7 @@ import { backendFor } from './adapters'
 import { connectionInput, webOrigin } from './connection'
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
+import { gateOn, productionGateOn } from './mode'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 
@@ -152,10 +153,37 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   return 'dropped'
 }
 
+/**
+ * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (workflow `production_gate` or `Product.productionGate`), then it waits for production approval; without `productionChecks` the Ticket shows the "Configure production checks" gate instead (see `needsYou`).
+ * `touch` records the human acceptance; the automatic path (release gate off) passes none.
+ */
+export const passStaging = async (payload: Payload, t: Doc, touch?: () => Promise<unknown>): Promise<{ approved: string; stage: 'release' | 'done' }> => {
+  const { tickets: ts } = await forgeOf(payload, id(t.product))
+  const n = String(t.number)
+  const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
+  const stage = productionGateOn(product) ? 'release' : 'done'
+  if (stage === 'done') {
+    await setStage(ts, n, 'done')
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
+  } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
+    await ts.addLabels(n, [APPROVED_STAGING])
+    if (touch && !(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).totalDocs) await touch()
+    return { approved: APPROVED_STAGING, stage }
+  }
+  await ts.addLabels(n, [APPROVED_STAGING])
+  await touch?.()
+  if (stage === 'done') {
+    await ts.close(n, 'completed')
+    await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  }
+  return { approved: APPROVED_STAGING, stage }
+}
+
 /** Review Tickets whose MR merged move to `release`; release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
-  const waiting = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }] }
+  const auto = !gateOn('release')
+  const waiting = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [])] }
   const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: ['review', 'release'] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
@@ -163,6 +191,10 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
+      if (t.stage === 'release' && auto && t.releaseState === 'on_staging') {
+        if (!t.labels?.includes(APPROVED_STAGING)) await passStaging(payload, t)
+        continue
+      }
       if (t.stage === 'release' && t.releaseState && t.releaseState !== 'waiting') continue
       if (t.stage === 'review') {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
@@ -203,6 +235,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       }
       if (onStaging) {
         await publishStagingSummary(payload, t)
+        if (auto) await passStaging(payload, t)
         out.confirmed++
       } else if (now - new Date(t.releaseAt).getTime() > STAGING_TIMEOUT_MS && (await cas(payload, t.id, sql`"release_state" = 'timed_out'`, sql`("release_state" = 'waiting' OR "release_state" IS NULL)`))) {
         await ts.comment(n, 'Bauherr needs a human: staging not confirmed')

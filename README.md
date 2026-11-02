@@ -38,11 +38,15 @@ flowchart LR
 | Release | The Product's own CI |
 | Done | Ticket closed on merge |
 
-Human gates:
+Human gates (configured in [`pack/workflow.yaml`](pack/workflow.yaml)):
 
-- **Plan approval** (shipped): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Approval through the UI or MCP is refused while critical decisions are unanswered.
-- **Merge request review** (shipped): native review and merge in your forge.
-- Planned: **factory code review and auto-merge** ([#82](https://github.com/getbauherr/bauherr/issues/82)), **staging acceptance with a result summary** ([#83](https://github.com/getbauherr/bauherr/issues/83)) and a **production deploy approval** ([#84](https://github.com/getbauherr/bauherr/issues/84)). These revise the gate model so that humans approve the plan, accept the result on staging and approve the production deploy.
+- **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
+- **Production deploy approval** (on by default: `production_gate: human` on `release`; a Product without `productionChecks` shows the "Configure production checks" gate, linking to Settings > Products, until they are set; removing `production_gate` from the workflow sends a staging-confirmed Ticket to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
+- **Plan approval** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
+- **Staging acceptance** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
+- **Merge request review**: the factory reviews and merges ([#82](https://github.com/getbauherr/bauherr/issues/82)); no human.
+
+By default a Ticket needs the owner only for refine questions, the production gate and declared blockers.
 
 Stages, labels, triggers, run states, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
 

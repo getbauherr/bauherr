@@ -1,4 +1,5 @@
 import { acceptStagingAction, approvePlanAction, approveProductionAction, grantReviewRoundAction, rerunStage, requestChangesAction, stopReviewAction } from '../lib/actions'
+import Link from 'next/link'
 import { isWebUrl } from '../lib/url'
 import { SubmitButton } from './SubmitButton'
 
@@ -72,6 +73,19 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
         </label>
         <SubmitButton className="btn">Request changes</SubmitButton>
       </form>
+    </section>
+  )
+}
+
+export function ProductionChecksGate({ number, title }: { number: number; title: string }) {
+  return (
+    <section className="gate" aria-labelledby="gate">
+      <div>
+        <h2 className="heading" id="gate">{title}</h2>
+        <p className="small muted">#{number} · Production</p>
+      </div>
+      <p className="body">The production gate is on, but this Product has no production checks, so no deploy can be observed. Set them to continue; the Ticket then waits for production approval.</p>
+      <Link className="btn primary" href="/settings/products">Open Settings &gt; Products</Link>
     </section>
   )
 }
