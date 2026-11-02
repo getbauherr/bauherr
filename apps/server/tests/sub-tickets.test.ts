@@ -243,3 +243,50 @@ it('the migration merges existing duplicates into the lowest id, repoints refere
   expect((await db.execute(sql`SELECT parent_id FROM "tickets" WHERE id = ${child}`)).rows[0].parent_id).toBe(keep)
   await expect(ins('dupe-1')).rejects.toThrow()
 })
+
+it('a child created but not linked is linked on retry, never created twice', async () => {
+  const { ts, f, row } = await approved('Orphan parent', 's')
+  vi.spyOn(ts, 'addSubTicket').mockRejectedValueOnce(new Error('forge down'))
+  await expect(actions.spawnSubTickets(payload, row)).rejects.toThrow('forge down')
+  vi.restoreAllMocks()
+  await expect(actions.spawnSubTickets(payload, row)).resolves.toBe(true)
+  const kids = await ts.listSubTickets(String(f.number))
+  expect(kids.map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
+  const all = await Promise.all((await ts.list({})).filter((i) => ['Invoice PDF', 'Invoice numbering'].includes(i.title)).map((i) => ts.get(i.id)))
+  expect(all.filter((i) => i.body.includes(`Parent: #${f.number}`))).toHaveLength(kids.length)
+})
+
+const AFTER_PLAN = `## Sub-tickets
+- **Second step** — Needs the first.
+  after: First step
+- **First step** — Goes first.
+- **Orphan after** — Names nothing.
+  after: No such sibling
+`
+
+it('after: blocks the child on its sibling in the forge and locally; unknown titles are ignored with a warning; the frontier skips it', async () => {
+  const ts = await forge()
+  const f = await ts.create({ title: 'After parent', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
+  await ts.comment(String(f.number), `<!-- bauherr:plan -->\n${AFTER_PLAN}`)
+  const row = await payload.create({ collection: 'tickets', data: { title: 'After parent', externalId: f.id, number: f.number, url: f.url, state: 'open', labels: f.labels, stage: 'plan', product, workspace, rank: 't' }, ...o })
+  const warn = vi.spyOn(payload.logger, 'warn')
+  await actions.spawnSubTickets(payload, row)
+  const kids = await ts.listSubTickets(String(f.number))
+  const [second, first, loose] = ['Second step', 'First step', 'Orphan after'].map((t) => kids.find((k) => k.title === t)!)
+  expect((await ts.get(second.id)).blockedBy).toEqual([first.id])
+  expect((await ts.get(first.id)).blockedBy).toEqual([])
+  expect((await ts.get(loose.id)).blockedBy).toEqual([])
+  expect(warn).toHaveBeenCalledWith(expect.objectContaining({ after: 'No such sibling' }), expect.stringContaining('after:'))
+  const local = async (n: number): Promise<Record<string, any>> => (await payload.find({ collection: 'tickets', where: { number: { equals: n } }, depth: 0, ...o })).docs[0]!
+  expect((await local(second.number)).blockedBy).toEqual([(await local(first.number)).id])
+  expect((await local(loose.number)).blockedBy ?? []).toEqual([])
+  const { callTool } = await import('../src/lib/mcp-tools')
+  const listed = async () => ((await callTool({ payload, user }, 'list_frontier', { product: 'web' })) as any[]).map((t: any) => t.ticket)
+  expect(await listed()).not.toContain((await local(second.number)).id)
+  expect(await listed()).toContain((await local(first.number)).id)
+  await payload.update({ collection: 'tickets', id: (await local(first.number)).id, data: { state: 'closed' }, ...o })
+  expect(await listed()).toContain((await local(second.number)).id)
+  await actions.spawnSubTickets(payload, row)
+  expect((await ts.get(second.id)).blockedBy).toEqual([first.id])
+  warn.mockRestore()
+})

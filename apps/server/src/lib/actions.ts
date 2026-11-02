@@ -169,7 +169,7 @@ const ro = { depth: 0, overrideAccess: true } as const
 /**
  * Plan approval fan-out (D1): creates each item of the latest plan's `## Sub-tickets` as a sub-issue that inherits the plan approval,
  * then moves the parent to stage `parent`. Runs only while the parent is not yet `parent` and only for items listed now (matched by title,
- * so a retry after a partial failure completes the set and never adds later items). Serialised per ticket; true when the Ticket is a parent.
+ * so a retry after a partial failure completes the set and never adds later items; a child created but not yet linked is found by its local row and only linked). An item's `after:` sibling title becomes a forge + local blockedBy. Serialised per ticket; true when the Ticket is a parent.
  */
 export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean> =>
   exclusive(`spawn:${id(parent.product)}:${parent.number}`, async () => {
@@ -180,6 +180,8 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     const items = plan ? subTickets(plan.body) : []
     if (!items.length) return false
     const existing = await ts.listSubTickets(n)
+    const local = new Map(((await payload.find({ collection: 'tickets', where: { parent: { equals: parent.id } }, pagination: false, ...ro })).docs as Doc[]).map((d) => [d.title as string, d]))
+    const spawned = new Map<string, { id: string; docId: number | string }>()
     let prev = (parent.rank as string | null) ?? null
     if (!prev) {
       prev = await lastRankAfter(payload, id(parent.workspace))
@@ -187,7 +189,8 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     }
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
-      const child = found ?? (await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
+      const orphan = found ? undefined : local.get(item.title)
+      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
       const link: Record<string, unknown> = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
       const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
       if (doc?.rank) prev = doc.rank as string
@@ -201,15 +204,24 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
         }
         link.rank = prev
       }
-      await upsertTicket(
+      const row = await upsertTicket(
         payload,
         { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: 'plan' },
         link,
       )
+      spawned.set(item.title, { id: child.id, docId: row.id })
       if (!found) {
         await ts.addSubTicket(n, String(child.number))
         await ts.comment(String(child.number), `Approval inherited from #${n}: listed in its plan at approval.`)
       }
+    }
+    for (const item of items) {
+      const after = item.after && spawned.get(item.after)
+      if (item.after && !after) payload.logger.warn({ ticket: parent.id, item: item.title, after: item.after }, 'sub-ticket after: names no sibling, ignored')
+      const me = spawned.get(item.title)
+      if (!after || !me || after === me) continue
+      if (!(await ts.get(me.id)).blockedBy.includes(after.id)) await ts.addBlockedBy(me.id, after.id)
+      await payload.update({ collection: 'tickets', id: me.docId, data: { blockedBy: [after.docId] }, ...ro })
     }
     await setStage(ts, n, PARENT)
     await payload.update({ collection: 'tickets', id: parent.id, data: { stage: PARENT }, ...ro })
