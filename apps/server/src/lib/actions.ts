@@ -8,7 +8,7 @@ import { ownerQueue, questionsAsked, readiness, refersToScreen, type Draft, type
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_STAGING, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
+import { APPROVED_PRODUCTION, APPROVED_STAGING, NO_PRODUCTION, beginProduction, cas, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -356,6 +356,10 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (stage === 'done') {
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
+  } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
+    await ts.addLabels(n, [APPROVED_STAGING])
+    if (!(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, overrideAccess: true })).totalDocs) await touch(payload, user, t, 'accept:staging')
+    return { approved: APPROVED_STAGING, stage }
   }
   await ts.addLabels(n, [APPROVED_STAGING])
   await touch(payload, user, t, 'accept:staging')
@@ -364,6 +368,14 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, overrideAccess: true })
   }
   return { approved: APPROVED_STAGING, stage }
+}
+
+/** Production gate: a Workspace member approves the deploy; the Product's own pipeline deploys, `watchProduction` observes. Also the retry after a failed or timed out deploy. */
+export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.stage !== 'release' || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
+  await beginProduction(payload, t, user.email)
+  return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
 
 /** Writes `text` as the body of the worklog section headed `heading` (appended when missing). */
@@ -402,7 +414,8 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
   await setStage(src.ts, src.n, 'build')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null }, overrideAccess: true })
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
+  await clearApprovalLabel(payload, src.ts, src.n)
   await touch(payload, user, t, 'request-changes:staging')
   return { stage: 'build', run: run.id as TicketId }
 }

@@ -117,6 +117,8 @@ export interface Check {
   name: string;
   status: string;
   conclusion: string | null;
+  /** When the run started (check runs) or the status was created; ISO 8601. */
+  startedAt?: string;
 }
 export interface NewPullRequest {
   title: string;

@@ -33,6 +33,17 @@ test('accept on staging moves the Ticket to done', async ({ page }) => {
   await expect(page.locator('.pipe li[aria-current=step]')).toHaveText('done')
 })
 
+test('a production-gated Ticket waits for an explicit production approval', async ({ page }) => {
+  await open(page, 'Ship the gated export')
+  await expect(page.getByRole('button', { name: 'Approve production deploy' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Accept' }).click()
+  await expect(page.getByRole('heading', { name: 'Approve production deploy' })).toBeVisible()
+  await expect(page.locator('.pipe li[aria-current=step]')).toHaveText('Staging')
+  await page.getByRole('button', { name: 'Approve production deploy' }).click()
+  await expect(page.getByText('✓ Approved for production')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Approve production deploy' })).toHaveCount(0)
+})
+
 test('request changes sends the Ticket back to build', async ({ page }) => {
   await open(page, 'Ship the invoice filter')
   await page.getByLabel('What needs to change').fill('The filter ignores the date range')

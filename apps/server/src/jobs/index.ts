@@ -10,7 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { forgeOf, prOf, watchRelease } from '../lib/release'
+import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
@@ -228,6 +228,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   concurrency: () => 'watch-release',
   handler: async ({ req }) => {
     await watchReviews(req.payload)
+    await watchProduction(req.payload)
     await resumeReviews(req.payload)
     return { output: await watchRelease(req.payload) }
   },
@@ -317,6 +318,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const data = {
             ...base,
             stage,
+            ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev

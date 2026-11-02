@@ -99,7 +99,26 @@ it('acceptStaging holds in release when the Product has a production gate', asyn
   const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
   await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true }, ...o })
   await expect(actions.acceptStaging(payload, user, { ticket })).resolves.toMatchObject({ stage: 'release' })
+  expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
   await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false }, ...o })
+})
+
+it('approveProduction refuses a Ticket not awaiting approval, a non-member, another Workspace and a Product without productionChecks', async () => {
+  const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
+  const outsider = await payload.create({ collection: 'bauherren', data: { email: 'out2@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: other }] }, ...o })
+  await payload.update({ collection: 'tickets', id: ticket, data: { stage: 'release', productionState: null, mergeSha: 'sha-1' }, ...o })
+  await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('not waiting for production approval')
+  await payload.update({ collection: 'tickets', id: ticket, data: { productionState: 'awaiting_approval' }, ...o })
+  await expect(actions.approveProduction(payload, user, { ticket, workspaceId: other })).rejects.toBeInstanceOf(actions.NotInWorkspace)
+  await expect(actions.approveProduction(payload, outsider, { ticket })).rejects.toThrow()
+  await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('configure productionChecks')
+  expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ productionState: 'awaiting_approval' })
+  expect(await payload.count({ collection: 'human_touches', where: { kind: { equals: 'approve:production' } }, ...o })).toMatchObject({ totalDocs: 0 })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionChecks: 'deploy-prod' }, ...o })
+  await expect(actions.approveProduction(payload, user, { ticket })).resolves.toEqual({ approved: 'bauherr:approved:production', productionState: 'deploying' })
+  expect(await labels()).toContain('bauherr:approved:production')
+  expect(await payload.count({ collection: 'human_touches', where: { kind: { equals: 'approve:production' } }, ...o })).toMatchObject({ totalDocs: 1 })
+  await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('not waiting for production approval')
 })
 
 it('acceptStaging and requestChanges refuse a non-member and a Ticket of another Workspace', async () => {
