@@ -194,6 +194,7 @@ export const migrations = [
     down: migration_20261102_170149_embed_tokens.down,
     name: '20261102_170149_embed_tokens'
   },
+  {
     up: migration_20261102_170152_knowledge_edit.up,
     down: migration_20261102_170152_knowledge_edit.down,
     name: '20261102_170152_knowledge_edit'
