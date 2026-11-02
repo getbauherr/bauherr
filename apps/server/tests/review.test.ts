@@ -1,5 +1,5 @@
 import pg from 'pg'
-import type { FakeBackend } from '@bauherr/adapters'
+import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 
@@ -412,4 +412,27 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('### Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('see ## Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
+})
+
+it('a pending (asynchronous) merge waits without counting a failure; an already merged MR is a no-op', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    for (let i = 0; i < 4; i++) {
+      await actions.watchReviews(payload)
+      expect((await reload(a.id)).reviewState).toBe('waiting_checks')
+    }
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+  expect(Number((await reload(a.id)).mergeFailures ?? 0)).toBe(0)
+  await actions.watchReviews(payload)
+  expect(await prState(a.pr.number)).toBe('merged')
+  const mr = await release.prOf(payload, await reload(a.id))
+  expect(await actions.mergeGate(payload, await reload(a.id), mr!, a.pr.headSha)).toBe('merged')
 })

@@ -2,6 +2,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
+import { MergePendingError } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
 import { closeReasonLabel } from './stage.js';
@@ -78,6 +79,9 @@ export class GitlabHttp {
       const res: Response = await this.raw('GET', next);
       out.push(...((await res.json()) as T[]));
       next = /<([^>]+)>;\s*rel="next"/.exec(res.headers.get('link') ?? '')?.[1];
+      if (next && new URL(next, this.base).origin !== new URL(this.base).origin) {
+        throw new GitlabError(0, 'GET', path, `refusing to follow a Link to another origin: ${new URL(next, this.base).origin}`);
+      }
     }
     return out;
   }
@@ -101,7 +105,7 @@ export class GitlabBackend implements Backend {
   private http: GitlabHttp;
   constructor(o: GitlabOptions) {
     this.http = new GitlabHttp(o);
-    this.forge = new GitlabForge(this.http);
+    this.forge = new GitlabForge(this.http, o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))));
   }
   tickets(repo: RepoRef): TicketSource {
     return new GitlabTickets(this.http, repo);
@@ -230,6 +234,10 @@ class GitlabTickets implements TicketSource {
   }
 }
 
+/** Waits between polls for an asynchronous merge (~30 s in total). */
+const MERGE_POLL_MS = [500, 1000, 2000, 4000, 8000, 15000];
+const PIPELINE_PENDING = ['created', 'waiting_for_resource', 'preparing', 'pending', 'running', 'scheduled'];
+
 const check = (j: any): Check => {
   const done = (conclusion: string): Check => ({ id: j.id, name: j.name, status: 'completed', conclusion });
   switch (j.status) {
@@ -243,7 +251,7 @@ const check = (j: any): Check => {
 
 class GitlabForge implements Forge {
   private paths = new Map<number, string>();
-  constructor(private h: GitlabHttp) {}
+  constructor(private h: GitlabHttp, private sleep: (ms: number) => Promise<void>) {}
   private repo = (r: any): Repository => ({ fullName: r.path_with_namespace, defaultBranch: r.default_branch, private: r.visibility === 'private', url: r.web_url });
   private async pathOf(projectId: number): Promise<string> {
     let p = this.paths.get(projectId);
@@ -257,7 +265,7 @@ class GitlabForge implements Forge {
       number: m.iid, url: m.web_url, title: m.title, body: m.description ?? '',
       state: merged ? 'merged' : m.state === 'opened' ? 'open' : 'closed',
       head: m.source_branch, base: m.target_branch, headSha: m.sha,
-      headRepo: m.source_project_id === m.target_project_id ? repo : await this.pathOf(m.source_project_id),
+      headRepo: m.source_project_id == null ? '' : m.source_project_id === m.target_project_id ? repo : await this.pathOf(m.source_project_id),
       baseRepo: repo, draft: !!(m.draft ?? m.work_in_progress),
       ...(mergeSha ? { mergeSha } : {}),
     };
@@ -305,15 +313,31 @@ class GitlabForge implements Forge {
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     const [latest] = await this.h.json('GET', `/projects/${enc(repo)}/pipelines?sha=${enc(sha)}&per_page=1`);
     if (!latest) return [];
-    return (await this.h.paginate(`/projects/${enc(repo)}/pipelines/${latest.id}/jobs?per_page=100`)).map(check);
+    const p = `/projects/${enc(repo)}/pipelines/${latest.id}`;
+    const checks = [...(await this.h.paginate(`${p}/jobs?per_page=100`)), ...(await this.h.paginate(`${p}/bridges?per_page=100`))].map(check);
+    const synthetic = (status: Check['status'], conclusion: string | null): Check => ({ id: latest.id, name: 'pipeline', status, conclusion });
+    if (latest.status === 'failed' && !checks.some((c) => c.conclusion === 'failure')) checks.push(synthetic('completed', 'failure'));
+    else if (latest.status === 'canceled' && !checks.some((c) => c.conclusion === 'cancelled')) checks.push(synthetic('completed', 'cancelled'));
+    else if (!checks.length && PIPELINE_PENDING.includes(latest.status)) checks.push(synthetic('in_progress', null));
+    return checks;
   }
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
   }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const before = await this.getPullRequest(repo, n);
-    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}/merge`, { squash: true, ...(o.expectSha ? { sha: o.expectSha } : {}) });
-    const after = await this.getPullRequest(repo, n);
+    let after = before;
+    if (before.state !== 'merged') {
+      const { squash_option } = await this.h.json('GET', `/projects/${enc(repo)}`);
+      await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}/merge`, { squash: squash_option !== 'never', ...(o.expectSha ? { sha: o.expectSha } : {}) });
+      after = await this.getPullRequest(repo, n);
+      for (const ms of MERGE_POLL_MS) {
+        if (after.state !== 'open') break;
+        await this.sleep(ms);
+        after = await this.getPullRequest(repo, n);
+      }
+    }
+    if (after.state === 'open') throw new MergePendingError(`GitLab accepted the merge of !${n} but it is not merged yet`);
     if (!after.mergeSha) throw new GitlabError(0, 'PUT', `merge_requests/${n}/merge`, `merge of !${n} left no merge sha (state ${after.state})`);
     let branchDeleteError: string | undefined;
     if (o.deleteBranch && before.headRepo.toLowerCase() === before.baseRepo.toLowerCase()) {

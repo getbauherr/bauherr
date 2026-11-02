@@ -25,10 +25,10 @@ export const connectionInput = async (payload: Payload, ref: unknown): Promise<C
   }
 }
 
-/** Web origin of a forge Connection: where MR URLs and clones live. GitLab: `config.baseUrl` (default gitlab.com, https only). */
+/** Web root of a forge Connection: where MR URLs and clones live. GitLab: `config.baseUrl` (default gitlab.com, https only; a relative URL root like `/gitlab` is kept). */
 export const webOrigin = (connection: Pick<ConnectionInput, 'kind' | 'config'>): string => {
   if (connection.kind !== 'gitlab') return 'https://github.com'
   const url = new URL(typeof connection.config.baseUrl === 'string' && connection.config.baseUrl ? connection.config.baseUrl : 'https://gitlab.com')
   if (url.protocol !== 'https:') throw new Error('the GitLab base URL must be https')
-  return url.origin
+  return url.origin + url.pathname.replace(/\/+$/, '')
 }

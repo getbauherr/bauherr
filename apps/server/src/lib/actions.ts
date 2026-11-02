@@ -1,4 +1,4 @@
-import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
@@ -463,6 +463,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
  * auto-merge on, `## Evidence` present, not a draft, checks and statuses green (none = green once the head is 10 minutes old). Pending waits, red returns to Build.
  */
 export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null, at = Date.now()): Promise<ReviewOutcome> => {
+  if (mr.pr.state === 'merged' && mr.pr.headSha === reviewedSha && isFactoryPr(mr.pr, mr.repo, t.number)) return 'merged'
   if (!isFactoryPr(mr.pr, mr.repo, t.number) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
   if (mr.pr.headSha !== reviewedSha) {
     if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
@@ -489,6 +490,10 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     if (merged.branchDeleteError) payload.logger.warn({ ticket: t.id, err: merged.branchDeleteError }, 'merged, but deleting the head branch failed')
   } catch (e) {
     await moveReview(payload, t.id, 'waiting_checks', 'merged')
+    if (e instanceof MergePendingError) {
+      payload.logger.info({ ticket: t.id }, 'the forge has not finished the merge yet; retrying')
+      return 'waiting_checks'
+    }
     payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `merging the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'

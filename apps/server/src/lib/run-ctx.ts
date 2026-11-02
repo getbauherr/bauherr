@@ -86,6 +86,7 @@ export const buildRunCtx = async (
       gitToken: d.github.secret!,
       modelByTier,
       ...(gitBaseUrl ? { gitBaseUrl } : {}),
+      ...(d.github.kind === 'gitlab' ? { gitUser: 'oauth2' } : {}),
     },
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),

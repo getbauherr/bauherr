@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { GitlabBackend, GitlabError, gitlabPat } from '../src/index.js';
+import { GitlabBackend, GitlabError, MergePendingError, gitlabPat } from '../src/index.js';
 
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../../test/fixtures/gitlab/${name}.json`, import.meta.url), 'utf8'));
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
@@ -223,7 +223,7 @@ describe('gitlab forge', () => {
   });
 
   it('listChecks maps the latest pipeline jobs; no pipeline gives []', async () => {
-    const { forge, calls } = setup((_m, path) => (path.includes('/jobs') ? fx('jobs') : fx('pipelines')));
+    const { forge, calls } = setup((_m, path) => (path.includes('/jobs') ? fx('jobs') : path.includes('/bridges') ? [] : fx('pipelines')));
     const checks = await forge.listChecks('g/p', 'abc123');
     assert.deepEqual(checks.map((c) => [c.name, c.status, c.conclusion]), [
       ['test', 'completed', 'success'], ['lint', 'completed', 'failure'], ['optional', 'completed', 'neutral'], ['deploy', 'completed', 'skipped'],
@@ -231,6 +231,7 @@ describe('gitlab forge', () => {
     ]);
     assert.equal(calls[0]!.path, `${P}/pipelines?sha=abc123&per_page=1`);
     assert.equal(calls[1]!.path, `${P}/pipelines/2994845015/jobs?per_page=100`);
+    assert.equal(calls[2]!.path, `${P}/pipelines/2994845015/bridges?per_page=100`);
     assert.deepEqual(await setup(() => []).forge.listChecks('g/p', 'none'), []);
   });
 
@@ -244,29 +245,83 @@ describe('gitlab forge', () => {
     let merged = false;
     const { forge, calls } = setup((m, path) => {
       if (m === 'PUT') merged = true;
+      if (path === P) return { squash_option: 'default_on' };
       return m === 'DELETE' ? new Response(null, { status: 204 }) : merged ? fx('mr_merged') : fx('mr');
     });
     const r = await forge.mergePullRequest('g/p', 196, { method: 'squash', deleteBranch: true, expectSha: 'abc123' });
     assert.deepEqual(r, { mergeSha: 'def456' });
     assert.deepEqual(calls.map((c) => [c.method, c.path]), [
-      ['GET', `${P}/merge_requests/196`], ['PUT', `${P}/merge_requests/196/merge`], ['GET', `${P}/merge_requests/196`],
+      ['GET', `${P}/merge_requests/196`], ['GET', P], ['PUT', `${P}/merge_requests/196/merge`], ['GET', `${P}/merge_requests/196`],
       ['DELETE', `${P}/repository/branches/bauherr%2F7-1`],
     ]);
-    assert.deepEqual(calls[1]!.body, { squash: true, sha: 'abc123' });
+    assert.deepEqual(calls[2]!.body, { squash: true, sha: 'abc123' });
   });
 
   it('merge: a moved head (409) and a not-mergeable MR (405) surface as GitlabError; delete failure is reported', async () => {
     for (const status of [409, 405]) {
-      const { forge } = setup((m) => (m === 'PUT' ? new Response('nope', { status }) : fx('mr')));
+      const { forge } = setup((m, path) => (m === 'PUT' ? new Response('nope', { status }) : path === P ? {} : fx('mr')));
       await assert.rejects(forge.mergePullRequest('g/p', 196, { method: 'squash', expectSha: 'old' }), (e) => e instanceof GitlabError && e.status === status);
     }
     let merged = false;
-    const { forge } = setup((m) => {
+    const { forge } = setup((m, path) => {
       if (m === 'PUT') merged = true;
+      if (path === P) return {};
       return m === 'DELETE' ? new Response('boom', { status: 403 }) : merged ? fx('mr_merged') : fx('mr');
     });
     const r = await forge.mergePullRequest('g/p', 196, { method: 'squash', deleteBranch: true });
     assert.equal(r.mergeSha, 'def456');
     assert.match(r.branchDeleteError ?? '', /403/);
+  });
+
+  it('merge: polls until an asynchronous merge completes', async () => {
+    let gets = 0;
+    const sleeps: number[] = [];
+    const { forge } = setup((m, path) => {
+      if (path === P) return {};
+      if (m === 'GET') return ++gets > 4 ? fx('mr_merged') : fx('mr');
+      return {};
+    }, sleeps);
+    assert.equal((await forge.mergePullRequest('g/p', 196, { method: 'squash' })).mergeSha, 'def456');
+    assert.deepEqual(sleeps, [500, 1000, 2000]);
+  });
+
+  it('merge: a merge that never completes is a MergePendingError; an already merged MR is not re-PUT', async () => {
+    const { forge, calls } = setup((_m, path) => (path === P ? {} : fx('mr')));
+    await assert.rejects(forge.mergePullRequest('g/p', 196, { method: 'squash' }), MergePendingError);
+    const merged = setup(() => fx('mr_merged'));
+    assert.equal((await merged.forge.mergePullRequest('g/p', 196, { method: 'squash' })).mergeSha, 'def456');
+    assert.ok(!merged.calls.some((c) => c.method === 'PUT'));
+    assert.ok(calls.some((c) => c.method === 'PUT'));
+  });
+
+  it('merge: squash follows the project squash_option never', async () => {
+    let merged = false;
+    const { forge, calls } = setup((m, path) => {
+      if (m === 'PUT') merged = true;
+      return path === P ? { squash_option: 'never' } : merged ? fx('mr_merged') : fx('mr');
+    });
+    await forge.mergePullRequest('g/p', 196, { method: 'squash' });
+    assert.deepEqual(calls.find((c) => c.method === 'PUT')!.body, { squash: false });
+  });
+
+  it('listChecks: failed pipeline without jobs is red, failed bridge is red, running pipeline without jobs is pending', async () => {
+    const run = (status: string, bridges: unknown[] = []) => setup((_m, path) => (path.includes('/jobs') ? [] : path.includes('/bridges') ? bridges : [{ id: 5, status }])).forge.listChecks('g/p', 's');
+    assert.deepEqual((await run('failed')).map((c) => [c.name, c.status, c.conclusion]), [['pipeline', 'completed', 'failure']]);
+    assert.deepEqual((await run('canceled')).map((c) => [c.status, c.conclusion]), [['completed', 'cancelled']]);
+    assert.deepEqual((await run('running')).map((c) => [c.status, c.conclusion]), [['in_progress', null]]);
+    assert.deepEqual(await run('success'), []);
+    assert.deepEqual((await run('failed', [{ id: 9, name: 'child', status: 'failed' }])).map((c) => [c.name, c.conclusion]), [['child', 'failure']]);
+  });
+
+  it('pagination refuses a Link to another origin and sends no token there', async () => {
+    const { ts, calls } = setup(() => json([], { headers: { link: '<https://evil.test/x?page=2>; rel="next"' } }));
+    await assert.rejects(ts.list(), /another origin/);
+    assert.equal(calls.length, 1);
+  });
+
+  it('a null source_project_id (deleted fork) is an unknown head repo, not an error', async () => {
+    const { forge } = setup(() => [{ ...fx('mr_fork'), source_project_id: null }]);
+    const [pr] = await forge.listPullRequests('g/p', 'all');
+    assert.equal(pr!.headRepo, '');
   });
 });
