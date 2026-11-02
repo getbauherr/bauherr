@@ -277,7 +277,7 @@ it('F3: a review without the full checked list goes to a human, not to a merge',
 it('F6/F7: review output is bounded and findings are one line', () => {
   const base = { verdict: 'changes', markdown: 'm', checked }
   const bad = (f: object) => expect(() => actions.normalizeReview({ ...base, findings: [{ ...medium, ...f }] })).toThrow('finding 0')
-  bad({ file: '../a b' })
+  for (const file of ['../a b', '../a', 'a/../b', '..', 'a/..', 'a b', 'a\nb', 'a\tb']) bad({ file })
   bad({ file: 'a'.repeat(301) })
   bad({ line: -1 })
   bad({ line: 1.5 })
@@ -286,6 +286,24 @@ it('F6/F7: review output is bounded and findings are one line', () => {
   expect(() => actions.normalizeReview({ ...base, findings: Array.from({ length: 51 }, () => medium) })).toThrow('at most 50')
   expect(() => actions.normalizeReview({ ...base, findings: [], markdown: 'x'.repeat(60_001) })).toThrow('60000')
   expect(actions.normalizeReview({ ...base, findings: [{ ...medium, file: 'src/@a+b/c-d_e.ts', line: 0 }] }).problem).toBeUndefined()
+})
+
+it('F6: finding paths accept route groups and dynamic segments; schema and normalizeReview agree', async () => {
+  const { tools } = await import('../src/lib/mcp-tools')
+  const schema = tools.find((t) => t.name === 'submit_review')!.inputSchema as any
+  const pattern = new RegExp(schema.properties.findings.items.properties.file.pattern)
+  expect(schema.properties.findings.items.properties.file.pattern).toBe(actions.FILE_PATTERN)
+  const base = { verdict: 'changes', markdown: 'm', checked }
+  const ok = ['apps/server/src/app/(app)/(shell)/tickets/[id]/page.tsx', 'a..b.ts']
+  const no = ['../a', 'a/../b', '..', 'a b', 'a\nb', 'a\tb', 'a'.repeat(301)]
+  for (const file of ok) {
+    expect(pattern.test(file)).toBe(true)
+    expect(() => actions.normalizeReview({ ...base, findings: [{ ...medium, file }] })).not.toThrow()
+  }
+  for (const file of no) {
+    expect(pattern.test(file)).toBe(false)
+    expect(() => actions.normalizeReview({ ...base, findings: [{ ...medium, file }] })).toThrow('finding 0')
+  }
 })
 
 it('F7: a finding cannot inject worklog structure through newlines', async () => {
