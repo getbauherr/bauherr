@@ -79,6 +79,20 @@ const bauherren: CollectionConfig = {
   ],
 }
 
+const agentKeys = col(
+  'agent_keys',
+  [
+    rel('owner', 'bauherren', { required: true, index: true }),
+    text('label', { required: true }),
+    text('keyHash', { required: true, unique: true, hidden: true }),
+    text('prefix', { required: true, admin: { description: 'First characters of the key, to recognise it in lists.' } }),
+    date('lastUsedAt'),
+    date('revokedAt'),
+  ],
+  // Minted, used and revoked only through lib/api-key.ts (overrideAccess); never writable over the API.
+  { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }) => (req.user?.role === 'admin' ? true : { owner: { equals: req.user?.id } }) } },
+)
+
 const workspaces = col(
   'workspaces',
   [
@@ -361,6 +375,7 @@ export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded'
 
 export const collections: CollectionConfig[] = [
   bauherren,
+  agentKeys,
   workspaces,
   col('products', [
     text('name', { required: true }),
@@ -393,6 +408,7 @@ export const collections: CollectionConfig[] = [
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
+    rel('agentKey', 'agent_keys'),
     date('heartbeatAt'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
@@ -438,6 +454,7 @@ export const collections: CollectionConfig[] = [
     text('toolUseId'),
     rel('step', 'steps'),
     rel('run', 'runs'),
+    rel('agentKey', 'agent_keys'),
     text('name'),
     text('inputDigest'),
     select('status', ['ok', 'error']),
@@ -445,11 +462,17 @@ export const collections: CollectionConfig[] = [
   ]),
   col('human_touches', [
     text('kind'),
-    rel('ticket', 'tickets', { required: true }),
+    rel('ticket', 'tickets'),
     rel('run', 'runs'),
     text('actor'),
     date('at'),
-  ]),
+    text('repo'),
+    text('path'),
+    num('prNumber'),
+    text('headSha'),
+    text('baseContent'),
+    text('status'),
+  ], { access: { create: () => false, update: () => false, delete: () => false } }),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
     select('layer', ['core', 'workspace', 'product'], { required: true }),
@@ -469,6 +492,15 @@ export const collections: CollectionConfig[] = [
     { name: 'screenshots', type: 'number', defaultValue: 0 },
     { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
     rel('user', 'bauherren'),
+    rel('embedToken', 'embed_tokens'),
+  ]),
+  col('embed_tokens', [
+    text('name', { required: true }),
+    rel('product', 'products', { required: true }),
+    { name: 'tokenHash', type: 'text', required: true, unique: true, access: { read: () => false }, admin: { hidden: true } },
+    json('allowedOrigins'),
+    { name: 'maxSessionsPerHour', type: 'number', defaultValue: 20, min: 1 },
+    date('revokedAt'),
   ]),
   col('media', [
     rel('session', 'intake_sessions', { required: true }),

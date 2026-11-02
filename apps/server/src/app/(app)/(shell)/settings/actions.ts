@@ -2,8 +2,9 @@
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { createLocalReq } from 'payload'
-import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
+import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
 import { webOrigin } from '../../../../lib/connection'
+import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
@@ -94,6 +95,22 @@ export const createSource = act({}, async (c, fd) => {
   await c.payload.create({ collection: 'ticket_sources', data: { repo: s(fd, 'repo'), connection, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
 })
 
+/** The token is shown once as the ready-made script tag; only its hash is stored. */
+export const mintEmbedToken = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  const allowedOrigins = s(fd, 'origins').split(/[\s,]+/).filter(Boolean)
+  if (!allowedOrigins.length) throw Object.assign(new Error('Origins missing.'), { data: { errors: [{ path: 'origins', message: 'Add at least one origin' }] } })
+  if (!allowedOrigins.every(isWebUrl)) throw Object.assign(new Error('Origins invalid.'), { data: { errors: [{ path: 'origins', message: 'Each origin must be an http(s) URL' }] } })
+  const token = await createEmbedToken(c.payload, { product: id(fd), name: s(fd, 'name'), allowedOrigins })
+  return `<script src="${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/intake/widget.js" data-token="${token}"></script>`
+})
+export const revokeEmbedToken = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'embed_tokens', id(fd))
+  await c.payload.update({ collection: 'embed_tokens', id: id(fd), data: { revokedAt: new Date().toISOString() }, overrideAccess: true } as never)
+})
+
 const COLLECTIONS = ['products', 'repositories', 'ticket_sources', 'bauherren']
 export const removeDoc = act({}, async (c, fd) => {
   only(c.user)
@@ -155,11 +172,14 @@ export const saveBauherr = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
 })
 
+const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
+
 /** Own record only: the target is always the signed-in Bauherr, never a form value. The key appears once, as the ready-made `claude mcp add` line. */
-export const rotateOwnKey = act({}, async ({ user, payload }) => {
-  const key = await rotateApiKey(payload, user)
-  const origin = process.env.PUBLIC_URL ?? 'http://localhost:3000'
-  return `claude mcp add --transport http bauherr ${origin}/mcp --header "Authorization: Bearer ${key}"`
-})
+export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mcpAdd(await mintAgentKey(payload, user, s(fd, 'label'))))
+
+export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revokeAgentKey(payload, user, id(fd)))
+
+/** The personal (human) key: for scripted owner use only, it can approve gates. */
+export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))

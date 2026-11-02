@@ -23,12 +23,16 @@ import * as migration_20261102_150144_connection_slugs from './20261102_150144_c
 import * as migration_20261102_150145_intake_sessions from './20261102_150145_intake_sessions';
 import * as migration_20261102_150147_media from './20261102_150147_media';
 import * as migration_20261102_150150_knowledge from './20261102_150150_knowledge';
+import * as migration_20261102_150166_agent_keys from './20261102_150166_agent_keys';
 import * as migration_20261102_150168_conflict_return_scope from './20261102_150168_conflict_return_scope';
 import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './20261102_150170_requeue_expired_unclaimed_runs';
 import * as migration_20261102_160000_production_approved_sha from './20261102_160000_production_approved_sha';
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 import * as migration_20261102_170000_production_label_at from './20261102_170000_production_label_at';
 import * as migration_20261102_170106_release_publish from './20261102_170106_release_publish';
+import * as migration_20261102_170149_embed_tokens from './20261102_170149_embed_tokens';
+import * as migration_20261102_170152_knowledge_edit from './20261102_170152_knowledge_edit';
+import * as migration_20261102_171000_knowledge_edit_record from './20261102_171000_knowledge_edit_record';
 
 export const migrations = [
   {
@@ -157,6 +161,11 @@ export const migrations = [
     name: '20261102_150150_knowledge'
   },
   {
+    up: migration_20261102_150166_agent_keys.up,
+    down: migration_20261102_150166_agent_keys.down,
+    name: '20261102_150166_agent_keys'
+  },
+  {
     up: migration_20261102_150168_conflict_return_scope.up,
     down: migration_20261102_150168_conflict_return_scope.down,
     name: '20261102_150168_conflict_return_scope'
@@ -186,4 +195,19 @@ export const migrations = [
     down: migration_20261102_170106_release_publish.down,
     name: '20261102_170106_release_publish'
   },
+  {
+    up: migration_20261102_170149_embed_tokens.up,
+    down: migration_20261102_170149_embed_tokens.down,
+    name: '20261102_170149_embed_tokens'
+  },
+  {
+    up: migration_20261102_170152_knowledge_edit.up,
+    down: migration_20261102_170152_knowledge_edit.down,
+    name: '20261102_170152_knowledge_edit'
+  },
+  {
+    up: migration_20261102_171000_knowledge_edit_record.up,
+    down: migration_20261102_171000_knowledge_edit_record.down,
+    name: '20261102_171000_knowledge_edit_record'
+  }
 ];

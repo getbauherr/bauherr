@@ -7,7 +7,9 @@ for (const native of [true, false]) {
   const backend = new FakeBackend({ native, user: 'octo' });
   contractSuite(`fake (${native ? 'native' : 'body-convention'})`, {
     backend, repo: 'acme/app', user: 'octo',
-    commitFile: async (branch, path, content) => backend.commit('acme/app', branch, path, content),
+    commitFile: async (branch, path, content) => {
+      backend.commit('acme/app', branch, path, content);
+    },
   });
 }
 
@@ -32,6 +34,16 @@ describe('fake: mergePullRequest', () => {
     await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', expectSha: 'stale' }), /head moved/);
     await b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' });
     await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' }), /merged/);
+  });
+});
+
+describe('fake: closePullRequest', () => {
+  it('closes an open PR and leaves a merged one merged', async () => {
+    const b = new FakeBackend();
+    await b.forge.createBranch('o/r', 'feat');
+    const pr = await b.forge.openPullRequest('o/r', { title: 't', head: 'feat', base: 'main' });
+    await b.forge.closePullRequest('o/r', pr.number);
+    assert.equal((await b.forge.getPullRequest('o/r', pr.number)).state, 'closed');
   });
 });
 

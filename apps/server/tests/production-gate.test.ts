@@ -84,6 +84,13 @@ it('a label added on the forge by anyone does not start a deploy', async () => {
   expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 0 })
 })
 
+it('a production approval without a named person is refused and leaves no touch', async () => {
+  const { id } = await accepted('nameless')
+  await expect(actions.approveProduction(payload, { ...user, email: '' }, { ticket: id })).rejects.toThrow('a human touch needs a named person')
+  expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 0 })
+})
+
 it('the owner approval records the sha, deploys once on green checks, closes and comments once', async () => {
   const { id, n, sha } = await accepted('approved')
   await actions.approveProduction(payload, user, { ticket: id })
@@ -232,10 +239,10 @@ it('the approve_production tool is refused while a session Run holds the Ticket'
   const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', mode: 'session', status: 'running', workspace: ws }, ...o })
   const { tools } = await import('../src/lib/mcp-tools')
   const approve = tools.find((t) => t.name === 'approve_production')!
-  await expect(approve.run({ ticket: id }, { payload, user })).rejects.toThrow('session Run holds')
+  await expect(approve.run({ ticket: id }, { payload, user, actor: { kind: 'human' } })).rejects.toThrow('session Run holds')
   expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
   await payload.update({ collection: 'runs', id: run.id, data: { status: 'succeeded' }, ...o })
-  await expect(approve.run({ ticket: id }, { payload, user })).resolves.toMatchObject({ productionState: 'deploying' })
+  await expect(approve.run({ ticket: id }, { payload, user, actor: { kind: 'human' } })).resolves.toMatchObject({ productionState: 'deploying' })
 })
 
 const failOnce = (ts: object) => vi.spyOn(Object.getPrototypeOf(ts), 'addLabels').mockRejectedValueOnce(new Error('forge down'))

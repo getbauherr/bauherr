@@ -32,7 +32,7 @@ beforeAll(async () => {
   jobs = await import('../src/jobs')
   actions = await import('../src/lib/actions')
   const { callTool } = await import('../src/lib/mcp-tools')
-  call = (user, name, input) => callTool({ payload, user }, name, input)
+  call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   other = (await payload.create({ collection: 'workspaces', data: { name: 'other', slug: 'other' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number

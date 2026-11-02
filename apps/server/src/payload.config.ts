@@ -2,12 +2,12 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
-import { expireSessions, pollTickets, pruneRequestLogsTask, reconcileCosts, runStage, watchReleaseTask, publishReleaseTask, notifyGatesTask, resyncKnowledge } from './jobs'
+import { expireSessions, pollTickets, pruneRequestLogsTask, reconcileCosts, runStage, watchReleaseTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask } from './jobs'
 import { migrations } from './migrations'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
-  collections.filter((c) => c.slug !== 'workspaces' && c.slug !== 'bauherren').map((c) => [c.slug, {}]),
+  collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys'].includes(c.slug)).map((c) => [c.slug, {}]),
 )
 
 export default buildConfig({
@@ -32,7 +32,7 @@ export default buildConfig({
     access: { queue: isAdmin, run: isAdmin, cancel: isAdmin },
     deleteJobOnComplete: false,
     enableConcurrencyControl: true,
-    tasks: [pollTickets, runStage, expireSessions, reconcileCosts, pruneRequestLogsTask, watchReleaseTask, publishReleaseTask, notifyGatesTask, resyncKnowledge],
+    tasks: [pollTickets, runStage, expireSessions, reconcileCosts, pruneRequestLogsTask, watchReleaseTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask],
     // No in-app autoRun: the `poller` (queue poll) and `worker` (queue runs) processes run the jobs (package.json).
   },
 })

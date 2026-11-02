@@ -3,10 +3,11 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf, startOwnerIntake, answerOwnerIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, startOwnerIntake, answerOwnerIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
+import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
@@ -143,7 +144,7 @@ export async function rerunStage(runId: number) {
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
   const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
-  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
+  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
   redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
 }
 
@@ -161,4 +162,17 @@ export async function rankTicketAction(ticket: number, before: number | null, af
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(rankTicket(payload, user, { ticket, before, after, workspaceId }))
   revalidatePath('/')
+}
+
+export type EditState = { pr?: { number: number; url: string }; stale?: { sha: string; diff: string }; error?: string }
+
+/** Saves a Knowledge document as a PR (merged later by the watcher); a stale base returns the diff instead of writing. */
+export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Promise<EditState> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return await saveDocument(payload, user, { workspace: workspaceId, path: String(fd.get('path')), content: String(fd.get('content')).replace(/\r\n/g, '\n'), baseSha: String(fd.get('baseSha')) })
+  } catch (e) {
+    if (e instanceof EditRefused) return { error: e.message }
+    throw e
+  }
 }

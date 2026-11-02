@@ -11,9 +11,9 @@ const fail = (error: string, status: number) => Response.json({ error }, { statu
 export const POST = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const a = await actor(req)
   if (a instanceof Response) return a
-  const { payload, user } = a
+  const { payload } = a
   const sessionId = (await params).id
-  const first = await ownSession(payload, user, sessionId)
+  const first = await ownSession(payload, a, sessionId)
   if (!first || first.status !== 'open') return fail('session not found', 404)
   const length = Number(req.headers.get('content-length'))
   if (!length) return fail('content-length required', 411)
@@ -31,7 +31,7 @@ export const POST = async (req: Request, { params }: { params: Promise<{ id: str
     return fail('corrupt image', 415)
   }
   return exclusive(`intake:${sessionId}`, async () => {
-    const s = await ownSession(payload, user, sessionId)
+    const s = await ownSession(payload, a, sessionId)
     if (!s || s.status !== 'open') return fail('session not found', 404)
     if ((s.screenshots ?? 0) >= MAX_IMAGES_PER_SESSION) return fail(`at most ${MAX_IMAGES_PER_SESSION} screenshots per session`, 409)
     const m = await payload.create({ collection: 'media', data: { session: s.id, workspace: typeof s.workspace === 'object' ? s.workspace.id : s.workspace, name: file.name.replace(/[^\w.-]+/g, '_').slice(-80) || 'screenshot', mime, data: Buffer.from(clean).toString('base64') }, overrideAccess: true })
