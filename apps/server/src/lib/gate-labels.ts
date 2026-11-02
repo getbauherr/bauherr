@@ -15,6 +15,10 @@ export const GATE_LABELS = [
   { label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging'] },
 ] as const
 
+/** A recorded touch legitimises a factory-login label only when it was recorded shortly before the label event. */
+export const TOUCH_WINDOW_MS = 10 * 60_000
+const SKEW_MS = 60_000
+
 export const REJECTED_MARKER = (label: string, at: string) => `<!-- bauherr:label-rejected:${label}:${at} -->`
 
 interface Forge {
@@ -58,7 +62,12 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
     }
     const actor = ev.actor.toLowerCase()
     const factory = me === null ? actor.endsWith('[bot]') : actor === me.toLowerCase()
-    const touched = (await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: ticket.id } }, { kind: { in: [...g.recorded] } }] }, ...o })).totalDocs > 0
+    const at = Date.parse(ev.at)
+    const touched = (await payload.count({
+      collection: 'human_touches',
+      where: { and: [{ ticket: { equals: ticket.id } }, { kind: { in: [...g.recorded] } }, { at: { greater_than_equal: new Date(at - TOUCH_WINDOW_MS).toISOString() } }, { at: { less_than_equal: new Date(at + SKEW_MS).toISOString() } }] },
+      ...o,
+    })).totalDocs > 0
     if (factory ? touched : owners.has(actor)) {
       verdict.accepted.push(g.label)
       if (!factory && !touched) {

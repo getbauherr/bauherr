@@ -260,6 +260,9 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
   },
 }
 
+/** Polls in which a Ticket's unverifiable gate label is retried before it waits for the next label change. */
+const MAX_GATE_ATTEMPTS = 30
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -271,7 +274,16 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       try {
         const conn = await connectionInput(payload, src.connection)
         const { changes, next } = await backendFor(conn).tickets(src.repo).poll(src.cursor ?? null)
-        for (const t of changes) {
+        // Tickets whose gate label could not be verified yet are re-read on every poll, a bounded number of times.
+        const stuck = await payload.find({
+          collection: 'tickets',
+          where: { and: [{ product: { equals: id(src.product) } }, { gatePendingAttempts: { greater_than: 0 } }, { gatePendingAttempts: { less_than: MAX_GATE_ATTEMPTS } }, { number: { not_in: changes.map((c) => c.number) } }] },
+          pagination: false,
+          depth: 0,
+          overrideAccess: true,
+        })
+        const retried = await Promise.all(stuck.docs.map((d) => backendFor(conn).tickets(src.repo).get(String(d.number))))
+        for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
             where: { and: [{ product: { equals: id(src.product) } }, { externalId: { equals: t.id } }] },
@@ -293,6 +305,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             assignees: t.assignees.join(','),
             sourceUpdatedAt: t.updatedAt,
             triageAttempts: 0,
+            gatePendingAttempts: 0,
           }
           let labels = t.labels
           if (GATE_LABELS.some((g) => labels.includes(g.label))) {
@@ -300,6 +313,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
             base.labels = labels
+            base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
@@ -312,7 +326,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             }
           }
           // Guard: unchanged pointers are not rewritten.
-          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          if (!base.gatePendingAttempts && !prev?.gatePendingAttempts && prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
           const data = {
             ...base,
             stage,

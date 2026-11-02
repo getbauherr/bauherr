@@ -73,6 +73,9 @@ export class Http {
   private doFetch: typeof fetch;
   private sleep: (ms: number) => Promise<void>;
   private maxRetries: number;
+  get authKind() {
+    return this.o.auth.kind;
+  }
   constructor(private o: GithubOptions) {
     this.base = o.baseUrl ?? 'https://api.github.com';
     this.doFetch = o.fetch ?? fetch;
@@ -240,12 +243,9 @@ class GithubTickets implements TicketSource {
       .map((e) => ({ label: e.label.name, action: e.event, actor: e.actor?.login ?? null, at: e.created_at }));
   }
   async whoami() {
-    try {
-      return (await this.h.json('GET', '/user')).login ?? null;
-    } catch (e) {
-      if (e instanceof GithubError && (e.status === 403 || e.status === 404)) return null;
-      throw e;
-    }
+    // An App installation token has no user: the factory is then recognised by its `[bot]` actor.
+    if (this.h.authKind === 'app') return null;
+    return (await this.h.json('GET', '/user')).login;
   }
   async unassign(id: string, assignees: string[]) {
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });

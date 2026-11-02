@@ -139,3 +139,48 @@ it('leaves the label alone and does not advance while the events are unavailable
   await poll()
   expect((await row(n)).stage).toBe('build')
 })
+
+it('leaves the label pending when the factory login cannot be determined', async () => {
+  const n = await planTicket()
+  await labelAs('intruder', n, PLAN)
+  const source = ts()
+  const real = source.whoami.bind(source)
+  source.whoami = async () => {
+    throw new Error('403')
+  }
+  await poll()
+  expect((await ts().get(n)).labels).toContain(PLAN)
+  expect((await row(n)).stage).toBe('plan')
+  expect(await rejections(n)).toHaveLength(0)
+  source.whoami = real
+  await poll()
+  expect((await ts().get(n)).labels).not.toContain(PLAN)
+  expect(await rejections(n)).toHaveLength(1)
+})
+
+it('rejects a factory-login label whose touch is older than the window', async () => {
+  const n = await planTicket()
+  await actions.approvePlan(payload, admin, { ticket: (await row(n)).id })
+  const [touch] = await touches(n)
+  await payload.update({ collection: 'human_touches', id: touch!.id, data: { at: new Date(Date.now() - 3_600_000).toISOString() }, ...o })
+  await ts().removeLabels(n, [PLAN])
+  await ts().addLabels(n, [PLAN])
+  await poll()
+  expect((await ts().get(n)).labels).not.toContain(PLAN)
+})
+
+it('retries a pending label on later polls even when the Ticket is not among the changes, bounded', async () => {
+  const n = await planTicket()
+  await labelAs('owner', n, PLAN)
+  const source = ts()
+  const real = source.labelEvents.bind(source)
+  source.labelEvents = async () => {
+    throw new Error('events down')
+  }
+  await poll()
+  expect((await row(n)).gatePendingAttempts).toBe(1)
+  source.labelEvents = real
+  await poll()
+  expect((await row(n)).stage).toBe('build')
+  expect((await row(n)).gatePendingAttempts).toBe(0)
+})

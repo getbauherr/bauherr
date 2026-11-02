@@ -71,7 +71,7 @@ export interface TicketSource {
   removeLabels(id: string, labels: string[]): Promise<void>;
   /** Label changes of the ticket, oldest first. */
   labelEvents(id: string): Promise<LabelEvent[]>;
-  /** Login of the forge credential; null when the credential has no user (e.g. an App token). */
+  /** Login of the forge credential; null when the credential has no user (an App token). Throws when the login cannot be determined. */
   whoami(): Promise<string | null>;
   /** Throws if the assignee was not applied. */
   claim(id: string, assignee: string): Promise<void>;
