@@ -64,3 +64,38 @@ jobs:
             apps/server/e2e/results
             apps/server/e2e/app.log
           if-no-files-found: ignore
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24}
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter bauherr test
+      - run: pnpm --filter bauherr exec npm pack --dry-run
+
+  cli-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24}
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Pack the CLI and build the image it pins
+        run: |
+          pnpm --filter bauherr build
+          version=$(node -p "require('./packages/cli/package.json').version")
+          (cd packages/cli && npm pack --pack-destination "$RUNNER_TEMP")
+          echo "TGZ=$RUNNER_TEMP/bauherr-$version.tgz" >> "$GITHUB_ENV"
+          docker build -t "ghcr.io/getbauherr/bauherr:$version" .
+      - name: npx init, health, down
+        run: |
+          dir=$RUNNER_TEMP/smoke
+          npx --yes "file:$TGZ" init --yes --dir "$dir" --port 3010
+          curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-connrefused -o /dev/null http://localhost:3010/login
+          npx --yes "file:$TGZ" status --dir "$dir"
+      - if: always()
+        run: npx --yes "file:$TGZ" down --volumes --dir "$RUNNER_TEMP/smoke"

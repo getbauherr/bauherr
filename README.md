@@ -75,14 +75,22 @@ Runs have two modes. In **autonomous** mode the Runner spawns an agent. In **ses
 
 ## Quick start
 
-Requires Docker with Compose. Local development also needs Node 24 and pnpm 10.
+Requires Docker with Compose and Node 22.14+. No clone, no build:
+
+```bash
+npx bauherr init
+```
+
+It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is installed and reachable and that the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`. A localhost public URL means polling mode, a public URL enables webhooks.
+
+From a source checkout, with Local development needing Node 24 and pnpm 10:
 
 ```bash
 git clone https://github.com/getbauherr/bauherr.git && cd bauherr
 docker compose build && docker compose up -d
 ```
 
-This starts `db` (Postgres 17), `gateway`, `app` (UI, API and MCP on `http://localhost:3000`), `worker` (agent Runs) and `poller` (Ticket source polling). Secrets are generated on first start into a volume.
+Both start `db` (Postgres 17), `gateway`, `app` (UI, API and MCP on `http://localhost:3000`), `worker` (agent Runs) and `poller` (Ticket source polling). Secrets are generated on first start into a volume.
 
 Create the Admin user, the first Workspace and its Connections. The seed script currently creates Workspace `getbauherr` for the repository `getbauherr/bauherr` (workspace #0); further Workspaces, Products and Connections are edited under Settings in the UI. A setup wizard is planned.
 
@@ -121,7 +129,7 @@ TypeScript monorepo (pnpm workspaces, Node 24).
 | [`apps/server`](apps/server) | Payload 3 on Next.js: UI at `/`, API at `/api`, MCP at `/mcp`, Payload jobs for the worker and poller, migrations, seeds, e2e tests |
 | [`packages/adapters`](packages/adapters) | Forge and Ticket source contracts with the GitHub driver |
 | [`packages/runner`](packages/runner) | Runs one Plan or Build stage with the Claude Agent SDK: shallow clone, localhost credential proxy, hooks, evidence |
-| [`packages/cli`](packages/cli) | Placeholder for the `bauherr` npm package (planned one-command start, [#4](https://github.com/getbauherr/bauherr/issues/4)) |
+| [`packages/cli`](packages/cli) | The `bauherr` npm package: `npx bauherr init` writes the compose project and starts the stack |
 | [`pack`](pack) | Open-source core pack: skills, rules, hooks and the base workflow |
 | [`deploy`](deploy) | Gateway config template, model catalogs, database init |
 | [`docs`](docs) | Spec, UI, auth, legal notes, research, design system |
@@ -131,6 +139,16 @@ pnpm install
 pnpm typecheck   # builds the packages, then type-checks all of them
 pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 ```
+
+## Releasing
+
+One git tag publishes everything. From `main`:
+
+```bash
+git tag v0.1.0-rc.1 && git push origin v0.1.0-rc.1
+```
+
+[`release.yml`](.github/workflows/release.yml) (environment `release`, tag must be on `main`) first pushes the multi-arch image `ghcr.io/getbauherr/bauherr:<version>` (`latest` only for versions without a `-pre` suffix), then publishes npm `bauherr@<version>` from `packages/cli` with provenance via trusted publishing (no token stored; the npm package settings name this repository and workflow). Pre-releases get the npm tag `next`. If the npm package requires staged publishing, promote the staged version on npmjs.com. The CLI pins the image tag to its own version.
 
 ## Status and roadmap
 
