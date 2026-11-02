@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import type { Decision } from '../../app/(app)/lib/plan'
 
 export const MAX_QUESTIONS = 6
 export const MAX_USER_MESSAGES = 12
@@ -60,6 +61,10 @@ export const readiness = (draft: Draft | null, hasScreenshot: boolean, refers: b
   ]
   return { ready: !missing.length, exhausted: asked >= MAX_QUESTIONS, missing }
 }
+
+/** Persona `owner`: the sheet's unanswered rows, critical first, in sheet order; the head is the next single question. */
+export const ownerQueue = (decisions: Decision[], answers: Record<string, string>): Decision[] =>
+  decisions.filter((d) => !answers[d.id]).sort((a, b) => Number(b.critical) - Number(a.critical))
 
 const prompt = async (): Promise<string> =>
   (await readFile(resolve(process.cwd(), '../../pack/skills/intake/SKILL.md'), 'utf8')).replace(/^---[\s\S]*?---\s*/, '')

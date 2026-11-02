@@ -28,6 +28,7 @@ export const stripMetadata = (b: Uint8Array, mime: ImageMime): Uint8Array => {
     let at = 2
     while (at < b.length) {
       if (b[at] !== 0xff) throw bad()
+      while (b[at + 1] === 0xff) at++
       const marker = b[at + 1]!
       if (marker === 0xda) return join([...parts, b.subarray(at)])
       const end = at + 2 + ((b[at + 2]! << 8) | b[at + 3]!)
