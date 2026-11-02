@@ -454,6 +454,7 @@ const countComments = () => {
 it('resume: a recorded changes verdict ends in a Build Run without a second MR comment', async () => {
   const { id, pr } = await seed({ checks: green })
   await crashed(id, pr, [medium])
+  await fake.forge.commentOnPullRequest(repo, pr.number, `${actions.REVIEW_MARKER}\nm`)
   const c = countComments()
   try {
     expect(await actions.resumeReviews(payload)).toBe(1)
@@ -463,6 +464,43 @@ it('resume: a recorded changes verdict ends in a Build Run without a second MR c
   expect(c.calls).toHaveLength(0)
   expect((await reload(id)).stage).toBe('build')
   expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('resume: the MR comment is posted when the crash happened before it, once', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr)
+  const c = countComments()
+  try {
+    await actions.resumeReviews(payload)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toEqual([`${actions.REVIEW_MARKER}\nm`])
+})
+
+it('resume: a Run of an earlier round is not applied; a fresh review starts', async () => {
+  const { id, pr, n } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'succeeded', mode: 'session', workspace: ws, finishedAt: new Date(Date.now() - 60_000).toISOString() }, ...o })
+  const c = countComments()
+  try {
+    expect(await actions.resumeReviews(payload)).toBe(0)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toHaveLength(0)
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewRounds: 0 })
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { in: ['awaiting_session', 'running'] } }] }, ...o })).toMatchObject({ totalDocs: 0 })
+  expect(n).toBeTruthy()
+})
+
+it('resume: a Run that reviewed an older head is not applied', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  fake.commit(repo, pr.head, 'b.ts', 'y')
+  expect(await actions.resumeReviews(payload)).toBe(0)
+  expect((await reload(id)).reviewRounds).toBe(0)
 })
 
 it('resume: a recorded clean verdict merges', async () => {
