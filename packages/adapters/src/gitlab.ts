@@ -2,7 +2,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
-import { MergePendingError } from './contracts.js';
+import { Conflict, MergePendingError } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
 import { closeReasonLabel } from './stage.js';
@@ -326,6 +326,32 @@ class GitlabForge implements Forge {
   }
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
+  }
+  async listFiles(repo: RepoRef, ref?: string) {
+    const c = await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
+    const tree = await this.h.paginate(`/projects/${enc(repo)}/repository/tree?ref=${enc(c.id)}&recursive=true&per_page=100`);
+    return { commit: c.id as string, paths: tree.filter((t) => t.type === 'blob').map((t) => t.path as string) };
+  }
+  private async file(repo: RepoRef, path: string, ref: string) {
+    return this.h.json('GET', `/projects/${enc(repo)}/repository/files/${enc(path)}?ref=${enc(ref)}`);
+  }
+  async getFile(repo: RepoRef, path: string, ref?: string) {
+    const f = await this.file(repo, path, ref ?? (await this.getRepository(repo)).defaultBranch);
+    return { content: Buffer.from(f.content, 'base64').toString('utf8'), sha: f.blob_id as string };
+  }
+  /** GitLab has no blob-sha precondition: check `expectSha` against the branch, then pin the write to that file's `last_commit_id`. */
+  async putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }) {
+    const cur = await this.file(repo, o.path, o.branch).catch((e) => (e instanceof GitlabError && e.status === 404 ? null : Promise.reject(e)));
+    if (o.expectSha !== undefined && (cur?.blob_id ?? '') !== o.expectSha) throw new Conflict(`${o.path} changed`);
+    try {
+      await this.h.json(cur ? 'PUT' : 'POST', `/projects/${enc(repo)}/repository/files/${enc(o.path)}`, {
+        branch: o.branch, content: o.content, commit_message: o.message, ...(cur ? { last_commit_id: cur.last_commit_id } : {}),
+      });
+    } catch (e) {
+      if (e instanceof GitlabError && (e.status === 400 || e.status === 409)) throw new Conflict(e.message);
+      throw e;
+    }
+    return { sha: (await this.file(repo, o.path, o.branch)).blob_id as string };
   }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const before = await this.getPullRequest(repo, n);

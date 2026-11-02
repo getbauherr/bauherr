@@ -102,6 +102,9 @@ const workspaces = col(
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
     select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
+    rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
+    text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
+    { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, repo commit).' } },
   ],
   {
     access: {
@@ -337,6 +340,7 @@ const tickets = col('tickets', [
   text('gateNotified'),
   date('gateNotifiedAt'),
   text('gateAssignees'),
+  { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
   { name: 'conflictReturnBase', type: 'text', admin: { description: 'The head SHA a review covered before the MR went back to Build to merge the base; the next review covers only the diff from it. Cleared when that review concludes.' } },
   { name: 'conflictReturns', type: 'number', defaultValue: 0, admin: { description: 'Returns to Build because the MR conflicted; the 4th needs a human.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
@@ -431,6 +435,16 @@ export const collections: CollectionConfig[] = [
     rel('run', 'runs'),
     text('actor'),
     date('at'),
+  ]),
+  col('knowledge_chunks', [
+    text('source', { required: true, index: true }),
+    select('layer', ['core', 'workspace', 'product'], { required: true }),
+    text('path', { required: true }),
+    text('logical', { required: true, index: true }),
+    text('product'),
+    text('heading'),
+    text('text', { required: true }),
+    text('commit', { required: true }),
   ]),
   col('intake_sessions', [
     rel('product', 'products', { required: true }),

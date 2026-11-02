@@ -44,6 +44,13 @@ export default async function WorkspaceSettings() {
             ))}
           </div>
         </fieldset>
+        <fieldset className="checks">
+          <legend className="small muted">Knowledge repo</legend>
+          <div className="pair">
+            <Field name="knowledgeConnection" label="Connection" options={w.githubConnections} empty="none" defaultValue={w.knowledgeConnection} disabled={!admin} />
+            <Field name="knowledgeRepo" label="Repository (owner/name)" defaultValue={w.knowledgeRepo} placeholder="acme/knowledge" disabled={!admin} />
+          </div>
+        </fieldset>
       </SettingsForm>
       <h2 className="heading">Gateway key</h2>
       {!admin ? (
