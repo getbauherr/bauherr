@@ -284,7 +284,7 @@ const tickets = col('tickets', [
   date('gateNotifiedAt'),
   text('gateAssignees'),
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
-])
+], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
 export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted', 'abandoned']
 

@@ -129,4 +129,10 @@ describe('subTickets', () => {
     ])
   })
   it('is empty without the section', () => expect(subTickets('## Steps\n1. x')).toEqual([]))
+  it('reads an `after:` line as the sibling title and keeps it out of the body', () => {
+    expect(subTickets('## Sub-tickets\n- **B** — Second.\n  after: A\n  Accept: x\n- **A** — First.')).toEqual([
+      { title: 'B', body: 'Second.\nAccept: x', after: 'A' },
+      { title: 'A', body: 'First.' },
+    ])
+  })
 })
