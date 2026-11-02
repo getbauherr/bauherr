@@ -437,6 +437,108 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
 })
 
+/** The crash window: the review Run holds its verdict, the Ticket never moved. */
+const crashed = async (id: number, pr: { headSha: string }, findings: any[] = [], problem?: string) => {
+  const r = await review(id)
+  const verdict = findings.some((f) => f.severity !== 'low') ? 'changes' : 'clean'
+  await payload.update({ collection: 'runs', id: r.runId, data: { status: 'succeeded', verdict, findings, reviewedSha: pr.headSha, finishedAt: new Date(Date.now() - 5 * 60_000).toISOString(), artifacts: { review: { markdown: 'm', ...(problem && { problem }) } } }, ...o })
+  return r
+}
+const countComments = () => {
+  const spy = fake.forge.commentOnPullRequest
+  const calls: string[] = []
+  fake.forge.commentOnPullRequest = async (...a: Parameters<typeof spy>) => (calls.push(a[2]), spy(...a))
+  return { calls, restore: () => void (fake.forge.commentOnPullRequest = spy) }
+}
+
+it('resume: a recorded changes verdict ends in a Build Run without a second MR comment', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  await fake.forge.commentOnPullRequest(repo, pr.number, `${actions.REVIEW_MARKER}\nm`)
+  const c = countComments()
+  try {
+    expect(await actions.resumeReviews(payload)).toBe(1)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toHaveLength(0)
+  expect((await reload(id)).stage).toBe('build')
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('resume: the MR comment is posted when the crash happened before it, once', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr)
+  const c = countComments()
+  try {
+    await actions.resumeReviews(payload)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toEqual([`${actions.REVIEW_MARKER}\nm`])
+})
+
+it('resume: a Run of an earlier round is not applied; a fresh review starts', async () => {
+  const { id, pr, n } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'succeeded', mode: 'session', workspace: ws, finishedAt: new Date(Date.now() - 60_000).toISOString() }, ...o })
+  const c = countComments()
+  try {
+    expect(await actions.resumeReviews(payload)).toBe(0)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toHaveLength(0)
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewRounds: 0 })
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { in: ['awaiting_session', 'running'] } }] }, ...o })).toMatchObject({ totalDocs: 0 })
+  expect(n).toBeTruthy()
+})
+
+it('resume: a Run that reviewed an older head is not applied', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  fake.commit(repo, pr.head, 'b.ts', 'y')
+  expect(await actions.resumeReviews(payload)).toBe(0)
+  expect((await reload(id)).reviewRounds).toBe(0)
+})
+
+it('resume: a recorded clean verdict merges', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr)
+  expect(await actions.resumeReviews(payload)).toBe(1)
+  expect(await prState(pr.number)).toBe('merged')
+})
+
+it('resume: a stored problem goes to a human, never to merge or Build', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [], 'the review did not account for: evidence')
+  await actions.resumeReviews(payload)
+  expect((await reload(id)).reviewState).toBe('ready_for_human')
+  expect(await prState(pr.number)).toBe('open')
+})
+
+it('resume: nothing is retried inside the grace, while a review Run is active, or in a parked state', async () => {
+  const fresh = await seed({ checks: green })
+  const r = await crashed(fresh.id, fresh.pr)
+  await payload.update({ collection: 'runs', id: r.runId, data: { finishedAt: new Date().toISOString() }, ...o })
+  const active = await seed({ checks: green })
+  await review(active.id)
+  const parked = await Promise.all(['waiting_checks', 'needs_human', 'ready_for_human', 'merged'].map(async (reviewState) => {
+    const s = await seed({ checks: green })
+    await crashed(s.id, s.pr)
+    await payload.update({ collection: 'tickets', id: s.id, data: { reviewState }, ...o })
+    return s
+  }))
+  await actions.resumeReviews(payload)
+  for (const s of [fresh, active]) {
+    expect((await reload(s.id)).stage).toBe('review')
+    expect((await reload(s.id)).reviewState ?? null).toBeNull()
+    expect(await prState(s.pr.number)).toBe('open')
+  }
+  for (const s of parked) expect(await prState(s.pr.number)).toBe('open')
+})
+
 /** A review Ticket parked at the round cap (3 returns), the escalation Comment posted. */
 const atCap = async () => {
   const s = await seed({ checks: green })
@@ -550,9 +652,12 @@ it('F24: two conflicting PRs: the first merges, the second merges main, is re-re
   fake.commit(repo, b.branch, 'a.ts', 'merged')
   const head = (await fake.forge.getPullRequest(repo, b.pr.number)).headSha
   expect(head).not.toBe(before)
+  expect(await reload(b.id)).toMatchObject({ conflictReturnBase: before, conflictReturns: 1 })
   await payload.update({ collection: 'tickets', id: b.id, data: { stage: 'review' }, ...o })
   const r = await review(b.id)
+  expect((await call(member, 'get_ticket', { ticket: b.id })).conflictReturnBase).toBe(before)
   expect(await submit(r)).toMatchObject({ outcome: 'merged' })
+  expect(await reload(b.id)).toMatchObject({ conflictReturnBase: null })
   expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: head })
   expect(await prState(b.pr.number)).toBe('merged')
 })
@@ -563,4 +668,44 @@ it('F25: a conflict return at the round cap still goes to Build', async () => {
   fake.setMergeable(repo, pr.number, false)
   expect(await submit(await review(id))).toMatchObject({ outcome: 'build' })
   expect(await reload(id)).toMatchObject({ stage: 'build', reviewRounds: 2 })
+})
+
+it('F26: the next review Run is told the previous reviewed SHA, server-side, regardless of the worklog', async () => {
+  const { id, pr, n, branch } = await seed({ checks: green })
+  const base = pr.headSha
+  fake.setMergeable(repo, pr.number, false)
+  await submit(await review(id))
+  expect((await reload(id)).conflictReturnBase).toBe(base)
+  const log = (await fake.tickets(repo).listComments(n)).find((c) => c.body.startsWith('<!-- bauherr:worklog -->'))!
+  await fake.tickets(repo).updateComment(n, log.id, '<!-- bauherr:worklog -->\n## Worklog\n**Current instructions**\nready for review')
+  fake.commit(repo, branch, 'a.ts', 'merged')
+  fake.setMergeable(repo, pr.number, undefined as any)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  const started = await jobs.startReviewIfReady(payload, (await reload(id)) as any)
+  const claim = await call(member, 'claim_run', { runId: started!.run.id })
+  expect(claim.ticket.conflictReturnBase).toBe(base)
+})
+
+it('F27: a 4th conflict return needs a human instead of looping', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await payload.update({ collection: 'tickets', id, data: { conflictReturns: 3 }, ...o })
+  fake.setMergeable(repo, pr.number, false)
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'needs_human' })
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 3 })
+})
+
+it('F28: recovery: Tickets parked on 3 failed merges resume when the MR is mergeable, return to Build when it conflicts', async () => {
+  const parked = async (conflicting: boolean) => {
+    const s = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
+    await submit(await review(s.id))
+    await payload.update({ collection: 'tickets', id: s.id, data: { reviewState: 'needs_human', mergeFailures: 3, conflictReturns: null }, ...o })
+    fake.setChecks(repo, s.pr.headSha, green)
+    if (conflicting) fake.setMergeable(repo, s.pr.number, false)
+    return s
+  }
+  const ok = await parked(false)
+  const bad = await parked(true)
+  await actions.watchReviews(payload)
+  expect(await prState(ok.pr.number)).toBe('merged')
+  expect(await reload(bad.id)).toMatchObject({ stage: 'build', mergeFailures: 0, conflictReturns: 1 })
 })

@@ -127,7 +127,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = run.stage === 'triage' || run.stage === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
-  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 /** Open, unblocked Tickets in frontier order with their latest Run. */
@@ -370,7 +370,7 @@ export const tools: Tool[] = [
         c,
         run,
         a.leaseToken,
-        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown } })}::jsonb, ${U}`,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } })}::jsonb, ${U}`,
       )
       return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review, reviewedSha)) }
     },

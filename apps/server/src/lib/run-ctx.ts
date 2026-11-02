@@ -92,6 +92,7 @@ export const buildRunCtx = async (
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...(run.stage !== 'plan' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
     ...(existingPr && { existingPr }),
+    ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
     connection: {
       gatewayUrl,

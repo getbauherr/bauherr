@@ -7,7 +7,7 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
@@ -174,7 +174,7 @@ export const abandonRun = async (
   return status
 }
 
-/** Session Runs: unclaimed ones not touched for SESSION_TIMEOUT_MS (`updatedAt`: set at creation and again on release or revert) go `needs_human`; running ones without a heartbeat for that long are abandoned (see `abandonRun`). Returns how many were handled. */
+/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
@@ -185,12 +185,6 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     overrideAccess: true,
   })
   for (const r of triage.docs) await untriage(payload, id(r.ticket))
-  const unclaimed = await payload.update({
-    collection: 'runs',
-    where: { and: [{ stage: { not_equals: 'triage' } }, { mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
-    data: { status: 'needs_human', error: 'session heartbeat timeout', finishedAt: new Date(now).toISOString() },
-    overrideAccess: true,
-  })
   const stale = await payload.find({
     collection: 'runs',
     where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
@@ -198,7 +192,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
-  let handled = unclaimed.docs.length + triage.docs.length
+  let handled = triage.docs.length
   for (const run of stale.docs) {
     try {
       if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
@@ -223,6 +217,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   concurrency: () => 'watch-release',
   handler: async ({ req }) => {
     await watchReviews(req.payload)
+    await resumeReviews(req.payload)
     return { output: await watchRelease(req.payload) }
   },
 }
@@ -356,7 +351,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         id: run.id,
         data: {
           status: r.status,
-          artifacts: r.artifacts,
+          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
           error: r.status === 'succeeded' ? null : r.reason,
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null }),
           tokensIn: r.usage.inputTokens,

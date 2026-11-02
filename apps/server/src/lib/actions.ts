@@ -411,6 +411,8 @@ export const REVIEW_MARKER = '<!-- bauherr:review -->'
 export const WAIT_CHECKS_MAX_MS = 2 * 60 * 60_000
 /** Consecutive failed merge attempts before a Ticket needs a human. */
 export const MAX_MERGE_FAILURES = 3
+/** Returns to Build because the MR conflicted, before a Ticket needs a human. */
+export const MAX_CONFLICT_RETURNS = 3
 const BLOCKING = ['high', 'medium']
 export const MAX_FINDINGS = 50
 export const MAX_TEXT = 1000
@@ -482,12 +484,12 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
  * Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work.
  * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
  */
-const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string } = {}): Promise<ReviewOutcome> => {
+const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string; conflictBase?: string | null } = {}): Promise<ReviewOutcome> => {
   const countRound = opts.countRound ?? true
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, "merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
+      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, ${opts.conflictBase === undefined ? sql`` : sql`"conflict_return_base" = ${opts.conflictBase}, "conflict_returns" = COALESCE("conflict_returns", 0) + 1, `}"merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
     )
   ).rows[0]
   if (!claimed) return 'noop'
@@ -509,10 +511,12 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
 }
 
 /** The forge reports the MR as conflicting: back to Build to merge the base in. Neither a review round nor a failed merge. */
-const returnConflictToBuild = (payload: Payload, t: Doc, mr: Mr): Promise<ReviewOutcome> => {
+const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
+  const returns = Number((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })).conflictReturns ?? 0)
+  if (returns >= MAX_CONFLICT_RETURNS) return escalate(payload, t, `the MR conflicted with \`${mr.pr.base}\` ${returns} times after other merges; resolve it by hand.`)
   const reason = `the MR conflicts with \`${mr.pr.base}\` after another merge`
-  const text = `${reason}. Merge \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} (git merge, no rebase, no force push), resolve the conflicts keeping both sides, rerun the checks, and push to that branch; do not open a new MR. The next review only checks the merge resolution.`
-  return returnToBuild(payload, t, mr, reason, [], [], { countRound: false, text })
+  const text = `${reason}. Merge \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} (git merge, no rebase, no force push), resolve the conflicts keeping both sides, rerun the checks, and push to that branch; do not open a new MR.`
+  return returnToBuild(payload, t, mr, reason, [], [], { countRound: false, text, conflictBase: reviewedSha })
 }
 
 const CAP_MARKER = 'Bauherr needs a human:'
@@ -579,7 +583,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  if (mr.pr.mergeable === false) return returnConflictToBuild(payload, t, mr)
+  if (mr.pr.mergeable === false) return returnConflictToBuild(payload, t, mr, reviewedSha)
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
   const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
   const checks = mergeChecks(list, age)
@@ -595,7 +599,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   } catch (e) {
     await moveReview(payload, t.id, 'waiting_checks', 'merged')
     const now = await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number).catch(() => null)
-    if (now?.mergeable === false) return returnConflictToBuild(payload, t, { ...mr, pr: now })
+    if (now?.mergeable === false) return returnConflictToBuild(payload, t, { ...mr, pr: now }, reviewedSha)
     payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `merging the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
@@ -605,14 +609,16 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
 
 /**
  * Both review paths end here, after the review Run holds its verdict on `reviewedSha`: posts the MR comment, then hands an unusable review to a human,
- * returns to Build (blocking findings) or runs the merge gate. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
+ * returns to Build (blocking findings) or runs the merge gate. `resume` (a retry by `resumeReviews`) posts the MR comment only when an identical one is missing. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
  */
-export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null): Promise<{ outcome: ReviewOutcome }> => {
+export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null, resume = false): Promise<{ outcome: ReviewOutcome }> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
   try {
     const mr = await prOf(payload, t)
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
-    await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`)
+    const body = `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`
+    if (!resume || !(await mr.backend.forge.listPullRequestComments(mr.repo, mr.pr.number)).some((c) => c.body === body)) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
+    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_return_base" = NULL WHERE "id" = ${t.id}`)
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
     const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
     const outcome = blocking.length
@@ -625,8 +631,29 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
   }
 }
 
+/**
+ * One-off recovery: Tickets parked on `needs_human` by 3 failed merges before conflicts had their own route (`conflict_returns` still NULL, set by the migration only on old rows)
+ * go back to `waiting_checks` when the MR conflicts or still has the reviewed head; `conflict_returns` = 0 marks them done, so a genuine merge error cannot loop.
+ */
+const recoverMergeFailures = async (payload: Payload): Promise<void> => {
+  const rows = (await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "stage" = 'review' AND "state" = 'open' AND "review_state" = 'needs_human' AND "merge_failures" >= ${MAX_MERGE_FAILURES} AND "conflict_returns" IS NULL`)).rows
+  for (const { id: ticket } of rows as { id: TicketId }[]) {
+    try {
+      const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
+      const mr = await prOf(payload, t)
+      if (mr?.pr.state !== 'open') continue
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      if (mr.pr.mergeable !== false && mr.pr.headSha !== last?.reviewedSha) continue
+      await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = 'waiting_checks', "review_waiting_since" = now(), "merge_failures" = 0, "conflict_returns" = 0 WHERE "id" = ${t.id} AND "review_state" = 'needs_human'`)
+    } catch (e) {
+      payload.logger.error({ err: e, ticket }, 'recovering a Ticket parked on failed merges failed')
+    }
+  }
+}
+
 /** Per-minute pass: Tickets waiting on checks re-run the merge gate against the latest reviewed SHA; waiting longer than 2 hours needs a human. */
 export const watchReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
+  await recoverMergeFailures(payload)
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let merged = 0
   for (const t of tickets) {
@@ -644,6 +671,35 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
     }
   }
   return merged
+}
+
+const RESUME_GRACE_MS = 2 * 60_000
+
+/** Per-minute pass: a review Run of the current review (reviewed the MR head, finished after the last Build Run) holds its verdict but the Ticket never left review (crash between the Run write and the stage move); the verdict is applied again. A stale Run is not applied; a fresh review starts. A crash after the round claim in `returnToBuild` counts that round twice on resume (accepted, D3). */
+export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  let resumed = 0
+  for (const t of tickets) {
+    try {
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      if (last?.status !== 'succeeded' || !last.verdict || !last.finishedAt || at - Date.parse(last.finishedAt) < RESUME_GRACE_MS) continue
+      const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }, { finishedAt: { exists: true } }] }, sort: '-finishedAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const mr = await prOf(payload, t)
+      if (mr?.pr.state !== 'open') continue
+      if (mr.pr.headSha !== last.reviewedSha || (build && Date.parse(last.finishedAt) < Date.parse(build.finishedAt))) {
+        await startReviewIfReady(payload, t)
+        continue
+      }
+      const stored = last.artifacts?.review
+      if (typeof stored?.markdown !== 'string') continue
+      const review: Review = { verdict: last.verdict, findings: last.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }
+      await concludeReview(payload, t.id, review, last.reviewedSha ?? null, true)
+      resumed++
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'resume-reviews failed for ticket')
+    }
+  }
+  return resumed
 }
 
 export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[] }
