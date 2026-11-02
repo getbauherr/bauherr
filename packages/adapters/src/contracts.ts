@@ -141,6 +141,7 @@ export interface Forge {
   getPullRequest(repo: RepoRef, number: number): Promise<PullRequest>;
   listPullRequests(repo: RepoRef, state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
+  listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
   /** Check runs plus legacy commit statuses (a status is a check named after its context). */
   listChecks(repo: RepoRef, sha: string): Promise<Check[]>;
