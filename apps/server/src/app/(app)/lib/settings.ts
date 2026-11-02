@@ -63,7 +63,7 @@ export async function loadProducts(workspace: number) {
   const find = async (collection: string, extra: object = {}) => (await payload.find({ collection, where, sort: 'id', ...o, pagination: false, ...extra } as never)).docs as unknown as Record<string, any>[]
   const [products, repositories, sources, connections] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } })])
   return {
-    connections: connections.filter((c) => c.kind === 'github').map((c) => ({ id: c.id as number, name: c.name as string })),
+    connections: connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab').map((c) => ({ id: c.id as number, name: c.name as string })),
     products: await Promise.all(
       products.map(async (p) => ({
         id: p.id as number,

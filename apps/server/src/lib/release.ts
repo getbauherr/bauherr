@@ -1,8 +1,8 @@
 import { setStage, type Check, type PullRequest } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
-import { githubFor } from './adapters'
-import { connectionInput } from './connection'
+import { backendFor } from './adapters'
+import { connectionInput, webOrigin } from './connection'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 
 type Doc = Record<string, any>
@@ -14,9 +14,10 @@ export const STAGING_TIMEOUT_MS = 60 * 60_000
 /** Webhook mode: staging may answer 200 from the old build right after the request, so wait this long first. */
 export const WEBHOOK_SETTLE_MS = 2 * 60_000
 
-/** PR number of `url` when it is exactly `https://github.com/<repo>/pull/<n>`; anything else is not trusted. */
-export const prNumber = (url: unknown, repo: string): number | null => {
-  const m = typeof url === 'string' ? new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pull/(\\d+)$`).exec(url) : null
+/** PR number of `url` when it is exactly `<web>/<repo>/pull/<n>` (GitHub) or `<web>/<repo>/-/merge_requests/<n>` (GitLab); `web` is the Connection's origin, anything else is not trusted. */
+export const prNumber = (url: unknown, repo: string, web: string): number | null => {
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = typeof url === 'string' ? new RegExp(`^${esc(web)}/${esc(repo)}/(?:-/merge_requests|pull)/(\\d+)$`).exec(url) : null
   return m ? Number(m[1]) : null
 }
 
@@ -24,24 +25,25 @@ export const prNumber = (url: unknown, repo: string): number | null => {
 export const isFactoryPr = (pr: PullRequest, repo: string, ticketNumber: number): boolean =>
   pr.baseRepo.toLowerCase() === repo.toLowerCase() && pr.headRepo.toLowerCase() === repo.toLowerCase() && pr.head.startsWith(`bauherr/${ticketNumber}-`)
 
-/** Ticket source of a Product, authenticated with the Workspace's github Connection. */
+/** Ticket source of a Product, authenticated with the Workspace's forge Connection; `web` is that forge's origin. */
 export const forgeOf = async (payload: Payload, product: number | string) => {
   const src = (await payload.find({ collection: 'ticket_sources', where: { product: { equals: product } }, limit: 1, ...o })).docs[0]
   if (!src) throw new Error('no ticket source for this Product')
-  const backend = githubFor(await connectionInput(payload, src.connection))
-  return { backend, repo: src.repo as string, tickets: backend.tickets(src.repo) }
+  const connection = await connectionInput(payload, src.connection)
+  const backend = backendFor(connection)
+  return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo) }
 }
 
 /** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. */
 export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{ posted: boolean }> => {
-  const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))
+  const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
   const mergeSha: string | null = t.mergeSha || null
   const comments = await ts.listComments(n)
   const posted = !latestWith(comments, SUMMARY_MARKER)?.body.includes(mergeSha ? `\`${mergeSha}\`` : SUMMARY_MARKER)
   if (posted) {
     const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
-    const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo)).filter((x): x is number => x !== null))]
+    const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).filter((x): x is number => x !== null))]
     const mrs = await Promise.all(numbers.map((num) => backend.forge.getPullRequest(repo, num)))
     const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
     await ts.comment(
@@ -89,9 +91,9 @@ export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'gr
 
 /** The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state; null when there is none or it is not a factory PR (fork, foreign branch). */
 export const prOf = async (payload: Payload, t: Doc) => {
-  const { backend, repo, tickets } = await forgeOf(payload, id(t.product))
+  const { backend, repo, web, tickets } = await forgeOf(payload, id(t.product))
   const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
-  const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo)).find((x) => x !== null)
+  const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).find((x) => x !== null)
   if (num == null) return null
   const pr = await backend.forge.getPullRequest(repo, num)
   return isFactoryPr(pr, repo, t.number) ? { backend, repo, tickets, pr } : null
@@ -134,7 +136,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
   const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: ['review', 'release'] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
-      const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))
+      const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
       if (t.state === 'closed' && !(await reopenIfClosedByMerge(payload, t, ts))) continue
@@ -142,7 +144,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       if (t.stage === 'review') {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
         const urls = runs.map((r) => r.artifacts?.prUrl).filter(Boolean)
-        const num = urls.map((u) => prNumber(u, repo)).find((x) => x !== null)
+        const num = urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null)
         if (num == null) {
           if (urls.length) payload.logger.warn({ ticket: t.id, urls }, 'ignoring pull request URL outside the ticket source repo')
           continue

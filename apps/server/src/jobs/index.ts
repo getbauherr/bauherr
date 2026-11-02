@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
-import { githubFor } from '../lib/adapters'
+import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor, packed } from '../lib/mode'
@@ -247,7 +247,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     for (const src of sources.docs) {
       try {
         const conn = await connectionInput(payload, src.connection)
-        const { changes, next } = await githubFor(conn).tickets(src.repo).poll(src.cursor ?? null)
+        const { changes, next } = await backendFor(conn).tickets(src.repo).poll(src.cursor ?? null)
         for (const t of changes) {
           const found = await payload.find({
             collection: 'tickets',
@@ -277,7 +277,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             prev ??= await payload.create({ collection: 'tickets', data: { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, overrideAccess: true })
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
-              await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
+              await setStage(backendFor(conn).tickets(src.repo), String(t.number), 'build')
               stage = 'build'
             }
           }
@@ -350,9 +350,9 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       // A stopped Triage Run posts no Ticket Comment (it would bump the Ticket and reset the attempt count): the sweep retries it up to MAX_TRIAGE_ATTEMPTS.
       if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) await untriage(payload, ticket.id)
       else if (r.status === 'needs_human') {
-        await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
+        await backendFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       } else if (r.status === 'budget_exhausted') {
-        await githubFor(github).tickets(src.repo).comment(String(ticket.number), 'Bauherr stopped: the Workspace budget is exhausted')
+        await backendFor(github).tickets(src.repo).comment(String(ticket.number), 'Bauherr stopped: the Workspace budget is exhausted')
       }
       await payload.update({
         collection: 'runs',

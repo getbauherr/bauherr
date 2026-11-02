@@ -6,7 +6,7 @@ const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as 
 /** Decrypted Connection; the secret lives only in memory. */
 export interface ConnectionInput {
   id: number | string
-  kind: 'github' | 'llm-provider'
+  kind: 'github' | 'gitlab' | 'llm-provider'
   config: Record<string, unknown>
   secret: string | null
   capabilities: Record<string, boolean>
@@ -23,4 +23,12 @@ export const connectionInput = async (payload: Payload, ref: unknown): Promise<C
     secret: raw ? decrypt(raw) : null,
     capabilities: c.capabilities ?? {},
   }
+}
+
+/** Web origin of a forge Connection: where MR URLs and clones live. GitLab: `config.baseUrl` (default gitlab.com, https only). */
+export const webOrigin = (connection: Pick<ConnectionInput, 'kind' | 'config'>): string => {
+  if (connection.kind !== 'gitlab') return 'https://github.com'
+  const url = new URL(typeof connection.config.baseUrl === 'string' && connection.config.baseUrl ? connection.config.baseUrl : 'https://gitlab.com')
+  if (url.protocol !== 'https:') throw new Error('the GitLab base URL must be https')
+  return url.origin
 }

@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { createLocalReq } from 'payload'
 import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
+import { webOrigin } from '../../../../lib/connection'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
@@ -112,6 +113,7 @@ export const saveConnection = act({}, async (c, fd) => {
     data.provider = s(fd, 'provider')
     for (const k of PRESET_FIELDS) if (fd.has(k)) data[k] = s(fd, k)
   }
+  if (kind === 'gitlab') data.config = { baseUrl: webOrigin({ kind, config: { baseUrl: s(fd, 'baseUrl') } }) }
   if (s(fd, 'secret')) data.secret = s(fd, 'secret')
   if (id(fd)) {
     await inWs(c, 'connections', id(fd))

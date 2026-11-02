@@ -2,9 +2,9 @@ import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
 import { setStage } from '@bauherr/adapters'
-import { githubFor } from './adapters'
+import { backendFor } from './adapters'
 import { prOf } from './release'
-import type { ConnectionInput } from './connection'
+import { webOrigin, type ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { forgeOf, id } from './release'
 
@@ -53,7 +53,8 @@ export const buildRunCtx = async (
   const { run, ticket, repo } = d
   const opts = { overrideAccess: true } as const
   const workspace = typeof run.workspace === 'object' ? run.workspace.id : run.workspace
-  const backend = githubFor(d.github)
+  const backend = backendFor(d.github)
+  const gitBaseUrl = process.env.BAUHERR_GIT_BASE_URL || (d.github.kind === 'gitlab' ? webOrigin(d.github) : undefined)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
   const goal = await goalFor(payload, ticket, issue.body, run.stage)
@@ -84,7 +85,7 @@ export const buildRunCtx = async (
       gatewayKey: d.gatewayKey,
       gitToken: d.github.secret!,
       modelByTier,
-      ...(process.env.BAUHERR_GIT_BASE_URL ? { gitBaseUrl: process.env.BAUHERR_GIT_BASE_URL } : {}),
+      ...(gitBaseUrl ? { gitBaseUrl } : {}),
     },
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),

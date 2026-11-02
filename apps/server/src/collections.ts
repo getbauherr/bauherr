@@ -125,7 +125,7 @@ const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'llm-provider'], { required: true }),
+    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
     json('config'),
     select('provider', Object.keys(PRESETS), {
       defaultValue: 'anthropic',
