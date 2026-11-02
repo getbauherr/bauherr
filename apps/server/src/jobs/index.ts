@@ -7,7 +7,7 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, watchReviews } from '../lib/actions'
+import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
@@ -223,6 +223,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   concurrency: () => 'watch-release',
   handler: async ({ req }) => {
     await watchReviews(req.payload)
+    await resumeReviews(req.payload)
     return { output: await watchRelease(req.payload) }
   },
 }
@@ -359,7 +360,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         id: run.id,
         data: {
           status: r.status,
-          artifacts: r.artifacts,
+          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
           error: r.status === 'succeeded' ? null : r.reason,
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null }),
           tokensIn: r.usage.inputTokens,
