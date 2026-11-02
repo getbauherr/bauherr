@@ -64,7 +64,8 @@ jobs:
       - name: Trusted publishing needs npm >= 11.5.1
         run: npm install -g npm@^11.5.1 && npm --version
       - run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      # Only the CLI's build deps, and no dependency lifecycle scripts while this job holds the OIDC publish identity.
+      - run: pnpm install --frozen-lockfile --filter bauherr --ignore-scripts
       - name: Build and publish
         working-directory: packages/cli
         env:
