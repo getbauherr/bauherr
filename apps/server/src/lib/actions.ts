@@ -594,14 +594,15 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
 
 /**
  * Both review paths end here, after the review Run holds its verdict on `reviewedSha`: posts the MR comment, then hands an unusable review to a human,
- * returns to Build (blocking findings) or runs the merge gate. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
+ * returns to Build (blocking findings) or runs the merge gate. `resume` (a retry by `resumeReviews`) posts the MR comment only when an identical one is missing. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
  */
-export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null): Promise<{ outcome: ReviewOutcome }> => {
+export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null, resume = false): Promise<{ outcome: ReviewOutcome }> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
   try {
     const mr = await prOf(payload, t)
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
-    await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`)
+    const body = `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`
+    if (!resume || !(await mr.backend.forge.listPullRequestComments(mr.repo, mr.pr.number)).some((c) => c.body === body)) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
     const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
     const outcome = blocking.length
@@ -633,6 +634,35 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
     }
   }
   return merged
+}
+
+const RESUME_GRACE_MS = 2 * 60_000
+
+/** Per-minute pass: a review Run of the current review (reviewed the MR head, finished after the last Build Run) holds its verdict but the Ticket never left review (crash between the Run write and the stage move); the verdict is applied again. A stale Run is not applied; a fresh review starts. A crash after the round claim in `returnToBuild` counts that round twice on resume (accepted, D3). */
+export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  let resumed = 0
+  for (const t of tickets) {
+    try {
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      if (last?.status !== 'succeeded' || !last.verdict || !last.finishedAt || at - Date.parse(last.finishedAt) < RESUME_GRACE_MS) continue
+      const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }, { finishedAt: { exists: true } }] }, sort: '-finishedAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const mr = await prOf(payload, t)
+      if (mr?.pr.state !== 'open') continue
+      if (mr.pr.headSha !== last.reviewedSha || (build && Date.parse(last.finishedAt) < Date.parse(build.finishedAt))) {
+        await startReviewIfReady(payload, t)
+        continue
+      }
+      const stored = last.artifacts?.review
+      if (typeof stored?.markdown !== 'string') continue
+      const review: Review = { verdict: last.verdict, findings: last.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }
+      await concludeReview(payload, t.id, review, last.reviewedSha ?? null, true)
+      resumed++
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'resume-reviews failed for ticket')
+    }
+  }
+  return resumed
 }
 
 export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[] }

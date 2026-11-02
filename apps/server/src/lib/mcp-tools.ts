@@ -370,7 +370,7 @@ export const tools: Tool[] = [
         c,
         run,
         a.leaseToken,
-        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown } })}::jsonb, ${U}`,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } })}::jsonb, ${U}`,
       )
       return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review, reviewedSha)) }
     },
