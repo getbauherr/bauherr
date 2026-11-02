@@ -35,6 +35,12 @@ export const unknownLogins = async (payload: Payload, productId: number, next: s
 export const ownsGate = async (payload: Payload, t: Doc, login: string): Promise<boolean> =>
   !!(t.gateNotified || logins(t.gateAssignees).length) && (await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))).includes(login)
 
+/** The logins of the running session Runs on the Ticket: they hold the assignment for their Run, whatever the gate does. */
+const sessionLoginsOf = async (payload: Payload, ticketId: number | string): Promise<string[]> => {
+  const runs = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticketId } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, pagination: false, ...o, depth: 1 })
+  return runs.docs.flatMap((r) => ((r.sessionOwner as Doc | null)?.githubLogin ?? process.env.BAUHERR_BOT_LOGIN) || [])
+}
+
 /** A claim the forge rejected for good (unknown or unassignable login): retrying cannot help. */
 const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?: number }).status ?? 0)
 
@@ -42,13 +48,14 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * Notifies the gate's person once per gate value: assigns them on the forge and posts one Comment that @mentions them (idempotent by marker).
  * `gateNotified` is only set once every owner is assigned (or already was), so failed claims are retried each minute.
  * A passed or changed gate unassigns exactly the logins the factory added (`gateAssignees`) that do not own the next gate; other assignees stay.
+ * A gate whose owners are all rejected for good is not notified and is flagged `gateUnreachable`; it is retried each sweep.
  * Returns whether the Ticket row changed.
  */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string } | null): Promise<boolean> => {
   const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
-  if (!candidate && !held && !mine.length) return false
+  if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
   const owners = candidate ? await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o })) : []
   const base = owners.length ? candidate : null
   let forge: ReturnType<typeof forgeOf> | undefined
@@ -56,13 +63,14 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   let want = base
   if (base === 'Approve plan' && PLAN_GATES.includes(held)) want = held
   else if (base === 'Approve plan' && unansweredCriticalCount(await (await source()).listComments(String(t.number)))) want = 'Answer decisions'
-  if (want === held && (want || !mine.length)) return false
+  if (want === held && (want || (!mine.length && !t.gateUnreachable))) return false
   const n = String(t.number)
   let added = mine
   if (mine.length && (held || !want)) {
-    const gone = mine.filter((l) => !owners.includes(l))
+    const sessions = await sessionLoginsOf(payload, t.id)
+    const gone = mine.filter((l) => !owners.includes(l) && !sessions.includes(l))
     if (gone.length) await (await source()).unassign(n, gone)
-    added = mine.filter((l) => owners.includes(l))
+    added = mine.filter((l) => !gone.includes(l))
   }
   let complete = false
   let mentioned = owners
@@ -81,18 +89,19 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
       }
     }
     mentioned = owners.filter((l) => !dropped.includes(l))
-    complete = mentioned.every((l) => assigned.includes(l) || added.includes(l))
+    complete = mentioned.length > 0 && mentioned.every((l) => assigned.includes(l) || added.includes(l))
     const marker = `<!-- bauherr:gate:${want}:${createHash('sha1').update(`${want}${run?.id ?? ''}`).digest('hex')} -->`
     if (mentioned.length && !(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
       await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${want} — ${publicUrl()}/tickets/${t.id}`)
     }
   }
   const notified = complete ? want : null
-  if (notified === held && added.join(',') === mine.join(',')) return false
+  const unreachable = want && !mentioned.length ? want : null
+  if (notified === held && added.join(',') === mine.join(',') && unreachable === (t.gateUnreachable ?? null)) return false
   await payload.update({
     collection: 'tickets',
     id: t.id,
-    data: { gateNotified: notified, gateNotifiedAt: notified === held ? t.gateNotifiedAt : notified ? new Date().toISOString() : null, gateAssignees: added.join(',') || null },
+    data: { gateNotified: notified, gateNotifiedAt: notified === held ? t.gateNotifiedAt : notified ? new Date().toISOString() : null, gateAssignees: added.join(',') || null, gateUnreachable: unreachable },
     ...o,
   })
   // Closes the claim/poll race: the poll may have seen the new assignee before it was recorded and skipped the Run start on stage entry.
@@ -106,7 +115,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
 
 /** Syncs the gate of every open Ticket and of closed ones still holding one; a failing Ticket does not stop the others. */
 export const syncGates = async (payload: Payload): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }] }, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }] }, pagination: false, ...o })).docs as Doc[]
   if (!tickets.length) return 0
   const latest = new Map<number, Doc>()
   for (const r of (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]) {

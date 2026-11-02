@@ -95,10 +95,10 @@ const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id
 
 class ClaimLost extends Error {}
 
-/** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 /** The GitHub login a session Run assigns on the Ticket. */
 const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
 
+/** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string) => {
   const run = await getRun(c, runId)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`

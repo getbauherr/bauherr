@@ -76,6 +76,15 @@ export const MAX_TRIAGE_ATTEMPTS = 3
 /** Forgets what Triage covered, so the next poll triages the Ticket again. */
 export const untriage = (payload: Payload, ticket: number | string) => payload.update({ collection: 'tickets', id: ticket, data: { triagedAt: null }, overrideAccess: true })
 
+/** `untriage` for the end of a Run: a failure is logged and never masks the Run's own outcome. */
+const untriageLogged = async (payload: Payload, ticket: number | string) => {
+  try {
+    await untriage(payload, ticket)
+  } catch (e) {
+    payload.logger.error({ err: e, ticket }, 'untriage failed')
+  }
+}
+
 /** After MAX_TRIAGE_ATTEMPTS: one Comment, then the Ticket counts as covered until it changes (the Comment's own `updatedAt` is recorded). */
 const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
   try {
@@ -293,7 +302,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await payload.create({ collection: 'tickets', data, overrideAccess: true })
           const entered = stage && stage !== (prev?.stage ?? null)
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(prev?.gateAssignees).includes(a))) {
+          const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
@@ -338,17 +348,13 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const r = await exec(ctx)
       const review = run.stage === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
       let triage = null
+      // The Ticket is untriaged only after the Run's terminal update, so the next poll cannot start a Triage Run while this one is still active.
+      let untriageAfter = run.stage === 'triage' && r.status === 'failed' && !!r.reason?.includes('triage.json')
       if (run.stage === 'triage' && r.status === 'succeeded') {
-        try {
-          triage = normalizeTriage(r.artifacts.triage)
-        } catch (e) {
-          await untriage(payload, ticket.id)
-          throw e
-        }
+        triage = normalizeTriage(r.artifacts.triage)
       }
-      if (run.stage === 'triage' && r.status === 'failed' && r.reason?.includes('triage.json')) await untriage(payload, ticket.id)
       // A stopped Triage Run posts no Ticket Comment (it would bump the Ticket and reset the attempt count): the sweep retries it up to MAX_TRIAGE_ATTEMPTS.
-      if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) await untriage(payload, ticket.id)
+      if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) untriageAfter = true
       else if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       } else if (r.status === 'budget_exhausted') {
@@ -370,6 +376,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         },
         ...opts,
       })
+      if (untriageAfter) await untriageLogged(payload, ticket.id)
       await queueReconcile(payload, run.id)
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
@@ -389,7 +396,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         data: { status: 'failed', error: e instanceof Error ? e.message : String(e), finishedAt: new Date().toISOString() },
         ...opts,
       })
-      if (run.stage === 'triage') await untriage(payload, ticket.id)
+      if (run.stage === 'triage') await untriageLogged(payload, ticket.id)
       await queueReconcile(payload, run.id)
       throw e
     }

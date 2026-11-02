@@ -15,6 +15,7 @@ const Needs = ({ t }: { t: TicketRow }) =>
   t.needsYou ? (
     <span className="label needs" data-gate={t.gate ? '' : undefined}>
       {t.needsYou}
+      {t.gateUnreachable && ' · no reachable owner'}
       {t.gate && ` · ${t.gate.people.map((p) => `@${p}`).join(' ')}${t.gate.people.length ? ' · ' : ''}waiting ${heartbeatAge(t.gate.since).text.replace(' ago', '')}`}
     </span>
   ) : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
