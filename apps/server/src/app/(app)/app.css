@@ -175,6 +175,19 @@ a.link{color:var(--accent)}
 .field textarea.editor{height:auto;padding:var(--space-3);width:100%;resize:vertical;line-height:1.5}
 .diff{padding:var(--space-3);background:var(--surface-200);border:1px solid var(--hairline);border-radius:var(--radius-md);overflow:auto;white-space:pre-wrap;word-break:break-word}
 
+.kb{display:grid;grid-template-columns:260px minmax(0,1fr);gap:var(--space-8);align-items:start}
+.kb-docs{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.kb-docs a{display:block;padding:var(--space-1) var(--space-3);overflow-wrap:anywhere;color:var(--ink-muted);border-left:1px solid var(--hairline);transition:color var(--duration-state) var(--ease-out),border-color var(--duration-state) var(--ease-out)}
+.kb-docs a:hover{color:var(--ink)}
+.kb-docs a[aria-current]{color:var(--ink);border-left-color:var(--accent)}
+.prose{max-width:68ch;overflow-wrap:anywhere}
+.prose>*{margin:0 0 var(--space-4)}
+.prose :is(h1,h2,h3){margin-top:var(--space-6);font-weight:600}
+.prose :is(code,pre){font-family:var(--font-mono);font-size:13px}
+.prose pre{padding:var(--space-3);overflow-x:auto;background:var(--surface-200);border:1px solid var(--hairline);border-radius:var(--radius-sm)}
+.prose a{color:var(--accent)}
+@media (max-width:640px){.kb{grid-template-columns:minmax(0,1fr);gap:var(--space-4)}}
+
 .intake{display:grid;grid-template-columns:minmax(0,640px) minmax(0,360px);gap:var(--space-8);align-items:start}
 .chat{display:flex;flex-direction:column;gap:var(--space-2);margin:0;padding:0;list-style:none}
 .msg{max-width:85%;padding:var(--space-2) var(--space-3);border:1px solid var(--hairline);border-radius:var(--radius-md);background:var(--surface-100)}

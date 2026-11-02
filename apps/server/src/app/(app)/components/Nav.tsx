@@ -7,6 +7,7 @@ export function Nav({ needsYou }: { needsYou: number }) {
   const items = [
     { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou },
     { href: '/runs', label: 'Runs', current: path.startsWith('/runs'), badge: 0 },
+    { href: '/knowledge', label: 'Knowledge', current: path.startsWith('/knowledge'), badge: 0 },
   ]
   return (
     <nav className="nav" aria-label="Main">
