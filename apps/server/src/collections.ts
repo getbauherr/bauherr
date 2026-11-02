@@ -79,6 +79,20 @@ const bauherren: CollectionConfig = {
   ],
 }
 
+const agentKeys = col(
+  'agent_keys',
+  [
+    rel('owner', 'bauherren', { required: true, index: true }),
+    text('label', { required: true }),
+    text('keyHash', { required: true, unique: true, hidden: true }),
+    text('prefix', { required: true, admin: { description: 'First characters of the key, to recognise it in lists.' } }),
+    date('lastUsedAt'),
+    date('revokedAt'),
+  ],
+  // Minted, used and revoked only through lib/api-key.ts (overrideAccess); never writable over the API.
+  { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }) => (req.user?.role === 'admin' ? true : { owner: { equals: req.user?.id } }) } },
+)
+
 const workspaces = col(
   'workspaces',
   [
@@ -346,6 +360,8 @@ const tickets = col('tickets', [
   date('gateNotifiedAt'),
   text('gateAssignees'),
   { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
+  { name: 'conflictReturnBase', type: 'text', admin: { description: 'The head SHA a review covered before the MR went back to Build to merge the base; the next review covers only the diff from it. Cleared when that review concludes.' } },
+  { name: 'conflictReturns', type: 'number', defaultValue: 0, admin: { description: 'Returns to Build because the MR conflicted; the 4th needs a human.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
@@ -353,6 +369,7 @@ export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded'
 
 export const collections: CollectionConfig[] = [
   bauherren,
+  agentKeys,
   workspaces,
   col('products', [
     text('name', { required: true }),
@@ -384,6 +401,7 @@ export const collections: CollectionConfig[] = [
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
+    rel('agentKey', 'agent_keys'),
     date('heartbeatAt'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
@@ -429,6 +447,7 @@ export const collections: CollectionConfig[] = [
     text('toolUseId'),
     rel('step', 'steps'),
     rel('run', 'runs'),
+    rel('agentKey', 'agent_keys'),
     text('name'),
     text('inputDigest'),
     select('status', ['ok', 'error']),
@@ -460,6 +479,13 @@ export const collections: CollectionConfig[] = [
     { name: 'screenshots', type: 'number', defaultValue: 0 },
     { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
     rel('user', 'bauherren'),
+  ]),
+  col('media', [
+    rel('session', 'intake_sessions', { required: true }),
+    text('name', { required: true }),
+    select('mime', ['image/png', 'image/jpeg', 'image/webp'], { required: true }),
+    { name: 'data', type: 'textarea', required: true, admin: { description: 'Base64, metadata stripped.' } },
+    { name: 'attached', type: 'checkbox', defaultValue: false, admin: { description: 'Sent to the forge Ticket.' } },
   ]),
   col('workflow_versions', [
     num('version'),

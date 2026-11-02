@@ -1,0 +1,36 @@
+[project]
+site_name = "Bauherr"
+site_description = "An open-source AI software factory. Agents take your tickets through gated stages; you approve the plan."
+site_url = "https://getbauherr.dev/"
+extra_css = ["stylesheets/extra.css"]
+repo_name = "getbauherr/bauherr"
+repo_url = "https://github.com/getbauherr/bauherr"
+nav = [{ "Home" = "index.md" }]
+
+[project.theme]
+language = "en"
+logo = "assets/bauherr-mark.svg"
+favicon = "assets/bauherr-mark.svg"
+features = ["content.code.copy", "navigation.top"]
+
+[project.theme.font]
+text = "Archivo"
+code = "IBM Plex Mono"
+
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/getbauherr/bauherr"
+
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.pymdownx.highlight]
+[project.markdown_extensions.pymdownx.superfences]

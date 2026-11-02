@@ -14,6 +14,7 @@ export type RunDoc = {
   status: string
   mode: string
   sessionOwner: number | null
+  agentKey: number | null
   startedAt: string | null
   finishedAt: string | null
   workspace: number
@@ -40,11 +41,12 @@ export const loadRun = cache(async (workspace: number, id: string) => {
   const inWs = { workspace: { equals: workspace } }
   const [run] = (await payload.find({ collection: 'runs', where: { and: [{ id: { equals: id } }, inWs] }, limit: 1, ...q })).docs as unknown as RunDoc[]
   if (!run) notFound()
-  const [[ticket], siblings, steps, owner] = await Promise.all([
+  const [[ticket], siblings, steps, owner, agentKey] = await Promise.all([
     payload.find({ collection: 'tickets', where: { and: [{ id: { equals: run.ticket } }, inWs] }, limit: 1, ...q }).then((r) => r.docs as unknown as { id: number; number: number; title: string; stage: string | null; state: string | null; labels: string[] | null; releaseState: string | null }[]),
     payload.find({ collection: 'runs', where: { ticket: { equals: run.ticket } }, sort: '-createdAt', limit: 50, ...q }).then((r) => r.docs as unknown as RunDoc[]),
     payload.find({ collection: 'steps', where: { run: { equals: run.id } }, sort: 'seq', limit: STEP_LIMIT, ...q }).then((r) => ({ total: r.totalDocs, docs: (r.docs as unknown as (StepDoc & { startedAt?: string; createdAt: string })[]).map((s) => ({ ...s, at: s.startedAt ?? s.createdAt })) })),
     run.sessionOwner ? payload.findByID({ collection: 'bauherren', id: run.sessionOwner, ...q }).catch(() => null) : null,
+    run.agentKey ? payload.findByID({ collection: 'agent_keys', id: run.agentKey, ...q }).catch(() => null) : null,
   ])
   if (!ticket) notFound()
   const calls = steps.docs.length ? ((await payload.find({ collection: 'tool_calls', where: { step: { in: steps.docs.map((s) => s.id) } }, sort: 'createdAt', limit: 2000, ...q })).docs as unknown as ToolCallDoc[]) : []
@@ -60,6 +62,7 @@ export const loadRun = cache(async (workspace: number, id: string) => {
     stepsTotal: steps.total,
     callsByStep: calls.reduce((m, c) => m.set(c.step, [...(m.get(c.step) ?? []), c]), new Map<number, ToolCallDoc[]>()),
     owner: (owner as { email?: string } | null)?.email ?? null,
+    agentKeyLabel: (agentKey as { label?: string } | null)?.label ?? null,
   }
 })
 

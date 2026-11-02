@@ -6,3 +6,6 @@ dist
 .dev-secrets
 apps/server/e2e/results
 apps/server/playwright-report
+docs/site/site
+.uv-cache
+.venv

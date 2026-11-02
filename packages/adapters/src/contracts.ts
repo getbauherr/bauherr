@@ -102,6 +102,8 @@ export interface PullRequest {
   headRepo: string;
   baseRepo: string;
   draft: boolean;
+  /** False only when the forge reports conflicts with the base (GitLab: `has_conflicts` / `merge_status: cannot_be_merged`); undefined while unknown. */
+  mergeable?: boolean;
   /** Set once merged. */
   mergeSha?: string;
 }

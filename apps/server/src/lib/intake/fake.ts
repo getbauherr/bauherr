@@ -1,4 +1,4 @@
-import type { Message, ModelCall } from './engine'
+import type { ModelCall } from './engine'
 
 /** E2E only (`INTAKE_FAKE=1`, never in production): deterministic interview, one step per user message. */
 if (process.env.INTAKE_FAKE === '1' && process.env.NODE_ENV === 'production') throw new Error('INTAKE_FAKE must not be set in production')
@@ -9,8 +9,8 @@ const STEPS = [
   { question: 'Anything to add before I send this?', context: 'Finance team, since last week.', criteria: ['Totals match the invoice', 'No rounding drift on export'] },
 ]
 
-export const fakeModel: ModelCall = async ({ messages }: { messages: Message[] }) => {
-  const users = messages.filter((m) => m.role === 'user')
+export const fakeModel: ModelCall = async ({ messages }) => {
+  const users = messages.filter((m) => m.role === 'user').map((m) => ({ content: typeof m.content === 'string' ? m.content : m.content.map((b) => (b.type === 'text' ? b.text : '')).join('') }))
   const step = STEPS[Math.min(users.length, STEPS.length) - 1]
   return {
     question: step.question,

@@ -49,6 +49,9 @@ A human may edit the Comment in the forge at any time. When a Run starts:
 3. Drop Unfinished work the edit made obsolete; keep a Decisions line saying so.
 4. If an edit contradicts the Goal, declare a blocker (see `run-contract`) instead of picking one.
 
+## Conflicts with main
+When the Current instructions say the MR conflicts, merge the base branch into the MR branch; never rebase, never force push. Note the resolution under Decisions.
+
 ## Notify affected Tickets
 When a Decision changes another Ticket (interface, schema, order, scope):
 1. Add it under "Affected Tickets".

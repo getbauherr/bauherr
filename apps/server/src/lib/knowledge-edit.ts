@@ -4,6 +4,7 @@ import { backendFor } from './adapters'
 import { connectionInput } from './connection'
 import { resync } from './knowledge'
 import { id, mergeChecks } from './release'
+import { personOf } from './person'
 
 type Doc = Record<string, any>
 
@@ -79,7 +80,7 @@ export const saveDocument = async (payload: Payload, user: Doc, a: { workspace: 
     throw e
   }
   const pr = await forge.openPullRequest(repo, { title: `Edit ${a.path}`, body: `Edited in Bauherr by ${user.email}.\n\n${trailer}`, head: branch, base: (await forge.getRepository(repo)).defaultBranch })
-  await payload.create({ collection: 'human_touches', data: { kind: 'knowledge-edit', actor: user.email, at: new Date().toISOString(), workspace: ws.id }, overrideAccess: true })
+  await payload.create({ collection: 'human_touches', data: { kind: 'knowledge-edit', actor: personOf(user), at: new Date().toISOString(), workspace: ws.id }, overrideAccess: true })
   return { pr: { number: pr.number, url: pr.url } }
 }
 

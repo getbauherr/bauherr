@@ -170,6 +170,22 @@ describe('github mergePullRequest', () => {
   });
 });
 
+describe('github pull request mergeable', () => {
+  const get = async (extra: object) => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async () => json({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'f', sha: 'h', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } }, ...extra }),
+    });
+    return (await b.forge.getPullRequest('o/r', 7)).mergeable;
+  };
+  it('maps mergeable false, mergeable_state dirty, true and null', async () => {
+    assert.equal(await get({ mergeable: false }), false);
+    assert.equal(await get({ mergeable: null, mergeable_state: 'dirty' }), false);
+    assert.equal(await get({ mergeable: true, mergeable_state: 'clean' }), true);
+    assert.equal(await get({ mergeable: null }), undefined);
+  });
+});
+
 describe('github reopen', () => {
   it('PATCHes the issue state to open', async () => {
     const calls: { method: string; url: string; body: any }[] = [];

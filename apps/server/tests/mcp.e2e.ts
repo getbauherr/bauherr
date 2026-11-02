@@ -12,12 +12,13 @@ import pg from 'pg'
 const base = process.env.MCP_E2E_DATABASE_URL
 const PORT = 3111
 const API_KEY = 'e2e-api-key-0123456789'
+let agentKey = ''
 let dev: ChildProcess | undefined
 let stub: ReturnType<typeof createServer> | undefined
 let runId: number | string
 const assigned: string[] = []
 
-const rpc = async (method: string, params: unknown, key: string | null = API_KEY) => {
+const rpc = async (method: string, params: unknown, key: string | null = agentKey) => {
   const res = await fetch(`http://127.0.0.1:${PORT}/mcp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(key ? { authorization: `Bearer ${key}` } : {}) },
@@ -25,8 +26,8 @@ const rpc = async (method: string, params: unknown, key: string | null = API_KEY
   })
   return { status: res.status, body: res.status === 200 ? await res.json() : null }
 }
-const call = async (name: string, args: unknown) => {
-  const { body } = await rpc('tools/call', { name, arguments: args })
+const call = async (name: string, args: unknown, key: string | null = agentKey) => {
+  const { body } = await rpc('tools/call', { name, arguments: args }, key)
   const text = body.result.content[0].text as string
   return { isError: !!body.result.isError, text, json: body.result.isError ? null : JSON.parse(text) }
 }
@@ -62,11 +63,12 @@ before(async () => {
   await payload.create({ collection: 'ticket_sources', data: { repo: 'o/r', product, connection, workspace }, ...o })
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: '1', number: 1, state: 'open', stage: 'plan', product, workspace }, ...o })
   runId = (await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'plan', mode: 'session', status: 'awaiting_session', workspace }, ...o })).id
-  await payload.create({
+  const dev0 = await payload.create({
     collection: 'bauherren',
     data: { email: 'dev@e2e.test', password: 'pw-dev-12345', role: 'bauherr', githubLogin: 'bot', tenants: [{ tenant: workspace }], enableAPIKey: true, apiKey: API_KEY },
     ...o,
   } as never)
+  agentKey = await (await import('../src/lib/api-key')).mintAgentKey(payload, dev0, 'e2e')
   await payload.destroy()
 
   dev = spawn('npx', ['next', 'dev', '--port', String(PORT)], { stdio: 'ignore', env: process.env, detached: true })
@@ -105,4 +107,12 @@ test('list_frontier and claim_run over HTTP', { skip: !base }, async () => {
   assert.equal((await call('heartbeat', { runId })).isError, true)
   assert.equal((await call('heartbeat', { runId, leaseToken: claimed.json.leaseToken })).json.ok, true)
   assert.equal((await call('list_frontier', {})).json[0].run.status, 'running')
+})
+
+test('an agent key cannot use gate tools; the personal key reaches them', { skip: !base }, async () => {
+  const agent = await call('approve', { ticket: 1, gate: 'plan' })
+  assert.equal(agent.isError, true)
+  assert.match(agent.text, /^forbidden: approve needs a human/)
+  const human = await call('approve', { ticket: 1, gate: 'plan' }, API_KEY)
+  assert.doesNotMatch(human.text, /needs a human/)
 })

@@ -14,32 +14,31 @@ const signIn = async (page: Page, who: string) => {
   await expect(page.locator('header.topbar')).toBeVisible()
 }
 
-test('Admin: API key shown once, Audit, Workflow, health; no /admin link', async ({ page }) => {
+test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', async ({ page }) => {
   await signIn(page, email)
   await page.locator('header.topbar').locator('summary', { hasText: email.slice(0, 2).toUpperCase() }).click()
   await expect(page.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
   await page.getByRole('link', { name: 'API key' }).click()
   await expect(page).toHaveURL(/\/settings\/api-key$/)
 
-  if (await page.getByRole('button', { name: 'Revoke key' }).isVisible()) {
-    await page.getByRole('button', { name: 'Revoke key' }).click()
-    await page.getByRole('button', { name: 'Confirm revoke' }).click()
-  }
-  await page.getByRole('button', { name: 'Create key' }).click()
+  const label = `e2e ${Date.now()}`
+  await page.getByLabel('Label').fill(label)
+  await page.getByRole('button', { name: 'Create agent key' }).click()
   const line = page.getByRole('status').filter({ hasText: 'claude mcp add' })
-  await expect(line).toContainText('--header "Authorization: Bearer ')
+  await expect(line).toContainText('--header "Authorization: Bearer bha_')
   const key = /Bearer (\w+)"/.exec((await line.textContent())!)![1]!
-  const mcp = await page.request.post('/mcp', { headers: { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' }, data: { jsonrpc: '2.0', id: 1, method: 'tools/list' } })
-  expect(mcp.status()).toBe(200)
+  const list = () => page.request.post('/mcp', { headers: { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' }, data: { jsonrpc: '2.0', id: 1, method: 'tools/list' } })
+  expect((await list()).status()).toBe(200)
 
   await page.reload()
-  await expect(page.getByText('A key is active')).toBeVisible()
+  const row = page.getByRole('row', { name: label })
+  await expect(row).toContainText(key.slice(0, 8))
   await expect(page.getByText(key)).toHaveCount(0)
-  await page.getByRole('button', { name: 'Rotate key' }).click()
-  await page.getByRole('button', { name: 'Confirm rotate' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'claude mcp add' })).not.toContainText(key)
-  const old = await page.request.post('/mcp', { headers: { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' }, data: { jsonrpc: '2.0', id: 1, method: 'tools/list' } })
-  expect(old.status()).toBe(401)
+  await expect(page.getByText('Never give this key to an agent; it can approve gates.')).toBeVisible()
+  await row.getByRole('button', { name: 'Revoke' }).click()
+  await row.getByRole('button', { name: 'Confirm revoke' }).click()
+  await expect(row).toContainText('revoked')
+  expect((await list()).status()).toBe(401)
 
   await page.goto('/settings/audit')
   await expect(page.getByRole('cell', { name: 'approve:plan' })).toBeVisible()
@@ -72,7 +71,7 @@ test('a Bauherr gets 404 on Audit and Workflow and no admin nav', async ({ page 
   await expect(page.getByRole('link', { name: 'Audit' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Factory health' })).toHaveCount(0)
   await page.goto('/settings/api-key')
-  await expect(page.getByRole('button', { name: 'Create key' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create agent key' })).toBeVisible()
 })
 
 // Needs a dev server started with BAUHERR_DISABLE_ADMIN=1; run with E2E_ADMIN_DISABLED=1.

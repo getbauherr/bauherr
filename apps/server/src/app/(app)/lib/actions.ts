@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf, startOwnerIntake, answerOwnerIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, startOwnerIntake, answerOwnerIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
@@ -144,7 +144,7 @@ export async function rerunStage(runId: number) {
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
   const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
-  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
+  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
   redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
 }
 
