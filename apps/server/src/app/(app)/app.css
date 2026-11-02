@@ -174,3 +174,11 @@ a.link{color:var(--accent)}
 .label.crit{color:var(--accent)}
 .field textarea.editor{height:auto;padding:var(--space-3);width:100%;resize:vertical;line-height:1.5}
 .diff{padding:var(--space-3);background:var(--surface-200);border:1px solid var(--hairline);border-radius:var(--radius-md);overflow:auto;white-space:pre-wrap;word-break:break-word}
+
+.intake{display:grid;grid-template-columns:minmax(0,640px) minmax(0,360px);gap:var(--space-8);align-items:start}
+.chat{display:flex;flex-direction:column;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.msg{max-width:85%;padding:var(--space-2) var(--space-3);border:1px solid var(--hairline);border-radius:var(--radius-md);background:var(--surface-100)}
+.msg.you{align-self:flex-end;background:var(--accent-soft)}
+.chips{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.grow{flex:1}
+@media (max-width:640px){.intake{grid-template-columns:minmax(0,1fr)}}
