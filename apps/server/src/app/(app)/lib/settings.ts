@@ -1,6 +1,6 @@
 import { ValidationError } from 'payload'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
-import { packed, resolveMode } from '../../../lib/mode'
+import { humanGates, packed, resolveMode } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
@@ -180,7 +180,7 @@ export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
   const base = packed()
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true }, ...o } as never)) as Doc
-  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: s.gate_before ?? '', steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
+  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
   const where = { workspace: { equals: workspace } }
   const [products, versions] = await Promise.all([
     payload.find({ collection: 'products', where, sort: 'name', pagination: false, ...o } as never),
@@ -189,6 +189,7 @@ export async function loadWorkflow(workspace: number) {
   const baseJson = JSON.stringify({ stages: base })
   return {
     stages,
+    gates: humanGates(),
     versions: (products.docs as unknown as Doc[]).map((p) => {
       const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)
       return { product: p.name as string, version: (v?.version ?? null) as number | null, at: (v?.createdAt ?? null) as string | null, overlay: v ? JSON.stringify(v.compiled) !== baseJson : false }

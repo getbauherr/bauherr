@@ -33,7 +33,7 @@ const ticket = async (n: number, title: string, stage: string, p: string | numbe
 const run = async (t: string | number, stage: string, status: string, extra: Record<string, unknown> = {}) =>
   ensure('runs', { ticket: t, stage, status }, { ticket: t, stage, status, mode: 'autonomous', workspace, ...extra })
 
-const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product, { gateNotified: 'Answer decisions', gateNotifiedAt: new Date(Date.now() - 5 * 6e4).toISOString(), gateAssignees: 'e2e-admin' })
+const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product)
 const t2 = await ticket(2, 'Export invoices as CSV', 'build', product)
 const t3 = await ticket(3, 'Checkout fails for empty carts', 'build', shop)
 await ticket(4, 'Triage the onboarding feedback', 'triage', shop)

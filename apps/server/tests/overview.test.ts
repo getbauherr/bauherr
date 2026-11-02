@@ -1,7 +1,10 @@
+import { fileURLToPath } from 'node:url'
 import { GATES } from '../src/app/(app)/lib/gates'
 import { describe, expect, it } from 'vitest'
 import { heartbeatAge } from '../src/app/(app)/lib/format'
 import { NEEDS, needsYou, releaseWord, stageOf } from '../src/app/(app)/lib/needs-you'
+
+process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
 
 const t = (stage: string | null, labels: string[] = []) => ({ stage, labels })
 const r = (stage: string, status: string) => ({ stage, status })
@@ -51,7 +54,7 @@ describe('needsYou', () => {
     expect(needsYou(rel('deployed'), run)).toBeNull()
   })
   it('gives every needs-you value a Gate with an action', () => {
-    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|review-cap|rerun)$/), title: expect.any(String) })
+    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|production-checks|review-cap|rerun)$/), title: expect.any(String) })
   })
   it('words the production states', () => {
     expect(releaseWord({ stage: 'release', productionState: 'awaiting_approval', labels: ['bauherr:approved:staging'] })).toBe('awaiting production approval')

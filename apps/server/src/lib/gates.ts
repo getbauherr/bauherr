@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
+import { hasProductionChecks } from './mode'
 import { type Need, needsYou } from './needs-you'
 import { publicUrl } from './oidc'
 import { startRunIfNeeded } from '../jobs'
@@ -52,7 +53,8 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * Returns whether the Ticket row changed.
  */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string } | null): Promise<boolean> => {
-  const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run)
+  const productionChecksMissing = t.stage === 'release' && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
+  const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
