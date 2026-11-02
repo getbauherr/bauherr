@@ -30,10 +30,11 @@ export const only = (u: Bauherr) => {
 
 const o = { overrideAccess: true, depth: 0 } as const
 
-/** The preset of the Workspace's llm-provider Connection (anthropic when it has none). */
+/** Preset (of the first llm-provider Connection; anthropic when it has none) plus the slugs of all of them. */
 export async function presetFor(workspace: number) {
-  const { docs } = await (await payloadClient()).find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, limit: 1, select: { config: true }, ...o } as never)
-  return PRESETS[presetOf((docs[0] as unknown as { config?: never } | undefined)?.config)]
+  const { docs } = await (await payloadClient()).find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', pagination: false, select: { config: true, slug: true }, ...o } as never)
+  const conns = docs as unknown as { config?: never; slug: string }[]
+  return { ...PRESETS[presetOf(conns[0]?.config)], slugs: conns.map((c) => c.slug) }
 }
 
 export async function loadWorkspaceSettings(id: number) {
