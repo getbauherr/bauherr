@@ -96,6 +96,16 @@ const workspaces = col(
           : { id: { in: ((req.user?.tenants as { tenant: { id: number } | number }[]) ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant)) } },
     },
     hooks: {
+      beforeValidate: [
+        async ({ operation, req }) => {
+          if (operation !== 'create') return
+          const ambient = Object.keys(PRESETS).filter((k) => PRESETS[k as Preset].auth === 'ambient')
+          const found = await req.payload.count({ collection: 'connections', where: { kind: { equals: 'llm-provider' }, provider: { in: ambient } }, overrideAccess: true, req })
+          if (found.totalDocs) {
+            throw new ValidationError({ collection: 'workspaces', errors: [{ path: 'name', message: 'a Connection uses the gateway ambient identity, shared by the whole gateway: no second Workspace allowed' }] })
+          }
+        },
+      ],
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
           if (!gatewayEnabled()) return
@@ -139,7 +149,11 @@ const connections = col(
     {
       name: 'secret',
       type: 'text',
-      admin: { description: 'Write-only. Encrypted at rest; leave empty to keep the stored value. What to paste: see the provider hint.' },
+      admin: {
+        description:
+          'Write-only. Encrypted at rest; leave empty to keep the stored value. What to paste: see the provider hint. Warning: bedrock-iam and foundry-entra secrets are written in plain text into the gateway config.yaml (0600).',
+        condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].auth !== 'ambient',
+      },
       access: { read: () => false },
       hooks: {
         beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)],
@@ -150,7 +164,7 @@ const connections = col(
   {
     hooks: {
       beforeValidate: [
-        ({ data, originalDoc }) => {
+        async ({ data, originalDoc, req }) => {
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
           // The top-level field wins only when this request changed it; otherwise an explicit `config` value stands (API, seed).
@@ -161,6 +175,9 @@ const connections = col(
           const missing = missingFields(presetOf(config), config)
           if (missing.length) {
             throw new ValidationError({ collection: 'connections', errors: missing.map((path) => ({ path, message: `required for ${presetOf(config)}` })) })
+          }
+          if (PRESETS[presetOf(config)].auth === 'ambient' && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'ambient identity is shared by the whole gateway: allowed only while the instance has exactly one Workspace' }] })
           }
           const mirrored = Object.fromEntries(['provider', ...PRESET_FIELDS].filter((k) => config[k] !== undefined).map((k) => [k, config[k]]))
           return { ...data, ...mirrored, config }
@@ -176,8 +193,8 @@ const connections = col(
           }
           const preset = PRESETS[presetOf(doc.config)]
           const o = { overrideAccess: true, req } as const
-          if (raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret), preset.secret.ext)
-          await removeProvider(raw.workspace.slug, preset.secret.ext === 'key' ? 'json' : 'key')
+          if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, decrypt(raw.secret), preset.secret.ext)
+          await removeProvider(raw.workspace.slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
           await renderModels(req)
           const ws = (await req.payload.findByID({ collection: 'workspaces', id: raw.workspace.id, depth: 0, ...o })) as unknown as {
             gatewayKey: string

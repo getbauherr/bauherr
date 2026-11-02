@@ -50,8 +50,19 @@ A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`).
 | `bedrock` | `awsRegion` | Bedrock API key | e.g. `us.anthropic.claude-sonnet-5-5-v1:0`; set `modelByTier` | tokens |
 | `vertex` | `vertexProject`, `vertexRegion` | service-account JSON | e.g. `claude-sonnet-5-5@20260101`; set `modelByTier` | tokens |
 | `foundry` | `azureResource` | Foundry API key | Anthropic IDs | tokens |
+| `bedrock-iam` | `awsRegion` | JSON `{"accessKeyId","secretAccessKey","sessionToken"?}` (inline) | e.g. `us.anthropic.claude-sonnet-5-5-v1:0`; set `modelByTier` | tokens |
+| `foundry-entra` | `azureResource`, `azureTenant`, `azureClient` | Entra client secret (inline) | Anthropic IDs | tokens |
+| `bedrock-ambient` | `awsRegion` | none (gateway instance role) | as `bedrock` | tokens |
+| `vertex-ambient` | `vertexProject`, `vertexRegion` | none (gateway ADC) | as `vertex` | tokens |
+| `foundry-ambient` | `azureResource` | none (gateway managed identity) | Anthropic IDs | tokens |
 | `anthropic-compatible` | `baseUrl` | key of the Messages endpoint (e.g. upstream agentgateway) | upstream names; set `modelByTier` | tokens |
 | `openai-compatible` | `baseUrl` | key of the Chat Completions endpoint | upstream names; set `modelByTier` | tokens |
+
+### Credentials in config.yaml
+
+agentgateway v1.6 reads AWS IAM pairs and Entra client secrets only inline, so `bedrock-iam` and `foundry-entra` write the secret in plain text into `config.yaml` (rewritten 0600 by `renderModels`; anyone who can read that file or the gateway admin API `GET /api/config` can read the credential, not checked here). The other presets keep the secret in a file and stay file-only. Never use a key with more rights than model invocation.
+
+Ambient presets (`*-ambient`) use the identity of the gateway process, which every Workspace would share. They are only accepted while the instance has exactly one Workspace, and a second Workspace is refused while one exists.
 
 Presets without a USD catalog flip the Workspace to `budgetUnit: tokens` (`budgetTokens30d`, default 20M); otherwise calls are priced at 0 and the budget never trips. To add prices, drop a catalog file into `deploy/gateway/catalogs/` (compose `init` copies every `*.json`; `renderModels` lists them all in `modelCatalog`) and set `catalog: true` on the preset.
 
