@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { FILE_PATTERN, acceptStaging, approvePlan, concludeReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, acceptStaging, approvePlan, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { ownsGate } from './gates'
@@ -157,6 +157,13 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; la
 }
 
 const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session'
+
+/** Owner-only gates: like `approve` (scoped load), and refused while a session Run is working the Ticket, so an agent cannot lift its own cap. */
+const ownerOnly = async (c: Ctx, ticket: number | string): Promise<void> => {
+  const t = await getTicket(c, ticket)
+  const leased = await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })
+  if (leased.totalDocs) throw new Error('owner only: a session Run holds this Ticket')
+}
 
 export const tools: Tool[] = [
   {
@@ -445,6 +452,24 @@ export const tools: Tool[] = [
     async run(a, c) {
       await getTicket(c, a.ticket)
       return acceptStaging(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'grant_review_round',
+    description: 'Owner only: at the review round cap, grant exactly one more round (back to Build on the same MR, records a human touch). Refused while a session Run holds the Ticket.',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      await ownerOnly(c, a.ticket)
+      return grantReviewRound(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'stop_review',
+    description: 'Owner only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused while a session Run holds the Ticket.',
+    inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
+    async run(a, c) {
+      await ownerOnly(c, a.ticket)
+      return stopReview(c.payload, c.user, a)
     },
   },
   {
