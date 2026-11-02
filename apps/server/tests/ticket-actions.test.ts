@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -21,6 +22,7 @@ beforeAll(async () => {
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
   delete process.env.GATEWAY_ADMIN_URL
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
@@ -97,10 +99,10 @@ it('acceptStaging labels, records a human touch, moves to done and closes the Ti
 it('acceptStaging holds in release when the Product has a production gate', async () => {
   await releaseTicket()
   const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
-  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true }, ...o })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true, productionChecks: 'deploy-prod' }, ...o })
   await expect(actions.acceptStaging(payload, user, { ticket })).resolves.toMatchObject({ stage: 'release' })
   expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
-  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false }, ...o })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false, productionChecks: '' }, ...o })
 })
 
 it('approveProduction refuses a Ticket not awaiting approval, a non-member, another Workspace and a Product without productionChecks', async () => {
