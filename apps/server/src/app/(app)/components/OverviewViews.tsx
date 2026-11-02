@@ -12,7 +12,12 @@ const Num = ({ t }: { t: TicketRow }) =>
   isWebUrl(t.url) ? <a className="mono link" href={t.url}>#{t.number}</a> : <span className="mono">#{t.number}</span>
 
 const Needs = ({ t }: { t: TicketRow }) =>
-  t.needsYou ? <span className="label needs">{t.needsYou}</span> : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
+  t.needsYou ? (
+    <span className="label needs" data-gate={t.gate ? '' : undefined}>
+      {t.needsYou}
+      {t.gate && ` · ${t.gate.people.map((p) => `@${p}`).join(' ')}${t.gate.people.length ? ' · ' : ''}waiting ${heartbeatAge(t.gate.since).text.replace(' ago', '')}`}
+    </span>
+  ) : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
 
 const Working = ({ t }: { t: TicketRow }) => {
   const r = t.run

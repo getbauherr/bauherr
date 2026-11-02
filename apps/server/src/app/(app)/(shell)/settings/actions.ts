@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { createLocalReq } from 'payload'
 import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
+import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
@@ -66,10 +67,12 @@ export const createProduct = create('products', (fd) => ({ name: s(fd, 'name'), 
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), autoMerge: fd.get('autoMerge') === 'on' }
+  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on' }
   const bad = (['stagingUrl', 'deployWebhookUrl'] as const).filter((k) => data[k] && !isWebUrl(data[k]))
   if (data.deployMode === 'webhook' && !data.deployWebhookUrl) bad.push('deployWebhookUrl')
   if (bad.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: bad.map((path) => ({ path, message: data[path] ? 'must be an http(s) URL' : 'required in webhook mode' })) } })
+  const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
+  if (unknown.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: [{ path: 'gateOwners', message: `unknown GitHub login: ${unknown.join(', ')}` }] } })
   await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
 })
 export const createRepository = act({}, async (c, fd) => {

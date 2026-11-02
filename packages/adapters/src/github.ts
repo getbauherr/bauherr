@@ -134,7 +134,7 @@ const enc = encodeURIComponent;
 const summary = (i: any): TicketSummary => ({
   id: String(i.number), number: i.number, url: i.html_url, title: i.title, state: i.state,
   labels: i.labels.map((l: any) => (typeof l === 'string' ? l : l.name)),
-  assignee: i.assignee?.login ?? null, updatedAt: i.updated_at,
+  assignee: i.assignee?.login ?? null, assignees: (i.assignees ?? []).map((a: any) => a.login), updatedAt: i.updated_at,
 });
 const comment = (c: any): Comment => ({ id: String(c.id), author: c.user?.login ?? '', body: c.body ?? '', createdAt: c.created_at });
 const isIssue = (i: any): boolean => !i.pull_request;
@@ -218,10 +218,22 @@ class GithubTickets implements TicketSource {
   async claim(id: string, assignee: string) {
     const i = await this.h.json('POST', `${this.p}/issues/${id}/assignees`, { assignees: [assignee] });
     // GitHub silently drops invalid logins (201): verify.
-    if (!i.assignees.some((a: any) => a.login.toLowerCase() === assignee.toLowerCase())) throw new Error(`claim failed: ${assignee} not assigned to #${id}`);
+    if (!i.assignees.some((a: any) => a.login.toLowerCase() === assignee.toLowerCase())) throw Object.assign(new Error(`claim failed: ${assignee} not assigned to #${id}`), { status: 422 });
   }
   async release(id: string) {
     const assignees = ((await this.issue(id)).assignees as any[]).map((a) => a.login);
+    if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
+  }
+  async userExists(login: string) {
+    try {
+      await this.h.json('GET', `/users/${encodeURIComponent(login)}`);
+      return true;
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return false;
+      throw e;
+    }
+  }
+  async unassign(id: string, assignees: string[]) {
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
   }
   async close(id: string, reason: CloseReason) {
