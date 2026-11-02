@@ -66,7 +66,7 @@ export async function loadProducts(workspace: number) {
   const payload = await payloadClient()
   const where = { workspace: { equals: workspace } }
   const find = async (collection: string, extra: object = {}) => (await payload.find({ collection, where, sort: 'id', ...o, pagination: false, ...extra } as never)).docs as unknown as Record<string, any>[]
-  const [products, repositories, sources, connections] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } })])
+  const [products, repositories, sources, connections, embedTokens] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } }), find('embed_tokens')])
   return {
     connections: connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab').map((c) => ({ id: c.id as number, name: c.name as string })),
     products: await Promise.all(
@@ -76,6 +76,9 @@ export async function loadProducts(workspace: number) {
         slug: p.slug as string,
         deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string },
         blocked: await blockedBy(payload, 'products', p.id),
+        embedTokens: embedTokens
+          .filter((e) => (e.product?.id ?? e.product) === p.id)
+          .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string })),
         repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
         sources: sources
           .filter((s) => (s.product?.id ?? s.product) === p.id)
