@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import pg from 'pg'
 import type { Payload } from 'payload'
+import { tierModels } from '../src/lib/run-ctx'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 
 let payload: Payload
@@ -112,4 +113,45 @@ it('the migration backfills slugs and prefixes tiers, and running it again chang
   await up({ db, payload, req: {} } as never)
   expect(await state()).toEqual(first)
   expect([a.id, b.id]).toHaveLength(2)
+})
+
+it('a Connection that tiers point at cannot be deleted; an unreferenced one can', async () => {
+  const w = await ws('del-ref')
+  const a = await conn(w, 'anthropic')
+  const g = await conn(w, 'greenpt')
+  await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: 'greenpt/glm-5.3-flash', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } }, ...o })
+  await expect(payload.delete({ collection: 'connections', id: g.id, ...o })).rejects.toThrow(/cheap/)
+  expect((await reload(w)).modelByTier.cheap).toBe('greenpt/glm-5.3-flash')
+  await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } }, ...o })
+  await payload.delete({ collection: 'connections', id: g.id, ...o })
+  await expect(payload.delete({ collection: 'connections', id: a.id, ...o })).rejects.toThrow(/cheap, standard, strong/)
+  const run = await payload.findByID({ collection: 'workspaces', id: w, ...o })
+  expect(await tierModels(payload, run)).toMatchObject({ cheap: 'ws-del-ref/anthropic/claude-haiku-5-5' })
+})
+
+it('concurrent creates cannot share a slug', async () => {
+  const w = await ws('race')
+  const r = await Promise.allSettled([conn(w, 'anthropic', { slug: 'same' }), conn(w, 'anthropic', { slug: 'same' })])
+  expect(r.map((x) => x.status).sort()).toEqual(['fulfilled', 'rejected'])
+})
+
+it('missing tiers resolve to the Workspace Connection slug, or fail the Run without one', async () => {
+  const w = await ws('tiers-missing')
+  const db = (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> } }).drizzle
+  await db.execute(sql`UPDATE workspaces SET model_by_tier = '{"strong":"x/y"}'::jsonb WHERE id = ${w}`)
+  const load = () => payload.findByID({ collection: 'workspaces', id: w, ...o })
+  await expect(tierModels(payload, await load())).rejects.toThrow(/no LLM provider Connection/)
+  await conn(w, 'anthropic')
+  await db.execute(sql`UPDATE workspaces SET model_by_tier = '{"strong":"anthropic/y"}'::jsonb WHERE id = ${w}`)
+  expect(await tierModels(payload, await load())).toEqual({ cheap: 'ws-tiers-missing/anthropic/claude-haiku-5-5', standard: 'ws-tiers-missing/anthropic/claude-sonnet-5-5', strong: 'ws-tiers-missing/anthropic/y' })
+})
+
+it('the migration fills missing tiers for a Workspace with exactly one Connection', async () => {
+  const w = await ws('mig-fill')
+  await conn(w, 'anthropic')
+  const db = (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> } }).drizzle
+  await db.execute(sql`UPDATE workspaces SET model_by_tier = '{"cheap":"claude-haiku-5-5"}'::jsonb WHERE id = ${w}`)
+  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
+  await up({ db, payload, req: {} } as never)
+  expect((await reload(w)).modelByTier).toEqual({ cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' })
 })

@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
-import { ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
+import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { oidcStrategy } from './lib/oidc-session'
@@ -190,7 +190,18 @@ const connections = col(
     json('capabilities'),
   ],
   {
+    indexes: [{ fields: ['workspace', 'slug'], unique: true }],
     hooks: {
+      beforeDelete: [
+        async ({ id, req }) => {
+          const doc = await req.payload.findByID({ collection: 'connections', id, depth: 0, overrideAccess: true, req })
+          if (doc.kind !== 'llm-provider') return
+          const wsId = typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace
+          const ws = await req.payload.findByID({ collection: 'workspaces', id: wsId, depth: 0, overrideAccess: true, req })
+          const used = TIERS.filter((t) => (ws.modelByTier as Record<string, string> | null)?.[t]?.startsWith(`${doc.slug}/`))
+          if (used.length) throw new APIError(`Connection "${doc.slug}" is used by the tier(s) ${used.join(', ')}; point them at another Connection first`, 400)
+        },
+      ],
       beforeValidate: [
         async ({ data, originalDoc, req }) => {
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
