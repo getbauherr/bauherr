@@ -10,7 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
+import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
@@ -231,6 +231,14 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
     await resumeReviews(req.payload)
     return { output: await watchRelease(req.payload) }
   },
+}
+
+export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
+  slug: 'publish-release',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'publish-release',
+  handler: async ({ req }) => ({ output: { published: await publishReleases(req.payload) } }),
 }
 
 export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {
