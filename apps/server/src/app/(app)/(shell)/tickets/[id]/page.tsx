@@ -2,6 +2,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
+import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionSheet } from '../../../components/DecisionSheet'
 import { Approved, Gate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
 import { StagePipeline } from '../../../components/StagePipeline'
@@ -109,6 +110,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {labels.includes('bauherr:approved:production') && <Approved number={ticket.number} label="Approved for production" />}
       {waitingForStaging && <p className="small muted">Waiting for staging deploy of <span className="mono">{ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}</span></p>}
       {ticket.stage === 'review' && <p className="small muted">{reviewWord(ticket.reviewState)}</p>}
+      {decisions.some((d) => !answers[d.id]) && <OwnerChat ticket={ticket.id} />}
       {decisions.length > 0 && <DecisionSheet ticket={ticket.id} decisions={decisions} answers={answers} />}
 
       {plan && (

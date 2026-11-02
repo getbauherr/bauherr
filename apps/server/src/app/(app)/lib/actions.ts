@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf, startOwnerIntake, answerOwnerIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
@@ -119,6 +119,19 @@ export async function answerDecisions(form: FormData) {
     })(),
   )
   revalidatePath(`/tickets/${ticket}`)
+}
+
+/** "Answer interactively": opens an owner Intake session over the Ticket's open decision rows. */
+export async function startOwnerChat(ticket: number) {
+  const { user, payload, workspaceId } = await acting()
+  return inWorkspace(startOwnerIntake(payload, user, { ticket, workspaceId }))
+}
+
+export async function answerOwnerChat(session: number, ticket: number, decision: string, answer: string) {
+  const { user, payload, workspaceId } = await acting()
+  const next = await inWorkspace(answerOwnerIntake(payload, user, { session, decision, answer, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+  return next
 }
 
 /** Re-runs the stage of a failed or needs_human Run for an Admin or a member of its Workspace, records a human touch, opens the new Run. */
