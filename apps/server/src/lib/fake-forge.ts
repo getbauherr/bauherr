@@ -64,6 +64,11 @@ const build = (): FakeBackend => {
   for (const n of [8, 9, 10]) void placeholder(n)
   void ts.create({ title: 'Clarify the export scope', labels: ['bauherr:needs-refinement'] })
   void ts.comment('11', QUESTIONS)
+  // acme/gated: one Ticket on staging for a Product with a production gate.
+  const gated = fake.tickets('acme/gated')
+  void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
+  void gated.comment('1', WORKLOG)
+  void gated.comment('1', summary(1))
   // #12-#14 are placeholders; #15 sits at the review round cap with its escalation Comment.
   for (const n of [12, 13, 14]) void placeholder(n)
   void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })

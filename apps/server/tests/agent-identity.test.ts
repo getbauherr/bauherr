@@ -19,7 +19,7 @@ const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
 /** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `access: 'human'` on the tool. */
-const GATES = ['approve', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes']
+const GATES = ['approve', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'approve_production']
 
 beforeAll(async () => {
   const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
