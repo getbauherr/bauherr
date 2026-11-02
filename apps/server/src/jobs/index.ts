@@ -11,6 +11,7 @@ import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, n
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
+import { resync } from '../lib/knowledge'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -237,6 +238,25 @@ export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output:
   retries: 0,
   concurrency: () => 'notify-gates',
   handler: async ({ req }) => ({ output: { changed: await syncGates(req.payload) } }),
+}
+
+export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output: { indexed: number } }> = {
+  slug: 'resync-knowledge',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'resync-knowledge',
+  handler: async ({ req }) => {
+    const { payload } = req
+    let indexed = 0
+    for (const w of (await payload.find({ collection: 'workspaces', limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
+      try {
+        if (await resync(payload, w.id)) indexed++
+      } catch (e) {
+        payload.logger.error({ err: e, workspace: w.id }, 'resync-knowledge failed')
+      }
+    }
+    return { output: { indexed } }
+  },
 }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
