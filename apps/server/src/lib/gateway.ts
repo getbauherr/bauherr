@@ -23,7 +23,7 @@ export const newKey = (): string => `sk-bauherr-${randomBytes(24).toString('hex'
 const keyName = (slug: string) => `workspace-${slug}`
 const sessionKeyName = (slug: string) => `${keyName(slug)}-session`
 const dir = () => process.env.GATEWAY_CONFIG_DIR ?? '/gateway'
-export const providerFile = (slug: string, ext: 'key' | 'json' = 'key') => join(dir(), 'providers', `ws-${slug}.${ext}`)
+export const providerFile = (ws: string, conn: string, ext: 'key' | 'json' = 'key') => join(dir(), 'providers', `ws-${ws}.${conn}.${ext}`)
 const KEYS = '/api/config/resources/llm.apiKey'
 
 /** Admin API call; retries transient failures. Errors carry method, path and status only. */
@@ -137,18 +137,24 @@ export const budgetStatus = async (slug: string): Promise<{ spentUsd: number; li
   }
 }
 
-/** Writes the provider credential as a 0600 file the gateway reads (`apiKey.file`, `auth.gcp.credential.file`). */
-export const writeProvider = async (slug: string, secret: string, ext: 'key' | 'json' = 'key'): Promise<void> => {
+/** Writes the Connection's provider credential as a 0600 file the gateway reads (`apiKey.file`, `auth.gcp.credential.file`). */
+export const writeProvider = async (ws: string, conn: string, secret: string, ext: 'key' | 'json' = 'key'): Promise<void> => {
   await mkdir(join(dir(), 'providers'), { recursive: true })
-  const tmp = `${providerFile(slug, ext)}.tmp`
+  const tmp = `${providerFile(ws, conn, ext)}.tmp`
   await writeFile(tmp, secret, { mode: 0o600 })
-  await rename(tmp, providerFile(slug, ext))
+  await rename(tmp, providerFile(ws, conn, ext))
 }
 
-export const removeProvider = (slug: string, ...exts: ('key' | 'json')[]) =>
-  Promise.all((exts.length ? exts : (['key', 'json'] as const)).map((e) => rm(providerFile(slug, e), { force: true })))
+export const removeProvider = (ws: string, conn: string, ...exts: ('key' | 'json')[]) =>
+  Promise.all((exts.length ? exts : (['key', 'json'] as const)).map((e) => rm(providerFile(ws, conn, e), { force: true })))
 
-/** Rewrites the managed `ws-<slug>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
+/** Removes every provider file of a Workspace (its Connections are gone with it). */
+export const removeWorkspaceProviders = async (ws: string): Promise<void> => {
+  const files = await readdir(join(dir(), 'providers')).catch(() => [] as string[])
+  await Promise.all(files.filter((f) => f.startsWith(`ws-${ws}.`) && /^[a-z0-9-]+\.(key|json)$/.test(f.slice(`ws-${ws}.`.length))).map((f) => rm(join(dir(), 'providers', f), { force: true })))
+}
+
+/** Rewrites (0600, inline secrets live here) the managed `ws-<slug>/<connection>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
     collection: 'connections',
@@ -160,12 +166,20 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   })
   const models = conns.docs
     .flatMap((c) => {
-      const slug = (c.workspace as unknown as Ws | undefined)?.slug
-      const cfg = c.config as Record<string, string> | null
-      const preset = presetOf(cfg)
-      return slug ? [{ slug, entry: PRESETS[preset].render(slug, cfg ?? {}, providerFile(slug, PRESETS[preset].secret.ext)) }] : []
+      try {
+        const slug = (c.workspace as unknown as Ws | undefined)?.slug
+        const conn = c.slug as string | null | undefined
+        const cfg = c.config as Record<string, string> | null
+        const def = PRESETS[presetOf(cfg)]
+        const secret = def.auth === 'inline' && c.secret ? decrypt(c.secret as string) : undefined
+        if (!slug || !conn || (def.auth === 'inline' && !secret)) return []
+        return [{ key: `${slug}/${conn}`, entry: def.render(`${slug}/${conn}`, cfg ?? {}, providerFile(slug, conn, def.secret.ext), secret) }]
+      } catch {
+        req.payload.logger.error(`renderModels: skipped Connection ${c.id}, stored provider config is invalid`)
+        return []
+      }
     })
-    .sort((a, b) => a.slug.localeCompare(b.slug))
+    .sort((a, b) => a.key.localeCompare(b.key))
     .map((m) => m.entry)
   const path = join(dir(), 'config.yaml')
   const cfg = parse(await readFile(path, 'utf8'))
@@ -175,12 +189,13 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   if (catalogs.length) cfg.config = { ...cfg.config, modelCatalog: catalogs.map((f) => ({ file: join(dir(), 'catalogs', f) })) }
   const out = stringify(cfg)
   const tmp = `${path}.tmp`
-  await writeFile(tmp, out)
+  await rm(tmp, { force: true })
+  await writeSecretFile(tmp, out)
   await rename(tmp, path)
 }
 
 /** One 1-token request through the local gateway as the Workspace; retries while the config hot-reloads. Returns the capability patch, never the response body. */
-export const verifyProvider = async (slug: string, key: string, model: string): Promise<{ verifiedAt: string } | { lastError: string }> => {
+export const verifyProvider = async (slug: string, key: string, model: string /* `<connection>/<model>` */): Promise<{ verifiedAt: string } | { lastError: string }> => {
   let last = 'network error'
   for (let i = 0; i < 3; i++) {
     if (i) await new Promise((r) => setTimeout(r, 500))

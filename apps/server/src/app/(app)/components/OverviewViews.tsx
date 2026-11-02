@@ -63,7 +63,7 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
         const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
         return (
           <section key={s} className="col" data-stage={s}>
-            <h2 className="label">{s === 'parent' ? 'children' : stageLabel(s)} <span className="muted">{rows.length}</span></h2>
+            <h2 className="label">{s === 'parent' ? 'Split' : stageLabel(s)} <span className="muted">{rows.length}</span></h2>
             <SortableCards
               items={rows.map((t) => ({
                 id: t.id,

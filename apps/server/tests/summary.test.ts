@@ -24,6 +24,9 @@ Nothing.
 **Unfinished work**
 - Contrast audit - open - owner
 
+**Open**
+- [low] a.ts:1 nit
+
 **Decisions**
 - 2026-10-30 Use CSS custom properties. Consequence: no runtime theme library. By: plan Run.
 `
@@ -45,6 +48,7 @@ it('renders the sections, marker first, from structured data', () => {
   expect(md).toContain('- Toggle lacked a label (fixed) (MR #7)')
   expect(md).toContain('Use CSS custom properties')
   expect(md).toContain('- Contrast audit - open - owner')
+  expect(md).toContain('- [low] a.ts:1 nit')
   expect(md).toContain('Check it on staging: https://staging.example')
   expect(md).toContain('`abc123`')
 })

@@ -111,7 +111,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       product: byId.get(t.product) ?? null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run) : null,
+      needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
       parent: parents.get(t.parent) ?? null,
       children: childrenOf.get(t.id) ?? [],
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,

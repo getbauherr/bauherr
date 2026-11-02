@@ -52,7 +52,7 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * Returns whether the Ticket row changed.
  */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string } | null): Promise<boolean> => {
-  const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState }, run)
+  const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false

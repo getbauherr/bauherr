@@ -52,11 +52,29 @@ it('concurrent starts for the same ticket and stage yield one Run', async () => 
   expect((await payload.count({ collection: 'runs', where: { ticket: { equals: ticket.id } }, ...o })).totalDocs).toBe(1)
 })
 
-it('session Runs without a heartbeat for 30 minutes go needs_human', async () => {
-  const { expireStaleSessions, SESSION_TIMEOUT_MS } = await import('../src/jobs')
+it('an unclaimed session Run never expires; a claimed one without a heartbeat is abandoned with a successor', async () => {
+  const { expireStaleSessions, startRunIfNeeded, SESSION_TIMEOUT_MS } = await import('../src/jobs')
   const ticket = await seedTicket('e', 'session')
-  const { run } = await (await import('../src/jobs')).startRunIfNeeded(payload, ticket, 'build')
-  expect(await expireStaleSessions(payload)).toBe(0)
+  const { run } = await startRunIfNeeded(payload, ticket, 'build')
+  const later = Date.now() + 2 * 3600_000 + 60_000
+  expect(await expireStaleSessions(payload, later)).toBe(0)
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('awaiting_session')
+  await payload.update({ collection: 'runs', id: run.id, data: { status: 'running', heartbeatAt: new Date().toISOString() }, ...o })
   expect(await expireStaleSessions(payload, Date.now() + SESSION_TIMEOUT_MS + 60_000)).toBeGreaterThanOrEqual(1)
-  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('needs_human')
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('abandoned')
+  expect((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { status: { equals: 'awaiting_session' } }] }, ...o })).totalDocs).toBe(1)
+})
+
+it('the requeue migration gives a successor to Runs that expired unclaimed', async () => {
+  const { up } = await import('../src/migrations/20261102_150170_requeue_expired_unclaimed_runs')
+  const ticket = await seedTicket('m', 'session')
+  const { run } = await (await import('../src/jobs')).startRunIfNeeded(payload, ticket, 'build')
+  await payload.update({ collection: 'runs', id: run.id, data: { status: 'needs_human', error: 'session heartbeat timeout' }, ...o })
+  await up({ db: payload.db.drizzle } as never)
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('abandoned')
+  const next = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { status: { equals: 'awaiting_session' } }] }, depth: 0, ...o })
+  expect(next.docs).toHaveLength(1)
+  expect(next.docs[0].previousRun).toBe(run.id)
+  await up({ db: payload.db.drizzle } as never)
+  expect((await payload.count({ collection: 'runs', where: { ticket: { equals: ticket.id } }, ...o })).totalDocs).toBe(2)
 })

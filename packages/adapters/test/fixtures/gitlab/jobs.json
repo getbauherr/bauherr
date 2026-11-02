@@ -1,0 +1,7 @@
+[{"id":1,"name":"test","status":"success","allow_failure":false},
+ {"id":2,"name":"lint","status":"failed","allow_failure":false},
+ {"id":3,"name":"optional","status":"failed","allow_failure":true},
+ {"id":4,"name":"deploy","status":"manual","allow_failure":true},
+ {"id":5,"name":"e2e","status":"running","allow_failure":false},
+ {"id":6,"name":"old","status":"canceled","allow_failure":false},
+ {"id":7,"name":"skipme","status":"skipped","allow_failure":false}]

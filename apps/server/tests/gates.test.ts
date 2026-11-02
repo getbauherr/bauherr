@@ -256,3 +256,15 @@ it('the poll starts a Run when the gate assignee was recorded after the poll rea
   spy.mockRestore()
   expect((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: row.id } }, { stage: { equals: 'plan' } }] }, ...o })).totalDocs).toBe(1)
 })
+
+it('notifies the Round cap reached gate like the others', async () => {
+  const issue2 = await fake.tickets(repo).create({ title: 'cap', labels: ['bauherr:stage:review'] })
+  const t = await payload.create({ collection: 'tickets', data: { title: 'cap', externalId: String(issue2.number), number: issue2.number, url: issue2.url, state: 'open', stage: 'review', reviewState: 'needs_human', reviewRounds: 3, product, workspace: ws }, ...o })
+  await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'review', status: 'succeeded', mode: 'session', workspace: ws }, ...o })
+  await gates.syncGates(payload)
+  await gates.syncGates(payload)
+  const comments = await gateComments(String(issue2.number))
+  expect(comments).toHaveLength(1)
+  expect(comments[0]!.body).toMatch(/^<!-- bauherr:gate:Round cap reached:[0-9a-f]{40} -->\n@fake: Round cap reached/)
+  expect(await reload(t.id as number)).toMatchObject({ gateNotified: 'Round cap reached', gateAssignees: 'fake' })
+})
