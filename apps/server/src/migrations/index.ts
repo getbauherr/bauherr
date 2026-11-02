@@ -29,6 +29,7 @@ import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './202
 import * as migration_20261102_160000_production_approved_sha from './20261102_160000_production_approved_sha';
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 import * as migration_20261102_170000_production_label_at from './20261102_170000_production_label_at';
+import * as migration_20261102_170149_embed_tokens from './20261102_170149_embed_tokens';
 
 export const migrations = [
   {
@@ -186,4 +187,9 @@ export const migrations = [
     down: migration_20261102_170000_production_label_at.down,
     name: '20261102_170000_production_label_at'
   },
+  {
+    up: migration_20261102_170149_embed_tokens.up,
+    down: migration_20261102_170149_embed_tokens.down,
+    name: '20261102_170149_embed_tokens'
+  }
 ];

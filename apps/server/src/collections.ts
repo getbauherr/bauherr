@@ -479,6 +479,15 @@ export const collections: CollectionConfig[] = [
     { name: 'screenshots', type: 'number', defaultValue: 0 },
     { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
     rel('user', 'bauherren'),
+    rel('embedToken', 'embed_tokens'),
+  ]),
+  col('embed_tokens', [
+    text('name', { required: true }),
+    rel('product', 'products', { required: true }),
+    { name: 'tokenHash', type: 'text', required: true, unique: true, access: { read: () => false }, admin: { hidden: true } },
+    json('allowedOrigins'),
+    { name: 'maxSessionsPerHour', type: 'number', defaultValue: 20, min: 1 },
+    date('revokedAt'),
   ]),
   col('media', [
     rel('session', 'intake_sessions', { required: true }),
