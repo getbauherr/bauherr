@@ -166,3 +166,22 @@ export const read = async (payload: Payload, workspace: number | string, path: s
     ORDER BY c."id"`)
   return r.rows.length ? { source: (r.rows[0] as any).source, text: r.rows.map((x: any) => x.text).join('') } : null
 }
+
+/** Markdown documents of the Workspace's index, per source (core pack first), with the commit they were indexed at. */
+export const documents = async (payload: Payload, workspace: number | string): Promise<{ source: string; path: string; commit: string }[]> => {
+  const ws = id(workspace)
+  await indexedOnce(payload, ws)
+  const r = await payload.db.drizzle.execute(sql`
+    SELECT "source", "path", min("commit") AS "commit" FROM "knowledge_chunks"
+    WHERE "workspace_id" = ${ws} AND "path" LIKE '%.md'
+    GROUP BY "source", "path"
+    ORDER BY ("source" = 'core') DESC, "source", "path"`)
+  return r.rows as unknown as { source: string; path: string; commit: string }[]
+}
+
+/** One document by its source and full path (no layer resolution); null when the index has none. */
+export const readDocument = async (payload: Payload, workspace: number | string, source: string, path: string): Promise<string | null> => {
+  const r = await payload.db.drizzle.execute(sql`
+    SELECT "text" FROM "knowledge_chunks" WHERE "workspace_id" = ${id(workspace)} AND "source" = ${source} AND "path" = ${path} ORDER BY "id"`)
+  return r.rows.length ? r.rows.map((x: any) => x.text).join('') : null
+}

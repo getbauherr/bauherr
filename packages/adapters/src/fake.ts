@@ -48,11 +48,11 @@ export class FakeBackend implements Backend {
   }
 
   /** Test helper: writes a file on a branch (creates the repo with branch `main` if unknown). */
-  commit(repo: RepoRef, branch: string, path: string, content: string): void {
+  commit(repo: RepoRef, branch: string, path: string, content: string): string {
     const b = this.repo(repo).branches.get(branch);
     if (!b) throw new Error(`no branch ${branch}`);
     b.files.set(path, content);
-    b.sha = `sha${++this.seq}`;
+    return (b.sha = `sha${++this.seq}`);
   }
 
   /** Test helper: merges an open PR (merge commit on the base branch). */
