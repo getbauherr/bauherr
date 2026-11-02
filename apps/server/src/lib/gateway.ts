@@ -148,7 +148,7 @@ export const writeProvider = async (slug: string, secret: string, ext: 'key' | '
 export const removeProvider = (slug: string, ...exts: ('key' | 'json')[]) =>
   Promise.all((exts.length ? exts : (['key', 'json'] as const)).map((e) => rm(providerFile(slug, e), { force: true })))
 
-/** Rewrites the managed `ws-<slug>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
+/** Rewrites (0600, inline secrets live here) the managed `ws-<slug>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
     collection: 'connections',
@@ -160,10 +160,17 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   })
   const models = conns.docs
     .flatMap((c) => {
-      const slug = (c.workspace as unknown as Ws | undefined)?.slug
-      const cfg = c.config as Record<string, string> | null
-      const preset = presetOf(cfg)
-      return slug ? [{ slug, entry: PRESETS[preset].render(slug, cfg ?? {}, providerFile(slug, PRESETS[preset].secret.ext)) }] : []
+      try {
+        const slug = (c.workspace as unknown as Ws | undefined)?.slug
+        const cfg = c.config as Record<string, string> | null
+        const def = PRESETS[presetOf(cfg)]
+        const secret = def.auth === 'inline' && c.secret ? decrypt(c.secret as string) : undefined
+        if (!slug || (def.auth === 'inline' && !secret)) return []
+        return [{ slug, entry: def.render(slug, cfg ?? {}, providerFile(slug, def.secret.ext), secret) }]
+      } catch {
+        req.payload.logger.error(`renderModels: skipped Connection ${c.id}, stored provider config is invalid`)
+        return []
+      }
     })
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((m) => m.entry)
@@ -175,7 +182,8 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   if (catalogs.length) cfg.config = { ...cfg.config, modelCatalog: catalogs.map((f) => ({ file: join(dir(), 'catalogs', f) })) }
   const out = stringify(cfg)
   const tmp = `${path}.tmp`
-  await writeFile(tmp, out)
+  await rm(tmp, { force: true })
+  await writeSecretFile(tmp, out)
   await rename(tmp, path)
 }
 

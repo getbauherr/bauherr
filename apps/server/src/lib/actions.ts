@@ -2,7 +2,9 @@ import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, subTickets } from '../app/(app)/lib/plan'
-import { NEEDS_REFINEMENT } from './needs-you'
+import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
+
+export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
 import { APPROVED_STAGING, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
@@ -262,6 +264,9 @@ const WORKLOG_TEMPLATE = `## Worklog
 **Unfinished work**
 -
 
+**Open**
+-
+
 **Decisions**
 
 **Affected Tickets**
@@ -370,6 +375,16 @@ const setSection = (worklog: string, heading: string, text: string): string => {
   rows.splice(start + 1, end - start - 1, text, '')
   return rows.join('\n')
 }
+/** Adds each of `lines` not yet in the section headed `heading` (exact match); drops the template placeholder; creates the section when missing. */
+const appendToSection = (worklog: string, heading: string, lines: string[]): string => {
+  const rows = worklog.split('\n')
+  const start = rows.findIndex((l) => l.trim() === heading)
+  if (start < 0) return [...rows, '', heading, ...lines].join('\n')
+  let end = rows.findIndex((l, i) => i > start && /^\*\*.+\*\*\s*$/.test(l.trim()))
+  if (end < 0) end = rows.length
+  const body = rows.slice(start + 1, end).filter((l) => l.trim() !== '' && l.trim() !== '-')
+  return setSection(worklog, heading, [...body, ...lines.filter((l) => !body.includes(l))].join('\n'))
+}
 const setInstructions = (worklog: string, text: string): string => setSection(worklog, '**Current instructions**', text)
 
 /** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
@@ -392,8 +407,6 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
 }
 
 export const REVIEW_MARKER = '<!-- bauherr:review -->'
-/** Returns from review to build per Ticket before it needs a human. */
-export const MAX_REVIEW_ROUNDS = 2
 /** A Ticket waiting on checks (or a draft MR) this long needs a human. */
 export const WAIT_CHECKS_MAX_MS = 2 * 60 * 60_000
 /** Consecutive failed merge attempts before a Ticket needs a human. */
@@ -469,7 +482,7 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
  * Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work.
  * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
  */
-const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[]): Promise<ReviewOutcome> => {
+const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = []): Promise<ReviewOutcome> => {
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
     await payload.db.drizzle.execute(
@@ -481,9 +494,10 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   const n = String(t.number)
   if (rounds > MAX_REVIEW_ROUNDS) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
   const src = { ts: mr.tickets, n }
-  const text = `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.\n${lines.join('\n')}`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
+  const text = `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment(src)
-  const worklog = setSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines.join('\n'))
+  let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines)
+  if (low.length) worklog = appendToSection(worklog, '**Open**', low)
   if (log) await src.ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await src.ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, data: { status: 'cancelled' }, overrideAccess: true })
@@ -491,6 +505,53 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   await setStage(mr.tickets, n, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
   return 'build'
+}
+
+const CAP_MARKER = 'Bauherr needs a human:'
+
+/** The Ticket's round-cap gate: a review `needs_human` past the cap with its factory MR still open. Throws otherwise. */
+const loadAtCap = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.state === 'closed' || t.stage !== 'review' || t.reviewState !== 'needs_human' || (t.reviewRounds ?? 0) <= MAX_REVIEW_ROUNDS) throw new Error('the Ticket is not at the review round cap')
+  const mr = await prOf(payload, t)
+  if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
+  return { t, mr, n: String(t.number) }
+}
+
+/** Owner grant at the round cap: lowers `reviewRounds` by 1 (exactly one more round), hands the escalation findings to Build on the same MR. Owner-only; MCP callers are checked in the tool. */
+export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const { t, mr, n } = await loadAtCap(payload, user, a)
+  const claimed = await payload.db.drizzle.execute(
+    sql`UPDATE "tickets" SET "review_state" = NULL, "review_rounds" = "review_rounds" - 1, "merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
+  )
+  if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
+  const found = latestWith(await mr.tickets.listComments(n), CAP_MARKER)?.body
+  const text = `${found ?? `${CAP_MARKER} the review round cap was lifted by the owner.`}\nOne more round was granted: fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
+  const log = await worklogComment({ ts: mr.tickets, n })
+  const worklog = setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text)
+  if (log) await mr.tickets.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
+  else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
+  await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, data: { status: 'cancelled' }, overrideAccess: true })
+  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
+  await setStage(mr.tickets, n, 'build')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, overrideAccess: true })
+  await touch(payload, user, t, 'review-cap:grant')
+  return { stage: 'build', run: run.id as TicketId }
+}
+
+/** Owner stop at the round cap: the MR stays open, the Ticket goes to triage with a Comment. `reviewRounds` is kept so a restart never gets free rounds. */
+export const stopReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; note?: string; workspaceId?: TicketId }) => {
+  const { t, mr, n } = await loadAtCap(payload, user, a)
+  const claimed = await payload.db.drizzle.execute(
+    sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
+  )
+  if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
+  await setStage(mr.tickets, n, 'triage')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage' }, overrideAccess: true })
+  const note = a.note?.trim()
+  await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}`)
+  await touch(payload, user, t, 'review-cap:stop')
+  return { stage: 'triage' }
 }
 
 /**
@@ -544,7 +605,7 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
     const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
     const outcome = blocking.length
-      ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine))
+      ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine), review.findings.filter((f) => f.severity === 'low').map(findingLine))
       : await mergeGate(payload, t, mr, reviewedSha)
     return { outcome }
   } catch (e) {

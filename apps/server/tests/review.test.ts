@@ -125,6 +125,29 @@ it('a medium finding goes back to Build on the same MR branch with the findings 
   expect((await fake.forge.listPullRequests(repo)).filter((p) => p.head === branch)).toHaveLength(1)
 })
 
+it('a review round only touches Current instructions, Unfinished work and Open; findings appear once', async () => {
+  const { id, n } = await seed({ checks: green })
+  const kept = '**Goal**\n- [ ] g1\n\n'
+  const rest = '**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n'
+  const tail = '**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked'
+  await fake.tickets(repo).comment(n, `<!-- bauherr:worklog -->\n## Worklog\n${kept}**Current instructions**\nold\n\n${rest}**Unfinished work**\n- item\n\n**Open**\n-\n\n${tail}`)
+  const low = { severity: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }
+  for (const round of [1, 2]) {
+    expect(await submit(await review(id), [medium, low])).toMatchObject({ outcome: 'build' })
+    await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+    const w = await actions.readWorklog(payload, member, { ticket: id })
+    expect(w).toContain('**Goal**\n- [ ] g1')
+    expect(w).toContain('**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n**Unfinished work**')
+    expect(w).toContain('**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked')
+    expect(w).toContain(`Review round ${round}:`)
+    expect(w.match(/\[medium\] a\.ts:3/g)).toHaveLength(1)
+    expect(w.match(/\[low\] b\.ts:1/g)).toHaveLength(1)
+    expect(w).toMatch(/\*\*Unfinished work\*\*\n- item\n- \[medium\][^\n]*\n\n\*\*Open\*\*/)
+    expect(w).toMatch(/\*\*Open\*\*\n- \[low\][^\n]*\n\n\*\*Decisions/)
+    expect(w.match(/Review round/g)).toHaveLength(1)
+  }
+})
+
 it('the 3rd return to Build needs a human', async () => {
   const { id, n } = await seed({ checks: green })
   for (const round of [1, 2]) {
@@ -412,4 +435,68 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('### Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('see ## Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
+})
+
+/** A review Ticket parked at the round cap (3 returns), the escalation Comment posted. */
+const atCap = async () => {
+  const s = await seed({ checks: green })
+  for (const round of [1, 2]) {
+    await submit(await review(s.id), [medium])
+    await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
+  }
+  expect(await submit(await review(s.id), [medium])).toMatchObject({ outcome: 'needs_human' })
+  return s
+}
+const touches = async (id: number, kind: string) => (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: kind } }] }, ...o })).totalDocs
+
+it('grant at the round cap: exactly one more round on the same MR, then a clean review merges', async () => {
+  const { id, pr } = await atCap()
+  expect(await actions.grantReviewRound(payload, member, { ticket: id })).toMatchObject({ stage: 'build' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, reviewRounds: 2 })
+  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).docs
+  expect(build).toHaveLength(1)
+  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('[medium] a.ts:3 off by one')
+  expect(await touches(id, 'review-cap:grant')).toBe(1)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'merged' })
+  expect(await prState(pr.number)).toBe('merged')
+})
+
+it('after a grant a second cap hit shows the gate again', async () => {
+  const { id } = await atCap()
+  await actions.grantReviewRound(payload, member, { ticket: id })
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'needs_human' })
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+})
+
+it('grant and stop refuse a Ticket that is not at the cap, and a double grant', async () => {
+  const a = await seed({ checks: green })
+  await payload.update({ collection: 'tickets', id: a.id, data: { reviewState: 'needs_human' }, ...o })
+  await expect(actions.grantReviewRound(payload, member, { ticket: a.id })).rejects.toThrow('not at the review round cap')
+  await expect(actions.stopReview(payload, member, { ticket: a.id })).rejects.toThrow('not at the review round cap')
+  expect(await reload(a.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 0 })
+  const { id } = await atCap()
+  await actions.grantReviewRound(payload, member, { ticket: id })
+  await expect(actions.grantReviewRound(payload, member, { ticket: id })).rejects.toThrow('not at the review round cap')
+  expect(await reload(id)).toMatchObject({ reviewRounds: 2 })
+})
+
+it('stop at the cap moves to triage with a note, the MR stays open', async () => {
+  const { id, n, pr } = await atCap()
+  await actions.stopReview(payload, member, { ticket: id, note: 'needs a redesign' })
+  expect(await reload(id)).toMatchObject({ stage: 'triage', reviewState: null, reviewRounds: 3 })
+  expect(await prState(pr.number)).toBe('open')
+  expect((await comments(n)).some((b) => b.startsWith('Stopped at the review round cap') && b.includes('needs a redesign'))).toBe(true)
+  expect(await touches(id, 'review-cap:stop')).toBe(1)
+})
+
+it('grant_review_round over MCP: refused while a session Run holds the Ticket, works for the owner', async () => {
+  const { id } = await atCap()
+  const leased = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'review', status: 'running', mode: 'session', workspace: ws }, ...o })
+  await expect(call(member, 'grant_review_round', { ticket: id })).rejects.toThrow('owner only')
+  await expect(call(member, 'stop_review', { ticket: id })).rejects.toThrow('owner only')
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+  await payload.update({ collection: 'runs', id: leased.id, data: { status: 'succeeded' }, ...o })
+  expect(await call(member, 'grant_review_round', { ticket: id })).toMatchObject({ stage: 'build' })
 })
