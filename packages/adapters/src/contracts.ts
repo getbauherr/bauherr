@@ -18,6 +18,7 @@ export interface TicketSummary {
   state: TicketState;
   labels: string[];
   assignee: string | null;
+  assignees: string[];
   updatedAt: string;
 }
 
@@ -62,6 +63,10 @@ export interface TicketSource {
   /** Throws if the assignee was not applied. */
   claim(id: string, assignee: string): Promise<void>;
   release(id: string): Promise<void>;
+  /** Whether the forge knows this user login. */
+  userExists(login: string): Promise<boolean>;
+  /** Removes only these logins; other assignees stay. */
+  unassign(id: string, assignees: string[]): Promise<void>;
   close(id: string, reason: CloseReason): Promise<void>;
   /** Idempotent. */
   reopen(id: string): Promise<void>;
