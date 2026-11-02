@@ -337,6 +337,16 @@ export const collections: CollectionConfig[] = [
     text('actor'),
     date('at'),
   ]),
+  col('intake_sessions', [
+    rel('product', 'products', { required: true }),
+    select('persona', ['product-user', 'owner'], { required: true, defaultValue: 'product-user' }),
+    select('status', ['open', 'submitted', 'abandoned'], { required: true, defaultValue: 'open', index: true }),
+    json('messages'),
+    json('draft'),
+    { name: 'screenshots', type: 'number', defaultValue: 0 },
+    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
+    text('ip', { index: true }),
+  ]),
   col('workflow_versions', [
     num('version'),
     rel('product', 'products', { required: true }),
