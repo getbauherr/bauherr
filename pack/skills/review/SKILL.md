@@ -36,7 +36,7 @@ Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to ver
  "checked": [{"area": "correctness", "note": "traced X with Y; fine"}, {"area": "over-engineering", "note": "..."}, {"area": "spec-vs-plan", "note": "..."}, {"area": "evidence", "note": "..."}],
  "markdown": "..."}
 ```
-`verdict` is `changes` iff a high or medium finding exists (the factory derives it). Limits: at most 50 findings, `msg`/`scenario`/`note` at most 1000 characters, `markdown` at most 60000, `file` a plain path (letters, digits, `_ . / @ + -`), `line` an integer >= 0. `markdown` is posted as the MR comment:
+`verdict` is `changes` iff a high or medium finding exists (the factory derives it). Limits: at most 50 findings, `msg`/`scenario`/`note` at most 1000 characters, `markdown` at most 60000, `file` a repository path (letters, digits, `_ . / @ + - ( ) [ ]`; no whitespace, no `..` segment, at most 300 characters), `line` an integer >= 0. `markdown` is posted as the MR comment:
 
 ```markdown
 **Verdict**: clean | changes
