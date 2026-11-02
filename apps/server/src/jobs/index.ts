@@ -4,11 +4,10 @@ import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { githubFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
-import { rankBetween } from '../lib/frontier'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { concludeReview, normalizeReview, normalizeTriage, submitTriage, watchReviews } from '../lib/actions'
+import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../app/(app)/lib/needs-you'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
@@ -227,11 +226,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-/** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
-export const lastRankAfter = async (payload: Payload, workspace: number | string): Promise<string> => {
-  const r = await payload.db.drizzle.execute(sql`SELECT "rank" FROM "tickets" WHERE "workspace_id" = ${workspace} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C" DESC LIMIT 1`)
-  return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
-}
+export { lastRankAfter }
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
@@ -252,16 +247,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             depth: 0,
             overrideAccess: true,
           })
-          const prev = found.docs[0]
-          let stage = stageOf(t.labels)
-          // Derived event (spec §3): approval label + stage plan advances the Ticket to build.
-          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
-            await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
-            stage = 'build'
-          }
-          // Guard: unchanged pointers are not rewritten.
-          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
-          const data = {
+          let prev = found.docs[0]
+          const base = {
             workspace: id(src.workspace),
             product: id(src.product),
             externalId: t.id,
@@ -273,6 +260,21 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             assignee: t.assignee,
             sourceUpdatedAt: t.updatedAt,
             triageAttempts: 0,
+          }
+          let stage = stageOf(t.labels)
+          // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
+          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
+            prev ??= await payload.create({ collection: 'tickets', data: { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, overrideAccess: true })
+            if (await spawnSubTickets(payload, prev)) stage = 'parent'
+            else {
+              await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
+              stage = 'build'
+            }
+          }
+          // Guard: unchanged pointers are not rewritten.
+          if (prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          const data = {
+            ...base,
             stage,
             ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
@@ -294,6 +296,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           .catch(() => {})
       }
     }
+    await closeFinishedParents(payload)
     await triageSweep(payload)
     return { output: { polled: sources.docs.length } }
   },
@@ -334,10 +337,11 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         }
       }
       if (run.stage === 'triage' && r.status === 'failed' && r.reason?.includes('triage.json')) await untriage(payload, ticket.id)
-      if (r.status === 'needs_human') {
+      // A stopped Triage Run posts no Ticket Comment (it would bump the Ticket and reset the attempt count): the sweep retries it up to MAX_TRIAGE_ATTEMPTS.
+      if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) await untriage(payload, ticket.id)
+      else if (r.status === 'needs_human') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
-      }
-      if (r.status === 'budget_exhausted') {
+      } else if (r.status === 'budget_exhausted') {
         await githubFor(github).tickets(src.repo).comment(String(ticket.number), 'Bauherr stopped: the Workspace budget is exhausted')
       }
       await payload.update({
@@ -375,6 +379,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         data: { status: 'failed', error: e instanceof Error ? e.message : String(e), finishedAt: new Date().toISOString() },
         ...opts,
       })
+      if (run.stage === 'triage') await untriage(payload, ticket.id)
       await queueReconcile(payload, run.id)
       throw e
     }

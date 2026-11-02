@@ -76,6 +76,18 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
   return { title: title.trim(), steps: (section(plan, /Steps\b/).match(/^\s*\d+\.\s/gm) ?? []).length }
 }
 
+export type SubTicket = { title: string; body: string }
+
+/** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines. */
+export const subTickets = (plan: string): SubTicket[] =>
+  section(plan, /Sub-tickets\b/)
+    .split(/^(?=[-*]\s+\*\*)/m)
+    .flatMap((item) => {
+      const m = /^[-*]\s+\*\*(.+?)\*\*\s*(?:[—–:-]\s*)?([\s\S]*)$/.exec(item.trim())
+      const title = m?.[1]?.trim()
+      return title ? [{ title, body: m![2]!.split('\n').map((l) => l.trim()).filter(Boolean).join('\n') }] : []
+    })
+
 /** The decision sheet in force: the newest plan or triage Comment (triage questions use the plan's `## Decisions` format). */
 export const sheetOf = <T extends Commentish>(comments: T[]): T | undefined => comments.findLast((c) => c.body.startsWith(PLAN_MARKER) || c.body.startsWith(TRIAGE_MARKER))
 
