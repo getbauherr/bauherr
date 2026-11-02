@@ -324,6 +324,9 @@ class GithubForge implements Forge {
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return comment(await this.h.json('POST', `/repos/${repo}/issues/${n}/comments`, { body }));
   }
+  async listPullRequestComments(repo: RepoRef, n: number) {
+    return (await this.h.paginate(`/repos/${repo}/issues/${n}/comments?per_page=100`)).map(comment);
+  }
   async listPullRequestFiles(repo: RepoRef, n: number): Promise<PullRequestFile[]> {
     return (await this.h.paginate(`/repos/${repo}/pulls/${n}/files?per_page=100`)).map((f) => ({
       filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions,
