@@ -1,17 +1,19 @@
 import { exclusive } from '../../../../../../lib/actions'
 import { nextTurn, type Session } from '../../../../../../lib/intake/engine'
 import { actor, modelFor, ownSession } from '../../../../../../lib/intake/api'
+import { preflight, withCors } from '../../../../../../lib/intake/embed'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /** One interview turn. Body: `{ text }`. Answers as an SSE stream: `turn` (question, options, draft, readiness) or `error`. */
-export const POST = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
+export const OPTIONS = preflight
+export const POST = withCors(async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const a = await actor(req)
   if (a instanceof Response) return a
-  const { payload, user } = a
+  const { payload } = a
   const id = (await params).id
-  const first = await ownSession(payload, user, id)
+  const first = await ownSession(payload, a, id)
   if (!first || first.status !== 'open') return Response.json({ error: 'session not found' }, { status: 404 })
   const { text } = (await req.json().catch(() => ({}))) as { text?: unknown }
   if (typeof text !== 'string') return Response.json({ error: 'text required' }, { status: 400 })
@@ -20,7 +22,7 @@ export const POST = async (req: Request, { params }: { params: Promise<{ id: str
     async start(c) {
       try {
         await exclusive(`intake:${id}`, async () => {
-          const s = await ownSession(payload, user, id)
+          const s = await ownSession(payload, a, id)
           if (!s || s.status !== 'open') throw new Error('session not found')
           const state: Session = { messages: s.messages ?? [], draft: s.draft ?? null, screenshots: s.screenshots }
           const { session, turn, ready, exhausted, missing } = await nextTurn(state, text, await modelFor(payload, s))
@@ -34,4 +36,4 @@ export const POST = async (req: Request, { params }: { params: Promise<{ id: str
     },
   })
   return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
-}
+})

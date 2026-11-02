@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Intake widget test page</title>
+<p>Static host page for the embeddable Intake widget. Open as <code>?token=bemb_...</code>; add <code>&amp;host=http://localhost:3149</code> to load the widget from another origin.</p>
+<script>
+  const q = new URLSearchParams(location.search)
+  const s = document.createElement('script')
+  s.src = (q.get('host') ?? '') + '/intake/widget.js'
+  s.dataset.token = q.get('token') ?? ''
+  document.body.append(s)
+</script>

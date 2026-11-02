@@ -22,6 +22,7 @@ import * as migration_20261102_150144_connection_slugs from './20261102_150144_c
 import * as migration_20261102_150145_intake_sessions from './20261102_150145_intake_sessions';
 import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './20261102_150170_requeue_expired_unclaimed_runs';
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
+import * as migration_20261102_170149_embed_tokens from './20261102_170149_embed_tokens';
 
 export const migrations = [
   {
@@ -143,5 +144,10 @@ export const migrations = [
     up: migration_20261102_170000_intake_session_user.up,
     down: migration_20261102_170000_intake_session_user.down,
     name: '20261102_170000_intake_session_user'
+  },
+  {
+    up: migration_20261102_170149_embed_tokens.up,
+    down: migration_20261102_170149_embed_tokens.down,
+    name: '20261102_170149_embed_tokens'
   },
 ];
