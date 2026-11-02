@@ -24,6 +24,11 @@ it.skipIf(!dockerAvailable)('the template with one entry per preset and both bud
     writeFileSync(join(dir, file), p === 'vertex' ? SA_JSON : 'dummy', { mode: 0o644 })
     cfg.llm.models.push(PRESETS[p].render(p, FULL, `/cfg/${file}`, p === 'bedrock-iam' ? IAM : 'dummy'))
   }
+  // One Workspace, two Connections: entries `ws-multi/a/*` and `ws-multi/b/*`.
+  for (const c of ['a', 'b']) {
+    writeFileSync(join(dir, `multi-${c}.key`), 'dummy', { mode: 0o644 })
+    cfg.llm.models.push(PRESETS.anthropic.render(`multi/${c}`, FULL, `/cfg/multi-${c}.key`))
+  }
   cfg.llm.policies.apiKey.keys = [
     { key: 'sk-usd', metadata: { name: 'usd' }, allowedModels: ['ws-anthropic/*'], budgets: [{ name: 'monthly', limit: { unit: 'USD', amount: 50 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }] },
     { key: 'sk-tok', metadata: { name: 'tok' }, allowedModels: ['ws-greenpt/*'], budgets: [{ name: 'monthly', limit: { unit: 'Tokens', amount: 20_000_000 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }] },

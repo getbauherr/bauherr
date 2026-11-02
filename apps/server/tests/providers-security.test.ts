@@ -55,9 +55,9 @@ it('renderModels skips a Connection with a corrupt stored secret and still rende
   await payload.update({ collection: 'connections', id: bad.id, data: { secret: encrypt(RAW) }, ...o })
   await renderModels({ payload } as unknown as PayloadRequest)
   const out = readFileSync(join(dir, 'config.yaml'), 'utf8')
-  expect(out).toContain('ws-good/*')
+  expect(out).toContain('ws-good/bedrock-iam/*')
   expect(out).toContain('AKIAGOOD')
-  expect(out).not.toContain('ws-bad/*')
+  expect(out).not.toContain('ws-bad/bedrock-iam/*')
 })
 
 it('azure fields are validated before they reach the gateway baseUrl', async () => {
