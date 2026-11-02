@@ -10,6 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
+import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { decrypt } from '../lib/secrets'
@@ -294,9 +295,16 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             sourceUpdatedAt: t.updatedAt,
             triageAttempts: 0,
           }
-          let stage = stageOf(t.labels)
+          let labels = t.labels
+          if (GATE_LABELS.some((g) => labels.includes(g.label))) {
+            prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
+            const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
+            labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
+            base.labels = labels
+          }
+          let stage = stageOf(labels)
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
-          if (stage === 'plan' && t.state === 'open' && t.labels.includes(APPROVED_PLAN)) {
+          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN)) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {

@@ -122,18 +122,17 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
   return { stage: 'review' }
 }
 
+const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
+  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() }, overrideAccess: true })
+
 /** Plan gate: refuses while critical decisions are unanswered, then adds `bauherr:approved:plan` and records the human touch. */
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const { ts, n } = await sourceOf(payload, t)
   const open = openCritical(await ts.listComments(n))
   if (open.length) throw new Error(`Answer the critical decisions first: ${open.map((d) => d.id).join(', ')}`)
+  await touch(payload, user, t, 'approve:plan')
   await ts.addLabels(n, [APPROVED_PLAN])
-  await payload.create({
-    collection: 'human_touches',
-    data: { kind: 'approve:plan', ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() },
-    overrideAccess: true,
-  })
   await spawnSubTickets(payload, t)
   return { approved: APPROVED_PLAN }
 }
@@ -193,7 +192,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
       const orphan = found ? undefined : local.get(item.title)
-      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan'), APPROVED_PLAN] }))
+      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel('plan')] }))
       const link: Record<string, unknown> = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
       const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
       if (doc?.rank) prev = doc.rank as string
@@ -213,6 +212,11 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
         link,
       )
       spawned.set(item.title, { id: child.id, docId: row.id })
+      if (!found && !orphan) {
+        const approval = (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: parent.id } }, { kind: { equals: 'approve:plan' } }] }, sort: '-at', limit: 1, ...ro })).docs[0]
+        await payload.create({ collection: 'human_touches', data: { kind: 'approve:inherited', ticket: row.id, workspace: id(parent.workspace), actor: approval?.actor ?? `#${n}`, at: now() }, ...ro })
+        await ts.addLabels(child.id, [APPROVED_PLAN])
+      }
       if (!found) {
         await ts.addSubTicket(n, String(child.number))
         await ts.comment(String(child.number), `Approval inherited from #${n}: listed in its plan at approval.`)
@@ -342,9 +346,6 @@ export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticke
   return publishStagingSummary(payload, t)
 }
 
-const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
-  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() }, overrideAccess: true })
-
 /** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless the Product has a production gate. */
 export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -357,12 +358,12 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
   } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
-    await ts.addLabels(n, [APPROVED_STAGING])
     if (!(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'accept:staging' } }] }, overrideAccess: true })).totalDocs) await touch(payload, user, t, 'accept:staging')
+    await ts.addLabels(n, [APPROVED_STAGING])
     return { approved: APPROVED_STAGING, stage }
   }
-  await ts.addLabels(n, [APPROVED_STAGING])
   await touch(payload, user, t, 'accept:staging')
+  await ts.addLabels(n, [APPROVED_STAGING])
   if (stage === 'done') {
     await ts.close(n, 'completed')
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, overrideAccess: true })

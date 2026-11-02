@@ -4,6 +4,7 @@ import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
 import { connectionInput, webOrigin } from './connection'
+import { APPROVED_STAGING, GATE_LABELS, verifyGateLabels } from './gate-labels'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 
 type Doc = Record<string, any>
@@ -116,7 +117,7 @@ const claim = async (payload: Payload, ticket: number | string, field: 'deployRe
 export const cas = async (payload: Payload, ticket: number | string, set: ReturnType<typeof sql>, where: ReturnType<typeof sql>): Promise<boolean> =>
   (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET ${set}, "updated_at" = now() WHERE "id" = ${ticket} AND ${where} RETURNING "id"`)).rows.length > 0
 
-export const APPROVED_STAGING = 'bauherr:approved:staging'
+export { APPROVED_STAGING }
 export const APPROVED_PRODUCTION = 'bauherr:approved:production'
 export const PRODUCTION_MARKER = '<!-- bauherr:production -->'
 /** A production deploy not reported by the Product's checks after this long needs a human. */
@@ -124,12 +125,13 @@ export const PRODUCTION_TIMEOUT_MS = 60 * 60_000
 export const REOPENED_MARKER = '<!-- bauherr:reopened -->'
 
 /** A merged factory MR can close its Ticket (body keyword, commit message, manual close); only acceptance on staging may. Reopens such a Ticket unless it was accepted; the comment is posted once, the forge reopen is idempotent and retried until the local state follows. */
-const reopenIfClosedByMerge = async (payload: Payload, t: Doc, ts: { get(id: string): Promise<{ labels: string[] }>; listComments(id: string): Promise<{ body: string }[]>; comment(id: string, body: string): Promise<unknown>; reopen(id: string): Promise<void> }): Promise<boolean> => {
+const reopenIfClosedByMerge = async (payload: Payload, t: Doc, ts: Pick<TicketSource, 'get' | 'listComments' | 'comment' | 'reopen' | 'labelEvents' | 'whoami' | 'removeLabels'>): Promise<boolean> => {
   if (t.labels?.includes(APPROVED_STAGING)) return false
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'merged') return false
   const n = String(t.number)
-  if ((await ts.get(n)).labels.includes(APPROVED_STAGING)) return false
+  const labels = (await ts.get(n)).labels
+  if ((await verifyGateLabels(payload, t, labels, ts, GATE_LABELS.filter((g) => g.label === APPROVED_STAGING))).accepted.length) return false
   if (!(await ts.listComments(n)).some((c) => c.body.startsWith(REOPENED_MARKER))) {
     await ts.comment(n, `${REOPENED_MARKER}\nBauherr reopened this Ticket: the merged MR closed it, but only acceptance on staging closes a Ticket.`)
   }

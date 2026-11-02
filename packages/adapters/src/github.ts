@@ -1,6 +1,6 @@
 import { createHmac, createSign, timingSafeEqual } from 'node:crypto';
 import type {
-  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
+  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
 import { Conflict } from './contracts.js';
@@ -231,6 +231,19 @@ class GithubTickets implements TicketSource {
       return true;
     } catch (e) {
       if (e instanceof GithubError && e.status === 404) return false;
+      throw e;
+    }
+  }
+  async labelEvents(id: string): Promise<LabelEvent[]> {
+    return (await this.h.paginate(`${this.p}/issues/${id}/events?per_page=100`))
+      .filter((e) => (e.event === 'labeled' || e.event === 'unlabeled') && e.label)
+      .map((e) => ({ label: e.label.name, action: e.event, actor: e.actor?.login ?? null, at: e.created_at }));
+  }
+  async whoami() {
+    try {
+      return (await this.h.json('GET', '/user')).login ?? null;
+    } catch (e) {
+      if (e instanceof GithubError && (e.status === 403 || e.status === 404)) return null;
       throw e;
     }
   }

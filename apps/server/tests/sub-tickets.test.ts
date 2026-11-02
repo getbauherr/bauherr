@@ -35,7 +35,7 @@ beforeAll(async () => {
   actions = await import('../src/lib/actions')
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   workspace = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
-  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace }, ...o })).id as number
+  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace, gateOwners: 'owner' }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/web', product, connection, workspace }, ...o })
   ticket = (await payload.create({
@@ -49,6 +49,17 @@ beforeAll(async () => {
 afterAll(async () => {
   await payload?.destroy()
 })
+
+/** Creates a Ticket whose labels were set by a gate owner (the factory's own label would need a recorded approval). */
+const createAsOwner = async (ts: Awaited<ReturnType<typeof forge>>, t: Parameters<typeof ts.create>[0]) => {
+  const fake = (await import('../src/lib/fake-forge')).fakeForge()
+  fake.actingAs = 'owner'
+  try {
+    return await ts.create(t)
+  } finally {
+    fake.actingAs = 'factory'
+  }
+}
 
 const forge = async () => (await actions.sourceOf(payload, await actions.loadTicket(payload, user, ticket))).ts
 const children = async () => (await forge()).listSubTickets('1')
@@ -117,7 +128,7 @@ it('closes the parent with a Comment only when all children are closed', async (
 
 it('poll-tickets: a forge-side plan approval on an unseen Ticket fans out and parks it as parent', async () => {
   const ts = await forge()
-  const p = await ts.create({ title: 'Forge-approved parent', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
+  const p = await createAsOwner(ts, { title: 'Forge-approved parent', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
   await ts.comment(String(p.number), `<!-- bauherr:plan -->\n${PLAN}`)
   const { pollTickets } = await import('../src/jobs')
   await (pollTickets.handler as any)({ req: { payload } })
@@ -134,7 +145,7 @@ it('poll-tickets: a forge-side plan approval on an unseen Ticket fans out and pa
 
 it('a manually approved child is not recorded as inherited', async () => {
   const ts = await forge()
-  const c = await ts.create({ title: 'Manually approved', body: 'Parent: #1', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
+  const c = await createAsOwner(ts, { title: 'Manually approved', body: 'Parent: #1', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
   const { pollTickets } = await import('../src/jobs')
   await (pollTickets.handler as any)({ req: { payload } })
   const row = (await payload.find({ collection: 'tickets', where: { number: { equals: c.number } }, depth: 0, ...o })).docs[0]!

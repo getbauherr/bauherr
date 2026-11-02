@@ -48,6 +48,15 @@ export interface NewTicket {
   labels?: string[];
 }
 
+/** A label change on a ticket, oldest first from `labelEvents`. */
+export interface LabelEvent {
+  label: string;
+  action: 'labeled' | 'unlabeled';
+  /** Login of whoever changed the label; null when the forge does not say. */
+  actor: string | null;
+  at: string;
+}
+
 export interface TicketSource {
   list(opts?: ListOptions): Promise<TicketSummary[]>;
   get(id: string): Promise<Ticket>;
@@ -60,6 +69,10 @@ export interface TicketSource {
   addLabels(id: string, labels: string[]): Promise<void>;
   /** Absent labels are tolerated. */
   removeLabels(id: string, labels: string[]): Promise<void>;
+  /** Label changes of the ticket, oldest first. */
+  labelEvents(id: string): Promise<LabelEvent[]>;
+  /** Login of the forge credential; null when the credential has no user (e.g. an App token). */
+  whoami(): Promise<string | null>;
   /** Throws if the assignee was not applied. */
   claim(id: string, assignee: string): Promise<void>;
   release(id: string): Promise<void>;

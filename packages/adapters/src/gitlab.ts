@@ -1,5 +1,5 @@
 import type {
-  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
+  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
 import { Conflict, MergePendingError } from './contracts.js';
@@ -184,6 +184,14 @@ class GitlabTickets implements TicketSource {
   }
   async userExists(login: string) {
     return (await this.userId(login)) !== null;
+  }
+  async labelEvents(id: string): Promise<LabelEvent[]> {
+    return (await this.h.paginate(`${this.p}/issues/${id}/resource_label_events?per_page=100`)).filter((e) => e.label).map((e) => ({
+      label: e.label.name, action: e.action === 'add' ? 'labeled' : 'unlabeled', actor: e.user?.username ?? null, at: secs(e.created_at),
+    }));
+  }
+  async whoami() {
+    return (await this.h.json('GET', '/user')).username ?? null;
   }
   async unassign(id: string, assignees: string[]) {
     if (!assignees.length) return;
