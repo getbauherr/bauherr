@@ -323,8 +323,8 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) {
-        const { backend, repo } = await forgeOf(c.payload, id(ticket.product))
-        const num = prNumber(a.prUrl, repo)
+        const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
+        const num = prNumber(a.prUrl, repo, web)
         const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
         if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
           throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
@@ -370,7 +370,7 @@ export const tools: Tool[] = [
         c,
         run,
         a.leaseToken,
-        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown } })}::jsonb, ${U}`,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } })}::jsonb, ${U}`,
       )
       return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review, reviewedSha)) }
     },

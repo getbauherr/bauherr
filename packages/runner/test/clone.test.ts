@@ -46,3 +46,13 @@ test('checkout of an existing branch pushes to that same branch', async () => {
     await c.cleanup();
   }
 });
+
+test('clone auth: x-access-token by default, the given user (GitLab oauth2) otherwise', async () => {
+  const header = async (user?: string) => {
+    const c = await cloneRepo({ baseUrl: makeBareRepo(), repo: 'o/n', defaultBranch: 'main', token: 'T', ...(user ? { user } : {}), branch: 'bauherr/7-r1' });
+    await c.cleanup();
+    return Buffer.from(c.env.GIT_CONFIG_VALUE_0!.replace('Authorization: Basic ', ''), 'base64').toString();
+  };
+  assert.equal(await header(), 'x-access-token:T');
+  assert.equal(await header('oauth2'), 'oauth2:T');
+});

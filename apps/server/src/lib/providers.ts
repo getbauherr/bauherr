@@ -38,7 +38,7 @@ type Def = {
   /** Ships a USD price catalog; otherwise the Workspace budget is in tokens. */
   catalog: boolean
   defaultModels: Record<Tier, string> | null
-  /** `secret` is the decrypted secret, passed for `inline` presets only. */
+  /** `slug` is `<workspace>/<connection>` (entry `ws-<workspace>/<connection>/*`); `secret` is the decrypted secret, passed for `inline` presets only. */
   render: (slug: string, cfg: Cfg, file: string, secret?: string) => Record<string, unknown>
 }
 

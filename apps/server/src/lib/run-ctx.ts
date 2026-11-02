@@ -2,9 +2,9 @@ import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
 import { setStage } from '@bauherr/adapters'
-import { githubFor } from './adapters'
+import { backendFor } from './adapters'
 import { prOf } from './release'
-import type { ConnectionInput } from './connection'
+import { webOrigin, type ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { forgeOf, id } from './release'
 
@@ -45,6 +45,21 @@ export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage
   }
 }
 
+/** Gateway model IDs per tier; a tier the Workspace never set gets the default model of its (first) LLM Connection, or fails the Run when it has none. */
+export const tierModels = async (payload: Payload, ws: Doc): Promise<Record<string, string>> => {
+  const set = (ws.modelByTier ?? {}) as Record<string, string>
+  const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t])
+    ? (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+    : undefined
+  return Object.fromEntries(
+    Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, def]) => {
+      if (set[t]) return [t, `ws-${ws.slug}/${set[t]}`]
+      if (!first) throw new Error(`Workspace ${ws.slug} has no LLM provider Connection for tier "${t}"`)
+      return [t, `ws-${ws.slug}/${first.slug}/${def}`]
+    }),
+  )
+}
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -53,7 +68,8 @@ export const buildRunCtx = async (
   const { run, ticket, repo } = d
   const opts = { overrideAccess: true } as const
   const workspace = typeof run.workspace === 'object' ? run.workspace.id : run.workspace
-  const backend = githubFor(d.github)
+  const backend = backendFor(d.github)
+  const gitBaseUrl = process.env.BAUHERR_GIT_BASE_URL || (d.github.kind === 'gitlab' ? webOrigin(d.github) : undefined)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
   const goal = await goalFor(payload, ticket, issue.body, run.stage)
@@ -65,8 +81,7 @@ export const buildRunCtx = async (
   const gatewayUrl = process.env.GATEWAY_URL
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
-  const tiers = { ...DEFAULT_MODEL_BY_TIER, ...(ws.modelByTier as Record<string, string> | null) }
-  const modelByTier = Object.fromEntries(Object.entries(tiers).map(([t, m]) => [t, `ws-${ws.slug}/${m}`]))
+  const modelByTier = await tierModels(payload, ws)
   const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
@@ -84,7 +99,8 @@ export const buildRunCtx = async (
       gatewayKey: d.gatewayKey,
       gitToken: d.github.secret!,
       modelByTier,
-      ...(process.env.BAUHERR_GIT_BASE_URL ? { gitBaseUrl: process.env.BAUHERR_GIT_BASE_URL } : {}),
+      ...(gitBaseUrl ? { gitBaseUrl } : {}),
+      ...(d.github.kind === 'gitlab' ? { gitUser: 'oauth2' } : {}),
     },
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),

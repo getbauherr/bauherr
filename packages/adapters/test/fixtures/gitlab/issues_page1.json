@@ -1,0 +1,2 @@
+[{"id":1,"iid":1,"title":"a","description":"","state":"opened","labels":[],"assignees":[],"web_url":"https://gitlab.test/g/p/-/issues/1","updated_at":"2026-10-30T09:00:00.500Z"},
+ {"id":2,"iid":2,"title":"b","description":"","state":"closed","labels":["x"],"assignees":[],"web_url":"https://gitlab.test/g/p/-/issues/2","updated_at":"2026-10-30T09:30:00.000Z"}]

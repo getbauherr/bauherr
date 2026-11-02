@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { createLocalReq } from 'payload'
 import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
+import { webOrigin } from '../../../../lib/connection'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
@@ -38,10 +39,12 @@ export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d
   const wsId = inWorkspace({ workspace })
   const unit = s(fd, 'budgetUnit') === 'tokens' ? 'tokens' : 'usd'
   const amount = s(fd, 'budgetAmount')
-  const defaults = (await presetFor(wsId)).defaultModels
+  const { defaultModels: defaults, slugs } = await presetFor(wsId)
   const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
   if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })
-  const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, s(fd, `tier_${t}`) || defaults![t]]))
+  // Tiers are `<connection>/<model>`; a bare model id goes to the first Connection.
+  const qualify = (v: string) => (!slugs.length || slugs.some((c) => v.startsWith(`${c}/`)) ? v : `${slugs[0]}/${v}`)
+  const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount), modelByTier: tiers }
   if (isAdmin(user)) {
     const stages = Object.fromEntries(['plan', 'build'].map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
@@ -113,6 +116,7 @@ export const saveConnection = act({}, async (c, fd) => {
     data.provider = s(fd, 'provider')
     for (const k of PRESET_FIELDS) if (fd.has(k)) data[k] = s(fd, k)
   }
+  if (kind === 'gitlab') data.config = { baseUrl: webOrigin({ kind, config: { baseUrl: s(fd, 'baseUrl') } }) }
   if (s(fd, 'secret')) data.secret = s(fd, 'secret')
   if (id(fd)) {
     await inWs(c, 'connections', id(fd))

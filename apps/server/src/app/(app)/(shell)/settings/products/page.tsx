@@ -69,7 +69,7 @@ export default async function ProductSettings() {
             <div className="forms">
               <SettingsForm action={createRepository} submit="Add repository" reset>
                 <input type="hidden" name="id" value={p.id} />
-                <Field name="fullName" label="Repository (owner/name)" required />
+                <Field name="fullName" label="Repository (owner/name or group/project)" required />
               </SettingsForm>
               <SettingsForm action={createSource} submit="Add ticket source" reset>
                 <input type="hidden" name="id" value={p.id} />
