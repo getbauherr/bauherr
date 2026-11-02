@@ -10,6 +10,7 @@ import { ownsGate } from './gates'
 import { frontierOrder } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
+import * as knowledge from './knowledge'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -492,25 +493,22 @@ export const tools: Tool[] = [
   },
   {
     name: 'read_knowledge',
-    description: 'Read a file of the core pack by path relative to pack/ (e.g. rules/evidence.md).',
-    inputSchema: obj({ path: str('Path relative to pack/') }, ['path']),
-    async run(a) {
-      return packFile(a.path)
+    description: 'Read a Knowledge document by path (e.g. rules/evidence.md): the Workspace layer shadows the core pack, the optional product layer shadows both.',
+    inputSchema: obj({ path: str('Path relative to pack/ or the Knowledge repo'), product: str('Product slug whose layer applies') }, ['path']),
+    async run(a, c) {
+      const ws = c.workspace ?? tenantsOf(c.user)[0]
+      const doc = ws !== undefined ? await knowledge.read(c.payload, ws, a.path, a.product) : null
+      return doc ? (doc.source === 'core' ? doc.text : untrustedBlock(doc.text)) : packFile(a.path)
     },
   },
   {
     name: 'search_knowledge',
-    description: 'Case-insensitive substring search over the core pack; returns up to 20 {path, line, text}.',
-    inputSchema: obj({ query: str('Text to find') }, ['query']),
-    async run(a) {
-      const q = String(a.query).toLowerCase()
-      const hits: { path: string; line: number; text: string }[] = []
-      for (const path of walk(PACK())) {
-        packFile(path).split('\n').forEach((text, i) => {
-          if (hits.length < 20 && text.toLowerCase().includes(q)) hits.push({ path, line: i + 1, text: text.trim().slice(0, 200) })
-        })
-      }
-      return hits
+    description: 'Full-text search over the core pack and the Workspace Knowledge repo; returns up to 20 {source, path, heading, commit, text}, best first.',
+    inputSchema: obj({ query: str('Words to find (quotes for phrases, - to exclude)'), product: str('Product slug whose layer applies') }, ['query']),
+    async run(a, c) {
+      const ws = c.workspace ?? tenantsOf(c.user)[0]
+      if (ws === undefined) throw new Error('no Workspace')
+      return (await knowledge.search(c.payload, ws, String(a.query), 20, a.product)).map((h) => (h.source === 'core' ? h : { ...h, text: untrustedBlock(h.text) }))
     },
   },
 ]
