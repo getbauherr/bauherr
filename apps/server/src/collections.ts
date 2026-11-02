@@ -116,6 +116,9 @@ const workspaces = col(
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
     select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
+    rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
+    text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
+    { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, repo commit).' } },
   ],
   {
     access: {
@@ -176,7 +179,7 @@ const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'llm-provider'], { required: true }),
+    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
@@ -351,6 +354,7 @@ const tickets = col('tickets', [
   text('gateNotified'),
   date('gateNotifiedAt'),
   text('gateAssignees'),
+  { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
@@ -446,6 +450,26 @@ export const collections: CollectionConfig[] = [
     rel('run', 'runs'),
     text('actor'),
     date('at'),
+  ]),
+  col('knowledge_chunks', [
+    text('source', { required: true, index: true }),
+    select('layer', ['core', 'workspace', 'product'], { required: true }),
+    text('path', { required: true }),
+    text('logical', { required: true, index: true }),
+    text('product'),
+    text('heading'),
+    text('text', { required: true }),
+    text('commit', { required: true }),
+  ]),
+  col('intake_sessions', [
+    rel('product', 'products', { required: true }),
+    select('persona', ['product-user', 'owner'], { required: true, defaultValue: 'product-user' }),
+    select('status', ['open', 'submitted', 'abandoned'], { required: true, defaultValue: 'open', index: true }),
+    json('messages'),
+    json('draft'),
+    { name: 'screenshots', type: 'number', defaultValue: 0 },
+    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
+    rel('user', 'bauherren'),
   ]),
   col('workflow_versions', [
     num('version'),

@@ -5,6 +5,7 @@ import { Field, SettingsForm } from './SettingsForm'
 
 const LABELS: Record<string, string> = { baseUrl: 'Base URL', awsRegion: 'AWS region', vertexProject: 'Vertex project', vertexRegion: 'Vertex region', azureResource: 'Azure resource' }
 const GITHUB_HINT = 'GitHub token with access to the repositories and issues'
+const GITLAB_HINT = 'Access token with scope api and Developer role on the project; note its expiry'
 
 export type Preset = { required: string[]; hint: string }
 export type ConnectionValue = { id?: number; name: string; kind: string; provider: string; config: Record<string, string> }
@@ -17,7 +18,8 @@ export function ConnectionForm({ presets, value, submit = 'Save', reset, primary
     <SettingsForm action={saveConnection} submit={submit} reset={reset} primary={primary}>
       {value?.id && <input type="hidden" name="id" value={value.id} />}
       <Field name="name" label="Name" defaultValue={value?.name} required />
-      <Field name="kind" label="Kind" options={['github', 'llm-provider']} defaultValue={kind} onChange={(e) => setKind(e.target.value)} />
+      <Field name="kind" label="Kind" options={['github', 'gitlab', 'llm-provider']} defaultValue={kind} onChange={(e) => setKind(e.target.value)} />
+      {kind === 'gitlab' && <Field name="baseUrl" label="Base URL" type="url" placeholder="https://gitlab.com" hint="Web address of the GitLab instance (https)" defaultValue={value?.config.baseUrl} />}
       {kind === 'llm-provider' && (
         <>
           <Field name="provider" label="Provider preset" options={Object.keys(presets)} defaultValue={provider} onChange={(e) => setProvider(e.target.value)} />
@@ -26,7 +28,7 @@ export function ConnectionForm({ presets, value, submit = 'Save', reset, primary
           ))}
         </>
       )}
-      <Field name="secret" label="Secret" type="password" autoComplete="off" placeholder={value ? 'unchanged' : ''} hint={kind === 'github' ? GITHUB_HINT : preset.hint} />
+      <Field name="secret" label="Secret" type="password" autoComplete="off" placeholder={value ? 'unchanged' : ''} hint={kind === 'github' ? GITHUB_HINT : kind === 'gitlab' ? GITLAB_HINT : preset.hint} />
     </SettingsForm>
   )
 }

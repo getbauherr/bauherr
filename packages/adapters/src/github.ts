@@ -3,6 +3,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
+import { Conflict } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 
 export interface GithubAuth {
@@ -64,7 +65,7 @@ export interface GithubOptions {
   maxRetries?: number;
 }
 
-const MAX_WAIT_MS = 300_000;
+export const MAX_WAIT_MS = 300_000;
 
 /** Minimal REST client: Link pagination, backoff on 403/429 honouring Retry-After. */
 export class Http {
@@ -342,6 +343,30 @@ class GithubForge implements Forge {
       });
     }
     return { mergeSha: m.sha as string, ...(branchDeleteError ? { branchDeleteError } : {}) };
+  }
+  async listFiles(repo: RepoRef, ref?: string) {
+    const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
+    const tree = await this.h.json('GET', `/repos/${repo}/git/trees/${c.commit.tree.sha}?recursive=1`);
+    return { commit: c.sha as string, paths: (tree.tree as any[]).filter((t) => t.type === 'blob').map((t) => t.path as string), truncated: tree.truncated === true };
+  }
+  async getFile(repo: RepoRef, path: string, ref?: string) {
+    const f = await this.h.json('GET', `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}${ref ? `?ref=${enc(ref)}` : ''}`);
+    const data = f.encoding === 'base64' ? f.content : (await this.h.json('GET', `/repos/${repo}/git/blobs/${f.sha}`)).content; // contents API omits files over 1 MB
+    return { content: Buffer.from(data, 'base64').toString('utf8'), sha: f.sha as string };
+  }
+  async putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }) {
+    const url = `/repos/${repo}/contents/${o.path.split('/').map(enc).join('/')}`;
+    if (o.expectSha === '') {
+      const exists = await this.h.raw('GET', `${url}?ref=${enc(o.branch)}`).then(() => true, (e) => (e instanceof GithubError && e.status === 404 ? false : Promise.reject(e)));
+      if (exists) throw new Conflict(`${o.path} exists`);
+    }
+    try {
+      const r = await this.h.json('PUT', url, { message: o.message, content: Buffer.from(o.content).toString('base64'), branch: o.branch, ...(o.expectSha ? { sha: o.expectSha } : {}) });
+      return { sha: r.content.sha as string };
+    } catch (e) {
+      if (e instanceof GithubError && (e.status === 409 || e.status === 422)) throw new Conflict(e.message);
+      throw e;
+    }
   }
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/repos/${repo}/commits/${sha}`)).commit.committer.date as string;

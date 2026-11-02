@@ -10,6 +10,7 @@ import { ownsGate } from './gates'
 import { frontierOrder } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
+import * as knowledge from './knowledge'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -99,10 +100,10 @@ const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id
 
 class ClaimLost extends Error {}
 
-/** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 /** The GitHub login a session Run assigns on the Ticket. */
 const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
 
+/** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string) => {
   const run = await getRun(c, runId)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
@@ -333,8 +334,8 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) {
-        const { backend, repo } = await forgeOf(c.payload, id(ticket.product))
-        const num = prNumber(a.prUrl, repo)
+        const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
+        const num = prNumber(a.prUrl, repo, web)
         const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
         if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
           throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
@@ -513,26 +514,23 @@ export const tools: Tool[] = [
   {
     name: 'read_knowledge',
     access: 'agent',
-    description: 'Read a file of the core pack by path relative to pack/ (e.g. rules/evidence.md).',
-    inputSchema: obj({ path: str('Path relative to pack/') }, ['path']),
-    async run(a) {
-      return packFile(a.path)
+    description: 'Read a Knowledge document by path (e.g. rules/evidence.md): the Workspace layer shadows the core pack, the optional product layer shadows both.',
+    inputSchema: obj({ path: str('Path relative to pack/ or the Knowledge repo'), product: str('Product slug whose layer applies') }, ['path']),
+    async run(a, c) {
+      const ws = c.workspace ?? tenantsOf(c.user)[0]
+      const doc = ws !== undefined ? await knowledge.read(c.payload, ws, a.path, a.product) : null
+      return doc ? (doc.source === 'core' ? doc.text : untrustedBlock(doc.text)) : packFile(a.path)
     },
   },
   {
     name: 'search_knowledge',
     access: 'agent',
-    description: 'Case-insensitive substring search over the core pack; returns up to 20 {path, line, text}.',
-    inputSchema: obj({ query: str('Text to find') }, ['query']),
-    async run(a) {
-      const q = String(a.query).toLowerCase()
-      const hits: { path: string; line: number; text: string }[] = []
-      for (const path of walk(PACK())) {
-        packFile(path).split('\n').forEach((text, i) => {
-          if (hits.length < 20 && text.toLowerCase().includes(q)) hits.push({ path, line: i + 1, text: text.trim().slice(0, 200) })
-        })
-      }
-      return hits
+    description: 'Full-text search over the core pack and the Workspace Knowledge repo; returns up to 20 {source, path, heading, commit, text}, best first.',
+    inputSchema: obj({ query: str('Words to find (quotes for phrases, - to exclude)'), product: str('Product slug whose layer applies') }, ['query']),
+    async run(a, c) {
+      const ws = c.workspace ?? tenantsOf(c.user)[0]
+      if (ws === undefined) throw new Error('no Workspace')
+      return (await knowledge.search(c.payload, ws, String(a.query), 20, a.product)).map((h) => (h.source === 'core' ? h : { ...h, text: untrustedBlock(h.text) }))
     },
   },
 ]

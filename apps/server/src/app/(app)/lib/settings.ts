@@ -41,6 +41,7 @@ export async function loadWorkspaceSettings(id: number) {
   const payload = await payloadClient()
   const ws = (await payload.findByID({ collection: 'workspaces', id, select: { gatewayKey: false }, ...o } as never)) as unknown as Record<string, any>
   const preset = await presetFor(id)
+  const github = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: id } }, { kind: { equals: 'github' } }] }, select: { name: true }, pagination: false, ...o } as never)).docs as unknown as { id: number; name: string }[]
   const spend = gatewayEnabled() && process.env.GATEWAY_DATABASE_URL ? await budgetStatus(ws.slug).catch(() => null) : null
   return {
     name: ws.name as string,
@@ -53,6 +54,9 @@ export async function loadWorkspaceSettings(id: number) {
     modeByStage: (ws.modeByStage ?? {}) as Record<string, string>,
     placeholders: preset.defaultModels ?? DEFAULT_MODEL_BY_TIER,
     tiersRequired: !preset.defaultModels,
+    githubConnections: github.map((c) => [String(c.id), c.name] as [string, string]),
+    knowledgeConnection: String(typeof ws.knowledgeConnection === 'object' ? ws.knowledgeConnection?.id ?? '' : ws.knowledgeConnection ?? ''),
+    knowledgeRepo: (ws.knowledgeRepo ?? '') as string,
     spend,
     gatewayOn: gatewayEnabled(),
   }
@@ -64,7 +68,7 @@ export async function loadProducts(workspace: number) {
   const find = async (collection: string, extra: object = {}) => (await payload.find({ collection, where, sort: 'id', ...o, pagination: false, ...extra } as never)).docs as unknown as Record<string, any>[]
   const [products, repositories, sources, connections] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } })])
   return {
-    connections: connections.filter((c) => c.kind === 'github').map((c) => ({ id: c.id as number, name: c.name as string })),
+    connections: connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab').map((c) => ({ id: c.id as number, name: c.name as string })),
     products: await Promise.all(
       products.map(async (p) => ({
         id: p.id as number,

@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
-import { githubFor } from '../lib/adapters'
+import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { modeFor, packed } from '../lib/mode'
@@ -11,6 +11,7 @@ import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, n
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { forgeOf, prOf, watchRelease } from '../lib/release'
+import { resync } from '../lib/knowledge'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -75,6 +76,15 @@ export const MAX_TRIAGE_ATTEMPTS = 3
 
 /** Forgets what Triage covered, so the next poll triages the Ticket again. */
 export const untriage = (payload: Payload, ticket: number | string) => payload.update({ collection: 'tickets', id: ticket, data: { triagedAt: null }, overrideAccess: true })
+
+/** `untriage` for the end of a Run: a failure is logged and never masks the Run's own outcome. */
+const untriageLogged = async (payload: Payload, ticket: number | string) => {
+  try {
+    await untriage(payload, ticket)
+  } catch (e) {
+    payload.logger.error({ err: e, ticket }, 'untriage failed')
+  }
+}
 
 /** After MAX_TRIAGE_ATTEMPTS: one Comment, then the Ticket counts as covered until it changes (the Comment's own `updatedAt` is recorded). */
 const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
@@ -230,6 +240,25 @@ export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output:
   handler: async ({ req }) => ({ output: { changed: await syncGates(req.payload) } }),
 }
 
+export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output: { indexed: number } }> = {
+  slug: 'resync-knowledge',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => 'resync-knowledge',
+  handler: async ({ req }) => {
+    const { payload } = req
+    let indexed = 0
+    for (const w of (await payload.find({ collection: 'workspaces', limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
+      try {
+        if (await resync(payload, w.id)) indexed++
+      } catch (e) {
+        payload.logger.error({ err: e, workspace: w.id }, 'resync-knowledge failed')
+      }
+    }
+    return { output: { indexed } }
+  },
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
@@ -240,7 +269,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     for (const src of sources.docs) {
       try {
         const conn = await connectionInput(payload, src.connection)
-        const { changes, next } = await githubFor(conn).tickets(src.repo).poll(src.cursor ?? null)
+        const { changes, next } = await backendFor(conn).tickets(src.repo).poll(src.cursor ?? null)
         for (const t of changes) {
           const found = await payload.find({
             collection: 'tickets',
@@ -270,7 +299,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
-              await setStage(githubFor(conn).tickets(src.repo), String(t.number), 'build')
+              await setStage(backendFor(conn).tickets(src.repo), String(t.number), 'build')
               stage = 'build'
             }
           }
@@ -285,7 +314,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
           const entered = stage && stage !== (prev?.stage ?? null)
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(prev?.gateAssignees).includes(a))) {
+          const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
@@ -330,21 +360,17 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const r = await exec(ctx)
       const review = run.stage === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
       let triage = null
+      // The Ticket is untriaged only after the Run's terminal update, so the next poll cannot start a Triage Run while this one is still active.
+      let untriageAfter = run.stage === 'triage' && r.status === 'failed' && !!r.reason?.includes('triage.json')
       if (run.stage === 'triage' && r.status === 'succeeded') {
-        try {
-          triage = normalizeTriage(r.artifacts.triage)
-        } catch (e) {
-          await untriage(payload, ticket.id)
-          throw e
-        }
+        triage = normalizeTriage(r.artifacts.triage)
       }
-      if (run.stage === 'triage' && r.status === 'failed' && r.reason?.includes('triage.json')) await untriage(payload, ticket.id)
       // A stopped Triage Run posts no Ticket Comment (it would bump the Ticket and reset the attempt count): the sweep retries it up to MAX_TRIAGE_ATTEMPTS.
-      if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) await untriage(payload, ticket.id)
+      if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) untriageAfter = true
       else if (r.status === 'needs_human') {
-        await githubFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
+        await backendFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       } else if (r.status === 'budget_exhausted') {
-        await githubFor(github).tickets(src.repo).comment(String(ticket.number), 'Bauherr stopped: the Workspace budget is exhausted')
+        await backendFor(github).tickets(src.repo).comment(String(ticket.number), 'Bauherr stopped: the Workspace budget is exhausted')
       }
       await payload.update({
         collection: 'runs',
@@ -362,6 +388,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         },
         ...opts,
       })
+      if (untriageAfter) await untriageLogged(payload, ticket.id)
       await queueReconcile(payload, run.id)
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
@@ -381,7 +408,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         data: { status: 'failed', error: e instanceof Error ? e.message : String(e), finishedAt: new Date().toISOString() },
         ...opts,
       })
-      if (run.stage === 'triage') await untriage(payload, ticket.id)
+      if (run.stage === 'triage') await untriageLogged(payload, ticket.id)
       await queueReconcile(payload, run.id)
       throw e
     }
