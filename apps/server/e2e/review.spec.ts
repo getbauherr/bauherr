@@ -33,3 +33,23 @@ test('Review Run page shows the verdict and findings; Product settings have the 
   await page.goto('/settings/products')
   await expect(page.getByLabel('Auto-merge').first()).toBeChecked()
 })
+
+test('Ticket at the review round cap shows the gate with both actions', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.locator('.board')).toBeVisible()
+  await page.locator('.card', { hasText: 'Harden the retry loop' }).first().getByRole('link', { name: 'Harden the retry loop' }).click()
+  await expect(page.getByRole('heading', { name: 'Round cap reached' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Grant one more round' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible()
+  if (shots) {
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme })
+      await page.screenshot({ path: `${shots}/round-cap-gate-${scheme}-1280x800.png` })
+    }
+  }
+})

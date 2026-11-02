@@ -69,6 +69,10 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
   void gated.comment('1', WORKLOG)
   void gated.comment('1', summary(1))
+  // #12-#14 are placeholders; #15 sits at the review round cap with its escalation Comment.
+  for (const n of [12, 13, 14]) void placeholder(n)
+  void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })
+  void ts.comment('15', 'Bauherr needs a human: the review found 1 blocking issue(s), after 2 review rounds.\n\n- [medium] src/retry.ts:12 The loop never stops on a permanent error. Scenario: when the gateway answers 402, then the call is retried forever.')
   return fake
 }
 
