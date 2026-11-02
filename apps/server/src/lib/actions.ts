@@ -75,6 +75,9 @@ export class NotReleasable extends Error {
 /** Workspace ids of a Bauherr's tenants. */
 export const tenantsOf = (user: Doc): TicketId[] => ((user.tenants as { tenant: unknown }[]) ?? []).map((t) => id(t.tenant))
 
+import { personOf } from './person'
+export { personOf }
+
 /** Human force-release of a leased session Run (Admin or a member of its Workspace): ends it `abandoned`, queues the successor, records a human touch. Never escalates to needs_human. */
 export const releaseLock = async (payload: Payload, user: Doc, a: { runId: TicketId }) => {
   const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
@@ -82,7 +85,7 @@ export const releaseLock = async (payload: Payload, user: Doc, a: { runId: Ticke
   if (run.mode !== 'session' || run.status !== 'running' || (await abandonRun(payload, run, { reason: `${RELEASED_BY}${user.email}`, escalate: false })) === null) throw new NotReleasable(run.id)
   await payload.create({
     collection: 'human_touches',
-    data: { kind: `release-lock:${run.stage}`, ticket: id(run.ticket), run: run.id, workspace: id(run.workspace), actor: user.email, at: now() },
+    data: { kind: `release-lock:${run.stage}`, ticket: id(run.ticket), run: run.id, workspace: id(run.workspace), actor: personOf(user), at: now() },
     overrideAccess: true,
   })
   return { status: 'abandoned' }
@@ -131,7 +134,7 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
   await ts.addLabels(n, [APPROVED_PLAN])
   await payload.create({
     collection: 'human_touches',
-    data: { kind: 'approve:plan', ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() },
+    data: { kind: 'approve:plan', ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at: now() },
     overrideAccess: true,
   })
   await spawnSubTickets(payload, t)
@@ -343,7 +346,7 @@ export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticke
 }
 
 const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
-  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: user.email, at: now() }, overrideAccess: true })
+  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at: now() }, overrideAccess: true })
 
 /** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless the Product has a production gate. */
 export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
@@ -374,7 +377,7 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
 export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.stage !== 'release' || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
-  await beginProduction(payload, t, user.email)
+  await beginProduction(payload, t, user)
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
 

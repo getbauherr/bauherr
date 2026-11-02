@@ -4,6 +4,7 @@ import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
 import { connectionInput, webOrigin } from './connection'
+import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 
 type Doc = Record<string, any>
@@ -119,19 +120,34 @@ export const PRODUCTION_MARKER = '<!-- bauherr:production -->'
 export const PRODUCTION_TIMEOUT_MS = 60 * 60_000
 export const REOPENED_MARKER = '<!-- bauherr:reopened -->'
 
-/** A merged factory MR can close its Ticket (body keyword, commit message, manual close); only acceptance on staging may. Reopens such a Ticket unless it was accepted; the comment is posted once, the forge reopen is idempotent and retried until the local state follows. */
-const reopenIfClosedByMerge = async (payload: Payload, t: Doc, ts: { get(id: string): Promise<{ labels: string[] }>; listComments(id: string): Promise<{ body: string }[]>; comment(id: string, body: string): Promise<unknown>; reopen(id: string): Promise<void> }): Promise<boolean> => {
-  if (t.labels?.includes(APPROVED_STAGING)) return false
-  const mr = await prOf(payload, t)
-  if (mr?.pr.state !== 'merged') return false
+export const DROPPED_MARKER = '<!-- bauherr:dropped -->'
+
+/** Decides a closed review/release Ticket once. A Ticket reopened on the forge before this pass is only synced back to open. A merged factory MR can close its Ticket (body keyword, commit message, manual close) but only acceptance on staging may: such a `completed` close is reopened (comment once, forge reopen retried until the local state follows). Accepted Tickets, `not_planned`/`duplicate` closes and closes before any merge are settled as `done` (note once, state written last so a failed forge call is retried) and no longer match the watcher query. A Ticket held for production approval is left alone. */
+const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise<'reopened' | 'dropped' | 'held'> => {
   const n = String(t.number)
-  if ((await ts.get(n)).labels.includes(APPROVED_STAGING)) return false
-  if (!(await ts.listComments(n)).some((c) => c.body.startsWith(REOPENED_MARKER))) {
-    await ts.comment(n, `${REOPENED_MARKER}\nBauherr reopened this Ticket: the merged MR closed it, but only acceptance on staging closes a Ticket.`)
+  const syncOpen = async (): Promise<'reopened'> => {
+    if (await cas(payload, t.id, sql`"state" = 'open'`, sql`"state" = 'closed'`)) Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
+    return 'reopened'
   }
-  await ts.reopen(n)
-  if (await cas(payload, t.id, sql`"state" = 'open'`, sql`"state" = 'closed'`)) Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
-  return true
+  const issue = await ts.get(n)
+  if (issue.state === 'open') return syncOpen()
+  const accepted = t.labels?.includes(APPROVED_STAGING) || issue.labels.includes(APPROVED_STAGING)
+  if (accepted && t.productionState) return 'held'
+  const merged = !accepted && (await prOf(payload, t))?.pr.state === 'merged'
+  const reason = issue.closeReason ?? 'completed'
+  const note = async (marker: string, body: string) => {
+    if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\n${body}`)
+  }
+  if (merged && reason === 'completed') {
+    await note(REOPENED_MARKER, 'Bauherr reopened this Ticket: the merged MR closed it, but only acceptance on staging closes a Ticket. To drop it, close it as not planned.')
+    await ts.reopen(n)
+    return syncOpen()
+  }
+  if (!accepted) await note(DROPPED_MARKER, 'Bauherr: this Ticket was closed by a human, not by acceptance; it is left closed and set to done.')
+  await setStage(ts, n, 'done')
+  await cas(payload, t.id, sql`"stage" = 'done'`, sql`"state" = 'closed'`)
+  Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
+  return 'dropped'
 }
 
 /** Review Tickets whose MR merged move to `release`; release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
@@ -144,7 +160,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
-      if (t.state === 'closed' && !(await reopenIfClosedByMerge(payload, t, ts))) continue
+      if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
       if (t.stage === 'release' && t.releaseState && t.releaseState !== 'waiting') continue
       if (t.stage === 'review') {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
@@ -218,12 +234,12 @@ export const clearApprovalLabel = (payload: Payload, ts: TicketSource, n: string
   ts.removeLabels(n, [APPROVED_PRODUCTION]).catch((e) => payload.logger.error({ err: e, ticket: n }, 'could not remove the production label'))
 
 /** Starts the production deploy of a Ticket in `awaiting_approval | failed | timed_out` after an explicit approval by a person: the human touch is written first (no deploy without an audit row; removed again when the CAS is lost), then one CAS records the approval for the current merge sha and moves to `deploying` (a lost race or a changed merge sha changes nothing), then the output label. A label failure is retried by `watchProduction`. The Product's pipeline reacts to the label or the webhook; the factory deploys nothing. */
-export const beginProduction = async (payload: Payload, t: Doc, actor: string, now = Date.now()): Promise<void> => {
+export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now = Date.now()): Promise<void> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
   if (!productionNames(product).length) throw new Error('configure productionChecks on the Product first')
   if (!t.mergeSha) throw new Error('the Ticket has no merge commit to deploy')
   const at = new Date(now).toISOString()
-  const touch = await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor, at }, ...o })
+  const touch = await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at }, ...o })
   const won = await cas(payload, t.id, sql`"production_state" = 'deploying', "production_approved_sha" = ${t.mergeSha}, "production_requested_at" = ${at}, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"merge_sha" = ${t.mergeSha} AND "production_state" IN ('awaiting_approval', 'failed', 'timed_out')`)
   if (!won) {
     await payload.delete({ collection: 'human_touches', id: touch.id, ...o })

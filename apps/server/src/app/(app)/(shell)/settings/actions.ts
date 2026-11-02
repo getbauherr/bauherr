@@ -2,7 +2,7 @@
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { createLocalReq } from 'payload'
-import { revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
+import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
 import { webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
@@ -172,11 +172,14 @@ export const saveBauherr = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
 })
 
+const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
+
 /** Own record only: the target is always the signed-in Bauherr, never a form value. The key appears once, as the ready-made `claude mcp add` line. */
-export const rotateOwnKey = act({}, async ({ user, payload }) => {
-  const key = await rotateApiKey(payload, user)
-  const origin = process.env.PUBLIC_URL ?? 'http://localhost:3000'
-  return `claude mcp add --transport http bauherr ${origin}/mcp --header "Authorization: Bearer ${key}"`
-})
+export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mcpAdd(await mintAgentKey(payload, user, s(fd, 'label'))))
+
+export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revokeAgentKey(payload, user, id(fd)))
+
+/** The personal (human) key: for scripted owner use only, it can approve gates. */
+export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))

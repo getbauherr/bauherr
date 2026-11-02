@@ -133,7 +133,7 @@ it('acceptStaging and requestChanges refuse a non-member and a Ticket of another
   await expect(actions.acceptStaging(payload, outsider, { ticket })).rejects.toThrow()
   await expect(actions.requestChanges(payload, outsider, { ticket, note: 'n' })).rejects.toThrow()
   const { tools } = await import('../src/lib/mcp-tools')
-  await expect(tools.find((t) => t.name === 'accept_staging')!.run({ ticket }, { payload, user: outsider })).rejects.toThrow()
+  await expect(tools.find((t) => t.name === 'accept_staging')!.run({ ticket }, { payload, user: outsider, actor: { kind: 'human' } })).rejects.toThrow()
   expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('release')
 })
 

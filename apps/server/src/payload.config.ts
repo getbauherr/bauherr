@@ -7,7 +7,7 @@ import { migrations } from './migrations'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
-  collections.filter((c) => c.slug !== 'workspaces' && c.slug !== 'bauherren').map((c) => [c.slug, {}]),
+  collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys'].includes(c.slug)).map((c) => [c.slug, {}]),
 )
 
 export default buildConfig({

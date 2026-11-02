@@ -36,7 +36,7 @@ beforeAll(async () => {
   release = await import('../src/lib/release')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   const { callTool } = await import('../src/lib/mcp-tools')
-  call = (user, name, input) => callTool({ payload, user }, name, input)
+  call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
@@ -634,14 +634,19 @@ it('stop at the cap moves to triage with a note, the MR stays open', async () =>
   expect(await touches(id, 'review-cap:stop')).toBe(1)
 })
 
-it('grant_review_round over MCP: refused while a session Run holds the Ticket, works for the owner', async () => {
+it('grant_review_round and stop_review over MCP: an agent key is refused, a human works', async () => {
   const { id } = await atCap()
-  const leased = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'review', status: 'running', mode: 'session', workspace: ws }, ...o })
-  await expect(call(member, 'grant_review_round', { ticket: id })).rejects.toThrow('owner only')
-  await expect(call(member, 'stop_review', { ticket: id })).rejects.toThrow('owner only')
+  const { callTool } = await import('../src/lib/mcp-tools')
+  const { mintAgentKey, resolveAgentKey } = await import('../src/lib/api-key')
+  const agent = { kind: 'agent', keyId: (await resolveAgentKey(payload, await mintAgentKey(payload, member as { id: number }, 'r')))!.keyId } as const
+  for (const name of ['grant_review_round', 'stop_review']) {
+    await expect(callTool({ payload, user: member, actor: agent }, name, { ticket: id })).rejects.toThrow('needs a human')
+  }
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
-  await payload.update({ collection: 'runs', id: leased.id, data: { status: 'succeeded' }, ...o })
   expect(await call(member, 'grant_review_round', { ticket: id })).toMatchObject({ stage: 'build' })
+  const capped = await atCap()
+  expect(await call(member, 'stop_review', { ticket: capped.id, note: 'redesign' })).toBeTruthy()
+  expect(await reload(capped.id)).toMatchObject({ stage: 'triage' })
 })
 
 const conflictCheck = async (id: number) => {
