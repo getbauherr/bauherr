@@ -342,6 +342,7 @@ const tickets = col('tickets', [
   text('gateNotified'),
   date('gateNotifiedAt'),
   text('gateAssignees'),
+  { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
@@ -436,6 +437,16 @@ export const collections: CollectionConfig[] = [
     rel('run', 'runs'),
     text('actor'),
     date('at'),
+  ]),
+  col('intake_sessions', [
+    rel('product', 'products', { required: true }),
+    select('persona', ['product-user', 'owner'], { required: true, defaultValue: 'product-user' }),
+    select('status', ['open', 'submitted', 'abandoned'], { required: true, defaultValue: 'open', index: true }),
+    json('messages'),
+    json('draft'),
+    { name: 'screenshots', type: 'number', defaultValue: 0 },
+    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
+    rel('user', 'bauherren'),
   ]),
   col('workflow_versions', [
     num('version'),

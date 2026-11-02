@@ -33,6 +33,7 @@ export type TicketRow = {
   needsYou: string | null
   /** Who the gate notified and since when; null before the notify job ran. */
   gate: { people: string[]; since: string } | null
+  gateUnreachable: string | null
   /** Open Tickets this one is blocked by. */
   blockedBy: { id: number; number: number }[]
   /** Parent Ticket of a sub-ticket. */
@@ -114,6 +115,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       parent: parents.get(t.parent) ?? null,
       children: childrenOf.get(t.id) ?? [],
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
+      gateUnreachable: isOpen && !t.gateNotifiedAt ? (t.gateUnreachable ?? null) : null,
       blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
     }
   })

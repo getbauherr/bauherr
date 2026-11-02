@@ -17,10 +17,13 @@ import * as migration_20261030_194000_triage_attempts from './20261030_194000_tr
 import * as migration_20261102_150084_production_gate from './20261102_150084_production_gate';
 import * as migration_20261102_150119_gitlab_connection from './20261102_150119_gitlab_connection';
 import * as migration_20261102_150138_ticket_external_unique from './20261102_150138_ticket_external_unique';
+import * as migration_20261102_150142_gate_unreachable from './20261102_150142_gate_unreachable';
 import * as migration_20261102_150143_provider_auth_modes from './20261102_150143_provider_auth_modes';
 import * as migration_20261102_150144_connection_slugs from './20261102_150144_connection_slugs';
+import * as migration_20261102_150145_intake_sessions from './20261102_150145_intake_sessions';
 import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './20261102_150170_requeue_expired_unclaimed_runs';
 import * as migration_20261102_160000_production_approved_sha from './20261102_160000_production_approved_sha';
+import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
 import * as migration_20261102_170000_production_label_at from './20261102_170000_production_label_at';
 
 export const migrations = [
@@ -120,6 +123,11 @@ export const migrations = [
     name: '20261102_150138_ticket_external_unique'
   },
   {
+    up: migration_20261102_150142_gate_unreachable.up,
+    down: migration_20261102_150142_gate_unreachable.down,
+    name: '20261102_150142_gate_unreachable'
+  },
+  {
     up: migration_20261102_150143_provider_auth_modes.up,
     down: migration_20261102_150143_provider_auth_modes.down,
     name: '20261102_150143_provider_auth_modes'
@@ -130,6 +138,11 @@ export const migrations = [
     name: '20261102_150144_connection_slugs'
   },
   {
+    up: migration_20261102_150145_intake_sessions.up,
+    down: migration_20261102_150145_intake_sessions.down,
+    name: '20261102_150145_intake_sessions'
+  },
+  {
     up: migration_20261102_150170_requeue_expired_unclaimed_runs.up,
     down: migration_20261102_150170_requeue_expired_unclaimed_runs.down,
     name: '20261102_150170_requeue_expired_unclaimed_runs'
@@ -138,6 +151,11 @@ export const migrations = [
     up: migration_20261102_160000_production_approved_sha.up,
     down: migration_20261102_160000_production_approved_sha.down,
     name: '20261102_160000_production_approved_sha'
+  },
+  {
+    up: migration_20261102_170000_intake_session_user.up,
+    down: migration_20261102_170000_intake_session_user.down,
+    name: '20261102_170000_intake_session_user'
   },
   {
     up: migration_20261102_170000_production_label_at.up,

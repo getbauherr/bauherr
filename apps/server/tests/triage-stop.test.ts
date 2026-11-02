@@ -108,3 +108,45 @@ it('a non-triage Run still posts its Comment', async () => {
   await runLatest(u.id, 'plan')
   expect(await comments(u.n)).toEqual(['Bauherr needs a human: unmet Goal'])
 })
+
+/** Runs the latest triage Run while observing the Run's status each time the Ticket is untriaged; `fail` makes the untriage throw. */
+const untriageObserved = async (ticket: number, fail = false) => {
+  const orig = payload.update.bind(payload) as (a: any) => Promise<unknown>
+  const statuses: string[] = []
+  const update = vi.spyOn(payload, 'update').mockImplementation((async (a: any) => {
+    if (a.collection === 'tickets' && a.data?.triagedAt === null) {
+      statuses.push(((await runs(ticket, 'triage')).at(-1) as Record<string, any>).status)
+      if (fail) throw new Error('untriage down')
+    }
+    return orig(a)
+  }) as any)
+  const queue = vi.spyOn(payload.jobs, 'queue')
+  try {
+    await runLatest(ticket, 'triage')
+  } catch (e) {
+    return { statuses, error: e as Error, reconciled: queue.mock.calls.some(([q]) => (q as any).task === 'reconcile-costs') }
+  } finally {
+    update.mockRestore()
+    queue.mockRestore()
+  }
+  return { statuses, error: null, reconciled: true }
+}
+
+it('untriages only after the triage Run is terminal', async () => {
+  const t = await create('untriage order')
+  exec.mockResolvedValue({ status: 'needs_human', reason: 'stopped', artifacts: {}, usage })
+  expect((await untriageObserved(t.id)).statuses).toEqual(['needs_human'])
+  const u = await create('untriage order failed')
+  exec.mockImplementation(async () => { throw new Error('boom') })
+  const r = await untriageObserved(u.id)
+  expect(r.statuses).toEqual(['failed'])
+  expect(r.error?.message).toBe('boom')
+})
+
+it('a failing untriage is logged, keeps the original error and still queues the reconcile', async () => {
+  const t = await create('untriage down')
+  exec.mockImplementation(async () => { throw new Error('boom') })
+  const r = await untriageObserved(t.id, true)
+  expect(r.error?.message).toBe('boom')
+  expect(r.reconciled).toBe(true)
+})
