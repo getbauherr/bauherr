@@ -183,13 +183,13 @@ describe('github listChecks', () => {
   it('maps commit statuses to checks next to the check runs', async () => {
     const b = new GithubBackend({
       auth: patAuth('t'),
-      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure' }, { context: 'ci/b', state: 'pending' }, { context: 'ci/c', state: 'success' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] }),
+      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure', created_at: 'T2' }, { context: 'ci/b', state: 'pending', created_at: 'T3' }, { context: 'ci/c', state: 'success', created_at: 'T4' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success', started_at: 'T1' }] }),
     });
     assert.deepEqual(await b.forge.listChecks('o/r', 'h'), [
-      { id: 1, name: 'build', status: 'completed', conclusion: 'success' },
-      { name: 'ci/a', status: 'completed', conclusion: 'failure' },
-      { name: 'ci/b', status: 'in_progress', conclusion: null },
-      { name: 'ci/c', status: 'completed', conclusion: 'success' },
+      { id: 1, name: 'build', status: 'completed', conclusion: 'success', startedAt: 'T1' },
+      { name: 'ci/a', status: 'completed', conclusion: 'failure', startedAt: 'T2' },
+      { name: 'ci/b', status: 'in_progress', conclusion: null, startedAt: 'T3' },
+      { name: 'ci/c', status: 'completed', conclusion: 'success', startedAt: 'T4' },
     ]);
   });
 });

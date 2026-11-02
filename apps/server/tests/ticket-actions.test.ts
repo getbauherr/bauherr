@@ -106,7 +106,7 @@ it('acceptStaging holds in release when the Product has a production gate', asyn
 it('approveProduction refuses a Ticket not awaiting approval, a non-member, another Workspace and a Product without productionChecks', async () => {
   const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
   const outsider = await payload.create({ collection: 'bauherren', data: { email: 'out2@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: other }] }, ...o })
-  await payload.update({ collection: 'tickets', id: ticket, data: { stage: 'release', productionState: null }, ...o })
+  await payload.update({ collection: 'tickets', id: ticket, data: { stage: 'release', productionState: null, mergeSha: 'sha-1' }, ...o })
   await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('not waiting for production approval')
   await payload.update({ collection: 'tickets', id: ticket, data: { productionState: 'awaiting_approval' }, ...o })
   await expect(actions.approveProduction(payload, user, { ticket, workspaceId: other })).rejects.toBeInstanceOf(actions.NotInWorkspace)

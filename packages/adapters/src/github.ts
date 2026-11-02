@@ -345,11 +345,11 @@ class GithubForge implements Forge {
   }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
-      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion,
+      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined,
     }));
     const statuses = (await this.h.json('GET', `/repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
     return [...runs, ...statuses.map((s: any): Check => (s.state === 'pending'
-      ? { name: s.context, status: 'in_progress', conclusion: null }
-      : { name: s.context, status: 'completed', conclusion: s.state === 'success' ? 'success' : 'failure' }))];
+      ? { name: s.context, status: 'in_progress', conclusion: null, startedAt: s.created_at }
+      : { name: s.context, status: 'completed', conclusion: s.state === 'success' ? 'success' : 'failure', startedAt: s.created_at }))];
   }
 }

@@ -12,7 +12,8 @@ let release: typeof import('../src/lib/release')
 let actions: typeof import('../src/lib/actions')
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
-const ok = (name = 'deploy-prod') => [{ name, status: 'completed', conclusion: 'success' }]
+const at = (ms: number) => new Date(Date.now() + ms).toISOString()
+const ok = (name = 'deploy-prod', startedAt = at(5000)) => [{ name, status: 'completed', conclusion: 'success', startedAt }]
 
 beforeAll(async () => {
   const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
@@ -74,20 +75,27 @@ it('changes nothing in production before an approval', async () => {
   }
 })
 
-it('a human label on the forge starts the deploy once; green checks deploy, close and comment once', async () => {
+it('a label added on the forge by anyone does not start a deploy', async () => {
   const { id, n, sha } = await accepted('by label')
   await fake.tickets(repo).addLabels(n, ['bauherr:approved:production'])
-  const t0 = Date.now()
-  await release.watchProduction(payload, t0)
-  expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
-  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }, { actor: { equals: 'forge label' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
-  await release.watchProduction(payload, t0 + 1000)
-  expect(await payload.count({ collection: 'human_touches', where: { ticket: { equals: id } }, ...o })).toMatchObject({ totalDocs: 2 })
   fake.setChecks(repo, sha, ok())
-  expect((await release.watchProduction(payload, t0 + 1000)).released).toHaveLength(0)
-  const { released } = await release.watchProduction(payload, t0 + release.WEBHOOK_SETTLE_MS + 1000)
+  await release.watchProduction(payload, Date.now() + 10 * 60_000)
+  expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval', stage: 'release', state: 'open' })
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }] }, ...o })).toMatchObject({ totalDocs: 0 })
+})
+
+it('the owner approval records the sha, deploys once on green checks, closes and comments once', async () => {
+  const { id, n, sha } = await accepted('approved')
+  await actions.approveProduction(payload, user, { ticket: id })
+  expect(await reload(id)).toMatchObject({ productionState: 'deploying', productionApprovedSha: sha })
+  expect(await labels(n)).toContain('bauherr:approved:production')
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'approve:production' } }, { actor: { equals: user.email } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  const t0 = Date.now()
+  expect((await release.watchProduction(payload, t0)).released).toHaveLength(0)
+  fake.setChecks(repo, sha, ok())
+  const { released } = await release.watchProduction(payload, t0 + 1000)
   expect(released.map((r) => r.id)).toEqual([id])
-  await release.watchProduction(payload, t0 + release.WEBHOOK_SETTLE_MS + 2000)
+  await release.watchProduction(payload, t0 + 2000)
   expect(await reload(id)).toMatchObject({ productionState: 'deployed', stage: 'done', state: 'closed' })
   expect((await fake.tickets(repo).get(n)).state).toBe('closed')
   expect(await labels(n)).toContain('bauherr:stage:done')
@@ -96,22 +104,88 @@ it('a human label on the forge starts the deploy once; green checks deploy, clos
   expect(posted[0]!.body).toContain('succeeded')
 })
 
+it('a check that predates the approval does not deploy; an old red run does not fail the retry', async () => {
+  const { id, sha } = await accepted('stale checks')
+  fake.setChecks(repo, sha, ok('deploy-prod', at(-60_000)))
+  await actions.approveProduction(payload, user, { ticket: id })
+  await release.watchProduction(payload, Date.now() + 1000)
+  expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(-60_000) }])
+  await release.watchProduction(payload, Date.now() + 1000)
+  expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(-60_000) }, { id: 2, name: 'deploy-prod', status: 'completed', conclusion: 'success', startedAt: at(5000) }])
+  await release.watchProduction(payload, Date.now() + 2000)
+  expect(await reload(id)).toMatchObject({ productionState: 'deployed' })
+})
+
+it('a failed deploy spends the approval: re-accepting needs a new approval', async () => {
+  const { id, n, sha } = await accepted('spent')
+  await actions.approveProduction(payload, user, { ticket: id })
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(5000) }])
+  await release.watchProduction(payload, Date.now() + 1000)
+  expect(await reload(id)).toMatchObject({ productionState: 'failed', productionApprovedSha: null })
+  expect(await labels(n)).not.toContain('bauherr:approved:production')
+  await actions.acceptStaging(payload, user, { ticket: id })
+  fake.setChecks(repo, sha, ok())
+  await release.watchProduction(payload, Date.now() + 10 * 60_000)
+  expect(await reload(id)).toMatchObject({ productionState: 'failed', stage: 'release', state: 'open' })
+})
+
+it('request_changes and a new merge reset the approval; accepting again needs a new approval', async () => {
+  const { id, n, sha } = await accepted('reset')
+  await actions.approveProduction(payload, user, { ticket: id })
+  await actions.requestChanges(payload, user, { ticket: id, note: 'again' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', productionState: null, productionApprovedSha: null })
+  expect(await labels(n)).not.toContain('bauherr:approved:production')
+  await payload.update({ collection: 'tickets', id, data: { stage: 'release', releaseState: 'on_staging', mergeSha: 'sha-new' }, ...o })
+  await actions.acceptStaging(payload, user, { ticket: id })
+  fake.setChecks(repo, 'sha-new', ok())
+  await release.watchProduction(payload, Date.now() + 10 * 60_000)
+  expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
+  void sha
+})
+
+it('accepting again never overwrites a deploying or deployed production state', async () => {
+  const { id } = await accepted('twice')
+  await actions.acceptStaging(payload, user, { ticket: id })
+  expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  await actions.approveProduction(payload, user, { ticket: id })
+  await actions.acceptStaging(payload, user, { ticket: id })
+  expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
+})
+
+it('a label failure after the CAS keeps the deploy and is retried by the watcher', async () => {
+  const { id, n } = await accepted('label flaky')
+  const ts = fake.tickets(repo)
+  const add = vi.spyOn(Object.getPrototypeOf(ts), 'addLabels').mockRejectedValueOnce(new Error('forge down'))
+  try {
+    await actions.approveProduction(payload, user, { ticket: id })
+    expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
+    expect(await labels(n)).not.toContain('bauherr:approved:production')
+  } finally {
+    add.mockRestore()
+  }
+  await release.watchProduction(payload, Date.now())
+  expect(await labels(n)).toContain('bauherr:approved:production')
+})
+
 it('the approval action POSTs the webhook exactly once and retries it after a non-2xx', async () => {
   const status = { hook: 500 }
   const fetchMock = vi.fn(async () => new Response(null, { status: status.hook }))
   vi.stubGlobal('fetch', fetchMock)
   await payload.update({ collection: 'products', id: product, data: { productionWebhookUrl: 'https://hook.example/prod' }, ...o })
   try {
-    const { id } = await accepted('hooked')
+    const { id, n } = await accepted('hooked')
+    const mine = () => fetchMock.mock.calls.filter((c) => JSON.parse((c as unknown as [string, RequestInit])[1].body as string).ticket === Number(n))
     await actions.approveProduction(payload, user, { ticket: id })
     const t0 = Date.now()
     await release.watchProduction(payload, t0)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(mine()).toHaveLength(1)
     status.hook = 200
     await release.watchProduction(payload, t0 + 1000)
     await release.watchProduction(payload, t0 + 2000)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ environment: 'production' })
+    expect(mine()).toHaveLength(2)
+    expect(JSON.parse((mine()[1] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ environment: 'production' })
   } finally {
     vi.unstubAllGlobals()
     await payload.update({ collection: 'products', id: product, data: { productionWebhookUrl: null }, ...o })
@@ -122,16 +196,18 @@ it('a red check fails the deploy and keeps the Ticket open; re-approval retries 
   const { id, n, sha } = await accepted('red')
   await actions.approveProduction(payload, user, { ticket: id })
   const t0 = Date.now()
-  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure' }])
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(5000) }])
   await release.watchProduction(payload, t0 + release.WEBHOOK_SETTLE_MS + 1000)
   expect(await reload(id)).toMatchObject({ productionState: 'failed', stage: 'release', state: 'open' })
   expect((await comments(n))[0]!.body).toContain('failed')
   await release.watchProduction(payload, t0 + release.WEBHOOK_SETTLE_MS + 2000)
   expect(await reload(id)).toMatchObject({ productionState: 'failed' })
 
+  const first = at(0)
+  await new Promise((r) => setTimeout(r, 10))
   await actions.approveProduction(payload, user, { ticket: id })
   expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
-  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure' }, { id: 2, name: 'deploy-prod', status: 'completed', conclusion: 'success' }])
+  fake.setChecks(repo, sha, [{ id: 1, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: first }, { id: 2, name: 'deploy-prod', status: 'completed', conclusion: 'success', startedAt: at(5000) }])
   const t1 = Date.now()
   await release.watchProduction(payload, t1 + release.WEBHOOK_SETTLE_MS + 1000)
   expect(await reload(id)).toMatchObject({ productionState: 'deployed', state: 'closed' })
@@ -149,4 +225,15 @@ it('times out after 60 minutes without a result and keeps the Ticket open', asyn
   await release.watchProduction(payload, t0 + release.PRODUCTION_TIMEOUT_MS + 5000)
   expect(await reload(id)).toMatchObject({ productionState: 'timed_out', state: 'open', stage: 'release' })
   expect((await comments(n))[0]!.body).toContain('timed out')
+})
+
+it('the approve_production tool is refused while a session Run holds the Ticket', async () => {
+  const { id } = await accepted('agent held')
+  const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', mode: 'session', status: 'running', workspace: ws }, ...o })
+  const { tools } = await import('../src/lib/mcp-tools')
+  const approve = tools.find((t) => t.name === 'approve_production')!
+  await expect(approve.run({ ticket: id }, { payload, user })).rejects.toThrow('session Run holds')
+  expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
+  await payload.update({ collection: 'runs', id: run.id, data: { status: 'succeeded' }, ...o })
+  await expect(approve.run({ ticket: id }, { payload, user })).resolves.toMatchObject({ productionState: 'deploying' })
 })

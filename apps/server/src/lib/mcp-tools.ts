@@ -449,10 +449,11 @@ export const tools: Tool[] = [
   },
   {
     name: 'approve_production',
-    description: 'Approve the production deploy of a Ticket accepted on staging, or retry after a failed one (adds bauherr:approved:production, records a human touch). The Product\'s own pipeline deploys; Bauherr observes the result.',
+    description: 'Approve the production deploy of a Ticket accepted on staging, or retry after a failed one (records a human touch, then sets bauherr:approved:production as an output signal for label-triggered pipelines). Refused while a session Run holds the Ticket. The Product\'s own pipeline deploys; Bauherr observes the result.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
-      await getTicket(c, a.ticket)
+      const t = await getTicket(c, a.ticket)
+      if ((await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })).totalDocs) throw new Error('a session Run holds this Ticket: production approval is for the owner, not an agent')
       return approveProduction(c.payload, c.user, a)
     },
   },

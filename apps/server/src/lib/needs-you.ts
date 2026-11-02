@@ -7,7 +7,6 @@ export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : 
 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
-const APPROVED_PRODUCTION = 'bauherr:approved:production'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
 export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Approve production', 'Production deploy failed', 'Run needs you', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
@@ -39,7 +38,7 @@ export const needsYou = (
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
   }
   if (stage === 'release' && ticket.labels.includes(APPROVED_STAGING)) {
-    if (ticket.productionState === 'awaiting_approval' && !ticket.labels.includes(APPROVED_PRODUCTION)) return 'Approve production'
+    if (ticket.productionState === 'awaiting_approval') return 'Approve production'
     if (ticket.productionState === 'failed' || ticket.productionState === 'timed_out') return 'Production deploy failed'
   }
   if (run?.status === 'failed' && run.stage !== 'triage') return 'Run failed'

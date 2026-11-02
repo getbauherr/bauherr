@@ -278,6 +278,7 @@ const tickets = col('tickets', [
   date('deployRequestedAt'),
   select('releaseState', ['waiting', 'on_staging', 'timed_out']),
   select('productionState', ['awaiting_approval', 'deploying', 'deployed', 'failed', 'timed_out']),
+  text('productionApprovedSha'),
   date('productionRequestedAt'),
   date('productionWebhookSentAt'),
   select('reviewState', ['waiting_checks', 'merged', 'ready_for_human', 'needs_human']),

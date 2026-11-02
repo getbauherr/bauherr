@@ -10,7 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, spawnSubTickets, submitTriage, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
+import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { decrypt } from '../lib/secrets'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
@@ -288,6 +288,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ...base,
             stage,
             ...(prev ? {} : { rank: await lastRankAfter(payload, id(src.workspace)) }),
+            ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev

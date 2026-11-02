@@ -37,7 +37,6 @@ describe('needsYou', () => {
     const rel = (productionState: string, labels: string[] = ['bauherr:approved:staging']) => ({ stage: 'release', labels, productionState })
     const run = r('build', 'succeeded')
     expect(needsYou(rel('awaiting_approval'), run)).toBe('Approve production')
-    expect(needsYou(rel('awaiting_approval', ['bauherr:approved:staging', 'bauherr:approved:production']), run)).toBeNull()
     expect(needsYou(rel('deploying'), run)).toBeNull()
     expect(needsYou(rel('failed', ['bauherr:approved:staging', 'bauherr:approved:production']), run)).toBe('Production deploy failed')
     expect(needsYou(rel('timed_out'), run)).toBe('Production deploy failed')

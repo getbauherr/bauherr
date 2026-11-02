@@ -5,7 +5,7 @@ import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf
 import { NEEDS_REFINEMENT } from './needs-you'
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_PRODUCTION, APPROVED_STAGING, beginProduction, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
+import { APPROVED_PRODUCTION, APPROVED_STAGING, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -315,7 +315,7 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (stage === 'done') {
     await setStage(ts, n, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, overrideAccess: true })
-  } else await payload.update({ collection: 'tickets', id: t.id, data: { productionState: 'awaiting_approval' }, overrideAccess: true })
+  } else if (!(await payload.update({ collection: 'tickets', where: { and: [{ id: { equals: t.id } }, { productionState: { exists: false } }] }, data: { productionState: 'awaiting_approval' }, overrideAccess: true })).docs.length) return { approved: APPROVED_STAGING, stage }
   await ts.addLabels(n, [APPROVED_STAGING])
   await touch(payload, user, t, 'accept:staging')
   if (stage === 'done') {
@@ -359,7 +359,8 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
   await setStage(src.ts, src.n, 'build')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null }, overrideAccess: true })
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
+  await clearApprovalLabel(payload, src.ts, src.n)
   await touch(payload, user, t, 'request-changes:staging')
   return { stage: 'build', run: run.id as TicketId }
 }
