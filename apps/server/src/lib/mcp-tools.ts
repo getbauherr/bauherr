@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { FILE_PATTERN, acceptStaging, approvePlan, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { ownsGate } from './gates'
@@ -128,7 +128,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = run.stage === 'triage' || run.stage === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
-  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 /** Open, unblocked Tickets in frontier order with their latest Run. */
@@ -453,6 +453,16 @@ export const tools: Tool[] = [
     async run(a, c) {
       await getTicket(c, a.ticket)
       return acceptStaging(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'approve_production',
+    description: 'Approve the production deploy of a Ticket accepted on staging, or retry after a failed one (records a human touch, then sets bauherr:approved:production as an output signal for label-triggered pipelines). Refused while a session Run holds the Ticket. The Product\'s own pipeline deploys; Bauherr observes the result.',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      const t = await getTicket(c, a.ticket)
+      if ((await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })).totalDocs) throw new Error('a session Run holds this Ticket: production approval is for the owner, not an agent')
+      return approveProduction(c.payload, c.user, a)
     },
   },
   {

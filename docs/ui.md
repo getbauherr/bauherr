@@ -33,6 +33,8 @@ Writes are server actions in `lib/actions.ts` over `src/lib/actions.ts` (`approv
 
 **Staging gate** (backend in `src/lib/actions.ts`, UI follows): a Ticket in `release` whose `releaseState` is `on_staging` shows Gate "Accept on staging" with the summary Comment and the Product's `stagingUrl`; "Accept" calls `acceptStaging`, "Request changes" (note required) calls `requestChanges`. Needs-you reads "Accept on staging" for that state and "Staging not confirmed" for `timed_out`. MCP: `post_staging_summary`, `accept_staging`, `request_changes`. Per-Product `stagingUrl`, deploy mode, webhook URL, required checks, gate owners (GitHub logins notified at human gates; empty = Admins with a GitHub login) and production gate are edited on `/settings/products`.
 
+**Production gate** (Products with `productionGate`): after "Accept", the Ticket page shows Gate "Approve production deploy" (needs-you "Approve production") whose button calls `approveProduction`; after a failed or timed out deploy the Gate reads "Production deploy failed" with "Approve again". "Approved for production" appears once the label is set. MCP: `approve_production`. Product settings: production gate, production webhook URL, production checks.
+
 **Round cap gate**: a review Ticket with `reviewState` `needs_human` and `reviewRounds` above the cap shows Gate "Round cap reached" (`ReviewCapGate`) with the escalation Comment's findings, "Grant one more round" (primary) and "Stop" (optional note); needs-you reads "Round cap reached". Backend: `grantReviewRound`, `stopReview`; MCP: `grant_review_round`, `stop_review`.
 
 Deviation from the Gate spec: no secondary "Ask for changes" button (nothing to call yet); a blocked primary button shows the disabled style (`surface-200`, `ink-muted`).

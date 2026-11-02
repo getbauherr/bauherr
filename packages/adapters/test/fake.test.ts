@@ -37,6 +37,21 @@ describe('fake: mergePullRequest', () => {
   });
 });
 
+describe('fake: mergeable', () => {
+  it('setMergeable(false) makes the merge throw; a new commit on the head resets it', async () => {
+    const b = new FakeBackend();
+    await b.forge.createBranch('o/r', 'feat');
+    b.commit('o/r', 'feat', 'a.txt', 'a');
+    const pr = await b.forge.openPullRequest('o/r', { title: 't', head: 'feat', base: 'main' });
+    b.setMergeable('o/r', pr.number, false);
+    assert.equal((await b.forge.getPullRequest('o/r', pr.number)).mergeable, false);
+    await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' }), /cleanly/);
+    b.commit('o/r', 'feat', 'a.txt', 'b');
+    assert.equal((await b.forge.getPullRequest('o/r', pr.number)).mergeable, undefined);
+    await b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' });
+  });
+});
+
 describe('fake: reopen', () => {
   it('reopens a closed ticket, drops the close-reason label, and is idempotent', async () => {
     const b = new FakeBackend({ native: false });

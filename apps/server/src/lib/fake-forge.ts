@@ -60,12 +60,16 @@ const build = (): FakeBackend => {
     void ts.comment(String(n), WORKLOG)
     void ts.comment(String(n), summary(n))
   }
-  // #8-#10 are placeholders; #11 is held by Triage with its questions.
-  for (const n of [8, 9, 10]) void placeholder(n)
+  // #8-#13 are placeholders; #14 is held by Triage with its questions.
+  for (const n of [8, 9, 10, 11, 12, 13]) void placeholder(n)
   void ts.create({ title: 'Clarify the export scope', labels: ['bauherr:needs-refinement'] })
-  void ts.comment('11', QUESTIONS)
-  // #12-#14 are placeholders; #15 sits at the review round cap with its escalation Comment.
-  for (const n of [12, 13, 14]) void placeholder(n)
+  void ts.comment('14', QUESTIONS)
+  // acme/gated: one Ticket on staging for a Product with a production gate.
+  const gated = fake.tickets('acme/gated')
+  void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
+  void gated.comment('1', WORKLOG)
+  void gated.comment('1', summary(1))
+  // #15 sits at the review round cap with its escalation Comment.
   void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })
   void ts.comment('15', 'Bauherr needs a human: the review found 1 blocking issue(s), after 2 review rounds.\n\n- [medium] src/retry.ts:12 The loop never stops on a permanent error. Scenario: when the gateway answers 402, then the call is retried forever.')
   // Knowledge repo of the seeded Workspace: two documents on main and one open write-back PR with red checks.

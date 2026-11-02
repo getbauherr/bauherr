@@ -41,8 +41,22 @@ describe('needsYou', () => {
     expect(needsYou(rel('waiting'), r('build', 'succeeded'))).toBeNull()
     expect(needsYou(rel('on_staging', ['bauherr:approved:staging']), r('build', 'succeeded'))).toBeNull()
   })
+  it('asks to approve production after staging acceptance and flags a failed deploy', () => {
+    const rel = (productionState: string, labels: string[] = ['bauherr:approved:staging']) => ({ stage: 'release', labels, productionState })
+    const run = r('build', 'succeeded')
+    expect(needsYou(rel('awaiting_approval'), run)).toBe('Approve production')
+    expect(needsYou(rel('deploying'), run)).toBeNull()
+    expect(needsYou(rel('failed', ['bauherr:approved:staging', 'bauherr:approved:production']), run)).toBe('Production deploy failed')
+    expect(needsYou(rel('timed_out'), run)).toBe('Production deploy failed')
+    expect(needsYou(rel('deployed'), run)).toBeNull()
+  })
   it('gives every needs-you value a Gate with an action', () => {
-    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|review-cap|rerun)$/), title: expect.any(String) })
+    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|review-cap|rerun)$/), title: expect.any(String) })
+  })
+  it('words the production states', () => {
+    expect(releaseWord({ stage: 'release', productionState: 'awaiting_approval', labels: ['bauherr:approved:staging'] })).toBe('awaiting production approval')
+    expect(releaseWord({ stage: 'release', productionState: 'deploying' })).toBe('deploying')
+    expect(releaseWord({ stage: 'done', state: 'closed', productionState: 'deployed' })).toBe('deployed')
   })
   it('words the release stage', () => {
     expect(releaseWord({ stage: 'release', releaseState: null })).toBe('waiting')

@@ -10,7 +10,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { forgeOf, prOf, watchRelease } from '../lib/release'
+import { NO_PRODUCTION, forgeOf, prOf, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { decrypt } from '../lib/secrets'
 
@@ -188,13 +188,12 @@ export const abandonRun = async (
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
-  const triage = await payload.update({
-    collection: 'runs',
-    where: { and: [{ stage: { equals: 'triage' } }, { mode: { equals: 'session' } }, { status: { equals: 'awaiting_session' } }, { updatedAt: { less_than: before } }] },
-    data: { status: 'abandoned', error: 'unclaimed triage expired', finishedAt: new Date(now).toISOString() },
-    overrideAccess: true,
-  })
-  for (const r of triage.docs) await untriage(payload, id(r.ticket))
+  const triage = (
+    await payload.db.drizzle.execute(
+      sql`UPDATE "runs" SET "status" = 'abandoned', "error" = 'unclaimed triage expired', "finished_at" = ${new Date(now).toISOString()}, "updated_at" = now() WHERE "stage" = 'triage' AND "mode" = 'session' AND "status" = 'awaiting_session' AND "updated_at" < ${before} RETURNING "ticket_id"`,
+    )
+  ).rows
+  for (const r of triage) await untriage(payload, Number(r.ticket_id))
   const stale = await payload.find({
     collection: 'runs',
     where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
@@ -202,7 +201,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
-  let handled = triage.docs.length
+  let handled = triage.length
   for (const run of stale.docs) {
     try {
       if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
@@ -227,6 +226,7 @@ export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output
   concurrency: () => 'watch-release',
   handler: async ({ req }) => {
     await watchReviews(req.payload)
+    await watchProduction(req.payload)
     await resumeReviews(req.payload)
     return { output: await watchRelease(req.payload) }
   },
@@ -308,6 +308,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const data = {
             ...base,
             stage,
+            ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev
