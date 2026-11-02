@@ -132,7 +132,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = run.stage === 'triage' || run.stage === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
-  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 /** Open, unblocked Tickets in frontier order with their latest Run. */

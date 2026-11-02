@@ -23,6 +23,7 @@ import * as migration_20261102_150144_connection_slugs from './20261102_150144_c
 import * as migration_20261102_150145_intake_sessions from './20261102_150145_intake_sessions';
 import * as migration_20261102_150150_knowledge from './20261102_150150_knowledge';
 import * as migration_20261102_150166_agent_keys from './20261102_150166_agent_keys';
+import * as migration_20261102_150168_conflict_return_scope from './20261102_150168_conflict_return_scope';
 import * as migration_20261102_150170_requeue_expired_unclaimed_runs from './20261102_150170_requeue_expired_unclaimed_runs';
 import * as migration_20261102_160000_production_approved_sha from './20261102_160000_production_approved_sha';
 import * as migration_20261102_170000_intake_session_user from './20261102_170000_intake_session_user';
@@ -153,6 +154,11 @@ export const migrations = [
     up: migration_20261102_150166_agent_keys.up,
     down: migration_20261102_150166_agent_keys.down,
     name: '20261102_150166_agent_keys'
+  },
+  {
+    up: migration_20261102_150168_conflict_return_scope.up,
+    down: migration_20261102_150168_conflict_return_scope.down,
+    name: '20261102_150168_conflict_return_scope'
   },
   {
     up: migration_20261102_150170_requeue_expired_unclaimed_runs.up,

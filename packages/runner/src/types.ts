@@ -31,6 +31,8 @@ export type RunCtx = {
   };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string };
   product: { id?: string; repo: string; defaultBranch: string };
+  /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
+  conflictBase?: string;
   /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */
   existingPr?: { number: number; url: string; branch: string; title: string; body: string };
   connection: {
