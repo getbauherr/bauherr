@@ -3,6 +3,31 @@ type Tier = 'cheap' | 'standard' | 'strong'
 type Cfg = Record<string, string | undefined>
 
 const ANTHROPIC_MODELS: Record<Tier, string> = { cheap: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' }
+const GUID = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i
+const FIELD_PATTERNS: Partial<Record<(typeof PRESET_FIELDS)[number], RegExp>> = {
+  azureResource: /^[a-z0-9-]{1,63}$/i,
+  azureTenant: new RegExp(`${GUID.source}|^([a-z0-9-]+\\.)+[a-z]{2,}$`, 'i'),
+  azureClient: GUID,
+}
+
+/** Names of preset fields whose value is set but malformed; they end up in the gateway baseUrl and auth config. */
+export const invalidFields = (config: Cfg | null | undefined): string[] =>
+  Object.entries(FIELD_PATTERNS).filter(([k, re]) => config?.[k] != null && config[k] !== '' && !re.test(config[k] as string)).map(([k]) => k)
+
+export type IamSecret = { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
+
+/** Parses a bedrock-iam secret; null when malformed. Never surfaces the parser message (it embeds input). */
+export const parseIamSecret = (secret: string): IamSecret | null => {
+  try {
+    const v = JSON.parse(secret)
+    const ok = (x: unknown) => typeof x === 'string' && x !== ''
+    if (!v || typeof v !== 'object' || !ok(v.accessKeyId) || !ok(v.secretAccessKey) || (v.sessionToken != null && typeof v.sessionToken !== 'string')) return null
+    return v
+  } catch {
+    return null
+  }
+}
+
 const custom = (type: 'messages' | 'completions', providerOverride?: string) => ({ custom: { formats: [{ type }], ...(providerOverride && { providerOverride }) } })
 
 type Def = {
@@ -92,7 +117,9 @@ export const PRESETS: Record<Preset, Def> = {
     catalog: false,
     defaultModels: null,
     render: (slug, c, _f, secret) => {
-      const { accessKeyId, secretAccessKey, sessionToken } = JSON.parse(secret ?? '{}')
+      const iam = secret ? parseIamSecret(secret) : null
+      if (!iam) throw new Error('bedrock-iam secret is not valid IAM key JSON')
+      const { accessKeyId, secretAccessKey, sessionToken } = iam
       return entry(slug, 'bedrock', { awsRegion: c.awsRegion }, { auth: { aws: { accessKeyId, secretAccessKey, ...(sessionToken && { sessionToken }) } } })
     },
   },

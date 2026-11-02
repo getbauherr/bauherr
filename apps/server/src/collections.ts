@@ -1,11 +1,21 @@
 import { isDeepStrictEqual } from 'node:util'
-import { ValidationError, type CollectionConfig, type Field } from 'payload'
+import { sql } from '@payloadcms/db-postgres'
+import { ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, renderModels, verifyProvider, writeProvider } from './lib/gateway'
-import { missingFields, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
+import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { oidcStrategy } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
+
+const AMBIENT_LOCK = 143
+
+/** Serialises the ambient-identity single-tenant check against the write it guards; released when the request transaction ends. */
+const lockAmbient = async (req: PayloadRequest): Promise<void> => {
+  const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
+  const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
+  await tx.execute(sql`select pg_advisory_xact_lock(${AMBIENT_LOCK})`)
+}
 
 const rel = (name: string, to: string, extra: Partial<Field> = {}): Field =>
   ({ name, type: 'relationship', relationTo: to, ...extra }) as Field
@@ -99,6 +109,7 @@ const workspaces = col(
       beforeValidate: [
         async ({ operation, req }) => {
           if (operation !== 'create') return
+          await lockAmbient(req)
           const ambient = Object.keys(PRESETS).filter((k) => PRESETS[k as Preset].auth === 'ambient')
           const found = await req.payload.count({ collection: 'connections', where: { kind: { equals: 'llm-provider' }, provider: { in: ambient } }, overrideAccess: true, req })
           if (found.totalDocs) {
@@ -172,11 +183,22 @@ const connections = col(
             const prev = originalDoc?.[k] ?? (k === 'provider' ? 'anthropic' : undefined)
             if (data?.[k] != null && data[k] !== prev) config[k] = data[k]
           }
+          const def = PRESETS[presetOf(config)]
+          const prevAuth = originalDoc?.config ? PRESETS[presetOf(originalDoc.config)].auth : 'file'
+          if (req.user && (req.user as { role?: string }).role !== 'admin' && (def.auth !== 'file' || prevAuth !== 'file')) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'inline-secret and ambient providers can be set by Admins only' }] })
+          }
+          const bad = invalidFields(config)
+          if (bad.length) throw new ValidationError({ collection: 'connections', errors: bad.map((path) => ({ path, message: 'malformed value' })) })
+          if (presetOf(config) === 'bedrock-iam' && typeof data?.secret === 'string' && data.secret && !isEncrypted(data.secret) && !parseIamSecret(data.secret)) {
+            throw new ValidationError({ collection: 'connections', errors: [{ path: 'secret', message: 'must be JSON {"accessKeyId":"...","secretAccessKey":"...","sessionToken":"..."} (sessionToken optional)' }] })
+          }
           const missing = missingFields(presetOf(config), config)
           if (missing.length) {
             throw new ValidationError({ collection: 'connections', errors: missing.map((path) => ({ path, message: `required for ${presetOf(config)}` })) })
           }
-          if (PRESETS[presetOf(config)].auth === 'ambient' && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
+          if (def.auth === 'ambient') await lockAmbient(req)
+          if (def.auth === 'ambient' && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
             throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'ambient identity is shared by the whole gateway: allowed only while the instance has exactly one Workspace' }] })
           }
           const mirrored = Object.fromEntries(['provider', ...PRESET_FIELDS].filter((k) => config[k] !== undefined).map((k) => [k, config[k]]))

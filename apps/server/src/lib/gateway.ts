@@ -160,13 +160,17 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   })
   const models = conns.docs
     .flatMap((c) => {
-      const slug = (c.workspace as unknown as Ws | undefined)?.slug
-      const cfg = c.config as Record<string, string> | null
-      const preset = presetOf(cfg)
-      const def = PRESETS[preset]
-      const secret = def.auth === 'inline' && c.secret ? decrypt(c.secret as string) : undefined
-      if (!slug || (def.auth === 'inline' && !secret)) return []
-      return [{ slug, entry: def.render(slug, cfg ?? {}, providerFile(slug, def.secret.ext), secret) }]
+      try {
+        const slug = (c.workspace as unknown as Ws | undefined)?.slug
+        const cfg = c.config as Record<string, string> | null
+        const def = PRESETS[presetOf(cfg)]
+        const secret = def.auth === 'inline' && c.secret ? decrypt(c.secret as string) : undefined
+        if (!slug || (def.auth === 'inline' && !secret)) return []
+        return [{ slug, entry: def.render(slug, cfg ?? {}, providerFile(slug, def.secret.ext), secret) }]
+      } catch {
+        req.payload.logger.error(`renderModels: skipped Connection ${c.id}, stored provider config is invalid`)
+        return []
+      }
     })
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((m) => m.entry)
@@ -178,6 +182,7 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   if (catalogs.length) cfg.config = { ...cfg.config, modelCatalog: catalogs.map((f) => ({ file: join(dir(), 'catalogs', f) })) }
   const out = stringify(cfg)
   const tmp = `${path}.tmp`
+  await rm(tmp, { force: true })
   await writeSecretFile(tmp, out)
   await rename(tmp, path)
 }
