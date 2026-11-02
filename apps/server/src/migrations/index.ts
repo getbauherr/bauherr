@@ -15,6 +15,8 @@ import * as migration_20261030_191000_gate_notify from './20261030_191000_gate_n
 import * as migration_20261030_192000_triage_stage from './20261030_192000_triage_stage';
 import * as migration_20261030_194000_triage_attempts from './20261030_194000_triage_attempts';
 
+import * as migration_20261102_150150_knowledge from './20261102_150150_knowledge';
+
 export const migrations = [
   {
     up: migration_20261029_165423_initial.up,
@@ -95,5 +97,10 @@ export const migrations = [
     up: migration_20261030_194000_triage_attempts.up,
     down: migration_20261030_194000_triage_attempts.down,
     name: '20261030_194000_triage_attempts'
+  },
+  {
+    up: migration_20261102_150150_knowledge.up,
+    down: migration_20261102_150150_knowledge.down,
+    name: '20261102_150150_knowledge'
   },
 ];

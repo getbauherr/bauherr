@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { APPROVED_PLAN, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
+import { APPROVED_PLAN, Conflict, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
 
 export interface ContractEnv {
   backend: Backend;
@@ -191,6 +191,24 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.deepEqual(files.map((x) => x.filename), ['contract/hello.txt']);
       assert.equal(files[0]?.status, 'added');
       assert.ok(Array.isArray(await f.listChecks(repo, (await f.getPullRequest(repo, p.number)).headSha)));
+    });
+
+    it('files: putFile -> getFile -> listFiles, stale expectSha conflicts', async () => {
+      const f = backend.forge;
+      const branch = `bauherr-contract-files-${Date.now()}`;
+      await f.createBranch(repo, branch);
+      made.branches.push(branch);
+      const path = 'contract/doc é.md';
+      await f.putFile(repo, { branch, path, content: '# One\n', message: 'add', expectSha: '' });
+      await assert.rejects(f.putFile(repo, { branch, path, content: 'x', message: 'again', expectSha: '' }), Conflict);
+      const first = await f.getFile(repo, path, branch);
+      assert.equal(first.content, '# One\n');
+      await f.putFile(repo, { branch, path, content: '# Two\n', message: 'edit', expectSha: first.sha });
+      await assert.rejects(f.putFile(repo, { branch, path, content: '# Three\n', message: 'stale', expectSha: first.sha }), Conflict);
+      assert.equal((await f.getFile(repo, path, branch)).content, '# Two\n');
+      const listed = await f.listFiles(repo, branch);
+      assert.ok(listed.paths.includes(path));
+      assert.ok(listed.commit);
     });
   });
 }

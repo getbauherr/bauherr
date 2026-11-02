@@ -44,8 +44,10 @@ export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d
   const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, s(fd, `tier_${t}`) || defaults![t]]))
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount), modelByTier: tiers }
   if (isAdmin(user)) {
+    const conn = Number(s(fd, 'knowledgeConnection')) || undefined
+    await assertInWorkspace(payload, 'connections', [conn], wsId)
     const stages = Object.fromEntries(['plan', 'build'].map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
-    Object.assign(data, { name: s(fd, 'name'), defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null })
+    Object.assign(data, { name: s(fd, 'name'), defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null, knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null })
   } else if (!(await workspacesOf(user)).some((x) => x.id === wsId)) throw new Error('Not your Workspace.')
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)
 })
