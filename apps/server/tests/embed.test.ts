@@ -6,6 +6,8 @@ let payload: Payload
 let sessions: typeof import('../src/app/intake/api/sessions/route')
 let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route')
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
+let shots: typeof import('../src/app/intake/api/sessions/[id]/screenshots/route')
+let media: typeof import('../src/app/intake/api/media/[id]/route')
 let widgetRoute: typeof import('../src/app/intake/widget.js/route')
 let embed: typeof import('../src/lib/intake/embed')
 let productId: number
@@ -33,6 +35,8 @@ beforeAll(async () => {
   sessions = await import('../src/app/intake/api/sessions/route')
   messages = await import('../src/app/intake/api/sessions/[id]/messages/route')
   submit = await import('../src/app/intake/api/sessions/[id]/submit/route')
+  shots = await import('../src/app/intake/api/sessions/[id]/screenshots/route')
+  media = await import('../src/app/intake/api/media/[id]/route')
   widgetRoute = await import('../src/app/intake/widget.js/route')
   embed = await import('../src/lib/intake/embed')
   const ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
@@ -104,6 +108,33 @@ it('a token cannot reach sessions of a Bauherr or another token (404)', async ()
   const mine = (await (await sessions.POST(call(bearer(), ORIGIN))).json()).id
   expect((await submit.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(404)
   expect((await sessions.POST(call(null, ORIGIN))).status).toBe(401)
+})
+
+it('media route: a token reads only screenshots of its own sessions (404 for a cookie session or another token)', async () => {
+  const be = (n: number) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]
+  const chunk = (type: string, data: string) => [...be(data.length), ...[...type].map((c) => c.charCodeAt(0)), ...[...data].map((c) => c.charCodeAt(0)), 0, 0, 0, 0]
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...chunk('IHDR', '1234567890123'), ...chunk('IDAT', 'x'), ...chunk('IEND', '')])
+  const upload = async (auth: string, origin: string | null) => {
+    const form = new FormData()
+    form.set('file', new File([png], 'shot.png'))
+    const wire = new Response(form)
+    const body = await wire.arrayBuffer()
+    return new Request('http://x.test/i', { method: 'POST', headers: { authorization: auth, 'content-type': wire.headers.get('content-type')!, 'content-length': String(body.byteLength), ...(origin && { origin }) }, body })
+  }
+  const shot = async (auth: string, origin: string | null) => {
+    const sid = (await (await sessions.POST(call(auth, origin, { product: productId }))).json()).id
+    const r = await shots.POST(await upload(auth, origin), ctx(sid))
+    expect(r.status).toBe(201)
+    return (await r.json()).id as number
+  }
+  const read = (auth: string, origin: string | null, id: number) => media.GET(new Request('http://x.test/i', { headers: { authorization: auth, ...(origin && { origin }) } }), ctx(id))
+  const other = await embed.createEmbedToken(payload, { product: productId, name: 'media-other', allowedOrigins: [ORIGIN] })
+  const own = await shot(bearer(), ORIGIN)
+  const cookieSession = await shot(`bauherren API-Key ${keyA}`, null)
+  const foreign = await shot(bearer(other), ORIGIN)
+  expect((await read(bearer(), ORIGIN, own)).status).toBe(200)
+  expect((await read(bearer(), ORIGIN, cookieSession)).status).toBe(404)
+  expect((await read(bearer(), ORIGIN, foreign)).status).toBe(404)
 })
 
 it('caps sessions per hour per token', async () => {
