@@ -4,9 +4,10 @@ import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
 import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionSheet } from '../../../components/DecisionSheet'
-import { Approved, Gate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
+import { Approved, Gate, ProductionChecksGate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
+import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
@@ -60,7 +61,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
-  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
+  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
@@ -102,6 +103,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {gate?.kind === 'release' && (
         <ReleaseGate ticket={ticket.id} number={ticket.number} title={gate.title} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} stagingUrl={product.stagingUrl ?? null} />
       )}
+      {gate?.kind === 'production-checks' && <ProductionChecksGate number={ticket.number} title={gate.title} />}
       {gate?.kind === 'production' && <ProductionGate ticket={ticket.id} number={ticket.number} title={gate.title} failed={todo === 'Production deploy failed'} />}
       {gate?.kind === 'review-cap' && (
         <ReviewCapGate ticket={ticket.id} number={ticket.number} title={gate.title} findingsHtml={capFindings ? renderMarkdown(capFindings) : null} />

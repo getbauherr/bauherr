@@ -1,4 +1,4 @@
-# No optional gate and no production gate: refine is the only human gate.
+# Production gate turned off (no `production_gate` on release), no optional gates: refine is the only human gate.
 stages:
   - name: triage
     steps: [{kind: agent-run, skill: triage}]

@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import { ticketsOf } from '../../../lib/actions'
+import { hasProductionChecks } from '../../../lib/mode'
 import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
@@ -94,7 +95,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
   const ownerIds = [...new Set([...latest.values()].filter((r) => LIVE.includes(r.status) && r.mode === 'session' && r.sessionOwner).map((r) => r.sessionOwner!))]
   const owners = new Map<number, string>()
   if (ownerIds.length) for (const o of (await payload.find({ collection: 'bauherren', where: { id: { in: ownerIds } }, pagination: false, ...q })).docs as unknown as { id: number; email: string }[]) owners.set(o.id, o.email.split('@')[0])
-  const productRows = products.docs as unknown as { id: number; name: string }[]
+  const productRows = products.docs as unknown as { id: number; name: string; productionChecks?: string | null }[]
   const byId = new Map(productRows.map((p) => [p.id, p]))
   const rows = ticketDocs.map((t): TicketRow => {
     const isOpen = t.state !== 'closed'
@@ -108,10 +109,10 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       stage: stageOf(t),
       rank: t.rank ?? null,
       reviewRounds: t.reviewRounds ?? 0,
-      product: byId.get(t.product) ?? null,
+      product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
+      needsYou: isOpen ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
       parent: parents.get(t.parent) ?? null,
       children: childrenOf.get(t.id) ?? [],
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,

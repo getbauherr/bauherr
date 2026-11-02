@@ -152,7 +152,7 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
 }
 
 /**
- * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (`productionGate` with `productionChecks`), then it waits for production approval.
+ * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (workflow `production_gate` or `Product.productionGate`), then it waits for production approval; without `productionChecks` the Ticket shows the "Configure production checks" gate instead (see `needsYou`).
  * `touch` records the human acceptance; the automatic path (release gate off) passes none.
  */
 export const passStaging = async (payload: Payload, t: Doc, touch?: () => Promise<unknown>): Promise<{ approved: string; stage: 'release' | 'done' }> => {

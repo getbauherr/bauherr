@@ -83,9 +83,9 @@ const releaseTicket = async (title: string) => {
 }
 
 describe('default workflow (plan and release gates off)', () => {
-  it('lists refine as the only always-on human gate', () => {
+  it('lists refine and production as the default human gates', () => {
     usePack()
-    expect(mode.humanGates()).toEqual(['refine'])
+    expect(mode.humanGates()).toEqual(['refine', 'production'])
     expect([mode.gateOn('plan'), mode.gateOn('release')]).toEqual([false, false])
   })
 
@@ -143,7 +143,7 @@ describe('default workflow (plan and release gates off)', () => {
 
   it('moves a merged Ticket confirmed on staging to the production gate of a Product that has it on', async () => {
     usePack()
-    await payload.update({ collection: 'products', id: product, data: { productionGate: true, productionChecks: 'deploy-prod' }, ...o })
+    await payload.update({ collection: 'products', id: product, data: { productionChecks: 'deploy-prod' }, ...o })
     const { id, n } = await releaseTicket('prod gate')
     expect(await release.watchRelease(payload)).toMatchObject({ confirmed: 1 })
     expect(await reload(id)).toMatchObject({ stage: 'release', state: 'open', releaseState: 'on_staging', productionState: 'awaiting_approval' })
@@ -156,26 +156,25 @@ describe('default workflow (plan and release gates off)', () => {
   })
 })
 
-describe('no production gate', () => {
+describe('production gate off or unconfigured', () => {
   afterEach(async () => {
-    await payload.update({ collection: 'products', id: product, data: { productionGate: false, productionChecks: '' }, ...o })
+    await payload.update({ collection: 'products', id: product, data: { productionChecks: '' }, ...o })
   })
 
-  it('goes to done when the Product has the gate on but no productionChecks', async () => {
-    await payload.update({ collection: 'products', id: product, data: { productionGate: true, productionChecks: '' }, ...o })
-    const { id } = await releaseTicket('no checks')
-    await release.watchRelease(payload)
-    expect(await reload(id)).toMatchObject({ stage: 'done', state: 'closed' })
-  })
-
-  it('goes to done with the default workflow when the Product gate is off', async () => {
+  it('shows the Configure production checks gate, not done, when the gate is on and the Product has no productionChecks', async () => {
     usePack()
-    const { id } = await releaseTicket('gate off')
+    await payload.update({ collection: 'products', id: product, data: { productionChecks: '' }, ...o })
+    const { id, n } = await releaseTicket('no checks')
     await release.watchRelease(payload)
-    expect(await reload(id)).toMatchObject({ stage: 'done', state: 'closed' })
+    const t = await reload(id)
+    expect(t).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
+    const ticket = { stage: t.stage, labels: await labelsOf(n), releaseState: t.releaseState, productionState: t.productionState }
+    expect(needs.needsYou({ ...ticket, productionChecksMissing: true }, null)).toBe('Configure production checks')
+    await expect(actions.approveProduction(payload, user, { ticket: id })).rejects.toThrow('configure productionChecks')
+    expect(await touches()).toBe(0)
   })
 
-  it('finishes a Ticket confirmed on staging: done and closed, no touch', async () => {
+  it('gate turned off in the workflow: a Ticket confirmed on staging is done and closed, no touch', async () => {
     usePack('bare-pack')
     expect(mode.humanGates()).toEqual(['refine'])
     const { id, n } = await releaseTicket('done')

@@ -1,4 +1,4 @@
-# Both optional gates on: Approve plan and Accept on staging. No production gate.
+# Both optional gates on: Approve plan and Accept on staging. No production gate (production_gate off).
 stages:
   - name: triage
     steps: [{kind: agent-run, skill: triage}]

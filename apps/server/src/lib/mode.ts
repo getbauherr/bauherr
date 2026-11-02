@@ -8,7 +8,7 @@ const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
 
 const workflowPath = () => resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'), 'workflow.yaml')
 
-export type PackStage = { name: string; mode?: unknown; gate?: string; exclude_labels?: string[]; steps?: { kind: string; skill?: string }[] }
+export type PackStage = { name: string; mode?: unknown; gate?: string; production_gate?: string; exclude_labels?: string[]; steps?: { kind: string; skill?: string }[] }
 let packStages: { path: string; stages: PackStage[] } | undefined
 
 /** Stages of pack/workflow.yaml, read once per path; unreadable or malformed file yields []. */
@@ -24,19 +24,23 @@ export const packed = (): PackStage[] => {
   return packStages.stages
 }
 
-export type HumanGate = 'refine' | 'plan' | 'staging'
+export type HumanGate = 'refine' | 'plan' | 'staging' | 'production'
 
 /** Whether `gate: human` is set on the optional `plan` or `release` stage of the workflow. */
 export const gateOn = (stage: 'plan' | 'release'): boolean => packed().find((s) => s.name === stage)?.gate === 'human'
 
-/** The production gate is a per-Product setting; it needs `productionChecks`, else `beginProduction` could never pass and the Ticket would stay in release. */
-export const productionGateOn = (product: { productionGate?: boolean | null; productionChecks?: string | null }): boolean => !!product.productionGate && !!product.productionChecks?.trim()
+/** Production gate: on by default (`production_gate: human` on `release`); a Product can also turn it on itself. Without `productionChecks` it is not skipped but shown as a "Configure production checks" gate. */
+export const productionGateOn = (product: { productionGate?: boolean | null } = {}): boolean => packed().find((s) => s.name === 'release')?.production_gate === 'human' || !!product.productionGate
 
-/** Human gates the workflow enables, in flow order. `refine` is always on (Triage's questions); `plan` and `staging` are optional. The production gate is per Product (`Product.productionGate`). */
+/** Whether the Product can observe a production deploy (`beginProduction` needs it). */
+export const hasProductionChecks = (product: { productionChecks?: string | null }): boolean => !!product.productionChecks?.trim()
+
+/** Human gates the workflow enables, in flow order. `refine` is always on (Triage's questions); `plan` and `staging` are optional; `production` is on unless `production_gate` is removed from `release`. */
 export const humanGates = (): HumanGate[] => [
   'refine',
   ...(gateOn('plan') ? (['plan'] as const) : []),
   ...(gateOn('release') ? (['staging'] as const) : []),
+  ...(productionGateOn() ? (['production'] as const) : []),
 ]
 
 /** Stage names of pack/workflow.yaml, in order. */
