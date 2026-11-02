@@ -806,6 +806,12 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId): Promi
     if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
       await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
     }
+    const base = process.env.PUBLIC_URL?.replace(/\/$/, '') ?? ''
+    for (const m of (await payload.find({ collection: 'media', where: { and: [{ session: { equals: s.id } }, { attached: { not_equals: true } }] }, sort: 'id', pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
+      if (ts.addAttachment) await ts.addAttachment(String(t.number), m.name, Buffer.from(m.data, 'base64'))
+      else await ts.addLink(String(t.number), `${base}/intake/api/media/${m.id}`)
+      await payload.update({ collection: 'media', id: m.id, data: { attached: true }, overrideAccess: true })
+    }
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
     return { number: t.number }
   })

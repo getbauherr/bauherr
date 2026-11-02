@@ -463,6 +463,13 @@ export const collections: CollectionConfig[] = [
     { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
     rel('user', 'bauherren'),
   ]),
+  col('media', [
+    rel('session', 'intake_sessions', { required: true }),
+    text('name', { required: true }),
+    select('mime', ['image/png', 'image/jpeg', 'image/webp'], { required: true }),
+    { name: 'data', type: 'textarea', required: true, admin: { description: 'Base64, metadata stripped.' } },
+    { name: 'attached', type: 'checkbox', defaultValue: false, admin: { description: 'Sent to the forge Ticket.' } },
+  ]),
   col('workflow_versions', [
     num('version'),
     rel('product', 'products', { required: true }),
