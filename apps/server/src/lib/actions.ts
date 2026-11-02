@@ -484,6 +484,11 @@ const moveReview = async (payload: Payload, ticket: TicketId, to: string | null,
     )
   ).rows.length > 0
 
+/** Cancels the Ticket's active review Runs. */
+const cancelReviewRuns = async (payload: Payload, ticket: TicketId): Promise<void> => {
+  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "updated_at" = now() WHERE "ticket_id" = ${ticket} AND "stage" = 'review' AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
+}
+
 /** Parks the Ticket on a human with a Ticket comment (never overwrites a completed merge). */
 const escalate = async (payload: Payload, t: Doc, why: string): Promise<ReviewOutcome> => {
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = 'needs_human', "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "review_state" IS DISTINCT FROM 'merged'`)
@@ -520,7 +525,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   if (low.length) worklog = appendToSection(worklog, '**Open**', low)
   if (log) await src.ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await src.ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
-  await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, data: { status: 'cancelled' }, overrideAccess: true })
+  await cancelReviewRuns(payload, t.id)
   await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
   await setStage(mr.tickets, n, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
@@ -560,7 +565,7 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   const worklog = setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text)
   if (log) await mr.tickets.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
-  await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, data: { status: 'cancelled' }, overrideAccess: true })
+  await cancelReviewRuns(payload, t.id)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
   await setStage(mr.tickets, n, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, overrideAccess: true })
@@ -808,6 +813,12 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId): Promi
     t ??= await ts.create(intakeTicket(session.draft, s.id, r.missing, s.product.slug))
     if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
       await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
+    }
+    const base = process.env.PUBLIC_URL?.replace(/\/$/, '') ?? ''
+    for (const m of (await payload.find({ collection: 'media', where: { and: [{ session: { equals: s.id } }, { attached: { not_equals: true } }] }, sort: 'id', pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
+      if (ts.addAttachment) await ts.addAttachment(String(t.number), m.name, Buffer.from(m.data, 'base64'))
+      else await ts.addLink(String(t.number), `${base}/intake/api/media/${m.id}`)
+      await payload.update({ collection: 'media', id: m.id, data: { attached: true }, overrideAccess: true })
     }
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
     return { number: t.number }
