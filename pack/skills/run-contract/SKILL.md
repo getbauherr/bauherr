@@ -57,6 +57,9 @@ Refer to the Ticket as `Refs #N` in the MR body and commit messages; never `Clos
 
 Update the worklog as your last action. Do not push or open the MR yourself: the Runner does after you exit.
 
+## Conflicts with main
+On a conflict with the base branch merge it into the MR branch (`git merge`), keeping both sides; never rebase, never force push.
+
 ## Do not
 - Mark a statement verified without evidence.
 - Weaken or delete a test or check to make it pass.

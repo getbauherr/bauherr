@@ -346,6 +346,8 @@ const tickets = col('tickets', [
   date('gateNotifiedAt'),
   text('gateAssignees'),
   { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
+  { name: 'conflictReturnBase', type: 'text', admin: { description: 'The head SHA a review covered before the MR went back to Build to merge the base; the next review covers only the diff from it. Cleared when that review concludes.' } },
+  { name: 'conflictReturns', type: 'number', defaultValue: 0, admin: { description: 'Returns to Build because the MR conflicted; the 4th needs a human.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
