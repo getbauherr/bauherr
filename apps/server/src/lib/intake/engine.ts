@@ -7,7 +7,10 @@ export const MAX_MESSAGE_CHARS = 2000
 const SCREEN = /\b(page|screen|button|error|layout|seite|bildschirm|knopf|schaltfl[aä]che|fehler)\b/i
 
 export type Draft = { problem: string; context: string; acceptance_criteria: string[]; type: 'bug' | 'feature' | 'question'; severity?: 'low' | 'medium' | 'high'; links: string[] }
-export type Message = { role: 'user' | 'assistant'; content: string }
+export type Message = { role: 'user' | 'assistant'; content: string; images?: (number | string)[] }
+export type Image = { id: number | string; mime: string; data: string }
+type Block = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+export type ModelMessage = { role: 'user' | 'assistant'; content: string | Block[] }
 export type Turn = { question: string; options?: { label: string; recommended?: boolean }[]; draft: Draft; needsScreenshot: boolean; missing: string[] }
 export type Session = { messages: Message[]; draft: Draft | null; screenshots?: number }
 
@@ -61,7 +64,7 @@ export const readiness = (draft: Draft | null, hasScreenshot: boolean, refers: b
 const prompt = async (): Promise<string> =>
   (await readFile(resolve(process.cwd(), '../../pack/skills/intake/SKILL.md'), 'utf8')).replace(/^---[\s\S]*?---\s*/, '')
 
-export type ModelCall = (a: { system: string; messages: Message[]; schema: object }) => Promise<unknown>
+export type ModelCall = (a: { system: string; messages: ModelMessage[]; schema: object }) => Promise<unknown>
 
 /** One Messages-API call through the gateway as the Workspace; the answer is the schema-enforced JSON text. */
 export const gatewayModel = (a: { slug: string; key: string; model: string }): ModelCall => async ({ system, messages, schema }) => {
@@ -105,12 +108,16 @@ export const checkMessage = (s: Session, text: string): void => {
   if (s.messages.filter((m) => m.role === 'user').length >= MAX_USER_MESSAGES) throw new Error('message limit reached')
 }
 
-/** Adds the user's message, asks the model for the next single question and the updated draft, and returns the new session state. */
-export const nextTurn = async (s: Session, text: string, model: ModelCall): Promise<{ session: Session; turn: Turn; ready: boolean; exhausted: boolean; missing: string[] }> => {
+/** Adds the user's message (with this turn's screenshots as vision input), asks the model for the next single question and the updated draft, and returns the new session state. */
+export const nextTurn = async (s: Session, text: string, model: ModelCall, images: Image[] = []): Promise<{ session: Session; turn: Turn; ready: boolean; exhausted: boolean; missing: string[] }> => {
   checkMessage(s, text)
   if (questionsAsked(s) >= MAX_QUESTIONS) throw new Error('question limit reached')
-  const messages: Message[] = [...s.messages, { role: 'user', content: text }]
-  const turn = normalizeTurn(await model({ system: await prompt(), messages, schema: TURN_SCHEMA }))
+  const messages: Message[] = [...s.messages, { role: 'user', content: text, ...(images.length && { images: images.map((i) => i.id) }) }]
+  const sent: ModelMessage[] = [
+    ...s.messages.map(({ role, content }) => ({ role, content })),
+    { role: 'user', content: images.length ? [...images.map((i): Block => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })), { type: 'text', text }] : text },
+  ]
+  const turn = normalizeTurn(await model({ system: await prompt(), messages: sent, schema: TURN_SCHEMA }))
   const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question }], draft: turn.draft }
   const r = readiness(turn.draft, (s.screenshots ?? 0) > 0, refersToScreen(session, turn.needsScreenshot), questionsAsked(session))
   return { session, turn, ...r }

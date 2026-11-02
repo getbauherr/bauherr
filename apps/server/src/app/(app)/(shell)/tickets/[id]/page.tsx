@@ -35,12 +35,13 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const q = { depth: 0, overrideAccess: true } as const
   const [ticket] = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: workspace.id } }] }, limit: 1, ...q })).docs as Doc[]
   if (!ticket) notFound()
-  const [product, ws, runs, blockers, blocks] = await Promise.all([
+  const [product, ws, runs, blockers, blocks, shots] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
     payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...q }).then((r) => r.docs as Doc[]),
     ticket.blockedBy?.length ? payload.find({ collection: 'tickets', where: { and: [{ id: { in: ticket.blockedBy } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]) : [],
     payload.find({ collection: 'tickets', where: { and: [{ blockedBy: { equals: ticket.id } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
+    payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
   ])
 
   let comments: { body: string }[] = []
@@ -119,6 +120,15 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <section className="stack" aria-labelledby="worklog">
           <h2 className="heading" id="worklog">Worklog</h2>
           <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(withoutWorklogHeading(strip(worklog, WORKLOG_MARKER))) }} />
+        </section>
+      )}
+
+      {shots.length > 0 && (
+        <section className="stack" aria-labelledby="attachments">
+          <h2 className="heading" id="attachments">Attachments</h2>
+          <ul className="shots">
+            {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
+          </ul>
         </section>
       )}
 
