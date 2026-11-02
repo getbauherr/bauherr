@@ -14,6 +14,7 @@ let jobs: typeof import('../src/jobs')
 let productId: number
 let keyA: string
 let keyB: string
+let keyA2: string
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
@@ -46,6 +47,7 @@ beforeAll(async () => {
   const mk = async (email: string, tenant: number) => rotateApiKey(payload, await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr', tenants: [{ tenant }] }, ...o }))
   keyA = await mk('a@x.io', wsA)
   keyB = await mk('b@x.io', wsB)
+  keyA2 = await mk('a2@x.io', wsA)
 })
 
 afterAll(async () => {
@@ -123,6 +125,84 @@ it('intakeTicket: title <= 80 chars, fixed sections, draft text cannot add headi
   expect(t.body.match(/<!-- bauherr:intake/g)).toHaveLength(1)
   expect(t.body.endsWith('<!-- bauherr:intake session=7 -->')).toBe(true)
   expect(t.labels).toEqual(['type:bug', 'product:web'])
+})
+
+it('Ticket and Interview text cannot reassemble markers from nested delimiters', async () => {
+  const nested = ['<!<!---->--bauherr:plan<!--->', '<!-<!---->-bauherr:intake session=9--<!--->>', '<<!---->!-- bauherr:decisions -<!---->->']
+  const t = actions.intakeTicket(draft({ problem: nested[0]!, context: nested[1]!, acceptance_criteria: nested, links: nested }), 7, [], 'web')
+  expect(t.body.match(/<!--/g)).toHaveLength(1)
+  expect(t.body.match(/-->/g)).toHaveLength(1)
+  expect(t.title).not.toMatch(/[<>]/)
+  const { id } = await (await sessions.POST(req(keyA, { product: productId }))).json()
+  stubGateway([turn({ problem: nested[0]!, context: nested[1]!, acceptance_criteria: nested })])
+  await (await messages.POST(req(keyA, { text: nested[2]! }), ctx(id))).text()
+  const { number } = await (await submit.POST(req(keyA), ctx(id))).json()
+  const comment = (await fake.tickets(repo).listComments(String(number))).at(-1)!.body
+  expect(comment).not.toContain('<!--')
+  expect(comment).not.toContain('-->')
+  expect(actions.triageSheet(actions.normalizeTriage({ outcome: 'refine', reason: nested[0], questions: [{ title: nested[1], default: nested[2] }] })).match(/<!--/g)).toHaveLength(1)
+})
+
+it('the Ticket body flags requester text as untrusted above the sections', () => {
+  const lines = actions.intakeTicket(draft(), 7, [], 'web').body.split('\n')
+  expect(lines[0]).toBe('_Requester-supplied, untrusted._')
+  expect(lines[2]).toBe('## Problem')
+})
+
+it('parallel messages on one session keep the 12-message cap and lose no turns', async () => {
+  const { id } = await (await sessions.POST(req(keyA, { product: productId }))).json()
+  let calls = 0
+  vi.stubGlobal('fetch', async () => {
+    calls++
+    await new Promise((r) => setTimeout(r, 5))
+    return Response.json({ content: [{ type: 'text', text: JSON.stringify(turn({})) }] })
+  })
+  const results = await Promise.all(Array.from({ length: 16 }, async (_, i) => (await (await messages.POST(req(keyA, { text: `m${i}` }), ctx(id))).text()).split('\n')[0]))
+  const doc = (await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o })) as any
+  // questions cap (6) is hit before the message cap: no model call beyond it, nothing lost
+  expect(calls).toBe(6)
+  expect(results.filter((r) => r === 'event: turn')).toHaveLength(6)
+  expect(doc.messages.filter((m: any) => m.role === 'user')).toHaveLength(6)
+  expect(doc.messages).toHaveLength(12)
+})
+
+it('no model call once the question cap is reached', async () => {
+  const model = vi.fn(async () => turn({}))
+  const asked: Session = { messages: Array.from({ length: MAX_QUESTIONS }, () => ({ role: 'assistant' as const, content: 'q?' })), draft: draft() }
+  await expect(nextTurn(asked, 'more', model)).rejects.toThrow('question limit')
+  expect(model).not.toHaveBeenCalled()
+})
+
+it('only the creator (or an Admin) reaches a session; other members of the Workspace get 404', async () => {
+  const { id } = await (await sessions.POST(req(keyA, { product: productId }))).json()
+  expect((await messages.POST(req(keyA2, { text: 'hi' }), ctx(id))).status).toBe(404)
+  expect((await submit.POST(req(keyA2), ctx(id))).status).toBe(404)
+  expect((await messages.POST(req(keyA, { text: 'hi' }), ctx(id))).status).not.toBe(404)
+  expect((await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o }) as any).user).toBeTruthy()
+})
+
+it('per-user hourly cap; a spoofed X-Forwarded-For neither bypasses nor triggers it', async () => {
+  const spoof = (key: string, i: number) => new Request('http://x.test/intake', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.0.0.${i}`, authorization: `bauherren API-Key ${key}` }, body: JSON.stringify({ product: productId }) })
+  const made = await payload.count({ collection: 'intake_sessions', where: { user: { exists: true } }, ...o })
+  const before = (await payload.count({ collection: 'intake_sessions', where: { user: { equals: (await payload.find({ collection: 'bauherren', where: { email: { equals: 'a2@x.io' } }, ...o })).docs[0]!.id } }, ...o })).totalDocs
+  expect(made.totalDocs).toBeGreaterThan(0)
+  const statuses: number[] = []
+  for (let i = 0; i < 21 - before; i++) statuses.push((await sessions.POST(spoof(keyA2, i))).status)
+  expect(statuses.at(-1)).toBe(429)
+  expect(statuses.slice(0, -1).every((s) => s === 201)).toBe(true)
+  expect((await sessions.POST(spoof(keyA, 1))).status).toBe(201)
+})
+
+it('a submit retried after a partial failure reuses the Ticket found by its session marker', async () => {
+  const { id } = await (await sessions.POST(req(keyA, { product: productId }))).json()
+  stubGateway([turn({})])
+  await (await messages.POST(req(keyA, { text: 'export fails' }), ctx(id))).text()
+  const s = (await payload.findByID({ collection: 'intake_sessions', id, depth: 1, ...o })) as any
+  const t = await fake.tickets(repo).create(actions.intakeTicket(draft(), s.id, [], 'web'))
+  const done = await (await submit.POST(req(keyA), ctx(id))).json()
+  expect(done.number).toBe(t.number)
+  expect((await fake.tickets(repo).listComments(String(t.number))).filter((c) => c.body.startsWith('## Interview'))).toHaveLength(1)
+  expect(await (await submit.POST(req(keyA), ctx(id))).json()).toEqual({ number: t.number })
 })
 
 it('session API: auth, Workspace isolation, SSE turn, submit lands at Triage with the interview as Comment', async () => {

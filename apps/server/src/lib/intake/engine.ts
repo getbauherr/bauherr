@@ -108,6 +108,7 @@ export const checkMessage = (s: Session, text: string): void => {
 /** Adds the user's message, asks the model for the next single question and the updated draft, and returns the new session state. */
 export const nextTurn = async (s: Session, text: string, model: ModelCall): Promise<{ session: Session; turn: Turn; ready: boolean; exhausted: boolean; missing: string[] }> => {
   checkMessage(s, text)
+  if (questionsAsked(s) >= MAX_QUESTIONS) throw new Error('question limit reached')
   const messages: Message[] = [...s.messages, { role: 'user', content: text }]
   const turn = normalizeTurn(await model({ system: await prompt(), messages, schema: TURN_SCHEMA }))
   const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question }], draft: turn.draft }

@@ -345,7 +345,7 @@ export const collections: CollectionConfig[] = [
     json('draft'),
     { name: 'screenshots', type: 'number', defaultValue: 0 },
     { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
-    text('ip', { index: true }),
+    rel('user', 'bauherren'),
   ]),
   col('workflow_versions', [
     num('version'),

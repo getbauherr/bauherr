@@ -5,7 +5,8 @@ import { decrypt } from '../secrets'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
 import { gatewayModel, type ModelCall } from './engine'
 
-export const SESSIONS_PER_IP_HOUR = 20
+/** Per-user cap; there is no trusted-proxy config (X-Forwarded-For is client-controlled), so no per-IP cap exists. */
+export const SESSIONS_PER_USER_HOUR = 20
 
 type Doc = Record<string, any>
 const ws = (d: Doc) => (typeof d.workspace === 'object' ? d.workspace.id : d.workspace)
@@ -17,10 +18,11 @@ export const actor = async (req: Request): Promise<{ payload: Payload; user: Doc
   return user ? { payload, user } : Response.json({ error: 'unauthorized' }, { status: 401 })
 }
 
-/** The open session of this Bauherr's Workspaces; 404 for anything else (no existence leak across Workspaces). */
+/** The session this Bauherr created (an Admin: any); 404 for anything else (no existence leak across Workspaces or members). */
 export const ownSession = async (payload: Payload, user: Doc, sessionId: string): Promise<Doc | null> => {
   const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 1, overrideAccess: true }).catch(() => null)) as Doc | null
-  return s && (user.role === 'admin' || tenantsOf(user).map(String).includes(String(ws(s)))) ? s : null
+  const creator = s && (typeof s.user === 'object' ? s.user?.id : s.user)
+  return s && (user.role === 'admin' || (String(creator) === String(user.id) && tenantsOf(user).map(String).includes(String(ws(s))))) ? s : null
 }
 
 /** Model call as the session's Workspace (standard tier, D5). */
@@ -29,5 +31,3 @@ export const modelFor = async (payload: Payload, session: Doc): Promise<ModelCal
   const model = { ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier }.standard
   return gatewayModel({ slug: w.slug, key: decrypt(w.gatewayKey), model })
 }
-
-export const ipOf = (req: Request): string => req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
