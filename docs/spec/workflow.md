@@ -122,6 +122,8 @@ Intake session, then the Ticket in the Ticket source with its Stage Label and Co
 
 Intake: `POST /intake/api/sessions` (Product), `.../:id/messages` (one interview turn, SSE `turn` event), `.../:id/submit`. The engine asks one question per turn through the gateway (skill [intake](../../pack/skills/intake/SKILL.md), standard tier), at most 6 questions; completeness (problem, context, >= 2 criteria, screenshot for screen requests) is computed by the engine, not the model. Submit creates the Ticket without a stage label, so Triage picks it up, with `type:`/`product:` labels, an `## Open` section for gaps and the interview as a Comment.
 
+Persona `owner`: "Answer interactively" on the Ticket page (shown while the decision sheet has open rows) opens an `intake_sessions` row with persona `owner` and `draft.ticket`. No model call: the engine's `ownerQueue` asks the sheet's unanswered rows one per turn, critical first, the sheet default marked recommended. Each pick goes through `postDecisions` (the same `<!-- bauherr:decisions -->` Comment and worklog Decisions as the sheet form, which stays); the session ends `submitted` when no row is left.
+
 ## 14. Pack artifacts index
 Manifest: [pack.yaml](../../pack/pack.yaml). Hooks map to SDK events in [hooks.yaml](../../pack/hooks/hooks.yaml).
 
