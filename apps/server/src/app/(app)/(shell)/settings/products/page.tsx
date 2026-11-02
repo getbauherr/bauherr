@@ -60,6 +60,9 @@ export default async function ProductSettings() {
             <Field name="deployWebhookUrl" label="Webhook URL (webhook mode)" type="url" defaultValue={p.deploy.webhookUrl} disabled={!admin} />
             <Field name="deployChecks" label="Required checks" hint="Comma-separated; empty = all must be green." defaultValue={p.deploy.checks} disabled={!admin} />
             <Field name="gateOwners" label="Gate owners" hint="GitHub logins, comma-separated, assigned and mentioned at human gates; empty = Admins with a GitHub login." defaultValue={p.deploy.gateOwners} disabled={!admin} />
+            <Field name="productionGate" label="Production gate" type="checkbox" hint="Accepting on staging waits for an explicit production approval; the Product's own pipeline deploys." defaultChecked={p.deploy.productionGate} disabled={!admin} />
+            <Field name="productionWebhookUrl" label="Production webhook URL" type="url" hint="Optional, POSTed once on approval." defaultValue={p.deploy.productionWebhookUrl} disabled={!admin} />
+            <Field name="productionChecks" label="Production checks" hint="Comma-separated check names on the merge commit that report the deploy; required with the production gate." defaultValue={p.deploy.productionChecks} disabled={!admin} />
             <Field name="autoMerge" label="Auto-merge" type="checkbox" hint="Squash-merge the MR after a clean review and green checks." defaultChecked={p.deploy.autoMerge} disabled={!admin} />
           </SettingsForm>
           {admin && (
