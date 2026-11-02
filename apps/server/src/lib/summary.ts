@@ -37,7 +37,7 @@ export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stag
   const outcomes = bullets(section(plan ?? '', 'Goal'))
   const goals = bullets(section(worklog ?? '', 'Goal')).map((g) => g.replace(/^\[( |x)\]\s*/i, (_, m) => (m === ' ' ? '(open) ' : '(done) ')).trim())
   const decisions = bullets(section(worklog ?? '', 'Decisions'))
-  const open = bullets(section(worklog ?? '', 'Unfinished work')).filter((x) => !/^none\.?$/i.test(x))
+  const open = [...bullets(section(worklog ?? '', 'Unfinished work')), ...bullets(section(worklog ?? '', 'Open'))].filter((x) => !/^none\.?$/i.test(x))
   const findings = mrs.flatMap((m) => items(section(m.body, 'Review')).map((f) => `${f} (MR #${m.number})`))
   const proof = evidence ?? mrs.map((m) => section(m.body, 'Evidence')).find(Boolean) ?? ''
   return [
