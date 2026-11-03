@@ -132,7 +132,19 @@ test('dragging a Board card shows the drop position', async ({ page }) => {
   await expect(marks).toHaveCount(1)
   await expect(card(upper)).toHaveAttribute('data-drop', 'before')
   const shots = process.env.SHOTS_DIR
-  if (shots) await page.screenshot({ path: `${shots}/board-drop-line.png` })
+  if (shots) {
+    for (const [w, h] of [[1280, 800], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h })
+      for (const scheme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: scheme })
+        await hover(upper)
+        await expect(marks).toHaveCount(1)
+        await page.screenshot({ path: `${shots}/board-drop-line-${scheme}-${w}x${h}.png` })
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await hover(upper)
+  }
   await hover(lower)
   await expect(marks).toHaveCount(0)
   await cancel()
@@ -152,4 +164,36 @@ test('dragging a Board card shows the drop position', async ({ page }) => {
     await page.reload()
     expect(await above()).toBe(true)
   }).toPass()
+})
+
+test('hovering or dropping on a closed card in a mixed column shows no drop position and keeps the order', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.locator('.col[data-stage=build] .card').first()).toBeVisible()
+  await page.goto('/?state=all')
+
+  const col = page.locator('.col[data-stage=done]')
+  const open = col.locator('.card[draggable=true]')
+  const closed = col.locator('.card:not([draggable=true])')
+  const marks = col.locator('[data-drop]')
+  const titles = () => col.locator('.card .ticket-title').allTextContents()
+  await expect(closed).toHaveCount(1)
+  const before = await titles()
+  const at = async (l: typeof open) => {
+    await l.scrollIntoViewIfNeeded()
+    const box = (await l.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 })
+  }
+  await at(open.nth(1))
+  await page.mouse.down()
+  await at(open.first())
+  await expect(marks).toHaveCount(1)
+  await at(closed)
+  await expect(marks).toHaveCount(0)
+  await page.mouse.up()
+  await expect(marks).toHaveCount(0)
+  expect(await titles()).toEqual(before)
 })

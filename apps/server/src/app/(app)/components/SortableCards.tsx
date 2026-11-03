@@ -40,12 +40,23 @@ export function SortableCards({ items }: { items: Item[] }) {
   const drop = drag !== null && target !== null && target !== from ? target : null
   const over = (i: number) => (e: DragEvent) => {
     if (drag === null) return
+    if (!order[i].movable) return setTarget(null)
     e.preventDefault()
     setTarget(i)
   }
+  const reset = () => {
+    setDrag(null)
+    setTarget(null)
+  }
 
   return (
-    <div className="cards" onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setTarget(null)}>
+    <div
+      className="cards"
+      onDragLeave={(e) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) setTarget(null)
+      }}
+    >
       {failed && <p className="muted small" role="alert">Could not save the new order.</p>}
       {order.map((it, i) => (
     <article
@@ -63,18 +74,14 @@ export function SortableCards({ items }: { items: Item[] }) {
           e.dataTransfer.setData('text/plain', String(it.id))
           setDrag(it.id)
         },
-        onDragEnd: () => {
-          setDrag(null)
-          setTarget(null)
-        },
-        onDragOver: over(i),
+        onDragEnd: reset,
         onDrop: (e: DragEvent) => {
           e.preventDefault()
-          setDrag(null)
-          setTarget(null)
-          if (from >= 0 && order[i].movable) void reorder(from, i)
+          reset()
+          if (from >= 0) void reorder(from, i)
         },
       })}
+      onDragOver={over(i)}
     >
       <span className="rank mono muted small" aria-label={`Position ${i + 1}`}>{i + 1}</span>
       {it.node}
