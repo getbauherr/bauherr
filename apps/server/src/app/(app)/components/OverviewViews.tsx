@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
-import { heartbeatAge } from '../lib/format'
+import { activity, heartbeatAge } from '../lib/format'
 import { GATES } from '../lib/gates'
 import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
@@ -29,7 +29,7 @@ const Working = ({ t }: { t: TicketRow }) => {
   const who = r.mode === 'session' ? (t.owner ?? 'session') : 'scheduler'
   return (
     <Link href={`/runs/${r.id}`} className={`label ${age?.stale ? 'queued' : 'running'}`}>
-      {r.stage} · {who}{age && ` · ${age.text}`}
+      {activity(t) ?? r.stage} · {who}{age && ` · ${age.text}`}
     </Link>
   )
 }
@@ -69,6 +69,7 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
               items={rows.map((t) => ({
                 id: t.id,
                 movable: t.open,
+                running: activity(t) !== null,
                 node: (
                   <>
                     <Num t={t} />

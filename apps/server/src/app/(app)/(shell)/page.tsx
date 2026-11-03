@@ -23,7 +23,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const shown = sp.state === 'all' && !graph ? inProduct : inProduct.filter((t) => t.open)
   return (
     <>
-      <AutoRefresh />
+      <AutoRefresh ms={10000} />
       <div className="row-between">
         <h1 className="title">Tickets</h1>
         <Link href="/requests/new" className="btn primary">New request</Link>

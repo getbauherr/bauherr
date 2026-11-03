@@ -1,4 +1,6 @@
-export type GraphTicket = { id: number; number: number; run: { status: string } | null; stage: string; blockedBy: { id: number }[] }
+import { executionOrder } from '../../../lib/frontier'
+
+export type GraphTicket = { id: number; number: number; rank: string | null; run: { status: string } | null; stage: string; blockedBy: { id: number }[] }
 export type GraphNode = { id: number; col: number; row: number; ready: boolean; critical: boolean; isolated: boolean }
 export type GraphEdge = { from: number; to: number; critical: boolean }
 
@@ -6,7 +8,7 @@ const LEASED = ['running', 'awaiting_session']
 
 /**
  * Left-to-right layout of open Tickets: column = length of the longest blocker chain leading to the Ticket,
- * row = rank by Ticket number inside the column among connected Tickets. Edges run blocker -> blocked.
+ * row = execution order (stage, rank, number) inside the column among connected Tickets. Edges run blocker -> blocked.
  * The critical path is the longest chain (lowest numbers win ties). Back edges of a cycle are ignored and `cycle` is set.
  * Isolated Tickets (no edge between shown Tickets) get `isolated` and no row.
  */
@@ -45,7 +47,7 @@ export function layoutGraph(tickets: GraphTicket[]): { nodes: GraphNode[]; edges
   }
 
   const rows = new Map<number, number>()
-  const nodes = [...tickets].sort((a, b) => a.number - b.number).map((t): GraphNode => {
+  const nodes = [...tickets].sort(executionOrder).map((t): GraphNode => {
     const isolated = !linked.has(t.id)
     const c = col.get(t.id)!
     const row = isolated ? 0 : (rows.set(c, (rows.get(c) ?? -1) + 1), rows.get(c)!)

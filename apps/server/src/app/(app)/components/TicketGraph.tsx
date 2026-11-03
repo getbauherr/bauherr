@@ -1,7 +1,9 @@
 import Link from 'next/link'
+import { stageGroup } from '../../../lib/frontier'
 import { layoutGraph } from '../lib/graph'
 import { stageLabel } from '../lib/needs-you'
 import type { TicketRow } from '../lib/overview'
+import { activity } from '../lib/format'
 
 const W = 220, H = 64, GX = 72, GY = 20, PAD = 4
 const x = (col: number) => PAD + col * (W + GX)
@@ -9,14 +11,16 @@ const y = (row: number) => PAD + row * (H + GY)
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; critical: boolean }; x: number; y: number }) {
-  const label = `#${t.number} ${t.title}, stage ${stageLabel(t.stage)}${n.ready ? ', ready' : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
+  const doing = activity(t)
+  const label = `#${t.number} ${t.title}, stage ${stageLabel(t.stage)}${n.ready ? ', ready' : ''}${doing ? `, ${doing}` : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
   return (
-    <Link href={`/tickets/${t.id}`} aria-label={label} className="gnode" data-stage={t.stage} data-ready={n.ready || undefined} data-critical={n.critical || undefined} data-ticket={t.number}>
+    <Link href={`/tickets/${t.id}`} aria-label={label} className="gnode" data-stage={t.stage} data-ready={n.ready || undefined} data-critical={n.critical || undefined} data-running={doing ? '' : undefined} data-ticket={t.number}>
       <rect className="box" x={nx} y={ny} width={W} height={H} rx={4} />
       <rect className="stripe" x={nx} y={ny} width={4} height={H} />
       <text className="mono num" x={nx + 14} y={ny + 20}>#{t.number}</text>
       <text className="label stage" x={nx + W - 10} y={ny + 20} textAnchor="end">{t.stage}</text>
       <text className="name" x={nx + 14} y={ny + 40}>{clip(t.title, 28)}</text>
+      {doing && <text className="label act" x={nx + 14} y={ny + 56}>{doing}</text>}
       {n.ready && <text className="label ready" x={nx + 14} y={ny + 56}>ready</text>}
       {n.critical && <text className="label crit" x={nx + W - 10} y={ny + 56} textAnchor="end">critical</text>}
     </Link>
@@ -55,11 +59,20 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
       {isolated.length > 0 && (
         <section aria-labelledby="tg-iso">
           <h2 className="label" id="tg-iso">No dependencies ({isolated.length})</h2>
-          <div className="scroll">
-            <svg className="tgraph" role="group" aria-label="Tickets without dependencies" width={PAD * 2 + isolated.length * (W + GY) - GY} height={H + PAD * 2}>
-              {isolated.map((n, i) => <Node key={n.id} t={byId.get(n.id)!} n={n} x={PAD + i * (W + GY)} y={PAD} />)}
-            </svg>
-          </div>
+          {[...Array(6).keys()].map((g) => {
+            const group = isolated.filter((n) => stageGroup(byId.get(n.id)!.stage) === g)
+            if (!group.length) return null
+            const list = (
+              <ul className="gwrap">
+                {group.map((n) => <li key={n.id}><svg className="tgraph" role="group" aria-label={`Ticket #${byId.get(n.id)!.number}`} width={W + PAD * 2} height={H + PAD * 2}><Node t={byId.get(n.id)!} n={n} x={PAD} y={PAD} /></svg></li>)}
+              </ul>
+            )
+            return g === 5 ? (
+              <details key={g}><summary className="label">Show {group.length} more</summary>{list}</details>
+            ) : (
+              <section key={g} aria-labelledby={`tg-iso-${g}`}><h3 className="label" id={`tg-iso-${g}`}>{stageLabel(byId.get(group[0].id)!.stage)} ({group.length})</h3>{list}</section>
+            )
+          })}
         </section>
       )}
     </>

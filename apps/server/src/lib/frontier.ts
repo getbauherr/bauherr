@@ -36,3 +36,14 @@ export const frontierOrder = <T extends FrontierTicket>(tickets: T[], latest: Ma
     .map((x) => x.t)
 
 const cmp = (a?: string | null, b?: string | null): number => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0)
+
+const EXECUTION_STAGES = ['release', 'review', 'build', 'plan', 'triage']
+
+/** Execution-order group of a stage: release 0, review 1, build 2, plan 3, triage 4, anything else 5. */
+export const stageGroup = (stage?: string | null): number => {
+  const i = EXECUTION_STAGES.indexOf(stage ?? '')
+  return i < 0 ? EXECUTION_STAGES.length : i
+}
+
+/** Comparator for the order work is done in: stage group, then the owner's rank, then number. */
+export const executionOrder = (a: FrontierTicket, b: FrontierTicket): number => stageGroup(a.stage) - stageGroup(b.stage) || cmp(a.rank, b.rank) || a.number - b.number
