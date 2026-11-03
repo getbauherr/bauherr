@@ -44,7 +44,7 @@ test('Ticket at the review round cap shows the gate with both actions', async ({
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.board')).toBeVisible()
   await page.locator('.card', { hasText: 'Harden the retry loop' }).first().getByRole('link', { name: 'Harden the retry loop' }).click()
-  await expect(page.getByRole('heading', { name: 'Round cap reached' })).toBeVisible()
+  await expect(page.getByTestId('action-bar')).toContainText('The review sent this back too often')
   await expect(page.getByRole('button', { name: 'Grant one more round' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible()
   if (shots) {
