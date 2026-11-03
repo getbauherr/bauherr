@@ -1,4 +1,4 @@
-import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, type TicketSource, MergePendingError, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
@@ -9,6 +9,7 @@ import { ownerQueue, questionsAsked, readiness, refersToScreen, type Draft, type
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
+import { moveStage } from './stage-move'
 import { NoRoom, rankBetween } from './frontier'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
@@ -121,7 +122,7 @@ export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: Ticke
 export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId }) => {
   const t = await loadTicket(payload, user, a.ticket)
   const { ts, n } = await sourceOf(payload, t)
-  await setStage(ts, n, 'review')
+  await moveStage(payload, ts, t, 'review')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review' }, overrideAccess: true })
   await startReviewIfReady(payload, { ...t, stage: 'review' })
   return { stage: 'review' }
@@ -129,6 +130,9 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
 
 const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
   payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at: now() }, overrideAccess: true })
+
+/** Whether the Ticket has an open critical decision: it holds every forward move. */
+export const holdsRefine = async (ts: TicketSource, n: string) => openCritical(await ts.listComments(n)).length > 0
 
 const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
   payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: now() }, overrideAccess: true })
@@ -201,7 +205,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
   }
   const parent = await spawnSubTickets(payload, t)
   if (!parent) {
-    await setStage(ts, n, 'build')
+    await moveStage(payload, ts, t, 'build')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
     if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
   }
@@ -249,7 +253,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       }
       const row = await upsertTicket(
         payload,
-        { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: 'plan' },
+        { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
         link,
       )
       spawned.set(item.title, { id: child.id, docId: row.id })
@@ -271,7 +275,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       if (!(await ts.get(me.id)).blockedBy.includes(after.id)) await ts.addBlockedBy(me.id, after.id)
       await payload.update({ collection: 'tickets', id: me.docId, data: { blockedBy: [after.docId] }, ...ro })
     }
-    await setStage(ts, n, PARENT)
+    await moveStage(payload, ts, parent, PARENT)
     await payload.update({ collection: 'tickets', id: parent.id, data: { stage: PARENT }, ...ro })
     return true
   })
@@ -287,7 +291,7 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
       const kids = await ts.listSubTickets(n)
       if (!kids.length || kids.some((k) => k.state !== 'closed')) continue
       if ((await ts.get(n)).state !== 'closed') await ts.close(n, 'completed')
-      await setStage(ts, n, 'done')
+      await moveStage(payload, ts, p, 'done')
       await payload.update({ collection: 'tickets', id: p.id, data: { stage: 'done', state: 'closed' }, ...ro })
       await ts.comment(n, `All sub-tickets are closed:\n${kids.map((k) => `- #${k.number} ${k.title}`).join('\n')}`)
       closed++
@@ -368,17 +372,17 @@ export const postDecisions = async (
       if (log) await src.ts.updateComment(src.n, log.id, appendDecisions(log.body, lines))
       else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendDecisions(WORKLOG_TEMPLATE, lines)}`)
     }
-    await releaseIfAnswered(src)
+    await releaseIfAnswered(payload, src, t)
     return { recorded: changed.length }
   })
 }
 
 /** A Ticket held by Triage (`needs-refinement`) whose critical questions are all answered leaves the hold and enters `plan`; the poller starts the Plan Run. */
-const releaseIfAnswered = async ({ ts, n }: Source) => {
+const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc) => {
   const { labels } = await ts.get(n)
   if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await ts.listComments(n)).length) return
   await ts.removeLabels(n, [NEEDS_REFINEMENT])
-  await setStage(ts, n, 'plan')
+  await moveStage(payload, ts, t, 'plan')
 }
 
 export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
@@ -438,7 +442,7 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
   else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
-  await setStage(src.ts, src.n, 'build')
+  await moveStage(payload, src.ts, t, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
   await clearApprovalLabel(payload, src.ts, src.n)
   await touch(payload, user, t, 'request-changes:staging')
@@ -555,7 +559,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   else await src.ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
   await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
-  await setStage(mr.tickets, n, 'build')
+  await moveStage(payload, mr.tickets, t, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
   return 'build'
 }
@@ -595,7 +599,7 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
-  await setStage(mr.tickets, n, 'build')
+  await moveStage(payload, mr.tickets, t, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, overrideAccess: true })
   await touch(payload, user, t, 'review-cap:grant')
   return { stage: 'build', run: run.id as TicketId }
@@ -608,7 +612,7 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
     sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
-  await setStage(mr.tickets, n, 'triage')
+  await moveStage(payload, mr.tickets, t, 'triage')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage' }, overrideAccess: true })
   const note = a.note?.trim()
   await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}`)
@@ -789,7 +793,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   const doc = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
   const { ts, n } = await sourceOf(payload, doc)
   if (stageOf((await ts.get(n)).labels)) return { outcome: 'noop' }
-  if (t.outcome === 'plan') await setStage(ts, n, 'plan')
+  if (t.outcome === 'plan') await moveStage(payload, ts, doc, 'plan')
   else {
     if (t.outcome === 'refine') {
       await ts.comment(n, triageSheet(t))

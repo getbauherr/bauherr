@@ -10,9 +10,9 @@ const o = { overrideAccess: true, depth: 0 } as const
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 
-/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is left alone, the Ticket advances anyway. */
+/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is stripped as well (the factory writes it only while the gate is on; gate-off Tickets advance through `advancePlan`, which needs no label). */
 export const GATE_LABELS = [
-  { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: false },
+  { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: true },
   { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging'], strictWhenOff: true },
 ] as const
 
