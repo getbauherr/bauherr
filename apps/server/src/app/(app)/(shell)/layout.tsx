@@ -9,7 +9,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
   return (
     <>
       <TopBar user={user} workspaces={workspaces} workspace={workspace} needsYou={needsYou} hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)} />
-      <main className="page">{children}</main>
+      <main className="flex flex-col gap-6 p-8 max-sm:p-4 max-sm:has-[.actionbar]:pb-[calc(132px+var(--space-4))]">{children}</main>
     </>
   )
 }

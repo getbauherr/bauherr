@@ -35,6 +35,14 @@
   --color-current: currentColor;
 }
 
+/* Anchors default to the surrounding text; in the base layer so color and underline utilities on links win. */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
 /* The part of preflight the shadcn components rely on, scoped to them. */
 @layer base {
   .aui-root :where(*, ::before, ::after) {
@@ -53,5 +61,12 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+}
+
+@theme {
+  --animate-stripe: stripe 1.6s ease-in-out infinite alternate;
+  @keyframes stripe {
+    to { background-position: left bottom; }
   }
 }
