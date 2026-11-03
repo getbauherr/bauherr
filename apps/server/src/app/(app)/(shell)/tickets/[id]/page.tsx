@@ -2,6 +2,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
+import { ActionBar } from '../../../components/ActionBar'
 import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionSheet } from '../../../components/DecisionSheet'
 import { Approved, Gate, ProductionChecksGate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
@@ -69,10 +70,18 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const stagingSummary = latestWith(comments, SUMMARY_MARKER)?.body
   const acceptedStaging = labels.includes('bauherr:approved:staging')
   const waitingForStaging = ticket.stage === 'release' && !acceptedStaging && !gate
+  const answered = decisions.filter((d) => answers[d.id]).length
+  const live = runs[0] && ['running', 'awaiting_session'].includes(runs[0].status) ? runs[0] : null
+  const idle = `Nothing to do: ${
+    live ? `${live.stage} is running (Run #${live.id}, ${live.mode === 'session' ? 'session' : 'scheduler'})`
+    : waitingForStaging ? `waiting for the staging deploy of ${ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}`
+    : ticket.stage === 'review' ? reviewWord(ticket.reviewState).replace(/^./, (c) => c.toLowerCase())
+    : stageOf(ticket)}.`
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
 
   return (
     <div className="stack">
+      <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} idle={idle} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
       <p className="meta small muted">
         <span>{product.name}</span>
@@ -90,29 +99,25 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {summary && approved && <Approved number={ticket.number} />}
       {gate?.kind === 'plan' && (
         <Gate
-          ticket={ticket.id}
           number={ticket.number}
           plan={summary ?? null}
           budget={ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}
           model={tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}
-          sheet={decisions.length ? `${decisions.filter((d) => answers[d.id]).length} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
-          blocked={missing.length ? `Answer ${missing.map((d) => d.id).join(', ')} first (critical).` : null}
+          sheet={decisions.length ? `${answered} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
         />
       )}
-      {gate?.kind === 'questions' && <QuestionsGate number={ticket.number} answered={decisions.length - missing.length} total={decisions.length} />}
+      {gate?.kind === 'questions' && <QuestionsGate number={ticket.number} answered={answered} total={decisions.length} />}
       {gate?.kind === 'release' && (
         <ReleaseGate ticket={ticket.id} number={ticket.number} title={gate.title} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} stagingUrl={product.stagingUrl ?? null} />
       )}
       {gate?.kind === 'production-checks' && <ProductionChecksGate number={ticket.number} title={gate.title} />}
-      {gate?.kind === 'production' && <ProductionGate ticket={ticket.id} number={ticket.number} title={gate.title} failed={todo === 'Production deploy failed'} />}
+      {gate?.kind === 'production' && <ProductionGate number={ticket.number} title={gate.title} failed={todo === 'Production deploy failed'} />}
       {gate?.kind === 'review-cap' && (
-        <ReviewCapGate ticket={ticket.id} number={ticket.number} title={gate.title} findingsHtml={capFindings ? renderMarkdown(capFindings) : null} />
+        <ReviewCapGate number={ticket.number} title={gate.title} findingsHtml={capFindings ? renderMarkdown(capFindings) : null} />
       )}
       {gate?.kind === 'rerun' && runs[0] && <RerunGate run={runs[0].id} number={ticket.number} title={gate.title} stage={runs[0].stage} />}
       {acceptedStaging && <Approved number={ticket.number} label="Accepted on staging" />}
       {labels.includes('bauherr:approved:production') && <Approved number={ticket.number} label="Approved for production" />}
-      {waitingForStaging && <p className="small muted">Waiting for staging deploy of <span className="mono">{ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}</span></p>}
-      {ticket.stage === 'review' && <p className="small muted">{reviewWord(ticket.reviewState)}</p>}
       {decisions.some((d) => !answers[d.id]) && <OwnerChat ticket={ticket.id} />}
       {decisions.length > 0 && <DecisionSheet ticket={ticket.id} decisions={decisions} answers={answers} />}
 

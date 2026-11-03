@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { answerOwnerChat, startOwnerChat } from '../lib/actions'
 
 type Q = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
@@ -13,17 +13,28 @@ export function OwnerChat({ ticket }: { ticket: number }) {
   const [failed, setFailed] = useState(false)
   const [pending, run] = useTransition()
 
+  const started = useRef(false)
+
   const start = () =>
     run(async () => {
+      if (started.current) return
+      started.current = true
       try {
         const { session, ...first } = await startOwnerChat(ticket)
         setSession(session)
         setQ(first)
         setLog([{ role: 'bauherr', text: first.question }])
       } catch {
+        started.current = false
         setFailed(true)
       }
     })
+  useEffect(() => {
+    const go = () => location.hash === '#answer' && start()
+    go()
+    addEventListener('hashchange', go)
+    return () => removeEventListener('hashchange', go)
+  }, [])
   const answer = (label: string) =>
     run(async () => {
       if (!session || !q) return
@@ -39,14 +50,14 @@ export function OwnerChat({ ticket }: { ticket: number }) {
 
   if (!session) {
     return (
-      <p>
+      <p id="answer">
         <button type="button" className="btn" onClick={start} disabled={pending}>Answer interactively</button>
         {failed && <span className="small muted"> The questions could not be loaded.</span>}
       </p>
     )
   }
   return (
-    <section className="chat sheet" aria-label="Answer interactively">
+    <section className="chat sheet" id="answer" aria-label="Answer interactively">
       <ol className="chat-log">
         {log.map((m, i) => <li key={i} className={m.role === 'you' ? 'you' : undefined}>{m.text}</li>)}
       </ol>
