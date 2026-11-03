@@ -94,7 +94,7 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
     const n = String(t.number)
     await ts.comment(n, `Bauherr: triage failed ${MAX_TRIAGE_ATTEMPTS} times; label the Ticket or edit it to retry`)
     const at = (await ts.get(n)).updatedAt
-    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at, sourceUpdatedAt: at }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at }, overrideAccess: true })
   } catch (e) {
     payload.logger.warn({ err: e, ticket: t.id }, 'triage give-up comment failed')
   }
@@ -110,7 +110,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -127,7 +127,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
     await payload.update({
       collection: 'tickets',
       id: t.id,
-      data: { triagedAt: t.sourceUpdatedAt ?? new Date().toISOString(), ...(created && { triageAttempts: (t.triageAttempts ?? 0) + 1, triageAttemptAt: new Date().toISOString() }) },
+      data: { triagedAt: t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt) > new Date(t.sourceUpdatedAt) ? t.triagedAt : (t.sourceUpdatedAt ?? new Date().toISOString()), ...(created && { triageAttempts: (t.triageAttempts ?? 0) + 1, triageAttemptAt: new Date().toISOString() }) },
       overrideAccess: true,
     })
     started++

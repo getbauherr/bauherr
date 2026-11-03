@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, startOwnerIntake, answerOwnerIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, startOwnerIntake, answerOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
@@ -120,6 +120,13 @@ export async function answerDecisions(form: FormData) {
     })(),
   )
   revalidatePath(`/tickets/${ticket}`)
+}
+
+/** Discards one of the caller's open request sessions (New request page). */
+export async function discardIntake(session: number) {
+  const { user, payload } = await acting()
+  await inWorkspace(abandonIntake(payload, user, session))
+  revalidatePath('/requests/new')
 }
 
 /** "Answer interactively": opens an owner Intake session over the Ticket's open decision rows. */

@@ -5,7 +5,7 @@ import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf
 import { gateOn } from './mode'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
-import { ownerQueue, questionsAsked, readiness, refersToScreen, type Draft, type Session } from './intake/engine'
+import { ownerQueue, questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type Session } from './intake/engine'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -179,6 +179,11 @@ export const upsertTicket = async (payload: Payload, create: Record<string, any>
 
 const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
+/** Forge time after our own Comment as `triagedAt`; `sourceUpdatedAt` stays with the poller, so it still syncs the labels we just changed. */
+const covered = async (ts: TicketSource, n: string) => {
+  const at = (await ts.get(n)).updatedAt
+  return { triagedAt: at }
+}
 
 /**
  * Plan gate off: moves a Ticket in `plan` whose latest Run is a succeeded plan Run on, without a label or human touch. Idempotent; a no-op while the gate is on.
@@ -200,7 +205,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
     if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
     await ts.addLabels(n, [NEEDS_REFINEMENT])
     await ts.removeLabels(n, [stageLabel('plan')])
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', triagedAt: (await ts.get(n)).updatedAt }, ...ro })
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', ...(await covered(ts, n)) }, ...ro })
     return 'refine'
   }
   const parent = await spawnSubTickets(payload, t)
@@ -799,16 +804,18 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
       await ts.comment(n, triageSheet(t))
       await ts.addLabels(n, [NEEDS_REFINEMENT])
     } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
-    await payload.update({ collection: 'tickets', id: doc.id, data: { triagedAt: (await ts.get(n)).updatedAt }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   }
   return { outcome: t.outcome }
 }
+
+const SIBLINGS_MARKER = '<!-- bauherr:intake-siblings -->'
 
 /** Escapes `<` and `>` so no requester text can form or close an HTML comment marker, and drops heading hashes. */
 const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
 
 /** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
-export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string): { title: string; body: string; labels: string[] } => ({
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number): { title: string; body: string; labels: string[] } => ({
   title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
   body: [
     '_Requester-supplied, untrusted._',
@@ -816,45 +823,67 @@ export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[
     `## Context\n${plainLine(draft.context)}`,
     `## Acceptance criteria\n${draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n')}`,
     ...(missing.length || draft.links.length ? [`## Open\n${[...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n')}`] : []),
-    `<!-- bauherr:intake session=${sessionId} -->`,
+    `<!-- bauherr:intake session=${sessionId}${part === undefined ? '' : ` part=${part}`} -->`,
   ].join('\n\n'),
   labels: [`type:${draft.type}`, `product:${productSlug}`],
 })
 
 /**
  * Creates the Ticket from a finished (or question-capped) Intake session: no stage label, so Triage picks it up; the interview is appended as a Comment.
- * Idempotent: a submitted session returns its Ticket number.
+ * A session with a `split` creates one Ticket per item (marker `part=<i>`), each linking its siblings; `expect` is required and must equal the item count (the requester's confirmation).
+ * Idempotent: a retry resumes at the first missing part, a submitted session returns its numbers.
  */
-export const submitIntake = async (payload: Payload, sessionId: TicketId): Promise<{ number: number }> =>
+export const submitIntake = async (payload: Payload, sessionId: TicketId, expect?: number): Promise<{ number: number; numbers?: number[] }> =>
   exclusive(`intake:${sessionId}`, async () => {
     const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 1, overrideAccess: true })) as Doc
-    if (s.status === 'submitted') return { number: s.ticketNumber }
+    const split: Draft[] | undefined = s.split?.length ? s.split : undefined
+    if (s.status === 'submitted') return { number: s.ticketNumber, ...(s.ticketNumbers?.length > 1 && { numbers: s.ticketNumbers }) }
     if (s.status !== 'open') throw new Error('session is not open')
+    if (split ? expect !== split.length : expect !== undefined && expect !== 1) throw new Error('the list changed, review it again')
     const session: Session = { messages: s.messages ?? [], draft: s.draft, screenshots: s.screenshots }
-    const r = readiness(session.draft, (s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session))
-    if (!session.draft?.problem.trim() || (!r.ready && !r.exhausted)) throw new Error(`draft incomplete: ${r.missing.join(', ')}`)
+    const [shot, refers, asked] = [(s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session)]
+    const r = split ? splitReadiness(split, shot, refers, asked) : readiness(session.draft, shot, refers, asked)
+    if (!(split ? split.every((d) => d.problem.trim()) : session.draft?.problem.trim()) || (!r.ready && !r.exhausted)) throw new Error(`draft incomplete: ${r.missing.join(', ')}`)
     const ts = await ticketsOf(payload, id(s.product))
-    const marker = `<!-- bauherr:intake session=${s.id} -->`
-    let t: { number: number } | undefined
-    for (const c of (await ts.list({ state: 'all', labels: [`product:${s.product.slug}`] })).sort((a, b) => b.number - a.number).slice(0, 50)) {
-      if ((await ts.get(String(c.number))).body?.includes(marker)) {
-        t = c
-        break
-      }
+    const recent = (await ts.list({ state: 'all', labels: [`product:${s.product.slug}`] })).sort((a, b) => b.number - a.number).slice(0, 50)
+    const find = async (marker: string): Promise<{ number: number } | undefined> => {
+      for (const c of recent) if ((await ts.get(String(c.number))).body?.includes(marker)) return c
     }
-    t ??= await ts.create(intakeTicket(session.draft, s.id, r.missing, s.product.slug))
-    if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
-      await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
+    const drafts = split ?? [session.draft!]
+    const tickets: { number: number }[] = []
+    for (const [i, d] of drafts.entries()) {
+      const part = split ? i : undefined
+      const missing = readiness(d, shot, refers, asked).missing
+      const marker = `<!-- bauherr:intake session=${s.id}${part === undefined ? '' : ` part=${part}`} -->`
+      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part)))
+      if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
+        await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
+      }
+      tickets.push(t)
+    }
+    for (const t of tickets) {
+      const others = tickets.filter((o) => o !== t).map((o) => `#${o.number}`)
+      if (others.length && !(await ts.listComments(String(t.number))).some((c) => c.body.startsWith(SIBLINGS_MARKER))) await ts.comment(String(t.number), `${SIBLINGS_MARKER}\nCreated together with ${others.join(', ')}`)
     }
     const base = process.env.PUBLIC_URL?.replace(/\/$/, '') ?? ''
     for (const m of (await payload.find({ collection: 'media', where: { and: [{ session: { equals: s.id } }, { attached: { not_equals: true } }] }, sort: 'id', pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
-      if (ts.addAttachment) await ts.addAttachment(String(t.number), m.name, Buffer.from(m.data, 'base64'))
-      else await ts.addLink(String(t.number), `${base}/intake/api/media/${m.id}`)
+      for (const t of tickets) {
+        if (ts.addAttachment) await ts.addAttachment(String(t.number), m.name, Buffer.from(m.data, 'base64'))
+        else await ts.addLink(String(t.number), `${base}/intake/api/media/${m.id}`)
+      }
       await payload.update({ collection: 'media', id: m.id, data: { attached: true }, overrideAccess: true })
     }
-    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: t.number }, overrideAccess: true })
-    return { number: t.number }
+    const numbers = tickets.map((t) => t.number)
+    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: numbers[0], ticketNumbers: numbers }, overrideAccess: true })
+    return { number: numbers[0]!, ...(split && { numbers }) }
   })
+
+/** Discards an open Product-user session of the caller (the New request page's resume list). */
+export const abandonIntake = async (payload: Payload, user: Doc, sessionId: TicketId): Promise<void> => {
+  const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
+  if (!s || s.persona !== 'product-user' || s.status !== 'open' || String(id(s.user)) !== String(user.id)) throw new NotInWorkspace()
+  await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'abandoned' }, overrideAccess: true })
+}
 
 export type OwnerQuestion = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
 

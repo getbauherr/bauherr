@@ -12,10 +12,24 @@ export type Message = { role: 'user' | 'assistant'; content: string; images?: (n
 export type Image = { id: number | string; mime: string; data: string }
 type Block = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
 export type ModelMessage = { role: 'user' | 'assistant'; content: string | Block[] }
-export type Turn = { question: string; options?: { label: string; recommended?: boolean }[]; draft: Draft; needsScreenshot: boolean; missing: string[] }
-export type Session = { messages: Message[]; draft: Draft | null; screenshots?: number }
+export type Turn = { question: string; options?: { label: string; recommended?: boolean }[]; draft: Draft; split?: Draft[]; needsScreenshot: boolean; missing: string[] }
+export type Session = { messages: Message[]; draft: Draft | null; split?: Draft[]; screenshots?: number }
 
 export const emptyDraft = (): Draft => ({ problem: '', context: '', acceptance_criteria: [], type: 'feature', links: [] })
+
+const DRAFT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['problem', 'context', 'acceptance_criteria', 'type', 'links'],
+  properties: {
+    problem: { type: 'string' },
+    context: { type: 'string' },
+    acceptance_criteria: { type: 'array', items: { type: 'string' } },
+    type: { enum: ['bug', 'feature', 'question'] },
+    severity: { enum: ['low', 'medium', 'high'] },
+    links: { type: 'array', items: { type: 'string' } },
+  },
+}
 
 export const TURN_SCHEMA = {
   type: 'object',
@@ -24,19 +38,8 @@ export const TURN_SCHEMA = {
   properties: {
     question: { type: 'string' },
     options: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['label'], properties: { label: { type: 'string' }, recommended: { type: 'boolean' } } } },
-    draft: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['problem', 'context', 'acceptance_criteria', 'type', 'links'],
-      properties: {
-        problem: { type: 'string' },
-        context: { type: 'string' },
-        acceptance_criteria: { type: 'array', items: { type: 'string' } },
-        type: { enum: ['bug', 'feature', 'question'] },
-        severity: { enum: ['low', 'medium', 'high'] },
-        links: { type: 'array', items: { type: 'string' } },
-      },
-    },
+    draft: DRAFT_SCHEMA,
+    split: { type: 'array', items: DRAFT_SCHEMA },
     needsScreenshot: { type: 'boolean' },
     missing: { type: 'array', items: { type: 'string' } },
   },
@@ -59,6 +62,12 @@ export const readiness = (draft: Draft | null, hasScreenshot: boolean, refers: b
     ...((draft?.acceptance_criteria.filter((c) => c.trim()).length ?? 0) >= 2 ? [] : ['acceptance_criteria']),
     ...(refers && !hasScreenshot ? ['screenshot'] : []),
   ]
+  return { ready: !missing.length, exhausted: asked >= MAX_QUESTIONS, missing }
+}
+
+/** Several problems: every item must be complete on its own (a screen request needs the screenshot for each); `missing` entries read `<n>: <field>`. */
+export const splitReadiness = (split: Draft[], hasScreenshot: boolean, refers: boolean, asked: number): { ready: boolean; exhausted: boolean; missing: string[] } => {
+  const missing = split.flatMap((d, i) => readiness(d, hasScreenshot, refers, asked).missing.map((m) => `${i + 1}: ${m}`))
   return { ready: !missing.length, exhausted: asked >= MAX_QUESTIONS, missing }
 }
 
@@ -86,21 +95,28 @@ export const gatewayModel = (a: { slug: string; key: string; model: string }): M
 
 const list = (v: unknown, max: number): string[] => (Array.isArray(v) ? v.map((x) => String(x).trim().slice(0, 500)).filter(Boolean).slice(0, max) : [])
 
-/** Validates the model's turn; throws on anything that is not the schema's shape. */
+const normalizeDraft = (d: any): Draft => ({
+  problem: String(d.problem ?? '').trim().slice(0, 1000),
+  context: String(d.context ?? '').trim().slice(0, 2000),
+  acceptance_criteria: list(d.acceptance_criteria, 10),
+  type: d.type,
+  ...(['low', 'medium', 'high'].includes(d.severity) && { severity: d.severity }),
+  links: list(d.links, 10),
+})
+
+/** Validates the model's turn; throws on anything that is not the schema's shape. `split` (2 to 6 items, empty context taken from the umbrella draft) is dropped when it has fewer than 2. */
 export const normalizeTurn = (raw: any): Turn => {
   const d = raw?.draft
   if (!raw || typeof raw.question !== 'string' || !raw.question.trim() || !d || !['bug', 'feature', 'question'].includes(d.type)) throw new Error('intake model returned an invalid turn')
+  const draft = normalizeDraft(d)
+  const items: any[] = Array.isArray(raw.split) ? raw.split.slice(0, 6) : []
+  if (items.some((i) => !['bug', 'feature', 'question'].includes(i?.type))) throw new Error('intake model returned an invalid turn')
+  const split = items.length >= 2 ? items.map((i) => normalizeDraft(i)).map((i) => ({ ...i, context: i.context || draft.context })) : undefined
   return {
     question: raw.question.trim().slice(0, 500),
     options: Array.isArray(raw.options) ? raw.options.slice(0, 6).map((o: any) => ({ label: String(o.label).slice(0, 100), recommended: o.recommended === true })) : undefined,
-    draft: {
-      problem: String(d.problem ?? '').trim().slice(0, 1000),
-      context: String(d.context ?? '').trim().slice(0, 2000),
-      acceptance_criteria: list(d.acceptance_criteria, 10),
-      type: d.type,
-      ...(['low', 'medium', 'high'].includes(d.severity) && { severity: d.severity }),
-      links: list(d.links, 10),
-    },
+    draft,
+    ...(split && { split }),
     needsScreenshot: raw.needsScreenshot === true,
     missing: list(raw.missing, 10),
   }
@@ -123,7 +139,8 @@ export const nextTurn = async (s: Session, text: string, model: ModelCall, image
     { role: 'user', content: images.length ? [...images.map((i): Block => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })), { type: 'text', text }] : text },
   ]
   const turn = normalizeTurn(await model({ system: await prompt(), messages: sent, schema: TURN_SCHEMA }))
-  const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question }], draft: turn.draft }
-  const r = readiness(turn.draft, (s.screenshots ?? 0) > 0, refersToScreen(session, turn.needsScreenshot), questionsAsked(session))
+  const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question }], draft: turn.draft, split: turn.split }
+  const [shot, refers, asked] = [(s.screenshots ?? 0) > 0, refersToScreen(session, turn.needsScreenshot), questionsAsked(session)]
+  const r = turn.split ? splitReadiness(turn.split, shot, refers, asked) : readiness(turn.draft, shot, refers, asked)
   return { session, turn, ...r }
 }

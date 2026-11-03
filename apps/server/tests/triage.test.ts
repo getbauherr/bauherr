@@ -137,6 +137,26 @@ it('skip posts the reason, sets no stage and is not re-triaged until the Ticket 
   expect(await triageRuns(t.id)).toHaveLength(2)
 })
 
+for (const outcome of ['refine', 'skip'] as const) {
+  it(`${outcome}: the sweep starts no new Run before or after the poller syncs the Ticket, a later change re-triages once`, async () => {
+    const t = await create(`covered ${outcome}`)
+    const r = await claim(t.id)
+    await call(member, 'submit_triage', { ...r, ...(outcome === 'refine' ? refine : { outcome, reason: 'duplicate' }) })
+    await jobs.triageSweep(payload)
+    expect(await triageRuns(t.id)).toHaveLength(1)
+    await poll()
+    if (outcome === 'refine') expect(((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })).labels as string[]) ?? []).toContain('bauherr:needs-refinement')
+    await jobs.triageSweep(payload)
+    expect(await triageRuns(t.id)).toHaveLength(1)
+    const stored = await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })
+    expect(new Date(stored.triagedAt as string).getTime()).toBeGreaterThanOrEqual(new Date(stored.sourceUpdatedAt as string).getTime())
+    await fake.tickets(repo).comment(t.n, 'a human answers')
+    await poll()
+    await jobs.triageSweep(payload)
+    expect(await triageRuns(t.id)).toHaveLength(outcome === 'skip' ? 2 : 1)
+  })
+}
+
 it('submit_triage checks the lease, the stage and the input', async () => {
   const t = await create('guarded')
   const r = await claim(t.id)

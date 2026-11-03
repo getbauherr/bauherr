@@ -31,13 +31,31 @@ export function widget(script: HTMLScriptElement | null): void {
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector(s) as T
   const [fab, panel, log, opts, submit, form, input] = ['.fab', 'section', '.log', '.opts', '.submit', 'form', 'input'].map((s) => $(s)) as [HTMLButtonElement, HTMLElement, HTMLElement, HTMLElement, HTMLButtonElement, HTMLFormElement, HTMLInputElement]
   let session: number | null = null
-  const call = (path: string, body: object = {}) => fetch(`${base}/intake/api/${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  let count = 0
+  const slot = `bauherr-intake:${token.slice(0, 16)}`
+  const keep = (id: number | null) => {
+    try {
+      id === null ? localStorage.removeItem(slot) : localStorage.setItem(slot, String(id))
+    } catch {}
+  }
+  const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
+  const call = (path: string, body: object = {}) => fetch(`${base}/intake/api/${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
   const say = (cls: string, text: string) => {
     const p = document.createElement('p')
     p.className = cls
     p.textContent = text
     log.append(p)
     log.scrollTop = log.scrollHeight
+  }
+  const offer = (d: { options?: { label: string }[]; split?: unknown[] | null; ready?: boolean; exhausted?: boolean }) => {
+    count = d.split?.length ?? 0
+    for (const o of d.options ?? []) {
+      const b = document.createElement('button')
+      b.textContent = o.label
+      b.onclick = () => void send(o.label)
+      opts.append(b)
+    }
+    submit.hidden = !(d.ready || d.exhausted)
   }
   const busy = (b: boolean) => root.querySelectorAll('button,input').forEach((e) => ((e as HTMLButtonElement).disabled = b))
   const send = async (text: string) => {
@@ -50,6 +68,7 @@ export function widget(script: HTMLScriptElement | null): void {
         const r = await call('sessions')
         if (!r.ok) throw new Error(String(r.status))
         session = ((await r.json()) as { id: number }).id
+        keep(session)
       }
       const r = await call(`sessions/${session}/messages`, { text })
       if (!r.ok) throw new Error(String(r.status))
@@ -59,13 +78,7 @@ export function widget(script: HTMLScriptElement | null): void {
         const d = JSON.parse(data)
         if (event === 'error') throw new Error(d.message)
         say('bot', d.question)
-        for (const o of (d.options ?? []) as { label: string }[]) {
-          const b = document.createElement('button')
-          b.textContent = o.label
-          b.onclick = () => void send(o.label)
-          opts.append(b)
-        }
-        submit.hidden = !(d.ready || d.exhausted)
+        offer(d)
       }
     } catch {
       say('err', 'Something went wrong. Please try again.')
@@ -83,9 +96,11 @@ export function widget(script: HTMLScriptElement | null): void {
   submit.onclick = async () => {
     busy(true)
     try {
-      const r = await call(`sessions/${session}/submit`)
+      const r = await call(`sessions/${session}/submit`, count ? { expect: count } : {})
       if (!r.ok) throw new Error(String(r.status))
-      say('bot', `Thank you, your request #${((await r.json()) as { number: number }).number} was created.`)
+      const { number, numbers } = (await r.json()) as { number: number; numbers?: number[] }
+      say('bot', numbers ? `Thank you, your requests ${numbers.map((n) => `#${n}`).join(', ')} were created.` : `Thank you, your request #${number} was created.`)
+      keep(null)
       submit.hidden = true
       opts.replaceChildren()
       input.disabled = true
@@ -95,4 +110,20 @@ export function widget(script: HTMLScriptElement | null): void {
     }
   }
   document.body.append(host)
+  let saved: string | null = null
+  try {
+    saved = localStorage.getItem(slot)
+  } catch {}
+  if (saved) {
+    void (async () => {
+      try {
+        const r = await call(`sessions/${saved}`)
+        const d = (await r.json()) as { status: string; messages: { role: string; content: string }[]; split: unknown[] | null; turn: { options?: { label: string }[]; ready?: boolean; exhausted?: boolean } | null }
+        if (!r.ok || d.status !== 'open' || !d.messages.length) return keep(null)
+        session = Number(saved)
+        for (const m of d.messages) say(m.role === 'user' ? 'me' : 'bot', m.content)
+        if (d.turn) offer({ ...d.turn, split: d.split })
+      } catch {}
+    })()
+  }
 }

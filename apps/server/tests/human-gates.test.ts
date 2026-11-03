@@ -112,6 +112,7 @@ describe('default workflow (plan and release gates off)', () => {
     expect(labels.some((l) => l.startsWith('bauherr:stage:'))).toBe(false)
     expect(needs.needsYou({ stage: 'triage', labels }, null)).toBe('Answer questions')
     await poll()
+    expect((await reload(id)).labels).toEqual(expect.arrayContaining(['bauherr:needs-refinement']))
     expect((await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith('<!-- bauherr:plan-refine:'))).toHaveLength(1)
 
     await actions.postDecisions(payload, user, { ticket: id, answers: [{ id: 'D1', title: 'Storage', answer: 'postgres' }] })
