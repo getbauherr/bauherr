@@ -37,8 +37,10 @@ const split = (text: string, semi: boolean, q = false): string[] => {
 
 const CRITICAL = /(?:,\s*|\s+[—–-]\s+)critical\s*\.?$|\s*\(critical\)\s*\.?$/i
 const CRITICAL_FIELD = /\s*\bcritical:\s*(true|yes|false|no)\b(?:\s*\([^)]*\))?\.?/gi
+const TITLE_FIELD = /\s*\(\s*critical:\s*(?:true|yes|false|no)\s*\)/gi
+const LETTERED = /\s+(?=\(\w\)\s)/
 const isCritical = (title: string, body: string): boolean =>
-  CRITICAL.test(title) || [...body.matchAll(CRITICAL_FIELD)].some((m) => /^(true|yes)$/i.test(m[1]!))
+  CRITICAL.test(title) || [...`${title} ${body}`.matchAll(CRITICAL_FIELD)].some((m) => /^(true|yes)$/i.test(m[1]!))
 
 const ROW = /^(?=\s*[-*]\s+\*\*D\d+\b|\s*\|\s*D\d+\s*\|)/m
 
@@ -68,16 +70,19 @@ export const parseDecisions = (plan: string): Decision[] =>
     }
     const critical = isCritical(title, body)
     body = body.replace(CRITICAL_FIELD, '')
-    const alternatives = [...body.matchAll(/Alternatives?:\s*(.+?)(?=\s*(?:Alternatives?:|Default:?\s|Why:)|$)/g)].flatMap((a) => split(a[1]!, true))
-    const marked = /\bDefault:?\s+(.*?)(?=\s*(?:Alternatives?:|Why:)|$)/.exec(body)?.[1]
-    const lead = marked ?? /^(.*?)(?=\s*Alternatives?:|$)/.exec(body)![1]!
+    title = title.replace(TITLE_FIELD, '').replace(CRITICAL_FIELD, '')
+    const alts = [...body.matchAll(/(?:Alternatives?|Options):\s*(.+?)(?=\s*(?:Alternatives?:|Options:|(?:Recommended\s+default|Default):?\s|Why:)|$)/g)].flatMap((a) => split(a[1]!, true).flatMap((x) => x.split(LETTERED)).flatMap((x) => x.split(' / ')))
+    const marked = /\b(?:Recommended\s+default|Default):?\s+(.*?)(?=\s*(?:Alternatives?:|Options:|Why:)|$)/.exec(body)?.[1]
+    const lead = marked ?? /^(.*?)(?=\s*(?:Alternatives?|Options):|$)/.exec(body)![1]!
     const def = (split(lead, false)[0] ?? '').trim()
+    const letter = /^\(?(\w)\)?(?!\w)/.exec(def)?.[1]
+    const alternatives = alts.filter((a) => !letter || !a.startsWith(`(${letter})`)).map((a) => a.replace(/^\(\w\)\s+/, ''))
     return [{
       id,
       title: title.replace(CRITICAL, '').trim(),
       critical,
       default: def,
-      options: [def, ...alternatives],
+      options: [...new Set([def, ...alternatives])],
     }]
   })
 

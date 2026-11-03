@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { decisionsSectionHasRows, openCritical, parseAnswers, subTickets, unansweredCriticalCount, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../src/app/(app)/lib/plan'
 import { renderMarkdown } from '../src/app/(app)/lib/markdown'
@@ -30,22 +32,8 @@ describe('parseDecisions', () => {
   it('is empty without a Decisions block', () => expect(parseDecisions('# x\n- **D1 a**. Default: b.')).toEqual([]))
 })
 
-const plan58 = `<!-- bauherr:plan -->
-## Steps
-1. Spike
-
-## Decisions
-
-- **D1** (owner, answered) How does the router re-enter the gateway? Forwards the caller's Workspace key unchanged (via gateway \`passthrough\` auth to the router, router sends the same \`Authorization\` back); no key stored in the router. Critical: true.
-- **D2** (owner, answered) Router on by default? No: opt-in compose profile \`router\`; weights are downloaded only with the profile. Critical: true.
-- **D3** Router config source. Options: (a) render \`/gateway/router/config.yaml\` from the Workspace tiers (step 4); (b) static file with fixed model names. Default (a), single-Workspace instances only, like the \`*-ambient\` presets; one shared router cannot map categories. Why: smallest change that works. Critical: false.
-- **D4** Outer-request accounting. The \`auto\` request is seen twice by the gateway, so a Tokens budget could count it twice. Options: (a) accept and document; (b) own key kind with \`Audit\` budget. Default (a); switch to (b) in the same MR only if the smoke shows doubling. Critical: true (spend).
-- **D5** \`auto\` tier scope. Options: (a) optional tier; (b) fourth tier. Default (a). Why: (b) forces every Workspace to configure a model. Critical: false.
-- **D6** Router weights. Options: (a) upstream default classifier models; (b) mirror to an own registry. Default (a). Critical: false.
-
-## Out of scope
-- **D9** nothing.
-`
+const plan58 = readFileSync(join(__dirname, 'fixtures/plan-58.md'), 'utf8')
+const plan86 = readFileSync(join(__dirname, 'fixtures/plan-86.md'), 'utf8')
 
 describe('parseDecisions shapes', () => {
   it('#58: id alone in bold, Critical: field', () => {
@@ -61,6 +49,21 @@ describe('parseDecisions shapes', () => {
     const comments = [{ body: plan58 }, { body: '<!-- bauherr:decisions -->\nD1: x\nD2: y' }]
     expect(openCritical(comments).map((d) => d.id)).toEqual(['D4'])
     expect(openCritical([...comments.slice(0, 1), { body: '<!-- bauherr:decisions -->\nD1: x\nD2: y\nD4: a' }])).toEqual([])
+  })
+  it('#58: Options (a)/(b) are alternatives', () => {
+    expect(parseDecisions(plan58)[3]!.options).toContain('give the router entry its own key kind with `Audit` budget like `owner-session`')
+    expect(parseDecisions(plan58)[3]!.options).toHaveLength(2)
+  })
+  it('#86: critical field inside the bold title is detected and stripped', () => {
+    const rows = parseDecisions(plan86)
+    expect(rows.map((r) => [r.id, r.critical])).toEqual([['D1', true], ['D2', true], ['D3', true], ['D4', false], ['D5', false], ['D6', false], ['D7', false], ['D8', false]])
+    expect(rows[0]!.title).toBe('Access for product users')
+    expect(rows[0]!.default).toBe('(a)')
+    expect(rows[0]!.options).toHaveLength(2)
+    expect(rows[4]!.options).toEqual(['standard for the interview, cheap for the readiness check', 'cheap, standard'])
+  })
+  it('Options: a / b are alternatives', () => {
+    expect(parseDecisions('## Decisions\n- **D1 Pick** Options: red / blue. Default: red.')[0]!.options).toEqual(['red', 'blue'])
   })
   it('canonical bullet with critical true/false', () => {
     const rows = parseDecisions('## Decisions\n- **D1** Keep the name? Alternatives: rename; drop. Default: keep. Why: clients. critical: true.\n- **D2** Page size? Alternatives: 50. Default: 25. critical: false.')
