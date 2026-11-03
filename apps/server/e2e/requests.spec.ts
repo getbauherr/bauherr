@@ -13,7 +13,8 @@ test('Requests list shows Draft and Linked rows with Ticket links', async ({ pag
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Requests' }).click()
+  await page.getByRole('link', { name: 'New request' }).click()
+  await page.getByRole('link', { name: 'All requests' }).click()
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
   const draft = page.locator('tbody tr').filter({ hasText: 'Export totals drift' })
   await expect(draft).toContainText('Draft')

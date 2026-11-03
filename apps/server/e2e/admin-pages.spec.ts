@@ -16,9 +16,10 @@ const signIn = async (page: Page, who: string) => {
 
 test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', async ({ page }) => {
   await signIn(page, email)
-  await page.locator('header.topbar').locator('summary', { hasText: email.slice(0, 2).toUpperCase() }).click()
+  await page.getByRole('button', { name: 'User menu' }).click()
   await expect(page.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
-  await page.getByRole('link', { name: 'API key' }).click()
+  await page.getByRole('menuitem', { name: 'Settings' }).click()
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'API key' }).click()
   await expect(page).toHaveURL(/\/settings\/api-key$/)
 
   const label = `e2e ${Date.now()}`
