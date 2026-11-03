@@ -90,7 +90,7 @@ jobs:
       OTEL_ENABLED: "0"
       BAUHERR_PACK_DIR: ${{ github.workspace }}/apps/server/tests/fixtures/gated-pack
       E2E_GATED_PACK: "1"
-      MEDIA_DIR: ${{ runner.temp }}/media
+      MEDIA_DIR: /tmp/bauherr-e2e-media
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: corepack enable
