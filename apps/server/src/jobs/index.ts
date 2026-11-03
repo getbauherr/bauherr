@@ -186,7 +186,6 @@ export const abandonRun = async (
   return status
 }
 
-/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
 export const STALE_JOB_MS = 10 * 60_000
 
 /** Scheduled poller tasks; agent Runs (`run-stage`, `reconcile-costs`) are long by design and never listed. */
@@ -203,6 +202,7 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Prom
   return rows.length
 }
 
+/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
@@ -252,10 +252,10 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
   },
 })
 
-export const watchReviewsTask = watcher('watch-reviews', watchReviews)
-export const watchProductionTask = watcher('watch-production', watchProduction)
-export const resumeReviewsTask = watcher('resume-reviews', resumeReviews)
-export const watchReleaseTask = watcher('watch-release', watchRelease)
+export const watchReviewsTask = watcher('watch-reviews', (p) => watchReviews(p))
+export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
+export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
+export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
