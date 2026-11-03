@@ -2,7 +2,7 @@ import type { Where } from 'payload'
 import { payloadClient } from './session'
 
 type Ref = number | { id: number; name?: string }
-type Session = { id: number; product: Ref; status: string; draft?: { problem?: string } | null; messages?: { role: string; content: string }[] | null; ticketNumber?: number | null; updatedAt: string }
+type Session = { id: number; product: Ref; status: string; draft?: { problem?: string } | null; ticketNumber?: number | null; updatedAt: string }
 type TicketDoc = { id: number; number: number; title: string; stage?: string | null; product: Ref; parent?: Ref | null }
 const idOf = (r: Ref | null | undefined) => (typeof r === 'object' ? r?.id : r)
 
@@ -29,7 +29,7 @@ export async function loadRequests(workspaceId: number): Promise<{ rows: Request
     collection: 'intake_sessions',
     where: { 'product.workspace': { equals: workspaceId }, status: { in: ['open', 'submitted'] } },
     sort: '-updatedAt', limit: REQUESTS_LIMIT, pagination: true, depth: 1,
-    select: { product: true, status: true, draft: true, messages: true, ticketNumber: true, updatedAt: true },
+    select: { product: true, status: true, draft: true, ticketNumber: true, updatedAt: true },
     overrideAccess: true,
   })
   const docs = sessions.docs as unknown as Session[]
@@ -42,12 +42,11 @@ export async function loadRequests(workspaceId: number): Promise<{ rows: Request
     : []
   const rows = docs.map((s): RequestRow => {
     const productId = idOf(s.product)
-    const first = s.messages?.find((m) => m.role === 'user')?.content
     const problem = s.draft?.problem
     const t = s.ticketNumber == null ? undefined : tickets.find((x) => x.number === s.ticketNumber && idOf(x.product) === productId)
     return {
       id: s.id,
-      title: (problem?.trim() && cut(problem)) || (first?.trim() && cut(first)) || 'Untitled request',
+      title: (problem?.trim() && cut(problem)) || 'Untitled request',
       product: (typeof s.product === 'object' && s.product.name) || '—',
       linked: s.status === 'submitted',
       updatedAt: s.updatedAt,
