@@ -1,14 +1,11 @@
 import Link from 'next/link'
 import { logout, selectWorkspace } from '../lib/actions'
 import type { Bauherr, Workspace } from '../lib/session'
-import { ChevronDown, LogOut, Settings } from './icons'
 import { Nav } from './Nav'
-import { Popover } from './Popover'
-import { ThemeToggle } from './ThemeToggle'
+import { UserMenu } from './UserMenu'
+import { Button } from './ui/button'
 
-const initials = (email: string) => email.slice(0, 2).toUpperCase()
-
-export function TopBar({ user, workspaces, workspace, needsYou }: { needsYou: number; user: Bauherr; workspaces: Workspace[]; workspace: Workspace | null }) {
+export function TopBar({ user, workspaces, workspace, needsYou, hasKnowledge }: { needsYou: number; hasKnowledge: boolean; user: Bauherr; workspaces: Workspace[]; workspace: Workspace | null }) {
   return (
     <header className="topbar">
       <Link href="/" className="brand">
@@ -18,25 +15,12 @@ export function TopBar({ user, workspaces, workspace, needsYou }: { needsYou: nu
         </svg>
         <span className="heading">Bauherr</span>
       </Link>
-      <Nav needsYou={needsYou} />
+      <Nav needsYou={needsYou} hasKnowledge={hasKnowledge} />
       <div className="tools">
-        <Popover label={<>{workspace?.name ?? 'No Workspace'}<ChevronDown /></>}>
-          {workspaces.map((w) => (
-            <form key={w.slug} action={selectWorkspace.bind(null, w.slug)}>
-              <button className="row" aria-current={w.slug === workspace?.slug}>{w.name}</button>
-            </form>
-          ))}
-          <Link href="/settings/workspace" className="row sep"><Settings />Workspace settings</Link>
-        </Popover>
-        <ThemeToggle />
-        <Popover label={<span className="avatar">{initials(user.email)}<span className="sr">User menu</span></span>}>
-          <p className="small row muted">{user.email}</p>
-          <Link href="/settings/bauherren" className="row">Bauherren</Link>
-          <Link href="/settings/api-key" className="row">API key</Link>
-          <form action={logout}>
-            <button className="row sep"><LogOut />Sign out</button>
-          </form>
-        </Popover>
+        <Button asChild>
+          <Link href="/requests/new">New request</Link>
+        </Button>
+        <UserMenu email={user.email} admin={user.role === 'admin'} workspaces={workspaces.map(({ slug, name }) => ({ slug, name }))} current={workspace?.slug} logout={logout} selectWorkspace={selectWorkspace} />
       </div>
     </header>
   )

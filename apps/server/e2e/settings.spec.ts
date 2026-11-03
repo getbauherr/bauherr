@@ -14,8 +14,8 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   const bar = page.locator('header.topbar')
   await expect(bar).toBeVisible()
 
-  await bar.locator('summary', { hasText: /\S/ }).first().click()
-  await page.getByRole('link', { name: 'Workspace settings' }).click()
+  await bar.getByRole('button', { name: 'User menu' }).click()
+  await page.getByRole('menuitem', { name: 'Settings' }).click()
   await expect(page).toHaveURL(/\/settings\/workspace$/)
   const amount = String(40 + (Date.now() % 50))
   await page.getByLabel('Budget per 30 days').fill(amount)

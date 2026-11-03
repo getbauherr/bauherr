@@ -25,7 +25,6 @@ export default async function Requests() {
   return (
     <>
       <h1 className="title">Requests</h1>
-      <p><Link href="/requests/new" className="btn">New request</Link></p>
       {rows.length ? (
         <>
           <div className="scroll">

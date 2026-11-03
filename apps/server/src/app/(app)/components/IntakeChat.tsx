@@ -50,8 +50,9 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
   return (
     <div className="intake">
       <div className="stack">
+        <h2 className="label muted">Your drafts</h2>
         {others.length ? (
-          <ul className="stack" aria-label="Open requests">
+          <ul className="stack" aria-label="Your drafts">
             {others.map((o) => (
               <li key={o.id} className="chips">
                 <a href={`/requests/new?session=${o.id}`}>Resume</a>
@@ -60,7 +61,8 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
               </li>
             ))}
           </ul>
-        ) : null}
+        ) : <p className="small muted">No open drafts.</p>}
+        <a className="small muted" href="/requests">All requests</a>
         <label className="field">
           <span className="label muted">Product</span>
           <select value={product} onChange={(e) => setProduct(Number(e.target.value))} disabled={!!session}>
