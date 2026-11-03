@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { Fragment } from 'react'
+import { type CSSProperties, Fragment } from 'react'
+import { epicHue, epicShortTitle } from '../lib/epics'
 import { activity, heartbeatAge } from '../lib/format'
 import { GATES } from '../lib/gates'
 import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
@@ -42,14 +43,9 @@ const Blocked = ({ t }: { t: TicketRow }) =>
     </span>
   ) : null
 
-const Family = ({ t }: { t: TicketRow }) =>
+const EpicTag = ({ t }: { t: TicketRow }) =>
   t.parent ? (
-    <Link className="mono link small" href={`/tickets/${t.parent.id}`}>↳ #{t.parent.number}</Link>
-  ) : t.children.length ? (
-    <details className="small">
-      <summary>{t.children.filter((c) => !c.open).length}/{t.children.length} done</summary>
-      <ul>{t.children.map((c) => <li key={c.id}><Link className="link" href={`/tickets/${c.id}`}>#{c.number} {c.title}</Link>{!c.open && ' ✓'}</li>)}</ul>
-    </details>
+    <Link className="epic-tag small" style={{ '--hue': epicHue(t.parent.id) } as CSSProperties} href={`/tickets/${t.parent.id}`} title={`Epic #${t.parent.number} ${t.parent.title}`}>{epicShortTitle(t.parent.title)}</Link>
   ) : null
 
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
@@ -65,7 +61,7 @@ export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capp
         return (
           <section key={s} className="col" data-stage={s}>
             <h2 className="label">
-              {s === 'parent' ? 'Split' : stageLabel(s)}{' '}
+              {stageLabel(s)}{' '}
               {wip[s]?.limit != null ? <span className="wip" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="muted">{rows.length}</span>}
             </h2>
             <SortableCards
@@ -80,7 +76,7 @@ export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capp
                     {t.product && <span className="muted small">{t.product.name}</span>}
                     {t.run && <StatusChip status={t.run.status} />}
                     <Working t={t} />
-                    <Family t={t} />
+                    <EpicTag t={t} />
                     <Blocked t={t} />
                     {t.waiting && <span className="label chip waiting">{t.waiting}</span>}
                     <Needs t={t} />

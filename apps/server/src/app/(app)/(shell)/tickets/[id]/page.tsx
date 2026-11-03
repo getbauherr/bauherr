@@ -2,6 +2,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
+import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionSheet } from '../../../components/DecisionSheet'
@@ -10,6 +11,7 @@ import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
+import { loadOverview } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
@@ -48,6 +50,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
   ])
 
+  const epic = ticket.stage === 'parent' ? (await loadOverview(workspace.id, false)).epics.find((e) => e.id === ticket.id) : undefined
   let comments: { body: string }[] = []
   let labels: string[] = ticket.labels ?? []
   let forgeError = false
@@ -89,7 +92,13 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <span>{product.name}</span>
         {isWebUrl(ticket.url) && <a className="link" href={ticket.url}>Open on the forge</a>}
       </p>
-      <StagePipeline current={stageOf(ticket)} />
+      {epic ? (
+        <section className="stack" aria-labelledby="subtickets">
+          <h2 className="heading" id="subtickets">Sub-tickets</h2>
+          <EpicProgress epic={epic} />
+          <EpicChildren epic={epic} />
+        </section>
+      ) : <StagePipeline current={stageOf(ticket)} />}
       {waiting && <p className="small chip waiting" role="status">{waiting}</p>}
       {(blockers.length > 0 || blocks.length > 0) && (
         <ul className="deps small" aria-label="Dependencies">

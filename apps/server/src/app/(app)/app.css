@@ -197,3 +197,15 @@ a.link{color:var(--accent)}
 .intake{display:grid;grid-template-columns:minmax(0,640px) minmax(0,360px);gap:var(--space-8);align-items:start}
 .grow{flex:1}
 @media (max-width:640px){.intake{grid-template-columns:minmax(0,1fr)}}
+
+.epic-tag{--tint:oklch(60% .16 var(--hue));display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 var(--space-2);border-radius:var(--radius-sm);color:color-mix(in oklch,var(--tint) 65%,var(--ink));background:color-mix(in oklch,var(--tint) 14%,var(--surface-000));border:1px solid color-mix(in oklch,var(--tint) 40%,transparent)}
+.epic-tag:hover{text-decoration:underline}
+.epics,.echildren{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.epics>li{padding:var(--space-3);background:var(--surface-100);border:1px solid var(--hairline);border-radius:var(--radius-md)}
+.epics summary{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);cursor:pointer}
+.epics .eprog{flex-basis:100%}
+.epic-dot{width:10px;height:10px;border-radius:50%;background:oklch(60% .16 var(--hue))}
+.eprog{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-3)}
+.eprog progress{width:160px;height:8px;accent-color:var(--accent)}
+.echildren{margin:var(--space-3) 0}
+.echildren li{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2) var(--space-3)}
