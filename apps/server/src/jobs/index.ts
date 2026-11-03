@@ -186,16 +186,17 @@ export const abandonRun = async (
   return status
 }
 
-export const STALE_JOB_MS = 10 * 60_000
+/** Above the longest legitimate tick: forge back-off waits up to MAX_WAIT_MS x 3 retries per call (15 min) and a reclaimed job keeps running, so an earlier reclaim would let a second instance duplicate side effects. */
+export const STALE_JOB_MS = 60 * 60_000
 
-/** Scheduled poller tasks; agent Runs (`run-stage`, `reconcile-costs`) are long by design and never listed. */
-export const SCHEDULED_SLUGS = ['poll-tickets', 'expire-sessions', 'watch-reviews', 'watch-production', 'resume-reviews', 'watch-release', 'publish-release', 'notify-gates', 'resync-knowledge', 'watch-knowledge-prs', 'prune-request-logs']
+/** Scheduled poller tasks, derived from `TASKS`; agent Runs (`run-stage`, `reconcile-costs`) have no schedule and are never listed. */
+export const scheduledSlugs = (): string[] => TASKS.filter((t) => t.schedule?.length).map((t) => t.slug)
 
 /** A scheduled job left `processing` with no update for STALE_JOB_MS (killed worker, hung fetch) blocks its concurrency key forever: mark it failed so the schedule resumes. */
 export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Promise<number> => {
   const rows = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(SCHEDULED_SLUGS.map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - STALE_JOB_MS).toISOString()} RETURNING "id", "task_slug"`,
+      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(scheduledSlugs().map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - STALE_JOB_MS).toISOString()} RETURNING "id", "task_slug"`,
     )
   ).rows
   for (const r of rows) payload.logger.warn({ job: r.id, task: r.task_slug }, 'reclaimed stale scheduled job')
@@ -228,6 +229,14 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     }
   }
   return handled
+}
+
+/** Second reclaimer: `expire-sessions` and this task reclaim each other, so a poller kill mid-run of either cannot leave a row `processing` forever. */
+export const reclaimJobs: TaskConfig<{ input: Record<string, never>; output: { reclaimed: number } }> = {
+  slug: 'reclaim-jobs',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  handler: async ({ req }) => ({ output: { reclaimed: await reclaimStaleJobs(req.payload) } }),
 }
 
 export const expireSessions: TaskConfig<{ input: Record<string, never>; output: { expired: number } }> = {
@@ -518,3 +527,5 @@ export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; ou
     return { output: { deleted } }
   },
 }
+
+export const TASKS = [pollTickets, runStage, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]

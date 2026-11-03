@@ -34,8 +34,8 @@ const insert = async (slug: string, o: { processing?: boolean; updated?: number;
 const state = async (id: number) => (await payload.db.drizzle.execute(sql`SELECT "processing", "has_error" FROM "payload_jobs" WHERE "id" = ${id}`)).rows[0] as { processing: boolean; has_error: boolean }
 
 it('reclaims only stale scheduled jobs, never run-stage', async () => {
-  const stale = await insert('watch-release', { processing: true, updated: 11 })
-  const fresh = await insert('watch-release', { processing: true, updated: 2 })
+  const stale = await insert('watch-release', { processing: true, updated: 61 })
+  const fresh = await insert('watch-release', { processing: true, updated: 25 })
   const run = await insert('run-stage', { processing: true, updated: 120 })
   expect(await jobs.reclaimStaleJobs(payload)).toBe(1)
   expect(await state(stale)).toEqual({ processing: false, has_error: true })
@@ -43,12 +43,30 @@ it('reclaims only stale scheduled jobs, never run-stage', async () => {
   expect(await state(run)).toMatchObject({ processing: true })
 })
 
+it('a job in a legitimate forge back-off (3 x 300 s) is not reclaimed', async () => {
+  const waiting = await insert('watch-reviews', { processing: true, updated: 16 })
+  expect(await jobs.reclaimStaleJobs(payload)).toBe(0)
+  expect(await state(waiting)).toMatchObject({ processing: true })
+  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "id" = ${waiting}`)
+})
+
+it('the two reclaimers reclaim each other, so neither can deadlock', async () => {
+  const sessions = await insert('expire-sessions', { processing: true, updated: 90 })
+  const reclaim = await insert('reclaim-jobs', { processing: true, updated: 90 })
+  const run = await (jobs.reclaimJobs.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
+  expect(run).toEqual({ output: { reclaimed: 2 } })
+  expect(await state(sessions)).toEqual({ processing: false, has_error: true })
+  expect(await state(reclaim)).toEqual({ processing: false, has_error: true })
+  expect(jobs.scheduledSlugs()).not.toContain('run-stage')
+})
+
 it('splits the watchers into separate tasks with separate concurrency keys', async () => {
   const tasks = [jobs.watchReviewsTask, jobs.watchProductionTask, jobs.resumeReviewsTask, jobs.watchReleaseTask]
   const keys = tasks.map((t) => (t.concurrency as () => string)())
   expect(new Set(keys).size).toBe(4)
   expect(keys).toEqual(tasks.map((t) => t.slug))
-  for (const t of tasks) expect(jobs.SCHEDULED_SLUGS).toContain(t.slug)
+  for (const t of tasks) expect(t.schedule).toHaveLength(1)
+  for (const t of tasks) expect(jobs.scheduledSlugs()).toContain(t.slug)
   const run = (t: (typeof tasks)[number], p: unknown) => (t.handler as (a: unknown) => Promise<unknown>)({ req: { payload: p } })
   await expect(run(jobs.watchReviewsTask, {})).rejects.toThrow()
   await expect(run(jobs.watchReleaseTask, payload)).resolves.toMatchObject({ output: {} })
@@ -60,7 +78,7 @@ it('health: stale scheduled tasks are named, fresh ones and the startup grace ar
   // startup grace: only a young job row exists
   await insert('poll-tickets', { updated: 1 })
   expect(await health.staleTasks(payload, fresh)).toEqual([])
-  for (const s of jobs.SCHEDULED_SLUGS.filter((s) => s !== 'prune-request-logs' && s !== 'watch-release')) await insert(s, { updated: 1, completed: 1 })
+  for (const s of jobs.scheduledSlugs().filter((s) => s !== 'prune-request-logs' && s !== 'watch-release')) await insert(s, { updated: 1, completed: 1 })
   await insert('watch-release', { updated: 6, completed: 6 })
   expect(await health.staleTasks(payload, fresh)).toEqual(['watch-release'])
   await insert('watch-release', { updated: 0, completed: 0 })

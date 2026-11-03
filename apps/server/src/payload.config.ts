@@ -2,7 +2,7 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
-import { expireSessions, pollTickets, pruneRequestLogsTask, reconcileCosts, runStage, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask } from './jobs'
+import { TASKS } from './jobs'
 import { migrations } from './migrations'
 import { secret } from './lib/secrets'
 
@@ -32,7 +32,7 @@ export default buildConfig({
     access: { queue: isAdmin, run: isAdmin, cancel: isAdmin },
     deleteJobOnComplete: false,
     enableConcurrencyControl: true,
-    tasks: [pollTickets, runStage, expireSessions, reconcileCosts, pruneRequestLogsTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask],
+    tasks: TASKS,
     // No in-app autoRun: the `poller` (queue poll) and `worker` (queue runs) processes run the jobs (package.json).
   },
 })
