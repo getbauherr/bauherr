@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
-import { activity, heartbeatAge } from '../lib/format'
+import { activity, ago, heartbeatAge } from '../lib/format'
 import { GATES } from '../lib/gates'
 import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
@@ -101,19 +101,13 @@ export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capp
   )
 }
 
-const duration = (r: RunRow) => {
-  if (!r.startedAt || !r.finishedAt) return '—'
-  const s = Math.max(0, Math.round((+new Date(r.finishedAt) - +new Date(r.startedAt)) / 1000))
-  return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`
-}
-
 export function RunsTable({ runs, tickets }: { runs: RunRow[]; tickets: Map<number, TicketRow> }) {
   return (
     <div className="scroll">
       <table className="table">
         <thead>
           <tr className="label">
-            {['Run', 'Ticket', 'Stage', 'Status', 'Mode', 'Duration', 'Cost', 'Created'].map((h) => <th key={h}>{h}</th>)}
+            {['Ticket', 'Stage', 'Status', 'When'].map((h) => <th key={h}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -121,14 +115,10 @@ export function RunsTable({ runs, tickets }: { runs: RunRow[]; tickets: Map<numb
             const t = tickets.get(r.ticket)
             return (
               <tr key={r.id}>
-                <td className="mono"><Link className="link" href={`/runs/${r.id}`}>#{r.id}</Link></td>
-                <td>{t ? <><span className="mono">#{t.number}</span> <Link href={`/tickets/${t.id}`}>{t.title}</Link></> : '—'}</td>
+                <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}</Link> <span className="mono muted">#{t.number}</span></> : <Link className="link" href={`/runs/${r.id}`}>Run</Link>}</td>
                 <td>{r.stage}</td>
                 <td><StatusChip status={r.status} /></td>
-                <td>{r.mode}</td>
-                <td className="mono">{duration(r)}</td>
-                <td className="mono">{r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : '—'}</td>
-                <td className="mono">{new Date(r.createdAt).toISOString().slice(0, 16).replace('T', ' ')}</td>
+                <td title={r.createdAt}>{ago(r.createdAt)}</td>
               </tr>
             )
           })}

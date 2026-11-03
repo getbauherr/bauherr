@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
 import { ConnectionForm } from '../../../components/SettingsConnectionForm'
 import { SettingsForm } from '../../../components/SettingsForm'
@@ -13,9 +14,9 @@ const chip = { ok: ['succeeded', 'Verified'], failed: ['failed', 'Failed'], none
 
 export default async function ConnectionSettings() {
   const { user, workspace } = await currentWorkspace()
+  if (!isAdmin(user)) notFound()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const connections = await loadConnections(workspace.id)
-  const admin = isAdmin(user)
   return (
     <>
       {!connections.length && <EmptyState text={`${workspace.name} has no Connections yet.`} />}
@@ -38,16 +39,14 @@ export default async function ConnectionSettings() {
                     ) : <span className="muted">n/a</span>}
                   </td>
                   <td>
-                    {admin && (
-                      <div className="row-between">
-                        <details className="edit"><summary className="btn">Edit</summary>
-                          <div className="card-lg"><ConnectionForm presets={presets} value={{ id: c.id, name: c.name, kind: c.kind, provider: c.provider, config: c.config }} /></div>
-                        </details>
-                        {c.kind === 'llm-provider' && (
-                          <SettingsForm action={verifyConnection} submit="Verify again" inline><input type="hidden" name="id" value={c.id} /></SettingsForm>
-                        )}
-                      </div>
-                    )}
+                    <div className="row-between">
+                      <details className="edit"><summary className="btn">Edit</summary>
+                        <div className="card-lg"><ConnectionForm presets={presets} value={{ id: c.id, name: c.name, kind: c.kind, provider: c.provider, config: c.config }} /></div>
+                      </details>
+                      {c.kind === 'llm-provider' && (
+                        <SettingsForm action={verifyConnection} submit="Verify again" inline><input type="hidden" name="id" value={c.id} /></SettingsForm>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -55,12 +54,10 @@ export default async function ConnectionSettings() {
           </table>
         </div>
       )}
-      {admin && (
-        <section className="card-lg stack">
-          <h2 className="heading">Add Connection</h2>
-          <ConnectionForm presets={presets} submit="Add Connection" reset primary />
-        </section>
-      )}
+      <section className="card-lg stack">
+        <h2 className="heading">Add Connection</h2>
+        <ConnectionForm presets={presets} submit="Add Connection" reset primary />
+      </section>
     </>
   )
 }
