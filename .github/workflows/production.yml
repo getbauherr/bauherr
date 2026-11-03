@@ -6,14 +6,14 @@ on:
     types: [labeled]
 permissions:
   contents: read
-concurrency:
-  group: production-edge
-  cancel-in-progress: false
-
 jobs:
   deploy-edge:
     if: github.event.label.name == 'bauherr:approved:production' && !github.event.issue.pull_request
     runs-on: ubuntu-latest
+    # job-level and per issue: one pending run per group, so a shared group drops all but the last of a burst of approvals
+    concurrency:
+      group: production-${{ github.event.issue.number }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
@@ -52,27 +52,25 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: edge
-        name: Move :edge only forward
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/getbauherr/bauherr:sha-${{ steps.sha.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/getbauherr/bauherr
+            org.opencontainers.image.revision=${{ steps.sha.outputs.sha }}
+      - name: Move :edge only forward
+        # after the build, so parallel runs race only for the seconds between inspect and retag
         env:
           SHA: ${{ steps.sha.outputs.sha }}
         run: |
           cur=$(docker buildx imagetools inspect ghcr.io/getbauherr/bauherr:edge --format '{{json .Image}}' 2>/dev/null \
             | jq -r '[.. | .config?.Labels?["org.opencontainers.image.revision"]? | select(.)] | first // empty' || true)
           if [ -z "$cur" ] || { git cat-file -e "$cur^{commit}" 2>/dev/null && git merge-base --is-ancestor "$cur" "$SHA"; }; then
-            echo "tags=ghcr.io/getbauherr/bauherr:edge" >> "$GITHUB_OUTPUT"
+            docker buildx imagetools create -t ghcr.io/getbauherr/bauherr:edge "ghcr.io/getbauherr/bauherr:sha-$SHA"
           fi
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/getbauherr/bauherr:sha-${{ steps.sha.outputs.sha }}
-            ${{ steps.edge.outputs.tags }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/getbauherr/bauherr
-            org.opencontainers.image.revision=${{ steps.sha.outputs.sha }}
       - name: Report check production
         if: always()
         env:

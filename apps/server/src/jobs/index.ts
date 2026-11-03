@@ -314,6 +314,22 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
+/** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
+const startMissingRuns = async (payload: Payload): Promise<void> => {
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: ['plan', 'build'] } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
+  for (const t of tickets.docs) {
+    try {
+      if (((t.blockedBy as { state?: string }[]) ?? []).some((b) => b.state !== 'closed')) continue
+      if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
+      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
+      await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
+      payload.logger.info({ ticket: t.id, stage: t.stage }, 'run started for a Ticket without one')
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'startMissingRuns failed')
+    }
+  }
+}
+
 export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; output: { merged: number } }> = {
   slug: 'watch-knowledge-prs',
   schedule: scheduled('0 * * * * *'),
@@ -452,6 +468,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       }
     }
     await closeFinishedParents(payload)
+    await startMissingRuns(payload)
     await advancePlans(payload)
     await triageSweep(payload)
     return { output: { polled: sources.docs.length } }
