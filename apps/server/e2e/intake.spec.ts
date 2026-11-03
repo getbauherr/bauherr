@@ -24,6 +24,7 @@ const say = async (page: Page, text: string, reply: string | RegExp) => {
 test('a request with several problems ends in one confirmed list and one Ticket per problem', async ({ page }) => {
   await signIn(page)
   await page.goto('/requests/new')
+  await expect(page.getByRole('link', { name: 'New request' })).toHaveCount(1)
   await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
   await say(page, 'The invoice total is wrong and also the export is slow', /I will create 3 separate tickets/)
   await expect(page.getByRole('complementary', { name: 'Draft' }).getByRole('listitem')).toContainText(['The invoice total is wrong', 'The export is slow', 'The login page is confusing'], { timeout: 10_000 })

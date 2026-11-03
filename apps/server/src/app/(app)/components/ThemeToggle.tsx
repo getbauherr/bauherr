@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { DropdownMenuRadioGroup, DropdownMenuRadioItem } from './ui/dropdown-menu'
 import { Monitor, Moon, Sun } from './icons'
-import { Popover } from './Popover'
 
 const modes = [
   { id: 'system', label: 'System', Icon: Monitor },
@@ -17,7 +17,8 @@ const stored = () => {
   }
 }
 
-export function ThemeToggle() {
+/** One row of three theme buttons for the avatar menu; picking keeps the menu open. */
+export function ThemeRow() {
   const [mode, setMode] = useState<string>('system')
   useEffect(() => setMode(stored()), [])
   const pick = (id: string) => {
@@ -29,15 +30,14 @@ export function ThemeToggle() {
       id === 'system' ? localStorage.removeItem('bauherr-theme') : localStorage.setItem('bauherr-theme', id)
     } catch {}
   }
-  const { Icon } = modes.find((m) => m.id === mode) ?? modes[0]
   return (
-    <Popover label={<><Icon /><span className="sr">Theme: </span>{modes.find((m) => m.id === mode)?.label}</>}>
-        {modes.map((m) => (
-          <button key={m.id} className="row" aria-pressed={mode === m.id} onClick={() => pick(m.id)}>
-            <m.Icon />
-            {m.label}
-          </button>
-        ))}
-    </Popover>
+    <DropdownMenuRadioGroup aria-label="Theme" value={mode} onValueChange={pick} className="flex items-center gap-1 px-2 py-1">
+      {modes.map((m) => (
+        <DropdownMenuRadioItem key={m.id} value={m.id} onSelect={(e) => e.preventDefault()} className="flex-1 justify-center">
+          <m.Icon />
+          {m.label}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
   )
 }
