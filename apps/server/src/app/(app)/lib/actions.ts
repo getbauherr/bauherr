@@ -115,9 +115,9 @@ export async function startOwnerChat(ticket: number) {
 }
 
 /** A clicked option or typed message: an answer is recorded verbatim, an explain request is answered and records nothing. */
-export async function askOwnerChat(session: number, ticket: number, decision: string, text: string) {
+export async function askOwnerChat(session: number, ticket: number, decision: string, text: string, literal?: boolean) {
   const { user, payload, workspaceId } = await acting()
-  const next = await inWorkspace(askOwnerIntake(payload, user, { session, decision, text, workspaceId }))
+  const next = await inWorkspace(askOwnerIntake(payload, user, { session, decision, text, literal, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
   return next
 }

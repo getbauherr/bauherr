@@ -968,7 +968,7 @@ export type OwnerQuestion = { decision: string; question: string; options: { lab
 export type OwnerDone = { done: true; summary: string }
 /** Fixed last chip of every owner question; it sends this text, which is always an explain request. */
 export const WHY = 'Why does this matter?'
-const CANT_EXPLAIN = "I can't explain right now, pick an option or type your answer."
+const CANT_EXPLAIN = "I can't explain right now, pick an option or use your text as the answer."
 const MAX_ANSWER = 500
 
 const ownerQuestion = (queue: { id: string; title: string; options: string[] }[]): OwnerQuestion | null =>
@@ -997,8 +997,8 @@ export const startOwnerIntake = async (payload: Payload, user: Doc, a: { ticket:
     const t = await loadIn(payload, user, a.ticket, a.workspaceId)
     const q = ownerQuestion(await openQueue(payload, user, a.ticket, a.workspaceId))
     if (!q) throw new Error('no open questions')
-    const open = (await payload.find({ collection: 'intake_sessions', where: { and: [{ persona: { equals: 'owner' } }, { status: { equals: 'open' } }, { user: { equals: user.id } }] }, sort: '-createdAt', limit: 50, depth: 0, overrideAccess: true })).docs as Doc[]
-    const s = open.find((x) => String(x.draft?.ticket) === String(t.id)) ?? ((await payload.create({
+    const open = (await payload.find({ collection: 'intake_sessions', where: { and: [{ persona: { equals: 'owner' } }, { status: { equals: 'open' } }, { user: { equals: user.id } }, { 'draft.ticket': { equals: t.id } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs as Doc[]
+    const s = open[0] ?? ((await payload.create({
       collection: 'intake_sessions',
       data: { product: id(t.product), workspace: id(t.workspace), persona: 'owner', status: 'open', messages: [], draft: { ticket: t.id }, user: user.id },
       overrideAccess: true,
@@ -1019,10 +1019,10 @@ export const answerOwnerIntake = async (payload: Payload, user: Doc, a: { sessio
     if (!d) throw new Error('unknown question')
     if (!answer || answer.length > MAX_ANSWER) throw new Error(`the answer must be 1 to ${MAX_ANSWER} characters`)
     const { ts, n } = await sourceOf(payload, await loadIn(payload, user, ticket, a.workspaceId))
-    const held = (await ts.get(n)).labels.includes(NEEDS_REFINEMENT)
     await postDecisions(payload, user, { ticket, workspaceId: a.workspaceId, answers: [{ id: d.id, title: d.title, answer }] })
     const next = ownerQuestion(queue.filter((x) => x !== d))
-    const done: OwnerDone | null = next ? null : { done: true, summary: ownerSummary(parseAnswers(answersOf(await ts.listComments(n))?.body ?? ''), held) }
+    const lastRun = next ? null : ((await payload.find({ collection: 'runs', where: { ticket: { equals: ticket } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined)
+    const done: OwnerDone | null = next ? null : { done: true, summary: ownerSummary(parseAnswers(answersOf(await ts.listComments(n))?.body ?? ''), lastRun?.stage === 'plan' && lastRun.status === 'succeeded') }
     const messages = [...(s.messages ?? []), { role: 'user', content: `${d.id}: ${answer}` }, { role: 'assistant', content: next?.question ?? done!.summary }]
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { messages, ...(!next && { status: 'submitted' }) }, overrideAccess: true })
     return next ?? done!
@@ -1062,17 +1062,20 @@ const explainOwnerQuestion = async (payload: Payload, t: Doc, d: { id: string; t
   }
 }
 
-/** A typed or clicked message from the owner: an explain request is answered and records nothing, anything else is the answer. */
-export const askOwnerIntake = async (payload: Payload, user: Doc, a: { session: TicketId; decision: string; text: string; workspaceId?: TicketId; model?: ModelCall }): Promise<OwnerQuestion | OwnerDone | { reply: string }> => {
+/**
+ * A typed or clicked message from the owner. A listed option, or text sent with `literal` (the "use my text" chip), is recorded without a model;
+ * free text and the WHY chip go to the classifier, whose explain reply records nothing (`retry`: the chat then offers `literal`, so the model can never block an answer).
+ */
+export const askOwnerIntake = async (payload: Payload, user: Doc, a: { session: TicketId; decision: string; text: string; literal?: boolean; workspaceId?: TicketId; model?: ModelCall }): Promise<OwnerQuestion | OwnerDone | { reply: string; retry?: true }> => {
   const s = await ownerSession(payload, user, a.session)
   const text = oneLine(a.text)
   const d = (await openQueue(payload, user, s.draft.ticket, a.workspaceId)).find((x) => x.id === a.decision)
   if (!d) throw new Error('unknown question')
-  const reply = text.length > MAX_ANSWER || !text ? null : await explainOwnerQuestion(payload, await loadIn(payload, user, s.draft.ticket, a.workspaceId), d, text, a.model)
+  const reply = a.literal || d.options.includes(text) || text.length > MAX_ANSWER || !text ? null : await explainOwnerQuestion(payload, await loadIn(payload, user, s.draft.ticket, a.workspaceId), d, text, a.model)
   if (reply === null) return answerOwnerIntake(payload, user, { session: a.session, decision: a.decision, answer: a.text, workspaceId: a.workspaceId })
   await exclusive(`intake:${a.session}`, async () => {
     const fresh = await ownerSession(payload, user, a.session)
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { messages: [...(fresh.messages ?? []), { role: 'user', content: text }, { role: 'assistant', content: reply }] }, overrideAccess: true })
   })
-  return { reply }
+  return { reply, ...(text !== WHY && { retry: true }) }
 }

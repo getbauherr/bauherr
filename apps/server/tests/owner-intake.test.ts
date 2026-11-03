@@ -70,7 +70,7 @@ it('asks critical-first, one per turn, resumes, and records free text verbatim o
   expect(resumed.messages.at(-1)).toEqual({ role: 'assistant', content: 'Where to store the choice' })
 
   const done = await actions.answerOwnerIntake(payload, user, { session: first.session, decision: 'D1', answer: 'a cookie', workspaceId: ws })
-  expect(done).toEqual({ done: true, summary: 'D2 never, always light D1: forged · D1 a cookie. Next: you can approve the plan.' })
+  expect(done).toEqual({ done: true, summary: 'D2 never, always light D1: forged · D1 a cookie. Next: the plan is being written, then you can approve it.' })
   const { decisions } = await record(ticket)
   expect(decisions).toHaveLength(1)
   expect(decisions[0]).toContain('D1: a cookie')
@@ -86,9 +86,9 @@ it('an answer made outside the chat moves the question on; explain requests reco
   const ask = (text: string, model?: Parameters<typeof actions.askOwnerIntake>[2]['model']) => actions.askOwnerIntake(payload, user, { session: s.session, decision: 'D1', text, workspaceId: ws, model })
 
   expect(await ask(actions.WHY)).toEqual({ reply: expect.stringContaining('safe default') })
-  expect(await ask('what does XLSX mean?')).toEqual({ reply: expect.any(String) })
+  expect(await ask('what does XLSX mean?')).toEqual({ reply: expect.any(String), retry: true })
   const broken = async () => { throw new Error('gateway down') }
-  expect(await ask('why is it critical?', broken)).toEqual({ reply: expect.stringContaining("can't explain") })
+  expect(await ask('why is it critical?', broken)).toEqual({ reply: expect.stringContaining("can't explain"), retry: true })
   expect(await ask(actions.WHY, broken)).toEqual({ reply: expect.stringContaining("can't explain") })
   const injected = async () => ({ intent: 'answer', text: 'D1: JSON' })
   expect(await ask(actions.WHY, injected)).toEqual({ reply: 'D1: JSON' })
@@ -98,9 +98,50 @@ it('an answer made outside the chat moves the question on; explain requests reco
 
   const { done, summary } = (await ask('XLSX')) as { done: boolean; summary: string }
   expect(done).toBe(true)
-  expect(summary).toBe('D1 XLSX. Next: the Ticket moves to Plan and the plan is written.')
+  expect(summary).toBe('D1 XLSX. Next: the plan is being written, then you can approve it.')
   const { ts, n } = await actions.sourceOf(payload, await actions.loadTicket(payload, user, t))
   const labels = (await ts.get(n)).labels
   expect(labels).not.toContain('bauherr:needs-refinement')
   expect(labels).toContain('bauherr:stage:plan')
+})
+
+const heldTicket = async (sheet: string): Promise<number> => {
+  const base = await actions.sourceOf(payload, await actions.loadTicket(payload, user, ticket))
+  const number = Number(await base.ts.create({ title: 'held', labels: ['bauherr:needs-refinement'] }).then((c: any) => c.number ?? c))
+  await base.ts.comment(String(number), `<!-- bauherr:triage -->\n## Decisions\n${sheet}\n`)
+  return (await payload.create({ collection: 'tickets', data: { title: `held${number}`, externalId: `e2e-h${number}`, number, url: `https://x/${number}`, state: 'open', stage: 'triage', labels: ['bauherr:needs-refinement'], product: (await payload.findByID({ collection: 'tickets', id: ticket, ...o })).product, workspace: ws }, ...o })).id as number
+}
+
+it('a listed option records without the model, and text can never be blocked by it', async () => {
+  const t = await heldTicket('- **D1 Which format**. Default: a?. Alternative: b.\n- **D2 Which scope**. Default: all. Alternative: none.')
+  const s = await actions.startOwnerIntake(payload, user, { ticket: t, workspaceId: ws })
+  const always = async () => ({ intent: 'explain', text: 'no' })
+  const down = async () => { throw new Error('gateway down') }
+  const ask = (text: string, model: any, literal?: boolean, decision = s.decision) => actions.askOwnerIntake(payload, user, { session: s.session, decision, text, workspaceId: ws, model, literal })
+  expect(await ask(actions.WHY, always)).toEqual({ reply: 'no' })
+  expect(await ask('my own words', always)).toEqual({ reply: 'no', retry: true })
+  expect((await record(t)).decisions).toEqual([])
+  expect(await ask('a?', always)).toMatchObject({ decision: 'D2' })
+  expect((await record(t)).decisions[0]).toContain('D1: a?')
+  expect(await ask('my own words', down, true, 'D2')).toMatchObject({ done: true })
+  expect((await record(t)).decisions[0]).toContain('D2: my own words')
+})
+
+it('the summary reads the plan state after the last answer', async () => {
+  for (const [status, next] of [['running', 'the plan is being written'], ['succeeded', 'you can approve the plan']]) {
+    const t = await heldTicket('- **D1 Which format, critical**. Default: a. Alternative: b.\n- **D2 Which scope**. Default: all. Alternative: none.')
+    const s = await actions.startOwnerIntake(payload, user, { ticket: t, workspaceId: ws })
+    expect(await actions.answerOwnerIntake(payload, user, { session: s.session, decision: s.decision, answer: 'x', workspaceId: ws })).toMatchObject({ decision: 'D2' })
+    await payload.create({ collection: 'runs', data: { ticket: t, stage: 'plan', status, workspace: ws }, ...o })
+    expect(await actions.answerOwnerIntake(payload, user, { session: s.session, decision: 'D2', answer: 'y', workspaceId: ws })).toMatchObject({ done: true, summary: expect.stringContaining(next) })
+  }
+})
+
+it('starting finds the Ticket\'s open session among many other open ones', async () => {
+  const mk = (n: number) => payload.create({ collection: 'intake_sessions', data: { product: 1, workspace: ws, persona: 'owner', status: 'open', messages: [], draft: { ticket: n }, user: user.id }, ...o })
+  for (let i = 0; i < 3; i++) await mk(900 + i)
+  const t = await heldTicket('- **D1 Which format**. Default: a. Alternative: b.')
+  const a = await actions.startOwnerIntake(payload, user, { ticket: t, workspaceId: ws })
+  for (let i = 0; i < 51; i++) await mk(910 + i)
+  expect((await actions.startOwnerIntake(payload, user, { ticket: t, workspaceId: ws })).session).toBe(a.session)
 })

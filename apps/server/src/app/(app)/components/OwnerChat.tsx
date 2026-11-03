@@ -10,6 +10,9 @@ import { Card } from './ui/card'
 type Q = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
 type Started = Q & { session: number; messages: { role: string; content: string }[] }
 
+/** Offered after an explain reply to a typed message; sends that message again as the answer, without the model. */
+const USE_TEXT = 'Use my text as the answer'
+
 const say = (text: string, turn?: Q) => ({ content: [{ type: 'text' as const, text }], ...(turn && { metadata: { custom: { turn } } }) })
 
 function Interview({ start, ticket }: { start: Started; ticket: number }) {
@@ -17,11 +20,17 @@ function Interview({ start, ticket }: { start: Started; ticket: number }) {
   const { session, messages, ...first } = start
   const [left, setLeft] = useState<number | null>(first.left)
   const current = useRef<Q>(first)
+  const typed = useRef<string | null>(null)
   const [adapter] = useState<ChatModelAdapter>(() => ({
     async run({ messages }) {
       const text = messages.at(-1)!.content.map((p) => (p.type === 'text' ? p.text : '')).join('')
-      const next = await askOwnerChat(session, ticket, current.current.decision, text)
-      if ('reply' in next) return say(next.reply, current.current)
+      const literal = text === USE_TEXT && typed.current !== null
+      const next = await askOwnerChat(session, ticket, current.current.decision, literal ? typed.current! : text, literal)
+      if ('reply' in next) {
+        typed.current = next.retry ? text : null
+        return say(next.reply, next.retry ? { ...current.current, options: [...current.current.options, { label: USE_TEXT, recommended: false }] } : current.current)
+      }
+      typed.current = null
       if ('done' in next) {
         setLeft(null)
         router.refresh()
@@ -37,7 +46,7 @@ function Interview({ start, ticket }: { start: Started; ticket: number }) {
     <Card asChild className="max-w-[640px] scroll-mt-[calc(72px+var(--space-4))]">
       <section id="answer" aria-label="Answer questions">
         <AssistantRuntimeProvider runtime={runtime}>
-          <ChatThread maxHeight="max-h-[60vh]" draftKey={`owner-chat-${ticket}`} first={{ label: 'Your answer', placeholder: 'Type your answer' }} next={{ label: 'Your answer', placeholder: 'Type your answer' }} />
+          <ChatThread composer={left !== null} maxLength={500} maxHeight="max-h-[60vh]" draftKey={`owner-chat-${ticket}`} first={{ label: 'Your answer', placeholder: 'Type your answer' }} next={{ label: 'Your answer', placeholder: 'Type your answer' }} />
         </AssistantRuntimeProvider>
         {left !== null && <p className="small text-muted-foreground">{left} open</p>}
       </section>

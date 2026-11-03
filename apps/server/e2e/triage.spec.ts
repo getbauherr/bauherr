@@ -25,7 +25,7 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await expect(chat).toContainText('Which export format')
   await expect(page.locator('.sheet')).toHaveCount(0)
   await chat.getByRole('button', { name: 'XLSX' }).click()
-  await expect(chat).toContainText('D1 XLSX. Next: the Ticket moves to Plan and the plan is written.', { timeout: 60_000 })
+  await expect(chat).toContainText('D1 XLSX. Next: the plan is being written, then you can approve it.', { timeout: 60_000 })
   await expect(bar.getByRole('link', { name: /^Answer/ })).toHaveCount(0)
   await expect(page.locator('.sheet')).toHaveCount(0)
 })
