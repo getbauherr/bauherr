@@ -192,14 +192,32 @@ it('claim_run rejects the Run of a parent', async () => {
   await expect(call(member, 'claim_run', { runId: parent.run!.id })).rejects.toThrow('parents are not claimable')
 })
 
-it('claim_run accepts a Run whose Ticket is assigned to the caller, and refuses one assigned to someone else', async () => {
+it('claim_run refuses a lower-ranked Run even when the caller\'s login is on its Ticket from an earlier claim', async () => {
   await reset()
   const sess = await payload.create({ collection: 'bauherren', data: { email: 's@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
-  const top = await seed('a', { assignees: 'someone' })
-  const mine = await seed('b', { assignees: 'x,fake' })
-  const other = await seed('c', { assignees: 'someone' })
-  expect((await call(sess, 'claim_run', { runId: mine.run!.id })).run.id).toBe(mine.run!.id)
-  await expect(call(sess, 'claim_run', { runId: other.run!.id })).rejects.toThrow(`take Run ${top.run!.id} (#1, build) first`)
+  const top = await seed('a')
+  const mine = await seed('b', { assignees: 'fake' })
+  await expect(call(sess, 'claim_run', { runId: mine.run!.id })).rejects.toThrow(`take Run ${top.run!.id} (#1, build) first`)
+})
+
+it('claim_run refuses a Run outside the frontier', async () => {
+  await reset()
+  const blocker = await seed('zz', {}, null)
+  const blocked = await seed('a', { blockedBy: [blocker.ticket.id] })
+  await expect(call(member, 'claim_run', { runId: blocked.run!.id })).rejects.toThrow(`Run ${blocked.run!.id} is not claimable now`)
+})
+
+it('claim_next moves past a top Run whose claim errors, and claim_run no longer waits for it', async () => {
+  await reset()
+  const top = await seed('a')
+  const next = await seed('b')
+  const after = await seed('c')
+  const spy = vi.spyOn(await import('../src/lib/actions'), 'sourceOf').mockRejectedValueOnce(new Error('source unreachable'))
+  const claimed = await call(member, 'claim_next', {})
+  spy.mockRestore()
+  expect(claimed.run.id).toBe(next.run!.id)
+  expect(claimed.skipped).toContainEqual({ run: top.run!.id, reason: 'claim failed: source unreachable' })
+  expect((await call(member, 'claim_run', { runId: after.run!.id })).run.id).toBe(after.run!.id)
 })
 
 it('ranks zzzzxV and zzzzxk are in the same order on the Board and in claim_next', async () => {

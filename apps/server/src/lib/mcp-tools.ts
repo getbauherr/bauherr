@@ -6,8 +6,7 @@ import type { Payload } from 'payload'
 import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
-import { ownsGate } from './gates'
-import { logins } from './gates'
+import { logins, ownsGate } from './gates'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
@@ -202,6 +201,11 @@ const skippedBefore = async (c: Ctx, claimed: Doc) => {
 
 const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session'
 
+/** Runs `claim_next` could not claim (non-ClaimLost error), by id with the time: `claim_run` does not hold others back behind them for 5 minutes. In-memory, per server process. */
+const failedClaims = new Map<string, number>()
+const FAILED_CLAIM_MS = 5 * 60_000
+const recentlyFailed = (r: Doc): boolean => Date.now() - (failedClaims.get(String(r.id)) ?? 0) < FAILED_CLAIM_MS
+
 export const tools: Tool[] = [
   {
     name: 'list_frontier',
@@ -243,17 +247,17 @@ export const tools: Tool[] = [
   {
     name: 'claim_run',
     access: 'agent',
-    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return, or one whose Ticket is assigned to you, is accepted; any other is refused with "take Run N (#T, column) first". Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
+    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return is accepted (a Run whose claim failed in the last 5 minutes does not count); any other is refused with "take Run N (#T, column) first", a blocked, leased or superseded one with "not claimable now". The check is workspace-wide, while claim_next {product} is product-scoped. Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
       const run = await getRun(c, a.runId)
       if (isClaimable(run)) {
         const ticket = await getTicket(c, id(run.ticket))
         if (ticket.stage === 'parent') throw new Error('parents are not claimable')
-        const assigned = !!c.user.githubLogin && logins(ticket.assignees).includes(c.user.githubLogin as string)
-        const f = await frontier(c)
-        const top = f?.open.map((t) => f.latest.get(t.id)).find(isClaimable)
-        if (!assigned && top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f!.open.find((t) => f!.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
+        const f = (await frontier(c))!
+        if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
+        const top = f.open.map((t) => f.latest.get(t.id)).find((r) => isClaimable(r) && !recentlyFailed(r!))
+        if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => f.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
       }
       return claimRun(c, a.runId)
     },
@@ -265,13 +269,17 @@ export const tools: Tool[] = [
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
       const f = await frontier(c, a.product)
+      const failed: { run: number | string; reason: string }[] = []
       for (const t of f?.open ?? []) {
         const r = f!.latest.get(t.id)
         if (!isClaimable(r)) continue
         try {
-          return await claimRun(c, r!.id)
+          const claimed = await claimRun(c, r!.id)
+          return { ...claimed, skipped: [...claimed.skipped, ...failed] }
         } catch (e) {
-          if (!(e instanceof ClaimLost)) throw e
+          if (e instanceof ClaimLost) continue
+          failedClaims.set(String(r!.id), Date.now())
+          failed.push({ run: r!.id, reason: `claim failed: ${(e as Error).message}` })
         }
       }
       return null
