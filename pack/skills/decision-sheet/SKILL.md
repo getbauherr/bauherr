@@ -9,7 +9,7 @@ All questions to a human go in one sheet. Details and example: `references/sheet
 
 ## Rules
 1. **One sheet, one touch.** Collect every open decision before asking. At most one human touch per Ticket per gate; do not ask again for something already on the sheet.
-2. **Each decision has**: id, the question in one sentence, options, a recommended default, why (one line), and `critical: true|false`.
+2. **Each decision has**: id, the question in one sentence, options, a recommended default, why (one line), and `critical: true|false`. Write each as one bullet: `- **D1** Question? Alternatives: …; …. Default: …. Why: …. critical: true|false.`
 3. **Default means proceed.** A non-critical decision unanswered is resolved to its default and recorded as such. A `critical` decision blocks only the work that depends on it; other work continues.
 4. **Mark critical** only when a wrong default is costly or irreversible (data, security, public API, spend, scope). With the plan gate off, an unanswered critical decision in a plan reopens the refine hold, so it is the only way a plan reaches the owner.
 5. **Never answer your own questions.** No default taken silently, no "assumed yes". The recorded status says `default applied` or `answered by <person>`.

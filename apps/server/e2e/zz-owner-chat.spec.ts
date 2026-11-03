@@ -8,6 +8,7 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSW
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 (set E2E_FAKE_FORGE=1 here)')
 
 // Runs after ticket.spec.ts (alphabetical): D2 is answered there, D1 is the one open row left.
+// The first answer compiles the server action under next dev (CI), hence the long timeout.
 test('the owner answers the open decision interactively and it lands in the sheet', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
@@ -21,7 +22,7 @@ test('the owner answers the open decision interactively and it lands in the shee
   const chat = page.getByRole('region', { name: 'Answer interactively' })
   await expect(chat).toContainText('Where to store the choice')
   await chat.getByRole('button', { name: 'a cookie' }).click()
-  await expect(chat).toContainText('All questions answered')
+  await expect(chat).toContainText('All questions answered', { timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'Answer interactively' })).toHaveCount(0)
   await page.reload()
   await expect(page.getByRole('radio', { name: 'a cookie' })).toBeChecked()
