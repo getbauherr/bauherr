@@ -35,7 +35,7 @@ test('Graph view: blocked-by chain, ready marker, critical path, node link, no o
   await expect(page.getByRole('list', { name: 'Legend' })).toBeHidden()
   await page.getByText('Legend', { exact: true }).click()
   await expect(page.getByRole('list', { name: 'Legend' })).toContainText('critical path')
-  await expect(page.getByText(/^No dependencies \(\d+\)/)).toBeVisible()
+  await expect(page.getByText(/^No dependencies \(\d+/)).toBeVisible()
   if (process.env.SHOTS_DIR) {
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {
       await page.setViewportSize({ width: w, height: h })
@@ -70,7 +70,7 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/?view=graph')
 
-  await page.getByText(/^No dependencies \(\d+\)/).click()
+  await page.getByText(/^No dependencies \(\d+/).click()
   const iso = page.locator('section[aria-label="No dependencies"]')
   await expect(iso.locator('a.gnode').first()).toHaveAttribute('data-stage', 'release')
   expect(await iso.locator('a.gnode').count()).toBeGreaterThanOrEqual(20)

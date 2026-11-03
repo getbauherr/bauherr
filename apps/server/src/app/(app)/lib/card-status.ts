@@ -1,26 +1,24 @@
 import { activity, heartbeatAge } from './format'
 import type { TicketRow } from './overview'
 
-/** The one-word statuses a Board card can carry; shared with the Runs table (#259). Needs-you is a verb and not listed. */
-export const CARD_STATUSES = ['Working', 'Blocked', 'Waiting'] as const
-export type CardStatus = (typeof CARD_STATUSES)[number]
+export type CardStatus = 'Working' | 'Blocked' | 'Waiting'
 
-type Input = Pick<TicketRow, 'run' | 'owner' | 'blockedBy' | 'waiting'>
+/** The one-word status, first match: Working (latest Run live), Blocked, Waiting. Shared by the Board card and the Epics view. */
+export const statusOf = (t: { run: { status: string } | null; blockedBy: unknown[]; waiting: string | null }): CardStatus | null =>
+  t.run && ['running', 'awaiting_session'].includes(t.run.status) ? 'Working' : t.blockedBy.length ? 'Blocked' : t.waiting ? 'Waiting' : null
 
 /**
- * The single status of a card, first match: Working (latest Run live), Blocked, Waiting.
- * `word` is the activity shown for a running Run ("building"); `tip` holds the detail hidden from the card (stage, who, heartbeat, blocker ids).
+ * `tip` is the detail hidden from the card: the activity word for Working (plus stage, Run id, who and heartbeat for admins only), blocker ids, the wait reason.
  */
-export function cardStatus(t: Input, now = Date.now()): { status: CardStatus; word: string | null; tip: string } | null {
+export function cardStatus(t: Pick<TicketRow, 'run' | 'owner' | 'blockedBy' | 'waiting'>, admin: boolean, now = Date.now()): { status: CardStatus; tip: string } | null {
+  const status = statusOf(t)
+  if (status === 'Blocked') return { status, tip: `Blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` }
+  if (status === 'Waiting') return { status, tip: t.waiting! }
   const r = t.run
-  if (r && (r.status === 'running' || r.status === 'awaiting_session')) {
-    const at = r.heartbeatAt ?? r.startedAt
-    const who = r.mode === 'session' ? (t.owner ?? 'session') : 'scheduler'
-    return { status: 'Working', word: activity({ run: r }), tip: [`${r.stage} Run #${r.id}`, who, at && heartbeatAge(at, now).text].filter(Boolean).join(' · ') }
-  }
-  if (t.blockedBy.length) return { status: 'Blocked', word: null, tip: `Blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` }
-  if (t.waiting) return { status: 'Waiting', word: null, tip: t.waiting }
-  return null
+  if (!status || !r) return null
+  const at = r.heartbeatAt ?? r.startedAt
+  const who = r.mode === 'session' ? (t.owner ?? 'session') : 'scheduler'
+  return { status, tip: [activity({ run: r }) ?? 'Working', ...(admin ? [`${r.stage} Run #${r.id}`, who, at && heartbeatAge(at, now).text] : [])].filter(Boolean).join(' · ') }
 }
 
 /** Text elements a card shows besides its muted number: title, status or needs-you verb, epic tag, and the Product when room is left. */

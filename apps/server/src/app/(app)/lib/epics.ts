@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { statusOf } from './card-status'
 import { BOARD_STAGES, type Stage } from './needs-you'
 
 export type EpicChild = { id: number; number: number; title: string; stage: Stage; open: boolean; status: string }
@@ -11,7 +12,7 @@ export const epicShortTitle = (title: string): string => (title.length > 18 ? `$
 
 /** What the Bauherr should read instead of run internals. */
 export const plainStatus = (t: { open: boolean; needsYou: string | null; blockedBy: unknown[]; waiting: string | null; run: { status: string } | null }): string =>
-  !t.open ? 'Done' : t.needsYou ? 'Needs you' : t.run && ['running', 'awaiting_session'].includes(t.run.status) ? 'Working' : t.blockedBy.length ? 'Blocked' : t.waiting ? 'Waiting' : 'Queued'
+  !t.open ? 'Done' : t.needsYou ? 'Needs you' : statusOf(t) ?? 'Queued'
 
 /** `done`: closed sub-tickets of `total`; `stages`: open sub-tickets per Board column, in column order. */
 export const epicProgress = (e: Pick<Epic, 'children'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => ({

@@ -19,7 +19,7 @@ function useHref() {
 function ProductSelect({ products }: { products: { id: number; name: string }[] }) {
   const router = useRouter()
   const { params, href } = useHref()
-  return products.length > 1 ? (
+  return products.length > 1 || params.get('product') ? (
     <label className="flex items-center gap-2">
       <span className="label text-muted-foreground">Product</span>
       <select className={select} value={params.get('product') ?? ''} onChange={(e) => router.push(href({ product: e.target.value || null }))}>
