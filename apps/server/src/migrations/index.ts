@@ -34,6 +34,7 @@ import * as migration_20261102_170149_embed_tokens from './20261102_170149_embed
 import * as migration_20261102_170152_knowledge_edit from './20261102_170152_knowledge_edit';
 import * as migration_20261102_171000_knowledge_edit_record from './20261102_171000_knowledge_edit_record';
 import * as migration_20261102_180000_gate_pending_attempts from './20261102_180000_gate_pending_attempts';
+import * as migration_20261103_150196_factory_stage from './20261103_150196_factory_stage';
 
 export const migrations = [
   {
@@ -215,5 +216,10 @@ export const migrations = [
     up: migration_20261102_180000_gate_pending_attempts.up,
     down: migration_20261102_180000_gate_pending_attempts.down,
     name: '20261102_180000_gate_pending_attempts'
+  },
+  {
+    up: migration_20261103_150196_factory_stage.up,
+    down: migration_20261103_150196_factory_stage.down,
+    name: '20261103_150196_factory_stage'
   }
 ];

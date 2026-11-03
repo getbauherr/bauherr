@@ -235,13 +235,14 @@ it('keeps polling the source when a pending Ticket can no longer be read', async
   expect(failed).toBe(true)
 })
 
-it('plan gate off: the plan label is not verified or stripped; plan gate on: it is', async () => {
+it('plan gate off: an unverified plan label is stripped and the Ticket stays in plan; plan gate on: same', async () => {
   usePack('bare-pack')
   const off = await planTicket()
   await labelAs('intruder', off, PLAN)
   await poll()
-  expect((await ts().get(off)).labels).toContain(PLAN)
-  expect(await rejections(off)).toHaveLength(0)
+  expect((await ts().get(off)).labels).not.toContain(PLAN)
+  expect(await rejections(off)).toHaveLength(1)
+  expect((await row(off)).stage).toBe('plan')
   usePack('gated-pack')
   const on = await planTicket()
   await labelAs('intruder', on, PLAN)

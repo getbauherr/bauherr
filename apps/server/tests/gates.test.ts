@@ -111,7 +111,7 @@ it('starts a Run only when every assignee is a factory gate assignee', async () 
   await fake.tickets(repo).claim(String(human.number), 'e2e-admin')
   const own = await fake.tickets(repo).create({ title: 'own', labels: ['bauherr:stage:plan'] })
   await fake.tickets(repo).claim(String(own.number), 'fake')
-  await payload.create({ collection: 'tickets', data: { title: 'own', externalId: String(own.number), number: own.number, state: 'open', stage: 'triage', gateAssignees: 'fake', product, workspace: ws }, ...o })
+  await payload.create({ collection: 'tickets', data: { title: 'own', externalId: String(own.number), number: own.number, state: 'open', stage: 'triage', factoryStage: 'plan', gateAssignees: 'fake', product, workspace: ws }, ...o })
   await poll({ req: { payload } })
   expect(await runsOf(human.number)).toBe(0)
   expect(await runsOf(own.number)).toBe(1)
@@ -245,7 +245,7 @@ it('leaves the login of a running session Run assigned when the gate passes, and
 it('the poll starts a Run when the gate assignee was recorded after the poll read the Ticket', async () => {
   const issue2 = await fake.tickets(repo).create({ title: 'stale guard', labels: [] })
   await fake.tickets(repo).claim(String(issue2.number), 'fake')
-  const row = await payload.create({ collection: 'tickets', data: { title: 'stale guard', externalId: String(issue2.number), number: issue2.number, state: 'open', stage: 'triage', product, workspace: ws }, ...o })
+  const row = await payload.create({ collection: 'tickets', data: { title: 'stale guard', externalId: String(issue2.number), number: issue2.number, state: 'open', stage: 'triage', factoryStage: 'plan', product, workspace: ws }, ...o })
   await fake.tickets(repo).addLabels(String(issue2.number), ['bauherr:stage:plan'])
   const proto = Object.getPrototypeOf(fake.tickets(repo)) as any
   const orig = proto.poll

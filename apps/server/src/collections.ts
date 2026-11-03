@@ -339,6 +339,7 @@ const tickets = col('tickets', [
   { name: 'triageAttempts', type: 'number', defaultValue: 0, admin: { description: 'Triage Runs started for the current Ticket state; reset when the Ticket changes. The 3rd failure stops Triage.' } },
   date('triageAttemptAt'),
   { name: 'gatePendingAttempts', type: 'number', defaultValue: 0, admin: { description: 'Polls in which a gate label could not be verified; the poller re-reads the Ticket until it can, up to a bound.' } },
+  { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
