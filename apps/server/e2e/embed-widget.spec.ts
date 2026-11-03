@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { give, PNG } from './paste'
 
 const email = process.env.E2E_EMAIL!
 
@@ -35,6 +36,11 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
     await expect(host.getByRole('region', { name: 'Report a problem' }).locator('[data-role=assistant]').last()).toHaveText(reply)
   }
   await say('The invoice total is wrong', 'Who is affected, and since when?')
+  const input = host.getByPlaceholder('Describe it in one sentence')
+  await give(input, 'paste', { name: 'widget-shot.png', type: 'image/png', base64: PNG })
+  await expect(host.getByText('widget-shot.png')).toBeVisible()
+  await give(input, 'paste', { name: 'notes.txt', type: 'text/plain', size: 10 })
+  await expect(host.getByRole('alert').filter({ hasText: 'only png, jpeg or webp images' })).toBeVisible()
   await say('Finance, last week', 'How should it work once it is fixed?')
   await host.reload()
   await host.getByRole('button', { name: 'Report a problem' }).click()
