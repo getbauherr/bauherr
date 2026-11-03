@@ -41,12 +41,12 @@ flowchart LR
 Human gates (configured in [`pack/workflow.yaml`](pack/workflow.yaml)):
 
 - **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
-- **Production deploy approval** (on by default: `production_gate: human` on `release`; a Product without `productionChecks` shows the "Configure production checks" gate, linking to Settings > Products, until they are set; removing `production_gate` from the workflow sends a staging-confirmed Ticket to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
-- **Plan approval** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
-- **Staging acceptance** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
+- **Approve plan** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
+- **Accept on staging** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
+- **Approve production** (on by default: `production_gate: human` on `release`, or "Ask me before deploying to production" on a Product; a Product without `productionChecks` shows the "Configure production checks" gate, linking to Settings > Products, until they are set; removing `production_gate` from the workflow sends a staging-confirmed Ticket to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
 - **Merge request review**: the factory reviews and merges ([#82](https://github.com/getbauherr/bauherr/issues/82)); no human.
 
-By default a Ticket needs the owner only for refine questions, the production gate and declared blockers.
+By default a Ticket needs the owner only for Refine questions, Approve production and declared blockers.
 
 Stages, labels, triggers, run states, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
 

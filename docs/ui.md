@@ -46,13 +46,15 @@ Writes are server actions in `lib/actions.ts` over `src/lib/actions.ts` (`approv
 | Round cap reached | Grant one more round | Stop |
 | Run needs you, Run failed | Re-run <stage> | |
 
-**Staging gate** (backend in `src/lib/actions.ts`, UI follows): a Ticket in `release` whose `releaseState` is `on_staging` shows Gate "Accept on staging" with the summary Comment and the Product's `stagingUrl`; the bar's "Accept on staging" calls `acceptStaging`, "Request changes" (note required) calls `requestChanges`. Needs-you reads "Accept on staging" for that state and "Staging not confirmed" for `timed_out`. MCP: `post_staging_summary`, `accept_staging`, `request_changes`. Per-Product `stagingUrl`, deploy mode, webhook URL, required checks, gate owners (GitHub logins notified at human gates; empty = Admins with a GitHub login) and production gate are edited on `/settings/products`.
+**Staging gate** (backend in `src/lib/actions.ts`, UI follows): a Ticket in `release` whose `releaseState` is `on_staging` shows Gate "Accept on staging" with the summary Comment and the Product's `stagingUrl`; the bar's "Accept on staging" calls `acceptStaging`, "Request changes" (note required) calls `requestChanges`. Needs-you reads "Accept on staging" for that state and "Staging not confirmed" for `timed_out`. MCP: `post_staging_summary`, `accept_staging`, `request_changes`. Per-Product `stagingUrl`, deploy mode, webhook URL, required checks, gate owners (GitHub logins notified at human gates; empty = Admins with a GitHub login) and the checkbox "Ask me before deploying to production" are edited on `/settings/products`.
 
-**Production gate** (Products with `productionGate`): after "Accept", the Ticket page shows Gate "Approve production deploy" (needs-you "Approve production") whose bar button calls `approveProduction`; after a failed or timed out deploy the Gate reads "Production deploy failed" with "Approve again". "Approved for production" appears once the label is set. MCP: `approve_production`. Product settings: production gate, production webhook URL, production checks.
+**Approve production** (on by default, or per Product with "Ask me before deploying to production"): after "Accept", the Ticket page shows Gate "Approve production deploy" (needs-you "Approve production") whose bar button calls `approveProduction`; after a failed or timed out deploy the Gate reads "Production deploy failed" with "Approve again". "Approved for production" appears once the label is set. MCP: `approve_production`. Product settings: "Ask me before deploying to production", production webhook URL, production checks.
 
 **Round cap gate**: a review Ticket with `reviewState` `needs_human` and `reviewRounds` above the cap shows Gate "Round cap reached" (`ReviewCapGate`) with the escalation Comment's findings, "Grant one more round" (primary) and "Stop" (no note) in the bar; needs-you reads "Round cap reached". Backend: `grantReviewRound`, `stopReview`; MCP: `grant_review_round`, `stop_review`.
 
 The Gate card holds no primary button; the action lives in the ActionBar.
+
+**Where you are asked** (`/settings/workflow`, Admin): a table of the four human touch points in flow order (Refine, Approve plan, Accept on staging, Approve production) with When, What you do, Where, On/Off (from `humanGates()`) and How to change. Names live in `GATE_NAMES` (`lib/needs-you.ts`); the ActionBar copy in `lib/gates.ts` reads them from there.
 
 ### Decision-sheet format (D6)
 
