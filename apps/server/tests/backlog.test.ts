@@ -168,7 +168,38 @@ it('claim_next goes one column left when the right column is leased by another a
   await reset()
   await seed('a', { stage: 'review' }, { stage: 'review', status: 'running', sessionOwner: outsider.id })
   const build = await seed('b')
-  expect((await call(member, 'claim_next', {})).run.id).toBe(build.run!.id)
+  const claimed = await call(member, 'claim_next', {})
+  expect(claimed.run.id).toBe(build.run!.id)
+  expect(claimed.skipped).toEqual([expect.objectContaining({ stage: 'review', reason: `leased by ${outsider.email}` })])
+  const row = (await call(member, 'list_frontier', {})).find((t: any) => t.stage === 'review')
+  expect(row).toMatchObject({ claimable: false, reason: `leased by ${outsider.email}` })
+})
+
+it('claim_next skips a parent and reports a blocked Ticket ahead', async () => {
+  await reset()
+  await seed('a', { stage: 'parent' }, { stage: 'plan' })
+  const blocker = await seed('zz', {}, null)
+  await seed('b', { stage: 'review', blockedBy: [blocker.ticket.id] }, null)
+  const build = await seed('c')
+  const claimed = await call(member, 'claim_next', {})
+  expect(claimed.run.id).toBe(build.run!.id)
+  expect(claimed.skipped).toEqual([expect.objectContaining({ stage: 'review', reason: expect.stringMatching(/^blocked by #/) })])
+})
+
+it('claim_run rejects the Run of a parent', async () => {
+  await reset()
+  const parent = await seed('a', { stage: 'parent' }, { stage: 'plan' })
+  await expect(call(member, 'claim_run', { runId: parent.run!.id })).rejects.toThrow('parents are not claimable')
+})
+
+it('claim_run accepts a Run whose Ticket is assigned to the caller, and refuses one assigned to someone else', async () => {
+  await reset()
+  const sess = await payload.create({ collection: 'bauherren', data: { email: 's@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const top = await seed('a', { assignees: 'someone' })
+  const mine = await seed('b', { assignees: 'x,fake' })
+  const other = await seed('c', { assignees: 'someone' })
+  expect((await call(sess, 'claim_run', { runId: mine.run!.id })).run.id).toBe(mine.run!.id)
+  await expect(call(sess, 'claim_run', { runId: other.run!.id })).rejects.toThrow(`take Run ${top.run!.id} (#1, build) first`)
 })
 
 it('ranks zzzzxV and zzzzxk are in the same order on the Board and in claim_next', async () => {
@@ -179,4 +210,14 @@ it('ranks zzzzxV and zzzzxk are in the same order on the Board and in claim_next
   const board = frontierOrder([upper.ticket, lower.ticket] as any, new Map()).map((t) => t.id)
   expect(board).toEqual([upper.ticket.id, lower.ticket.id])
   expect((await call(member, 'claim_next', {})).run.id).toBe(upper.run!.id)
+})
+
+it('JS cmp order equals ORDER BY "rank" COLLATE "C" for mixed-case ranks', async () => {
+  await reset()
+  const ids = [(await seed('zzzzxV', {}, null)).ticket.id, (await seed('zzzzxk', {}, null)).ticket.id, (await seed('zzzzxA', {}, null)).ticket.id, (await seed('zzzzx0', {}, null)).ticket.id]
+  const { cmp } = await import('../src/lib/frontier')
+  const ranks = await Promise.all(ids.map(rankOf))
+  const js = ids.map((id, i) => ({ id, rank: ranks[i] })).sort((x, y) => cmp(x.rank, y.rank)).map((x) => x.id)
+  const db = await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${ws} ORDER BY "rank" COLLATE "C"`)
+  expect(db.rows.map((r: any) => r.id)).toEqual(js)
 })
