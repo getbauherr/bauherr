@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createLocalReq, type Payload, type PayloadRequest } from 'payload'
 import { secret } from '../secrets'
-import { wrongTypeMessage, type ImageMime } from './media-check'
+import { tooBigMessage, wrongTypeMessage, type ImageMime } from './media-check'
 
 export type { ImageMime }
 
@@ -90,6 +90,21 @@ export const mediaUrl = (id: number | string, mime: ImageMime): string =>
 
 export class MediaRejected extends Error {}
 
+const fail = (error: string, status: number) => Response.json({ error }, { status })
+
+/** The multipart image `file` of an upload request, or the 411/413/400 Response when it is missing or over `mediaLimits().maxBytes`. */
+export const readUpload = async (req: Request): Promise<{ name: string; bytes: Uint8Array } | Response> => {
+  const { maxBytes } = mediaLimits()
+  const tooBig = tooBigMessage(maxBytes)
+  const length = Number(req.headers.get('content-length'))
+  if (!length) return fail('content-length required', 411)
+  if (length > maxBytes + 64 * 1024) return fail(tooBig, 413)
+  const file = (await req.formData().catch(() => null))?.get('file')
+  if (!(file instanceof File)) return fail('file required', 400)
+  if (file.size > maxBytes) return fail(tooBig, 413)
+  return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }
+}
+
 /** Sniffs, strips metadata and stores one image in the `media` collection (local volume or S3, whichever is configured). Throws `MediaRejected` for a non-image or corrupt file. */
 export const saveMedia = async (
   payload: Payload,
@@ -127,4 +142,11 @@ export const mediaBytes = async (payload: Payload, doc: Doc): Promise<Uint8Array
   } catch {
     throw new Error(`media ${doc.id} unreadable`)
   }
+}
+
+/** Deletes comment images (bound to a Ticket, never posted) older than 24 h, files included. */
+export const pruneCommentMedia = async (payload: Payload): Promise<number> => {
+  const { docs } = await payload.find({ collection: 'media', where: { and: [{ ticketNumber: { exists: true } }, { attached: { equals: false } }, { createdAt: { less_than: new Date(Date.now() - 864e5).toISOString() } }] }, pagination: false, depth: 0, select: {}, overrideAccess: true })
+  for (const d of docs) await payload.delete({ collection: 'media', id: d.id, overrideAccess: true })
+  return docs.length
 }

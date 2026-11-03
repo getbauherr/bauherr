@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, startOwnerIntake, answerOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, postComment, CommentRefused, startOwnerIntake, answerOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { parseDecisions, sheetOf } from './plan'
@@ -182,5 +182,16 @@ export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Pro
   } catch (e) {
     if (e instanceof EditRefused) return { error: e.message }
     throw e
+  }
+}
+
+/** Posts a Ticket comment with its uploaded images; answers the image links or an error text (the images stay for a retry). */
+export async function postCommentAction(ticket: number, body: string, mediaIds: number[]): Promise<{ images: string[] } | { error: string }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return { images: await postComment(payload, user, { ticket, workspaceId, body, mediaIds }) }
+  } catch (e) {
+    if (e instanceof NotInWorkspace) notFound()
+    return { error: e instanceof CommentRefused ? e.message : 'The forge did not accept the comment. Your images are kept; try again.' }
   }
 }
