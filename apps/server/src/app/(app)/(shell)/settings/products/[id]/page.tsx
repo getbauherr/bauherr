@@ -168,10 +168,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       {admin && (
         <SettingsSection id="danger" title="Delete Product">
           {p.blocked ? (
-            <p className="small muted">Cannot delete yet: still referenced by {p.blocked}. Remove repositories and ticket sources under Advanced in section 1 first.</p>
+            <p className="small muted">Cannot delete yet: still referenced by {p.blocked}. Remove those first.</p>
           ) : (
             <>
-              <p className="small muted">Permanently deletes this Product. It must have no repositories, ticket sources or Tickets.</p>
+              <p className="small muted">Permanently deletes this Product. It must have nothing attached: no repositories, ticket sources, Tickets, widget tokens or requests.</p>
               <Remove collection="products" id={p.id} label="Delete Product" />
             </>
           )}

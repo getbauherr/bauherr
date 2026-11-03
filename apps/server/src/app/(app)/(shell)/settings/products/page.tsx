@@ -28,9 +28,9 @@ export default async function ProductList() {
               {products.map((p) => (
                 <tr key={p.id}>
                   <td><Link href={`/settings/products/${p.id}`}>{p.name}</Link><div className="mono muted small">{p.slug}</div></td>
-                  <td className="mono">{p.repositories.map((r) => r.fullName).join(', ')}</td>
-                  <td><StatusWord tone={p.setup.open ? 'warn' : 'ok'}>{p.setup.open ? `${p.setup.open} ${p.setup.open === 1 ? 'step' : 'steps'} left` : 'Ready'}</StatusWord></td>
-                  <td><StatusWord tone={p.setup.production === 'Off' ? 'muted' : p.setup.production === 'On' ? 'ok' : 'warn'}>{p.setup.production}</StatusWord></td>
+                  <td className="mono" data-label="Repository">{p.repositories.map((r) => r.fullName).join(', ')}</td>
+                  <td data-label="Setup"><StatusWord tone={p.setup.open ? 'warn' : 'ok'}>{p.setup.open ? `${p.setup.open} ${p.setup.open === 1 ? 'step' : 'steps'} left` : 'Ready'}</StatusWord></td>
+                  <td data-label="Production approval"><StatusWord tone={p.setup.production === 'Off' ? 'muted' : p.setup.production === 'On' ? 'ok' : 'warn'}>{p.setup.production}</StatusWord></td>
                 </tr>
               ))}
             </tbody>

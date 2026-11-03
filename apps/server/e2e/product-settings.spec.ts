@@ -66,6 +66,17 @@ test('list, Product page, save, validation and the single Delete section', async
   expect((await page.goto('/settings/products/999999'))?.status()).toBe(404)
 })
 
+test('a Product with Tickets or a widget cannot be deleted', async ({ page }) => {
+  await signIn(page)
+  for (const [name, why] of [['Acme Web', /tickets/], ['Acme Widget', /1 widget tokens/]] as const) {
+    await page.goto('/settings/products')
+    await page.getByRole('link', { name }).click()
+    await expect(page.locator('#danger')).toContainText('Cannot delete yet')
+    await expect(page.locator('#danger')).toContainText(why)
+    await expect(page.locator('#danger').getByRole('button', { name: 'Delete Product' })).toHaveCount(0)
+  }
+})
+
 test('screenshots of the list and a Product page', async ({ page }) => {
   test.skip(!shots, 'set SHOTS_DIR')
   await signIn(page)
