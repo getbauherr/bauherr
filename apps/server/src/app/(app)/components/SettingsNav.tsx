@@ -20,7 +20,7 @@ export function SettingsNav({ admin }: { admin: boolean }) {
     return () => window.removeEventListener('hashchange', sync)
   }, [path])
   const onAnchor = advanced.some(([, href]) => href.includes('#') && href === path + hash)
-  const current = (href: string) => (href.includes('#') ? path + hash === href : href === '/runs' ? path.startsWith('/runs') : path === href && !onAnchor) ? 'page' : undefined
+  const current = (href: string) => (href.includes('#') ? path + hash === href : href === '/runs' ? path.startsWith('/runs') : (path === href || (href === '/settings/products' && path.startsWith(`${href}/`))) && !onAnchor) ? 'page' : undefined
   const link = ([label, href]: Entry) => <Link key={href} href={href} aria-current={current(href)}>{label}</Link>
   return (
     <nav className="snav" aria-label="Settings">

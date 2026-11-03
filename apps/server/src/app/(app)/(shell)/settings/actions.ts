@@ -1,6 +1,7 @@
 'use server'
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
 import { webOrigin } from '../../../../lib/connection'
@@ -9,6 +10,7 @@ import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
+import { deployErrors } from '../../lib/product-setup'
 import { isAdmin, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { isWebUrl } from '../../lib/url'
@@ -78,36 +80,43 @@ export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) =
 
 const inWs = (c: Awaited<ReturnType<typeof ctx>>, collection: string, ...ids: (number | undefined)[]) => assertInWorkspace(c.payload, collection, ids, inWorkspace(c))
 
-const create = (collection: string, build: (fd: FormData) => Record<string, unknown>) =>
-  act({}, async (c, fd) => {
-    only(c.user)
-    await c.payload.create({ collection, data: { ...build(fd), workspace: inWorkspace(c) }, ...c.w } as never)
-  })
+const slugOf = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
-export const createProduct = create('products', (fd) => ({ name: s(fd, 'name'), slug: s(fd, 'slug') }))
+/** Creates the Product (short name derived from the name when empty) and opens its page. */
+export const createProduct = act({}, async (c, fd) => {
+  only(c.user)
+  const name = s(fd, 'name')
+  const slug = s(fd, 'slug') || slugOf(name)
+  if (!/^[a-z0-9-]+$/.test(slug)) throw Object.assign(new Error('Short name invalid.'), { data: { errors: [{ path: 'slug', message: 'Use lowercase letters, digits and dashes.' }] } })
+  const { id } = await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)
+  redirect(`/settings/products/${id}`)
+})
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks') }
-  const bad: (keyof typeof data)[] = (['stagingUrl', 'deployWebhookUrl', 'productionWebhookUrl'] as const).filter((k) => data[k] && !isWebUrl(data[k]))
-  if (data.deployMode === 'webhook' && !data.deployWebhookUrl) bad.push('deployWebhookUrl')
-  if (data.productionGate && !data.productionChecks) bad.push('productionChecks')
-  if (bad.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: bad.map((path) => ({ path, message: data[path] ? 'must be an http(s) URL' : (path === 'productionChecks' ? 'required with the production gate' : 'required in webhook mode') })) } })
+  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
+  const errors = Object.entries(deployErrors(data)).map(([path, message]) => ({ path, message }))
   const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
-  if (unknown.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: [{ path: 'gateOwners', message: `unknown GitHub login: ${unknown.join(', ')}` }] } })
+  if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
+  if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
   await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
 })
-export const createRepository = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await c.payload.create({ collection: 'repositories', data: { fullName: s(fd, 'fullName'), product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
-})
-export const createSource = act({}, async (c, fd) => {
+
+/** Adds a repository; "Read tickets" also adds its ticket source (removed again if that fails). */
+export const addRepository = act({}, async (c, fd) => {
   only(c.user)
   const connection = Number(s(fd, 'connection')) || undefined
+  const fullName = s(fd, 'fullName')
   await inWs(c, 'products', id(fd))
   await inWs(c, 'connections', connection)
-  await c.payload.create({ collection: 'ticket_sources', data: { repo: s(fd, 'repo'), connection, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
+  const repo = await c.payload.create({ collection: 'repositories', data: { fullName, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
+  if (fd.get('readTickets') !== 'on') return
+  try {
+    await c.payload.create({ collection: 'ticket_sources', data: { repo: fullName, connection, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
+  } catch (e) {
+    await c.payload.delete({ collection: 'repositories', id: repo.id, ...c.w } as never)
+    throw e
+  }
 })
 
 /** The token is shown once as the ready-made script tag; only its hash is stored. */
@@ -140,6 +149,7 @@ export const removeDoc = act({}, async (c, fd) => {
     if (blocked) throw new Error(`Still referenced by ${blocked}.`)
   }
   await c.payload.delete({ collection, id: id(fd), ...c.w } as never)
+  if (collection === 'products') redirect('/settings/products')
 })
 
 export const saveConnection = act({}, async (c, fd) => {
