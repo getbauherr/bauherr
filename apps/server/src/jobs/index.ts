@@ -11,6 +11,7 @@ import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRan
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
+import { enterStage, pullWaiting } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
@@ -137,7 +138,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
 
 /** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
 export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
-  if (t.stage !== 'review' || t.state !== 'open' || t.reviewState) return null
+  if (t.stage !== 'review' || t.state !== 'open' || t.reviewState || t.waitingFor) return null
   const mr = await prOf(payload, t)
   return mr?.pr.state === 'open' ? startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review') : null
 }
@@ -319,7 +320,7 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
   const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: ['plan', 'build'] } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
   for (const t of tickets.docs) {
     try {
-      if (((t.blockedBy as { state?: string }[]) ?? []).some((b) => b.state !== 'closed')) continue
+      if (t.waitingFor || ((t.blockedBy as { state?: string }[]) ?? []).some((b) => b.state !== 'closed')) continue
       if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
       if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
       await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
@@ -435,8 +436,11 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
-              await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, 'build')
-              stage = 'build'
+              const entered = await enterStage(payload, prev, 'build', async () => {
+                await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, 'build')
+                await payload.update({ collection: 'tickets', id: prev!.id, data: { stage: 'build' }, depth: 0, overrideAccess: true })
+              })
+              if (entered === 'moved') stage = 'build'
             }
           }
           // Guard: unchanged pointers are not rewritten.
@@ -454,7 +458,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !current?.waitingFor && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
@@ -468,6 +472,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       }
     }
     await closeFinishedParents(payload)
+    await pullWaiting(payload)
     await startMissingRuns(payload)
     await advancePlans(payload)
     await triageSweep(payload)
@@ -536,7 +541,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
-          await startReviewIfReady(payload, await payload.update({ collection: 'tickets', id: ticket.id, data: { stage: 'review' }, ...opts }))
+          await startReviewIfReady(payload, await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts }))
         } catch (e) {
           payload.logger.error({ err: e, ticket: ticket.id }, 'starting the review failed')
         }

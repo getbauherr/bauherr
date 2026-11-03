@@ -3,6 +3,8 @@ import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../li
 import { humanGates, packed, resolveMode } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
+import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
+import { wipCount } from '../../../lib/wip'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
 export type FormState = { saved?: boolean; error?: string; fields?: Record<string, string>; notice?: string }
@@ -179,7 +181,7 @@ export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: 
 export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
   const base = packed()
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true }, ...o } as never)) as Doc
+  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true }, ...o } as never)) as Doc
   const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
   const where = { workspace: { equals: workspace } }
   const [products, versions] = await Promise.all([
@@ -187,8 +189,10 @@ export async function loadWorkflow(workspace: number) {
     payload.find({ collection: 'workflow_versions', where, sort: '-version', pagination: false, ...o } as never),
   ])
   const baseJson = JSON.stringify({ stages: base })
+  const wip = await Promise.all(WIP_STAGES.map(async (s) => ({ stage: s, limit: wipLimit(ws, s), count: await wipCount(payload, workspace, s) })))
   return {
     stages,
+    wip,
     gates: humanGates(),
     versions: (products.docs as unknown as Doc[]).map((p) => {
       const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)

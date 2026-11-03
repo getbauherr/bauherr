@@ -5,6 +5,7 @@ import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, re
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { oidcStrategy } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
+import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -109,6 +110,14 @@ const workspaces = col(
             operation === 'create' && !value ? encrypt(newKey()) : typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value,
         ],
       },
+    },
+    {
+      name: 'wipLimits',
+      type: 'json',
+      defaultValue: DEFAULT_WIP_LIMITS,
+      validate: (v: unknown) => wipLimitsError(v) ?? true,
+      access: { update: ({ req }) => req.user?.role === 'admin' },
+      admin: { description: 'Tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit.' },
     },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
@@ -342,6 +351,7 @@ const tickets = col('tickets', [
   { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
+  select('waitingFor', ['plan', 'build', 'review'], { admin: { description: 'The full column this Ticket waits to enter. It stays ready in its column, has no Run and counts toward no limit.' } }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),
   rel('inheritedApprovalFrom', 'tickets', { admin: { description: 'Parent whose plan listed this Ticket at approval; the plan approval was inherited.' } }),

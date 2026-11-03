@@ -16,6 +16,7 @@ import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
+import { waitingLabel } from '../../../../../lib/wip'
 import '../../../ticket.css'
 
 export const dynamic = 'force-dynamic'
@@ -64,6 +65,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const missing = unansweredCritical(decisions, answers)
   const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
+  const waiting = ticket.state === 'open' ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
   const capFindings = latestWith(comments, 'Bauherr needs a human:')?.body
@@ -88,6 +90,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         {isWebUrl(ticket.url) && <a className="link" href={ticket.url}>Open on the forge</a>}
       </p>
       <StagePipeline current={stageOf(ticket)} />
+      {waiting && <p className="small chip waiting" role="status">{waiting}</p>}
       {(blockers.length > 0 || blocks.length > 0) && (
         <ul className="deps small" aria-label="Dependencies">
           {blockers.map((b) => <li key={b.id}>Blocked by <Link className="link" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="muted">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}

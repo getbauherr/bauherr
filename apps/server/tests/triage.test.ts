@@ -30,7 +30,7 @@ beforeAll(async () => {
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   const { callTool } = await import('../src/lib/mcp-tools')
   call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
-  ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
+  ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', wipLimits: {}, defaultMode: 'session' }, ...o })).id as number
   const product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })

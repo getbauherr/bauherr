@@ -17,7 +17,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const graph = view === 'graph'
   if (view && !graph) redirect(rest.size ? `/?${rest}` : '/')
   const { workspace } = await currentWorkspace()
-  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all' && !graph) : { tickets: [], products: [], lookupsCapped: false }
+  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all' && !graph) : { tickets: [], products: [], lookupsCapped: false, wip: {} }
   const product = Number(sp.product) || null
   const inProduct = data.tickets.filter((t) => !product || t.product?.id === product)
   const shown = sp.state === 'all' && !graph ? inProduct : inProduct.filter((t) => t.open)
@@ -30,7 +30,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       </div>
       <TicketControls products={data.products} />
       {shown.length ? (
-        graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} capped={data.lookupsCapped} />
+        graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} capped={data.lookupsCapped} wip={data.wip} />
       ) : (
         <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/settings/workspace', label: 'Open settings' }} />
       )}

@@ -22,18 +22,11 @@ export const rankBetween = (a: string | null, b: string | null): string => {
 export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean; reviewRounds?: number | null }
 export type FrontierRun = { stage: string; status: string; mode?: string; previousRun?: unknown }
 
-/** In flight: review/release, a latest Run that needs a human, or a Build Ticket the factory review sent back (`reviewRounds` > 0). */
-const inFlight = (t: FrontierTicket, r?: FrontierRun): boolean =>
-  t.stage === 'review' || t.stage === 'release' || r?.status === 'needs_human' || (t.stage === 'build' && (t.reviewRounds ?? 0) > 0)
-
-const rankOf = (t: FrontierTicket, r?: FrontierRun): number => (t.blocked || (r?.status === 'running' && r.mode === 'session') ? 2 : inFlight(t, r) ? 0 : 1)
-
-/** In flight first, then by rank, then by number; blocked and leased Tickets last. Pure; `latest` maps Ticket id to its latest Run. */
-export const frontierOrder = <T extends FrontierTicket>(tickets: T[], latest: Map<T['id'], FrontierRun>): T[] =>
-  tickets
-    .map((t) => ({ t, g: rankOf(t, latest.get(t.id)) }))
-    .sort((x, y) => x.g - y.g || cmp(x.t.rank, y.t.rank) || x.t.number - y.t.number)
-    .map((x) => x.t)
+/** Right to left (release, review, build, plan, triage), then the owner's rank, then number; blocked and leased Tickets last. Pure; `latest` maps Ticket id to its latest Run. */
+export const frontierOrder = <T extends FrontierTicket>(tickets: T[], latest: Map<T['id'], FrontierRun>): T[] => {
+  const parked = (t: T) => t.blocked || (latest.get(t.id)?.status === 'running' && latest.get(t.id)?.mode === 'session')
+  return [...tickets].sort((a, b) => Number(!!parked(a)) - Number(!!parked(b)) || executionOrder(a, b))
+}
 
 const cmp = (a?: string | null, b?: string | null): number => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0)
 

@@ -108,7 +108,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   })
   // Closes the claim/poll race: the poll may have seen the new assignee before it was recorded and skipped the Run start on stage entry.
   const factory = [...mine, ...added]
-  if ((t.stage === 'plan' || t.stage === 'build') && t.state === 'open' && logins(t.assignees).every((a) => factory.includes(a))) {
+  if ((t.stage === 'plan' || t.stage === 'build') && t.state === 'open' && !t.waitingFor && logins(t.assignees).every((a) => factory.includes(a))) {
     const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, ...o })
     if (!runs.totalDocs) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
   }

@@ -4,6 +4,7 @@ import { hasProductionChecks } from '../../../lib/mode'
 import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
+import { WIP_STAGES, waitingText, wipLimit } from '../../../lib/wip-limits'
 
 export type RunRow = {
   id: number
@@ -37,6 +38,8 @@ export type TicketRow = {
   gateUnreachable: string | null
   /** Open Tickets this one is blocked by. */
   blockedBy: { id: number; number: number }[]
+  /** "Waiting: Build is full (2/2)" while the Ticket waits for a full column; null otherwise. */
+  waiting: string | null
   /** Parent Ticket of a sub-ticket. */
   parent: { id: number; number: number } | null
   /** Sub-tickets of a `parent`-stage Ticket (all states). */
@@ -54,16 +57,18 @@ export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
 /** Open tickets (plus the newest closed ones when `all`), their latest Runs, and the newest Runs of the Workspace. */
-export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; lookupsCapped: boolean }> => {
+export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; lookupsCapped: boolean; wip: Record<string, { count: number; limit: number | null }> }> => {
   const payload = await payloadClient()
   const q = { depth: 0, overrideAccess: true } as const
   const ws = { workspace: { equals: workspace } }
-  const [open, closed, recent, products] = await Promise.all([
+  const [open, closed, recent, products, wsDoc] = await Promise.all([
     payload.find({ collection: 'tickets', where: { and: [ws, { state: { equals: 'open' } }] }, sort: '-sourceUpdatedAt', pagination: false, ...q }),
     all ? payload.find({ collection: 'tickets', where: { and: [ws, { state: { equals: 'closed' } }] }, sort: '-updatedAt', limit: CLOSED_LIMIT, ...q }) : null,
     payload.find({ collection: 'runs', where: ws, sort: '-createdAt', limit: RUNS_LIMIT, ...q }),
     payload.find({ collection: 'products', where: ws, sort: 'name', pagination: false, ...q }),
+    payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
   ])
+  const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: (open.docs as unknown as Record<string, any>[]).filter((t) => t.stage === s && !t.waitingFor).length, limit: wipLimit(wsDoc, s) }]))
   const ticketDocs = [...open.docs, ...(closed?.docs ?? [])] as unknown as Record<string, any>[]
   const runRows = recent.docs as unknown as RunRow[]
   const known = new Set(ticketDocs.map((t) => t.id))
@@ -113,6 +118,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
       needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
+      waiting: isOpen && t.waitingFor ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null) : null,
       parent: parents.get(t.parent) ?? null,
       children: childrenOf.get(t.id) ?? [],
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
@@ -134,5 +140,5 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       }
     }),
   )
-  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, lookupsCapped: waiting.length > DECISIONS_LOOKUPS }
+  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, lookupsCapped: waiting.length > DECISIONS_LOOKUPS, wip }
 })
