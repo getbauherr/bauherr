@@ -10,6 +10,7 @@ let sessions: typeof import('../src/app/intake/api/sessions/route')
 let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route')
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
 let shots: typeof import('../src/app/intake/api/sessions/[id]/screenshots/route')
+let read: typeof import('../src/app/intake/api/sessions/[id]/route')
 let media: typeof import('../src/app/intake/api/media/[id]/route')
 let widgetRoute: typeof import('../src/app/intake/widget.js/route')
 let embed: typeof import('../src/lib/intake/embed')
@@ -35,6 +36,7 @@ beforeAll(async () => {
   messages = await import('../src/app/intake/api/sessions/[id]/messages/route')
   submit = await import('../src/app/intake/api/sessions/[id]/submit/route')
   shots = await import('../src/app/intake/api/sessions/[id]/screenshots/route')
+  read = await import('../src/app/intake/api/sessions/[id]/route')
   media = await import('../src/app/intake/api/media/[id]/route')
   widgetRoute = await import('../src/app/intake/widget.js/route')
   embed = await import('../src/lib/intake/embed')
@@ -122,6 +124,20 @@ it('a token cannot reach sessions of a Bauherr or another token (404)', async ()
   const mine = (await (await sessions.POST(call(bearer(), ORIGIN))).json()).id
   expect((await submit.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(404)
   expect((await sessions.POST(call(null, ORIGIN))).status).toBe(401)
+})
+
+it('the resume route (sessions/:id) serves a token its own session only: not another token, a Bauherr session, a revoked token or a wrong Origin', async () => {
+  const mine = (await (await sessions.POST(call(bearer(), ORIGIN))).json()).id
+  const ok = await read.POST(call(bearer(), ORIGIN), ctx(mine))
+  expect(ok.status).toBe(200)
+  expect(await ok.json()).toMatchObject({ status: 'open', messages: [] })
+  const other = await embed.createEmbedToken(payload, { product: productId, name: 'other-read', allowedOrigins: [ORIGIN] })
+  expect((await read.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(404)
+  const bauherr = (await (await sessions.POST(call(`bauherren API-Key ${keyA}`, null, { product: productId }))).json()).id
+  expect((await read.POST(call(bearer(), ORIGIN), ctx(bauherr))).status).toBe(404)
+  expect((await read.POST(call(bearer(), 'https://evil.example.com'), ctx(mine))).status).toBe(403)
+  await payload.update({ collection: 'embed_tokens', where: { tokenHash: { equals: embed.hashToken(other) } }, data: { revokedAt: new Date().toISOString() }, ...o })
+  expect((await read.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(403)
 })
 
 it('media route: a token reads only screenshots of its own sessions (404 for a cookie session or another token)', async () => {

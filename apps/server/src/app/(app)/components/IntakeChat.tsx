@@ -14,7 +14,7 @@ const store = (key: string, value?: string) => {
   } catch {}
 }
 
-export function IntakeChat({ products, initial, others = [] }: { products: { id: number; name: string }[]; initial?: { id: string; product: number; lines: Line[]; turn: Turn | null }; others?: { id: number; product: string; first: string; when: string }[] }) {
+export function IntakeChat({ products, initial, others = [], userId }: { userId: number; products: { id: number; name: string }[]; initial?: { id: string; product: number; lines: Line[]; turn: Turn | null }; others?: { id: number; product: string; first: string; when: string }[] }) {
   const [product, setProduct] = useState(initial?.product ?? products[0].id)
   const [session, setSession] = useState<string | null>(initial?.id ?? null)
   const [lines, setLines] = useState<Line[]>(initial?.lines ?? [])
@@ -24,7 +24,7 @@ export function IntakeChat({ products, initial, others = [] }: { products: { id:
   const [error, setError] = useState('')
   const [sent, setSent] = useState<number[] | null>(null)
   const input = useRef<HTMLInputElement>(null)
-  const key = `intake:${session ?? 'new'}`
+  const key = `intake:${userId}:${session ?? 'new'}`
 
   useEffect(() => {
     try {

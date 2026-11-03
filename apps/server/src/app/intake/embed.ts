@@ -32,7 +32,7 @@ export function widget(script: HTMLScriptElement | null): void {
   const [fab, panel, log, opts, submit, form, input] = ['.fab', 'section', '.log', '.opts', '.submit', 'form', 'input'].map((s) => $(s)) as [HTMLButtonElement, HTMLElement, HTMLElement, HTMLElement, HTMLButtonElement, HTMLFormElement, HTMLInputElement]
   let session: number | null = null
   let count = 0
-  const slot = `bauherr-intake:${token.slice(0, 8)}`
+  const slot = `bauherr-intake:${token.slice(0, 16)}`
   const keep = (id: number | null) => {
     try {
       id === null ? localStorage.removeItem(slot) : localStorage.setItem(slot, String(id))

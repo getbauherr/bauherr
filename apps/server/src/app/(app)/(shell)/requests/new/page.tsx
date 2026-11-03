@@ -21,7 +21,7 @@ export default async function NewRequest({ searchParams }: { searchParams: Promi
   return (
     <>
       <h1 className="title">New request</h1>
-      {products.length ? <IntakeChat key={initial?.id} products={products} initial={initial as never} others={others} /> : <EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/settings/workspace', label: 'Open settings' }} />}
+      {products.length ? <IntakeChat userId={user.id as number} key={initial?.id} products={products} initial={initial as never} others={others} /> : <EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/settings/workspace', label: 'Open settings' }} />}
     </>
   )
 }

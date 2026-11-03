@@ -307,6 +307,9 @@ it('split submit is refused for a different confirmed count and for an incomplet
   const wrong = await submit.POST(req(keyA, { expect: 2 }), ctx(id))
   expect(wrong.status).toBe(409)
   expect((await wrong.json()).error).toContain('list changed')
+  const missing = await submit.POST(req(keyA, {}), ctx(id))
+  expect(missing.status).toBe(409)
+  expect((await missing.json()).error).toContain('list changed')
   expect((await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o }) as any).status).toBe('open')
 
   const bad = await startSplit(keyA, [{ problem: 'a' }, { problem: 'b', acceptance_criteria: ['only one'] }])

@@ -825,7 +825,7 @@ export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[
 
 /**
  * Creates the Ticket from a finished (or question-capped) Intake session: no stage label, so Triage picks it up; the interview is appended as a Comment.
- * A session with a `split` creates one Ticket per item (marker `part=<i>`), each linking its siblings; `expect` must equal the item count (the requester's confirmation).
+ * A session with a `split` creates one Ticket per item (marker `part=<i>`), each linking its siblings; `expect` is required and must equal the item count (the requester's confirmation).
  * Idempotent: a retry resumes at the first missing part, a submitted session returns its numbers.
  */
 export const submitIntake = async (payload: Payload, sessionId: TicketId, expect?: number): Promise<{ number: number; numbers?: number[] }> =>
@@ -834,7 +834,7 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
     const split: Draft[] | undefined = s.split?.length ? s.split : undefined
     if (s.status === 'submitted') return { number: s.ticketNumber, ...(s.ticketNumbers?.length > 1 && { numbers: s.ticketNumbers }) }
     if (s.status !== 'open') throw new Error('session is not open')
-    if (expect !== undefined && expect !== (split?.length ?? 1)) throw new Error('the list changed, review it again')
+    if (split ? expect !== split.length : expect !== undefined && expect !== 1) throw new Error('the list changed, review it again')
     const session: Session = { messages: s.messages ?? [], draft: s.draft, screenshots: s.screenshots }
     const [shot, refers, asked] = [(s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session)]
     const r = split ? splitReadiness(split, shot, refers, asked) : readiness(session.draft, shot, refers, asked)
