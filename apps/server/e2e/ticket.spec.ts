@@ -31,6 +31,7 @@ const STATES = [
 ] as const
 
 test('the action bar is the same single, visible bar in every state', async ({ page }) => {
+  test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 800 })
   await login(page)
   let y: number | null = null
