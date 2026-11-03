@@ -2,8 +2,10 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
+import { mediaLimits } from '../../../../../lib/intake/media'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
+import { CommentComposer } from '../../../components/CommentComposer'
 import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionSheet } from '../../../components/DecisionSheet'
 import { Approved, Gate, ProductionChecksGate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
@@ -157,6 +159,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </ul>
         </section>
       )}
+
+      {!forgeError && <CommentComposer ticket={ticket.id} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} />}
 
       <section className="stack" aria-labelledby="runs">
         <h2 className="heading" id="runs">Runs</h2>
