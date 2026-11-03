@@ -115,10 +115,10 @@ export class FakeBackend implements Backend {
   }
 
   /** Test helper: a release made by the Product's own tooling (or earlier by the factory). */
-  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[]; prerelease?: boolean }): Release {
+  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[]; prerelease?: boolean; createdAt?: number | string }): Release {
     const r = this.repo(repo);
     if (o.contains) r.contains.set(o.tag, o.contains);
-    const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}`, prerelease: !!o.prerelease };
+    const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}`, prerelease: !!o.prerelease, createdAt: new Date(o.createdAt ?? Date.now()).toISOString() };
     r.releases.push(rel);
     return rel;
   }

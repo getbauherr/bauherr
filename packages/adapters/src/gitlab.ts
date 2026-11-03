@@ -341,7 +341,7 @@ class GitlabForge implements Forge {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
   }
   private release(r: any): Release {
-    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self };
+    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self, createdAt: r.created_at ?? r.released_at };
   }
   async findRelease(repo: RepoRef, o: { sha: string }) {
     const tags = new Set<string>((await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(o.sha)}/refs?type=tag&per_page=100`)).map((t: any) => t.name));
@@ -358,7 +358,7 @@ class GitlabForge implements Forge {
     return this.release(await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }));
   }
   async latestRelease(repo: RepoRef) {
-    const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=1`))[0];
+    const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=30`)).find((x: any) => !/^v?\d+\.\d+\.\d+-/.test(x.tag_name));
     return r ? this.release(r) : null;
   }
   async listCommits(repo: RepoRef, o: { from?: string; to: string }) {

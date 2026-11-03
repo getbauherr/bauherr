@@ -395,7 +395,7 @@ class GithubForge implements Forge {
   private async release(repo: RepoRef, r: any): Promise<Release | null> {
     try {
       const sha = (await this.h.json('GET', `/repos/${repo}/commits/${enc(r.tag_name)}`)).sha as string;
-      return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url, prerelease: !!r.prerelease };
+      return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url, prerelease: !!r.prerelease, createdAt: r.created_at };
     } catch (e) {
       if (e instanceof GithubError && e.status === 404) return null;
       throw e;
@@ -417,7 +417,7 @@ class GithubForge implements Forge {
   }
   async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
     const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease });
-    return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string, prerelease: !!o.prerelease };
+    return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string, prerelease: !!o.prerelease, createdAt: r.created_at };
   }
   async listTags(repo: RepoRef) {
     return (await this.h.paginate(`/repos/${repo}/tags?per_page=100`)).map((t) => t.name as string);

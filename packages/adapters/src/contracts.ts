@@ -155,6 +155,8 @@ export interface Release {
   name: string;
   body: string;
   url: string;
+  /** ISO time the release was created on the forge. */
+  createdAt?: string;
 }
 
 /** Thrown by `putFile` when `expectSha` no longer matches the file. */

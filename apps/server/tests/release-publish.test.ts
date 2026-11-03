@@ -196,3 +196,28 @@ it('pre-release Product: no finished checks within 60 minutes is Release failed'
   expect(await release.watchReleaseChecks(payload, Date.now() + release.RELEASE_CHECKS_TIMEOUT_MS + 60_000)).toBe(1)
   expect(await reload(t.id)).toMatchObject({ releaseChecksState: 'failed', releaseRunUrl: fake.listReleases('acme/rc').at(-1)!.url })
 })
+
+it('pre-release Product: a reused older release keeps its own runs (out-of-order approval) and resolves to "Released in"', async () => {
+  const old = Date.now() - 3 * 60 * 60_000
+  fake.setCommits('acme/rc', [{ sha: 'sha-b', message: 'fix: b' }])
+  fake.addRelease('acme/rc', { tag: 'v0.1.0-rc.9', sha: 'sha-a', contains: ['sha-b'], prerelease: true, createdAt: old })
+  const at = new Date(old + 60_000).toISOString()
+  fake.setChecks('acme/rc', 'sha-a', [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at, url: 'https://fake/run/1' }, { id: 2, name: 'npm', status: 'completed', conclusion: 'success', startedAt: at }])
+  const t = await approved('rc', 'Out of order', 'sha-b')
+  await release.publishRelease(payload, products.rc!)
+  expect(fake.listReleases('acme/rc').filter((r) => r.tag === 'v0.1.0-rc.9')).toHaveLength(1)
+  expect(await release.watchReleaseChecks(payload)).toBe(1)
+  expect((await reload(t.id)).releaseChecksState).toBe('passed')
+  expect((await fake.tickets('acme/rc').listComments(t.n)).at(-1)!.body).toContain('Released in [v0.1.0-rc.9]')
+})
+
+it('pre-release Product: a timeout links the workflow run when a check has a url', async () => {
+  fake.setCommits('acme/rc', [{ sha: 'sha-t', message: 'fix: t' }])
+  const t = await approved('rc', 'Timeout link', 'sha-t')
+  await release.publishRelease(payload, products.rc!)
+  const rel = fake.listReleases('acme/rc').at(-1)!
+  fake.setChecks('acme/rc', 'sha-t', [{ id: 9, name: 'image', status: 'in_progress', conclusion: null, startedAt: new Date().toISOString(), url: 'https://fake/run/9' }])
+  expect(await release.watchReleaseChecks(payload, Date.now() + release.RELEASE_CHECKS_TIMEOUT_MS + 60_000)).toBe(1)
+  expect((await reload(t.id)).releaseRunUrl).toBe('https://fake/run/9')
+  expect(rel.url).not.toBe('https://fake/run/9')
+})

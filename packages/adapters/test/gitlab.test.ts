@@ -104,6 +104,11 @@ describe('gitlab tickets', () => {
     await assert.rejects(notApplied.ts.claim('7', 'bauherr-bot'), { status: 422 });
   });
 
+  it('latestRelease skips pre-releases', async () => {
+    const { forge } = setup(() => [{ tag_name: 'v1.1.0-rc.2', _links: { self: 'u2' } }, { tag_name: 'v1.0.0', _links: { self: 'u1' } }]);
+    assert.equal((await forge.latestRelease('g/p'))?.tag, 'v1.0.0');
+  });
+
   it('release, unassign, userExists', async () => {
     const { ts, calls } = setup((m, path) => (path.startsWith('/users') ? (path.endsWith('ghost') ? [] : fx('users')) : fx('issue')));
     await ts.release('7');
