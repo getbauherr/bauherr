@@ -29,7 +29,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<Re
   return (
     <>
       <nav className="tabs" aria-label="Audit">
-        <Link href="/settings/audit" aria-current={tab === 'touches' ? 'page' : undefined}>Human touches</Link>
+        <Link href="/settings/audit" aria-current={tab === 'touches' ? 'page' : undefined}>Touches</Link>
         <Link href="/settings/audit?tab=calls" aria-current={tab === 'calls' ? 'page' : undefined}>Tool calls</Link>
       </nav>
       <form className="sform" method="get">
@@ -52,7 +52,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<Re
                 <tr key={r.id}>
                   <td className="mono">{r.at ? new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') : '—'}</td>
                   <td>{r.kind}</td>
-                  {tab === 'touches' ? <td>{r.actor}</td> : <><td><span className={r.status === 'error' ? 'err' : 'ok'}>{r.status === 'error' ? 'Error' : 'OK'}</span>{r.durationMs != null && <span className="muted"> {r.durationMs} ms</span>}</td><td className="mono small">{r.digest}</td></>}
+                  {tab === 'touches' ? <td>{r.actor === 'factory' ? <span className="muted">Factory</span> : r.actor}</td> : <><td><span className={r.status === 'error' ? 'err' : 'ok'}>{r.status === 'error' ? 'Error' : 'OK'}</span>{r.durationMs != null && <span className="muted"> {r.durationMs} ms</span>}</td><td className="mono small">{r.digest}</td></>}
                   <td>{r.ticket ? <Link className="link" href={`/tickets/${r.ticket.id}`}>{r.ticket.label}</Link> : '—'}</td>
                   <td>{r.runId ? <Link className="link" href={`/runs/${r.runId}`}>#{r.runId}</Link> : '—'}</td>
                 </tr>
