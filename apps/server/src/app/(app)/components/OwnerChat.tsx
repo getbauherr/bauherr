@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { answerOwnerChat, startOwnerChat } from '../lib/actions'
 import { ChatThread } from './chat/thread'
+import { Button } from './ui/button'
+import { Card } from './ui/card'
 
 type Q = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
 
@@ -25,12 +27,14 @@ function Interview({ session, ticket, first }: { session: number; ticket: number
   }))
   const runtime = useLocalRuntime(adapter, { initialMessages: [messageOf(first)] })
   return (
-    <section className="sheet" id="answer" aria-label="Answer interactively" style={{ padding: 'var(--space-4)' }}>
+    <Card asChild className="max-w-[640px] scroll-mt-[calc(72px+var(--space-4))]">
+    <section id="answer" aria-label="Answer interactively">
       <AssistantRuntimeProvider runtime={runtime}>
         <ChatThread composer={false} maxHeight="max-h-[50vh]" first={{ label: '', placeholder: '' }} next={{ label: '', placeholder: '' }} />
       </AssistantRuntimeProvider>
-      {q && <p className="small muted">{q.left} open</p>}
+      {q && <p className="small text-muted-foreground">{q.left} open</p>}
     </section>
+    </Card>
   )
 }
 
@@ -61,9 +65,9 @@ export function OwnerChat({ ticket }: { ticket: number }) {
 
   if (!start) {
     return (
-      <p id="answer">
-        <button type="button" className="btn" onClick={begin} disabled={pending}>Answer interactively</button>
-        {failed && <span className="small muted"> The questions could not be loaded.</span>}
+      <p id="answer" className="scroll-mt-[calc(72px+var(--space-4))]">
+        <Button type="button" variant="outline" onClick={begin} disabled={pending}>Answer interactively</Button>
+        {failed && <span className="small text-muted-foreground"> The questions could not be loaded.</span>}
       </p>
     )
   }

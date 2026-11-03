@@ -11,6 +11,7 @@ import { SortableCards } from './SortableCards'
 import { StatusChip } from './StatusChip'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
+import { Table } from './ui/table'
 import { cn } from '@/lib/utils'
 
 const Num = ({ t }: { t: TicketRow }) =>
@@ -99,27 +100,25 @@ export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capp
 
 export function RunsTable({ runs, tickets }: { runs: RunRow[]; tickets: Map<number, TicketRow> }) {
   return (
-    <div className="scroll">
-      <table className="table">
-        <thead>
-          <tr className="label">
-            {['Ticket', 'Stage', 'Status', 'When'].map((h) => <th key={h}>{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => {
-            const t = tickets.get(r.ticket)
-            return (
-              <tr key={r.id}>
-                <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}</Link> <span className="mono muted">#{t.number}</span></> : <Link className="link" href={`/runs/${r.id}`}>Run</Link>}</td>
-                <td>{r.stage}</td>
-                <td><StatusChip status={r.status} /></td>
-                <td title={r.createdAt}>{ago(r.createdAt)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <thead>
+        <tr className="label">
+          {['Ticket', 'Stage', 'Status', 'When'].map((h) => <th key={h}>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((r) => {
+          const t = tickets.get(r.ticket)
+          return (
+            <tr key={r.id}>
+              <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}</Link> <span className="mono text-muted-foreground">#{t.number}</span></> : <Link className="text-primary" href={`/runs/${r.id}`}>Run</Link>}</td>
+              <td>{r.stage}</td>
+              <td><StatusChip status={r.status} /></td>
+              <td title={r.createdAt}>{ago(r.createdAt)}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </Table>
   )
 }
