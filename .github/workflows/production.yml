@@ -1,6 +1,6 @@
 name: production
 # Bauherr's own production: the owner's approval adds `bauherr:approved:production` to the Ticket issue.
-# Builds the Ticket's merge sha, publishes ghcr.io/getbauherr/bauherr:edge and reports the check `production` on that sha.
+# Builds the Ticket's merge sha (merge of its factory PR, head branch bauherr/<ticket>-*), publishes ghcr.io/getbauherr/bauherr:edge and reports the check `production` on that sha.
 on:
   issues:
     types: [labeled]
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  production:
+  deploy-edge:
     if: github.event.label.name == 'bauherr:approved:production' && !github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
@@ -36,8 +36,8 @@ jobs:
       - id: sha
         name: Resolve merge sha
         run: |
-          pr=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/timeline" | jq -s 'add' | "$RUNNER_TEMP/scripts/merged-pr.sh" "$GITHUB_REPOSITORY")
-          echo "sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq .merge_commit_sha)" >> "$GITHUB_OUTPUT"
+          sha=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=closed&per_page=100" | jq -s 'add' | "$RUNNER_TEMP/scripts/merged-sha.sh" "$ISSUE")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Sha must be on main
         env:
           SHA: ${{ steps.sha.outputs.sha }}
