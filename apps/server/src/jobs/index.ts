@@ -191,6 +191,14 @@ export const STALE_JOB_MS = 60 * 60_000
 /** Scheduled poller tasks, derived from `TASKS`; agent Runs (`run-stage`, `reconcile-costs`) have no schedule and are never listed. */
 export const scheduledSlugs = (): string[] => TASKS.filter((t) => t.schedule?.length).map((t) => t.slug)
 
+/** Adds every task slug to the two Payload job enums (idempotent), so a new task needs no `ALTER TYPE` migration. Runs on init; skips an enum that does not exist yet (schema not migrated, the migrations create it). */
+export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.slug)): Promise<void> => {
+  for (const type of ['enum_payload_jobs_task_slug', 'enum_payload_jobs_log_task_slug']) {
+    if (!(await payload.db.drizzle.execute(sql`SELECT to_regtype(${`public.${type}`}) AS t`)).rows[0]?.t) continue
+    for (const slug of slugs) await payload.db.drizzle.execute(sql.raw(`ALTER TYPE "public"."${type}" ADD VALUE IF NOT EXISTS '${slug.replace(/'/g, "''")}'`))
+  }
+}
+
 /** A scheduled job left `processing` with no update for STALE_JOB_MS (killed worker, hung fetch) blocks its concurrency key forever: mark it failed so the schedule resumes. */
 export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Promise<number> => {
   const rows = (

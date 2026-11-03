@@ -3,7 +3,7 @@ import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { s3Storage } from '@payloadcms/storage-s3'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
-import { TASKS } from './jobs'
+import { TASKS, syncJobEnums } from './jobs'
 import { migrations } from './migrations'
 import { secret } from './lib/secrets'
 
@@ -23,6 +23,7 @@ export default buildConfig({
   typescript: { autoGenerate: false },
   db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true, prodMigrations: migrations }),
   collections,
+  onInit: syncJobEnums,
   plugins: [
     multiTenantPlugin({
       tenantsSlug: 'workspaces',

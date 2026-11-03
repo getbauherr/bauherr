@@ -10,3 +10,4 @@ docs/site/site
 .uv-cache
 .venv
 apps/server/public/intake/widget.js
+apps/server/src/migrations/index.ts
