@@ -1,17 +1,13 @@
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_166_agent_keys_migration WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_166_agent_keys_migration')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_166_agent_keys_migration')
+  testDb = await createTestDb('166_agent_keys_migration')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   delete process.env.GATEWAY_ADMIN_URL
@@ -21,6 +17,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 it('D2: the migration disables existing personal keys and creates the agent key schema', async () => {

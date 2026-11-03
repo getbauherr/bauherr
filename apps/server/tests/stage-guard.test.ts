@@ -1,10 +1,11 @@
 import { fileURLToPath } from 'node:url'
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
+let testDb: TestDb
 let fake: FakeBackend
 let jobs: typeof import('../src/jobs')
 let moveStage: typeof import('../src/lib/stage-move').moveStage
@@ -14,13 +15,8 @@ const repo = 'acme/web'
 const PLAN = 'bauherr:approved:plan'
 
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const db = new pg.Client({ connectionString: base })
-  await db.connect()
-  await db.query('DROP DATABASE IF EXISTS bauherr_test_stage_guard_196 WITH (FORCE)')
-  await db.query('CREATE DATABASE bauherr_test_stage_guard_196')
-  await db.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_stage_guard_196')
+  testDb = await createTestDb('stage_guard')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -41,6 +37,7 @@ beforeAll(async () => {
 afterAll(async () => {
   fake.actingAs = 'factory'
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 const usePack = (name: 'gated-pack' | 'bare-pack') => {
@@ -104,4 +101,30 @@ it('holds an approved plan with an open critical decision', async () => {
   await poll()
   expect((await row(n)).stage).toBe('plan')
   expect(await runs(n, 'build')).toHaveLength(0)
+})
+
+it('treats a Ticket with no DB stage as triage: triage to build by hand is reverted', async () => {
+  fake.actingAs = 'factory'
+  const t = await ts().create({ title: 'x', labels: [] })
+  await poll()
+  await payload.update({ collection: 'tickets', id: (await row(t.id)).id, data: { stage: null }, ...o })
+  await ts().addLabels(t.id, ['bauherr:stage:build'])
+  await poll()
+  expect((await ts().get(t.id)).labels).toContain('bauherr:stage:triage')
+  expect((await ts().get(t.id)).labels).not.toContain('bauherr:stage:build')
+  expect(await rejections(t.id)).toHaveLength(1)
+  expect(await runs(t.id, 'build')).toHaveLength(0)
+})
+
+it('drops a lingering factory record on a human backward move, so an agent cannot re-forward', async () => {
+  const n = await known('plan')
+  await moveStage(payload, ts(), await row(n), 'build')
+  await payload.update({ collection: 'tickets', id: (await row(n)).id, data: { stage: 'build' }, ...o })
+  await poll()
+  await relabel(n, 'build', 'plan')
+  await poll()
+  expect((await row(n)).factoryStage ?? null).toBeNull()
+  await relabel(n, 'plan', 'build')
+  await poll()
+  expect((await ts().get(n)).labels).toContain('bauherr:stage:plan')
 })

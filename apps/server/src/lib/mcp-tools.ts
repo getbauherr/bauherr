@@ -485,7 +485,7 @@ export const tools: Tool[] = [
   {
     name: 'grant_review_round',
     access: 'human',
-    description: 'Human only: at the review round cap, grant exactly one more round (back to Build on the same MR, records a human touch). Refused for agent keys.',
+    description: 'Human only: at the review round cap (once the factory grant is used), grant exactly one more round (back to Build on the same MR, records a human touch). Refused for agent keys.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)

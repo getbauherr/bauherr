@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { tierModels } from '../src/lib/run-ctx'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 const o = { overrideAccess: true } as const
@@ -15,14 +15,10 @@ const conn = (workspace: number, provider: string, extra: object = {}) =>
 const ws = async (slug: string) => (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number
 const reload = (id: number) => payload.findByID({ collection: 'workspaces', id, ...o }) as unknown as Promise<{ modelByTier: Record<string, string>; budgetUnit: string }>
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_multi_144 WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_multi_144')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_multi_144')
+  testDb = await createTestDb('multi_144')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.GATEWAY_CONFIG_DIR = dir
@@ -37,6 +33,7 @@ beforeAll(async () => {
 afterAll(async () => {
   vi.unstubAllGlobals()
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 it('two Connections of one Workspace render two entries and files; deleting one leaves the other', async () => {

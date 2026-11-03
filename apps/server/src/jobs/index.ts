@@ -351,20 +351,20 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           let stage = stageOf(labels)
           // Stage guard (#196): a forward move the factory did not record is reverted to the DB stage; backward moves and first sight are accepted.
           let clearFactoryStage = false
-          if (prev?.stage && stage && stage !== prev.stage) {
-            if (stage === prev.factoryStage) clearFactoryStage = true
-            else if (isForward(prev.stage, stage)) {
+          if (prev && stage && stage !== (prev.stage ?? 'triage')) {
+            clearFactoryStage = true
+            if (stage !== prev.factoryStage && isForward(prev.stage ?? 'triage', stage)) {
+              const from = prev.stage ?? 'triage'
               const marker = `<!-- bauherr:stage-rejected:${stage}:${t.updatedAt} -->`
               const forge = backendFor(conn).tickets(src.repo)
               try {
-                await setStage(forge, String(t.number), prev.stage)
+                await setStage(forge, String(t.number), from)
                 if (!(await forge.listComments(String(t.number))).some((c) => c.body.startsWith(marker))) {
-                  await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back to \`${prev.stage}\`: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
+                  await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back to \`${from}\`: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
                 }
-                labels = [...labels.filter((l) => stageOf([l]) === null), stageLabel(prev.stage)]
+                labels = [...labels.filter((l) => stageOf([l]) === null), stageLabel(from)]
                 base.labels = labels
-                stage = prev.stage
-                clearFactoryStage = true
+                stage = from
               } catch (e) {
                 payload.logger.warn({ err: e, ticket: prev.id }, 'stage revert failed, keeping the DB stage')
                 continue
@@ -382,6 +382,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
           // Guard: unchanged pointers are not rewritten.
           if (!base.gatePendingAttempts && !prev?.gatePendingAttempts && prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          if (prev?.factoryStage && stage === prev.factoryStage) clearFactoryStage = true
           const data = {
             ...base,
             stage,

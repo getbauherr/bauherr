@@ -1,7 +1,7 @@
-import pg from 'pg'
 import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
@@ -17,14 +17,10 @@ const repo = 'acme/web'
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 const EVIDENCE = 'Closes it\n\n## Evidence\n| Goal | verified |\n'
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_review WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_review')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_review')
+  testDb = await createTestDb('review')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -46,6 +42,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** A review Ticket with an open factory MR and a claimed session Review Run. */
@@ -148,13 +145,15 @@ it('a review round only touches Current instructions, Unfinished work and Open; 
   }
 })
 
-it('the 3rd return to Build needs a human', async () => {
+it('the 3rd return is granted by the factory, the 4th needs a human', async () => {
   const { id, n } = await seed({ checks: green })
   for (const round of [1, 2]) {
     expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'build' })
     expect((await reload(id)).reviewRounds).toBe(round)
     await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
   }
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'build' })
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
   expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'needs_human' })
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
   expect((await fake.tickets(repo).listComments(n)).some((c) => c.body.startsWith('Bauherr needs a human: the review found 1 blocking'))).toBe(true)
@@ -580,17 +579,53 @@ it('resume: nothing is retried inside the grace, while a review Run is active, o
   for (const s of parked) expect(await prState(s.pr.number)).toBe('open')
 })
 
-/** A review Ticket parked at the round cap (3 returns), the escalation Comment posted. */
+const touches = async (id: number, kind: string) => (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: kind } }] }, ...o })).docs
+const hitCap = async (id: number) => {
+  for (const round of [1, 2]) {
+    await submit(await review(id), [medium])
+    await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  }
+}
+
+/** A review Ticket parked at the round cap (factory's grant already used), the escalation Comment posted. */
 const atCap = async () => {
   const s = await seed({ checks: green })
-  for (const round of [1, 2]) {
-    await submit(await review(s.id), [medium])
-    await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
-  }
+  await hitCap(s.id)
+  expect(await submit(await review(s.id), [medium])).toMatchObject({ outcome: 'build' })
+  await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
   expect(await submit(await review(s.id), [medium])).toMatchObject({ outcome: 'needs_human' })
   return s
 }
-const touches = async (id: number, kind: string) => (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: kind } }] }, ...o })).totalDocs
+
+it('first cap hit is granted by the factory: Build on the same MR, factory touch, one Comment, no needs_human', async () => {
+  const { id, n, pr } = await seed({ checks: green })
+  await hitCap(id)
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'build' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, reviewRounds: 2 })
+  const t = await touches(id, 'review-cap:auto-grant')
+  expect(t).toHaveLength(1)
+  expect(t[0]).toMatchObject({ actor: 'factory' })
+  expect((await comments(n)).filter((b) => b.includes('the factory granted one more round'))).toHaveLength(1)
+  const build = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })
+  expect(build.totalDocs).toBe(1)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'merged' })
+  expect(await prState(pr.number)).toBe('merged')
+})
+
+it('second cap hit after the factory grant shows the owner Gate', async () => {
+  const { id } = await atCap()
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+  expect(await touches(id, 'review-cap:auto-grant')).toHaveLength(1)
+})
+
+it('an earlier owner grant uses up the factory grant', async () => {
+  const { id } = await atCap()
+  await actions.grantReviewRound(payload, member, { ticket: id })
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'needs_human' })
+  expect(await touches(id, 'review-cap:auto-grant')).toHaveLength(1)
+})
 
 it('grant at the round cap: exactly one more round on the same MR, then a clean review merges', async () => {
   const { id, pr } = await atCap()
@@ -599,7 +634,7 @@ it('grant at the round cap: exactly one more round on the same MR, then a clean 
   const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).docs
   expect(build).toHaveLength(1)
   expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('[medium] a.ts:3 off by one')
-  expect(await touches(id, 'review-cap:grant')).toBe(1)
+  expect(await touches(id, 'review-cap:grant')).toHaveLength(1)
   await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
   expect(await submit(await review(id))).toMatchObject({ outcome: 'merged' })
   expect(await prState(pr.number)).toBe('merged')
@@ -631,7 +666,7 @@ it('stop at the cap moves to triage with a note, the MR stays open', async () =>
   expect(await reload(id)).toMatchObject({ stage: 'triage', reviewState: null, reviewRounds: 3 })
   expect(await prState(pr.number)).toBe('open')
   expect((await comments(n)).some((b) => b.startsWith('Stopped at the review round cap') && b.includes('needs a redesign'))).toBe(true)
-  expect(await touches(id, 'review-cap:stop')).toBe(1)
+  expect(await touches(id, 'review-cap:stop')).toHaveLength(1)
 })
 
 it('grant_review_round and stop_review over MCP: an agent key is refused, a human works', async () => {

@@ -1,10 +1,10 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FakeBackend } from '@bauherr/adapters'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 const backend = vi.hoisted(() => ({ current: null as unknown as FakeBackend }))
 vi.mock('../src/lib/adapters', () => ({ backendFor: () => backend.current }))
@@ -16,6 +16,7 @@ let knowledge: typeof import('../src/lib/knowledge')
 let withRepo: number
 let withoutRepo: number
 
+let testDb: TestDb
 beforeAll(async () => {
   const pack = mkdtempSync(join(tmpdir(), 'pack-'))
   mkdirSync(join(pack, 'rules'))
@@ -29,13 +30,8 @@ beforeAll(async () => {
   backend.current.commit(REPO, 'main', 'handbook.md', '# Handbook\n\nokapi okapi okapi okapi\n\n## Other\n\nokapi\n')
   backend.current.commit(REPO, 'main', 'image.png', 'okapi binary')
 
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_knowledge_150 WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_knowledge_150')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_knowledge_150')
+  testDb = await createTestDb('knowledge_150')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   const { getPayload } = await import('payload')
@@ -51,6 +47,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 describe('chunk', () => {

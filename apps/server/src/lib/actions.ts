@@ -134,6 +134,9 @@ const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
 /** Whether the Ticket has an open critical decision: it holds every forward move. */
 export const holdsRefine = async (ts: TicketSource, n: string) => openCritical(await ts.listComments(n)).length > 0
 
+const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
+  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: now() }, overrideAccess: true })
+
 /** Plan gate: refuses while critical decisions are unanswered, then adds `bauherr:approved:plan` and records the human touch. */
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -247,7 +250,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       }
       const row = await upsertTicket(
         payload,
-        { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: 'plan' },
+        { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
         link,
       )
       spawned.set(item.title, { id: child.id, docId: row.id })
@@ -537,7 +540,13 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   if (!claimed) return 'noop'
   const rounds = Number(claimed.review_rounds)
   const n = String(t.number)
-  if (countRound && rounds > MAX_REVIEW_ROUNDS) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
+  if (countRound && rounds > MAX_REVIEW_ROUNDS) {
+    const used = await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { in: ['review-cap:auto-grant', 'review-cap:grant'] } }] }, overrideAccess: true })
+    if (used.totalDocs) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
+    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_rounds" = "review_rounds" - 1 WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_rounds" > ${MAX_REVIEW_ROUNDS}`)
+    await factoryTouch(payload, t, 'review-cap:auto-grant')
+    await mr.tickets.comment(n, `Review round cap reached after ${MAX_REVIEW_ROUNDS} rounds; the factory granted one more round.`)
+  }
   const src = { ts: mr.tickets, n }
   const text = (opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`).replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment(src)
