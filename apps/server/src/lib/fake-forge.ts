@@ -81,6 +81,11 @@ const build = (): FakeBackend => {
   void ts.comment('17', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
   void ts.comment('17', WORKLOG)
   void ts.create({ title: 'Fix the date parser', labels: ['bauherr:stage:build'] })
+  // #21 is the owner-chat spec's own Ticket: one open decision, so it needs no other spec's answers.
+  for (const n of [19, 20]) void placeholder(n)
+  void ts.create({ title: 'Remember the theme choice', labels: ['bauherr:stage:plan'] })
+  void ts.comment('21', PLAN.replace(/- \*\*D2[^\n]*\n/, ''))
+  void ts.comment('21', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))
