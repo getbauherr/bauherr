@@ -49,3 +49,7 @@ Use only `duration-state`, `duration-panel`, `duration-page` with `ease-out` for
 ## Writing
 
 Singular Bauherr, plural Bauherren, never "Bauherrs". People are added, not created: "Add Bauherr", "Add Product". Sentence case. Second person for the Bauherr ("You approve the plan"), third person for agents ("The agent opened a merge request"). Buttons are verbs ("Approve plan", "Re-run failed steps"). Errors say what happened and what to do next in one sentence each. No exclamation marks, no emoji, no praise.
+
+## Styling
+
+Pages use `app.css` classes or, for new components, Tailwind v4 utilities with shadcn/ui components (Radix primitives, copied into `apps/server/src/app/(app)/components/ui`, no runtime UI package). Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is not loaded; shadcn roots carry the `aui-root` class for the part they need. Chat UIs use assistant-ui's shadcn components.
