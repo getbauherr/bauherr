@@ -21,9 +21,9 @@ jobs:
           --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
@@ -35,12 +35,20 @@ jobs:
       E2E_EMAIL: e2e@example.com
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: ghcr.io/getbauherr/bauherr:dev
+          cache-from: type=gha,scope=image
+          cache-to: type=gha,scope=image,mode=max
       - name: Start the production stack
-        run: docker compose up -d --build --wait app
+        run: docker compose up -d --wait app
       - name: Seed
         run: |
           echo "E2E_PASSWORD_FILE=$RUNNER_TEMP/e2e-password" >> "$GITHUB_ENV"
@@ -68,6 +76,10 @@ jobs:
 
   e2e-fake:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     services:
       postgres:
         image: postgres:17
@@ -86,9 +98,9 @@ jobs:
       E2E_GATED_PACK: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - name: Seed
         run: |
@@ -113,11 +125,11 @@ jobs:
           docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
           -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server
           -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e E2E_GATED_PACK -e HOME=/tmp
-          mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --reporter=line,html
+          mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --reporter=line,html --shard=${{ matrix.shard }}/2
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-fake
+          name: playwright-report-fake-${{ matrix.shard }}
           path: |
             apps/server/playwright-report
             apps/server/e2e/results
@@ -128,9 +140,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter bauherr test
       - run: pnpm --filter bauherr exec npm pack --dry-run
@@ -139,17 +151,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
-      - name: Pack the CLI and build the image it pins
+      - name: Pack the CLI
         run: |
           pnpm --filter bauherr build
           version=$(node -p "require('./packages/cli/package.json').version")
           (cd packages/cli && npm pack --pack-destination "$RUNNER_TEMP")
           echo "TGZ=$RUNNER_TEMP/bauherr-$version.tgz" >> "$GITHUB_ENV"
-          docker build -t "ghcr.io/getbauherr/bauherr:$version" .
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: ghcr.io/getbauherr/bauherr:${{ env.VERSION }}
+          cache-from: type=gha,scope=image
+          cache-to: type=gha,scope=image,mode=max
       - name: npx init, health, down
         run: |
           dir=$RUNNER_TEMP/smoke
