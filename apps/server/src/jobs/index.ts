@@ -187,6 +187,22 @@ export const abandonRun = async (
 }
 
 /** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
+export const STALE_JOB_MS = 10 * 60_000
+
+/** Scheduled poller tasks; agent Runs (`run-stage`, `reconcile-costs`) are long by design and never listed. */
+export const SCHEDULED_SLUGS = ['poll-tickets', 'expire-sessions', 'watch-reviews', 'watch-production', 'resume-reviews', 'watch-release', 'publish-release', 'notify-gates', 'resync-knowledge', 'watch-knowledge-prs', 'prune-request-logs']
+
+/** A scheduled job left `processing` with no update for STALE_JOB_MS (killed worker, hung fetch) blocks its concurrency key forever: mark it failed so the schedule resumes. */
+export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Promise<number> => {
+  const rows = (
+    await payload.db.drizzle.execute(
+      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(SCHEDULED_SLUGS.map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - STALE_JOB_MS).toISOString()} RETURNING "id", "task_slug"`,
+    )
+  ).rows
+  for (const r of rows) payload.logger.warn({ job: r.id, task: r.task_slug }, 'reclaimed stale scheduled job')
+  return rows.length
+}
+
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
@@ -218,21 +234,28 @@ export const expireSessions: TaskConfig<{ input: Record<string, never>; output: 
   slug: 'expire-sessions',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
   retries: 0,
-  handler: async ({ req }) => ({ output: { expired: await expireStaleSessions(req.payload) } }),
-}
-
-export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output: { released: number; confirmed: number; timedOut: number } }> = {
-  slug: 'watch-release',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
-  retries: 0,
-  concurrency: () => 'watch-release',
   handler: async ({ req }) => {
-    await watchReviews(req.payload)
-    await watchProduction(req.payload)
-    await resumeReviews(req.payload)
-    return { output: await watchRelease(req.payload) }
+    await reclaimStaleJobs(req.payload)
+    return { output: { expired: await expireStaleSessions(req.payload) } }
   },
 }
+
+/** One scheduled task per watcher: separate DB jobs and concurrency keys, so a hung or failing watcher blocks no other. */
+const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): TaskConfig<{ input: Record<string, never>; output: Record<string, never> }> => ({
+  slug,
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => slug,
+  handler: async ({ req }) => {
+    await run(req.payload)
+    return { output: {} }
+  },
+})
+
+export const watchReviewsTask = watcher('watch-reviews', watchReviews)
+export const watchProductionTask = watcher('watch-production', watchProduction)
+export const resumeReviewsTask = watcher('resume-reviews', resumeReviews)
+export const watchReleaseTask = watcher('watch-release', watchRelease)
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',

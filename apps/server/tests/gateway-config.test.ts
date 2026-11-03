@@ -38,3 +38,20 @@ it.skipIf(!dockerAvailable)('the template with one entry per preset and both bud
   const r = spawnSync('docker', ['run', '--rm', '-v', `${dir}:/cfg:ro`, 'cr.agentgateway.dev/agentgateway:v1.6.0', '--validate-only', '-f', '/cfg/config.yaml'], { encoding: 'utf8' })
   expect(r.status, r.stderr + r.stdout).toBe(0)
 })
+
+it('a gateway admin call that never answers fails within the timeout', async () => {
+  const { createServer } = await import('node:http')
+  const srv = createServer(() => {}).listen(0)
+  await new Promise((r) => srv.once('listening', r))
+  process.env.GATEWAY_ADMIN_URL = `http://127.0.0.1:${(srv.address() as { port: number }).port}`
+  process.env.GATEWAY_ADMIN_TIMEOUT_MS = '50'
+  try {
+    const { deleteKey } = await import('../src/lib/gateway')
+    await expect(deleteKey('x')).rejects.toThrow('gateway GET')
+  } finally {
+    delete process.env.GATEWAY_ADMIN_URL
+    delete process.env.GATEWAY_ADMIN_TIMEOUT_MS
+    srv.closeAllConnections()
+    srv.close()
+  }
+}, 20_000)
