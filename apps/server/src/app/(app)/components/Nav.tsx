@@ -6,6 +6,7 @@ export function Nav({ needsYou }: { needsYou: number }) {
   const path = usePathname()
   const items = [
     { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou },
+    { href: '/requests', label: 'Requests', current: path.startsWith('/requests'), badge: 0 },
     { href: '/runs', label: 'Runs', current: path.startsWith('/runs'), badge: 0 },
     { href: '/knowledge', label: 'Knowledge', current: path.startsWith('/knowledge'), badge: 0 },
   ]
