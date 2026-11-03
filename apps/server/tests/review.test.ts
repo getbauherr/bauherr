@@ -793,7 +793,7 @@ it('F28: recovery: Tickets parked on 3 failed merges return to Build when the MR
 })
 
 /** A clean review of `seed()`'s MR with a stored patch-id, the MR conflicting, then a Runner main-merge Build Run (`patchId`) that moved the head. */
-const mergedByRunner = async (reviewedPatchId: string, patchId: string) => {
+const mergedByRunner = async (reviewedPatchId: string, patchId: string, pushed: 'head' | 'stale' = 'head', more: Record<string, unknown> = {}) => {
   const s = await seed({ checks: green })
   const r = await review(s.id)
   await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId }, ...o })
@@ -801,7 +801,8 @@ const mergedByRunner = async (reviewedPatchId: string, patchId: string) => {
   expect(await submit(r)).toMatchObject({ verdict: 'clean', outcome: 'build' })
   expect(await reload(s.id)).toMatchObject({ conflictReturns: 0 })
   fake.commit(repo, s.branch, 'main.ts', 'merged main')
-  await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws, artifacts: { patchId } }, ...o })
+  const pushedSha = pushed === 'head' ? (await fake.forge.getPullRequest(repo, s.pr.number)).headSha : 'stale-sha'
+  await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws, artifacts: { patchId, pushedSha, ...more } }, ...o })
   const t = await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
   return { ...s, r, t }
 }
@@ -839,5 +840,23 @@ it('F31: a clean review of an MR behind main (auto-merge on) goes to Build for a
   fake.setBehind(repo, pr.number, true)
   expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'build' })
   expect(await reload(id)).toMatchObject({ stage: 'build', conflictReturns: 0 })
+  expect(await prState(pr.number)).toBe('open')
+})
+
+it('F32: a head pushed by someone else after the Runner merge is not re-bound: the Runner pushed another SHA, so a new review is needed', async () => {
+  const { id, pr, r, t } = await mergedByRunner('patch-x', 'patch-x', 'stale')
+  expect(await actions.rebindReview(payload, t)).toBe(false)
+  expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: expect.not.stringMatching(/^$/) })
+  expect((await payload.findByID({ collection: 'runs', id: r.runId, ...o })).reviewedSha).not.toBe((await fake.forge.getPullRequest(repo, pr.number)).headSha)
+  expect(await prState(pr.number)).toBe('open')
+  expect(await jobs.startReviewIfReady(payload, t as any)).toBeTruthy()
+  expect(await reviewRuns(id)).toBe(2)
+})
+
+it('F33: the forge keeps reporting behind after a Runner merge that found nothing to merge: the gate escalates instead of looping', async () => {
+  const { id, pr, t } = await mergedByRunner('patch-x', 'patch-x', 'head', { uptodate: true })
+  fake.setBehind(repo, pr.number, true)
+  expect(await actions.rebindReview(payload, t)).toBe(true)
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
   expect(await prState(pr.number)).toBe('open')
 })

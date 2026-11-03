@@ -82,10 +82,11 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       if (!conflicted) {
         await commitAndPush(clone, clone.env, `bauherr: merge ${base} (run ${ctx.run.id})`);
         artifacts.patchId = await patchId(clone, clone.env, base);
+        artifacts.pushedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
+        if (merged === 'uptodate') artifacts.uptodate = true;
         artifacts.prUrl = ctx.existingPr.url;
         artifacts.evidence = `Merged origin/${base} ${await git(clone.dir, clone.env, 'rev-parse', `origin/${base}`)} into the MR branch without an agent (${merged}).`;
         await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);
-        await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(ctx.run.goal.statements.map((text) => ({ text, done: true })), `Merged ${base} into ${ctx.existingPr.url}. Waiting for review.`));
         await ctx.forge.setStage(ctx.ticket.number, 'review');
         return finish('succeeded');
       }
@@ -149,6 +150,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     }
     artifacts.evidence = buildEvidence(goal, state.toolCalls);
     if (conflicted) artifacts.patchId = await patchId(clone, clone.env, base);
+    artifacts.pushedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
     if (ctx.existingPr) {
       artifacts.prUrl = ctx.existingPr.url;
       await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);

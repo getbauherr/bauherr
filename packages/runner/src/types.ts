@@ -67,7 +67,7 @@ export type RunCtx = {
 export type RunResult = {
   status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
   reason?: string;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; reviewedSha?: string; patchId?: string; reviewedPatchId?: string; mergeConflict?: boolean };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

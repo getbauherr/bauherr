@@ -647,6 +647,10 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
+  if (mr.pr.behind && mr.pr.mergeable !== false) {
+    const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+    if (last?.artifacts?.uptodate && last.artifacts.pushedSha === mr.pr.headSha) return escalate(payload, t, `the forge reports the MR as behind \`${mr.pr.base}\`, but the Runner's merge found nothing to merge; fix the MR by hand.`)
+  }
   if (mr.pr.mergeable === false || mr.pr.behind) return returnConflictToBuild(payload, t, mr, reviewedSha)
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
   const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
@@ -731,7 +735,7 @@ export const rebindReview = async (payload: Payload, t: Doc): Promise<boolean> =
   const stored = review?.artifacts?.review
   if (review?.verdict !== 'clean' || !review.reviewedPatchId || review.reviewedPatchId !== build?.artifacts?.patchId || typeof stored?.markdown !== 'string') return false
   const mr = await prOf(payload, t)
-  if (mr?.pr.state !== 'open') return false
+  if (mr?.pr.state !== 'open' || mr.pr.headSha !== build?.artifacts?.pushedSha) return false
   await payload.update({ collection: 'runs', id: review.id, data: { reviewedSha: mr.pr.headSha }, overrideAccess: true })
   await concludeReview(payload, t.id, { verdict: 'clean', findings: review.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }, mr.pr.headSha, true)
   return true
