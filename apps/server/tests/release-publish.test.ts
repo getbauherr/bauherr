@@ -221,3 +221,19 @@ it('pre-release Product: a timeout links the workflow run when a check has a url
   expect((await reload(t.id)).releaseRunUrl).toBe('https://fake/run/9')
   expect(rel.url).not.toBe('https://fake/run/9')
 })
+
+it('pre-release Product: a new release of an old commit anchors the window and timeout on the publish time, not the commit date', async () => {
+  const old = new Date(Date.now() - 3 * 60 * 60_000).toISOString()
+  fake.setCommits('acme/rc', [{ sha: 'sha-old', message: 'fix: old' }])
+  fake.setCommitDate('acme/rc', 'sha-old', old)
+  const t = await approved('rc', 'Old commit', 'sha-old')
+  await release.publishRelease(payload, products.rc!)
+  expect(new Date(fake.listReleases('acme/rc').at(-1)!.createdAt!).getTime()).toBeLessThan(Date.now() - 2 * 60 * 60_000)
+  fake.setChecks('acme/rc', 'sha-old', [
+    { id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: old },
+    { id: 2, name: 'npm', status: 'completed', conclusion: 'success', startedAt: old },
+    { id: 3, name: 'release', status: 'in_progress', conclusion: null, startedAt: new Date().toISOString() },
+  ])
+  expect(await release.watchReleaseChecks(payload, Date.now() + 60_000)).toBe(0)
+  expect((await reload(t.id)).releaseChecksState).toBe('waiting')
+})

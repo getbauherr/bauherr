@@ -357,6 +357,7 @@ const tickets = col('tickets', [
   date('productionLabelAt'),
   text('releaseUrl'),
   date('releasePublishedAt'),
+  date('releaseChecksSince'),
   date('releaseRetryAt'),
   { name: 'releaseAttempts', type: 'number', defaultValue: 0, admin: { description: 'Failed release publishes; the 3rd gives up.' } },
   text('releaseError'),

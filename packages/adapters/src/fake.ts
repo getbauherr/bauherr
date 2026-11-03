@@ -234,7 +234,7 @@ export class FakeBackend implements Backend {
       findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha || this.repo(repo).contains.get(r.tag)?.includes(o.sha)) ?? null,
       createRelease: async (repo, o) => {
         if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
-        return this.addRelease(repo, o);
+        return this.addRelease(repo, { ...o, createdAt: this.repo(repo).commitDates.get(o.sha) });
       },
       updateRelease: async (repo, id, o) => {
         const rel = this.repo(repo).releases.find((r) => r.id === id);
