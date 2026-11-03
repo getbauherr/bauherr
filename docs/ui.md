@@ -14,7 +14,7 @@ The Bauherr UI is the Next.js route group `apps/server/src/app/(app)/`, served a
 | `/runs/<id>` | Run page, tab by `?tab=graph\|timeline\|list` |
 | `/knowledge` | Knowledge: documents, search, write-backs, see below |
 
-Pages under `(shell)/` get the top bar and require a session; unauthenticated requests redirect to `/login`. Sign out and Workspace selection are server actions in `lib/actions.ts`.
+Pages under `(shell)/` get the top bar and require a session; unauthenticated requests redirect to `/login`. Sign out and Workspace selection are server actions in `lib/actions.ts`. The top bar holds the logo, Tickets (needs-you badge), Knowledge (only when the Workspace has a connected Knowledge repo; `/knowledge` stays reachable by URL), the persistent primary "New request" button and the avatar menu (shadcn `DropdownMenu`): email, the Workspace list (only with more than one Workspace), the Theme row, Settings, Sign out. Requests are not in the nav: "Your drafts" on `/requests/new` links to `/requests` ("All requests").
 
 ## Overview
 
@@ -90,7 +90,7 @@ The options are the default plus each Alternative(s) item (split at `;` and sent
 
 ## Settings
 
-Routes `/settings/workspace`, `/products`, `/connections`, `/bauherren`, and for Admins `/audit`, `/workflow` (`/settings` redirects to the first), with a left sub-nav on desktop and tabs on phones. Entry points only: Workspace switcher "Workspace settings" and user menu "Bauherren" and "API key" (D9).
+Routes `/settings/workspace`, `/products`, `/connections`, `/bauherren`, and for Admins `/audit`, `/workflow` (`/settings` redirects to the first), with a left sub-nav on desktop and tabs on phones. Entry point: avatar menu "Settings" (non-Admins land on `/settings/api-key`). The sub-nav also lists "Bauherren", "API key" (every Bauherr) and, for Admins, "Runs" (`/runs`).
 
 **Admin is part of the product.** Every admin function is a page of this UI in the same design system. `/admin` (Payload) is a developer escape hatch only: Admin-only, linked nowhere in the product UI, and switched off with `BAUHERR_DISABLE_ADMIN=1`. The guard is two checks: the `/admin` page and the `(payload)` layout's server function (`notFound()`, so a POSTed server action gets 404 too). `/api` and `/mcp` are unaffected. e2e: `E2E_ADMIN_DISABLED=1` against a dev server started with the flag.
 
@@ -109,11 +109,11 @@ Routes `/settings/workspace`, `/products`, `/connections`, `/bauherren`, and for
 
 ## Theming
 
-`pnpm --filter server tokens` generates `(app)/tokens.css` from `docs/design/tokens.json` (also run by `predev`/`prebuild`; commit the result). Light and dark follow `prefers-color-scheme`; the top-bar toggle (System / Light / Dark) sets `data-theme` and stores it in `localStorage` (`bauherr-theme`). Shared classes are in `app.css`.
+`pnpm --filter server tokens` generates `(app)/tokens.css` from `docs/design/tokens.json` (also run by `predev`/`prebuild`; commit the result). Light and dark follow `prefers-color-scheme`; the avatar-menu Theme row (System / Light / Dark, menu stays open) sets `data-theme` and stores it in `localStorage` (`bauherr-theme`). Shared classes are in `app.css`.
 
 ## Add a page
 
-Create `(app)/(shell)/<path>/page.tsx` as a server component, call `currentWorkspace()`, build from `components/` and the token variables. Add a nav entry in `components/Nav.tsx` only for daily-business pages; settings are reached via the Workspace switcher and user menu.
+Create `(app)/(shell)/<path>/page.tsx` as a server component, call `currentWorkspace()`, build from `components/` and the token variables. Add a nav entry in `components/Nav.tsx` only for daily-business pages; settings are reached via the avatar menu.
 
 ## E2E
 

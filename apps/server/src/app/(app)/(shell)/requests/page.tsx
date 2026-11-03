@@ -25,7 +25,6 @@ export default async function Requests() {
   return (
     <>
       <h1 className="title">Requests</h1>
-      <p><Link href="/requests/new" className="btn">New request</Link></p>
       {rows.length ? (
         <>
           <div className="scroll">
@@ -49,7 +48,7 @@ export default async function Requests() {
           {total > REQUESTS_LIMIT && <p className="muted small">Showing the newest {REQUESTS_LIMIT}</p>}
         </>
       ) : (
-        <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/requests/new', label: 'New request' }} />
+        <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} />
       )}
     </>
   )
