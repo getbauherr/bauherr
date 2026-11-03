@@ -1,10 +1,11 @@
 import { ValidationError } from 'payload'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
-import { humanGates, packed, resolveMode } from '../../../lib/mode'
+import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
 import { wipCount } from '../../../lib/wip'
+import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
 export type FormState = { saved?: boolean; error?: string; fields?: Record<string, string>; notice?: string }
@@ -19,7 +20,8 @@ export async function run(fn: () => Promise<string | void>, rename: Record<strin
     const errors = (e as { data?: { errors?: { path: string; message: string }[] } }).data?.errors
     if (e instanceof ValidationError || errors) {
       const fields = Object.fromEntries((errors ?? []).map((x) => [rename[x.path] ?? x.path, x.message]))
-      return { fields, error: Object.keys(fields).length ? undefined : (e as Error).message }
+      const n = Object.keys(fields).length
+      return { fields, error: n ? (n === 1 ? '1 field needs attention' : `${n} fields need attention`) : (e as Error).message }
     }
     return { error: (e as Error).message }
   }
@@ -72,22 +74,34 @@ export async function loadProducts(workspace: number) {
   return {
     connections: connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab').map((c) => ({ id: c.id as number, name: c.name as string })),
     products: await Promise.all(
-      products.map(async (p) => ({
-        id: p.id as number,
-        name: p.name as string,
-        slug: p.slug as string,
-        deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string },
-        blocked: await blockedBy(payload, 'products', p.id),
-        embedTokens: embedTokens
-          .filter((e) => (e.product?.id ?? e.product) === p.id)
-          .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string })),
-        repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
-        sources: sources
-          .filter((s) => (s.product?.id ?? s.product) === p.id)
-          .map((s) => ({ id: s.id as number, repo: s.repo as string, connection: (s.connection?.name ?? '') as string, cursor: (s.cursor ?? '') as string, polledAt: s.updatedAt as string })),
-      })),
+      products.map(async (p) => {
+        const product = {
+          id: p.id as number,
+          name: p.name as string,
+          slug: p.slug as string,
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string },
+          blocked: await blockedBy(payload, 'products', p.id),
+          embedTokens: embedTokens
+            .filter((e) => (e.product?.id ?? e.product) === p.id)
+            .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string })),
+          repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
+          sources: sources
+            .filter((s) => (s.product?.id ?? s.product) === p.id)
+            .map((s) => ({ id: s.id as number, repo: s.repo as string, connection: (s.connection?.name ?? '') as string, cursor: (s.cursor ?? '') as string, polledAt: s.updatedAt as string })),
+        }
+        const productionOn = productionGateOn({ productionGate: product.deploy.productionGate })
+        return { ...product, productionOn, setup: setupOf(product, productionOn) }
+      }),
     ),
   }
+}
+
+/** One Product of the Workspace with the workflow facts the Product page shows; undefined when it belongs to another Workspace. */
+export async function loadProduct(workspace: number, id: number) {
+  const { products, connections } = await loadProducts(workspace)
+  const product = products.find((p) => p.id === id)
+  if (!product) return undefined
+  return { product, connections, workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
 }
 
 export async function loadConnections(workspace: number) {

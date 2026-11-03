@@ -31,7 +31,8 @@ test('Review Run page shows the verdict and findings; Product settings have the 
   }
 
   await page.goto('/settings/products')
-  await expect(page.getByLabel('Auto-merge').first()).toBeChecked()
+  await page.getByRole('link', { name: 'Acme Web' }).click()
+  await expect(page.getByRole('switch', { name: /Merge automatically/ })).toBeChecked()
 })
 
 test('Ticket at the review round cap shows the gate with both actions', async ({ page }) => {
