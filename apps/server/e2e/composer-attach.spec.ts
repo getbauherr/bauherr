@@ -24,7 +24,7 @@ test('a pasted wrong-type or oversize image shows an inline error', async ({ pag
   await expect(page.locator('form').getByRole('alert').filter({ hasText: 'only png, jpeg or webp images' })).toBeVisible()
   await expect(page.getByText('notes.txt')).toHaveCount(0)
 
-  const { maxBytes } = await (await page.request.post('/intake/api/media-limits')).json()
+  const { maxBytes } = await (await page.request.post('/intake/api/media-limits', { headers: { Origin: new URL(page.url()).origin } })).json()
   await give(page.getByLabel(/Describe your request|Your answer/), 'drop', { name: 'huge.png', type: 'image/png', size: maxBytes + 1 })
   await expect(page.locator('form').getByRole('alert').filter({ hasText: /image larger than \d+ MB/ })).toBeVisible()
   await page.getByRole('button', { name: 'Remove attachment' }).click()
