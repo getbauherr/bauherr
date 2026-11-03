@@ -5,6 +5,7 @@ import type {
 import { Conflict, MergePendingError } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
+import { timedFetch } from './http.js';
 import { closeReasonLabel } from './stage.js';
 
 export interface GitlabAuth {
@@ -25,6 +26,7 @@ export interface GitlabOptions {
   /** Web origin, e.g. `https://gitlab.com`; the API lives at `<baseUrl>/api/v4`. */
   baseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   maxRetries?: number;
 }
@@ -45,7 +47,7 @@ export class GitlabHttp {
   async raw(method: string, path: string, body?: unknown): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
-      const res = await this.doFetch(url, {
+      const res = await timedFetch(this.doFetch, url, {
         cache: 'no-store',
         method,
         headers: {
@@ -55,7 +57,7 @@ export class GitlabHttp {
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      }, this.o.timeoutMs);
       if (res.status === 429 && attempt < this.maxRetries) {
         const wait = Number(res.headers.get('retry-after') ?? 60) * 1000;
         if (wait > MAX_WAIT_MS) throw new GitlabError(429, method, path, `rate limited for ${wait} ms`);
