@@ -6,7 +6,7 @@ import { gateOn } from './mode'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
 import { ownerQueue, questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type Session } from './intake/engine'
-import { mediaUrl, type ImageMime } from './intake/media'
+import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from './intake/media'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -120,6 +120,39 @@ export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: Ticke
   const existing = latestWith(await ts.listComments(n), PLAN_MARKER)
   const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
   return { commentId: saved.id, created: !existing }
+}
+
+export class CommentRefused extends Error {}
+
+const commentMedia = (t: Doc, ...more: Doc[]) => ({ and: [{ product: { equals: id(t.product) } }, { ticketNumber: { equals: t.number } }, { workspace: { equals: id(t.workspace) } }, { session: { exists: false } }, { attached: { equals: false } }, ...more] })
+
+/** Stores one image for a Ticket comment (png, jpeg or webp; at most `maxPerSession` unposted ones per Ticket). Throws `MediaRejected` for a non-image, `CommentRefused` at the cap. */
+export const uploadCommentMedia = async (payload: Payload, user: Doc, a: { ticket: TicketId; name: string; bytes: Uint8Array }): Promise<{ id: number }> => {
+  const t = await loadTicket(payload, user, a.ticket)
+  const { maxPerSession } = mediaLimits()
+  if ((await payload.count({ collection: 'media', where: commentMedia(t), overrideAccess: true })).totalDocs >= maxPerSession) throw new CommentRefused(`at most ${maxPerSession} unposted images per Ticket`)
+  return { id: (await saveMedia(payload, { bytes: a.bytes, name: a.name, workspace: id(t.workspace), product: id(t.product), ticketNumber: t.number })).id }
+}
+
+/** Posts a Ticket comment from the UI: `body` plus one `![name](link)` line per uploaded image. The images are marked sent before the forge call and released again when it fails, so a retry works and the daily prune never deletes a posted image. Returns the image links. */
+export const postComment = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const text = a.body.trim()
+  if (!text && !a.mediaIds.length) throw new CommentRefused('write a comment or add an image')
+  if (a.mediaIds.length > mediaLimits().maxPerSession) throw new CommentRefused(`at most ${mediaLimits().maxPerSession} images per comment`)
+  const docs = (await payload.find({ collection: 'media', where: commentMedia(t, { id: { in: a.mediaIds } }), pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  if (docs.length !== new Set(a.mediaIds.map(String)).size) throw new CommentRefused('an image is missing or already posted')
+  const links = docs.map((m) => ({ name: m.name as string, url: mediaUrl(m.id, m.mime as ImageMime) }))
+  const mark = (attached: boolean) => Promise.all(docs.map((m) => payload.update({ collection: 'media', id: m.id, data: { attached }, overrideAccess: true })))
+  const { ts, n } = await sourceOf(payload, t)
+  await mark(true)
+  try {
+    await ts.comment(n, [text, ...links.map((l) => `![${l.name}](${l.url})`)].filter(Boolean).join('\n\n'))
+  } catch (e) {
+    await mark(false).catch(() => undefined)
+    throw e
+  }
+  return links.map((l) => l.url)
 }
 
 export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId }) => {
