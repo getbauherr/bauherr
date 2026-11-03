@@ -79,12 +79,12 @@ export function SettingsSection({ id, n, title, purpose, children, advanced }: {
   )
 }
 
-export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; word: string; tone: Tone }[] }) => (
+export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; word: string; tone: Tone; href?: string }[] }) => (
   <Card asChild className="gap-0 p-0">
     <ul aria-label="Setup" className="list-none">
       {rows.map((r) => (
         <li key={r.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0">
-          <a href={`#${r.id}`}>{r.label}</a>
+          <a href={r.href ?? `#${r.id}`}>{r.label}</a>
           <StatusWord tone={r.tone}>{r.word}</StatusWord>
         </li>
       ))}

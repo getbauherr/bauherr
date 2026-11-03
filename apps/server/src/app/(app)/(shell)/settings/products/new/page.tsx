@@ -1,5 +1,6 @@
 import { EmptyState } from '../../../../components/EmptyState'
-import { Field, SettingsForm } from '../../../../components/SettingsForm'
+import { ProductNameFields } from '../../../../components/ProductForms'
+import { SettingsForm } from '../../../../components/SettingsForm'
 import { SettingsSection } from '../../../../components/SettingsParts'
 import { isAdmin } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
@@ -14,13 +15,7 @@ export default async function NewProduct() {
   return (
     <SettingsSection id="new" title="Add Product" purpose="Name it, then add its repository on the next page.">
       <SettingsForm action={createProduct} submit="Add Product" primary>
-        <Field name="name" label="Product name" hint="What you call this product on the Board and in Tickets." example="Acme Shop" required />
-        <details className="advanced">
-          <summary className="small">Advanced</summary>
-          <div className="mt-3">
-            <Field name="slug" label="Short name" hint="Used in links and in the Knowledge repo folder products/<short name>/. Empty: derived from the name." example="acme-shop" />
-          </div>
-        </details>
+        <ProductNameFields />
       </SettingsForm>
     </SettingsSection>
   )

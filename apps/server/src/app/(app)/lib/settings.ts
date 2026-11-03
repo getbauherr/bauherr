@@ -27,6 +27,9 @@ export async function run(fn: () => Promise<string | void>, rename: Record<strin
   }
 }
 
+/** Provider presets as the Connection form needs them. */
+export const connectionPresets = Object.fromEntries(Object.entries(PRESETS).map(([k, v]) => [k, { required: v.required, hint: v.secret.hint }]))
+
 export const isAdmin = (u: Bauherr) => u.role === 'admin'
 export const only = (u: Bauherr) => {
   if (!isAdmin(u)) throw new Error('Only an Admin can change this.')
@@ -77,6 +80,8 @@ export async function loadProducts(workspace: number) {
       products.map(async (p) => {
         const product = {
           id: p.id as number,
+          // Heuristic for setup step 3: any later Product save (not only the staging/gates form) also counts; create alone can differ by a few ms.
+          touched: Date.parse(p.updatedAt) - Date.parse(p.createdAt) >= 1000,
           name: p.name as string,
           slug: p.slug as string,
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string },
