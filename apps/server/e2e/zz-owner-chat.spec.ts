@@ -10,6 +10,7 @@ test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHER
 // Runs after ticket.spec.ts (alphabetical): D2 is answered there, D1 is the one open row left.
 // The first answer compiles the server action under next dev (CI), hence the long timeout.
 test('the owner answers the open decision interactively and it lands in the sheet', async ({ page }) => {
+  test.setTimeout(120_000)
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await page.getByLabel('Email').fill(email)
