@@ -33,6 +33,7 @@ test('the owner answers the open decision with a suggestion chip and it lands in
   await chat.getByRole('button', { name: 'a cookie' }).click()
   await expect(chat).toContainText('D1 a cookie. Next: the plan is being written, then you can approve it.', { timeout: 60_000 })
   await page.reload()
+  await page.getByText('Details', { exact: true }).click()
   await expect(page.getByText('D1 Where to store the choice: a cookie')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Answer questions' })).toHaveCount(0)
 })
