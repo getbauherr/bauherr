@@ -104,8 +104,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <Gate
           number={ticket.number}
           plan={summary ?? null}
-          budget={ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}
-          model={tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}
+          budget={!admin ? undefined : ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}
+          model={admin ? tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—' : undefined}
           sheet={decisions.length ? `${answered} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
         />
       )}
