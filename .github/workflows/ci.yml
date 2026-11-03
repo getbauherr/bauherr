@@ -99,6 +99,7 @@ jobs:
           echo "E2E_PASSWORD_FILE=$RUNNER_TEMP/e2e-password" >> "$GITHUB_ENV"
           (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$RUNNER_TEMP/e2e-password")
       - run: pnpm build:packages
+      - run: pnpm --filter server gen:migrations
       - run: pnpm --filter server seed:e2e
       - name: Build the embeddable Intake widget (served from public/intake/widget.js)
         run: pnpm --filter server build:widget
