@@ -1,6 +1,7 @@
 import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -61,7 +62,7 @@ const seed = async (o2: { body?: string; checks?: any[] } = {}) => {
 /** Starts and claims the Review Run. */
 const review = async (id: number) => {
   const started = await jobs.startReviewIfReady(payload, (await reload(id)) as any)
-  const { leaseToken } = await call(member, 'claim_run', { runId: started!.run.id })
+  const { leaseToken } = await claimOnly(payload, call, member, ws, started!.run.id)
   return { runId: started!.run.id as number, leaseToken: leaseToken as string }
 }
 const checked = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'].map((area) => ({ area, note: `checked ${area}` }))
@@ -205,7 +206,7 @@ const blocker = (n: number) => ({ severity: 'high', file: 'a.ts', line: n, msg: 
 const buildRun = async () => {
   const { t } = await seed()
   const started = await jobs.startRunIfNeeded(payload, t as any, 'build')
-  const { leaseToken } = await call(member, 'claim_run', { runId: started.run.id })
+  const { leaseToken } = await claimOnly(payload, call, member, ws, started.run.id)
   return { runId: started.run.id as number, leaseToken: leaseToken as string, ticket: t }
 }
 
@@ -256,7 +257,7 @@ it('F2: the verdict is bound to the reviewed SHA; a moved head restarts the revi
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: null, reviewRounds: 0 })
   const active = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }, { status: { in: jobs.ACTIVE } }] }, ...o })).docs
   expect(active).toHaveLength(1)
-  const again = await call(member, 'claim_run', { runId: active[0]!.id })
+  const again = await claimOnly(payload, call, member, ws, active[0]!.id)
   expect(await submit({ runId: active[0]!.id as number, leaseToken: again.leaseToken })).toMatchObject({ outcome: 'merged' })
 })
 
@@ -564,12 +565,13 @@ it('resume: nothing is retried inside the grace, while a review Run is active, o
   await payload.update({ collection: 'runs', id: r.runId, data: { finishedAt: new Date().toISOString() }, ...o })
   const active = await seed({ checks: green })
   await review(active.id)
-  const parked = await Promise.all(['waiting_checks', 'needs_human', 'ready_for_human', 'merged'].map(async (reviewState) => {
+  const parked = []
+  for (const reviewState of ['waiting_checks', 'needs_human', 'ready_for_human', 'merged']) {
     const s = await seed({ checks: green })
     await crashed(s.id, s.pr)
     await payload.update({ collection: 'tickets', id: s.id, data: { reviewState }, ...o })
-    return s
-  }))
+    parked.push(s)
+  }
   await actions.resumeReviews(payload)
   for (const s of [fresh, active]) {
     expect((await reload(s.id)).stage).toBe('review')
@@ -763,7 +765,7 @@ it('F26: the next review Run is told the previous reviewed SHA, server-side, reg
   fake.setMergeable(repo, pr.number, undefined as any)
   await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
   const started = await jobs.startReviewIfReady(payload, (await reload(id)) as any)
-  const claim = await call(member, 'claim_run', { runId: started!.run.id })
+  const claim = await claimOnly(payload, call, member, ws, started!.run.id)
   expect(claim.ticket.conflictReturnBase).toBe(base)
 })
 

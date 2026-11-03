@@ -28,7 +28,8 @@ export const frontierOrder = <T extends FrontierTicket>(tickets: T[], latest: Ma
   return [...tickets].sort((a, b) => Number(!!parked(a)) - Number(!!parked(b)) || executionOrder(a, b))
 }
 
-const cmp = (a?: string | null, b?: string | null): number => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0)
+/** Code-unit order: the single JS rank rule. SQL on `rank` must use `COLLATE "C"`. */
+export const cmp = (a?: string | null, b?: string | null): number => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0)
 
 const EXECUTION_STAGES = ['release', 'review', 'build', 'plan', 'triage']
 
