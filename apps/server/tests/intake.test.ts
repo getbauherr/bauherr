@@ -1,7 +1,7 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
-import { MAX_QUESTIONS, nextTurn, normalizeTurn, readiness, type Draft, type ModelCall, type Session } from '../src/lib/intake/engine'
+import { MAX_QUESTIONS, nextTurn, normalizeTurn, readiness, splitReadiness, type Draft, type ModelCall, type Session } from '../src/lib/intake/engine'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -10,6 +10,7 @@ let actions: typeof import('../src/lib/actions')
 let sessions: typeof import('../src/app/intake/api/sessions/route')
 let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route')
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
+let read: typeof import('../src/app/intake/api/sessions/[id]/route')
 let jobs: typeof import('../src/jobs')
 let productId: number
 let keyA: string
@@ -34,6 +35,7 @@ beforeAll(async () => {
   sessions = await import('../src/app/intake/api/sessions/route')
   messages = await import('../src/app/intake/api/sessions/[id]/messages/route')
   submit = await import('../src/app/intake/api/sessions/[id]/submit/route')
+  read = await import('../src/app/intake/api/sessions/[id]/route')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   const [wsA, wsB] = await Promise.all(['acme', 'other'].map(async (slug) => (await payload.create({ collection: 'workspaces', data: { name: slug, slug, defaultMode: 'session' }, ...o })).id as number))
   productId = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: wsA }, ...o })).id as number
@@ -244,4 +246,101 @@ it('submit is refused while the draft is incomplete and the question cap is not 
   const r = await submit.POST(req(keyA), ctx(id))
   expect(r.status).toBe(409)
   expect((await r.json()).error).toContain('acceptance_criteria')
+})
+
+const three = ['Export fails', 'Login is slow', 'Totals are wrong']
+const splitTurn = (items: Partial<Draft>[] = three.map((problem) => ({ problem }))) => turn({ problem: 'Several things' }, { split: items.map((i) => draft(i)) })
+const startSplit = async (key = keyA, items?: Partial<Draft>[]) => {
+  const { id } = await (await sessions.POST(req(key, { product: productId }))).json()
+  stubGateway([splitTurn(items)])
+  await (await messages.POST(req(key, { text: 'three things' }), ctx(id))).text()
+  return id as number
+}
+
+it('normalizeTurn keeps a split of 2 to 6 items, fills empty context, drops fewer than 2', () => {
+  const t = normalizeTurn({ question: 'Q?', draft: draft({ context: 'shared' }), split: three.map((problem) => draft({ problem, context: '' })) })
+  expect(t.split).toHaveLength(3)
+  expect(t.split![0]!.context).toBe('shared')
+  expect(normalizeTurn({ question: 'Q?', draft: draft(), split: Array.from({ length: 9 }, () => draft()) }).split).toHaveLength(6)
+  expect(normalizeTurn({ question: 'Q?', draft: draft(), split: [draft()] }).split).toBeUndefined()
+  expect(() => normalizeTurn({ question: 'Q?', draft: draft(), split: [draft(), { problem: 'x', type: 'epic' }] })).toThrow('invalid turn')
+})
+
+it('splitReadiness: every item needs problem, context and two criteria', () => {
+  expect(splitReadiness([draft(), draft()], false, false, 1)).toEqual({ ready: true, exhausted: false, missing: [] })
+  expect(splitReadiness([draft(), draft({ acceptance_criteria: ['one'] })], false, false, 1)).toMatchObject({ ready: false, missing: ['2: acceptance_criteria'] })
+  expect(splitReadiness([draft(), draft({ problem: '' })], false, false, MAX_QUESTIONS)).toMatchObject({ ready: false, exhausted: true })
+})
+
+it('a confirmed split creates one Ticket per item with distinct markers and sibling Comments; a retry creates no duplicate', async () => {
+  const id = await startSplit()
+  const doc = (await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o })) as any
+  expect(doc.split).toHaveLength(3)
+  expect(doc.turn).toMatchObject({ ready: true })
+  const done = await submit.POST(req(keyA, { expect: 3 }), ctx(id))
+  expect(done.status).toBe(200)
+  const { number, numbers } = await done.json()
+  expect(numbers).toHaveLength(3)
+  expect(number).toBe(numbers[0])
+  for (const [i, n] of (numbers as number[]).entries()) {
+    expect((await fake.tickets(repo).get(String(n))).body).toContain(`bauherr:intake session=${id} part=${i} -->`)
+    const comments = (await fake.tickets(repo).listComments(String(n))).map((c) => c.body)
+    expect(comments.filter((c) => c.startsWith('## Interview'))).toHaveLength(1)
+    const sib = comments.find((c) => c.includes('bauherr:intake-siblings'))!
+    for (const other of (numbers as number[]).filter((x) => x !== n)) expect(sib).toContain(`#${other}`)
+    expect(sib).not.toContain(`#${n}`)
+  }
+  expect(await (await submit.POST(req(keyA, { expect: 3 }), ctx(id))).json()).toEqual({ number, numbers })
+})
+
+it('a split submit retried after a partial failure reuses the Tickets already created', async () => {
+  const id = await startSplit()
+  const s = (await payload.findByID({ collection: 'intake_sessions', id, depth: 1, ...o })) as any
+  const first = await fake.tickets(repo).create(actions.intakeTicket(s.split[0], s.id, [], 'web', 0))
+  const { numbers } = await (await submit.POST(req(keyA, { expect: 3 }), ctx(id))).json()
+  expect(numbers[0]).toBe(first.number)
+  expect(new Set(numbers).size).toBe(3)
+})
+
+it('split submit is refused for a different confirmed count and for an incomplete item', async () => {
+  const id = await startSplit()
+  const wrong = await submit.POST(req(keyA, { expect: 2 }), ctx(id))
+  expect(wrong.status).toBe(409)
+  expect((await wrong.json()).error).toContain('list changed')
+  const missing = await submit.POST(req(keyA, {}), ctx(id))
+  expect(missing.status).toBe(409)
+  expect((await missing.json()).error).toContain('list changed')
+  expect((await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o }) as any).status).toBe('open')
+
+  const bad = await startSplit(keyA, [{ problem: 'a' }, { problem: 'b', acceptance_criteria: ['only one'] }])
+  const r = await submit.POST(req(keyA, { expect: 2 }), ctx(bad))
+  expect(r.status).toBe(409)
+  expect((await r.json()).error).toContain('2: acceptance_criteria')
+})
+
+it('a single-problem submit with expect 1 still creates one Ticket and returns only its number', async () => {
+  const { id } = await (await sessions.POST(req(keyA, { product: productId }))).json()
+  stubGateway([turn({})])
+  await (await messages.POST(req(keyA, { text: 'one thing' }), ctx(id))).text()
+  expect((await submit.POST(req(keyA, { expect: 2 }), ctx(id))).status).toBe(409)
+  const body = await (await submit.POST(req(keyA, { expect: 1 }), ctx(id))).json()
+  expect(Object.keys(body)).toEqual(['number'])
+})
+
+it('GET session returns the persisted turn to its owner only; abandoned sessions are not open', async () => {
+  const id = await startSplit()
+  const get = (key: string | null) => read.GET(new Request('http://x.test/intake', { headers: key ? { authorization: `bauherren API-Key ${key}` } : {} }), ctx(id))
+  const ok = await get(keyA)
+  expect(ok.status).toBe(200)
+  expect(await ok.json()).toMatchObject({ status: 'open', split: expect.any(Array), turn: { ready: true, question: 'Next?' }, messages: [{ role: 'user' }, { role: 'assistant' }] })
+  expect((await get(keyA2)).status).toBe(404)
+  expect((await get(keyB)).status).toBe(404)
+  expect((await get(null)).status).toBe(401)
+  const user = (await payload.find({ collection: 'bauherren', where: { email: { equals: 'a@x.io' } }, ...o })).docs[0]!
+  await actions.abandonIntake(payload, user, id)
+  expect((await (await get(keyA)).json()).status).toBe('abandoned')
+  await expect(actions.abandonIntake(payload, user, id)).rejects.toThrow()
+  const other = (await payload.find({ collection: 'bauherren', where: { email: { equals: 'a2@x.io' } }, ...o })).docs[0]!
+  const mine = await startSplit()
+  await expect(actions.abandonIntake(payload, other, mine)).rejects.toThrow()
 })

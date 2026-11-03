@@ -35,6 +35,9 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   }
   await say('The invoice total is wrong', 'Who is affected, and since when?')
   await say('Finance, last week', 'How should it work once it is fixed?')
+  await host.reload()
+  await host.getByRole('button', { name: 'Report a problem' }).click()
+  await expect(host.locator('.bot').last()).toHaveText('How should it work once it is fixed?')
   await say('Totals should match', 'Anything to add before I send this?')
   await host.getByRole('button', { name: 'Submit request' }).click()
   await expect(host.locator('.bot').last()).toContainText('your request #')

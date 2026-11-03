@@ -10,3 +10,5 @@ A Product's users can report a problem from your own site; the answers become a 
 ```
 
 Requests from any other origin, or with a revoked token, get 403. A token is bound to its Product and capped at 20 new sessions per hour. `/intake-embed-test.html?token=bemb_...` is a host page for trying it on the Bauherr origin itself (add that origin to the token).
+
+The widget resumes an open interview after a page load (the session id is kept in the browser's localStorage per token).
