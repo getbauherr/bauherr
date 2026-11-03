@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url'
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
@@ -23,14 +23,10 @@ const usePack = (name?: 'gated-pack' | 'bare-pack') => {
   else delete process.env.BAUHERR_PACK_DIR
 }
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_human_gates_175 WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_human_gates_175')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_human_gates_175')
+  testDb = await createTestDb('human_gates_175')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -53,6 +49,7 @@ beforeAll(async () => {
 afterAll(async () => {
   usePack()
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })

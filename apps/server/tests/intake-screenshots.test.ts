@@ -1,9 +1,9 @@
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { nextTurn, type Draft, type ModelCall } from '../src/lib/intake/engine'
 import { sniff, stripMetadata } from '../src/lib/intake/media'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
@@ -20,14 +20,10 @@ let keyA2: string
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_intake_shots WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_intake_shots')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_intake_shots')
+  testDb = await createTestDb('intake_shots')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -56,6 +52,7 @@ beforeAll(async () => {
 afterAll(async () => {
   vi.unstubAllGlobals()
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 

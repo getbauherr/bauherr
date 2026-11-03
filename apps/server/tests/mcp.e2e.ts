@@ -1,13 +1,13 @@
 /**
  * MCP transport test against a real `next dev`. Needs Postgres: set MCP_E2E_DATABASE_URL
- * (any database on a server you can CREATE DATABASE in); skipped without it (CI without Postgres).
+ * (any database on a server you may create databases on); skipped without it (CI without Postgres).
  * Run: MCP_E2E_DATABASE_URL=postgres://u:p@127.0.0.1:5432/postgres pnpm --filter server test:mcp
  */
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
-import pg from 'pg'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 const base = process.env.MCP_E2E_DATABASE_URL
 const PORT = 3111
@@ -16,6 +16,7 @@ let agentKey = ''
 let dev: ChildProcess | undefined
 let stub: ReturnType<typeof createServer> | undefined
 let runId: number | string
+let mcpDb: TestDb | undefined
 const assigned: string[] = []
 
 const rpc = async (method: string, params: unknown, key: string | null = agentKey) => {
@@ -34,12 +35,8 @@ const call = async (name: string, args: unknown, key: string | null = agentKey) 
 
 before(async () => {
   if (!base) return
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_e2e WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_e2e')
-  await admin.end()
-  Object.assign(process.env, { DATABASE_URL: base.replace(/\/[^/]+$/, '/bauherr_e2e'), PAYLOAD_SECRET: 'e2e', ENCRYPTION_KEY: 'e2e', JOBS_AUTORUN: '0' })
+  mcpDb = await createTestDb('e2e', base)
+  Object.assign(process.env, { DATABASE_URL: mcpDb.url, PAYLOAD_SECRET: 'e2e', ENCRYPTION_KEY: 'e2e', JOBS_AUTORUN: '0' })
 
   stub = createServer((req, res) => {
     res.setHeader('content-type', 'application/json')
@@ -82,6 +79,7 @@ before(async () => {
 after(async () => {
   if (dev?.pid) process.kill(-dev.pid)
   stub?.close()
+  await mcpDb?.drop()
 })
 
 test('rejects calls without a valid API key', { skip: !base }, async () => {

@@ -1,7 +1,7 @@
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeBackend, MergePendingError } from '@bauherr/adapters'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 const backend = vi.hoisted(() => ({ current: null as unknown as FakeBackend }))
 vi.mock('../src/lib/adapters', () => ({ backendFor: () => backend.current }))
@@ -21,14 +21,10 @@ const sha = async () => (await forge().getFile(REPO, PATH)).sha
 const save = (content: string, baseSha: string, path = PATH) => edit.saveDocument(payload, member, { workspace: ws, path, content, baseSha })
 const green = async (n: number) => forge().listPullRequests(REPO).then((l) => backend.current.setChecks(REPO, l.find((p) => p.number === n)!.headSha, [{ name: 'lint', status: 'completed', conclusion: 'success' }]))
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_knowledge_edit_152 WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_knowledge_edit_152')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_knowledge_edit_152')
+  testDb = await createTestDb('knowledge_edit_152')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   const { getPayload } = await import('payload')
@@ -50,6 +46,7 @@ beforeEach(() => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 describe('saveDocument', () => {

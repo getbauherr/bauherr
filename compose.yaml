@@ -38,6 +38,7 @@ services:
       sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" -e \"s|__TRACING__|$$T|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi"
   db:
     image: postgres:17
+    command: [postgres, -c, max_connections=300]
     container_name: bauherr-db
     ports: ["127.0.0.1:54330:5432"]
     environment: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}

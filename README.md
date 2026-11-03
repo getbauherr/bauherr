@@ -144,6 +144,8 @@ pnpm typecheck   # builds the packages, then type-checks all of them
 pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 ```
 
+Each suite uses its own database `bauherr_test_<suite>_<suffix>` and drops it afterwards. The suffix is `$VITEST_DB_SUFFIX`, else a hash of the worktree path (empty under `CI`), so `pnpm test` can run in several worktrees at once.
+
 ## Releasing
 
 One git tag publishes everything. From `main`:
