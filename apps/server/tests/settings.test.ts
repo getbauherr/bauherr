@@ -50,3 +50,15 @@ it('stores a gitlab Connection with its base URL', async () => {
   const c = await payload.create({ collection: 'connections', data: { name: 'gl', kind: 'gitlab', config: { baseUrl: 'https://git.einsfuenf.de' }, secret: 'glpat', workspace: ws.id as number }, ...o })
   expect(await payload.findByID({ collection: 'connections', id: c.id, ...o })).toMatchObject({ kind: 'gitlab', config: { baseUrl: 'https://git.einsfuenf.de' } })
 })
+
+it('a Ticket, a widget token or an intake session blocks deleting its Product', async () => {
+  const ws = await payload.create({ collection: 'workspaces', data: { name: 'bw', slug: 'bw' }, ...o })
+  const make = async (slug: string) => (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws.id as number }, ...o })).id as number
+  const [a, b, c] = [await make('bt'), await make('bk'), await make('bi')]
+  await payload.create({ collection: 'tickets', data: { title: 't', externalId: 'bw-1', number: 1, url: 'https://x/1', state: 'open', product: a, workspace: ws.id as number }, ...o })
+  await payload.create({ collection: 'embed_tokens', data: { name: 'w', product: b, tokenHash: 'bw-hash', workspace: ws.id as number }, ...o })
+  await payload.create({ collection: 'intake_sessions', data: { product: c, workspace: ws.id as number }, ...o })
+  expect(await blockedBy(payload, 'products', a)).toBe('1 tickets')
+  expect(await blockedBy(payload, 'products', b)).toBe('1 widget tokens')
+  expect(await blockedBy(payload, 'products', c)).toBe('1 intake sessions')
+})
