@@ -1,30 +1,6 @@
-import Link from 'next/link'
 import { durationMs, fmtDuration, type RunDoc, type StepDoc, type ToolCallDoc } from '../lib/run'
-import { StatusChip } from './StatusChip'
 
 type Calls = Map<number, ToolCallDoc[]>
-
-export function GraphView({ run, stages, latestByStage, release }: { run: RunDoc; stages: string[]; latestByStage: Map<string, RunDoc>; release: string | null }) {
-  return (
-    <ol className="rgraph">
-      {stages.map((s) => {
-        const r = latestByStage.get(s)
-        const body = (
-          <>
-            <span className="label">{s}</span>
-            {r ? <StatusChip status={r.status} /> : s === 'release' && release ? <span className="chip label queued">{release}</span> : <span className="muted">—</span>}
-            <span className="mono small muted">{r ? fmtDuration(durationMs(r.startedAt, r.finishedAt)) : '—'}</span>
-          </>
-        )
-        return (
-          <li key={s} className="rnode" data-stage={s} aria-current={s === run.stage ? 'step' : undefined}>
-            {r ? <Link href={`/runs/${r.id}`}>{body}</Link> : <div>{body}</div>}
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
 
 const pct = (n: number) => `${Math.min(100, Math.max(0, n)).toFixed(2)}%`
 

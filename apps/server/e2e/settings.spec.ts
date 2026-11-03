@@ -27,7 +27,17 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await page.getByRole('link', { name: 'Products' }).click()
   await expect(page.getByRole('cell', { name: 'acme/web' }).first()).toBeVisible()
 
-  await page.getByRole('link', { name: 'Connections' }).click()
+  const nav = page.getByRole('navigation', { name: 'Settings' })
+  await expect(nav.getByRole('link', { name: 'General' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'People' })).toBeVisible()
+  const advanced = nav.locator('details.snav-adv')
+  await expect(advanced).not.toHaveAttribute('open', /.*/)
+  await nav.getByText('Advanced', { exact: true }).click()
+  await expect(advanced).toHaveAttribute('open', '')
+  for (const name of ['Connections', 'Agent keys', 'Audit', 'Workflow', 'Runs']) await expect(advanced.getByRole('link', { name, exact: true })).toBeVisible()
+  await advanced.getByRole('link', { name: 'Connections' }).click()
+  await expect(page).toHaveURL(/\/settings\/connections$/)
+  await expect(advanced).toHaveAttribute('open', '')
   const form = page.locator('section', { hasText: 'Add Connection' })
   const name = `Bedrock ${Date.now()}`
   await form.getByLabel('Name').fill(name)
@@ -40,7 +50,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await form.getByRole('button', { name: 'Add Connection' }).click()
   await expect(page.getByRole('cell', { name })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Bauherren' }).click()
+  await nav.getByRole('link', { name: 'People' }).click()
   const added = `new-${Date.now()}@example.com`
   const add = page.locator('section', { hasText: 'Add Bauherr' })
   await add.getByLabel('Email').fill(added)

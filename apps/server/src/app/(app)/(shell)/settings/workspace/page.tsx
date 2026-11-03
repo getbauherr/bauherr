@@ -19,51 +19,55 @@ export default async function WorkspaceSettings() {
   return (
     <>
       <h2 className="heading">{w.name}</h2>
-      {!admin && <p className="small muted">You can change the budget and model tiers. The rest is read-only.</p>}
       <SettingsForm action={saveWorkspace} primary>
-        <Field name="name" label="Name" defaultValue={w.name} disabled={!admin} />
+        {admin && <Field name="name" label="Name" defaultValue={w.name} />}
         <div className="pair">
           <Field name="budgetUnit" label="Budget unit" options={[['usd', 'USD'], ['tokens', 'Tokens']]} defaultValue={w.budgetUnit} />
           <Field name="budgetAmount" label="Budget per 30 days" type="number" min={0} step="any" defaultValue={usd ? w.budgetUsd30d ?? '' : w.budgetTokens30d ?? ''} />
         </div>
-        <p className="small muted">{w.gatewayOn ? (w.spend ? `Spent in the last 30 days: $${w.spend.spentUsd.toFixed(2)}` : 'Spend unavailable.') : 'Gateway off: spend is not tracked.'}</p>
-        <fieldset className="checks">
-          <legend className="small muted">Model tiers{w.tiersRequired ? '' : ' (empty = preset default)'}</legend>
+        {admin && <p className="small muted">{w.gatewayOn ? (w.spend ? `Spent in the last 30 days: $${w.spend.spentUsd.toFixed(2)}` : 'Spend unavailable.') : 'Gateway off: spend is not tracked.'}</p>}
+        {admin && (
+          <>
+        <section id="tiers" className="stack">
+          <h2 className="heading">Model tiers{w.tiersRequired ? '' : ' (empty = preset default)'}</h2>
           <div className="pair three">
             {(['cheap', 'standard', 'strong'] as const).map((t) => (
               <Field key={t} name={`tier_${t}`} label={t[0].toUpperCase() + t.slice(1)} defaultValue={w.modelByTier[t] ?? ''} placeholder={w.placeholders[t]} required={w.tiersRequired} />
             ))}
           </div>
-        </fieldset>
-        <fieldset className="checks">
-          <legend className="small muted">Run mode</legend>
+        </section>
+        <section id="run-mode" className="stack">
+          <h2 className="heading">Run mode</h2>
           <div className="pair three">
-            <Field name="defaultMode" label="Default" options={['session', 'autonomous']} empty="inherit" defaultValue={w.defaultMode} disabled={!admin} />
+            <Field name="defaultMode" label="Default" options={['session', 'autonomous']} empty="inherit" defaultValue={w.defaultMode} />
             {(['plan', 'build'] as const).map((t) => (
-              <Field key={t} name={`mode_${t}`} label={`Stage ${t}`} options={['session', 'autonomous']} empty="default" defaultValue={w.modeByStage[t] ?? ''} disabled={!admin} />
+              <Field key={t} name={`mode_${t}`} label={`Stage ${t}`} options={['session', 'autonomous']} empty="default" defaultValue={w.modeByStage[t] ?? ''} />
             ))}
           </div>
-        </fieldset>
-        <fieldset className="checks">
-          <legend className="small muted">Knowledge repo</legend>
+        </section>
+        <section id="knowledge" className="stack">
+          <h2 className="heading">Knowledge repo</h2>
           <div className="pair">
-            <Field name="knowledgeConnection" label="Connection" options={w.githubConnections} empty="none" defaultValue={w.knowledgeConnection} disabled={!admin} />
-            <Field name="knowledgeRepo" label="Repository (owner/name)" defaultValue={w.knowledgeRepo} placeholder="acme/knowledge" disabled={!admin} />
+            <Field name="knowledgeConnection" label="Connection" options={w.githubConnections} empty="none" defaultValue={w.knowledgeConnection} />
+            <Field name="knowledgeRepo" label="Repository (owner/name)" defaultValue={w.knowledgeRepo} placeholder="acme/knowledge" />
           </div>
-        </fieldset>
+        </section>
+          </>
+        )}
       </SettingsForm>
-      <h2 className="heading">Gateway key</h2>
-      {!admin ? (
-        <p className="small muted">Only an Admin can rotate the key.</p>
-      ) : !w.gatewayOn ? (
-        <p className="small muted">Gateway off: there is no key to rotate.</p>
-      ) : (
-        <SettingsForm action={rotateWorkspaceKey} submit="Rotate key" confirm="Confirm rotate" inline>
-          <p className="small muted">Issues a new consumer key at the gateway and invalidates the old one.</p>
-        </SettingsForm>
-      )}
       {health && (
         <>
+          <section id="gateway" className="stack">
+            <h2 className="heading">Gateway key</h2>
+            {!w.gatewayOn ? (
+              <p className="small muted">Gateway off: there is no key to rotate.</p>
+            ) : (
+              <SettingsForm action={rotateWorkspaceKey} submit="Rotate key" confirm="Confirm rotate" inline>
+                <p className="small muted">Issues a new consumer key at the gateway and invalidates the old one.</p>
+              </SettingsForm>
+            )}
+          </section>
+          <section id="health" className="stack">
           <h2 className="heading">Factory health</h2>
           <div className="scroll">
             <table className="table">
@@ -80,6 +84,7 @@ export default async function WorkspaceSettings() {
               </tbody>
             </table>
           </div>
+          </section>
         </>
       )}
     </>
