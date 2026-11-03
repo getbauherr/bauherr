@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
 import { docKey, loadKnowledge } from '../../lib/knowledge'
+import { repoOf } from '../../../../lib/knowledge'
 import { currentWorkspace } from '../../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +30,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         <nav className="stack" aria-label="Documents">
           {sources.map((s) => (
             <section key={s.name} className="stack">
-              <h2 className="label muted">{s.name === 'core' ? 'Core pack' : s.name}</h2>
+              <h2 className="label muted">{s.name === 'core' ? 'Core pack' : repoOf(s.name)}</h2>
               <ul className="kb-docs">
                 {s.docs.map((d) => (
                   <li key={d.path}>
@@ -47,7 +48,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
               {hits.map((h, i) => (
                 <article key={i} className="card-lg stack">
                   <Link className="link" href={href({ doc: docKey(h), q })}>{h.heading || h.path}</Link>
-                  <p className="small muted mono">{h.source === 'core' ? 'core' : h.source} · {h.path} · {h.commit.slice(0, 7)}</p>
+                  <p className="small muted mono">{repoOf(h.source)} · {h.path} · {h.commit.slice(0, 7)}</p>
                   <p className="small">{h.text.replace(/^#.*\n/, '').trim().slice(0, 240)}</p>
                 </article>
               ))}
@@ -55,7 +56,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
           )}
           {doc ? (
             <article className="stack" aria-label={doc.path}>
-              <p className="small muted mono">{doc.source} · {doc.path} · {doc.commit.slice(0, 7)}</p>
+              <p className="small muted mono">{repoOf(doc.source)} · {doc.path} · {doc.commit.slice(0, 7)}</p>
               <div className="prose" dangerouslySetInnerHTML={{ __html: doc.html }} />
             </article>
           ) : (
