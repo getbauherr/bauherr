@@ -134,6 +134,8 @@ export interface Check {
   conclusion: string | null;
   /** When the run started (check runs) or the status was created; ISO 8601. */
   startedAt?: string;
+  /** Link to the run or status, when the forge has one. */
+  url?: string;
 }
 export interface NewPullRequest {
   title: string;
@@ -143,6 +145,8 @@ export interface NewPullRequest {
 }
 
 export interface Release {
+  /** True for a pre-release (GitHub flag); `latestRelease` never returns one. */
+  prerelease?: boolean;
   /** Forge id (GitHub numeric id, GitLab tag name), to be passed back to `updateRelease`. */
   id: string;
   tag: string;
@@ -191,9 +195,11 @@ export interface Forge {
   /** The first published (non-draft) release whose tag commit is `sha` or a descendant of it (the release that shipped it), or null. */
   findRelease(repo: RepoRef, o: { sha: string }): Promise<Release | null>;
   /** Creates the tag on `sha` and publishes the release. */
-  createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }): Promise<Release>;
+  createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }): Promise<Release>;
+  /** Names of all tags, with or without a release. */
+  listTags(repo: RepoRef): Promise<string[]>;
   updateRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
-  /** The newest published release, or null. */
+  /** The newest published stable release (never a pre-release), or null. */
   latestRelease(repo: RepoRef): Promise<Release | null>;
   /** Commits after `from` up to `to` (newest first; the last 100 of `to` without `from`). */
   listCommits(repo: RepoRef, o: { from?: string; to: string }): Promise<{ sha: string; message: string }[]>;

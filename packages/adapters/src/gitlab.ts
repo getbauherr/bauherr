@@ -348,8 +348,11 @@ class GitlabForge implements Forge {
     const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=30`)).filter((x: any) => tags.has(x.tag_name)).at(-1);
     return r ? this.release(r) : null;
   }
-  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
-    return this.release(await this.h.json('POST', `/projects/${enc(repo)}/releases`, { tag_name: o.tag, ref: o.sha, name: o.name, description: o.body }));
+  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
+    return this.release(await this.h.json('POST', `/projects/${enc(repo)}/releases`, { tag_name: o.tag, ref: o.sha, name: o.prerelease ? `${o.name} (pre-release)` : o.name, description: o.body }));
+  }
+  async listTags(repo: RepoRef) {
+    return (await this.h.paginate(`/projects/${enc(repo)}/repository/tags?per_page=100`)).map((t) => t.name as string);
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     return this.release(await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }));

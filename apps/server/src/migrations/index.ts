@@ -37,6 +37,7 @@ import * as migration_20261102_180000_gate_pending_attempts from './20261102_180
 import * as migration_20261103_150194_watcher_jobs from './20261103_150194_watcher_jobs';
 import * as migration_20261103_150196_factory_stage from './20261103_150196_factory_stage';
 import * as migration_20261103_150206_task_slug_enums from './20261103_150206_task_slug_enums';
+import * as migration_20261103_150231_release_prerelease from './20261103_150231_release_prerelease';
 
 export const migrations = [
   {
@@ -233,5 +234,10 @@ export const migrations = [
     up: migration_20261103_150206_task_slug_enums.up,
     down: migration_20261103_150206_task_slug_enums.down,
     name: '20261103_150206_task_slug_enums'
+  },
+  {
+    up: migration_20261103_150231_release_prerelease.up,
+    down: migration_20261103_150231_release_prerelease.down,
+    name: '20261103_150231_release_prerelease'
   }
 ];

@@ -424,6 +424,7 @@ export const publishRelease = async (payload: Payload, productId: number | strin
       await Promise.all(batch.map((t) => payload.update({ collection: 'tickets', id: t.id, data: { releaseNotes: notes }, ...o })))
     }
   }
+  const prerelease = product.releaseMode === 'factory' && !!product.releasePrerelease
   const done = new Date(now).toISOString()
   if (!release && product.releaseMode !== 'factory') {
     for (const t of batch) {
@@ -434,15 +435,51 @@ export const publishRelease = async (payload: Payload, productId: number | strin
   }
   if (!release) {
     const last = await forge.latestRelease(repo)
-    const tag = `v${nextVersion(last?.tag ?? null, (await forge.listCommits(repo, { from: last?.sha, to: sha })).map((c) => c.message))}`
-    release = await forge.createRelease(repo, { tag, sha, name: tag, body: `${notes}\n\n${marker}` })
+    const tag = `v${nextVersion(last?.tag ?? null, (await forge.listCommits(repo, { from: last?.sha, to: sha })).map((c) => c.message), prerelease ? await forge.listTags(repo) : undefined)}`
+    release = await forge.createRelease(repo, { tag, sha, name: tag, body: `${notes}\n\n${marker}`, prerelease })
   } else if (notes) release = await forge.updateRelease(repo, release.id, { body: `${release.body.trimEnd()}\n\n## What's new\n\n${notes}\n\n${marker}` })
-  if (product.releaseMode === 'factory') await changelogPr(forge, repo, release, marker, now)
+  if (product.releaseMode === 'factory' && !prerelease) await changelogPr(forge, repo, release, marker, now)
+  const waits = prerelease && checkNames(product.releaseChecks).length > 0
   for (const t of batch) {
-    await ts.comment(String(t.number), `Released in [${release.tag}](${release.url})`)
-    await payload.update({ collection: 'tickets', id: t.id, data: { releaseUrl: release.url, releasePublishedAt: done }, ...o })
+    if (!waits) await ts.comment(String(t.number), `Released in [${release.tag}](${release.url})`)
+    await payload.update({ collection: 'tickets', id: t.id, data: { releaseUrl: release.url, releasePublishedAt: done, ...(waits && { releaseTag: release.tag, releaseSha: release.sha, releaseChecksState: 'waiting' }) }, ...o })
   }
   return { state: 'published', url: release.url }
+}
+
+/** Names in a comma-separated check list. */
+const checkNames = (v: unknown): string[] => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+/** A pre-release whose release workflow has not finished after this long is `failed`. */
+export const RELEASE_CHECKS_TIMEOUT_MS = 60 * 60_000
+
+/**
+ * Reads the Product's `releaseChecks` (for example `image, npm`) on the tagged sha for Tickets in `waiting` or `failed`, counting only runs that started at or after the release minus the clock-skew margin. All `success`: "Released in" and `passed` (also after a re-run of a failed workflow); a finished red check, or nothing after 60 minutes: `failed` with the run link (needs-you "Release failed", one Comment on the transition).
+ */
+export const watchReleaseChecks = async (payload: Payload, now = Date.now()): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { releaseChecksState: { in: ['waiting', 'failed'] } }, limit: 200, pagination: false, ...o })).docs as Doc[]
+  let changed = 0
+  for (const t of tickets) {
+    try {
+      const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))
+      const names = checkNames(((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc).releaseChecks)
+      const published = new Date(t.releasePublishedAt).getTime()
+      const latest = latestChecks((await backend.forge.listChecks(repo, t.releaseSha)).filter((c) => c.startedAt && new Date(c.startedAt).getTime() >= published - CLOCK_SKEW_MS))
+      const picked = names.map((n) => latest.find((c) => c.name === n))
+      const bad = picked.find((c) => c?.status === 'completed' && c.conclusion !== 'success')
+      if (picked.every(succeeded)) {
+        await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'passed', releaseRunUrl: null }, ...o })
+        await ts.comment(String(t.number), `Released in [${t.releaseTag}](${t.releaseUrl})`)
+        changed++
+      } else if ((bad || now - published > RELEASE_CHECKS_TIMEOUT_MS) && t.releaseChecksState === 'waiting') {
+        await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'failed', releaseRunUrl: bad?.url ?? t.releaseUrl }, ...o })
+        await ts.comment(String(t.number), `Bauherr: release [${t.releaseTag}](${t.releaseUrl}) ${bad ? `failed (${bad.name})` : 'did not finish within 60 minutes'}. ${bad?.url ?? ''}`.trim())
+        changed++
+      }
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'watch-release-checks failed for ticket')
+    }
+  }
+  return changed
 }
 
 /** Stores the error on the Product's pending Tickets and delays the next try by an hour; the 3rd failure gives up with a Comment. */

@@ -54,7 +54,7 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string } | null): Promise<boolean> => {
   const productionChecksMissing = t.stage === 'release' && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
-  const candidate = t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run)
+  const candidate = t.state === 'closed' && t.releaseChecksState !== 'failed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false

@@ -31,8 +31,15 @@ const render = (heading: string, items: NoteItem[]): string[] =>
 export const renderNotes = (items: NoteItem[]): string =>
   [...render('Features', items.filter((i) => !i.fix)), ...render('Fixes', items.filter((i) => i.fix))].join('\n').trim()
 
-/** Next semver from the last release tag and the commit messages since: breaking = major, `feat` = minor, else patch; no previous release = 0.1.0. */
-export const nextVersion = (lastTag: string | null, messages: string[]): string => {
+/** Next semver from the last release tag and the commit messages since: breaking = major, `feat` = minor, else patch; no previous release = 0.1.0. With `tags` (all forge tags) the result is a pre-release `<base>-rc.<n>`, n = 1 + the highest existing `v<base>-rc.<n>`. */
+export const nextVersion = (lastTag: string | null, messages: string[], tags?: string[]): string => {
+  const base = nextStable(lastTag, messages)
+  if (!tags) return base
+  const n = Math.max(0, ...tags.map((t) => Number(t.startsWith(`v${base}-rc.`) && /^\d+$/.test(t.slice(`v${base}-rc.`.length)) ? t.slice(`v${base}-rc.`.length) : 0)))
+  return `${base}-rc.${n + 1}`
+}
+
+const nextStable = (lastTag: string | null, messages: string[]): string => {
   const m = lastTag && /^v?(\d+)\.(\d+)\.(\d+)/.exec(lastTag)
   if (!m) return '0.1.0'
   const [major, minor, patch] = m.slice(1).map(Number)

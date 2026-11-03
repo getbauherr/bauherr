@@ -395,7 +395,7 @@ class GithubForge implements Forge {
   private async release(repo: RepoRef, r: any): Promise<Release | null> {
     try {
       const sha = (await this.h.json('GET', `/repos/${repo}/commits/${enc(r.tag_name)}`)).sha as string;
-      return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url };
+      return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url, prerelease: !!r.prerelease };
     } catch (e) {
       if (e instanceof GithubError && e.status === 404) return null;
       throw e;
@@ -415,9 +415,12 @@ class GithubForge implements Forge {
     }
     return found;
   }
-  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
-    const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body });
-    return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string };
+  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
+    const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease });
+    return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string, prerelease: !!o.prerelease };
+  }
+  async listTags(repo: RepoRef) {
+    return (await this.h.paginate(`/repos/${repo}/tags?per_page=100`)).map((t) => t.name as string);
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, { body: o.body });
@@ -439,7 +442,7 @@ class GithubForge implements Forge {
   }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
-      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined,
+      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined, url: c.html_url ?? undefined,
     }));
     const statuses = (await this.h.json('GET', `/repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
     return [...runs, ...statuses.map((s: any): Check => (s.state === 'pending'
