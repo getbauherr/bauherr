@@ -1,4 +1,4 @@
-import { setStage, type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
+import { type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
@@ -8,6 +8,7 @@ import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gat
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
 import { gateOn, productionGateOn } from './mode'
+import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 
@@ -150,7 +151,7 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
     return syncOpen()
   }
   if (!accepted) await note(DROPPED_MARKER, 'Bauherr: this Ticket was closed by a human, not by acceptance; it is left closed and set to done.')
-  await setStage(ts, n, 'done')
+  await moveStage(payload, ts, t, 'done')
   await cas(payload, t.id, sql`"stage" = 'done'`, sql`"state" = 'closed'`)
   Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
   return 'dropped'
@@ -173,7 +174,7 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
   const stage = productionGateOn(product) ? 'release' : 'done'
   if (stage === 'done') {
-    await setStage(ts, n, 'done')
+    await moveStage(payload, ts, t, 'done')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
     await label()
@@ -221,7 +222,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         const at = new Date(now).toISOString()
         if (!(await cas(payload, t.id, sql`"stage" = 'release', "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = 'review'`))) continue
         Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
-        await setStage(ts, n, 'release')
+        await moveStage(payload, ts, t, 'release')
         await clearApprovalLabel(payload, ts, n)
         out.released++
       }
@@ -312,7 +313,7 @@ const postProduction = async (payload: Payload, t: Doc, ts: TicketSource, result
 const finishDeployed = async (payload: Payload, t: Doc, ts: TicketSource, names: string[]) => {
   const n = String(t.number)
   await postProduction(payload, t, ts, 'succeeded', names)
-  await setStage(ts, n, 'done')
+  await moveStage(payload, ts, t, 'done')
   await ts.close(n, 'completed')
   Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'done', state: 'closed' }, ...o }))
 }

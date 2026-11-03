@@ -1,16 +1,17 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
+import { isForward, moveStage } from '../lib/stage-move'
+import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
@@ -344,6 +345,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             await payload.update({ collection: 'tickets', id: stuck.docs[i].id, data: { gatePendingAttempts: MAX_GATE_ATTEMPTS }, depth: 0, overrideAccess: true })
           }
         }
+        let revertFailed = false
         for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
@@ -382,17 +384,43 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
             try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
           }
+          // Stage guard (#196): a forward move the factory did not record is reverted to the DB stage; backward moves and first sight are accepted.
+          let clearFactoryStage = false
+          if (prev && stage && stage !== (prev.stage ?? 'triage')) {
+            clearFactoryStage = true
+            if (stage !== prev.factoryStage && isForward(prev.stage ?? 'triage', stage)) {
+              const from = prev.stage
+              const back = from ? `to \`${from}\`` : 'to untriaged'
+              const marker = `<!-- bauherr:stage-rejected:${stage}:${t.updatedAt} -->`
+              const forge = backendFor(conn).tickets(src.repo)
+              try {
+                if (from) await setStage(forge, String(t.number), from)
+                else await forge.removeLabels(String(t.number), labels.filter((l) => stageOf([l]) !== null))
+                if (!(await forge.listComments(String(t.number))).some((c) => c.body.startsWith(marker))) {
+                  await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back ${back}: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
+                }
+                labels = [...labels.filter((l) => stageOf([l]) === null), ...(from ? [stageLabel(from)] : [])]
+                base.labels = labels
+                stage = from
+              } catch (e) {
+                payload.logger.warn({ err: e, ticket: prev.id }, 'stage revert failed, keeping the DB stage, retried on the next poll')
+                revertFailed = true
+                continue
+              }
+            }
+          }
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
-          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN)) {
+          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(backendFor(conn).tickets(src.repo), String(t.number)))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
-              await setStage(backendFor(conn).tickets(src.repo), String(t.number), 'build')
+              await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, 'build')
               stage = 'build'
             }
           }
           // Guard: unchanged pointers are not rewritten.
           if (!base.gatePendingAttempts && !prev?.gatePendingAttempts && prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          if (prev?.factoryStage && stage === prev.factoryStage) clearFactoryStage = true
           const data = {
             ...base,
             stage,
@@ -402,6 +430,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
+          if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
           if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
@@ -409,7 +438,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
         }
-        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
+        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && !revertFailed && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
         payload.logger.error({ err: e, source: src.id }, 'poll-tickets failed for source')
         await payload
