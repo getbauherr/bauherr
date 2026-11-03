@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -160,7 +161,7 @@ it('a session release unassigns only its own login, not the gate owner', async (
   await gates.syncGates(payload)
   const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'awaiting_session', mode: 'session', workspace: ws }, ...o })
-  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  const { leaseToken } = await claimOnly(payload, call, member, ws, run.id)
   expect(issue(n).assignees).toEqual(['e2e-admin', 'fake'])
   await call(member, 'release_run', { runId: run.id, leaseToken })
   expect(issue(n).assignees).toEqual(['e2e-admin'])
@@ -191,7 +192,7 @@ it('a session release keeps its login assigned when that login owns the gate', a
   await fake.tickets(repo).unassign(n, ['fake'])
   const member = await payload.create({ collection: 'bauherren', data: { email: 'm2@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'awaiting_session', mode: 'session', workspace: ws }, ...o })
-  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  const { leaseToken } = await claimOnly(payload, call, member, ws, run.id)
   await call(member, 'release_run', { runId: run.id, leaseToken })
   expect(issue(n).assignees).toEqual(['fake'])
   await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })

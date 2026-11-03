@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -135,7 +136,7 @@ it('claiming with an agent key records the key on the Run; a personal claim leav
   const claim = async (actor: Parameters<typeof call>[0]) => {
     const t = await ticket('plan')
     const run = await payload.create({ collection: 'runs', data: { ticket: t, stage: 'plan', mode: 'session', status: 'awaiting_session', workspace: ws }, ...o })
-    await call(actor, 'claim_run', { runId: run.id })
+    await claimOnly(payload, call, actor, ws, run.id)
     return (await payload.findByID({ collection: 'runs', id: run.id, depth: 0, ...o })) as any
   }
   expect(await claim(agent)).toMatchObject({ status: 'running', agentKey: agent.keyId })

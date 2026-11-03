@@ -154,3 +154,29 @@ it('rankTicket opens a gap when the neighbours leave no room, keeping the order'
   const [ra, rm, rb, rc] = [await rankOf(a.ticket.id), await rankOf(moved.ticket.id), await rankOf(b.ticket.id), await rankOf(c.ticket.id)]
   expect(ra < rm && rm < rb && rb < rc).toBe(true)
 })
+
+it('claim_run refuses a Run that claim_next would not return and names the right one', async () => {
+  await reset()
+  const low = await seed('b')
+  const review = await seed('z', { stage: 'review' }, { stage: 'review' })
+  await expect(call(member, 'claim_run', { runId: low.run!.id })).rejects.toThrow(`take Run ${review.run!.id} (#1, review) first`)
+  expect((await call(member, 'claim_run', { runId: review.run!.id })).run.id).toBe(review.run!.id)
+  expect((await call(member, 'claim_run', { runId: low.run!.id })).run.id).toBe(low.run!.id)
+})
+
+it('claim_next goes one column left when the right column is leased by another agent', async () => {
+  await reset()
+  await seed('a', { stage: 'review' }, { stage: 'review', status: 'running', sessionOwner: outsider.id })
+  const build = await seed('b')
+  expect((await call(member, 'claim_next', {})).run.id).toBe(build.run!.id)
+})
+
+it('ranks zzzzxV and zzzzxk are in the same order on the Board and in claim_next', async () => {
+  await reset()
+  const upper = await seed('zzzzxV')
+  const lower = await seed('zzzzxk')
+  const { frontierOrder } = await import('../src/lib/frontier')
+  const board = frontierOrder([upper.ticket, lower.ticket] as any, new Map()).map((t) => t.id)
+  expect(board).toEqual([upper.ticket.id, lower.ticket.id])
+  expect((await call(member, 'claim_next', {})).run.id).toBe(upper.run!.id)
+})

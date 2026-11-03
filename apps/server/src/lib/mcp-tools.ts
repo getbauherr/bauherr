@@ -205,9 +205,15 @@ export const tools: Tool[] = [
   {
     name: 'claim_run',
     access: 'agent',
-    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
+    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return is accepted; any other is refused with "take Run N (#T, column) first". Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
+      const run = await getRun(c, a.runId)
+      if (isClaimable(run)) {
+        const f = await frontier(c)
+        const top = f?.open.map((t) => f.latest.get(t.id)).find(isClaimable)
+        if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f!.open.find((t) => f!.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
+      }
       return claimRun(c, a.runId)
     },
   },
