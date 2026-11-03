@@ -214,7 +214,7 @@ export const tools: Tool[] = [
   {
     name: 'claim_next',
     access: 'agent',
-    description: 'Claim the top claimable Run in frontier order (in-flight work first, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
+    description: 'Claim the top claimable Run in frontier order (right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
       const f = await frontier(c, a.product)

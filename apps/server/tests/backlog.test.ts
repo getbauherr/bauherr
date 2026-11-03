@@ -62,10 +62,10 @@ it('claim_next returns null when nothing is claimable', async () => {
   expect(await call(member, 'claim_next', {})).toBeNull()
 })
 
-it('claim_next takes in-flight work before the top-ranked Ticket, skipping blocked ones', async () => {
+it('claim_next takes the rightmost stage before the top-ranked Ticket, skipping blocked ones', async () => {
   await reset()
   const top = await seed('a')
-  const flight = await seed('z', { reviewRounds: 1 })
+  const flight = await seed('z', { stage: 'review' })
   const blocker = await seed('zz', {}, null)
   const blocked = await seed('A', { blockedBy: [blocker.ticket.id] })
   expect((await call(member, 'list_frontier', {})).map((t: any) => t.ticket).slice(0, 2)).toEqual([flight.ticket.id, top.ticket.id])
