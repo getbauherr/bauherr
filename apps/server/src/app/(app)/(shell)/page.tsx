@@ -43,7 +43,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       ) : sp.epic ? (
         <EmptyState text="No open tickets in this epic." action={{ href: '/?epic=', label: 'Clear the epic filter' }} />
       ) : (
-        <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/settings/workspace', label: 'Open settings' }} />
+        <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.`} action={data.products.length ? { href: '/settings/workspace', label: 'Open settings' } : { href: '/setup', label: 'Set up your Workspace' }} />
       )}
     </>
   )

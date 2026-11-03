@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
-import { webOrigin } from '../../../../lib/connection'
+import { backendFor } from '../../../../lib/adapters'
+import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
@@ -29,7 +30,10 @@ const act = (rename: Record<string, string>, fn: (c: Awaited<ReturnType<typeof c
   async (_prev, fd) => {
     const c = await ctx()
     const result = await run(() => fn(c, fd), rename)
-    if (result.saved) revalidatePath('/settings', 'layout')
+    if (result.saved) {
+      revalidatePath('/settings', 'layout')
+      revalidatePath('/setup')
+    }
     return result
   }
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim()
@@ -82,15 +86,20 @@ const inWs = (c: Awaited<ReturnType<typeof ctx>>, collection: string, ...ids: (n
 
 const slugOf = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
-/** Creates the Product (short name derived from the name when empty) and opens its page. */
-export const createProduct = act({}, async (c, fd) => {
-  only(c.user)
+/** Creates the Product (short name derived from the name when empty) and returns its id. */
+const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => {
   const name = s(fd, 'name')
   const slug = s(fd, 'slug') || slugOf(name)
   if (!/^[a-z0-9-]+$/.test(slug)) throw Object.assign(new Error('Short name invalid.'), { data: { errors: [{ path: 'slug', message: 'Use lowercase letters, digits and dashes.' }] } })
-  const { id } = await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)
-  redirect(`/settings/products/${id}`)
+  return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
+}
+
+/** Creates the Product and opens its page. */
+export const createProduct = act({}, async (c, fd) => {
+  only(c.user)
+  redirect(`/settings/products/${await makeProduct(c, fd)}`)
 })
+
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
@@ -102,21 +111,44 @@ export const saveDeploy = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
 })
 
-/** Adds a repository; "Read tickets" also adds its ticket source (removed again if that fails). */
-export const addRepository = act({}, async (c, fd) => {
-  only(c.user)
+/** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */
+const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: number, fd: FormData) => {
   const connection = Number(s(fd, 'connection')) || undefined
   const fullName = s(fd, 'fullName')
-  await inWs(c, 'products', id(fd))
   await inWs(c, 'connections', connection)
-  const repo = await c.payload.create({ collection: 'repositories', data: { fullName, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
+  const repo = await c.payload.create({ collection: 'repositories', data: { fullName, product, workspace: inWorkspace(c) }, ...c.w } as never)
   if (fd.get('readTickets') !== 'on') return
   try {
-    await c.payload.create({ collection: 'ticket_sources', data: { repo: fullName, connection, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
+    await c.payload.create({ collection: 'ticket_sources', data: { repo: fullName, connection, product, workspace: inWorkspace(c) }, ...c.w } as never)
   } catch (e) {
     await c.payload.delete({ collection: 'repositories', id: repo.id, ...c.w } as never)
     throw e
   }
+}
+export const addRepository = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await makeRepository(c, id(fd), fd)
+})
+
+/** Product, repository and ticket source in one go; the Product is deleted again when a later create fails. */
+export const createProductWithRepo = act({}, async (c, fd) => {
+  only(c.user)
+  const product = await makeProduct(c, fd)
+  fd.set('readTickets', 'on')
+  try {
+    await makeRepository(c, product, fd)
+  } catch (e) {
+    await c.payload.delete({ collection: 'products', id: product, ...c.w } as never)
+    throw e
+  }
+})
+
+/** "Skip, use defaults" on /setup: a save without changes, which marks the Product's staging and gates as seen. */
+export const skipDeploy = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await c.payload.update({ collection: 'products', id: id(fd), data: { deployMode: 'observe-ci' }, ...c.w } as never)
 })
 
 /** The token is shown once as the ready-made script tag; only its hash is stored. */
@@ -164,15 +196,23 @@ export const saveConnection = act({}, async (c, fd) => {
   if (s(fd, 'secret')) data.secret = s(fd, 'secret')
   if (id(fd)) {
     await inWs(c, 'connections', id(fd))
+    if (kind !== 'llm-provider' && s(fd, 'secret')) data.capabilities = {}
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
 })
 
-/** Re-saves unchanged: the afterChange hook verifies the provider again. */
+/** LLM providers: re-saves unchanged, the afterChange hook verifies the provider again. Forges: asks the forge who the token belongs to and stores the outcome in `capabilities`. */
 export const verifyConnection = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'connections', id(fd))
-  await c.payload.update({ collection: 'connections', id: id(fd), data: {}, ...c.w } as never)
+  const conn = await connectionInput(c.payload, id(fd))
+  if (conn.kind === 'llm-provider') {
+    await c.payload.update({ collection: 'connections', id: id(fd), data: {}, ...c.w } as never)
+    return
+  }
+  const lastError = await backendFor(conn).tickets('').whoami().then(() => null, (e: Error) => e.message)
+  await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { ...conn.capabilities, verifiedAt: lastError ? null : new Date().toISOString(), lastError } }, overrideAccess: true } as never)
+  if (lastError) throw new Error(`The forge did not accept the token: ${lastError}`)
 })
 
 const tenants = (fd: FormData) => fd.getAll('workspaces').map(Number)
