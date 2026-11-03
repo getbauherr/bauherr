@@ -32,3 +32,10 @@ export const fakeModel: ModelCall = async ({ messages }) => {
     missing: [],
   }
 }
+
+/** E2E and tests (`BAUHERR_E2E_FAKE_FORGE=1`): owner chat classifier; a message ending in `?` asks, anything else answers. */
+export const fakeOwnerModel: ModelCall = async ({ messages }) => {
+  const last = messages.at(-1)!.content
+  const text = typeof last === 'string' ? last : last.map((b) => (b.type === 'text' ? b.text : '')).join('')
+  return text.trim().endsWith('?') ? { intent: 'explain', text: 'This decides how the work is done; the first option is the safe default.' } : { intent: 'answer', text: '' }
+}

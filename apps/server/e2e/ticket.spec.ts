@@ -20,8 +20,8 @@ const login = async (page: Page) => {
 
 // [slug, Ticket title, primary verb ('' = none)]. Runs before the test that approves the plan of #1.
 const STATES = [
-  ['answer-decisions', 'Add a dark theme to the dashboard', 'Answer decisions'],
-  ['answer-questions', 'Clarify the export scope', 'Answer questions'],
+  ['answer-decisions', 'Add a dark theme to the dashboard', 'Answer 2 questions'],
+  ['answer-questions', 'Clarify the export scope', 'Answer 1 question'],
   ['approve-plan', 'Tidy the settings copy', 'Approve plan'],
   ['accept-staging', 'Ship the export header', 'Accept on staging'],
   ['approve-production', 'Ship the gated header', 'Approve production'],
@@ -77,19 +77,20 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await expect(row.getByText('Answer decisions')).toBeVisible()
   await row.getByRole('link', { name: 'Add a dark theme to the dashboard' }).click()
 
-  await expect(page.locator('.sheet tbody tr')).toHaveCount(2)
-  await expect(page.getByText('★ critical')).toHaveCount(1)
+  await expect(page.locator('#worklog')).toBeVisible()
+  await expect(page.locator('.sheet')).toHaveCount(0)
   const gaps = await page.locator('.max-w-\\[80ch\\] > p + *').evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).marginTop)))
   expect(gaps.length).toBeGreaterThan(0)
   expect(gaps.every((g) => g > 0)).toBe(true)
   const bar = page.getByTestId('action-bar')
   const approve = bar.getByRole('button', { name: 'Approve plan' })
-  await expect(bar.getByRole('link', { name: 'Answer decisions' })).toBeVisible()
+  await expect(bar.getByRole('link', { name: 'Answer 2 questions' })).toBeVisible()
   await expect(approve).toHaveCount(0)
 
-  await page.getByRole('radio', { name: 'yes, until the user picks' }).check()
-  await page.getByRole('button', { name: 'Save answers' }).click()
-  await expect(approve).toBeVisible()
+  const chat = page.getByRole('region', { name: 'Answer questions' })
+  await expect(chat).toContainText('Follow the system setting')
+  await chat.getByRole('button', { name: 'yes, until the user picks' }).click()
+  await expect(approve).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
 

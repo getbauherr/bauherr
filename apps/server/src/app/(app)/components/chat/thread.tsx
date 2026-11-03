@@ -96,7 +96,7 @@ const Draft: FC<{ storageKey: string }> = ({ storageKey }) => {
   return null
 }
 
-export const ChatThread: FC<{ first: Labels; next: Labels; composer?: boolean; attachments?: boolean; maxHeight?: string; draftKey?: string }> = ({ first, next, composer = true, attachments = false, maxHeight = 'max-h-96', draftKey }) => {
+export const ChatThread: FC<{ first: Labels; next: Labels; composer?: boolean; attachments?: boolean; maxHeight?: string; maxLength?: number; draftKey?: string }> = ({ first, next, composer = true, attachments = false, maxHeight = 'max-h-96', maxLength = 2000, draftKey }) => {
   const started = useAuiState((s) => s.thread.messages.length > 0)
   const busy = useAuiState((s) => s.thread.isRunning)
   const { label, placeholder } = started ? next : first
@@ -118,7 +118,7 @@ export const ChatThread: FC<{ first: Labels; next: Labels; composer?: boolean; a
                   <Button type="button" variant="outline" size="icon" aria-label="Add screenshot" title="Add screenshot"><Plus /></Button>
                 </ComposerPrimitive.AddAttachment>
               )}
-              <ComposerPrimitive.Input rows={1} maxLength={2000} disabled={busy} aria-label={label} placeholder={placeholder} className="min-h-9 min-w-0 flex-1 resize-none rounded-md border bg-card px-3 py-1.5 text-[15px] leading-[22px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60" />
+              <ComposerPrimitive.Input rows={1} maxLength={maxLength} disabled={busy} aria-label={label} placeholder={placeholder} className="min-h-9 min-w-0 flex-1 resize-none rounded-md border bg-card px-3 py-1.5 text-[15px] leading-[22px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60" />
               <ComposerPrimitive.Send asChild><Button type="submit"><ArrowUp />Send</Button></ComposerPrimitive.Send>
           </div>
           </ComposerPrimitive.AttachmentDropzone>

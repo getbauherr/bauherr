@@ -17,7 +17,7 @@ type Config = {
 }
 
 /** A persisted conversation as thread messages; the open `turn` rides on the last assistant message. */
-export function toMessages(messages: { role: string; content: string }[], turn: Turn | null): ThreadMessageLike[] {
+export function toMessages(messages: { role: string; content: string }[], turn: object | null): ThreadMessageLike[] {
   return messages.map((m, i) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
     content: [{ type: 'text', text: m.content }],
