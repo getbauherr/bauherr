@@ -1,22 +1,19 @@
 import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let gw: pg.Client
+let testDb: TestDb
+let gwDb: TestDb
 const o = { overrideAccess: true } as const
 
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  for (const d of ['bauherr_test_reconcile', 'bauherr_test_gateway']) {
-    await admin.query(`DROP DATABASE IF EXISTS ${d} WITH (FORCE)`)
-    await admin.query(`CREATE DATABASE ${d}`)
-  }
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_reconcile')
-  process.env.GATEWAY_DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_gateway')
+  testDb = await createTestDb('reconcile')
+  gwDb = await createTestDb('gateway')
+  process.env.DATABASE_URL = testDb.url
+  process.env.GATEWAY_DATABASE_URL = gwDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   gw = new pg.Client({ connectionString: process.env.GATEWAY_DATABASE_URL })
@@ -30,6 +27,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await gw?.end()
   await payload?.destroy()
+  await testDb?.drop(payload)
+  await gwDb?.drop()
 })
 
 const seedRun = async (slug: string, costEstimateUsd: number) => {

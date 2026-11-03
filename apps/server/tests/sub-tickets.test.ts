@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let user: Record<string, any>
@@ -19,14 +19,10 @@ const PLAN = `## Goal
 - **Invoice numbering** — Sequential numbers.
 `
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_sub_tickets WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_sub_tickets')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_sub_tickets')
+  testDb = await createTestDb('sub_tickets')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -50,6 +46,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** Creates a Ticket whose labels were set by a gate owner (the factory's own label would need a recorded approval). */

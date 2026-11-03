@@ -8,7 +8,7 @@ Local temp stubs of `@bauherr/{adapters,runner}` were used for verification and 
 | `docker compose -f ../../compose.yaml up -d db` | `bauherr-db` on 127.0.0.1:54330 |
 | `pnpm install` (with stub packages) | ok |
 | `pnpm typecheck` | clean |
-| `pnpm test` | 1 passed (isolation, DB `bauherr_test`) |
+| `pnpm test` | 1 passed (isolation, DB `bauherr_test_isolation_<suffix>`) |
 | `pnpm seed` | workspace `getbauherr`, 2 connections, product, source, workflow v1; idempotent |
 | `pnpm dev` + curl `/admin` | 200 |
 | `pnpm jobs` (worker, cron every 5s) + stub adapters/runner | poll created ticket + run; worker ran it: succeeded, 1 step, 1 tool_call; no duplicate run on later polls |

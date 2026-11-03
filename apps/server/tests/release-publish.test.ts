@@ -1,8 +1,8 @@
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { buildStagingSummary } from '../src/lib/summary'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
@@ -13,14 +13,10 @@ let actions: typeof import('../src/lib/actions')
 const o = { overrideAccess: true } as const
 const products: Record<string, number> = {}
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_release_publish_106 WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_release_publish_106')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_release_publish_106')
+  testDb = await createTestDb('release_publish_106')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -43,6 +39,7 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllGlobals())
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** A Ticket accepted on staging (with a staging summary) and approved for production. */

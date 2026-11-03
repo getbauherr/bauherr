@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import pg from 'pg'
 import type { Payload, PayloadRequest } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 const o = { overrideAccess: true } as const
@@ -14,14 +15,10 @@ const ws = async (slug: string) => (await payload.create({ collection: 'workspac
 const conn = (workspace: number | string, data: Record<string, unknown>, extra: Record<string, unknown> = o) =>
   payload.create({ collection: 'connections', data: { name: 'c', kind: 'llm-provider', workspace, ...data } as never, ...extra } as never)
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_security_143 WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_security_143')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_security_143')
+  testDb = await createTestDb('security_143')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.GATEWAY_CONFIG_DIR = dir
@@ -34,6 +31,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 it('bedrock-iam secret: raw key, non-object and missing fields are rejected with a fixed message that never echoes the input', async () => {

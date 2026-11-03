@@ -1,9 +1,9 @@
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
@@ -21,14 +21,10 @@ const repo = 'acme/web'
 /** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `access: 'human'` on the tool. */
 const GATES = ['approve', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'approve_production']
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_166_agent_identity WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_166_agent_identity')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_166_agent_identity')
+  testDb = await createTestDb('166_agent_identity')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -50,6 +46,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 const call = (actor: Parameters<typeof mcp.callTool>[0]['actor'], name: string, input: unknown) => mcp.callTool({ payload, user: owner, actor }, name, input)
