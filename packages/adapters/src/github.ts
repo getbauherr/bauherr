@@ -286,6 +286,7 @@ const pr = (p: any): PullRequest => ({
   state: p.merged_at ? 'merged' : p.state, head: p.head.ref, base: p.base.ref, headSha: p.head.sha,
   headRepo: p.head.repo?.full_name ?? '', baseRepo: p.base.repo?.full_name ?? '', draft: !!p.draft,
   ...(p.mergeable === false || p.mergeable_state === 'dirty' ? { mergeable: false } : p.mergeable === true ? { mergeable: true } : {}),
+  ...(p.mergeable_state === 'behind' ? { behind: true } : {}),
   ...(p.merge_commit_sha && p.merged_at ? { mergeSha: p.merge_commit_sha } : {}),
 });
 

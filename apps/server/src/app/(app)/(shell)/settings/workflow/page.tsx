@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
+import { Field, SettingsForm } from '../../../components/SettingsForm'
+import { saveWipLimits } from '../actions'
 import { isAdmin, loadWorkflow } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import type { HumanGate } from '../../../../../lib/mode'
@@ -21,6 +23,15 @@ export default async function Workflow() {
   const w = await loadWorkflow(workspace.id)
   return (
     <>
+      <h2 className="heading">WIP limits</h2>
+      <p className="small muted">Tickets allowed per Board column; empty means no limit. A Ticket waits in the column to its left until the next one has room. Work already in a column always finishes: merges, staging, production and returns are never held. Sub-tickets count, parents do not. Applied on the next poll.</p>
+      <SettingsForm action={saveWipLimits}>
+        <div className="pair three">
+          {w.wip.map((c) => (
+            <Field key={c.stage} name={`wip_${c.stage}`} label={`${c.stage[0].toUpperCase()}${c.stage.slice(1)} (now ${c.count})`} type="number" min={1} step={1} defaultValue={c.limit ?? ''} />
+          ))}
+        </div>
+      </SettingsForm>
       <h2 className="heading">Where you are asked</h2>
       <p className="small muted">The points where the factory waits for you, in flow order. A Product without production checks shows "Configure production checks" instead of Approve production.</p>
       <div className="scroll">

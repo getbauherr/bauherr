@@ -47,7 +47,7 @@ Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEAD
 
 ## Loop
 
-1. `claim_next {product?}` takes the top claimable Run in the owner's order (in-flight work first, then the Board rank; blocked and leased Tickets are skipped) and returns the `claim_run` payload, or `null`. Several sessions calling at once get different Runs. To choose by hand instead: `list_frontier` (same order) → pick a Ticket whose run is `awaiting_session`. Then `load_skill run-contract`, `read_worklog`.
+1. `claim_next {product?}` takes the top claimable Run in the owner's order (right to left: Release, Review, Build, Plan, Triage, then the Board rank; blocked and leased Tickets are skipped) and returns the `claim_run` payload, or `null`. Several sessions calling at once get different Runs. To choose by hand instead: `list_frontier` (same order) → pick a Ticket whose run is `awaiting_session`. Then `load_skill run-contract`, `read_worklog`.
 2. `claim_run {runId}` (not needed after `claim_next`) → returns `leaseToken` (once), Ticket, body and Goal statements. Status `running`, Ticket assigned. Pass `leaseToken` on every later call on the Run (see the Lease section of [run-contract](../pack/skills/run-contract/SKILL.md)).
 3. Work in a local worktree. Meanwhile: `update_worklog` (full markdown), `report_step`, `attach_evidence` (commands with exit codes, test summary), `heartbeat`.
 4. Write `Refs #N` in the MR body and commit messages, never `Closes/Fixes/Resolves`: only acceptance on staging closes a Ticket (a merge that closes it is reopened). `request_review` (moves the Ticket to the review stage), then `finish_run {runId, status, reason?, prUrl?}`. `succeeded` needs the MR/stage output; otherwise `failed` or `needs_human` with a reason.

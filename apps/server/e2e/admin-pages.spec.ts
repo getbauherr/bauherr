@@ -89,3 +89,22 @@ test('with BAUHERR_DISABLE_ADMIN=1 /admin and its server functions answer 404, /
   expect(fn.status()).toBe(404)
   expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
 })
+
+test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiting card says why', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('1')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+
+  await page.goto('/?view=board')
+  await expect(page.locator('section.col[data-stage="build"] h2')).toContainText(/\d+ \/ 1/)
+  await expect(page.locator('section.col[data-stage="plan"]').getByText(/Waiting: Build is full \(\d+\/1\)/)).toBeVisible()
+  await page.getByRole('link', { name: 'Waiting for a Build slot' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /Waiting: Build is full/ })).toBeVisible()
+
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})

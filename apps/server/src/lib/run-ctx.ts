@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
 import { moveStage } from './stage-move'
+import { enterStage } from './wip'
 import { backendFor } from './adapters'
 import { prOf } from './release'
 import { webOrigin, type ConnectionInput } from './connection'
@@ -94,6 +95,7 @@ export const buildRunCtx = async (
       ...(run.stage !== 'plan' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
     ...(existingPr && { existingPr }),
     ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
+    ...(run.stage === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
     product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
     connection: {
       gatewayUrl,
@@ -110,7 +112,14 @@ export const buildRunCtx = async (
         const existing = lastWith(WORKLOG_MARKER)
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
-      setStage: (number, stage) => moveStage(payload, tickets, { product: ticket.product, number }, stage),
+      setStage: async (number, stage) => {
+        const move = () => moveStage(payload, tickets, { product: ticket.product, number }, stage)
+        if (stage !== 'review') return move()
+        await enterStage(payload, ticket, 'review', async () => {
+          await move()
+          await payload.update({ collection: 'tickets', id: ticket.id, data: { stage }, overrideAccess: true })
+        })
+      },
     },
     recorder: {
       step: async (s) => {
