@@ -85,7 +85,7 @@ The options are the default plus each Alternative(s) item (split at `;` and sent
 
 ## Knowledge
 
-`/knowledge` (main nav, every Bauherr): left a document list per source (core pack, Knowledge repo; markdown only), right the search hits for `?q=` (same backend as `search_knowledge`, each with `source · path · commit`) or the document of `?doc=<source>:<path>` rendered with `renderMarkdown` (raw HTML escaped). Below, "Write-backs": open `bauherr/*` PRs of the Knowledge repo with the merge-gate checks (`mergeChecks`); a forge that does not answer within 3 s shows one line instead. Without a Knowledge repo only the core pack is listed, with a link to settings. Read-only; editing is a separate page. Loaders: `lib/knowledge.ts`.
+`/knowledge` (main nav, every Bauherr): left a document list per source (core pack, Knowledge repo, and each Product's repo: `README.md` + `docs/**/*.md`, indexed at its default-branch commit as product layer `repo-docs/<path>`; markdown only), right the search hits for `?q=` (same backend as `search_knowledge`, each with `source · path · commit`) or the document of `?doc=<source>:<path>` rendered with `renderMarkdown` (raw HTML escaped). Below, "Write-backs": open `bauherr/*` PRs of the Knowledge repo with the merge-gate checks (`mergeChecks`); a forge that does not answer within 3 s shows one line instead. Without a Knowledge repo only the core pack is listed, with a link to settings. Read-only; editing is a separate page. Loaders: `lib/knowledge.ts`.
 
 ## Settings
 

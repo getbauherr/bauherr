@@ -536,12 +536,12 @@ export const tools: Tool[] = [
   {
     name: 'search_knowledge',
     access: 'agent',
-    description: 'Full-text search over the core pack and the Workspace Knowledge repo; returns up to 20 {source, path, heading, commit, text}, best first.',
+    description: 'Full-text search over the core pack, the Workspace Knowledge repo and the docs of Product repos; returns up to 20 {source, path, heading, commit, text}, best first.',
     inputSchema: obj({ query: str('Words to find (quotes for phrases, - to exclude)'), product: str('Product slug whose layer applies') }, ['query']),
     async run(a, c) {
       const ws = c.workspace ?? tenantsOf(c.user)[0]
       if (ws === undefined) throw new Error('no Workspace')
-      return (await knowledge.search(c.payload, ws, String(a.query), 20, a.product)).map((h) => (h.source === 'core' ? h : { ...h, text: untrustedBlock(h.text) }))
+      return (await knowledge.search(c.payload, ws, String(a.query), 20, a.product)).map((h) => (h.source === 'core' ? h : { ...h, source: knowledge.repoOf(h.source), text: untrustedBlock(h.text) }))
     },
   },
 ]

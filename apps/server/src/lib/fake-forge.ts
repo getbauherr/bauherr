@@ -88,6 +88,7 @@ const build = (): FakeBackend => {
   const kb = 'acme/knowledge'
   fake.commit(kb, 'main', 'handbook/release-policy.md', '# Release policy\n\nEvery release waits for **staging acceptance**.\n\n## Rollback\n\nRoll back with the previous image tag.\n')
   fake.commit(kb, 'main', 'workspace/rules/naming.md', '# Naming\n\nName branches after the ticket.\n')
+  fake.commit('acme/web', 'main', 'docs/architecture.md', '# Architecture\n\nThe dashboard renders invoices.\n')
   void fake.forge.createBranch(kb, 'bauherr/42')
   const head = fake.commit(kb, 'bauherr/42', 'handbook/lessons.md', '# Lessons\n\nRetries need a stop condition.\n')
   void fake.forge.openPullRequest(kb, { title: 'Write back: lessons from #42', head: 'bauherr/42', base: 'main' })
