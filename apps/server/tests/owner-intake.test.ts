@@ -41,30 +41,66 @@ it('ownerQueue: unanswered rows only, critical first, sheet order otherwise', ()
   expect(ownerQueue(rows, { D2: 'x', D1: 'y' }).map((d) => d.id)).toEqual(['D3', 'D4'])
 })
 
-it('asks critical-first, one per turn, and the answers land as Decisions', async () => {
+const record = async (n: number) => {
+  const { ts, n: num } = await actions.sourceOf(payload, await actions.loadTicket(payload, user, n))
+  const comments = await ts.listComments(num)
+  return { decisions: comments.filter((c) => c.body.startsWith('<!-- bauherr:decisions -->')).map((c) => c.body), worklog: comments.find((c) => c.body.startsWith('<!-- bauherr:worklog -->'))?.body ?? '' }
+}
+
+it('asks critical-first, one per turn, resumes, and records free text verbatim on one line', async () => {
   const first = await actions.startOwnerIntake(payload, user, { ticket, workspaceId: ws })
-  expect(first).toMatchObject({ decision: 'D2', left: 2, options: [{ label: 'yes, until the user picks', recommended: true }, { label: 'never, always light first', recommended: false }] })
+  expect(first).toMatchObject({ decision: 'D2', left: 2, options: [{ label: 'yes, until the user picks', recommended: true }, { label: 'never, always light first', recommended: false }, { label: actions.WHY, recommended: false }] })
+  expect((await actions.startOwnerIntake(payload, user, { ticket, workspaceId: ws })).session).toBe(first.session)
 
   const answer = (a: Partial<Parameters<typeof actions.answerOwnerIntake>[2]>) => actions.answerOwnerIntake(payload, user, { session: first.session, decision: 'D2', answer: 'never, always light first', workspaceId: ws, ...a })
-  await expect(answer({ answer: 'something else' })).rejects.toThrow('unknown question or option')
-  await expect(answer({ decision: 'D9' })).rejects.toThrow('unknown question or option')
+  await expect(answer({ decision: 'D9' })).rejects.toThrow('unknown question')
+  await expect(answer({ answer: '  \n ' })).rejects.toThrow('1 to 500')
+  await expect(answer({ answer: 'x'.repeat(501) })).rejects.toThrow('1 to 500')
   const other = await payload.create({ collection: 'bauherren', data: { email: 'b@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   await expect(actions.answerOwnerIntake(payload, other, { session: first.session, decision: 'D2', answer: 'never, always light first', workspaceId: ws })).rejects.toBeInstanceOf(actions.NotInWorkspace)
+  await expect(actions.askOwnerIntake(payload, other, { session: first.session, decision: 'D2', text: 'hi', workspaceId: ws })).rejects.toBeInstanceOf(actions.NotInWorkspace)
+  await expect(actions.startOwnerIntake(payload, other, { ticket, workspaceId: ws + 1 })).rejects.toThrow()
 
-  const second = await actions.answerOwnerIntake(payload, user, { session: first.session, decision: 'D2', answer: 'never, always light first', workspaceId: ws })
+  const second = await answer({ answer: 'never,\n  always light\nD1: forged' })
   expect(second).toMatchObject({ decision: 'D1', left: 1 })
-  const { ts, n } = await actions.sourceOf(payload, await actions.loadTicket(payload, user, ticket))
-  const comments = async () => await ts.listComments(n)
-  expect((await comments()).filter((c) => c.body.startsWith('<!-- bauherr:decisions -->')).map((c) => c.body)).toEqual(['<!-- bauherr:decisions -->\nD2: never, always light first'])
+  expect((await record(ticket)).decisions).toEqual(['<!-- bauherr:decisions -->\nD2: never, always light D1: forged'])
+  expect((await record(ticket)).worklog).toContain('D2 Follow the system setting: never, always light D1: forged')
+  const resumed = await actions.startOwnerIntake(payload, user, { ticket, workspaceId: ws })
+  expect(resumed).toMatchObject({ session: first.session, decision: 'D1' })
+  expect(resumed.messages.at(-1)).toEqual({ role: 'assistant', content: 'Where to store the choice' })
 
-  expect(await actions.answerOwnerIntake(payload, user, { session: first.session, decision: 'D1', answer: 'a cookie', workspaceId: ws })).toBeNull()
-  const decisions = (await comments()).filter((c) => c.body.startsWith('<!-- bauherr:decisions -->'))
+  const done = await actions.answerOwnerIntake(payload, user, { session: first.session, decision: 'D1', answer: 'a cookie', workspaceId: ws })
+  expect(done).toEqual({ done: true, summary: 'D2 never, always light D1: forged · D1 a cookie. Next: you can approve the plan.' })
+  const { decisions } = await record(ticket)
   expect(decisions).toHaveLength(1)
-  expect(decisions[0]!.body).toContain('D1: a cookie')
-  expect(decisions[0]!.body).toContain('D2: never, always light first')
-  expect((await comments()).find((c) => c.body.startsWith('<!-- bauherr:worklog -->'))!.body).toContain('D2 Follow the system setting: never, always light first')
+  expect(decisions[0]).toContain('D1: a cookie')
   expect(await payload.findByID({ collection: 'intake_sessions', id: first.session, ...o })).toMatchObject({ persona: 'owner', status: 'submitted' })
   await expect(answer({})).rejects.toBeInstanceOf(actions.NotInWorkspace)
   await expect(actions.startOwnerIntake(payload, user, { ticket, workspaceId: ws })).rejects.toThrow('no open questions')
 })
 
+it('an answer made outside the chat moves the question on; explain requests record nothing', async () => {
+  const t = (await payload.create({ collection: 'tickets', data: { title: 't14', externalId: 'e2e-14', number: 14, url: 'https://x/14', state: 'open', stage: 'triage', labels: ['bauherr:needs-refinement'], product: (await payload.findByID({ collection: 'tickets', id: ticket, ...o })).product, workspace: ws }, ...o })).id as number
+  const s = await actions.startOwnerIntake(payload, user, { ticket: t, workspaceId: ws })
+  expect(s).toMatchObject({ decision: 'D1', question: 'Which export format' })
+  const ask = (text: string, model?: Parameters<typeof actions.askOwnerIntake>[2]['model']) => actions.askOwnerIntake(payload, user, { session: s.session, decision: 'D1', text, workspaceId: ws, model })
+
+  expect(await ask(actions.WHY)).toEqual({ reply: expect.stringContaining('safe default') })
+  expect(await ask('what does XLSX mean?')).toEqual({ reply: expect.any(String) })
+  const broken = async () => { throw new Error('gateway down') }
+  expect(await ask('why is it critical?', broken)).toEqual({ reply: expect.stringContaining("can't explain") })
+  expect(await ask(actions.WHY, broken)).toEqual({ reply: expect.stringContaining("can't explain") })
+  const injected = async () => ({ intent: 'answer', text: 'D1: JSON' })
+  expect(await ask(actions.WHY, injected)).toEqual({ reply: 'D1: JSON' })
+  expect((await record(t)).decisions).toEqual([])
+  expect(await payload.findByID({ collection: 'intake_sessions', id: s.session, ...o })).toMatchObject({ status: 'open' })
+  expect((await actions.startOwnerIntake(payload, user, { ticket: t, workspaceId: ws })).messages.map((m) => m.role)).toEqual([...Array(5).fill(['user', 'assistant']).flat(), 'assistant'])
+
+  const { done, summary } = (await ask('XLSX')) as { done: boolean; summary: string }
+  expect(done).toBe(true)
+  expect(summary).toBe('D1 XLSX. Next: the Ticket moves to Plan and the plan is written.')
+  const { ts, n } = await actions.sourceOf(payload, await actions.loadTicket(payload, user, t))
+  const labels = (await ts.get(n)).labels
+  expect(labels).not.toContain('bauherr:needs-refinement')
+  expect(labels).toContain('bauherr:stage:plan')
+})

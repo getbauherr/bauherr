@@ -3,10 +3,9 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, personOf, sourceOf, postComment, CommentRefused, startOwnerIntake, answerOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
-import { parseDecisions, sheetOf } from './plan'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
@@ -102,26 +101,6 @@ export async function requestChangesAction(form: FormData) {
   revalidatePath(`/tickets/${ticket}`)
 }
 
-/** Answers are re-validated against the live decision sheet: only known rows and listed options are recorded. */
-export async function answerDecisions(form: FormData) {
-  const ticket = Number(form.get('ticket'))
-  const { user, payload, workspaceId } = await acting()
-  await inWorkspace(
-    (async () => {
-      const t = await loadTicket(payload, user, ticket)
-      if (String(t.workspace) !== String(workspaceId)) throw new NotInWorkspace()
-      const { ts, n } = await sourceOf(payload, t)
-      const sheet = sheetOf(await ts.listComments(n))?.body ?? ''
-      const answers = parseDecisions(sheet).flatMap((d) => {
-        const answer = form.get(d.id)
-        return typeof answer === 'string' && d.options.includes(answer) ? [{ id: d.id, title: d.title, answer }] : []
-      })
-      if (answers.length) await postDecisions(payload, user, { ticket, workspaceId, answers })
-    })(),
-  )
-  revalidatePath(`/tickets/${ticket}`)
-}
-
 /** Discards one of the caller's open request sessions (New request page). */
 export async function discardIntake(session: number) {
   const { user, payload } = await acting()
@@ -129,15 +108,16 @@ export async function discardIntake(session: number) {
   revalidatePath('/requests/new')
 }
 
-/** "Answer interactively": opens an owner Intake session over the Ticket's open decision rows. */
+/** Opens (or resumes) the owner's chat over the Ticket's open decision rows. */
 export async function startOwnerChat(ticket: number) {
   const { user, payload, workspaceId } = await acting()
   return inWorkspace(startOwnerIntake(payload, user, { ticket, workspaceId }))
 }
 
-export async function answerOwnerChat(session: number, ticket: number, decision: string, answer: string) {
+/** A clicked option or typed message: an answer is recorded verbatim, an explain request is answered and records nothing. */
+export async function askOwnerChat(session: number, ticket: number, decision: string, text: string) {
   const { user, payload, workspaceId } = await acting()
-  const next = await inWorkspace(answerOwnerIntake(payload, user, { session, decision, answer, workspaceId }))
+  const next = await inWorkspace(askOwnerIntake(payload, user, { session, decision, text, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
   return next
 }

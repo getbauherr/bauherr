@@ -42,8 +42,8 @@ export function ActionBar({ ticket, need, stage, missing, open, run, idle, relea
       case 'Round cap reached': return <Post ticket={ticket} action={grantReviewRoundAction}>{verb}</Post>
       case 'Run needs you':
       case 'Run failed': return run ? <form action={rerunStage.bind(null, run)}><SubmitButton variant="default">{verb}</SubmitButton></form> : null
-      case 'Answer decisions': return <Button asChild><a href="#answer">{verb}</a></Button>
-      case 'Answer questions': return <Button asChild><a href="#decisions">{verb}</a></Button>
+      case 'Answer decisions':
+      case 'Answer questions': return <Button asChild><a href="#answer">Answer {open} question{open === 1 ? '' : 's'}</a></Button>
       case 'Configure production checks': return <Button asChild><Link href="/settings/products">{verb}</Link></Button>
     }
   })()
@@ -58,7 +58,7 @@ export function ActionBar({ ticket, need, stage, missing, open, run, idle, relea
       <p className="min-w-0 flex-[1_1_20ch] text-pretty">{gate ? gate.sentence(ctx) : idle}</p>
       {gate && (
         <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">
-          <a className="small text-primary" href="#details">Show details</a>
+          {gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
           {secondary}
           {primary}
         </div>

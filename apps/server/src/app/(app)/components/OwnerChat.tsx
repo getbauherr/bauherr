@@ -1,75 +1,61 @@
 'use client'
-import { AssistantRuntimeProvider, useLocalRuntime, type ChatModelAdapter } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, useLocalRuntime, type ChatModelAdapter, type ThreadMessageLike } from '@assistant-ui/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition } from 'react'
-import { answerOwnerChat, startOwnerChat } from '../lib/actions'
+import { useEffect, useRef, useState } from 'react'
+import { askOwnerChat, startOwnerChat } from '../lib/actions'
 import { ChatThread } from './chat/thread'
-import { Button } from './ui/button'
+import { toMessages } from './chat/intake-adapter'
 import { Card } from './ui/card'
 
 type Q = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
+type Started = Q & { session: number; messages: { role: string; content: string }[] }
 
-const messageOf = (q: Q) => ({ role: 'assistant' as const, content: [{ type: 'text' as const, text: q.question }], metadata: { custom: { turn: q } } })
+const say = (text: string, turn?: Q) => ({ content: [{ type: 'text' as const, text }], ...(turn && { metadata: { custom: { turn } } }) })
 
-function Interview({ session, ticket, first }: { session: number; ticket: number; first: Q }) {
+function Interview({ start, ticket }: { start: Started; ticket: number }) {
   const router = useRouter()
-  const [q, setQ] = useState<Q | null>(first)
-  const current = useRef<Q | null>(first)
+  const { session, messages, ...first } = start
+  const [left, setLeft] = useState<number | null>(first.left)
+  const current = useRef<Q>(first)
   const [adapter] = useState<ChatModelAdapter>(() => ({
     async run({ messages }) {
-      const label = messages.at(-1)!.content.map((p) => (p.type === 'text' ? p.text : '')).join('')
-      const next = await answerOwnerChat(session, ticket, current.current!.decision, label)
+      const text = messages.at(-1)!.content.map((p) => (p.type === 'text' ? p.text : '')).join('')
+      const next = await askOwnerChat(session, ticket, current.current.decision, text)
+      if ('reply' in next) return say(next.reply, current.current)
+      if ('done' in next) {
+        setLeft(null)
+        router.refresh()
+        return say(next.summary)
+      }
       current.current = next
-      setQ(next)
-      if (!next) router.refresh()
-      return next ? { content: [{ type: 'text', text: next.question }], metadata: { custom: { turn: next } } } : { content: [{ type: 'text', text: 'All questions answered.' }] }
+      setLeft(next.left)
+      return say(next.question, next)
     },
   }))
-  const runtime = useLocalRuntime(adapter, { initialMessages: [messageOf(first)] })
+  const runtime = useLocalRuntime(adapter, { initialMessages: toMessages(messages, first) as ThreadMessageLike[] })
   return (
     <Card asChild className="max-w-[640px] scroll-mt-[calc(72px+var(--space-4))]">
-    <section id="answer" aria-label="Answer interactively">
-      <AssistantRuntimeProvider runtime={runtime}>
-        <ChatThread composer={false} maxHeight="max-h-[50vh]" first={{ label: '', placeholder: '' }} next={{ label: '', placeholder: '' }} />
-      </AssistantRuntimeProvider>
-      {q && <p className="small text-muted-foreground">{q.left} open</p>}
-    </section>
+      <section id="answer" aria-label="Answer questions">
+        <AssistantRuntimeProvider runtime={runtime}>
+          <ChatThread maxHeight="max-h-[60vh]" draftKey={`owner-chat-${ticket}`} first={{ label: 'Your answer', placeholder: 'Type your answer' }} next={{ label: 'Your answer', placeholder: 'Type your answer' }} />
+        </AssistantRuntimeProvider>
+        {left !== null && <p className="small text-muted-foreground">{left} open</p>}
+      </section>
     </Card>
   )
 }
 
-export function OwnerChat({ ticket }: { ticket: number }) {
-  const [start, setStart] = useState<{ session: number; first: Q } | null>(null)
+/** One chat for every open owner question of a Ticket; a reload resumes at the current question. After the last answer the page refreshes around it and the summary stays. */
+export function OwnerChat({ ticket, open }: { ticket: number; open: number }) {
+  const [start, setStart] = useState<Started | null>(null)
   const [failed, setFailed] = useState(false)
-  const [pending, run] = useTransition()
   const started = useRef(false)
-
-  const begin = () =>
-    run(async () => {
-      if (started.current) return
-      started.current = true
-      try {
-        const { session, ...first } = await startOwnerChat(ticket)
-        setStart({ session, first })
-      } catch {
-        started.current = false
-        setFailed(true)
-      }
-    })
   useEffect(() => {
-    const go = () => location.hash === '#answer' && begin()
-    go()
-    addEventListener('hashchange', go)
-    return () => removeEventListener('hashchange', go)
+    if (!open || started.current) return
+    started.current = true
+    startOwnerChat(ticket).then(setStart, () => setFailed(true))
   }, [])
-
-  if (!start) {
-    return (
-      <p id="answer" className="scroll-mt-[calc(72px+var(--space-4))]">
-        <Button type="button" variant="outline" onClick={begin} disabled={pending}>Answer interactively</Button>
-        {failed && <span className="small text-muted-foreground"> The questions could not be loaded.</span>}
-      </p>
-    )
-  }
-  return <Interview {...start} ticket={ticket} />
+  if (start) return <Interview start={start} ticket={ticket} />
+  if (!open) return null
+  return <p id="answer" className="small scroll-mt-[calc(72px+var(--space-4))] text-muted-foreground">{failed ? 'The questions could not be loaded.' : 'Loading the questions…'}</p>
 }
