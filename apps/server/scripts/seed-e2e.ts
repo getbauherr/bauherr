@@ -25,11 +25,15 @@ const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'Gi
 await payload.update({ collection: 'workspaces', id: workspace, data: { knowledgeConnection: github, knowledgeRepo: 'acme/knowledge' }, ...o })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
 await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
-const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) =>
-  (await ensure('tickets', { externalId: `e2e-${n}` }, {
+const seeded = new Set<number>()
+const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) => {
+  if (seeded.has(n)) throw new Error(`seed-e2e: Ticket number ${n} seeded twice`)
+  seeded.add(n)
+  return (await ensure('tickets', { externalId: `e2e-${n}` }, {
     title, externalId: `e2e-${n}`, number: n, url: `https://github.com/acme/web/issues/${n}`,
     state: 'open', labels: [`bauherr:stage:${stage}`], stage, product: p, workspace, rank: String(n).padStart(6, '0'), ...extra,
   })).id
+}
 const run = async (t: string | number, stage: string, status: string, extra: Record<string, unknown> = {}) =>
   ensure('runs', { ticket: t, stage, status }, { ticket: t, stage, status, mode: 'autonomous', workspace, ...extra })
 
@@ -56,8 +60,8 @@ await ensure('ticket_sources', { repo: 'acme/gated' }, { repo: 'acme/gated', pro
 await ensure('tickets', { externalId: 'e2e-gated-1' }, { title: 'Ship the gated export', externalId: 'e2e-gated-1', number: 1, url: 'https://github.com/acme/gated/issues/1', state: 'open', labels: ['bauherr:stage:release'], ...rel, product: gated, workspace, rank: '000016' })
 await ticket(15, 'Harden the retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
 await ticket(16, 'Ship the export header', 'release', product, rel)
-const t17 = await ticket(17, 'Tidy the settings copy', 'plan', product)
-const t18 = await ticket(18, 'Fix the date parser', 'build', product)
+const t17 = await ticket(19, 'Tidy the settings copy', 'plan', product)
+const t18 = await ticket(20, 'Fix the date parser', 'build', product)
 await ensure('tickets', { externalId: 'e2e-gated-2' }, { title: 'Ship the gated header', externalId: 'e2e-gated-2', number: 2, url: 'https://github.com/acme/gated/issues/2', state: 'open', labels: ['bauherr:stage:release', 'bauherr:approved:staging'], ...rel, productionState: 'awaiting_approval', product: gated, workspace, rank: '000017' })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'build', 'failed', { startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
