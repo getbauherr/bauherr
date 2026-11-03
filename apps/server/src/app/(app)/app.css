@@ -162,3 +162,4 @@ a.link{color:var(--accent)}
 .intake{display:grid;grid-template-columns:minmax(0,640px) minmax(0,360px);gap:var(--space-8);align-items:start}
 .grow{flex:1}
 @media (max-width:640px){.intake{grid-template-columns:minmax(0,1fr)}}
+

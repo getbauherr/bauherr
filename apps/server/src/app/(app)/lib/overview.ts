@@ -4,6 +4,7 @@ import { hasProductionChecks } from '../../../lib/mode'
 import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
+import { type Epic, epicWhere, plainStatus } from './epics'
 import { WIP_STAGES, waitingText, wipLimit } from '../../../lib/wip-limits'
 
 export type RunRow = {
@@ -41,9 +42,7 @@ export type TicketRow = {
   /** "Waiting: Build is full (2/2)" while the Ticket waits for a full column; null otherwise. */
   waiting: string | null
   /** Parent Ticket of a sub-ticket. */
-  parent: { id: number; number: number } | null
-  /** Sub-tickets of a `parent`-stage Ticket (all states). */
-  children: { id: number; number: number; title: string; open: boolean }[]
+  parent: { id: number; number: number; title: string } | null
 }
 
 const LIVE = ['running', 'awaiting_session']
@@ -57,7 +56,7 @@ export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
 /** Open tickets (plus the newest closed ones when `all`), their latest Runs, and the newest Runs of the Workspace. */
-export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; lookupsCapped: boolean; wip: Record<string, { count: number; limit: number | null }> }> => {
+export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; epics: Epic[]; lookupsCapped: boolean; wip: Record<string, { count: number; limit: number | null }> }> => {
   const payload = await payloadClient()
   const q = { depth: 0, overrideAccess: true } as const
   const ws = { workspace: { equals: workspace } }
@@ -83,15 +82,8 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
     for (const b of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: blockerIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) blockers.set(b.id, { id: b.id, number: b.number, open: b.state !== 'closed' })
   }
   const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
-  const parents = new Map<number, { id: number; number: number }>()
-  if (parentIds.length) for (const p of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: parentIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) parents.set(p.id, { id: p.id, number: p.number })
-  const childrenOf = new Map<number, TicketRow['children']>()
-  const parentStage = ticketDocs.filter((t) => t.stage === 'parent').map((t) => t.id as number)
-  if (parentStage.length) {
-    for (const c of (await payload.find({ collection: 'tickets', where: { and: [ws, { parent: { in: parentStage } }] }, sort: 'number', pagination: false, ...q })).docs as unknown as Record<string, any>[]) {
-      childrenOf.set(c.parent, [...(childrenOf.get(c.parent) ?? []), { id: c.id, number: c.number, title: c.title, open: c.state !== 'closed' }])
-    }
-  }
+  const parents = new Map<number, { id: number; number: number; title: string }>()
+  if (parentIds.length) for (const p of (await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: parentIds } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]) parents.set(p.id, { id: p.id, number: p.number, title: p.title })
   const latest = new Map<number, RunRow>()
   if (ticketDocs.length) {
     const runs = await payload.find({ collection: 'runs', where: { ticket: { in: ticketDocs.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...q })
@@ -120,12 +112,18 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
       waiting: isOpen && t.waitingFor ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null) : null,
       parent: parents.get(t.parent) ?? null,
-      children: childrenOf.get(t.id) ?? [],
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
       gateUnreachable: isOpen && !t.gateNotifiedAt ? (t.gateUnreachable ?? null) : null,
       blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
     }
   })
+  const byRow = new Map(rows.map((r) => [r.id, r]))
+  const subs = (await payload.find({ collection: 'tickets', where: { and: [ws, { parent: { exists: true } }] }, sort: 'number', pagination: false, ...q })).docs as unknown as Record<string, any>[]
+  const epicDocs = (await payload.find({ collection: 'tickets', where: { and: [ws, epicWhere([...new Set(subs.map((c) => c.parent as number))])] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]
+  const epics = epicDocs.map((e): Epic => ({
+    id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null,
+    children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(c), open: c.state !== 'closed', status: r ? plainStatus(r) : 'Done' } }),
+  }))
   const waiting = rows.filter((r) => r.needsYou === 'Approve plan')
   const sources = new Map<number, ReturnType<typeof ticketsOf>>()
   await Promise.all(
@@ -140,5 +138,5 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       }
     }),
   )
-  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, lookupsCapped: waiting.length > DECISIONS_LOOKUPS, wip }
+  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics, lookupsCapped: waiting.length > DECISIONS_LOOKUPS, wip }
 })
