@@ -11,9 +11,9 @@ import { WIP_STAGES, waitingText, wipLimit, type WipStage } from './wip-limits'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** Open Tickets in `stage` that count toward its limit: all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). */
+/** Open Tickets in `stage` that count toward its limit: all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). Release is never waited for (`waitingFor` cannot hold it). */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
-  (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { waitingFor: { not_equals: stage } }] }, overrideAccess: true })).totalDocs
+  (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, ...(stage === 'release' ? [] : [{ waitingFor: { not_equals: stage } }])] }, overrideAccess: true })).totalDocs
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,

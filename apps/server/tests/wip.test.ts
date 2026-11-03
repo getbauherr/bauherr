@@ -183,6 +183,11 @@ describe('counting and workspaces', () => {
     expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
   })
 
+  it('counts the Release column too (Settings > Workflow shows it)', async () => {
+    await ticket('rel', 'release')
+    expect(await wip.wipCount(payload, ws, 'release')).toBe(1)
+  })
+
   it('pulls per Workspace: a full column in one Workspace does not stop pulls in another', async () => {
     const other = (await payload.create({ collection: 'workspaces', data: { name: 'beta', slug: 'beta', wipLimits: { build: 2 } }, ...o })).id as number
     const otherProduct = (await payload.create({ collection: 'products', data: { name: 'api', slug: 'api', workspace: other }, ...o })).id as number
