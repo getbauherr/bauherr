@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NoRoom, frontierOrder, rankBetween } from '../src/lib/frontier'
+import { NoRoom, executionOrder, frontierOrder, rankBetween, stageGroup } from '../src/lib/frontier'
 
 describe('rankBetween', () => {
   it('starts in the middle and appends after the last key', () => {
@@ -88,5 +88,16 @@ describe('frontierOrder', () => {
   it('puts blocked and leased Tickets last', () => {
     const latest = new Map([[2, run('running', { mode: 'session' })]])
     expect(ids(frontierOrder([t(1, 'a', { blocked: true }), t(2, 'b'), t(3, 'c')], latest))).toEqual([3, 1, 2])
+  })
+})
+
+describe('executionOrder', () => {
+  it('groups release, review, build, plan, triage, then the rest', () => {
+    expect(['release', 'review', 'build', 'plan', 'triage', 'done', null, 'parent'].map(stageGroup)).toEqual([0, 1, 2, 3, 4, 5, 5, 5])
+  })
+  it('sorts by stage group, then rank, then number; a missing rank is last', () => {
+    const t = (number: number, stage: string | null, rank: string | null = null) => ({ id: number, number, stage, rank })
+    const sorted = [t(1, 'plan', 'a'), t(2, 'build', 'b'), t(3, 'build', 'a'), t(4, 'build'), t(5, 'build'), t(6, 'release', 'z'), t(7, null)].sort(executionOrder)
+    expect(sorted.map((x) => x.number)).toEqual([6, 3, 2, 4, 5, 1, 7])
   })
 })

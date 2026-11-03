@@ -57,7 +57,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await page.goto('/?view=runs')
   await expect(page).toHaveURL(/\/runs$/)
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
-  await expect(page.locator('table tbody tr')).toHaveCount(6)
+  await expect(page.locator('table tbody tr')).toHaveCount(7)
   await expect(main.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByRole('link', { name: /^Tickets/ })).not.toHaveAttribute('aria-current', 'page')
   await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
@@ -196,4 +196,14 @@ test('hovering or dropping on a closed card in a mixed column shows no drop posi
   await page.mouse.up()
   await expect(marks).toHaveCount(0)
   expect(await titles()).toEqual(before)
+})
+
+test('A running Run marks its card and names the activity', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  const card = page.locator('.col[data-stage=build] .card[data-running]').filter({ hasText: 'Live build in progress' })
+  await expect(card).toContainText('building')
 })

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { rankTicketAction } from '../lib/actions'
 
-type Item = { id: number; node: ReactNode; movable: boolean }
+type Item = { id: number; node: ReactNode; movable: boolean; running?: boolean }
 
 const move = <T,>(xs: T[], from: number, to: number): T[] => {
   const out = [...xs]
@@ -64,6 +64,7 @@ export function SortableCards({ items }: { items: Item[] }) {
       className={`card${drag === it.id ? ' dragging' : ''}${drop === i ? (from > i ? ' drop-before' : ' drop-after') : ''}`}
       data-drop={drop === i ? (from > i ? 'before' : 'after') : undefined}
       data-ticket={it.id}
+      data-running={it.running || undefined}
       {...(it.movable && {
         draggable: true,
         tabIndex: 0,

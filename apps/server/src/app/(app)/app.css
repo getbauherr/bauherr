@@ -170,6 +170,13 @@ a.link{color:var(--accent)}
 .gnode text.ready{fill:var(--ok)}
 .gnode text.crit{fill:var(--accent)}
 .gnode:hover .box{stroke:var(--accent)}
+.gnode[data-running] .box{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 4;animation:march 1.6s linear infinite}
+.gnode text.act{fill:var(--accent)}
+.gwrap{display:flex;flex-wrap:wrap;gap:var(--space-3);list-style:none;margin:var(--space-2) 0 var(--space-4);padding:0}
+.card[data-running]{border-color:var(--accent);background:linear-gradient(var(--accent),var(--accent)) left top/3px 40% no-repeat,var(--surface-000);animation:stripe 1.6s ease-in-out infinite alternate}
+@keyframes march{to{stroke-dashoffset:-20}}
+@keyframes stripe{to{background-position:left bottom}}
+@media (prefers-reduced-motion:reduce){.gnode[data-running] .box,.card[data-running]{animation:none;background-size:3px 100%}.gnode[data-running] .box{stroke-dasharray:none}}
 .gnode:focus-visible{outline:none}
 .gnode:focus-visible .box{stroke:var(--focus);stroke-width:2}
 .gedge{fill:none;stroke:var(--hairline);stroke-width:1.5}

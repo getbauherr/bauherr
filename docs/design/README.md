@@ -45,7 +45,7 @@ Line icons at 1.5px stroke on a 20px grid, `currentColor`, from one set (Lucide)
 
 ## Motion
 
-Use only `duration-state`, `duration-panel`, `duration-page` with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, infinite loops, parallax, skeleton shimmer. A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and the only looping motion in the product.
+Use only `duration-state`, `duration-panel`, `duration-page` with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, infinite loops, parallax, skeleton shimmer. A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the running-Ticket indicator, the only looping motion in the product. The indicator marks a Ticket whose Run is `running`: a dashed accent border marching at 1.6s on Graph nodes, a stripe sliding along the edge of Board cards, always with the activity word (building, reviewing, planning, deploying). Under `prefers-reduced-motion` it is a solid accent border plus the word.
 
 ## Writing
 

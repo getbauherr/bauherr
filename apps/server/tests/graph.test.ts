@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { layoutGraph, type GraphTicket } from '../src/app/(app)/lib/graph'
 
-const t = (number: number, blockedBy: number[] = [], extra: Partial<GraphTicket> = {}): GraphTicket => ({ id: number, number, stage: 'build', run: null, blockedBy: blockedBy.map((id) => ({ id })), ...extra })
+const t = (number: number, blockedBy: number[] = [], extra: Partial<GraphTicket> = {}): GraphTicket => ({ id: number, number, stage: 'build', rank: String(number).padStart(6, '0'), run: null, blockedBy: blockedBy.map((id) => ({ id })), ...extra })
 const node = (g: ReturnType<typeof layoutGraph>, id: number) => g.nodes.find((n) => n.id === id)!
 const crit = (g: ReturnType<typeof layoutGraph>) => g.nodes.filter((n) => n.critical).map((n) => n.id)
 
@@ -41,6 +41,12 @@ describe('layoutGraph', () => {
     expect(g.cycle).toBe(true)
     expect(g.edges).toHaveLength(1)
     expect(layoutGraph([t(1), t(2, [1])]).cycle).toBe(false)
+  })
+  it('orders rows and isolated Tickets by execution order, not number', () => {
+    const g = layoutGraph([t(1, [], { stage: 'plan' }), t(2, [], { stage: 'release' }), t(3, [], { stage: 'build', rank: '000009' }), t(4, [], { stage: 'build', rank: '000002' }), t(5, [], { stage: 'done' })])
+    expect(g.nodes.map((n) => n.id)).toEqual([2, 4, 3, 1, 5])
+    const rows = layoutGraph([t(1, [], { stage: 'plan' }), t(2, [1], { stage: 'plan' }), t(3, [1], { stage: 'release' })])
+    expect([3, 2].map((i) => node(rows, i).row)).toEqual([0, 1])
   })
   it('is ready only without open blockers, lease or done stage', () => {
     const g = layoutGraph([t(1), t(2, [1]), t(3, [], { run: { status: 'running' } }), t(4, [], { stage: 'done' }), t(5, [], { run: { status: 'failed' } })])
