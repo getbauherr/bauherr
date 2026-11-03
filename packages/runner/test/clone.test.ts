@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cloneRepo, commitAndPush } from '../src/clone.js';
+import { cloneRepo, commitAndPush, interdiff, mergeBase, patchId } from '../src/clone.js';
 import { materialise } from '../src/materialise.js';
 import { makeBareRepo, makeCtx } from './helpers.js';
 
@@ -55,4 +56,71 @@ test('clone auth: x-access-token by default, the given user (GitLab oauth2) othe
   };
   assert.equal(await header(), 'x-access-token:T');
   assert.equal(await header('oauth2'), 'oauth2:T');
+});
+
+const sh = (cwd: string, ...a: string[]) =>
+  execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString().trim();
+
+/** An MR branch with one commit on a.txt, cloned shallow; `moveMain` pushes a commit to main from a second clone. */
+async function mrFixture() {
+  const base = makeBareRepo();
+  const bare = base.replace('file://', '') + '/o/n.git';
+  const first = await cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'bauherr/7-r1' });
+  writeFileSync(join(first.dir, 'a.txt'), 'one\ntwo\nthree\n');
+  await commitAndPush(first, first.env, 'mr change');
+  await first.cleanup();
+  const moveMain = (file: string, content: string) => {
+    const w = mkdtempSync(join(tmpdir(), 'main-'));
+    sh(w, 'clone', '-q', bare, '.');
+    writeFileSync(join(w, file), content);
+    sh(w, 'add', '-A');
+    sh(w, 'commit', '-qm', 'main moves');
+    sh(w, 'push', '-q', 'origin', 'main');
+  };
+  const open = () => cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'x', checkout: 'bauherr/7-r1' });
+  return { bare, moveMain, open };
+}
+
+test('mergeBase: up to date, clean (fast-forward push) and conflict; patch-id survives a clean merge', async () => {
+  const { bare, moveMain, open } = await mrFixture();
+  const c = await open();
+  try {
+    assert.equal(await mergeBase(c, c.env, 'main'), 'uptodate');
+    const id = await patchId(c, c.env, 'main');
+    assert.match(id, /^[0-9a-f]{40}$/);
+    moveMain('other.txt', 'main only\n');
+    assert.equal(await mergeBase(c, c.env, 'main'), 'clean');
+    assert.equal(await patchId(c, c.env, 'main'), id);
+    assert.equal(await commitAndPush(c, c.env, 'x'), true);
+    assert.equal(sh(bare, 'rev-parse', 'bauherr/7-r1'), sh(c.dir, 'rev-parse', 'HEAD'));
+    assert.equal(sh(bare, 'rev-list', '--count', 'bauherr/7-r1'), sh(c.dir, 'rev-list', '--count', 'HEAD'));
+    writeFileSync(join(c.dir, 'a.txt'), 'changed\n');
+    sh(c.dir, 'commit', '-qam', 'real edit');
+    assert.notEqual(await patchId(c, c.env, 'main'), id);
+  } finally {
+    await c.cleanup();
+  }
+});
+
+test('mergeBase: a conflict leaves the merge in progress; the interdiff shows only the resolution', async () => {
+  const { moveMain, open } = await mrFixture();
+  const c = await open();
+  try {
+    const reviewed = sh(c.dir, 'rev-parse', 'HEAD');
+    moveMain('a.txt', 'one\nMAIN\nthree\n');
+    assert.equal(await mergeBase(c, c.env, 'main'), 'conflict');
+    assert.match(readFileSync(join(c.dir, 'a.txt'), 'utf8'), /<<<<<<</);
+    assert.ok(existsSync(join(c.dir, '.git/MERGE_HEAD')));
+    writeFileSync(join(c.dir, 'a.txt'), 'one\ntwo\nMAIN\nthree\n');
+    assert.equal(await commitAndPush(c, c.env, 'resolve'), true);
+    const out = join(c.dir, 'inter.patch');
+    await interdiff(c, c.env, 'main', reviewed, out);
+    const patch = readFileSync(out, 'utf8');
+    assert.match(patch, /^[+ ]\+?.*MAIN/m);
+    assert.doesNotMatch(patch, /other\.txt/);
+    await interdiff(c, c.env, 'main', 'deadbeef', out);
+    assert.match(readFileSync(out, 'utf8'), /a\.txt/);
+  } finally {
+    await c.cleanup();
+  }
 });

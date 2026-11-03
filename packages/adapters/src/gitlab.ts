@@ -277,6 +277,7 @@ class GitlabForge implements Forge {
       head: m.source_branch, base: m.target_branch, headSha: m.sha,
       headRepo: m.source_project_id == null ? '' : m.source_project_id === m.target_project_id ? repo : await this.pathOf(m.source_project_id),
       baseRepo: repo, draft: !!(m.draft ?? m.work_in_progress),
+      ...(m.detailed_merge_status === 'need_rebase' ? { behind: true } : {}),
       ...(mergeSha ? { mergeSha } : {}),
     };
   }
