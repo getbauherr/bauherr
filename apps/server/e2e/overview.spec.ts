@@ -15,7 +15,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
 
   const main = page.getByRole('navigation', { name: 'Main' })
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.locator('.board .col')).toHaveCount(7)
+  await expect(page.locator('.board .col')).toHaveCount(99)
   await expect(page.locator('.col[data-stage=release] h2')).toContainText('Staging')
   await expect(page.getByRole('navigation', { name: 'View' })).toHaveCount(0)
   await expect(main.getByRole('link', { name: /^Tickets/ })).toHaveAttribute('aria-current', 'page')
