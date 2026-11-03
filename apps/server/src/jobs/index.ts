@@ -94,7 +94,7 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
     const n = String(t.number)
     await ts.comment(n, `Bauherr: triage failed ${MAX_TRIAGE_ATTEMPTS} times; label the Ticket or edit it to retry`)
     const at = (await ts.get(n)).updatedAt
-    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at, sourceUpdatedAt: at }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at }, overrideAccess: true })
   } catch (e) {
     payload.logger.warn({ err: e, ticket: t.id }, 'triage give-up comment failed')
   }
@@ -110,7 +110,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -127,7 +127,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
     await payload.update({
       collection: 'tickets',
       id: t.id,
-      data: { triagedAt: t.sourceUpdatedAt ?? new Date().toISOString(), ...(created && { triageAttempts: (t.triageAttempts ?? 0) + 1, triageAttemptAt: new Date().toISOString() }) },
+      data: { triagedAt: t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt) > new Date(t.sourceUpdatedAt) ? t.triagedAt : (t.sourceUpdatedAt ?? new Date().toISOString()), ...(created && { triageAttempts: (t.triageAttempts ?? 0) + 1, triageAttemptAt: new Date().toISOString() }) },
       overrideAccess: true,
     })
     started++
@@ -310,6 +310,22 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
+/** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
+const startMissingRuns = async (payload: Payload): Promise<void> => {
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: ['plan', 'build'] } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
+  for (const t of tickets.docs) {
+    try {
+      if (((t.blockedBy as { state?: string }[]) ?? []).some((b) => b.state !== 'closed')) continue
+      if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
+      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
+      await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
+      payload.logger.info({ ticket: t.id, stage: t.stage }, 'run started for a Ticket without one')
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'startMissingRuns failed')
+    }
+  }
+}
+
 export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; output: { merged: number } }> = {
   slug: 'watch-knowledge-prs',
   schedule: scheduled('0 * * * * *'),
@@ -448,6 +464,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       }
     }
     await closeFinishedParents(payload)
+    await startMissingRuns(payload)
     await advancePlans(payload)
     await triageSweep(payload)
     return { output: { polled: sources.docs.length } }

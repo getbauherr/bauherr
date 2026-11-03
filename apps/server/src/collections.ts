@@ -118,7 +118,7 @@ const workspaces = col(
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
     rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
-    { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, repo commit).' } },
+    { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, Knowledge repo commit, `product:<id>` = Product repo `<repo>@<commit>`, failure back-offs).' } },
   ],
   {
     access: {
@@ -491,8 +491,11 @@ export const collections: CollectionConfig[] = [
     select('status', ['open', 'submitted', 'abandoned'], { required: true, defaultValue: 'open', index: true }),
     json('messages'),
     json('draft'),
+    json('split'),
+    json('turn'),
     { name: 'screenshots', type: 'number', defaultValue: 0 },
     { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
+    json('ticketNumbers'),
     rel('user', 'bauherren'),
     rel('embedToken', 'embed_tokens'),
   ]),

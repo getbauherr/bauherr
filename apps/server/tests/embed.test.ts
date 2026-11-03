@@ -3,10 +3,14 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
+let signedIn: { user: unknown; workspace: { id: number } }
+vi.mock('../src/app/(app)/lib/session', () => ({ currentWorkspace: async () => signedIn, payloadClient: async () => payload, workspacesOf: async () => [] }))
+vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 let sessions: typeof import('../src/app/intake/api/sessions/route')
 let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route')
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
 let shots: typeof import('../src/app/intake/api/sessions/[id]/screenshots/route')
+let read: typeof import('../src/app/intake/api/sessions/[id]/route')
 let media: typeof import('../src/app/intake/api/media/[id]/route')
 let embed: typeof import('../src/lib/intake/embed')
 let productId: number
@@ -31,6 +35,7 @@ beforeAll(async () => {
   messages = await import('../src/app/intake/api/sessions/[id]/messages/route')
   submit = await import('../src/app/intake/api/sessions/[id]/submit/route')
   shots = await import('../src/app/intake/api/sessions/[id]/screenshots/route')
+  read = await import('../src/app/intake/api/sessions/[id]/route')
   media = await import('../src/app/intake/api/media/[id]/route')
   embed = await import('../src/lib/intake/embed')
   const ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
@@ -95,6 +100,20 @@ it('answers 403 without CORS headers for a wrong or missing Origin, an unknown t
   }
 })
 
+it('the revoke action makes the very next request answer 403', async () => {
+  const { revokeEmbedToken } = await import('../src/app/(app)/(shell)/settings/actions')
+  const t = await embed.createEmbedToken(payload, { product: productId, name: 'via-action', allowedOrigins: [ORIGIN] })
+  const doc = (await payload.find({ collection: 'embed_tokens', where: { tokenHash: { equals: embed.hashToken(t) } }, depth: 0, ...o })).docs[0] as Record<string, any>
+  const user = await payload.create({ collection: 'bauherren', data: { email: 'admin@x.io', password: 'pw-123456', role: 'admin' }, ...o })
+  signedIn = { user, workspace: { id: doc.workspace } }
+  expect((await sessions.POST(call(bearer(t), ORIGIN))).status).toBe(201)
+  const fd = new FormData()
+  fd.set('id', String(doc.id))
+  expect(await revokeEmbedToken({}, fd)).toMatchObject({ saved: true })
+  expect((await sessions.POST(call(bearer(t), ORIGIN))).status).toBe(403)
+  expect((await sessions.POST(call(bearer(t), ORIGIN))).status).toBe(403)
+})
+
 it('a token cannot reach sessions of a Bauherr or another token (404)', async () => {
   const { id } = await (await sessions.POST(call(`bauherren API-Key ${keyA}`, null, { product: productId }))).json()
   expect((await messages.POST(call(bearer(), ORIGIN, { text: 'hi' }), ctx(id))).status).toBe(404)
@@ -103,6 +122,20 @@ it('a token cannot reach sessions of a Bauherr or another token (404)', async ()
   const mine = (await (await sessions.POST(call(bearer(), ORIGIN))).json()).id
   expect((await submit.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(404)
   expect((await sessions.POST(call(null, ORIGIN))).status).toBe(401)
+})
+
+it('the resume route (sessions/:id) serves a token its own session only: not another token, a Bauherr session, a revoked token or a wrong Origin', async () => {
+  const mine = (await (await sessions.POST(call(bearer(), ORIGIN))).json()).id
+  const ok = await read.POST(call(bearer(), ORIGIN), ctx(mine))
+  expect(ok.status).toBe(200)
+  expect(await ok.json()).toMatchObject({ status: 'open', messages: [] })
+  const other = await embed.createEmbedToken(payload, { product: productId, name: 'other-read', allowedOrigins: [ORIGIN] })
+  expect((await read.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(404)
+  const bauherr = (await (await sessions.POST(call(`bauherren API-Key ${keyA}`, null, { product: productId }))).json()).id
+  expect((await read.POST(call(bearer(), ORIGIN), ctx(bauherr))).status).toBe(404)
+  expect((await read.POST(call(bearer(), 'https://evil.example.com'), ctx(mine))).status).toBe(403)
+  await payload.update({ collection: 'embed_tokens', where: { tokenHash: { equals: embed.hashToken(other) } }, data: { revokedAt: new Date().toISOString() }, ...o })
+  expect((await read.POST(call(bearer(other), ORIGIN), ctx(mine))).status).toBe(403)
 })
 
 it('media route: a token reads only screenshots of its own sessions (404 for a cookie session or another token)', async () => {

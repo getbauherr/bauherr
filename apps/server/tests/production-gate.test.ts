@@ -108,6 +108,23 @@ it('the owner approval records the sha, deploys once on green checks, closes and
   expect(posted[0]!.body).toContain('succeeded')
 })
 
+it('the check production.yml reports on the merge sha decides the deploy', async () => {
+  await payload.update({ collection: 'products', id: product, data: { productionChecks: 'production' }, ...o })
+  try {
+    const run = async (conclusion: string) => {
+      const { id, sha } = await accepted(`production ${conclusion}`)
+      await actions.approveProduction(payload, user, { ticket: id })
+      fake.setChecks(repo, sha, [{ id: 1, name: 'production', status: 'completed', conclusion, startedAt: at(5000) }])
+      await release.watchProduction(payload, Date.now() + release.WEBHOOK_SETTLE_MS + 1000)
+      return reload(id)
+    }
+    expect(await run('success')).toMatchObject({ productionState: 'deployed', state: 'closed' })
+    expect(await run('failure')).toMatchObject({ productionState: 'failed', state: 'open' })
+  } finally {
+    await payload.update({ collection: 'products', id: product, data: { productionChecks: 'deploy-prod' }, ...o })
+  }
+})
+
 it('a check that predates the approval does not deploy; an old red run does not fail the retry', async () => {
   const { id, sha } = await accepted('stale checks')
   fake.setChecks(repo, sha, ok('deploy-prod', at(-120_000)))

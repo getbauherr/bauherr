@@ -1,7 +1,7 @@
-import { generateId, type AttachmentAdapter, type ChatModelAdapter } from '@assistant-ui/react'
+import { generateId, type AttachmentAdapter, type ChatModelAdapter, type ThreadMessageLike } from '@assistant-ui/react'
 
 export type Draft = { problem: string; context: string; acceptance_criteria: string[] }
-export type Turn = { question: string; options?: { label: string; recommended?: boolean }[]; draft: Draft; ready: boolean; exhausted: boolean }
+export type Turn = { question: string; options?: { label: string; recommended?: boolean }[]; draft: Draft; split?: Draft[]; ready: boolean; exhausted: boolean }
 
 type Config = {
   /** `''` on the signed-in page (cookie), the Bauherr origin in the widget. */
@@ -9,13 +9,24 @@ type Config = {
   /** `authorization: Bearer <embed token>` in the widget. */
   headers?: Record<string, string>
   product?: () => number
+  /** An already open session to continue. */
+  session?: string | null
   onSession(id: string): void
   onTurn(turn: Turn): void
 }
 
+/** A persisted conversation as thread messages; the open `turn` rides on the last assistant message. */
+export function toMessages(messages: { role: string; content: string }[], turn: Turn | null): ThreadMessageLike[] {
+  return messages.map((m, i) => ({
+    role: m.role === 'user' ? 'user' : 'assistant',
+    content: [{ type: 'text', text: m.content }],
+    ...(turn && i === messages.length - 1 && m.role !== 'user' ? { metadata: { custom: { turn } } } : {}),
+  }))
+}
+
 /** The Intake API as assistant-ui adapters. The session starts with the first message or screenshot. */
-export function makeIntakeAdapter({ base, headers = {}, product, onSession, onTurn }: Config) {
-  let session: string | null = null
+export function makeIntakeAdapter({ base, headers = {}, product, session: open = null, onSession, onTurn }: Config) {
+  let session = open
   const media = new Map<string, string>()
   const post = (path: string, body?: BodyInit | object, signal?: AbortSignal) =>
     fetch(`${base}/intake/api/${path}`, body instanceof FormData ? { method: 'POST', headers, body, signal } : { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}), signal })

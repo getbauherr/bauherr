@@ -316,3 +316,40 @@ it('with the plan gate off, children are labelled and stored as build', async ()
     process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
   }
 })
+
+it('the poller starts Runs for unblocked children only, once, and never re-runs a failed stage', async () => {
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
+  try {
+    const { pollTickets } = await import('../src/jobs')
+    const poll = () => (pollTickets.handler as any)({ req: { payload } })
+    const ts = await forge()
+    const f = await ts.create({ title: 'Sweep parent', labels: ['bauherr:stage:plan'] })
+    const t = await payload.create({ collection: 'tickets', data: { title: 'Sweep parent', externalId: f.id, number: f.number, url: f.url, state: 'open', labels: f.labels, stage: 'plan', product, workspace, rank: 'u' }, ...o })
+    await actions.submitPlan(payload, user, { ticket: t.id as number, markdown: '## Goal\n- g\n\n## Sub-tickets\n- **Sweep one** — a.\n- **Sweep two** — b.\n- **Sweep three** — c.\n  after: Sweep one\n' })
+    await actions.spawnSubTickets(payload, t)
+    const row = async (title: string): Promise<Record<string, any>> => (await payload.find({ collection: 'tickets', where: { title: { equals: title } }, depth: 0, ...o })).docs[0]!
+    const runs = async (title: string) => (await payload.find({ collection: 'runs', where: { ticket: { equals: (await row(title)).id } }, depth: 0, ...o })).docs
+    await poll()
+    expect(await runs('Sweep one')).toHaveLength(1)
+    expect(await runs('Sweep two')).toHaveLength(1)
+    expect(await runs('Sweep three')).toHaveLength(0)
+    await poll()
+    expect(await runs('Sweep one')).toHaveLength(1)
+    expect(await runs('Sweep two')).toHaveLength(1)
+
+    await payload.update({ collection: 'tickets', id: (await row('Sweep one')).id, data: { state: 'closed' }, ...o })
+    await poll()
+    expect(await runs('Sweep three')).toHaveLength(1)
+
+    const [two] = await runs('Sweep two')
+    await payload.update({ collection: 'runs', id: two!.id, data: { status: 'failed' }, ...o })
+    await poll()
+    expect(await runs('Sweep two')).toHaveLength(1)
+
+    const kid = await payload.create({ collection: 'tickets', data: { title: 'Sweep stranger', externalId: 'sweep-s', number: 950, url: 'https://x/950', state: 'open', labels: [], stage: 'build', product, workspace, rank: 'v', assignees: 'stranger', gateAssignees: 'owner' }, ...o })
+    await poll()
+    expect(await payload.count({ collection: 'runs', where: { ticket: { equals: kid.id } }, ...o })).toMatchObject({ totalDocs: 0 })
+  } finally {
+    process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
+  }
+})

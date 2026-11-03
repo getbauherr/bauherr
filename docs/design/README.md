@@ -36,6 +36,7 @@ A 4px grid: `space-1` to `space-12`. Desktop pages pad `space-8`, phones `space-
 - **Action bar**: one sticky bar at the top of the Ticket page (docked to the bottom on phones) with a sentence and exactly one primary button; same place in every state.
 - **Status**: every ticket, run and step carries a `StatusChip` (queued, running, succeeded, failed, cancelled, needs human) using the status colors with its word.
 - **Run views**: graph, timeline and list share the same node: name, type, status chip, duration in `mono`. Nodes appear with `duration-panel`; status changes with `duration-state`.
+- **Chat**: every AI chat surface (owner decisions chat, intake request chat, the embed widget and any later one) is built from [assistant-ui](https://www.assistant-ui.com/elements/) (`@assistant-ui/react`), as much of it as fits: thread, message, composer, attachments, suggestions, tool UI. It is an approved dependency; no hand-built chat components. Style it with the tokens above.
 - **Empty states**: one sentence in `body`, one action. No illustrations.
 
 ## Iconography

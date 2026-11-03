@@ -1,6 +1,6 @@
 'use client'
 import { AttachmentPrimitive, ComposerPrimitive, ErrorPrimitive, MessagePrimitive, ThreadPrimitive, useAui, useAuiState } from '@assistant-ui/react'
-import type { FC } from 'react'
+import { useEffect, useRef, type FC } from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowUp, Plus, X } from '@/components/icons'
 import { cn } from '@/lib/utils'
@@ -52,7 +52,37 @@ const Options: FC = () => {
 }
 
 /** Thread, option buttons and (optionally) composer on assistant-ui's primitives, shadcn-styled. Needs an `AssistantRuntimeProvider` above it. */
-export const ChatThread: FC<{ first: Labels; next: Labels; composer?: boolean; attachments?: boolean; maxHeight?: string }> = ({ first, next, composer = true, attachments = false, maxHeight = 'max-h-96' }) => {
+/** Keeps the unsent composer text in localStorage under `key`, across reloads. */
+const Draft: FC<{ storageKey: string }> = ({ storageKey }) => {
+  const aui = useAui()
+  const text = useAuiState((s) => s.composer.text)
+  useEffect(() => {
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem(storageKey)
+    } catch {}
+    if (!saved) return
+    // The thread runtime is an empty placeholder until it has mounted: retry until setText sticks.
+    const timer = setInterval(() => {
+      try {
+        aui.composer().setText(saved)
+        clearInterval(timer)
+      } catch {}
+    }, 25)
+    return () => clearInterval(timer)
+  }, [])
+  const typed = useRef(false)
+  useEffect(() => {
+    if (text) typed.current = true
+    else if (!typed.current) return
+    try {
+      text ? localStorage.setItem(storageKey, text) : localStorage.removeItem(storageKey)
+    } catch {}
+  }, [text])
+  return null
+}
+
+export const ChatThread: FC<{ first: Labels; next: Labels; composer?: boolean; attachments?: boolean; maxHeight?: string; draftKey?: string }> = ({ first, next, composer = true, attachments = false, maxHeight = 'max-h-96', draftKey }) => {
   const started = useAuiState((s) => s.thread.messages.length > 0)
   const busy = useAuiState((s) => s.thread.isRunning)
   const { label, placeholder } = started ? next : first
@@ -64,6 +94,7 @@ export const ChatThread: FC<{ first: Labels; next: Labels; composer?: boolean; a
       <Options />
       {composer && (
         <ComposerPrimitive.Root className="flex flex-col gap-2">
+          {draftKey && <Draft storageKey={draftKey} />}
           <div className="flex flex-wrap gap-1 empty:hidden"><ComposerPrimitive.Attachments>{() => <Chip removable />}</ComposerPrimitive.Attachments></div>
           <div className="flex items-center gap-2">
             {attachments && (

@@ -26,13 +26,14 @@ export const POST = withCors(async (req: Request, { params }: { params: Promise<
         await exclusive(`intake:${id}`, async () => {
           const s = await ownSession(payload, a, id)
           if (!s || s.status !== 'open') throw new Error('session not found')
-          const state: Session = { messages: s.messages ?? [], draft: s.draft ?? null, screenshots: s.screenshots }
+          const state: Session = { messages: s.messages ?? [], draft: s.draft ?? null, split: s.split ?? undefined, screenshots: s.screenshots }
           const sent = new Set(state.messages.flatMap((m) => m.images ?? []).map(String))
           const found = images.length ? (await payload.find({ collection: 'media', where: { and: [{ session: { equals: s.id } }, { id: { in: images } }] }, pagination: false, depth: 0, overrideAccess: true })).docs : []
           if (found.length !== new Set(images.map(String)).size || found.some((m) => sent.has(String(m.id)))) throw new Error('unknown or already sent screenshot')
           const { session, turn, ready, exhausted, missing } = await nextTurn(state, text, await modelFor(payload, s), found.map((m) => ({ id: m.id, mime: m.mime, data: m.data })))
-          await payload.update({ collection: 'intake_sessions', id: s.id, data: { messages: session.messages, draft: session.draft }, overrideAccess: true })
-          c.enqueue(event('turn', { question: turn.question, options: turn.options, draft: turn.draft, ready, exhausted, missing }))
+          const out = { question: turn.question, options: turn.options, draft: turn.draft, split: turn.split, ready, exhausted, missing }
+          await payload.update({ collection: 'intake_sessions', id: s.id, data: { messages: session.messages, draft: session.draft, split: session.split ?? null, turn: out }, overrideAccess: true })
+          c.enqueue(event('turn', out))
         })
       } catch (e) {
         c.enqueue(event('error', { message: e instanceof Error ? e.message : String(e) }))
