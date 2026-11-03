@@ -253,3 +253,21 @@ it('a Ticket with a merge sha and a lost stage label keeps its DB stage and gets
   expect(await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })).toMatchObject({ stage: 'release' })
   expect(await labelsOf(t.n)).toContain('bauherr:stage:release')
 })
+
+it('a Ticket held at stage triage (plan refine hold) is not given its stage label back by a poll', async () => {
+  const t = await create('held', ['bauherr:needs-refinement'])
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage' }, ...o })
+  await fake.tickets(repo).addLabels(t.n, ['bug'])
+  await poll()
+  const labels = await labelsOf(t.n)
+  expect(labels).toContain('bauherr:needs-refinement')
+  expect(labels.filter((l) => l.startsWith('bauherr:stage:'))).toEqual([])
+})
+
+it('the sweep skips a Ticket with a merge sha even when it has no stage label', async () => {
+  const issue = await fake.tickets(repo).create({ title: 'merged without label' })
+  await payload.create({ collection: 'tickets', data: { workspace: ws, product: (await payload.find({ collection: 'products', limit: 1, depth: 0, ...o })).docs[0].id, externalId: String(issue.id), number: issue.number, url: issue.url, title: issue.title, state: 'open', labels: [], mergeSha: 'def456' }, ...o })
+  await drain()
+  const t = (await payload.find({ collection: 'tickets', where: { number: { equals: issue.number } }, limit: 1, depth: 0, ...o })).docs[0]
+  expect(await triageRuns(t.id as number)).toHaveLength(0)
+})

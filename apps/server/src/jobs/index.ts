@@ -345,7 +345,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
-          if (prev?.stage && t.state === 'open' && (stage === null || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
+          if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== 'triage' || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
             stage = prev.stage
             payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
             try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
