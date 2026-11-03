@@ -12,7 +12,7 @@ export default async function WorkspaceSettings() {
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const w = await loadWorkspaceSettings(workspace.id)
   const admin = isAdmin(user)
-  const usd = w.budgetUnit === 'usd'
+  const usd = !admin || w.budgetUnit === 'usd'
   const health = admin ? await loadHealth(workspace.id) : null
   const spend = w.spend
   const budget = !admin ? ([] as string[]) : !w.gatewayOn ? ['Gateway off', 'muted'] : !spend ? ['Unavailable', 'muted'] : spend.limitUsd == null ? ['No limit', 'ok'] : spend.spentUsd >= spend.limitUsd ? ['Exhausted', 'err'] : spend.spentUsd >= 0.8 * spend.limitUsd ? ['Near limit', 'warn'] : ['OK', 'ok']
@@ -22,7 +22,7 @@ export default async function WorkspaceSettings() {
       <SettingsForm action={saveWorkspace} primary>
         {admin && <Field name="name" label="Name" defaultValue={w.name} />}
         <div className="pair">
-          <Field name="budgetUnit" label="Budget unit" options={[['usd', 'USD'], ['tokens', 'Tokens']]} defaultValue={w.budgetUnit} />
+          <Field name="budgetUnit" label="Budget unit" options={admin ? [['usd', 'USD'], ['tokens', 'Tokens']] : [['usd', 'USD']]} defaultValue={usd ? 'usd' : w.budgetUnit} />
           <Field name="budgetAmount" label="Budget per 30 days" type="number" min={0} step="any" defaultValue={usd ? w.budgetUsd30d ?? '' : w.budgetTokens30d ?? ''} />
         </div>
         {admin && <p className="small muted">{w.gatewayOn ? (w.spend ? `Spent in the last 30 days: $${w.spend.spentUsd.toFixed(2)}` : 'Spend unavailable.') : 'Gateway off: spend is not tracked.'}</p>}

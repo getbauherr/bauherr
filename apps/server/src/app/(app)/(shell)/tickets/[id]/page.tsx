@@ -14,6 +14,8 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { ago } from '../../../lib/format'
+import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import '../../../ticket.css'
@@ -32,7 +34,8 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { workspace } = await currentWorkspace()
+  const { user, workspace } = await currentWorkspace()
+  const admin = isAdmin(user)
   if (!workspace || !/^\d+$/.test(id)) notFound()
   const payload = await payloadClient()
   const q = { depth: 0, overrideAccess: true } as const
@@ -41,7 +44,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const [product, ws, runs, blockers, blocks, shots] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
-    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...q }).then((r) => r.docs as Doc[]),
+    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, status: true, startedAt: true, evidence: true, createdAt: true } }), ...q }).then((r) => r.docs as Doc[]),
     ticket.blockedBy?.length ? payload.find({ collection: 'tickets', where: { and: [{ id: { in: ticket.blockedBy } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]) : [],
     payload.find({ collection: 'tickets', where: { and: [{ blockedBy: { equals: ticket.id } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
@@ -73,7 +76,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const answered = decisions.filter((d) => answers[d.id]).length
   const live = runs[0] && ['running', 'awaiting_session'].includes(runs[0].status) ? runs[0] : null
   const idle = `Nothing to do: ${
-    live ? `${live.stage} is running (Run #${live.id}, ${live.mode === 'session' ? 'session' : 'scheduler'})`
+    live ? `${live.stage} is running (Run #${live.id}${admin ? `, ${live.mode === 'session' ? 'session' : 'scheduler'}` : ''})`
     : waitingForStaging ? `waiting for the staging deploy of ${ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}`
     : ticket.stage === 'review' ? reviewWord(ticket.reviewState).replace(/^./, (c) => c.toLowerCase())
     : stageOf(ticket)}.`
@@ -149,7 +152,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <div className="scroll">
             <table className="table">
               <thead>
-                <tr className="label">{['Run', 'Stage', 'Status', 'Mode', 'Duration', 'Cost', 'Evidence'].map((h) => <th key={h}>{h}</th>)}</tr>
+                <tr className="label">{['Run', 'Stage', 'Status', ...(admin ? ['Mode', 'Duration', 'Cost'] : ['When']), 'Evidence'].map((h) => <th key={h}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {runs.map((r) => (
@@ -157,9 +160,15 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                     <td className="mono"><Link className="link" href={`/runs/${r.id}`}>#{r.id}</Link></td>
                     <td>{r.stage}</td>
                     <td><StatusChip status={r.status} /></td>
-                    <td>{r.mode}</td>
-                    <td className="mono">{duration(r)}</td>
-                    <td className="mono">{r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : '—'}</td>
+                    {admin ? (
+                      <>
+                        <td>{r.mode}</td>
+                        <td className="mono">{duration(r)}</td>
+                        <td className="mono">{r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : '—'}</td>
+                      </>
+                    ) : (
+                      <td className="muted">{ago(r.createdAt)}</td>
+                    )}
                     <td className="small muted excerpt" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
                   </tr>
                 ))}

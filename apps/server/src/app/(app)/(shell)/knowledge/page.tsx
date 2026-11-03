@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
 import { docKey, loadKnowledge } from '../../lib/knowledge'
 import { repoOf } from '../../../../lib/knowledge'
+import { isAdmin } from '../../lib/settings'
 import { currentWorkspace } from '../../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +12,7 @@ const CHECKS = { green: ['succeeded', '✓ Checks passed'], pending: ['running',
 
 export default async function Knowledge({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams
-  const { workspace } = await currentWorkspace()
+  const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const { sources, repo, hits, doc, writeBacks } = await loadKnowledge(workspace.id, sp.q, sp.doc)
   const q = sp.q?.trim() ?? ''
@@ -25,7 +26,9 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         </label>
         <button className="btn primary" type="submit">Search</button>
       </form>
-      {!repo && <EmptyState text="Only the core pack is available. Connect a Knowledge repo to add your own documents." action={{ href: '/settings/workspace', label: 'Open settings' }} />}
+      {!repo && (isAdmin(user)
+        ? <EmptyState text="Only the core pack is available. Connect a Knowledge repo to add your own documents." action={{ href: '/settings/workspace', label: 'Open settings' }} />
+        : <EmptyState text="No documents yet." />)}
       <div className="kb">
         <nav className="stack" aria-label="Documents">
           {sources.map((s) => (

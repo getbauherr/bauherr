@@ -60,3 +60,16 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(row).toContainText('bauherr')
   await expect(row).toContainText('Acme')
 })
+
+test('an Advanced anchor entry keeps Advanced open and is the only current entry', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.locator('header.topbar')).toBeVisible()
+  await page.goto('/settings/workspace#tiers')
+  const nav = page.getByRole('navigation', { name: 'Settings' })
+  await expect(nav.locator('details.snav-adv')).toHaveAttribute('open', '')
+  await expect(nav.getByRole('link', { name: 'Model tiers' })).toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByRole('link', { name: 'General' })).not.toHaveAttribute('aria-current', 'page')
+})
