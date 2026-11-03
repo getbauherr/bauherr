@@ -1,16 +1,17 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { advancePlan, closeFinishedParents, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
-import { GATE_LABELS, verifyGateLabels } from '../lib/gate-labels'
+import { isForward, moveStage } from '../lib/stage-move'
+import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
@@ -183,6 +184,23 @@ export const abandonRun = async (
   return status
 }
 
+/** Above the longest legitimate tick: forge back-off waits up to MAX_WAIT_MS x 3 retries per call (15 min) and a reclaimed job keeps running, so an earlier reclaim would let a second instance duplicate side effects. */
+export const STALE_JOB_MS = 60 * 60_000
+
+/** Scheduled poller tasks, derived from `TASKS`; agent Runs (`run-stage`, `reconcile-costs`) have no schedule and are never listed. */
+export const scheduledSlugs = (): string[] => TASKS.filter((t) => t.schedule?.length).map((t) => t.slug)
+
+/** A scheduled job left `processing` with no update for STALE_JOB_MS (killed worker, hung fetch) blocks its concurrency key forever: mark it failed so the schedule resumes. */
+export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Promise<number> => {
+  const rows = (
+    await payload.db.drizzle.execute(
+      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(scheduledSlugs().map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - STALE_JOB_MS).toISOString()} RETURNING "id", "task_slug"`,
+    )
+  ).rows
+  for (const r of rows) payload.logger.warn({ job: r.id, task: r.task_slug }, 'reclaimed stale scheduled job')
+  return rows.length
+}
+
 /** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
@@ -211,25 +229,40 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   return handled
 }
 
+/** Second reclaimer: `expire-sessions` and this task reclaim each other, so a poller kill mid-run of either cannot leave a row `processing` forever. */
+export const reclaimJobs: TaskConfig<{ input: Record<string, never>; output: { reclaimed: number } }> = {
+  slug: 'reclaim-jobs',
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  handler: async ({ req }) => ({ output: { reclaimed: await reclaimStaleJobs(req.payload) } }),
+}
+
 export const expireSessions: TaskConfig<{ input: Record<string, never>; output: { expired: number } }> = {
   slug: 'expire-sessions',
   schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
   retries: 0,
-  handler: async ({ req }) => ({ output: { expired: await expireStaleSessions(req.payload) } }),
-}
-
-export const watchReleaseTask: TaskConfig<{ input: Record<string, never>; output: { released: number; confirmed: number; timedOut: number } }> = {
-  slug: 'watch-release',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
-  retries: 0,
-  concurrency: () => 'watch-release',
   handler: async ({ req }) => {
-    await watchReviews(req.payload)
-    await watchProduction(req.payload)
-    await resumeReviews(req.payload)
-    return { output: await watchRelease(req.payload) }
+    await reclaimStaleJobs(req.payload)
+    return { output: { expired: await expireStaleSessions(req.payload) } }
   },
 }
+
+/** One scheduled task per watcher: separate DB jobs and concurrency keys, so a hung or failing watcher blocks no other. */
+const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): TaskConfig<{ input: Record<string, never>; output: Record<string, never> }> => ({
+  slug,
+  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  retries: 0,
+  concurrency: () => slug,
+  handler: async ({ req }) => {
+    await run(req.payload)
+    return { output: {} }
+  },
+})
+
+export const watchReviewsTask = watcher('watch-reviews', (p) => watchReviews(p))
+export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
+export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
+export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
@@ -312,6 +345,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             await payload.update({ collection: 'tickets', id: stuck.docs[i].id, data: { gatePendingAttempts: MAX_GATE_ATTEMPTS }, depth: 0, overrideAccess: true })
           }
         }
+        let revertFailed = false
         for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
@@ -350,17 +384,43 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
             try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
           }
+          // Stage guard (#196): a forward move the factory did not record is reverted to the DB stage; backward moves and first sight are accepted.
+          let clearFactoryStage = false
+          if (prev && stage && stage !== (prev.stage ?? 'triage')) {
+            clearFactoryStage = true
+            if (stage !== prev.factoryStage && isForward(prev.stage ?? 'triage', stage)) {
+              const from = prev.stage
+              const back = from ? `to \`${from}\`` : 'to untriaged'
+              const marker = `<!-- bauherr:stage-rejected:${stage}:${t.updatedAt} -->`
+              const forge = backendFor(conn).tickets(src.repo)
+              try {
+                if (from) await setStage(forge, String(t.number), from)
+                else await forge.removeLabels(String(t.number), labels.filter((l) => stageOf([l]) !== null))
+                if (!(await forge.listComments(String(t.number))).some((c) => c.body.startsWith(marker))) {
+                  await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back ${back}: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
+                }
+                labels = [...labels.filter((l) => stageOf([l]) === null), ...(from ? [stageLabel(from)] : [])]
+                base.labels = labels
+                stage = from
+              } catch (e) {
+                payload.logger.warn({ err: e, ticket: prev.id }, 'stage revert failed, keeping the DB stage, retried on the next poll')
+                revertFailed = true
+                continue
+              }
+            }
+          }
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
-          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN)) {
+          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(backendFor(conn).tickets(src.repo), String(t.number)))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = 'parent'
             else {
-              await setStage(backendFor(conn).tickets(src.repo), String(t.number), 'build')
+              await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, 'build')
               stage = 'build'
             }
           }
           // Guard: unchanged pointers are not rewritten.
           if (!base.gatePendingAttempts && !prev?.gatePendingAttempts && prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
+          if (prev?.factoryStage && stage === prev.factoryStage) clearFactoryStage = true
           const data = {
             ...base,
             stage,
@@ -370,6 +430,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
+          if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
           if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
@@ -377,7 +438,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
         }
-        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
+        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && !revertFailed && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
         payload.logger.error({ err: e, source: src.id }, 'poll-tickets failed for source')
         await payload
@@ -497,3 +558,5 @@ export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; ou
     return { output: { deleted } }
   },
 }
+
+export const TASKS = [pollTickets, runStage, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]

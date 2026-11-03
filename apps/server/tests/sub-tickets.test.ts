@@ -300,3 +300,19 @@ it('after: blocks the child on its sibling in the forge and locally; unknown tit
   expect((await ts.get(second.id)).blockedBy).toEqual([first.id])
   warn.mockRestore()
 })
+
+it('with the plan gate off, children are labelled and stored as build', async () => {
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
+  try {
+    const t = await payload.create({ collection: 'tickets', data: { title: 'Ungated parent', externalId: 'e2e-2', number: 2, url: 'https://x/2', state: 'open', labels: [], stage: 'plan', product, workspace, rank: 'p' }, ...o })
+    const ts = await forge()
+    await ts.create({ title: 'Ungated parent', labels: ['bauherr:stage:plan'] })
+    await actions.submitPlan(payload, user, { ticket: t.id as number, markdown: '## Goal\n- g\n\n## Sub-tickets\n- **Ungated child** — c.\n' })
+    await actions.spawnSubTickets(payload, t)
+    const row = (await payload.find({ collection: 'tickets', where: { title: { equals: 'Ungated child' } }, depth: 0, ...o })).docs[0]!
+    expect(row.stage).toBe('build')
+    expect(row.labels).toContain('bauherr:stage:build')
+  } finally {
+    process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
+  }
+})

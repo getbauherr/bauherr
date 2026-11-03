@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
-import { setStage } from '@bauherr/adapters'
+import { moveStage } from './stage-move'
 import { backendFor } from './adapters'
 import { prOf } from './release'
 import { webOrigin, type ConnectionInput } from './connection'
@@ -110,7 +110,7 @@ export const buildRunCtx = async (
         const existing = lastWith(WORKLOG_MARKER)
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
-      setStage: (number, stage) => setStage(tickets, String(number), stage),
+      setStage: (number, stage) => moveStage(payload, tickets, { product: ticket.product, number }, stage),
     },
     recorder: {
       step: async (s) => {

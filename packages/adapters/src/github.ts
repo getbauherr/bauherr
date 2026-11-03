@@ -4,6 +4,7 @@ import type {
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
 import { Conflict } from './contracts.js';
+import { timedFetch } from './http.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 
 export interface GithubAuth {
@@ -19,6 +20,7 @@ export interface AppAuthOptions {
   privateKeyPem: string;
   baseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
   /** Epoch ms; injectable for tests. */
   now?: () => number;
 }
@@ -39,10 +41,10 @@ export function appAuth(o: AppAuthOptions): GithubAuth {
     kind: 'app',
     async token() {
       if (cached && cached.expiresAt - 300_000 > now()) return cached.token;
-      const res = await doFetch(`${o.baseUrl ?? 'https://api.github.com'}/app/installations/${o.installationId}/access_tokens`, {
+      const res = await timedFetch(doFetch, `${o.baseUrl ?? 'https://api.github.com'}/app/installations/${o.installationId}/access_tokens`, {
         method: 'POST',
         headers: { authorization: `Bearer ${jwt()}`, accept: 'application/vnd.github+json', 'user-agent': 'bauherr' },
-      });
+      }, o.timeoutMs);
       if (!res.ok) throw new GithubError(res.status, 'POST', 'access_tokens', await res.text());
       const j = (await res.json()) as { token: string; expires_at: string };
       cached = { token: j.token, expiresAt: Date.parse(j.expires_at) };
@@ -61,6 +63,7 @@ export interface GithubOptions {
   auth: GithubAuth;
   baseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   maxRetries?: number;
 }
@@ -86,7 +89,7 @@ export class Http {
   async raw(method: string, path: string, body?: unknown): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
-      const res = await this.doFetch(url, {
+      const res = await timedFetch(this.doFetch, url, {
         cache: 'no-store', // Next patches fetch; a cached poll response never advances the cursor
         method,
         headers: {
@@ -97,7 +100,7 @@ export class Http {
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      }, this.o.timeoutMs);
       const limited = res.status === 429 || (res.status === 403 && (res.headers.has('retry-after') || res.headers.get('x-ratelimit-remaining') === '0'));
       if (limited && attempt < this.maxRetries) {
         const retryAfter = res.headers.get('retry-after');
