@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
 
-export type Workspace = { id: number; name: string; slug: string }
+export type Workspace = { id: number; name: string; slug: string; knowledgeRepo?: string | null; knowledgeConnection?: unknown }
 export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; tenants?: { tenant: Workspace | number | null }[] }
 
 export const WS_COOKIE = 'bauherr-ws'

@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AutoRefresh } from '../components/AutoRefresh'
 import { EmptyState } from '../components/EmptyState'
@@ -24,10 +23,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   return (
     <>
       <AutoRefresh ms={10000} />
-      <div className="row-between">
-        <h1 className="title">Tickets</h1>
-        <Link href="/requests/new" className="btn primary">New request</Link>
-      </div>
+      <h1 className="title">Tickets</h1>
       <TicketControls products={data.products} />
       {shown.length ? (
         graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} capped={data.lookupsCapped} />

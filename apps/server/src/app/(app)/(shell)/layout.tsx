@@ -8,7 +8,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
   const needsYou = workspace ? (await loadOverview(workspace.id, false)).tickets.filter((t) => t.needsYou).length : 0
   return (
     <>
-      <TopBar user={user} workspaces={workspaces} workspace={workspace} needsYou={needsYou} />
+      <TopBar user={user} workspaces={workspaces} workspace={workspace} needsYou={needsYou} hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)} />
       <main className="page">{children}</main>
     </>
   )
