@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FakeBackend } from '@bauherr/adapters'
@@ -182,5 +183,122 @@ describe('repo switch, failure back-off and fencing', () => {
     expect(await callTool(ctx(switched), 'read_knowledge', { path: 'b.md' })).toContain('<untrusted-data>')
     const core = (await callTool(ctx(withoutRepo), 'search_knowledge', { query: 'zebra' })) as { text: string }[]
     expect(core[0]!.text).not.toContain('untrusted-data')
+  })
+})
+
+describe('Product docs', () => {
+  let w: number
+  let conn: number
+  let PA: string
+  let PB: string
+  const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
+  const addProduct = async (slug: string, repo: string) => {
+    const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: w }, ...o } as never)).id
+    await payload.create({ collection: 'repositories', data: { fullName: repo, product, workspace: w }, ...o } as never)
+    await payload.create({ collection: 'ticket_sources', data: { repo, product, connection: conn, cursor: '2026-10-30T09:00:00Z', workspace: w }, ...o } as never)
+    return product
+  }
+  const sources = async () => (await knowledge.documents(payload, w)).map((d) => `${d.source}:${d.path}`)
+
+  beforeAll(async () => {
+    const fb = backend.current
+    fb.commit('acme/pa', 'main', 'README.md', '# Pa\n\nlemur readme\n')
+    fb.commit('acme/pa', 'main', 'docs/guide/setup.md', '# Setup\n\nlemur setup\n')
+    fb.commit('acme/pa', 'main', 'docs/logo.png', 'lemur binary')
+    fb.commit('acme/pa', 'main', 'src/notes.md', '# Notes\n\nlemur outside docs\n')
+    fb.commit('acme/pb', 'main', 'README.md', '# Pb\n\nmeerkat readme\n')
+    fb.commit('acme/pa', 'main', 'docs/evidence.md', '# Evidence\n\nlemur shadow try\n')
+    w = Number((await payload.create({ collection: 'workspaces', data: { name: 'pd', slug: 'pd' }, ...o })).id)
+    conn = Number((await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: w }, ...o } as never)).id)
+    PA = `acme/pa#${await addProduct('pa', 'acme/pa')}`
+    PB = `acme/pb#${await addProduct('pb', 'acme/pb')}`
+    expect(await knowledge.resync(payload, w)).toBe(true)
+  })
+
+  it('indexes README and docs with source, layer, product and logical path', async () => {
+    expect(await sources()).toEqual(expect.arrayContaining([`${PA}:README.md`, `${PA}:docs/guide/setup.md`, `${PB}:README.md`]))
+    expect(await sources()).not.toContain(`${PA}:src/notes.md`)
+    const r = await payload.db.drizzle.execute(sql`SELECT "layer", "product", "logical" FROM "knowledge_chunks" WHERE "workspace_id" = ${w} AND "source" = ${PA} AND "path" = 'docs/guide/setup.md'`)
+    expect(r.rows[0]).toEqual({ layer: 'product', product: 'pa', logical: 'repo-docs/docs/guide/setup.md' })
+    expect(await knowledge.readDocument(payload, w, PA, 'README.md')).toContain('lemur readme')
+  })
+
+  it('shows a Product its own docs only', async () => {
+    const paths = (p?: string, q = 'lemur OR meerkat') => knowledge.search(payload, w, q, 20, p).then((h) => h.map((x) => `${x.source}:${x.path}`).sort())
+    expect(await paths('pa')).toEqual([`${PA}:README.md`, `${PA}:docs/evidence.md`, `${PA}:docs/guide/setup.md`])
+    expect(await paths('pb')).toEqual([`${PB}:README.md`])
+    expect(await paths()).toEqual([])
+  })
+
+  it('never shadows a core document', async () => {
+    expect((await knowledge.read(payload, w, 'rules/evidence.md', 'pa'))?.text).toContain('zebra')
+    expect((await knowledge.search(payload, w, 'zebra', 20, 'pa')).length).toBe(1)
+  })
+
+  it('fences product hits for agents', async () => {
+    const { callTool } = await import('../src/lib/mcp-tools')
+    const hits = (await callTool(ctx(w), 'search_knowledge', { query: 'meerkat', product: 'pb' })) as { source: string; text: string }[]
+    expect(hits[0]).toMatchObject({ source: 'acme/pb' })
+    expect(hits[0]!.text).toContain('<untrusted-data>')
+    expect(await callTool(ctx(w), 'read_knowledge', { path: 'repo-docs/README.md', product: 'pb' })).toContain('<untrusted-data>')
+  })
+
+  it('re-indexes on a changed commit, not on an unchanged one', async () => {
+    const getFile = vi.spyOn(backend.current.forge, 'getFile')
+    expect(await knowledge.resync(payload, w)).toBe(false)
+    expect(getFile).not.toHaveBeenCalled()
+    backend.current.commit('acme/pb', 'main', 'docs/new.md', '# New\n\nmeerkat novelty\n')
+    expect(await knowledge.resync(payload, w)).toBe(true)
+    expect((await knowledge.search(payload, w, 'novelty', 20, 'pb')).length).toBe(1)
+    expect(getFile.mock.calls.every(([repo]) => repo === 'acme/pb')).toBe(true)
+    getFile.mockRestore()
+  })
+
+  it('keeps the old index of a failing repo and backs off', async () => {
+    backend.current.commit('acme/pa', 'main', 'docs/more.md', '# More\n\nlemur more\n')
+    const list = vi.spyOn(backend.current.forge, 'listFiles').mockImplementation(async (repo: string) => {
+      if (repo === 'acme/pa') throw new Error('down')
+      return { commit: 'x', paths: [], truncated: false } as never
+    })
+    await knowledge.resync(payload, w)
+    await knowledge.resync(payload, w)
+    expect(list.mock.calls.filter(([repo]) => repo === 'acme/pa')).toHaveLength(1)
+    list.mockRestore()
+    expect(await sources()).toContain(`${PA}:README.md`)
+    expect(await sources()).not.toContain(`${PA}:docs/more.md`)
+  })
+
+  it('drops the chunks of a removed Product', async () => {
+    const pb = (await payload.find({ collection: 'products', where: { slug: { equals: 'pb' }, workspace: { equals: w } }, ...o } as never)).docs[0]!
+    for (const c of ['ticket_sources', 'repositories'] as const) await payload.delete({ collection: c, where: { product: { equals: pb.id } }, ...o } as never)
+    await payload.delete({ collection: 'products', id: pb.id, ...o })
+    expect(await knowledge.resync(payload, w)).toBe(true)
+    expect((await sources()).filter((s) => s.startsWith(PB))).toEqual([])
+    expect((await sources())).toContain(`${PA}:README.md`)
+  })
+})
+
+describe('Product docs sharing a repo', () => {
+  it('keeps both Products chunks, and skips a Product on the Knowledge repo', async () => {
+    const fb = backend.current
+    fb.commit('acme/shared', 'main', 'README.md', '# Shared\n\nnarwhal readme\n')
+    const ws = Number((await payload.create({ collection: 'workspaces', data: { name: 'sh', slug: 'sh' }, ...o })).id)
+    const conn = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o } as never)).id
+    await payload.update({ collection: 'workspaces', id: ws, data: { knowledgeConnection: conn, knowledgeRepo: REPO }, ...o })
+    const add = async (slug: string, repo: string) => {
+      const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws }, ...o } as never)).id
+      await payload.create({ collection: 'repositories', data: { fullName: repo, product, workspace: ws }, ...o } as never)
+      await payload.create({ collection: 'ticket_sources', data: { repo, product, connection: conn, cursor: '2026-10-30T09:00:00Z', workspace: ws }, ...o } as never)
+    }
+    await add('s1', 'acme/shared')
+    await add('s2', 'acme/shared')
+    await add('s3', REPO)
+    await knowledge.resync(payload, ws)
+    expect(await knowledge.resync(payload, ws)).toBe(false)
+    const count = async (q: string) => Number((await payload.db.drizzle.execute(sql`SELECT count(*) AS n FROM "knowledge_chunks" WHERE "workspace_id" = ${ws} AND ${sql.raw(q)}`)).rows[0]!.n)
+    expect(await count(`"source" LIKE 'acme/shared#%'`)).toBe(2)
+    expect(await count(`"source" = '${REPO}'`)).toBeGreaterThan(0)
+    expect(await count(`"source" LIKE '${REPO}#%'`)).toBe(0)
+    expect((await knowledge.documents(payload, ws)).filter((d) => d.path === 'handbook.md')).toHaveLength(1)
   })
 })
