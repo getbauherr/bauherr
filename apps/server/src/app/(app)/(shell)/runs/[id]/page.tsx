@@ -2,11 +2,14 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ListView, TimelineView } from '../../../components/RunViews'
 import { ConfirmButton } from '../../../components/SettingsForm'
+import { Markdown } from '../../../components/Markdown'
 import { StatusChip } from '../../../components/StatusChip'
+import { Badge } from '../../../components/ui/badge'
+import { Card } from '../../../components/ui/card'
+import { Tab, Tabs } from '../../../components/ui/tabs'
 import { releaseRunLock, rerunStage } from '../../../lib/actions'
 import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
 import { renderMarkdown } from '../../../lib/markdown'
-import '../../../ticket.css'
 import { currentWorkspace } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 
@@ -38,60 +41,64 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   ]
   return (
     <>
-      <header className="stack">
+      <header className="flex flex-col gap-4">
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
-        <p className="body"><StatusChip status={run.status} /> <span className="muted">{run.stage}</span></p>
+        <p className="body"><StatusChip status={run.status} /> <span className="text-muted-foreground">{run.stage}</span></p>
         {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}
       </header>
-      <div className="runpage">
-        <div className="stack">
+      <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-sm:grid-cols-[minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
           {run.verdict && (
-            <section className="card-lg stack" aria-label="Review">
-              <h2 className="label muted">Review verdict <span className={`chip label ${run.verdict === 'clean' ? 'succeeded' : 'needs'}`}>{run.verdict === 'clean' ? 'Clean' : 'Changes requested'}</span></h2>
-              {run.findings?.length ? (
-                <ul className="stack" aria-label="Findings">
-                  {run.findings.map((f, i) => (
-                    <li key={i} className="small">
-                      <span className={`chip label ${f.severity === 'low' ? 'queued' : 'failed'}`}>{f.severity}</span> <span className="mono">{f.file}:{f.line}</span> {f.msg}
-                      <div className="muted">Scenario: {f.scenario}</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="small muted">No findings.</p>}
-            </section>
+            <Card asChild className="gap-4">
+              <section aria-label="Review">
+                <h2 className="label text-muted-foreground">Review verdict <Badge variant={run.verdict === 'clean' ? 'ok' : 'warn'}>{run.verdict === 'clean' ? 'Clean' : 'Changes requested'}</Badge></h2>
+                {run.findings?.length ? (
+                  <ul className="m-0 flex list-none flex-col gap-4 p-0" aria-label="Findings">
+                    {run.findings.map((f, i) => (
+                      <li key={i} className="small">
+                        <Badge variant={f.severity === 'low' ? 'neutral' : 'destructive'}>{f.severity}</Badge> <span className="mono">{f.file}:{f.line}</span> {f.msg}
+                        <div className="text-muted-foreground">Scenario: {f.scenario}</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="small text-muted-foreground">No findings.</p>}
+              </section>
+            </Card>
           )}
           {admin && (
             <>
-          <nav className="tabs controls" aria-label="Run view">
-            {TABS.map((t) => <Link key={t} href={`?tab=${t}`} aria-current={t === tab ? 'page' : undefined}>{t[0]!.toUpperCase() + t.slice(1)}</Link>)}
-          </nav>
+          <Tabs className="border-b border-border" aria-label="Run view">
+            {TABS.map((t) => <Tab key={t} href={`?tab=${t}`} aria-current={t === tab ? 'page' : undefined}>{t[0]!.toUpperCase() + t.slice(1)}</Tab>)}
+          </Tabs>
           {tab === 'timeline' && <TimelineView run={run} steps={steps} calls={callsByStep} now={Date.now()} />}
           {tab === 'list' && <ListView run={run} steps={steps} total={stepsTotal} calls={callsByStep} />}
             </>
           )}
         </div>
-        <aside className="card-lg stack">
+        <Card asChild className="gap-4">
+        <aside>
           {admin && (
             <details aria-label="Details">
-              <summary className="label muted">Details</summary>
-              <dl className="dl">
-                {details.map(([k, v]) => <div key={k}><dt className="label muted">{k}</dt><dd className="mono">{v}</dd></div>)}
+              <summary className="label text-muted-foreground">Details</summary>
+              <dl className="m-0 mt-2 flex flex-col gap-2 [&_dd]:m-0">
+                {details.map(([k, v]) => <div key={k}><dt className="label text-muted-foreground">{k}</dt><dd className="mono">{v}</dd></div>)}
               </dl>
             </details>
           )}
-          {run.evidence && <div><h2 className="label muted">Evidence</h2><div className="md small" dangerouslySetInnerHTML={{ __html: renderMarkdown(run.evidence) }} /></div>}
-          {run.error && <p className="err">{run.error}</p>}
-          <p className="row-between">
-            <Link className="link" href={`/tickets/${ticket.id}`}>Ticket #{ticket.number}</Link>
-            {isWebUrl(prUrl) && <a className="link" href={prUrl}>Merge request</a>}
+          {run.evidence && <div><h2 className="label text-muted-foreground">Evidence</h2><Markdown className="small" html={renderMarkdown(run.evidence)} /></div>}
+          {run.error && <p className="text-destructive">{run.error}</p>}
+          <p className="flex flex-wrap items-center justify-between gap-3">
+            <Link className="text-primary" href={`/tickets/${ticket.id}`}>Ticket #{ticket.number}</Link>
+            {isWebUrl(prUrl) && <a className="text-primary" href={prUrl}>Merge request</a>}
           </p>
           {rerun && (
-            <form action={rerunStage.bind(null, run.id)} className="sform"><div className="actions"><ConfirmButton label="Re-run stage" confirm={`Confirm re-run ${run.stage}`} /></div></form>
+            <form action={rerunStage.bind(null, run.id)} className="flex flex-wrap items-center gap-3"><ConfirmButton label="Re-run stage" confirm={`Confirm re-run ${run.stage}`} /></form>
           )}
           {admin && leased && (
-            <form action={releaseRunLock.bind(null, run.id)} className="sform"><div className="actions"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${run.id}`} /></div></form>
+            <form action={releaseRunLock.bind(null, run.id)} className="flex flex-wrap items-center gap-3"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${run.id}`} /></form>
           )}
         </aside>
+        </Card>
       </div>
     </>
   )

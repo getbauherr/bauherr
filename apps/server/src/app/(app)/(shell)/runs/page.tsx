@@ -27,7 +27,7 @@ export default async function Runs({ searchParams }: { searchParams: Promise<Rec
       {runs.length ? (
         <>
           <RunsTable runs={runs} tickets={byId} />
-          {data.runsTotal > RUNS_LIMIT && <p className="muted small">Showing the newest {RUNS_LIMIT}</p>}
+          {data.runsTotal > RUNS_LIMIT && <p className="small text-muted-foreground">Showing the newest {RUNS_LIMIT}</p>}
         </>
       ) : (
         <EmptyState text="Runs appear after a ticket is approved." action={{ href: '/', label: 'Tickets' }} />
