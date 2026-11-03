@@ -48,6 +48,8 @@ const parentTicket = await ticket(11, 'Overhaul invoicing', 'parent', product)
 await ticket(12, 'Invoice PDF layout', 'build', product, { parent: parentTicket, inheritedApprovalFrom: parentTicket })
 await ticket(13, 'Invoice numbering', 'build', product, { parent: parentTicket, inheritedApprovalFrom: parentTicket, state: 'closed' })
 await ticket(14, 'Clarify the export scope', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
+await ticket(17, 'Awaiting close', 'done', product)
+await ticket(18, 'Awaiting archive', 'done', product)
 const gated = (await ensure('products', { slug: 'acme-gated' }, { name: 'Acme Gated', slug: 'acme-gated', workspace, productionGate: true, productionChecks: 'deploy-prod' })).id
 await ensure('repositories', { fullName: 'acme/gated' }, { fullName: 'acme/gated', product: gated, workspace })
 await ensure('ticket_sources', { repo: 'acme/gated' }, { repo: 'acme/gated', product: gated, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
