@@ -179,10 +179,10 @@ export const upsertTicket = async (payload: Payload, create: Record<string, any>
 
 const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
-/** Forge time after our own Comment, as both `triagedAt` and `sourceUpdatedAt`, so the sweep sees the Ticket as covered before the poller syncs it. */
+/** Forge time after our own Comment as `triagedAt`; `sourceUpdatedAt` stays with the poller, so it still syncs the labels we just changed. */
 const covered = async (ts: TicketSource, n: string) => {
   const at = (await ts.get(n)).updatedAt
-  return { triagedAt: at, sourceUpdatedAt: at }
+  return { triagedAt: at }
 }
 
 /**

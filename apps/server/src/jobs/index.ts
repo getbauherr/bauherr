@@ -94,7 +94,7 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
     const n = String(t.number)
     await ts.comment(n, `Bauherr: triage failed ${MAX_TRIAGE_ATTEMPTS} times; label the Ticket or edit it to retry`)
     const at = (await ts.get(n)).updatedAt
-    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at, sourceUpdatedAt: at }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: at }, overrideAccess: true })
   } catch (e) {
     payload.logger.warn({ err: e, ticket: t.id }, 'triage give-up comment failed')
   }

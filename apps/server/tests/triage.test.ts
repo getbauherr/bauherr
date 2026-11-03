@@ -145,6 +145,7 @@ for (const outcome of ['refine', 'skip'] as const) {
     await jobs.triageSweep(payload)
     expect(await triageRuns(t.id)).toHaveLength(1)
     await poll()
+    if (outcome === 'refine') expect(((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })).labels as string[]) ?? []).toContain('bauherr:needs-refinement')
     await jobs.triageSweep(payload)
     expect(await triageRuns(t.id)).toHaveLength(1)
     const stored = await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })
