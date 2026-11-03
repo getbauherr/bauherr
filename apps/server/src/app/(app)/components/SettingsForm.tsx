@@ -1,6 +1,7 @@
 'use client'
 import { createContext, startTransition, useActionState, useContext, useId, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import type { FormState } from '../lib/settings'
+import { Button } from './ui/button'
 
 const Ctx = createContext<FormState>({})
 
@@ -73,8 +74,8 @@ export function ConfirmButton({ label, confirm, primary }: { label: string; conf
   const [armed, setArmed] = useState(false)
   return (
     <>
-      <button type={armed ? 'submit' : 'button'} className={primary ? 'btn primary' : 'btn danger'} onClick={() => setArmed(true)}>{armed ? confirm : label}</button>
-      {armed && <button type="button" className="btn" onClick={() => setArmed(false)}>Cancel</button>}
+      <Button type={armed ? 'submit' : 'button'} variant={primary ? 'default' : 'outline'} className={primary ? undefined : 'text-destructive'} onClick={() => setArmed(true)}>{armed ? confirm : label}</Button>
+      {armed && <Button type="button" variant="outline" onClick={() => setArmed(false)}>Cancel</Button>}
     </>
   )
 }

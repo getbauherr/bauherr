@@ -7,8 +7,11 @@ import { ActionBar } from '../../../components/ActionBar'
 import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionSheet } from '../../../components/DecisionSheet'
 import { Approved, Gate, ProductionChecksGate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
+import { Markdown } from '../../../components/Markdown'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
+import { Badge } from '../../../components/ui/badge'
+import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
 import { loadOverview } from '../../../lib/overview'
@@ -21,7 +24,6 @@ import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import { waitingLabel } from '../../../../../lib/wip'
-import '../../../ticket.css'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,28 +90,28 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
 
   return (
-    <div className="stack">
+    <div className="flex flex-col gap-4">
       <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} idle={idle} releaseRunUrl={ticket.releaseRunUrl} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
-      <p className="meta small muted">
+      <p className="small flex flex-wrap items-center gap-4 text-muted-foreground">
         <span>{product.name}</span>
-        {isWebUrl(ticket.url) && <a className="link" href={ticket.url}>Open on the forge</a>}
+        {isWebUrl(ticket.url) && <a className="text-primary" href={ticket.url}>Open on the forge</a>}
       </p>
       {epic ? (
-        <section className="stack" aria-labelledby="subtickets">
+        <section className="flex flex-col gap-4" aria-labelledby="subtickets">
           <h2 className="heading" id="subtickets">Sub-tickets</h2>
           <EpicProgress epic={epic} />
           <EpicChildren epic={epic} />
         </section>
       ) : <StagePipeline current={stageOf(ticket)} />}
-      {waiting && <p className="small chip waiting" role="status">{waiting}</p>}
+      {waiting && <Badge variant="warn" className="small self-start" role="status">{waiting}</Badge>}
       {(blockers.length > 0 || blocks.length > 0) && (
-        <ul className="deps small" aria-label="Dependencies">
-          {blockers.map((b) => <li key={b.id}>Blocked by <Link className="link" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="muted">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
-          {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="link" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
+        <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
+          {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
+          {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
         </ul>
       )}
-      {forgeError && <p className="small muted">The forge could not be reached; plan and worklog are unavailable.</p>}
+      {forgeError && <p className="small text-muted-foreground">The forge could not be reached; plan and worklog are unavailable.</p>}
 
       {summary && approved && <Approved number={ticket.number} />}
       {gate?.kind === 'plan' && (
@@ -137,39 +139,38 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {decisions.length > 0 && <DecisionSheet ticket={ticket.id} decisions={decisions} answers={answers} />}
 
       {plan && (
-        <section className="stack" aria-labelledby="plan">
+        <section className="flex flex-col gap-4" aria-labelledby="plan">
           <h2 className="heading" id="plan">Plan</h2>
-          <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER))) }} />
+          <Markdown html={renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER)))} />
         </section>
       )}
       {worklog && (
-        <section className="stack" aria-labelledby="worklog">
+        <section className="flex flex-col gap-4" aria-labelledby="worklog">
           <h2 className="heading" id="worklog">Worklog</h2>
-          <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(withoutWorklogHeading(strip(worklog, WORKLOG_MARKER))) }} />
+          <Markdown html={renderMarkdown(withoutWorklogHeading(strip(worklog, WORKLOG_MARKER)))} />
         </section>
       )}
 
       {shots.length > 0 && (
-        <section className="stack" aria-labelledby="attachments">
+        <section className="flex flex-col gap-4" aria-labelledby="attachments">
           <h2 className="heading" id="attachments">Attachments</h2>
-          <ul className="shots">
-            {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
+          <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+            {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
           </ul>
         </section>
       )}
 
-      <section className="stack" aria-labelledby="runs">
+      <section className="flex flex-col gap-4" aria-labelledby="runs">
         <h2 className="heading" id="runs">Runs</h2>
         {runs.length ? (
-          <div className="scroll">
-            <table className="table">
+          <Table>
               <thead>
                 <tr className="label">{['Run', 'Stage', 'Status', ...(admin ? ['Mode', 'Duration', 'Cost'] : ['When']), 'Evidence'].map((h) => <th key={h}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {runs.map((r) => (
                   <tr key={r.id}>
-                    <td className="mono"><Link className="link" href={`/runs/${r.id}`}>#{r.id}</Link></td>
+                    <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
                     <td>{r.stage}</td>
                     <td><StatusChip status={r.status} /></td>
                     {admin ? (
@@ -179,16 +180,15 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                         <td className="mono">{r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : '—'}</td>
                       </>
                     ) : (
-                      <td className="muted">{ago(r.createdAt)}</td>
+                      <td className="text-muted-foreground">{ago(r.createdAt)}</td>
                     )}
-                    <td className="small muted excerpt" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
+                    <td className="small max-w-[32ch] truncate text-muted-foreground" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+          </Table>
         ) : (
-          <p className="muted">No Runs yet.</p>
+          <p className="text-muted-foreground">No Runs yet.</p>
         )}
       </section>
     </div>

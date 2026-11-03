@@ -42,9 +42,9 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       const bar = page.getByTestId('action-bar')
       await expect(bar).toBeVisible()
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
-      await expect(bar.locator('.btn.primary')).toHaveCount(verb ? 1 : 0)
-      if (verb) await expect(bar.locator('.btn.primary')).toHaveText(verb)
-      await expect(bar.locator('.btn')).not.toHaveCount(3)
+      await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(verb ? 1 : 0)
+      if (verb) await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
+      await expect(bar.locator('[data-slot=button]')).not.toHaveCount(3)
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
