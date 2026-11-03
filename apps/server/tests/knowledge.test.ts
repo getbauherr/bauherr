@@ -189,6 +189,8 @@ describe('repo switch, failure back-off and fencing', () => {
 describe('Product docs', () => {
   let w: number
   let conn: number
+  let PA: string
+  let PB: string
   const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
   const addProduct = async (slug: string, repo: string) => {
     const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: w }, ...o } as never)).id
@@ -208,23 +210,23 @@ describe('Product docs', () => {
     fb.commit('acme/pa', 'main', 'docs/evidence.md', '# Evidence\n\nlemur shadow try\n')
     w = Number((await payload.create({ collection: 'workspaces', data: { name: 'pd', slug: 'pd' }, ...o })).id)
     conn = Number((await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: w }, ...o } as never)).id)
-    await addProduct('pa', 'acme/pa')
-    await addProduct('pb', 'acme/pb')
+    PA = `acme/pa#${await addProduct('pa', 'acme/pa')}`
+    PB = `acme/pb#${await addProduct('pb', 'acme/pb')}`
     expect(await knowledge.resync(payload, w)).toBe(true)
   })
 
   it('indexes README and docs with source, layer, product and logical path', async () => {
-    expect(await sources()).toEqual(expect.arrayContaining(['acme/pa:README.md', 'acme/pa:docs/guide/setup.md', 'acme/pb:README.md']))
-    expect(await sources()).not.toContain('acme/pa:src/notes.md')
-    const r = await payload.db.drizzle.execute(sql`SELECT "layer", "product", "logical" FROM "knowledge_chunks" WHERE "workspace_id" = ${w} AND "source" = 'acme/pa' AND "path" = 'docs/guide/setup.md'`)
+    expect(await sources()).toEqual(expect.arrayContaining([`${PA}:README.md`, `${PA}:docs/guide/setup.md`, `${PB}:README.md`]))
+    expect(await sources()).not.toContain(`${PA}:src/notes.md`)
+    const r = await payload.db.drizzle.execute(sql`SELECT "layer", "product", "logical" FROM "knowledge_chunks" WHERE "workspace_id" = ${w} AND "source" = ${PA} AND "path" = 'docs/guide/setup.md'`)
     expect(r.rows[0]).toEqual({ layer: 'product', product: 'pa', logical: 'repo-docs/docs/guide/setup.md' })
-    expect(await knowledge.readDocument(payload, w, 'acme/pa', 'README.md')).toContain('lemur readme')
+    expect(await knowledge.readDocument(payload, w, PA, 'README.md')).toContain('lemur readme')
   })
 
   it('shows a Product its own docs only', async () => {
     const paths = (p?: string, q = 'lemur OR meerkat') => knowledge.search(payload, w, q, 20, p).then((h) => h.map((x) => `${x.source}:${x.path}`).sort())
-    expect(await paths('pa')).toEqual(['acme/pa:README.md', 'acme/pa:docs/evidence.md', 'acme/pa:docs/guide/setup.md'])
-    expect(await paths('pb')).toEqual(['acme/pb:README.md'])
+    expect(await paths('pa')).toEqual([`${PA}:README.md`, `${PA}:docs/evidence.md`, `${PA}:docs/guide/setup.md`])
+    expect(await paths('pb')).toEqual([`${PB}:README.md`])
     expect(await paths()).toEqual([])
   })
 
@@ -262,8 +264,8 @@ describe('Product docs', () => {
     await knowledge.resync(payload, w)
     expect(list.mock.calls.filter(([repo]) => repo === 'acme/pa')).toHaveLength(1)
     list.mockRestore()
-    expect(await sources()).toContain('acme/pa:README.md')
-    expect(await sources()).not.toContain('acme/pa:docs/more.md')
+    expect(await sources()).toContain(`${PA}:README.md`)
+    expect(await sources()).not.toContain(`${PA}:docs/more.md`)
   })
 
   it('drops the chunks of a removed Product', async () => {
@@ -271,7 +273,32 @@ describe('Product docs', () => {
     for (const c of ['ticket_sources', 'repositories'] as const) await payload.delete({ collection: c, where: { product: { equals: pb.id } }, ...o } as never)
     await payload.delete({ collection: 'products', id: pb.id, ...o })
     expect(await knowledge.resync(payload, w)).toBe(true)
-    expect((await sources()).filter((s) => s.startsWith('acme/pb'))).toEqual([])
-    expect((await sources())).toContain('acme/pa:README.md')
+    expect((await sources()).filter((s) => s.startsWith(PB))).toEqual([])
+    expect((await sources())).toContain(`${PA}:README.md`)
+  })
+})
+
+describe('Product docs sharing a repo', () => {
+  it('keeps both Products chunks, and skips a Product on the Knowledge repo', async () => {
+    const fb = backend.current
+    fb.commit('acme/shared', 'main', 'README.md', '# Shared\n\nnarwhal readme\n')
+    const ws = Number((await payload.create({ collection: 'workspaces', data: { name: 'sh', slug: 'sh' }, ...o })).id)
+    const conn = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o } as never)).id
+    await payload.update({ collection: 'workspaces', id: ws, data: { knowledgeConnection: conn, knowledgeRepo: REPO }, ...o })
+    const add = async (slug: string, repo: string) => {
+      const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws }, ...o } as never)).id
+      await payload.create({ collection: 'repositories', data: { fullName: repo, product, workspace: ws }, ...o } as never)
+      await payload.create({ collection: 'ticket_sources', data: { repo, product, connection: conn, cursor: '2026-10-30T09:00:00Z', workspace: ws }, ...o } as never)
+    }
+    await add('s1', 'acme/shared')
+    await add('s2', 'acme/shared')
+    await add('s3', REPO)
+    await knowledge.resync(payload, ws)
+    expect(await knowledge.resync(payload, ws)).toBe(false)
+    const count = async (q: string) => Number((await payload.db.drizzle.execute(sql`SELECT count(*) AS n FROM "knowledge_chunks" WHERE "workspace_id" = ${ws} AND ${sql.raw(q)}`)).rows[0]!.n)
+    expect(await count(`"source" LIKE 'acme/shared#%'`)).toBe(2)
+    expect(await count(`"source" = '${REPO}'`)).toBeGreaterThan(0)
+    expect(await count(`"source" LIKE '${REPO}#%'`)).toBe(0)
+    expect((await knowledge.documents(payload, ws)).filter((d) => d.path === 'handbook.md')).toHaveLength(1)
   })
 })
