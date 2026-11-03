@@ -111,16 +111,19 @@ export const saveMedia = async (
   })) as Doc
 }
 
-/** The bytes of a stored image: legacy rows from `data`, otherwise from the upload store (S3 handler, or the local volume). */
+/** The bytes of a stored image: legacy rows from `data`, then the S3 handler when configured, then the local volume, so files written under the other store stay readable after switching. */
 export const mediaBytes = async (payload: Payload, doc: Doc): Promise<Uint8Array> => {
   if (doc.data) return Buffer.from(doc.data, 'base64')
   const upload = payload.collections.media!.config.upload
   for (const handler of upload.handlers ?? []) {
-    const res = await handler({ ...(await createLocalReq({}, payload)), headers: new Headers() } as PayloadRequest, { doc: doc as { id: number | string }, headers: new Headers(), params: { collection: 'media', filename: doc.filename, prefix: doc.prefix } })
-    if (res instanceof Response) {
-      if (!res.ok) throw new Error(`media ${doc.id} unreadable (${res.status})`)
-      return new Uint8Array(await res.arrayBuffer())
-    }
+    try {
+      const res = await handler({ ...(await createLocalReq({}, payload)), headers: new Headers() } as PayloadRequest, { doc: doc as { id: number | string }, headers: new Headers(), params: { collection: 'media', filename: doc.filename, prefix: doc.prefix } })
+      if (res instanceof Response && res.ok) return new Uint8Array(await res.arrayBuffer())
+    } catch {}
   }
-  return readFile(path.resolve(upload.staticDir!, path.basename(doc.filename)))
+  try {
+    return await readFile(path.resolve(upload.staticDir!, path.basename(doc.filename)))
+  } catch {
+    throw new Error(`media ${doc.id} unreadable`)
+  }
 }

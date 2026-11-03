@@ -2,7 +2,7 @@
 
 Screenshots from the Intake chat are stored once and linked as images in the forge Ticket body (`## Screenshots`).
 
-**Storage.** By default files live in the compose volume `bauherr-media` (`/data/media`, shared by `app`, `worker`, `poller`). Set these and restart to use any S3-compatible bucket instead (AWS, MinIO, Hetzner, R2); unset them to go back. No code change, existing files stay where they were written.
+**Storage.** By default files live in the compose volume `bauherr-media` (`/data/media`, shared by `app`, `worker`, `poller`). Set these and restart to use any S3-compatible bucket instead (AWS, MinIO, Hetzner, R2); unset them to go back. No code change. New files go to the configured store; reads try S3 first (when configured) and fall back to the local volume, so files written under the other store stay readable. Files written to S3 need the S3 variables kept to be read.
 
 | Variable | Meaning |
 |---|---|
