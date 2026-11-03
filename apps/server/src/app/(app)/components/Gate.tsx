@@ -26,6 +26,7 @@ export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: Ga
         <dt>Model</dt><dd className="mono">{model}</dd>
         <dt>Decisions</dt><dd>{sheet}</dd>
       </dl>
+      <p className="small muted">Approving starts the Build Run that writes the code and opens the MR.</p>
       <form action={approvePlanAction}>
         <input type="hidden" name="ticket" value={ticket} />
         <SubmitButton className="btn primary" disabled={!!blocked}>Approve plan</SubmitButton>
@@ -43,7 +44,7 @@ export function QuestionsGate({ number, answered, total }: { number: number; ans
         <h2 className="heading" id="gate">Answer questions</h2>
         <p className="small muted">#{number} · triage</p>
       </div>
-      <p className="body">Triage needs your answers before this Ticket can be planned. {answered} of {total} answered; saving the last critical answer moves the Ticket to plan.</p>
+      <p className="body">Triage needs your answers before this Ticket can be planned. {answered} of {total} answered; saving the last critical answer moves the Ticket to plan, where the plan is written.</p>
       <p><a className="btn primary" href="#decisions">Answer below</a></p>
     </section>
   )
@@ -61,6 +62,7 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
       {timedOut && <p className="body">The deploy was not observed on staging within 60 minutes. Check staging yourself; you can still accept.</p>}
       {summaryHtml && <div className="md" dangerouslySetInnerHTML={{ __html: summaryHtml }} />}
       {isWebUrl(stagingUrl) && <p><a className="btn" href={stagingUrl}>Open staging</a></p>}
+      <p className="small muted">Accepting confirms the change works on staging; the Ticket then moves on (to production approval if that is on, otherwise to done).</p>
       <form action={acceptStagingAction}>
         <input type="hidden" name="ticket" value={ticket} />
         <SubmitButton className="btn primary">Accept</SubmitButton>
@@ -97,7 +99,7 @@ export function ProductionGate({ ticket, number, title, failed }: { ticket: numb
         <h2 className="heading" id="gate">{title}</h2>
         <p className="small muted">#{number} · Production</p>
       </div>
-      <p className="body">{failed ? 'The production deploy failed or was not reported within 60 minutes. See the production Comment on the forge; approving again retries it.' : "Approving lets the Product's own pipeline deploy this Ticket to production."}</p>
+      <p className="body">{failed ? 'The production deploy failed or was not reported within 60 minutes. See the production Comment on the forge; approving again retries it.' : "Approving lets the Product's own pipeline deploy this Ticket to production; Bauherr then watches the production checks and closes the Ticket when they pass."}</p>
       <form action={approveProductionAction}>
         <input type="hidden" name="ticket" value={ticket} />
         <SubmitButton className="btn primary">{failed ? 'Approve again' : 'Approve production deploy'}</SubmitButton>
