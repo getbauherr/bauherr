@@ -179,6 +179,11 @@ export const upsertTicket = async (payload: Payload, create: Record<string, any>
 
 const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
+/** Forge time after our own Comment as `triagedAt`; `sourceUpdatedAt` stays with the poller, so it still syncs the labels we just changed. */
+const covered = async (ts: TicketSource, n: string) => {
+  const at = (await ts.get(n)).updatedAt
+  return { triagedAt: at }
+}
 
 /**
  * Plan gate off: moves a Ticket in `plan` whose latest Run is a succeeded plan Run on, without a label or human touch. Idempotent; a no-op while the gate is on.
@@ -200,7 +205,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
     if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
     await ts.addLabels(n, [NEEDS_REFINEMENT])
     await ts.removeLabels(n, [stageLabel('plan')])
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', triagedAt: (await ts.get(n)).updatedAt }, ...ro })
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', ...(await covered(ts, n)) }, ...ro })
     return 'refine'
   }
   const parent = await spawnSubTickets(payload, t)
@@ -799,7 +804,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
       await ts.comment(n, triageSheet(t))
       await ts.addLabels(n, [NEEDS_REFINEMENT])
     } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
-    await payload.update({ collection: 'tickets', id: doc.id, data: { triagedAt: (await ts.get(n)).updatedAt }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   }
   return { outcome: t.outcome }
 }
