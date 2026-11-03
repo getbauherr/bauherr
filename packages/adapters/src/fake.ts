@@ -65,6 +65,15 @@ export class FakeBackend implements Backend {
     return b.sha;
   }
 
+  /** Test helper: the next `times` calls of the label operation throw a 503. */
+  failNext(op: 'addLabels' | 'removeLabels', times = 1): void {
+    this.failures[op] = times;
+  }
+  failures = { addLabels: 0, removeLabels: 0 };
+  maybeFail(op: 'addLabels' | 'removeLabels'): void {
+    if (this.failures[op]-- > 0) throw Object.assign(new Error('503'), { status: 503 });
+  }
+
   /** Test helper: sets whether the forge reports an open PR as mergeable (false = conflicts). */
   setMergeable(repo: RepoRef, number: number, value: boolean | undefined): void {
     this.setPullRequest(repo, number, { mergeable: value });
@@ -326,6 +335,7 @@ class FakeTickets implements TicketSource {
     return this.t(id).comments.filter((c) => !since || c.createdAt >= since);
   }
   async addLabels(id: string, labels: string[]) {
+    this.b.maybeFail('addLabels');
     const t = this.t(id);
     const added = labels.filter((l) => !t.labels.includes(l));
     t.labels.push(...added);
@@ -333,6 +343,7 @@ class FakeTickets implements TicketSource {
     this.touch(t);
   }
   async removeLabels(id: string, labels: string[]) {
+    this.b.maybeFail('removeLabels');
     const t = this.t(id);
     this.record(t, 'unlabeled', t.labels.filter((l) => labels.includes(l)));
     t.labels = t.labels.filter((l) => !labels.includes(l));
