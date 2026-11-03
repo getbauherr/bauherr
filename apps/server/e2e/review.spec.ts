@@ -16,7 +16,7 @@ test('Review Run page shows the verdict and findings; Product settings have the 
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/$/)
   await page.goto('/runs')
-  await page.locator('table tbody tr').filter({ hasText: 'Upgrade the payment SDK' }).getByRole('link', { name: /^#\d+$/ }).first().click()
+  await page.locator('table tbody tr').filter({ hasText: 'Upgrade the payment SDK' }).getByRole('link', { name: 'Upgrade the payment SDK' }).first().click()
 
   const review = page.getByLabel('Review', { exact: true })
   await expect(review).toContainText('Changes requested')

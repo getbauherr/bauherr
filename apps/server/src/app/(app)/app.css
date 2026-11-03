@@ -91,6 +91,10 @@ a.link{color:var(--accent)}
 .snav{display:flex;flex-direction:column}
 .snav a{padding:var(--space-2) var(--space-3);color:var(--ink-muted);border-left:1px solid var(--hairline);transition:color var(--duration-state) var(--ease-out),border-color var(--duration-state) var(--ease-out)}
 .snav a:hover{color:var(--ink)}
+.snav-adv{display:block}
+.snav-adv summary{padding:var(--space-2) var(--space-3);color:var(--ink-muted);border-left:1px solid var(--hairline);cursor:pointer}
+.snav-adv[open] summary{color:var(--ink)}
+.snav-adv a{display:block;padding-left:var(--space-6)}
 .snav a[aria-current]{color:var(--ink);border-left-color:var(--accent)}
 .sform{display:flex;flex-direction:column;gap:var(--space-4)}
 .sform.inline{flex-direction:row;align-items:center}
@@ -117,16 +121,13 @@ a.link{color:var(--accent)}
   .snav{flex-direction:row;overflow-x:auto;border-bottom:1px solid var(--hairline)}
   .snav a{border-left:0;border-bottom:1px solid transparent;margin-bottom:-1px;white-space:nowrap}
   .snav a[aria-current]{border-bottom-color:var(--accent)}
+  .snav-adv{flex:none;width:max-content;white-space:nowrap}
+  .snav-adv summary{display:inline-block;border-left:0}
+  .snav-adv a{display:inline-block;padding-left:var(--space-3)}
   .pair,.pair.three,.forms{grid-template-columns:minmax(0,1fr)}
 }
 
 .runpage{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--space-6);align-items:start}
-.rgraph{display:flex;margin:0;padding:var(--space-1);list-style:none;overflow-x:auto}
-.rnode{flex:1 0 120px;position:relative}
-.rnode+.rnode::before{content:"";position:absolute;left:-12px;width:24px;top:50%;border-top:1px solid var(--hairline)}
-.rnode>*{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-2);height:100%;padding:var(--space-3);margin:0 var(--space-3);background:var(--surface-100);border:1px solid var(--hairline);border-radius:var(--radius-md)}
-.rnode:first-child>*{margin-left:0}
-.rnode[aria-current]>*{outline:2px solid var(--accent);outline-offset:1px}
 .gantt{display:flex;flex-direction:column;gap:var(--space-3)}
 .scale{display:flex;justify-content:space-between;border-bottom:1px solid var(--hairline)}
 .gstep{display:flex;flex-direction:column;gap:var(--space-1)}

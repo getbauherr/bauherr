@@ -27,7 +27,7 @@ function ProductSelect({ products }: { products: { id: number; name: string }[] 
 }
 
 export function RunsControls({ products }: { products: { id: number; name: string }[] }) {
-  return <div className="controls"><ProductSelect products={products} /></div>
+  return products.length > 1 ? <div className="controls"><ProductSelect products={products} /></div> : null
 }
 
 export function TicketControls({ products }: { products: { id: number; name: string }[] }) {
