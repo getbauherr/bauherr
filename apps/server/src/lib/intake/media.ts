@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createLocalReq, type Payload, type PayloadRequest } from 'payload'
 import { secret } from '../secrets'
+import { wrongTypeMessage, type ImageMime } from './media-check'
+
+export type { ImageMime }
 
 type Doc = Record<string, any>
 
@@ -11,8 +14,6 @@ export const mediaLimits = (): { maxBytes: number; maxPerSession: number } => ({
   maxBytes: Number(process.env.MEDIA_MAX_BYTES) || 5 * 1024 * 1024,
   maxPerSession: Number(process.env.MEDIA_MAX_PER_SESSION) || 5,
 })
-
-export type ImageMime = 'image/png' | 'image/jpeg' | 'image/webp'
 
 const ascii = (b: Uint8Array, at: number, s: string): boolean => [...s].every((c, i) => b[at + i] === c.charCodeAt(0))
 
@@ -95,7 +96,7 @@ export const saveMedia = async (
   a: { bytes: Uint8Array; name: string; workspace: number | string; session?: number | string; product?: number | string; ticketNumber?: number },
 ): Promise<Doc> => {
   const mime = sniff(a.bytes)
-  if (!mime) throw new MediaRejected('only png, jpeg or webp images')
+  if (!mime) throw new MediaRejected(wrongTypeMessage)
   let clean: Uint8Array
   try {
     clean = stripMetadata(a.bytes, mime)

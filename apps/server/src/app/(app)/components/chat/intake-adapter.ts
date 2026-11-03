@@ -1,3 +1,4 @@
+import { checkImage, MEDIA_TYPES } from '../../../../lib/intake/media-check'
 import { generateId, type AttachmentAdapter, type ChatModelAdapter, type ThreadMessageLike } from '@assistant-ui/react'
 
 export type Draft = { problem: string; context: string; acceptance_criteria: string[] }
@@ -31,6 +32,9 @@ export function makeIntakeAdapter({ base, headers = {}, product, session: open =
   const post = (path: string, body?: BodyInit | object, signal?: AbortSignal) =>
     fetch(`${base}/intake/api/${path}`, body instanceof FormData ? { method: 'POST', headers, body, signal } : { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}), signal })
 
+  let limits: Promise<number | null> | undefined
+  const maxBytes = () => (limits ??= post('media-limits').then(async (r) => (r.ok ? ((await r.json()) as { maxBytes: number }).maxBytes : null)).catch(() => null))
+
   const ensure = async (): Promise<string> => {
     if (session) return session
     const r = await post('sessions', { product: product?.() })
@@ -56,11 +60,14 @@ export function makeIntakeAdapter({ base, headers = {}, product, session: open =
   }
 
   const attachments: AttachmentAdapter = {
-    accept: 'image/png,image/jpeg,image/webp',
+    accept: MEDIA_TYPES.join(','),
     async *add({ file }) {
       const pending = { id: generateId(), type: 'image', name: file.name, contentType: file.type, file } as const
       yield { ...pending, status: { type: 'running', reason: 'uploading', progress: 0 } }
       try {
+        const max = await maxBytes()
+        const bad = max === null ? null : checkImage(file, max)
+        if (bad) throw new Error(bad)
         const form = new FormData()
         form.append('file', file)
         const r = await post(`sessions/${await ensure()}/screenshots`, form)

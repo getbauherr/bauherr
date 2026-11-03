@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { give, PNG } from './paste'
 
 const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -30,6 +31,26 @@ test('a request with several problems ends in one confirmed list and one Ticket 
   await expect(page.getByRole('complementary', { name: 'Draft' }).getByRole('listitem')).toContainText(['The invoice total is wrong', 'The export is slow', 'The login page is confusing'], { timeout: 10_000 })
   await page.getByRole('button', { name: 'Create 3 tickets' }).click()
   await expect(page.getByRole('status')).toContainText(/Requests #\d+, #\d+, #\d+ sent/)
+})
+
+test('a screenshot pasted into New request is sent with the request and shown in the created Ticket', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/requests/new')
+  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await say(page, 'The shot check is broken', 'Who is affected, and since when?')
+  await give(page.getByLabel(/Describe your request|Your answer/), 'paste', { name: 'pasted-shot.png', type: 'image/png', base64: PNG })
+  await expect(page.getByText('pasted-shot.png')).toBeVisible()
+  await say(page, 'Finance, last week', 'How should it work once it is fixed?')
+  await say(page, 'Totals should match', 'Anything to add before I send this?')
+  await page.getByRole('button', { name: 'Submit request' }).click()
+  const number = /Request #(\d+) sent/.exec(await page.getByRole('status').innerText())![1]
+  const api = async (path: string, data?: object) => (await (data ? page.request.post(`/api/${path}`, { data }) : page.request.get(`/api/${path}`))).json()
+  const product = (await api('products?where[name][equals]=Acme%20Web&depth=0')).docs[0]
+  // The poller is not running here: sync the created Ticket the way it would.
+  const ticket = (await api(`tickets?where[number][equals]=${number}&where[product][equals]=${product.id}&depth=0`)).docs[0] ?? (await api('tickets', { title: 'The shot check is broken', externalId: `e2e-intake-${number}`, number: Number(number), state: 'open', stage: 'triage', product: product.id, workspace: product.workspace })).doc
+  await page.goto(`/tickets/${ticket.id}`)
+  await expect(page.getByRole('img', { name: 'pasted-shot.png' })).toBeVisible()
+  expect((await page.request.get((await page.getByRole('img', { name: 'pasted-shot.png' }).getAttribute('src'))!)).headers()['content-type']).toBe('image/png')
 })
 
 test('closing the tab mid-interview and coming back resumes the session, the draft and unsent text', async ({ page }) => {
