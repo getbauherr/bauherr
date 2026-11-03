@@ -122,7 +122,10 @@ test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiti
 
   await page.goto('/?view=board')
   await expect(page.locator('section.col[data-stage="build"] h2')).toContainText(/\d+ \/ 1/)
-  await expect(page.locator('section.col[data-stage="plan"]').getByText(/Waiting: Build is full \(\d+\/1\)/)).toBeVisible()
+  const waiting = page.locator('section.col[data-stage="plan"] [data-status=waiting]').first()
+  await expect(waiting).toHaveText('Waiting')
+  await expect(waiting).toHaveAttribute('title', /Waiting: Build is full \(\d+\/1\)/)
+  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/board-waiting-1280x800.png` })
   await page.getByRole('link', { name: 'Waiting for a Build slot' }).click()
   await expect(page.getByRole('status').filter({ hasText: /Waiting: Build is full/ })).toBeVisible()
 

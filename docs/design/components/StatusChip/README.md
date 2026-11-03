@@ -1,7 +1,7 @@
 The StatusChip shows the state of a ticket, run or step as a word in a status color.
 
 ## When to use
-On every ticket, run and step. One chip per item.
+On every run and step, the Runs table and the Ticket page. One chip per item. Not on Board cards: they show one plain status word (Working, Blocked, Waiting) or the needs-you verb (`docs/ui.md`, Board card).
 
 ## Consumer provides
 One status: queued, running, succeeded, failed, cancelled, needs human.

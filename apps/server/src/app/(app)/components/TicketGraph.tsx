@@ -38,11 +38,14 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
   return (
     <>
       {cycle && <p className="label failed">Dependency cycle found; some blocked-by links are not drawn.</p>}
+      <details className="legend-box">
+      <summary className="label">Legend</summary>
       <ul className="legend small muted" aria-label="Legend">
         <li><span className="swatch ready" /> <span className="label ready">ready</span> no open blockers, not being worked on</li>
         <li><span className="swatch crit" /> <span className="label crit">critical path</span> longest chain of open blockers</li>
         <li>Left stripe: stage. Arrow: blocker to blocked.</li>
       </ul>
+      </details>
       {linked.length > 0 && (
         <div className="scroll">
           <svg className="tgraph" role="group" aria-label="Ticket dependency graph" width={x(cols) - GX + PAD} height={y(rows) - GY + PAD}>
@@ -57,8 +60,9 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
         </div>
       )}
       {isolated.length > 0 && (
-        <section aria-labelledby="tg-iso">
-          <h2 className="label" id="tg-iso">No dependencies ({isolated.length})</h2>
+        <details>
+        <summary className="label">No dependencies ({isolated.length})</summary>
+        <section aria-label="No dependencies">
           {[...Array(6).keys()].map((g) => {
             const group = isolated.filter((n) => stageGroup(byId.get(n.id)!.stage) === g)
             if (!group.length) return null
@@ -74,6 +78,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
             )
           })}
         </section>
+        </details>
       )}
     </>
   )

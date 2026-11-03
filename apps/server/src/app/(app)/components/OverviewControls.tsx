@@ -19,7 +19,7 @@ function useHref() {
 function ProductSelect({ products }: { products: { id: number; name: string }[] }) {
   const router = useRouter()
   const { params, href } = useHref()
-  return (
+  return products.length > 1 ? (
     <label className="flex items-center gap-2">
       <span className="label text-muted-foreground">Product</span>
       <select className={select} value={params.get('product') ?? ''} onChange={(e) => router.push(href({ product: e.target.value || null }))}>
@@ -27,7 +27,7 @@ function ProductSelect({ products }: { products: { id: number; name: string }[] 
         {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
     </label>
-  )
+  ) : null
 }
 
 type Epics = { id: number; number: number; title: string }[]
@@ -47,7 +47,7 @@ function EpicSelect({ epics }: { epics: Epics }) {
 }
 
 export function RunsControls({ products, epics }: { products: { id: number; name: string }[]; epics: Epics }) {
-  return products.length > 1 || epics.length ? <div className={controls}>{products.length > 1 && <ProductSelect products={products} />}<EpicSelect epics={epics} /></div> : null
+  return products.length > 1 || epics.length ? <div className={controls}><ProductSelect products={products} /><EpicSelect epics={epics} /></div> : null
 }
 
 export function TicketControls({ products, epics }: { products: { id: number; name: string }[]; epics: Epics }) {
@@ -73,8 +73,7 @@ export function TicketControls({ products, epics }: { products: { id: number; na
       )}
       {!graph && !list && (
         <ToggleGroup aria-label="Tickets shown">
-          <ToggleGroupItem href={href({ state: null })} aria-pressed={!all}>Open</ToggleGroupItem>
-          <ToggleGroupItem href={href({ state: 'all' })} aria-pressed={all}>All</ToggleGroupItem>
+          <ToggleGroupItem href={href({ state: all ? null : 'all' })} aria-pressed={all}>Show done</ToggleGroupItem>
         </ToggleGroup>
       )}
     </div>

@@ -54,11 +54,8 @@ test('request changes sends the Ticket back to build', async ({ page }) => {
 
 test('dependencies are visible on cards and the Ticket page', async ({ page }) => {
   const row = page.locator('.card', { hasText: 'Blocked: add the invoice filter' }).first()
-  await expect(row).toContainText('Blocked by #8')
-  await row.getByRole('link', { name: '#8', exact: true }).click()
-  await expect(page).toHaveURL(/\/tickets\/\d+$/)
-  await expect(page.getByText('Blocks #9')).toBeVisible()
-  await page.goBack()
+  await expect(row.locator('[data-status=blocked]')).toHaveText('Blocked')
+  await expect(row.locator('[data-status=blocked]')).toHaveAttribute('title', 'Blocked by #8')
   await row.getByRole('link', { name: 'Blocked: add the invoice filter' }).click()
   await expect(page.getByText('Blocked by #8 Blocker: migrate the invoice table')).toBeVisible()
   await page.getByRole('link', { name: '#8 Blocker: migrate the invoice table' }).click()
