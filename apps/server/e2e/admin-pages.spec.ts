@@ -55,6 +55,8 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('link', { name: 'acme/web#2' }).first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Workflow' }).click()
+  await expect(page.getByRole('heading', { name: 'Where you are asked' })).toBeVisible()
+  for (const name of ['Refine', 'Approve plan', 'Accept on staging', 'Approve production']) await expect(page.getByRole('cell', { name, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Acme Web' })).toBeVisible()
 

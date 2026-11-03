@@ -12,6 +12,8 @@ const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
 export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Round cap reached', 'Run needs you', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
+/** Names of the four human touch points, in flow order; Settings > Workflow, docs and README use them. */
+export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
 /** Hold label: Triage asked the owner questions; answering them moves the Ticket to plan. */
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
 /** Returns from review to build per Ticket before it needs a human. */

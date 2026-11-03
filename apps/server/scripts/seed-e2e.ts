@@ -82,5 +82,9 @@ await run(t5, 'review', 'succeeded', {
     { severity: 'low', file: 'src/payment.ts', line: 7, msg: 'Unused import.', scenario: 'lint noise only.' },
   ],
 })
+const request = async (key: string, status: string, extra: Record<string, unknown>) =>
+  ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
+await request('Export totals drift', 'open', {})
+await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
 console.log('seeded')
 process.exit(0)
