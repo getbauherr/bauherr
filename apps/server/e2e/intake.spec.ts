@@ -18,7 +18,7 @@ const signIn = async (page: Page) => {
 const say = async (page: Page, text: string, reply: string | RegExp) => {
   await page.getByLabel(/Describe your request|Your answer/).fill(text)
   await page.getByRole('button', { name: 'Send' }).click()
-  await expect(page.locator('.msg.bauherr').last()).toHaveText(reply)
+  await expect(page.locator('[data-role=assistant]').last()).toHaveText(reply)
 }
 
 test('a request with several problems ends in one confirmed list and one Ticket per problem', async ({ page }) => {
@@ -38,10 +38,10 @@ test('closing the tab mid-interview and coming back resumes the session, the dra
   await say(page, 'The resume check is broken', 'Who is affected, and since when?')
   await page.getByLabel('Your answer').fill('half typed answer')
   await page.reload()
-  await expect(page.locator('.msg.bauherr').last()).toHaveText('Who is affected, and since when?')
+  await expect(page.locator('[data-role=assistant]').last()).toHaveText('Who is affected, and since when?')
   await expect(page.getByLabel('Your answer')).toHaveValue('half typed answer')
   await page.goto('/requests/new')
-  await expect(page.locator('.msg.you').first()).toHaveText('The resume check is broken')
+  await expect(page.locator('[data-role=user]').first()).toHaveText('The resume check is broken')
   await say(page, 'Finance, last week', 'How should it work once it is fixed?')
   await say(page, 'Totals should match', 'Anything to add before I send this?')
   await page.getByRole('button', { name: 'Submit request' }).click()
@@ -63,10 +63,14 @@ test('a Product user describes a request, answers the questions and sends a Tick
   const say = async (text: string, reply: string) => {
     await page.getByLabel(/Describe your request|Your answer/).fill(text)
     await page.getByRole('button', { name: 'Send' }).click()
-    await expect(page.locator('.msg.bauherr').last()).toHaveText(reply)
+    await expect(page.locator('[data-role=assistant]').last()).toHaveText(reply)
   }
   await say('The invoice total is wrong', 'Who is affected, and since when?')
   await expect(page.getByRole('button', { name: 'Submit request' })).toHaveCount(0)
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Add screenshot' }).click()
+  await (await chooser).setFiles({ name: 'shot.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') })
+  await expect(page.getByText('shot.png')).toBeVisible()
   await say('Finance, last week', 'How should it work once it is fixed?')
   await say('Totals should match', 'Anything to add before I send this?')
   await expect(page.getByRole('complementary', { name: 'Draft' })).toContainText('No rounding drift on export')

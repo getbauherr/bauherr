@@ -9,3 +9,4 @@ apps/server/playwright-report
 docs/site/site
 .uv-cache
 .venv
+apps/server/public/intake/widget.js

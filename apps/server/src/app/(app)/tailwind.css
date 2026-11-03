@@ -1,0 +1,57 @@
+/* Tailwind v4 without preflight, so app.css pages keep their look. Colors resolve to the docs/design tokens in tokens.css, which flip with the theme.
+   Radius, font and spacing tokens share Tailwind's variable names and override its defaults. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme {
+  --color-*: initial;
+  --spacing: 4px;
+}
+
+@theme inline {
+  --color-background: var(--surface-000);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface-100);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface-100);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--on-accent);
+  --color-secondary: var(--surface-200);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--surface-200);
+  --color-muted-foreground: var(--ink-muted);
+  --color-accent: var(--accent-soft);
+  --color-accent-foreground: var(--ink);
+  --color-accent-strong: var(--accent-strong);
+  --color-destructive: var(--danger);
+  --color-border: var(--hairline);
+  --color-input: var(--hairline);
+  --color-ring: var(--focus);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+}
+
+/* The part of preflight the shadcn components rely on, scoped to them. */
+@layer base {
+  .aui-root :where(*, ::before, ::after) {
+    box-sizing: border-box;
+    border: 0 solid var(--hairline);
+  }
+  .aui-root :where(button, input, textarea) {
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    letter-spacing: inherit;
+  }
+  .aui-root :where(ol, ul) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}

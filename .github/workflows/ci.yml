@@ -100,6 +100,8 @@ jobs:
           (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$RUNNER_TEMP/e2e-password")
       - run: pnpm build:packages
       - run: pnpm --filter server seed:e2e
+      - name: Build the embeddable Intake widget (served from public/intake/widget.js)
+        run: pnpm --filter server build:widget
       - name: Start the dev server (the fake forge is refused under NODE_ENV=production)
         run: |
           pnpm --filter server dev > apps/server/e2e/app.log 2>&1 &

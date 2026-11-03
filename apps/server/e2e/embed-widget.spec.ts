@@ -31,16 +31,16 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   const say = async (text: string, reply: string) => {
     await host.getByPlaceholder('Describe it in one sentence').fill(text)
     await host.getByRole('button', { name: 'Send' }).click()
-    await expect(host.locator('.bot').last()).toHaveText(reply)
+    await expect(host.getByRole('region', { name: 'Report a problem' }).locator('[data-role=assistant]').last()).toHaveText(reply)
   }
   await say('The invoice total is wrong', 'Who is affected, and since when?')
   await say('Finance, last week', 'How should it work once it is fixed?')
   await host.reload()
   await host.getByRole('button', { name: 'Report a problem' }).click()
-  await expect(host.locator('.bot').last()).toHaveText('How should it work once it is fixed?')
+  await expect(host.getByRole('region', { name: 'Report a problem' }).locator('[data-role=assistant]').last()).toHaveText('How should it work once it is fixed?')
   await say('Totals should match', 'Anything to add before I send this?')
   await host.getByRole('button', { name: 'Submit request' }).click()
-  await expect(host.locator('.bot').last()).toContainText('your request #')
+  await expect(host.getByRole('status')).toContainText('your request #')
 
   await page.reload()
   await product.getByRole('row', { name }).getByRole('button', { name: 'Revoke' }).click()
