@@ -29,9 +29,9 @@ export const epicsToShow = (epics: Epic[], showDone: boolean, product: number | 
 /** Epics are structural: stage `parent` (just split) or any Ticket with sub-tickets, so a done epic (stage `done`, closed) stays one. */
 export const epicWhere = (parentIds: number[]): Where => ({ or: [{ stage: { equals: 'parent' } }, ...(parentIds.length ? [{ id: { in: parentIds } }] : [])] })
 
-/** Where to send a Board/Runs request that names no epic when one is remembered and still exists; null otherwise (stale ids restore to All). */
-export const epicRestoreUrl = (path: string, sp: Record<string, string | undefined>, stored: unknown, epics: { id: number }[]): string | null =>
-  sp.epic === undefined && epics.some((e) => e.id === stored)
+/** Where to send a Board/Runs request that names no epic when one is remembered and still open; null otherwise (stale and finished epics restore to All). */
+export const epicRestoreUrl = (path: string, sp: Record<string, string | undefined>, stored: unknown, epics: { id: number; open: boolean }[]): string | null =>
+  sp.epic === undefined && epics.some((e) => e.id === stored && e.open)
     ? `${path}?${new URLSearchParams({ ...(Object.fromEntries(Object.entries(sp).filter(([, v]) => v)) as Record<string, string>), epic: String(stored) })}`
     : null
 

@@ -45,13 +45,14 @@ describe('epics', () => {
     expect(epicNamed('9', [{ id: 4 }])).toBeNull()
     expect(epicNamed('4', [{ id: 4 }])).toBe(4)
   })
-  it('restores a remembered epic only when none is named and it still exists', () => {
-    const epics = [{ id: 4 }]
+  it('restores a remembered epic only when none is named and it is still open', () => {
+    const epics = [{ id: 4, open: true }, { id: 6, open: false }]
     expect(epicRestoreUrl('/', { state: 'all' }, 4, epics)).toBe('/?state=all&epic=4')
     expect(epicRestoreUrl('/runs', {}, 4, epics)).toBe('/runs?epic=4')
     expect(epicRestoreUrl('/', { epic: '9' }, 4, epics)).toBeNull()
     expect(epicRestoreUrl('/', { epic: '' }, 4, epics)).toBeNull()
     expect(epicRestoreUrl('/', {}, 5, epics)).toBeNull()
     expect(epicRestoreUrl('/', {}, null, epics)).toBeNull()
+    expect(epicRestoreUrl('/', {}, 6, epics)).toBeNull()
   })
 })
