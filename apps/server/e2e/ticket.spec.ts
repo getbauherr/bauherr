@@ -79,6 +79,9 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
 
   await expect(page.locator('.sheet tbody tr')).toHaveCount(2)
   await expect(page.getByText('★ critical')).toHaveCount(1)
+  const gaps = await page.locator('.max-w-\\[80ch\\] > p + *').evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).marginTop)))
+  expect(gaps.length).toBeGreaterThan(0)
+  expect(gaps.every((g) => g > 0)).toBe(true)
   const bar = page.getByTestId('action-bar')
   const approve = bar.getByRole('button', { name: 'Approve plan' })
   await expect(bar.getByRole('link', { name: 'Answer decisions' })).toBeVisible()

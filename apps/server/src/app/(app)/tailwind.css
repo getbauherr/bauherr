@@ -35,6 +35,16 @@
   --color-current: currentColor;
 }
 
+/* Headings and paragraphs: in the base layer so margin and text-wrap utilities win. */
+@layer base {
+  h1,
+  h2,
+  p {
+    margin: 0;
+    text-wrap: balance;
+  }
+}
+
 /* Anchors default to the surrounding text; in the base layer so color and underline utilities on links win. */
 @layer base {
   a {
