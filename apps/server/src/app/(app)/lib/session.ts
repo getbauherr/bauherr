@@ -5,7 +5,7 @@ import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
 
 export type Workspace = { id: number; name: string; slug: string; knowledgeRepo?: string | null; knowledgeConnection?: unknown }
-export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; tenants?: { tenant: Workspace | number | null }[] }
+export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; uiPrefs?: { epic?: number | null } | null; tenants?: { tenant: Workspace | number | null }[] }
 
 export const WS_COOKIE = 'bauherr-ws'
 
@@ -17,6 +17,11 @@ export const getBauherr = cache(async (): Promise<Bauherr | null> => {
 })
 
 export const requireBauherr = async (): Promise<Bauherr> => (await getBauherr()) ?? redirect('/login')
+
+/** Remembers (or with null clears) the Board/Runs epic filter of the acting Bauherr. */
+export const rememberEpic = async (user: Bauherr, epic: number | null): Promise<void> => {
+  await (await payloadClient()).update({ collection: 'bauherren', id: user.id, data: { uiPrefs: { ...user.uiPrefs, epic } }, overrideAccess: true, depth: 0 })
+}
 
 /** Admin: all Workspaces; otherwise those in the Bauherr's `tenants`. */
 export const workspacesOf = cache(async (user: Bauherr): Promise<Workspace[]> => {

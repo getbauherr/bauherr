@@ -3,7 +3,8 @@ import { type HumanGate, humanGates } from './mode'
 export const STAGES = ['triage', 'plan', 'build', 'review', 'release', 'done'] as const
 /** `parent`: a Ticket whose plan was split into sub-tickets; it has no Runs and closes with its last child. */
 export type Stage = (typeof STAGES)[number] | 'parent'
-export const BOARD_STAGES: readonly Stage[] = ['triage', 'plan', 'parent', 'build', 'review', 'release', 'done']
+/** Board columns; `parent` (epics) is not one, see the Epics view. */
+export const BOARD_STAGES: readonly Stage[] = ['triage', 'plan', 'build', 'review', 'release', 'done']
 /** The `release` stage is shown as Staging; the stage name itself stays. */
 export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : s)
 
@@ -22,7 +23,7 @@ const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
 
 /** Closed tickets are `done`; open ones without a known stage label are `triage`. */
 export const stageOf = (t: { state?: string | null; stage?: string | null }): Stage =>
-  t.state === 'closed' ? 'done' : BOARD_STAGES.includes(t.stage as Stage) ? (t.stage as Stage) : 'triage'
+  t.state === 'closed' ? 'done' : t.stage === 'parent' || BOARD_STAGES.includes(t.stage as Stage) ? (t.stage as Stage) : 'triage'
 
 /**
  * D5 for v1: plan posted = the latest Run is a succeeded plan Run (tickets carry no comment cache).

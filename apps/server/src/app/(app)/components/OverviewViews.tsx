@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { Fragment } from 'react'
+import { type CSSProperties, Fragment } from 'react'
+import { epicHue, epicShortTitle } from '../lib/epics'
 import { activity, ago, heartbeatAge } from '../lib/format'
 import { GATES } from '../lib/gates'
 import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
@@ -45,14 +46,9 @@ const Blocked = ({ t }: { t: TicketRow }) =>
     </span>
   ) : null
 
-const Family = ({ t }: { t: TicketRow }) =>
+const EpicTag = ({ t }: { t: TicketRow }) =>
   t.parent ? (
-    <Link className="mono small text-primary" href={`/tickets/${t.parent.id}`}>↳ #{t.parent.number}</Link>
-  ) : t.children.length ? (
-    <details className="small">
-      <summary>{t.children.filter((c) => !c.open).length}/{t.children.length} done</summary>
-      <ul>{t.children.map((c) => <li key={c.id}><Link className="text-primary" href={`/tickets/${c.id}`}>#{c.number} {c.title}</Link>{!c.open && ' ✓'}</li>)}</ul>
-    </details>
+    <Link className="epic-tag small inline-block max-w-full truncate rounded-sm border border-(--tint)/40 bg-[color-mix(in_oklch,var(--tint)_14%,var(--card))] px-2 text-[color-mix(in_oklch,var(--tint)_65%,var(--foreground))] hover:underline" style={{ '--tint': `oklch(60% .16 ${epicHue(t.parent.id)})` } as CSSProperties} href={`/tickets/${t.parent.id}`} title={`Epic #${t.parent.number} ${t.parent.title}`}>{epicShortTitle(t.parent.title)}</Link>
   ) : null
 
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="ticket-title flex-1 hover:underline">{t.title}</Link>
@@ -69,7 +65,7 @@ export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capp
           <Card key={s} asChild className="col flex-none basis-[260px] p-3">
           <section data-stage={s}>
               <h2 className="label">
-                {s === 'parent' ? 'Split' : stageLabel(s)}{' '}
+                {stageLabel(s)}{' '}
                 {wip[s]?.limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="text-muted-foreground">{rows.length}</span>}
               </h2>
               <SortableCards
@@ -84,7 +80,7 @@ export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capp
                       {t.product && <span className="small text-muted-foreground">{t.product.name}</span>}
                       {t.run && <StatusChip status={t.run.status} />}
                       <Working t={t} />
-                      <Family t={t} />
+                      <EpicTag t={t} />
                       <Blocked t={t} />
                       {t.waiting && <Badge variant="warn">{t.waiting}</Badge>}
                       <Needs t={t} />
