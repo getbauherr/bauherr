@@ -41,7 +41,7 @@ const SECRETS: Partial<Record<Preset, string>> = {
 it.each(Object.keys(PRESETS) as Preset[])('%s renders its entry; file presets reference the secret by path only, ambient ones carry none', (preset) => {
   const def = PRESETS[preset]
   const e = def.render('acme', FULL, FILE, def.auth === 'inline' ? SECRETS[preset] : undefined)
-  expect(e).toEqual({ name: 'ws-acme/*', transformation: { model: 'llmRequest.model.stripPrefix("ws-acme/")' }, ...EXPECTED[preset] })
+  expect(e).toEqual({ name: 'ws-acme/*', requestHeaders: { remove: ['x-agw-key'] }, transformation: { model: 'llmRequest.model.stripPrefix("ws-acme/")' }, ...EXPECTED[preset] })
   expect(JSON.stringify(e).includes(FILE)).toBe(def.auth === 'file')
   expect(JSON.stringify(e).includes('s3cret')).toBe(def.auth === 'inline')
 })

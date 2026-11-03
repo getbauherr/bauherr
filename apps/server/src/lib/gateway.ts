@@ -87,7 +87,7 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
 }
 
 /**
- * Second consumer key per Workspace for the owner's own Claude Code session (`sub/*` only, see docs/legal.md).
+ * Second consumer key per Workspace for the owner's own Claude Code session: `sub/*` (own login) and `ws-<slug>/*` (Workspace API key), see docs/legal.md.
  * The value lives in the gateway only; an existing key is reused. With BAUHERR_SESSION_KEY_FILE set it is written there (0600).
  */
 export const ensureSessionKey = async (ws: Ws): Promise<void> => {
@@ -95,7 +95,7 @@ export const ensureSessionKey = async (ws: Ws): Promise<void> => {
   const value = {
     key: existing?.value.key ?? newKey(),
     metadata: { name: sessionKeyName(ws.slug), user: keyName(ws.slug), kind: 'owner-session' },
-    allowedModels: ['sub/*'],
+    allowedModels: ['sub/*', `ws-${ws.slug}/*`],
     budgets: budget(ws, 'Audit'),
   }
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
