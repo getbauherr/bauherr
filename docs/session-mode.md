@@ -36,7 +36,7 @@ Rolling the migration back drops `agent_keys` but does not restore the disabled 
 
 Budgeted, logged and attributed like the factory, billed to your own Claude login. Legal line: [legal.md](legal.md#owner-session-passthrough).
 
-The seed also creates the Workspace's second consumer key `workspace-<slug>-session` (`kind: owner-session`, only `sub/*`) and, with `BAUHERR_SESSION_KEY_FILE=/run/bauherr/session-key`, writes it 0600.
+The seed also creates the Workspace's second consumer key `workspace-<slug>-session` (`kind: owner-session`, `sub/*` plus `ws-<slug>/*` for the Workspace API key) and, with `BAUHERR_SESSION_KEY_FILE=/run/bauherr/session-key`, writes it 0600.
 
 ```bash
 pnpm --filter server session:activate     # merges env into ~/.claude/settings.json, backup settings.json.bauherr-bak
