@@ -16,6 +16,7 @@ import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRe
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
+import { scheduled } from '../lib/schedule'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -232,14 +233,14 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
 /** Second reclaimer: `expire-sessions` and this task reclaim each other, so a poller kill mid-run of either cannot leave a row `processing` forever. */
 export const reclaimJobs: TaskConfig<{ input: Record<string, never>; output: { reclaimed: number } }> = {
   slug: 'reclaim-jobs',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   handler: async ({ req }) => ({ output: { reclaimed: await reclaimStaleJobs(req.payload) } }),
 }
 
 export const expireSessions: TaskConfig<{ input: Record<string, never>; output: { expired: number } }> = {
   slug: 'expire-sessions',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   handler: async ({ req }) => {
     await reclaimStaleJobs(req.payload)
@@ -250,7 +251,7 @@ export const expireSessions: TaskConfig<{ input: Record<string, never>; output: 
 /** One scheduled task per watcher: separate DB jobs and concurrency keys, so a hung or failing watcher blocks no other. */
 const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): TaskConfig<{ input: Record<string, never>; output: Record<string, never> }> => ({
   slug,
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => slug,
   handler: async ({ req }) => {
@@ -266,7 +267,7 @@ export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'publish-release',
   handler: async ({ req }) => ({ output: { published: await publishReleases(req.payload) } }),
@@ -274,7 +275,7 @@ export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; outp
 
 export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {
   slug: 'notify-gates',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'notify-gates',
   handler: async ({ req }) => ({ output: { changed: await syncGates(req.payload) } }),
@@ -282,7 +283,7 @@ export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output:
 
 export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output: { indexed: number } }> = {
   slug: 'resync-knowledge',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'resync-knowledge',
   handler: async ({ req }) => {
@@ -311,7 +312,7 @@ const advancePlans = async (payload: Payload): Promise<void> => {
 
 export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; output: { merged: number } }> = {
   slug: 'watch-knowledge-prs',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'watch-knowledge-prs',
   handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
@@ -319,7 +320,7 @@ export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; o
 
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
-  schedule: [{ cron: '0 * * * * *', queue: 'poll' }],
+  schedule: scheduled('0 * * * * *'),
   retries: 0,
   handler: async ({ req }) => {
     const { payload } = req
@@ -549,7 +550,7 @@ export const reconcileCosts: TaskConfig<{ input: { runId: number; attempt?: numb
 
 export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; output: { deleted: number } }> = {
   slug: 'prune-request-logs',
-  schedule: [{ cron: '0 0 3 * * *', queue: 'poll' }],
+  schedule: scheduled('0 0 3 * * *'),
   retries: 0,
   handler: async ({ req }) => {
     if (!gatewayDbEnabled()) return { output: { deleted: 0 } }

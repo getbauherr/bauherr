@@ -36,6 +36,7 @@ import * as migration_20261102_171000_knowledge_edit_record from './20261102_171
 import * as migration_20261102_180000_gate_pending_attempts from './20261102_180000_gate_pending_attempts';
 import * as migration_20261103_150194_watcher_jobs from './20261103_150194_watcher_jobs';
 import * as migration_20261103_150196_factory_stage from './20261103_150196_factory_stage';
+import * as migration_20261103_150206_task_slug_enums from './20261103_150206_task_slug_enums';
 
 export const migrations = [
   {
@@ -227,5 +228,10 @@ export const migrations = [
     up: migration_20261103_150196_factory_stage.up,
     down: migration_20261103_150196_factory_stage.down,
     name: '20261103_150196_factory_stage'
+  },
+  {
+    up: migration_20261103_150206_task_slug_enums.up,
+    down: migration_20261103_150206_task_slug_enums.down,
+    name: '20261103_150206_task_slug_enums'
   }
 ];
