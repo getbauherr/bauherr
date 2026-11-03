@@ -81,6 +81,10 @@ test('an empty Workspace links to /setup and the Admin walks all four steps to a
   await page.getByRole('button', { name: 'Skip, use defaults' }).click()
 
   await word(page, 'Staging and gates', 'Done')
+  await page.goto('/setup?step=deploy')
+  await expect(page.getByRole('button', { name: 'Save and continue' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Skip, use defaults' })).toHaveCount(0)
+  await page.goto('/setup')
   await expect(page.getByLabel('Product')).toContainText('Newco Shop')
   await page.reload()
   await expect(page.getByLabel('Product')).toContainText('Newco Shop')

@@ -134,6 +134,8 @@ export const addRepository = act({}, async (c, fd) => {
 /** Product, repository and ticket source in one go; the Product is deleted again when a later create fails. */
 export const createProductWithRepo = act({}, async (c, fd) => {
   only(c.user)
+  const slug = s(fd, 'slug') || slugOf(s(fd, 'name'))
+  if ((await c.payload.count({ collection: 'products', where: { and: [{ slug: { equals: slug } }, { workspace: { equals: inWorkspace(c) } }] }, overrideAccess: true } as never)).totalDocs) throw Object.assign(new Error('Short name taken.'), { data: { errors: [{ path: 'slug', message: 'A Product with this short name already exists in this Workspace.' }] } })
   const product = await makeProduct(c, fd)
   fd.set('readTickets', 'on')
   try {
@@ -148,7 +150,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
 export const skipDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  await c.payload.update({ collection: 'products', id: id(fd), data: { deployMode: 'observe-ci' }, ...c.w } as never)
+  await c.payload.update({ collection: 'products', id: id(fd), data: {}, ...c.w } as never)
 })
 
 /** The token is shown once as the ready-made script tag; only its hash is stored. */
@@ -196,7 +198,7 @@ export const saveConnection = act({}, async (c, fd) => {
   if (s(fd, 'secret')) data.secret = s(fd, 'secret')
   if (id(fd)) {
     await inWs(c, 'connections', id(fd))
-    if (kind !== 'llm-provider' && s(fd, 'secret')) data.capabilities = {}
+    if (kind !== 'llm-provider' && s(fd, 'secret')) data.capabilities = { ...(await connectionInput(c.payload, id(fd))).capabilities, verifiedAt: undefined, lastError: undefined }
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
 })
@@ -210,9 +212,14 @@ export const verifyConnection = act({}, async (c, fd) => {
     await c.payload.update({ collection: 'connections', id: id(fd), data: {}, ...c.w } as never)
     return
   }
-  const lastError = await backendFor(conn).tickets('').whoami().then(() => null, (e: Error) => e.message)
-  await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { ...conn.capabilities, verifiedAt: lastError ? null : new Date().toISOString(), lastError } }, overrideAccess: true } as never)
-  if (lastError) throw new Error(`The forge did not accept the token: ${lastError}`)
+  let failure: { message: string; refused: boolean } | null = null
+  try {
+    await backendFor(conn, { maxRetries: 0, timeoutMs: 10_000 }).tickets('').whoami()
+  } catch (e) {
+    failure = { message: (e as Error).message, refused: [401, 403].includes((e as { status?: number }).status ?? 0) }
+  }
+  await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { ...conn.capabilities, verifiedAt: failure ? null : new Date().toISOString(), lastError: failure?.message ?? null } }, overrideAccess: true } as never)
+  if (failure) throw new Error(`${failure.refused ? 'The forge did not accept the token' : 'Could not verify the token'}: ${failure.message}`)
 })
 
 const tenants = (fd: FormData) => fd.getAll('workspaces').map(Number)

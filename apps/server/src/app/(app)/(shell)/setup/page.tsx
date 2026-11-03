@@ -54,9 +54,11 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
             <input type="hidden" name="id" value={deploy.product.id} />
             <DeploySections data={deploy} admin />
           </SettingsForm>
-          <SettingsForm action={skipDeploy} submit="Skip, use defaults">
-            <input type="hidden" name="id" value={deploy.product.id} />
-          </SettingsForm>
+          {!steps[n - 1]!.done && (
+            <SettingsForm action={skipDeploy} submit="Skip, use defaults">
+              <input type="hidden" name="id" value={deploy.product.id} />
+            </SettingsForm>
+          )}
         </>
       )}
       {shown === 'request' && product && (

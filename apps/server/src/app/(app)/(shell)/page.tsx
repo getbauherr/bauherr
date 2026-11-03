@@ -7,6 +7,7 @@ import { EpicsView } from '../components/Epics'
 import { BoardView } from '../components/OverviewViews'
 import { epicNamed, epicRestoreUrl, epicsToShow, inEpic } from '../lib/epics'
 import { loadOverview } from '../lib/overview'
+import { isAdmin } from '../lib/settings'
 import { currentWorkspace, rememberEpic, requireBauherr } from '../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +44,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       ) : sp.epic ? (
         <EmptyState text="No open tickets in this epic." action={{ href: '/?epic=', label: 'Clear the epic filter' }} />
       ) : (
-        <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.`} action={data.products.length ? { href: '/settings/workspace', label: 'Open settings' } : { href: '/setup', label: 'Set up your Workspace' }} />
+        <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) || data.products.length ? '' : ' Ask an Admin to set up the Workspace.'}`} action={data.products.length ? { href: '/settings/workspace', label: 'Open settings' } : isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} />
       )}
     </>
   )
