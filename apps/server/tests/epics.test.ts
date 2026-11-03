@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Epic, epicHue, epicProgress, epicShortTitle, epicsToShow, inEpic, plainStatus } from '../src/app/(app)/lib/epics'
+import { type Epic, epicHue, epicNamed, epicProgress, epicRestoreUrl, epicWhere, epicShortTitle, epicsToShow, inEpic, plainStatus } from '../src/app/(app)/lib/epics'
 
 const child = (id: number, stage: Epic['children'][0]['stage'], open: boolean) => ({ id, number: id, title: `c${id}`, stage, open, status: '' })
 const epic = (id: number, rank: string | null, open = true, product: number | null = 1, children: Epic['children'] = []): Epic => ({ id, number: id, title: `e${id}`, open, rank, product, children })
@@ -34,5 +34,24 @@ describe('epics', () => {
     expect(plainStatus({ ...t, blockedBy: [{}] })).toBe('Blocked')
     expect(plainStatus({ ...t, waiting: 'Waiting: Build is full' })).toBe('Waiting')
     expect(plainStatus(t)).toBe('Queued')
+  })
+  it('finds epics structurally: stage parent or any Ticket with sub-tickets', () => {
+    expect(epicWhere([])).toEqual({ or: [{ stage: { equals: 'parent' } }] })
+    expect(epicWhere([7, 9])).toEqual({ or: [{ stage: { equals: 'parent' } }, { id: { in: [7, 9] } }] })
+  })
+  it('reads the epic a request names: nothing, All or unknown, or an epic', () => {
+    expect(epicNamed(undefined, [{ id: 4 }])).toBeUndefined()
+    expect(epicNamed('', [{ id: 4 }])).toBeNull()
+    expect(epicNamed('9', [{ id: 4 }])).toBeNull()
+    expect(epicNamed('4', [{ id: 4 }])).toBe(4)
+  })
+  it('restores a remembered epic only when none is named and it still exists', () => {
+    const epics = [{ id: 4 }]
+    expect(epicRestoreUrl('/', { state: 'all' }, 4, epics)).toBe('/?state=all&epic=4')
+    expect(epicRestoreUrl('/runs', {}, 4, epics)).toBe('/runs?epic=4')
+    expect(epicRestoreUrl('/', { epic: '9' }, 4, epics)).toBeNull()
+    expect(epicRestoreUrl('/', { epic: '' }, 4, epics)).toBeNull()
+    expect(epicRestoreUrl('/', {}, 5, epics)).toBeNull()
+    expect(epicRestoreUrl('/', {}, null, epics)).toBeNull()
   })
 })

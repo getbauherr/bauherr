@@ -1,3 +1,4 @@
+import type { Where } from 'payload'
 import { BOARD_STAGES, type Stage } from './needs-you'
 
 export type EpicChild = { id: number; number: number; title: string; stage: Stage; open: boolean; status: string }
@@ -24,6 +25,19 @@ export const epicsToShow = (epics: Epic[], showDone: boolean, product: number | 
   epics
     .filter((e) => (showDone || e.open) && (!product || e.product === product))
     .sort((a, b) => Number((a.rank ?? '') > (b.rank ?? '')) - Number((a.rank ?? '') < (b.rank ?? '')) || a.number - b.number)
+
+/** Epics are structural: stage `parent` (just split) or any Ticket with sub-tickets, so a done epic (stage `done`, closed) stays one. */
+export const epicWhere = (parentIds: number[]): Where => ({ or: [{ stage: { equals: 'parent' } }, ...(parentIds.length ? [{ id: { in: parentIds } }] : [])] })
+
+/** Where to send a Board/Runs request that names no epic when one is remembered and still exists; null otherwise (stale ids restore to All). */
+export const epicRestoreUrl = (path: string, sp: Record<string, string | undefined>, stored: unknown, epics: { id: number }[]): string | null =>
+  sp.epic === undefined && epics.some((e) => e.id === stored)
+    ? `${path}?${new URLSearchParams({ ...(Object.fromEntries(Object.entries(sp).filter(([, v]) => v)) as Record<string, string>), epic: String(stored) })}`
+    : null
+
+/** What a request names about the epic filter: undefined = nothing (leave the remembered one), null = All or an unknown epic, else the epic id. */
+export const epicNamed = (param: string | undefined, epics: { id: number }[]): number | null | undefined =>
+  param === undefined ? undefined : (epics.find((e) => e.id === Number(param))?.id ?? null)
 
 /** Keeps the sub-tickets of one epic; everything when no epic is chosen. */
 export const inEpic = <T extends { parent: { id: number } | null }>(rows: T[], epic: number | null): T[] => (epic ? rows.filter((t) => t.parent?.id === epic) : rows)

@@ -34,7 +34,7 @@ function EpicSelect({ epics }: { epics: Epics }) {
   return epics.length ? (
     <label className="filter">
       <span className="label muted">Epic</span>
-      <select value={params.get('epic') ?? ''} onChange={(e) => router.push(href({ epic: e.target.value || null }))}>
+      <select value={params.get('epic') ?? ''} onChange={(e) => router.push(href({ epic: e.target.value }))}>
         <option value="">All</option>
         {epics.map((e) => <option key={e.id} value={e.id}>#{e.number} {e.title}</option>)}
       </select>

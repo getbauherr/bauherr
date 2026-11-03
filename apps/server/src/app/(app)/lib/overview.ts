@@ -4,7 +4,7 @@ import { hasProductionChecks } from '../../../lib/mode'
 import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
-import { type Epic, plainStatus } from './epics'
+import { type Epic, epicWhere, plainStatus } from './epics'
 import { WIP_STAGES, waitingText, wipLimit } from '../../../lib/wip-limits'
 
 export type RunRow = {
@@ -118,8 +118,8 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
     }
   })
   const byRow = new Map(rows.map((r) => [r.id, r]))
-  const epicDocs = (await payload.find({ collection: 'tickets', where: { and: [ws, { stage: { equals: 'parent' } }] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]
-  const subs = epicDocs.length ? (await payload.find({ collection: 'tickets', where: { and: [ws, { parent: { in: epicDocs.map((e) => e.id) } }] }, sort: 'number', pagination: false, ...q })).docs as unknown as Record<string, any>[] : []
+  const subs = (await payload.find({ collection: 'tickets', where: { and: [ws, { parent: { exists: true } }] }, sort: 'number', pagination: false, ...q })).docs as unknown as Record<string, any>[]
+  const epicDocs = (await payload.find({ collection: 'tickets', where: { and: [ws, epicWhere([...new Set(subs.map((c) => c.parent as number))])] }, pagination: false, ...q })).docs as unknown as Record<string, any>[]
   const epics = epicDocs.map((e): Epic => ({
     id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null,
     children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(c), open: c.state !== 'closed', status: r ? plainStatus(r) : 'Done' } }),

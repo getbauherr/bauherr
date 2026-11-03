@@ -50,7 +50,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
   ])
 
-  const epic = ticket.stage === 'parent' ? (await loadOverview(workspace.id, false)).epics.find((e) => e.id === ticket.id) : undefined
+  const epic = (await loadOverview(workspace.id, false)).epics.find((e) => e.id === ticket.id)
   let comments: { body: string }[] = []
   let labels: string[] = ticket.labels ?? []
   let forgeError = false
