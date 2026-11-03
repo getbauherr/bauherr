@@ -33,6 +33,8 @@ export type RunCtx = {
   product: { id?: string; repo: string; defaultBranch: string };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
+  /** Build Run on an existing MR: the Runner merges the base branch in before the agent (and skips the agent when the merge is clean). */
+  mergeBase?: boolean;
   /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */
   existingPr?: { number: number; url: string; branch: string; title: string; body: string };
   connection: {
@@ -65,7 +67,7 @@ export type RunCtx = {
 export type RunResult = {
   status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
   reason?: string;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; reviewedSha?: string };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; reviewedSha?: string; patchId?: string; reviewedPatchId?: string; mergeConflict?: boolean };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

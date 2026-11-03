@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, type AgentState } from './agent.js';
-import { cloneRepo, commitAndPush, git } from './clone.js';
+import { cloneRepo, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
 import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
@@ -74,12 +74,31 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       await git(clone.dir, clone.env, 'fetch', '--depth', '200', 'origin', `${ctx.product.defaultBranch}:refs/remotes/origin/${ctx.product.defaultBranch}`);
       artifacts.reviewedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
     }
+    const base = ctx.product.defaultBranch;
+    let conflicted = false;
+    if (ctx.mergeBase && ctx.existingPr && ctx.run.stage === 'build') {
+      const merged = await mergeBase(clone, clone.env, base);
+      conflicted = merged === 'conflict';
+      if (!conflicted) {
+        await commitAndPush(clone, clone.env, `bauherr: merge ${base} (run ${ctx.run.id})`);
+        artifacts.patchId = await patchId(clone, clone.env, base);
+        artifacts.prUrl = ctx.existingPr.url;
+        artifacts.evidence = `Merged origin/${base} ${await git(clone.dir, clone.env, 'rev-parse', `origin/${base}`)} into the MR branch without an agent (${merged}).`;
+        await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);
+        await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(ctx.run.goal.statements.map((text) => ({ text, done: true })), `Merged ${base} into ${ctx.existingPr.url}. Waiting for review.`));
+        await ctx.forge.setStage(ctx.ticket.number, 'review');
+        return finish('succeeded');
+      }
+      artifacts.mergeConflict = true;
+    }
     const fixedGoal = ctx.run.stage === 'plan' ? PLAN_GOAL : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.stage === 'review') {
-      const base = `origin/${ctx.product.defaultBranch}`;
-      await git(clone.dir, clone.env, 'diff', `--output=${DIFF_FILE}`, `${base}...HEAD`).catch(() => git(clone!.dir, clone!.env, 'diff', `--output=${DIFF_FILE}`, base, 'HEAD'));
+      const remote = `origin/${base}`;
+      artifacts.reviewedPatchId = await patchId(clone, clone.env, base).catch(() => '');
+      if (ctx.conflictBase) await interdiff(clone, clone.env, base, ctx.conflictBase, join(clone.dir, DIFF_FILE));
+      else await git(clone.dir, clone.env, 'diff', `--output=${DIFF_FILE}`, `${remote}...HEAD`).catch(() => git(clone!.dir, clone!.env, 'diff', `--output=${DIFF_FILE}`, remote, 'HEAD'));
     }
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
       ...(ctx.product.id ? { product: ctx.product.id } : {}), ...(ctx.ticket.id ? { ticket: ctx.ticket.id } : {}),
@@ -129,6 +148,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       return finish('failed', 'build run produced no commits');
     }
     artifacts.evidence = buildEvidence(goal, state.toolCalls);
+    if (conflicted) artifacts.patchId = await patchId(clone, clone.env, base);
     if (ctx.existingPr) {
       artifacts.prUrl = ctx.existingPr.url;
       await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);

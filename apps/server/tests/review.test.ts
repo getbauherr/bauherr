@@ -686,7 +686,7 @@ it('grant_review_round and stop_review over MCP: an agent key is refused, a huma
 
 const conflictCheck = async (id: number) => {
   expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, mergeFailures: 0 })
-  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('Merge `main` into')
+  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('the Runner merges `main` into')
   const build = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })
   expect(build.totalDocs).toBe(1)
 }
@@ -733,7 +733,7 @@ it('F24: two conflicting PRs: the first merges, the second merges main, is re-re
   fake.commit(repo, b.branch, 'a.ts', 'merged')
   const head = (await fake.forge.getPullRequest(repo, b.pr.number)).headSha
   expect(head).not.toBe(before)
-  expect(await reload(b.id)).toMatchObject({ conflictReturnBase: before, conflictReturns: 1 })
+  expect(await reload(b.id)).toMatchObject({ conflictReturnBase: before, conflictReturns: 0 })
   await payload.update({ collection: 'tickets', id: b.id, data: { stage: 'review' }, ...o })
   const r = await review(b.id)
   expect((await call(member, 'get_ticket', { ticket: b.id })).conflictReturnBase).toBe(before)
@@ -788,6 +788,56 @@ it('F28: recovery: Tickets parked on 3 failed merges return to Build when the MR
   const bad = await parked(true)
   await actions.watchReviews(payload)
   expect(await prState(ok.pr.number)).toBe('open')
-  expect(await reload(bad.id)).toMatchObject({ stage: 'build', mergeFailures: 0, conflictReturns: 1 })
+  expect(await reload(bad.id)).toMatchObject({ stage: 'build', mergeFailures: 0, conflictReturns: 0 })
   expect(await reload(ok.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
+})
+
+/** A clean review of `seed()`'s MR with a stored patch-id, the MR conflicting, then a Runner main-merge Build Run (`patchId`) that moved the head. */
+const mergedByRunner = async (reviewedPatchId: string, patchId: string) => {
+  const s = await seed({ checks: green })
+  const r = await review(s.id)
+  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId }, ...o })
+  fake.setMergeable(repo, s.pr.number, false)
+  expect(await submit(r)).toMatchObject({ verdict: 'clean', outcome: 'build' })
+  expect(await reload(s.id)).toMatchObject({ conflictReturns: 0 })
+  fake.commit(repo, s.branch, 'main.ts', 'merged main')
+  await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws, artifacts: { patchId } }, ...o })
+  const t = await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
+  return { ...s, r, t }
+}
+const reviewRuns = async (id: number) => (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }] }, ...o })).totalDocs
+
+it('F29: a Runner main-merge with an unchanged Ticket diff re-binds the verdict to the new head: no new Review Run, the merge gate decides', async () => {
+  const { id, pr, r, t } = await mergedByRunner('patch-x', 'patch-x')
+  expect(await actions.rebindReview(payload, t)).toBe(true)
+  const head = (await fake.forge.getPullRequest(repo, pr.number)).headSha
+  expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: head, reviewedPatchId: 'patch-x' })
+  expect(await reviewRuns(id)).toBe(1)
+  expect(await prState(pr.number)).toBe('merged')
+  expect((await reload(id)).conflictReturnBase).toBeNull()
+})
+
+it('F29: a re-bound verdict still waits for the checks on the new head', async () => {
+  const { id, pr, t } = await mergedByRunner('patch-x', 'patch-x')
+  fake.setChecks(repo, (await fake.forge.getPullRequest(repo, pr.number)).headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  expect(await actions.rebindReview(payload, t)).toBe(true)
+  expect(await prState(pr.number)).toBe('open')
+  expect((await reload(id)).reviewState).toBe('waiting_checks')
+  expect(await reviewRuns(id)).toBe(1)
+})
+
+it('F30: a different patch-id does not re-bind: a new Review Run starts on the new head', async () => {
+  const { id, pr, t } = await mergedByRunner('patch-x', 'patch-y')
+  expect(await actions.rebindReview(payload, t)).toBe(false)
+  expect(await jobs.startReviewIfReady(payload, t as any)).toBeTruthy()
+  expect(await reviewRuns(id)).toBe(2)
+  expect(await prState(pr.number)).toBe('open')
+})
+
+it('F31: a clean review of an MR behind main (auto-merge on) goes to Build for a Runner merge, without counting a conflict return', async () => {
+  const { id, pr } = await seed({ checks: green })
+  fake.setBehind(repo, pr.number, true)
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'build' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', conflictReturns: 0 })
+  expect(await prState(pr.number)).toBe('open')
 })

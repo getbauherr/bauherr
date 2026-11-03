@@ -426,6 +426,7 @@ export const collections: CollectionConfig[] = [
     select('verdict', ['clean', 'changes']),
     json('findings'),
     text('reviewedSha'),
+    text('reviewedPatchId'),
     text('model'),
     num('tokensIn'),
     num('tokensOut'),

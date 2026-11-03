@@ -7,7 +7,7 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
@@ -520,7 +520,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
           status: r.status,
           artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
           error: r.status === 'succeeded' ? null : r.reason,
-          ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null }),
+          ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null, reviewedPatchId: r.artifacts.reviewedPatchId || null }),
           tokensIn: r.usage.inputTokens,
           tokensOut: r.usage.outputTokens,
           tokensCache: r.usage.cacheRead + r.usage.cacheWrite,
@@ -536,7 +536,9 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
-          await startReviewIfReady(payload, await payload.update({ collection: 'tickets', id: ticket.id, data: { stage: 'review' }, ...opts }))
+          if (r.artifacts.mergeConflict) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_returns" = COALESCE("conflict_returns", 0) + 1 WHERE "id" = ${ticket.id}`)
+          const reviewing = await payload.update({ collection: 'tickets', id: ticket.id, data: { stage: 'review' }, ...opts })
+          if (!(await rebindReview(payload, reviewing))) await startReviewIfReady(payload, reviewing)
         } catch (e) {
           payload.logger.error({ err: e, ticket: ticket.id }, 'starting the review failed')
         }

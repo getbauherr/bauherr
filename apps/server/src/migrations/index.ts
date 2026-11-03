@@ -41,6 +41,7 @@ import * as migration_20261103_150223_intake_split from './20261103_150223_intak
 import * as migration_20261103_150231_release_prerelease from './20261103_150231_release_prerelease';
 import * as migration_20261103_160000_media_upload from './20261103_160000_media_upload';
 import * as migration_20261103_170000_release_checks_since from './20261103_170000_release_checks_since';
+import * as migration_20261103_180000_reviewed_patch_id from './20261103_180000_reviewed_patch_id';
 
 export const migrations = [
   {
@@ -257,5 +258,10 @@ export const migrations = [
     up: migration_20261103_170000_release_checks_since.up,
     down: migration_20261103_170000_release_checks_since.down,
     name: '20261103_170000_release_checks_since'
+  },
+  {
+    up: migration_20261103_180000_reviewed_patch_id.up,
+    down: migration_20261103_180000_reviewed_patch_id.down,
+    name: '20261103_180000_reviewed_patch_id'
   }
 ];

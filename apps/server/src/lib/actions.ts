@@ -543,7 +543,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, ${opts.conflictBase === undefined ? sql`` : sql`"conflict_return_base" = ${opts.conflictBase}, "conflict_returns" = COALESCE("conflict_returns", 0) + 1, `}"merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
+      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, ${opts.conflictBase === undefined ? sql`` : sql`"conflict_return_base" = ${opts.conflictBase}, `}"merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
     )
   ).rows[0]
   if (!claimed) return 'noop'
@@ -570,12 +570,15 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   return 'build'
 }
 
-/** The forge reports the MR as conflicting: back to Build to merge the base in. Neither a review round nor a failed merge. */
+/**
+ * The forge reports the MR as conflicting or behind its base: back to Build, where the Runner merges the base in without an agent (an agent runs only on real conflict markers).
+ * Neither a review round nor a failed merge; `conflictReturns` counts only agent-resolved conflicts (the build-result handler), and the 4th needs a human.
+ */
 const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
   const returns = Number((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })).conflictReturns ?? 0)
   if (returns >= MAX_CONFLICT_RETURNS) return escalate(payload, t, `the MR conflicted with \`${mr.pr.base}\` ${returns} times after other merges; resolve it by hand.`)
   const reason = `the MR conflicts with \`${mr.pr.base}\` after another merge`
-  const text = `${reason}. Merge \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} (git merge, no rebase, no force push), resolve the conflicts keeping both sides, rerun the checks, and push to that branch; do not open a new MR.`
+  const text = `${reason}. In an autonomous Run the Runner merges \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} before you start: resolve only the conflict markers it leaves (keep both sides), git add, git commit, change nothing else. In a session Run merge it yourself (git merge, never rebase or force push). Do not open a new MR.`
   return returnToBuild(payload, t, mr, reason, [], [], { countRound: false, text, conflictBase: reviewedSha })
 }
 
@@ -632,6 +635,7 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
  */
 export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null, at = Date.now()): Promise<ReviewOutcome> => {
   if (!isFactoryPr(mr.pr, mr.repo, t.number) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
+  // Any head move starts a new review, except a Runner main-merge with an unchanged Ticket diff (`rebindReview` moves the verdict to the new head before this runs).
   if (mr.pr.headSha !== reviewedSha) {
     if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
     return 'review_restarted'
@@ -643,7 +647,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  if (mr.pr.mergeable === false) return returnConflictToBuild(payload, t, mr, reviewedSha)
+  if (mr.pr.mergeable === false || mr.pr.behind) return returnConflictToBuild(payload, t, mr, reviewedSha)
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
   const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
   const checks = mergeChecks(list, age)
@@ -715,6 +719,24 @@ const recoverMergeFailures = async (payload: Payload): Promise<void> => {
   }
 }
 
+/**
+ * After a Build Run that only merged the base (or resolved a conflict) on the MR: when the Ticket's own diff is unchanged (the Run's `patchId` equals the latest clean review's `reviewedPatchId`),
+ * the verdict moves to the new head and goes through the merge gate again (checks still decide); no Review Run starts. Returns false when a new review is needed.
+ */
+export const rebindReview = async (payload: Payload, t: Doc): Promise<boolean> => {
+  if (t.stage !== 'review' || t.state !== 'open' || t.reviewState) return false
+  const latest = async (stage: string, status: string) =>
+    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: stage } }, { status: { equals: status } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  const [review, build] = [await latest('review', 'succeeded'), await latest('build', 'succeeded')]
+  const stored = review?.artifacts?.review
+  if (review?.verdict !== 'clean' || !review.reviewedPatchId || review.reviewedPatchId !== build?.artifacts?.patchId || typeof stored?.markdown !== 'string') return false
+  const mr = await prOf(payload, t)
+  if (mr?.pr.state !== 'open') return false
+  await payload.update({ collection: 'runs', id: review.id, data: { reviewedSha: mr.pr.headSha }, overrideAccess: true })
+  await concludeReview(payload, t.id, { verdict: 'clean', findings: review.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }, mr.pr.headSha, true)
+  return true
+}
+
 /** Per-minute pass: Tickets waiting on checks re-run the merge gate against the latest reviewed SHA; waiting longer than 2 hours needs a human. */
 export const watchReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
   await recoverMergeFailures(payload)
@@ -751,7 +773,7 @@ export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<
       const mr = await prOf(payload, t)
       if (mr?.pr.state !== 'open') continue
       if (mr.pr.headSha !== last.reviewedSha || (build && Date.parse(last.finishedAt) < Date.parse(build.finishedAt))) {
-        await startReviewIfReady(payload, t)
+        if (!(await rebindReview(payload, t))) await startReviewIfReady(payload, t)
         continue
       }
       const stored = last.artifacts?.review

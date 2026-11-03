@@ -62,7 +62,7 @@ export class FakeBackend implements Backend {
     if (!b) throw new Error(`no branch ${branch}`);
     b.files.set(path, content);
     b.sha = `sha${++this.seq}`;
-    for (const p of this.repo(repo).prs) if (p.head === branch) delete p.mergeable;
+    for (const p of this.repo(repo).prs) if (p.head === branch) (delete p.mergeable, delete p.behind);
     return b.sha;
   }
 
@@ -78,6 +78,11 @@ export class FakeBackend implements Backend {
   /** Test helper: sets whether the forge reports an open PR as mergeable (false = conflicts). */
   setMergeable(repo: RepoRef, number: number, value: boolean | undefined): void {
     this.setPullRequest(repo, number, { mergeable: value });
+  }
+
+  /** Test helper: sets whether the forge reports an open PR as behind its base. */
+  setBehind(repo: RepoRef, number: number, value: boolean | undefined): void {
+    this.setPullRequest(repo, number, { behind: value });
   }
 
   /** Test helper: merges an open PR (merge commit on the base branch). */
