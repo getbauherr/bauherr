@@ -8,18 +8,21 @@ import { isWebUrl } from '../lib/url'
 import { frontierOrder } from '../../../lib/frontier'
 import { SortableCards } from './SortableCards'
 import { StatusChip } from './StatusChip'
+import { Badge } from './ui/badge'
+import { Card } from './ui/card'
+import { cn } from '@/lib/utils'
 
 const Num = ({ t }: { t: TicketRow }) =>
-  isWebUrl(t.url) ? <a className="mono link" href={t.url}>#{t.number}</a> : <span className="mono">#{t.number}</span>
+  isWebUrl(t.url) ? <a className="mono text-primary" href={t.url}>#{t.number}</a> : <span className="mono">#{t.number}</span>
 
 const Needs = ({ t }: { t: TicketRow }) =>
   t.needsYou ? (
-    <span className="label needs" data-gate={t.gate ? '' : undefined}>
+    <span className="label text-warn" data-gate={t.gate ? '' : undefined}>
       {GATES[t.needsYou as Need].verb({ stage: t.run?.stage ?? '' })}
       {t.gateUnreachable && ' · no reachable owner'}
       {t.gate && ` · ${t.gate.people.map((p) => `@${p}`).join(' ')}${t.gate.people.length ? ' · ' : ''}waiting ${heartbeatAge(t.gate.since).text.replace(' ago', '')}`}
     </span>
-  ) : t.stage === 'review' ? <span className="label muted">Factory reviewing</span> : null
+  ) : t.stage === 'review' ? <span className="label text-muted-foreground">Factory reviewing</span> : null
 
 const Working = ({ t }: { t: TicketRow }) => {
   const r = t.run
@@ -28,7 +31,7 @@ const Working = ({ t }: { t: TicketRow }) => {
   const age = at ? heartbeatAge(at) : null
   const who = r.mode === 'session' ? (t.owner ?? 'session') : 'scheduler'
   return (
-    <Link href={`/runs/${r.id}`} className={`label ${age?.stale ? 'queued' : 'running'}`}>
+    <Link href={`/runs/${r.id}`} className={cn('label', age?.stale ? 'text-muted-foreground' : 'text-primary')}>
       {activity(t) ?? r.stage} · {who}{age && ` · ${age.text}`}
     </Link>
   )
@@ -36,59 +39,61 @@ const Working = ({ t }: { t: TicketRow }) => {
 
 const Blocked = ({ t }: { t: TicketRow }) =>
   t.blockedBy.length ? (
-    <span className="label queued">
+    <span className="label text-muted-foreground">
       Blocked by{' '}
-      {t.blockedBy.map((b, i) => <Fragment key={b.id}>{i > 0 && ', '}<Link className="mono link" href={`/tickets/${b.id}`}>#{b.number}</Link></Fragment>)}
+      {t.blockedBy.map((b, i) => <Fragment key={b.id}>{i > 0 && ', '}<Link className="mono text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></Fragment>)}
     </span>
   ) : null
 
 const Family = ({ t }: { t: TicketRow }) =>
   t.parent ? (
-    <Link className="mono link small" href={`/tickets/${t.parent.id}`}>↳ #{t.parent.number}</Link>
+    <Link className="mono small text-primary" href={`/tickets/${t.parent.id}`}>↳ #{t.parent.number}</Link>
   ) : t.children.length ? (
     <details className="small">
       <summary>{t.children.filter((c) => !c.open).length}/{t.children.length} done</summary>
-      <ul>{t.children.map((c) => <li key={c.id}><Link className="link" href={`/tickets/${c.id}`}>#{c.number} {c.title}</Link>{!c.open && ' ✓'}</li>)}</ul>
+      <ul>{t.children.map((c) => <li key={c.id}><Link className="text-primary" href={`/tickets/${c.id}`}>#{c.number} {c.title}</Link>{!c.open && ' ✓'}</li>)}</ul>
     </details>
   ) : null
 
-const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
+const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="ticket-title flex-1 hover:underline">{t.title}</Link>
 
 export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capped: boolean; wip: Record<string, { count: number; limit: number | null }> }) {
   const latest = new Map(tickets.flatMap((t) => (t.run ? [[t.id, t.run] as const] : [])))
   return (
     <>
-    {capped && <p className="muted small">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
-    <div className="board">
+    {capped && <p className="small text-muted-foreground">Decisions checked for the first {DECISIONS_LOOKUPS} tickets</p>}
+    <div className="board flex items-start gap-4 overflow-x-auto">
       {BOARD_STAGES.map((s) => {
         const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
         return (
-          <section key={s} className="col" data-stage={s}>
-            <h2 className="label">
-              {s === 'parent' ? 'Split' : stageLabel(s)}{' '}
-              {wip[s]?.limit != null ? <span className="wip" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="muted">{rows.length}</span>}
-            </h2>
-            <SortableCards
-              items={rows.map((t) => ({
-                id: t.id,
-                movable: t.open,
-                running: activity(t) !== null,
-                node: (
-                  <>
-                    <Num t={t} />
-                    {title(t)}
-                    {t.product && <span className="muted small">{t.product.name}</span>}
-                    {t.run && <StatusChip status={t.run.status} />}
-                    <Working t={t} />
-                    <Family t={t} />
-                    <Blocked t={t} />
-                    {t.waiting && <span className="label chip waiting">{t.waiting}</span>}
-                    <Needs t={t} />
-                  </>
-                ),
-              }))}
-            />
-          </section>
+          <Card key={s} asChild className="col flex-none basis-[260px] p-3">
+          <section data-stage={s}>
+              <h2 className="label">
+                {s === 'parent' ? 'Split' : stageLabel(s)}{' '}
+                {wip[s]?.limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="text-muted-foreground">{rows.length}</span>}
+              </h2>
+              <SortableCards
+                items={rows.map((t) => ({
+                  id: t.id,
+                  movable: t.open,
+                  running: activity(t) !== null,
+                  node: (
+                    <>
+                      <Num t={t} />
+                      {title(t)}
+                      {t.product && <span className="small text-muted-foreground">{t.product.name}</span>}
+                      {t.run && <StatusChip status={t.run.status} />}
+                      <Working t={t} />
+                      <Family t={t} />
+                      <Blocked t={t} />
+                      {t.waiting && <Badge variant="warn">{t.waiting}</Badge>}
+                      <Needs t={t} />
+                    </>
+                  ),
+                }))}
+              />
+            </section>
+        </Card>
         )
       })}
     </div>
