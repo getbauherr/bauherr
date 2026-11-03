@@ -112,3 +112,22 @@ test('the Ticket page Runs table shows Mode, Duration and Cost to an Admin only'
     await page.context().clearCookies()
   }
 })
+
+test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiting card says why', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('1')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+
+  await page.goto('/?view=board')
+  await expect(page.locator('section.col[data-stage="build"] h2')).toContainText(/\d+ \/ 1/)
+  await expect(page.locator('section.col[data-stage="plan"]').getByText(/Waiting: Build is full \(\d+\/1\)/)).toBeVisible()
+  await page.getByRole('link', { name: 'Waiting for a Build slot' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /Waiting: Build is full/ })).toBeVisible()
+
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})

@@ -12,6 +12,7 @@ import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../li
 import { isAdmin, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { isWebUrl } from '../../lib/url'
+import { WIP_STAGES } from '../../../../lib/wip-limits'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -54,6 +55,20 @@ export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d
     Object.assign(data, { modelByTier: tiers, name: s(fd, 'name'), defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null, knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null })
   } else if (!(await workspacesOf(user)).some((x) => x.id === wsId)) throw new Error('Not your Workspace.')
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)
+})
+
+/** WIP limits per Board column: a whole number of at least 1, empty for no limit. */
+export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd) => {
+  only(user)
+  const wsId = inWorkspace({ workspace })
+  const limits: Record<string, number> = {}
+  for (const stage of WIP_STAGES) {
+    const v = s(fd, `wip_${stage}`)
+    if (v === '') continue
+    if (!/^[1-9]\d*$/.test(v)) throw Object.assign(new Error('Invalid limit.'), { data: { errors: [{ path: `wip_${stage}`, message: 'A whole number of at least 1, or empty for no limit' }] } })
+    limits[stage] = Number(v)
+  }
+  await payload.update({ collection: 'workspaces', id: wsId, data: { wipLimits: limits }, ...w } as never)
 })
 
 export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) => {

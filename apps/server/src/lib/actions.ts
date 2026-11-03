@@ -11,6 +11,8 @@ import { mediaUrl, type ImageMime } from './intake/media'
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { moveStage } from './stage-move'
+import { enterStage, wipCount } from './wip'
+import { wipLimit } from './wip-limits'
 import { NoRoom, rankBetween } from './frontier'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
@@ -49,7 +51,7 @@ export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: Ticke
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const rankOf = async (n?: TicketId | null) => (n == null ? null : ((await loadIn(payload, user, n, a.workspaceId)).rank as string | null) ?? null)
   let [lo, hi] = [await rankOf(a.before), await rankOf(a.after)]
-  // At an in-flight/ranked group boundary the displayed neighbours can be out of rank order: the card then sits just above `after`, below its predecessor in rank.
+  // At a stage-group boundary the displayed neighbours can be out of rank order: the card then sits just above `after`, below its predecessor in rank.
   if (lo !== null && hi !== null && lo >= hi) {
     const r = await payload.db.drizzle.execute(sql`SELECT max("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" COLLATE "C" < ${hi}`)
     lo = (r.rows[0]?.rank as string | null) ?? null
@@ -123,8 +125,11 @@ export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: Ticke
 export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId }) => {
   const t = await loadTicket(payload, user, a.ticket)
   const { ts, n } = await sourceOf(payload, t)
-  await moveStage(payload, ts, t, 'review')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review' }, overrideAccess: true })
+  const entered = await enterStage(payload, t, 'review', async () => {
+    await moveStage(payload, ts, t, 'review')
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review' }, overrideAccess: true })
+  })
+  if (entered === 'waiting') return { stage: t.stage as string, waiting: 'review' }
   await startReviewIfReady(payload, { ...t, stage: 'review' })
   return { stage: 'review' }
 }
@@ -191,7 +196,7 @@ const covered = async (ts: TicketSource, n: string) => {
  * An unanswered critical decision puts the Ticket back on the refine hold instead (answering re-plans); otherwise it goes to `build` (or `parent`, its Sub-tickets going straight to Build).
  */
 export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | 'parent' | 'refine' | null> => {
-  if (gateOn('plan') || t.stage !== 'plan' || t.state !== 'open' || t.labels?.includes(APPROVED_PLAN)) return null
+  if (gateOn('plan') || t.stage !== 'plan' || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
   const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
   if (run?.stage !== 'plan' || run.status !== 'succeeded') return null
   const { ts, n } = await sourceOf(payload, t)
@@ -211,8 +216,11 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
   }
   const parent = await spawnSubTickets(payload, t)
   if (!parent) {
-    await moveStage(payload, ts, t, 'build')
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
+    const entered = await enterStage(payload, t, 'build', async () => {
+      await moveStage(payload, ts, t, 'build')
+      await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
+    })
+    if (entered === 'waiting') return null
     if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
   }
   await ts.comment(n, 'Plan accepted automatically (plan gate off).')
@@ -240,6 +248,9 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       prev = await lastRankAfter(payload, id(parent.workspace))
       await payload.update({ collection: 'tickets', id: parent.id, data: { rank: prev }, ...ro })
     }
+    const column = gateOn('plan') ? 'plan' : 'build'
+    const limit = wipLimit(await payload.findByID({ collection: 'workspaces', id: id(parent.workspace), select: { wipLimits: true }, ...ro }), column)
+    let room = limit == null ? Infinity : limit - (await wipCount(payload, id(parent.workspace), column))
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
       const orphan = found ? undefined : local.get(item.title)
@@ -259,7 +270,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       }
       const row = await upsertTicket(
         payload,
-        { ...link, workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
+        { ...link, ...(!found && !orphan && room-- <= 0 && { waitingFor: column }), workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
         link,
       )
       spawned.set(item.title, { id: child.id, docId: row.id })
@@ -387,8 +398,10 @@ export const postDecisions = async (
 const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc) => {
   const { labels } = await ts.get(n)
   if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await ts.listComments(n)).length) return
-  await ts.removeLabels(n, [NEEDS_REFINEMENT])
-  await moveStage(payload, ts, t, 'plan')
+  await enterStage(payload, t, 'plan', async () => {
+    await ts.removeLabels(n, [NEEDS_REFINEMENT])
+    await moveStage(payload, ts, t, 'plan')
+  })
 }
 
 export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
@@ -825,8 +838,12 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   const doc = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
   const { ts, n } = await sourceOf(payload, doc)
   if (stageOf((await ts.get(n)).labels)) return { outcome: 'noop' }
-  if (t.outcome === 'plan') await moveStage(payload, ts, doc, 'plan')
-  else {
+  if (t.outcome === 'plan') {
+    const entered = await enterStage(payload, doc, 'plan', async () => {
+      await moveStage(payload, ts, doc, 'plan')
+    })
+    if (entered === 'waiting') await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
+  } else {
     if (t.outcome === 'refine') {
       await ts.comment(n, triageSheet(t))
       await ts.addLabels(n, [NEEDS_REFINEMENT])

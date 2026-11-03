@@ -54,7 +54,7 @@ const Family = ({ t }: { t: TicketRow }) =>
 
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="grow ticket-title">{t.title}</Link>
 
-export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: boolean }) {
+export function BoardView({ tickets, capped, wip }: { tickets: TicketRow[]; capped: boolean; wip: Record<string, { count: number; limit: number | null }> }) {
   const latest = new Map(tickets.flatMap((t) => (t.run ? [[t.id, t.run] as const] : [])))
   return (
     <>
@@ -64,7 +64,10 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
         const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
         return (
           <section key={s} className="col" data-stage={s}>
-            <h2 className="label">{s === 'parent' ? 'Split' : stageLabel(s)} <span className="muted">{rows.length}</span></h2>
+            <h2 className="label">
+              {s === 'parent' ? 'Split' : stageLabel(s)}{' '}
+              {wip[s]?.limit != null ? <span className="wip" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="muted">{rows.length}</span>}
+            </h2>
             <SortableCards
               items={rows.map((t) => ({
                 id: t.id,
@@ -79,6 +82,7 @@ export function BoardView({ tickets, capped }: { tickets: TicketRow[]; capped: b
                     <Working t={t} />
                     <Family t={t} />
                     <Blocked t={t} />
+                    {t.waiting && <span className="label chip waiting">{t.waiting}</span>}
                     <Needs t={t} />
                   </>
                 ),
