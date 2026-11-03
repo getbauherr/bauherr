@@ -1,7 +1,7 @@
 import { APPROVED_PLAN, MergePendingError, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { gateOn } from './mode'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
@@ -188,6 +188,9 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
   const comments = await ts.listComments(n)
   const plan = latestWith(comments, PLAN_MARKER)
   if (!plan) return null
+  const rows = parseDecisions(plan.body)
+  payload.logger.info({ ticket: t.id, decisions: rows.length, critical: rows.filter((d) => d.critical).length }, 'plan decisions parsed')
+  if (!rows.length && decisionsSectionHasRows(plan.body)) payload.logger.warn({ ticket: t.id }, 'decisions section not parsed')
   if (openCritical(comments).length) {
     const marker = `<!-- bauherr:plan-refine:${plan.id} -->`
     if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
