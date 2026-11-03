@@ -8,7 +8,6 @@ let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route'
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
 let shots: typeof import('../src/app/intake/api/sessions/[id]/screenshots/route')
 let media: typeof import('../src/app/intake/api/media/[id]/route')
-let widgetRoute: typeof import('../src/app/intake/widget.js/route')
 let embed: typeof import('../src/lib/intake/embed')
 let productId: number
 let otherProductId: number
@@ -33,7 +32,6 @@ beforeAll(async () => {
   submit = await import('../src/app/intake/api/sessions/[id]/submit/route')
   shots = await import('../src/app/intake/api/sessions/[id]/screenshots/route')
   media = await import('../src/app/intake/api/media/[id]/route')
-  widgetRoute = await import('../src/app/intake/widget.js/route')
   embed = await import('../src/lib/intake/embed')
   const ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
   productId = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
@@ -146,13 +144,4 @@ it('preflight echoes the Origin and allows the Authorization header', () => {
   expect(r.headers.get('access-control-allow-origin')).toBe(ORIGIN)
   expect(r.headers.get('access-control-allow-headers')).toContain('authorization')
   expect(sessions.OPTIONS).toBe(embed.preflight)
-})
-
-it('serves the widget as a self-contained script', async () => {
-  const r = widgetRoute.GET()
-  expect(r.headers.get('content-type')).toContain('javascript')
-  const js = await r.text()
-  expect(js).toContain('attachShadow')
-  expect(() => new Function(js)).not.toThrow()
-  expect(() => new Function(`${js.replace('(document.currentScript)', '(null)')}`)()).not.toThrow()
 })

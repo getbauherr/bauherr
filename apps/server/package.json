@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm tokens",
+    "predev": "pnpm tokens && pnpm build:widget",
     "dev": "next dev --port 3000",
-    "prebuild": "pnpm tokens",
+    "prebuild": "pnpm tokens && pnpm build:widget",
     "build": "next build",
     "start": "next start",
     "jobs": "payload jobs:run --queue runs --cron \"*/5 * * * * *\"",
@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts",
     "tokens": "tsx scripts/tokens.ts",
+    "build:widget": "tsx scripts/build-widget.ts",
     "e2e": "playwright test"
   },
   "dependencies": {

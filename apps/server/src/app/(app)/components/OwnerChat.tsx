@@ -1,75 +1,71 @@
 'use client'
+import { AssistantRuntimeProvider, useLocalRuntime, type ChatModelAdapter } from '@assistant-ui/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { answerOwnerChat, startOwnerChat } from '../lib/actions'
+import { ChatThread } from './chat/thread'
 
 type Q = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
 
-export function OwnerChat({ ticket }: { ticket: number }) {
+const messageOf = (q: Q) => ({ role: 'assistant' as const, content: [{ type: 'text' as const, text: q.question }], metadata: { custom: { turn: q } } })
+
+function Interview({ session, ticket, first }: { session: number; ticket: number; first: Q }) {
   const router = useRouter()
-  const [session, setSession] = useState<number | null>(null)
-  const [log, setLog] = useState<{ role: 'bauherr' | 'you'; text: string }[]>([])
-  const [q, setQ] = useState<Q | null>(null)
+  const [q, setQ] = useState<Q | null>(first)
+  const current = useRef<Q | null>(first)
+  const [adapter] = useState<ChatModelAdapter>(() => ({
+    async run({ messages }) {
+      const label = messages.at(-1)!.content.map((p) => (p.type === 'text' ? p.text : '')).join('')
+      const next = await answerOwnerChat(session, ticket, current.current!.decision, label)
+      current.current = next
+      setQ(next)
+      if (!next) router.refresh()
+      return next ? { content: [{ type: 'text', text: next.question }], metadata: { custom: { turn: next } } } : { content: [{ type: 'text', text: 'All questions answered.' }] }
+    },
+  }))
+  const runtime = useLocalRuntime(adapter, { initialMessages: [messageOf(first)] })
+  return (
+    <section className="sheet" id="answer" aria-label="Answer interactively" style={{ padding: 'var(--space-4)' }}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <ChatThread composer={false} maxHeight="max-h-[50vh]" first={{ label: '', placeholder: '' }} next={{ label: '', placeholder: '' }} />
+      </AssistantRuntimeProvider>
+      {q && <p className="small muted">{q.left} open</p>}
+    </section>
+  )
+}
+
+export function OwnerChat({ ticket }: { ticket: number }) {
+  const [start, setStart] = useState<{ session: number; first: Q } | null>(null)
   const [failed, setFailed] = useState(false)
   const [pending, run] = useTransition()
-
   const started = useRef(false)
 
-  const start = () =>
+  const begin = () =>
     run(async () => {
       if (started.current) return
       started.current = true
       try {
         const { session, ...first } = await startOwnerChat(ticket)
-        setSession(session)
-        setQ(first)
-        setLog([{ role: 'bauherr', text: first.question }])
+        setStart({ session, first })
       } catch {
         started.current = false
         setFailed(true)
       }
     })
   useEffect(() => {
-    const go = () => location.hash === '#answer' && start()
+    const go = () => location.hash === '#answer' && begin()
     go()
     addEventListener('hashchange', go)
     return () => removeEventListener('hashchange', go)
   }, [])
-  const answer = (label: string) =>
-    run(async () => {
-      if (!session || !q) return
-      try {
-        const next = await answerOwnerChat(session, ticket, q.decision, label)
-        setLog((l) => [...l, { role: 'you', text: label }, ...(next ? [{ role: 'bauherr' as const, text: next.question }] : [])])
-        setQ(next)
-        if (!next) router.refresh()
-      } catch {
-        setFailed(true)
-      }
-    })
 
-  if (!session) {
+  if (!start) {
     return (
       <p id="answer">
-        <button type="button" className="btn" onClick={start} disabled={pending}>Answer interactively</button>
+        <button type="button" className="btn" onClick={begin} disabled={pending}>Answer interactively</button>
         {failed && <span className="small muted"> The questions could not be loaded.</span>}
       </p>
     )
   }
-  return (
-    <section className="chat sheet" id="answer" aria-label="Answer interactively">
-      <ol className="chat-log">
-        {log.map((m, i) => <li key={i} className={m.role === 'you' ? 'you' : undefined}>{m.text}</li>)}
-      </ol>
-      {q ? (
-        <footer>
-          {q.options.map((o) => <button key={o.label} type="button" className={o.recommended ? 'btn primary' : 'btn'} disabled={pending} onClick={() => answer(o.label)}>{o.label}{o.recommended ? ' (recommended)' : ''}</button>)}
-          <span className="small muted">{q.left} open</span>
-        </footer>
-      ) : (
-        <footer><span className="small muted">All questions answered.</span></footer>
-      )}
-      {failed && <p className="small muted">That answer could not be saved. Reload the page.</p>}
-    </section>
-  )
+  return <Interview {...start} ticket={ticket} />
 }

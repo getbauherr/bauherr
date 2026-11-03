@@ -1,5 +1,6 @@
 /* Tailwind v4 without preflight, so app.css pages keep their look. Colors resolve to the docs/design tokens in tokens.css, which flip with the theme.
    Radius, font and spacing tokens share Tailwind's variable names and override its defaults. */
+@layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 
