@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, createVerify, generateKeyPairSync } from 'node:crypto';
 import { describe, it } from 'node:test';
 import {
-  appAuth, closeReasonLabel, Conflict, GithubBackend, githubWebhooks, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
+  appAuth, closeReasonLabel, Conflict, FakeBackend, GithubBackend, githubWebhooks, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
 } from '../src/index.js';
 
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
@@ -27,6 +27,20 @@ describe('stage helpers', () => {
     assert.equal(closeReasonLabel('duplicate'), 'bauherr:close-reason:duplicate');
     assert.equal(stageOf(['x', 'bauherr:stage:build']), 'build');
     assert.equal(stageOf(['x']), null);
+  });
+  it('the later stage wins when a Ticket carries two stage labels', () => {
+    assert.equal(stageOf(['bauherr:stage:release', 'bauherr:stage:review']), 'release');
+    assert.equal(stageOf(['bauherr:stage:review', 'bauherr:stage:release']), 'release');
+  });
+  it('setStage adds before it removes: a failed add keeps the old label', async () => {
+    const b = new FakeBackend();
+    const ts = b.tickets('a/b');
+    const { number } = await ts.create({ title: 't', labels: ['bauherr:stage:review'] });
+    b.failNext('addLabels');
+    await assert.rejects(setStage(ts, String(number), 'release'));
+    assert.deepEqual((await ts.get(String(number))).labels, ['bauherr:stage:review']);
+    await setStage(ts, String(number), 'release');
+    assert.deepEqual((await ts.get(String(number))).labels, ['bauherr:stage:release']);
   });
 });
 

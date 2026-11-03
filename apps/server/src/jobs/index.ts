@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage, stageLabel } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
@@ -20,10 +20,7 @@ import { decrypt } from '../lib/secrets'
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
 export const SESSION_TIMEOUT_MS = 30 * 60_000
-const STAGE_LABEL = /^bauherr:stage:(.+)$/
-
-export const stageOf = (labels: string[]): string | null =>
-  labels.map((l) => STAGE_LABEL.exec(l)?.[1]).find(Boolean) ?? null
+export { stageOf }
 
 /** Decision D2. Fallback only: pack/workflow.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
 const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']
@@ -112,7 +109,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -316,6 +313,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             await payload.update({ collection: 'tickets', id: stuck.docs[i].id, data: { gatePendingAttempts: MAX_GATE_ATTEMPTS }, depth: 0, overrideAccess: true })
           }
         }
+        let revertFailed = false
         for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
@@ -349,24 +347,32 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
+          if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== 'triage' || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
+            stage = prev.stage
+            payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
+            try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
+          }
           // Stage guard (#196): a forward move the factory did not record is reverted to the DB stage; backward moves and first sight are accepted.
           let clearFactoryStage = false
           if (prev && stage && stage !== (prev.stage ?? 'triage')) {
             clearFactoryStage = true
             if (stage !== prev.factoryStage && isForward(prev.stage ?? 'triage', stage)) {
-              const from = prev.stage ?? 'triage'
+              const from = prev.stage
+              const back = from ? `to \`${from}\`` : 'to untriaged'
               const marker = `<!-- bauherr:stage-rejected:${stage}:${t.updatedAt} -->`
               const forge = backendFor(conn).tickets(src.repo)
               try {
-                await setStage(forge, String(t.number), from)
+                if (from) await setStage(forge, String(t.number), from)
+                else await forge.removeLabels(String(t.number), labels.filter((l) => stageOf([l]) !== null))
                 if (!(await forge.listComments(String(t.number))).some((c) => c.body.startsWith(marker))) {
-                  await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back to \`${from}\`: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
+                  await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back ${back}: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
                 }
-                labels = [...labels.filter((l) => stageOf([l]) === null), stageLabel(from)]
+                labels = [...labels.filter((l) => stageOf([l]) === null), ...(from ? [stageLabel(from)] : [])]
                 base.labels = labels
                 stage = from
               } catch (e) {
-                payload.logger.warn({ err: e, ticket: prev.id }, 'stage revert failed, keeping the DB stage')
+                payload.logger.warn({ err: e, ticket: prev.id }, 'stage revert failed, keeping the DB stage, retried on the next poll')
+                revertFailed = true
                 continue
               }
             }
@@ -386,13 +392,13 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const data = {
             ...base,
             stage,
-            ...(clearFactoryStage && { factoryStage: null }),
             ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
+          if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
           if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
@@ -400,7 +406,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
         }
-        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
+        await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && !revertFailed && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
         payload.logger.error({ err: e, source: src.id }, 'poll-tickets failed for source')
         await payload

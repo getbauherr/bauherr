@@ -103,17 +103,41 @@ it('holds an approved plan with an open critical decision', async () => {
   expect(await runs(n, 'build')).toHaveLength(0)
 })
 
-it('treats a Ticket with no DB stage as triage: triage to build by hand is reverted', async () => {
+it('reverts a forward stage label on a Ticket with no DB stage and keeps it triageable', async () => {
   fake.actingAs = 'factory'
   const t = await ts().create({ title: 'x', labels: [] })
   await poll()
   await payload.update({ collection: 'tickets', id: (await row(t.id)).id, data: { stage: null }, ...o })
   await ts().addLabels(t.id, ['bauherr:stage:build'])
   await poll()
-  expect((await ts().get(t.id)).labels).toContain('bauherr:stage:triage')
-  expect((await ts().get(t.id)).labels).not.toContain('bauherr:stage:build')
+  expect((await ts().get(t.id)).labels.filter((l) => l.startsWith('bauherr:stage:'))).toEqual([])
+  expect((await row(t.id)).stage ?? null).toBeNull()
   expect(await rejections(t.id)).toHaveLength(1)
   expect(await runs(t.id, 'build')).toHaveLength(0)
+})
+
+it('reverts a hand-set parent to build', async () => {
+  const n = await known('plan')
+  await payload.update({ collection: 'tickets', id: (await row(n)).id, data: { stage: 'parent' }, ...o })
+  await ts().removeLabels(n, ['bauherr:stage:plan'])
+  await ts().addLabels(n, ['bauherr:stage:build'])
+  await poll()
+  expect((await row(n)).stage).toBe('parent')
+  expect(await rejections(n)).toHaveLength(1)
+  expect(await runs(n, 'build')).toHaveLength(0)
+})
+
+it('retries a failed revert on the next poll', async () => {
+  const n = await known('plan')
+  await relabel(n, 'plan', 'build')
+  fake.failNext('addLabels')
+  await poll()
+  expect((await ts().get(n)).labels).toContain('bauherr:stage:build')
+  expect((await row(n)).stage).toBe('plan')
+  await poll()
+  expect((await ts().get(n)).labels).toContain('bauherr:stage:plan')
+  expect((await ts().get(n)).labels).not.toContain('bauherr:stage:build')
+  expect(await runs(n, 'build')).toHaveLength(0)
 })
 
 it('drops a lingering factory record on a human backward move, so an agent cannot re-forward', async () => {

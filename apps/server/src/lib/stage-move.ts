@@ -4,8 +4,8 @@ import type { Payload } from 'payload'
 
 const idOf = (v: unknown) => (typeof v === 'object' && v ? (v as { id: number }).id : (v as number))
 
-/** Forward order of the stage labels; `parent` and unknown names are never "forward". */
-const ORDER = ['triage', 'plan', 'build', 'review', 'release', 'done']
+/** Forward order of the stage labels; unknown names are never "forward". */
+const ORDER = ['triage', 'plan', 'parent', 'build', 'review', 'release', 'done']
 export const isForward = (from: string, to: string) => ORDER.includes(from) && ORDER.includes(to) && ORDER.indexOf(to) > ORDER.indexOf(from)
 
 /** The factory's own stage move: records it on the Ticket row first, so the poller can tell it from a hand-set forge label (#196), then sets the label. */
