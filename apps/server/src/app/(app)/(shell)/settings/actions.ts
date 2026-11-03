@@ -1,14 +1,17 @@
 'use server'
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
-import { webOrigin } from '../../../../lib/connection'
+import { backendFor } from '../../../../lib/adapters'
+import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
+import { deployErrors } from '../../lib/product-setup'
 import { isAdmin, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { isWebUrl } from '../../lib/url'
@@ -27,7 +30,10 @@ const act = (rename: Record<string, string>, fn: (c: Awaited<ReturnType<typeof c
   async (_prev, fd) => {
     const c = await ctx()
     const result = await run(() => fn(c, fd), rename)
-    if (result.saved) revalidatePath('/settings', 'layout')
+    if (result.saved) {
+      revalidatePath('/settings', 'layout')
+      revalidatePath('/setup')
+    }
     return result
   }
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim()
@@ -78,36 +84,73 @@ export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) =
 
 const inWs = (c: Awaited<ReturnType<typeof ctx>>, collection: string, ...ids: (number | undefined)[]) => assertInWorkspace(c.payload, collection, ids, inWorkspace(c))
 
-const create = (collection: string, build: (fd: FormData) => Record<string, unknown>) =>
-  act({}, async (c, fd) => {
-    only(c.user)
-    await c.payload.create({ collection, data: { ...build(fd), workspace: inWorkspace(c) }, ...c.w } as never)
-  })
+const slugOf = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
-export const createProduct = create('products', (fd) => ({ name: s(fd, 'name'), slug: s(fd, 'slug') }))
+/** Creates the Product (short name derived from the name when empty) and returns its id. */
+const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => {
+  const name = s(fd, 'name')
+  const slug = s(fd, 'slug') || slugOf(name)
+  if (!/^[a-z0-9-]+$/.test(slug)) throw Object.assign(new Error('Short name invalid.'), { data: { errors: [{ path: 'slug', message: 'Use lowercase letters, digits and dashes.' }] } })
+  return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
+}
+
+/** Creates the Product and opens its page. */
+export const createProduct = act({}, async (c, fd) => {
+  only(c.user)
+  redirect(`/settings/products/${await makeProduct(c, fd)}`)
+})
+
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks') }
-  const bad: (keyof typeof data)[] = (['stagingUrl', 'deployWebhookUrl', 'productionWebhookUrl'] as const).filter((k) => data[k] && !isWebUrl(data[k]))
-  if (data.deployMode === 'webhook' && !data.deployWebhookUrl) bad.push('deployWebhookUrl')
-  if (data.productionGate && !data.productionChecks) bad.push('productionChecks')
-  if (bad.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: bad.map((path) => ({ path, message: data[path] ? 'must be an http(s) URL' : (path === 'productionChecks' ? 'required with the production gate' : 'required in webhook mode') })) } })
+  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
+  const errors = Object.entries(deployErrors(data)).map(([path, message]) => ({ path, message }))
   const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
-  if (unknown.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors: [{ path: 'gateOwners', message: `unknown GitHub login: ${unknown.join(', ')}` }] } })
+  if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
+  if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
   await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
 })
-export const createRepository = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await c.payload.create({ collection: 'repositories', data: { fullName: s(fd, 'fullName'), product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
-})
-export const createSource = act({}, async (c, fd) => {
-  only(c.user)
+
+/** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */
+const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: number, fd: FormData) => {
   const connection = Number(s(fd, 'connection')) || undefined
-  await inWs(c, 'products', id(fd))
+  const fullName = s(fd, 'fullName')
   await inWs(c, 'connections', connection)
-  await c.payload.create({ collection: 'ticket_sources', data: { repo: s(fd, 'repo'), connection, product: id(fd), workspace: inWorkspace(c) }, ...c.w } as never)
+  const repo = await c.payload.create({ collection: 'repositories', data: { fullName, product, workspace: inWorkspace(c) }, ...c.w } as never)
+  if (fd.get('readTickets') !== 'on') return
+  try {
+    await c.payload.create({ collection: 'ticket_sources', data: { repo: fullName, connection, product, workspace: inWorkspace(c) }, ...c.w } as never)
+  } catch (e) {
+    await c.payload.delete({ collection: 'repositories', id: repo.id, ...c.w } as never)
+    throw e
+  }
+}
+export const addRepository = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await makeRepository(c, id(fd), fd)
+})
+
+/** Product, repository and ticket source in one go; the Product is deleted again when a later create fails. */
+export const createProductWithRepo = act({}, async (c, fd) => {
+  only(c.user)
+  const slug = s(fd, 'slug') || slugOf(s(fd, 'name'))
+  if ((await c.payload.count({ collection: 'products', where: { and: [{ slug: { equals: slug } }, { workspace: { equals: inWorkspace(c) } }] }, overrideAccess: true } as never)).totalDocs) throw Object.assign(new Error('Short name taken.'), { data: { errors: [{ path: 'slug', message: 'A Product with this short name already exists in this Workspace.' }] } })
+  const product = await makeProduct(c, fd)
+  fd.set('readTickets', 'on')
+  try {
+    await makeRepository(c, product, fd)
+  } catch (e) {
+    await c.payload.delete({ collection: 'products', id: product, ...c.w } as never)
+    throw e
+  }
+})
+
+/** "Skip, use defaults" on /setup: a save without changes, which marks the Product's staging and gates as seen. */
+export const skipDeploy = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await c.payload.update({ collection: 'products', id: id(fd), data: {}, ...c.w } as never)
 })
 
 /** The token is shown once as the ready-made script tag; only its hash is stored. */
@@ -140,6 +183,7 @@ export const removeDoc = act({}, async (c, fd) => {
     if (blocked) throw new Error(`Still referenced by ${blocked}.`)
   }
   await c.payload.delete({ collection, id: id(fd), ...c.w } as never)
+  if (collection === 'products') redirect('/settings/products')
 })
 
 export const saveConnection = act({}, async (c, fd) => {
@@ -154,15 +198,28 @@ export const saveConnection = act({}, async (c, fd) => {
   if (s(fd, 'secret')) data.secret = s(fd, 'secret')
   if (id(fd)) {
     await inWs(c, 'connections', id(fd))
+    if (kind !== 'llm-provider' && s(fd, 'secret')) data.capabilities = { ...(await connectionInput(c.payload, id(fd))).capabilities, verifiedAt: undefined, lastError: undefined }
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
 })
 
-/** Re-saves unchanged: the afterChange hook verifies the provider again. */
+/** LLM providers: re-saves unchanged, the afterChange hook verifies the provider again. Forges: asks the forge who the token belongs to and stores the outcome in `capabilities`. */
 export const verifyConnection = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'connections', id(fd))
-  await c.payload.update({ collection: 'connections', id: id(fd), data: {}, ...c.w } as never)
+  const conn = await connectionInput(c.payload, id(fd))
+  if (conn.kind === 'llm-provider') {
+    await c.payload.update({ collection: 'connections', id: id(fd), data: {}, ...c.w } as never)
+    return
+  }
+  let failure: { message: string; refused: boolean } | null = null
+  try {
+    await backendFor(conn, { maxRetries: 0, timeoutMs: 10_000 }).tickets('').whoami()
+  } catch (e) {
+    failure = { message: (e as Error).message, refused: [401, 403].includes((e as { status?: number }).status ?? 0) }
+  }
+  await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { ...conn.capabilities, verifiedAt: failure ? null : new Date().toISOString(), lastError: failure?.message ?? null } }, overrideAccess: true } as never)
+  if (failure) throw new Error(`${failure.refused ? 'The forge did not accept the token' : 'Could not verify the token'}: ${failure.message}`)
 })
 
 const tenants = (fd: FormData) => fd.getAll('workspaces').map(Number)

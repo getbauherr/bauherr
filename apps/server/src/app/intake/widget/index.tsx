@@ -27,7 +27,7 @@ function Widget({ base, token, saved }: { base: string; token: string; saved: Sa
   const [error, setError] = useState('')
   const [session, setSession] = useState<string | null>(saved?.id ?? null)
   const [adapter] = useState(() => makeIntakeAdapter({ base, headers: { authorization: `Bearer ${token}` }, session: saved?.id, onSession: (id) => { setSession(id); keep(token, id) }, onTurn: setTurn }))
-  const runtime = useLocalRuntime(adapter.chatModel, { initialMessages: toMessages(saved?.messages ?? [], saved?.turn ?? null) })
+  const runtime = useLocalRuntime(adapter.chatModel, { adapters: { attachments: adapter.attachments }, initialMessages: toMessages(saved?.messages ?? [], saved?.turn ?? null) })
 
   async function submit() {
     setError('')
@@ -51,7 +51,7 @@ function Widget({ base, token, saved }: { base: string; token: string; saved: Sa
             <p role="status">{sent.length > 1 ? `Thank you, your requests ${sent.map((n) => `#${n}`).join(', ')} were created.` : `Thank you, your request #${sent[0]} was created.`}</p>
           ) : (
             <AssistantRuntimeProvider runtime={runtime}>
-              <ChatThread maxHeight="max-h-72" first={label} next={label} />
+              <ChatThread attachments maxHeight="max-h-72" first={label} next={label} />
               {error && <p role="alert" className="text-destructive">{error}</p>}
               {turn && (turn.ready || turn.exhausted) && <Button type="button" onClick={submit}>Submit request</Button>}
             </AssistantRuntimeProvider>

@@ -1,0 +1,139 @@
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { EmptyState } from '../../../../components/EmptyState'
+import { Field, SettingsForm } from '../../../../components/SettingsForm'
+import { DeploySections, RepositoryFields } from '../../../../components/ProductForms'
+import { RadioCards, SettingsSection, SetupChecklist } from '../../../../components/SettingsParts'
+import { isAdmin, loadProduct } from '../../../../lib/settings'
+import { currentWorkspace } from '../../../../lib/session'
+import { addRepository, mintEmbedToken, removeDoc, revokeEmbedToken, saveDeploy } from '../../actions'
+
+export const dynamic = 'force-dynamic'
+
+const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
+
+const Remove = ({ collection, id, label }: { collection: string; id: number; label: string }) => (
+  <SettingsForm action={removeDoc} submit={label} confirm="Confirm remove" inline>
+    <input type="hidden" name="collection" value={collection} />
+    <input type="hidden" name="id" value={id} />
+  </SettingsForm>
+)
+
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { user, workspace } = await currentWorkspace()
+  if (!workspace) return <EmptyState text="You have no Workspace yet." />
+  const data = await loadProduct(workspace.id, Number((await params).id))
+  if (!data) notFound()
+  const { product: p, connections } = data
+  const admin = isAdmin(user)
+  const d = p.deploy
+  const active = p.embedTokens.filter((e) => !e.revokedAt)
+  const revoked = p.embedTokens.filter((e) => e.revokedAt)
+  const orphans = p.sources.filter((s) => !p.repositories.some((r) => r.fullName === s.repo))
+
+  const settings = (
+    <>
+      <DeploySections data={data} admin={admin} numbered />
+
+      <SettingsSection id="release" n={5} title="Release notes" purpose="Release notes are written when you approve production.">
+        <RadioCards name="releaseMode" legend="Who makes the release?" value={d.releaseMode} options={[
+          { value: 'notes-only', title: 'My tooling makes releases', text: 'Bauherr adds plain-language notes to the release your tooling creates.' },
+          { value: 'factory', title: 'Bauherr makes the release', text: 'Bauherr tags the version, publishes the release and opens a CHANGELOG change for you to merge.' },
+        ]} />
+      </SettingsSection>
+    </>
+  )
+
+  return (
+    <>
+      <div className="stack-1">
+        <p className="small muted"><Link href="/settings/products">Products</Link> / {p.name}</p>
+        <h2 className="heading">{p.name}</h2>
+      </div>
+      {!admin && <p className="small muted">Only an Admin can change Product settings.</p>}
+      <SetupChecklist rows={p.setup.rows} />
+
+      <SettingsSection id="repository" n={1} title="Repository and tickets" purpose="The code the agents work in and where new Tickets come from." advanced={
+        <>
+          <p className="small muted">Short name <span className="mono">{p.slug}</span>. It names the Knowledge repo folder and cannot change.</p>
+          {p.sources.map((s) => (
+            <div key={s.id} className="row-between">
+              <span className="small">Last checked <span className="mono">{when(s.polledAt)}</span> ({s.connection}), position <span className="mono">{s.cursor || 'none'}</span></span>
+              {admin && <Remove collection="ticket_sources" id={s.id} label="Stop reading tickets" />}
+            </div>
+          ))}
+          {admin && p.repositories.map((r) => <div key={r.id} className="row-between"><span className="mono small">{r.fullName}</span><Remove collection="repositories" id={r.id} label="Remove repository" /></div>)}
+        </>
+      }>
+        {(p.repositories.length > 0 || orphans.length > 0) && (
+          <div className="scroll">
+            <table className="table">
+              <thead><tr><th>Repository</th><th>Reads tickets</th></tr></thead>
+              <tbody>
+                {p.repositories.map((r) => <tr key={r.id}><td className="mono">{r.fullName}</td><td>{p.sources.some((s) => s.repo === r.fullName) ? 'Yes' : 'No'}</td></tr>)}
+                {orphans.map((s) => <tr key={`s${s.id}`}><td className="mono">{s.repo}</td><td>Yes</td></tr>)}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {admin && (connections.length ? (
+          <SettingsForm action={addRepository} submit="Add repository" reset>
+            <input type="hidden" name="id" value={p.id} />
+            <RepositoryFields connections={connections} />
+          </SettingsForm>
+        ) : (
+          <EmptyState text="Bauherr needs access to GitHub or GitLab first." action={{ href: '/settings/connections', label: 'Add connection' }} />
+        ))}
+      </SettingsSection>
+
+      {admin ? <SettingsForm action={saveDeploy} submit="Save changes" primary bar><input type="hidden" name="id" value={p.id} />{settings}</SettingsForm> : <fieldset disabled className="stack">{settings}</fieldset>}
+
+      <SettingsSection id="widget" n={6} title="Website widget" purpose="Lets your users send requests from your own site." advanced={revoked.length > 0 && (
+        <div className="scroll">
+          <table className="table">
+            <thead><tr><th>Revoked widgets</th><th>Sites</th><th>Revoked</th></tr></thead>
+            <tbody>{revoked.map((e) => <tr key={e.id}><td>{e.name}</td><td className="mono">{e.origins}</td><td className="mono">{when(e.revokedAt)}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}>
+        {active.length > 0 ? (
+          <div className="scroll">
+            <table className="table">
+              <thead><tr><th>Name</th><th>Sites</th><th>Created</th><th /></tr></thead>
+              <tbody>
+                {active.map((e) => (
+                  <tr key={e.id}>
+                    <td>{e.name}</td><td className="mono">{e.origins}</td><td className="mono">{when(e.createdAt)}</td>
+                    <td>{admin && <SettingsForm action={revokeEmbedToken} submit="Revoke" confirm="Confirm revoke" inline><input type="hidden" name="id" value={e.id} /></SettingsForm>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="small muted">No website widget yet. Add one to collect requests from your users.</p>
+        )}
+        {admin && (
+          <SettingsForm action={mintEmbedToken} submit="Add widget" reset copy>
+            <input type="hidden" name="id" value={p.id} />
+            <Field name="name" label="Name" hint="So you recognise it later." example="Shop footer" required />
+            <Field name="origins" label="Sites that may show the widget" hint="One address per line. The widget only works on these sites. The code to paste is shown once, before the closing body tag." example="https://shop.acme.com" rows={3} required />
+          </SettingsForm>
+        )}
+      </SettingsSection>
+
+      {admin && (
+        <SettingsSection id="danger" title="Delete Product">
+          {p.blocked ? (
+            <p className="small muted">Cannot delete yet: still referenced by {p.blocked}. Remove those first.</p>
+          ) : (
+            <>
+              <p className="small muted">Permanently deletes this Product. It must have nothing attached: no repositories, ticket sources, Tickets, widget tokens or requests.</p>
+              <Remove collection="products" id={p.id} label="Delete Product" />
+            </>
+          )}
+        </SettingsSection>
+      )}
+    </>
+  )
+}

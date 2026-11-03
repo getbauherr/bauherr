@@ -11,6 +11,7 @@ let actions: typeof import('../src/lib/actions')
 let sessions: typeof import('../src/app/intake/api/sessions/route')
 let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route')
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
+let limits: typeof import('../src/app/intake/api/media-limits/route')
 let media: typeof import('../src/app/intake/api/media/[id]/route')
 let shots: typeof import('../src/app/intake/api/sessions/[id]/screenshots/route')
 let pub: typeof import('../src/app/m/[id]/[sig]/route')
@@ -33,6 +34,7 @@ beforeAll(async () => {
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   actions = await import('../src/lib/actions')
+  limits = await import('../src/app/intake/api/media-limits/route')
   media = await import('../src/app/intake/api/media/[id]/route')
   shots = await import('../src/app/intake/api/sessions/[id]/screenshots/route')
   pub = await import('../src/app/m/[id]/[sig]/route')
@@ -57,6 +59,12 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
+
+it('serves the upload limits to signed-in callers only', async () => {
+  expect((await limits.POST(new Request('http://x.test/i', { method: 'POST' }))).status).toBe(401)
+  const res = await limits.POST(json(keyA, {}))
+  expect(await res.json()).toEqual({ maxBytes: 5 * 1024 * 1024, maxPerSession: 5 })
+})
 
 const draft = (p: Partial<Draft> = {}): Draft => ({ problem: 'Save button does nothing', context: 'Settings page', acceptance_criteria: ['Saves', 'Shows a toast'], type: 'bug', links: [], ...p })
 const turn = (extra: object = {}) => ({ question: 'Next?', draft: draft(), needsScreenshot: false, missing: [], ...extra })

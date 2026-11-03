@@ -11,6 +11,7 @@ import { SortableCards } from './SortableCards'
 import { StatusChip } from './StatusChip'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
+import { Table } from './ui/table'
 
 const Num = ({ t }: { t: TicketRow }) => <span className="num mono small text-muted-foreground">#{t.number}</span>
 
@@ -22,7 +23,7 @@ const Needs = ({ t }: { t: TicketRow }) => (
 )
 
 const Status = ({ s }: { s: NonNullable<ReturnType<typeof cardStatus>> }) => (
-  <Badge variant={s.status === 'Working' ? 'accent' : 'muted'} data-status={s.status.toLowerCase()} title={s.tip}>{s.word ?? s.status}</Badge>
+  <Badge variant={s.status === 'Working' ? 'accent' : 'muted'} data-status={s.status.toLowerCase()} title={s.tip} aria-label={s.status === 'Working' ? undefined : `${s.status}: ${s.tip}`}>{s.status}</Badge>
 )
 
 const EpicTag = ({ t }: { t: TicketRow }) =>
@@ -32,7 +33,7 @@ const EpicTag = ({ t }: { t: TicketRow }) =>
 
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="ticket-title flex-1 hover:underline">{t.title}</Link>
 
-export function BoardView({ tickets, showProduct, wip }: { tickets: TicketRow[]; showProduct: boolean; wip: Record<string, { count: number; limit: number | null }> }) {
+export function BoardView({ tickets, showProduct, admin, wip }: { tickets: TicketRow[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }> }) {
   const latest = new Map(tickets.flatMap((t) => (t.run ? [[t.id, t.run] as const] : [])))
   return (
     <>
@@ -48,7 +49,7 @@ export function BoardView({ tickets, showProduct, wip }: { tickets: TicketRow[];
               </h2>
               <SortableCards
                 items={rows.map((t) => {
-                  const st = t.needsYou ? null : cardStatus(t)
+                  const st = t.needsYou ? null : cardStatus(t, admin)
                   return {
                     id: t.id,
                     movable: t.open,
@@ -76,27 +77,25 @@ export function BoardView({ tickets, showProduct, wip }: { tickets: TicketRow[];
 
 export function RunsTable({ runs, tickets }: { runs: RunRow[]; tickets: Map<number, TicketRow> }) {
   return (
-    <div className="scroll">
-      <table className="table">
-        <thead>
-          <tr className="label">
-            {['Ticket', 'Stage', 'Status', 'When'].map((h) => <th key={h}>{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => {
-            const t = tickets.get(r.ticket)
-            return (
-              <tr key={r.id}>
-                <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}</Link> <span className="mono muted">#{t.number}</span></> : <Link className="link" href={`/runs/${r.id}`}>Run</Link>}</td>
-                <td>{r.stage}</td>
-                <td><StatusChip status={r.status} /></td>
-                <td title={r.createdAt}>{ago(r.createdAt)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <thead>
+        <tr className="label">
+          {['Ticket', 'Stage', 'Status', 'When'].map((h) => <th key={h}>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((r) => {
+          const t = tickets.get(r.ticket)
+          return (
+            <tr key={r.id}>
+              <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}</Link> <span className="mono text-muted-foreground">#{t.number}</span></> : <Link className="text-primary" href={`/runs/${r.id}`}>Run</Link>}</td>
+              <td>{r.stage}</td>
+              <td><StatusChip status={r.status} /></td>
+              <td title={r.createdAt}>{ago(r.createdAt)}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </Table>
   )
 }

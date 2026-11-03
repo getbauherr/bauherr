@@ -23,6 +23,8 @@ const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug:
 const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
 await ensure('bauherren', { email: 'solo@example.com' }, { email: 'solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
 await ensure('bauherren', { email: 'duo@example.com' }, { email: 'duo@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }, { tenant: zeta }] })
+const newco = (await ensure('workspaces', { slug: 'newco' }, { name: 'Newco', slug: 'newco' })).id // stays empty: /setup walks it
+await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup-member@example.com', password, role: 'bauherr', tenants: [{ tenant: newco }] })
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
@@ -88,6 +90,8 @@ for (const [i, [at, summary]] of steps.entries()) {
   if (i > 0) await ensure('tool_calls', { toolUseId: `e2e-tool-${i}` }, { toolUseId: `e2e-tool-${i}`, step: step.id, run: build.id, name: i === 1 ? 'Edit' : 'run_checks', inputDigest: '{"path":"src/export.ts"}', status: 'ok', durationMs: i === 1 ? 90000 : 120000, workspace })
 }
 await ensure('human_touches', { kind: 'approve:plan', ticket: t2 }, { kind: 'approve:plan', ticket: t2, actor: email, at: '2026-10-30T09:05:00Z', workspace })
+const widgetOnly = (await ensure('products', { slug: 'acme-widget' }, { name: 'Acme Widget', slug: 'acme-widget', workspace })).id
+await ensure('embed_tokens', { name: 'Widget only' }, { name: 'Widget only', product: widgetOnly, tokenHash: 'e2e-widget-only-hash', workspace })
 await ensure('workflow_versions', { product }, { version: 1, product, compiled: { stages: [{ name: 'plan' }] }, workspace })
 await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
 await run(t5, 'review', 'succeeded', {

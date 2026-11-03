@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { give, PNG } from './paste'
 
 const email = process.env.E2E_EMAIL!
 
@@ -15,15 +16,16 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   await expect(page.locator('header.topbar')).toBeVisible()
 
   await page.goto('/settings/products')
-  const product = page.locator('section', { has: page.getByRole('heading', { name: /Acme Web/ }) })
+  await page.getByRole('link', { name: 'Acme Web' }).click()
+  const product = page.locator('#widget')
   await product.getByLabel('Name', { exact: true }).fill(name)
-  await product.getByLabel('Allowed origins').fill(new URL(baseURL!).origin)
-  await product.getByRole('button', { name: 'Create token' }).click()
+  await product.getByLabel('Sites that may show the widget').fill(new URL(baseURL!).origin)
+  await product.getByRole('button', { name: 'Add widget' }).click()
   const tag = product.getByRole('status').filter({ hasText: 'data-token' })
   const token = /data-token="(bemb_[\w-]+)"/.exec((await tag.textContent())!)![1]!
   await page.reload()
   await expect(page.getByText(token)).toHaveCount(0)
-  await expect(product.getByRole('cell', { name }).last()).toBeVisible()
+  await expect(product.getByRole('cell', { name })).toBeVisible()
 
   const host = await page.context().newPage()
   await host.goto(`/intake-embed-test.html?token=${token}`)
@@ -34,6 +36,11 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
     await expect(host.getByRole('region', { name: 'Report a problem' }).locator('[data-role=assistant]').last()).toHaveText(reply)
   }
   await say('The invoice total is wrong', 'Who is affected, and since when?')
+  const input = host.getByPlaceholder('Describe it in one sentence')
+  await give(input, 'paste', { name: 'widget-shot.png', type: 'image/png', base64: PNG })
+  await expect(host.getByText('widget-shot.png')).toBeVisible()
+  await give(input, 'paste', { name: 'notes.txt', type: 'text/plain', size: 10 })
+  await expect(host.getByRole('alert').filter({ hasText: 'only png, jpeg or webp images' })).toBeVisible()
   await say('Finance, last week', 'How should it work once it is fixed?')
   await host.reload()
   await host.getByRole('button', { name: 'Report a problem' }).click()
@@ -45,12 +52,14 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   await page.reload()
   await product.getByRole('row', { name }).getByRole('button', { name: 'Revoke' }).click()
   await product.getByRole('button', { name: 'Confirm revoke' }).click()
+  await expect(product.getByRole('row', { name })).toHaveCount(0)
+  await product.getByText('Advanced', { exact: true }).click()
   const row = product.getByRole('row', { name })
-  await expect(row.getByRole('cell').nth(3)).toHaveText(/\d{4}-\d\d-\d\d/)
-  await expect(row.getByRole('button', { name: 'Revoke' })).toHaveCount(0)
+  await expect(row.getByRole('cell').nth(2)).toHaveText(/\d{4}-\d\d-\d\d/)
   const post = () => host.request.post('/intake/api/sessions', { headers: { authorization: `Bearer ${token}`, origin: new URL(baseURL!).origin }, data: {} })
   expect((await post()).status()).toBe(403)
   await page.reload()
-  await expect(row.getByRole('cell').nth(3)).toHaveText(/\d{4}-\d\d-\d\d/)
+  await product.getByText('Advanced', { exact: true }).click()
+  await expect(row.getByRole('cell').nth(2)).toHaveText(/\d{4}-\d\d-\d\d/)
   expect((await post()).status()).toBe(403)
 })

@@ -1,6 +1,7 @@
 import { IntakeChat } from '../../../components/IntakeChat'
 import { EmptyState } from '../../../components/EmptyState'
 import { ago } from '../../../lib/format'
+import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,7 @@ export default async function NewRequest({ searchParams }: { searchParams: Promi
   return (
     <>
       <h1 className="title">New request</h1>
-      {products.length ? <IntakeChat userId={user.id as number} key={initial?.id} products={products} initial={initial as never} others={others} /> : <EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/settings/workspace', label: 'Open settings' }} />}
+      {products.length ? <IntakeChat userId={user.id as number} key={initial?.id} products={products} initial={initial as never} others={others} /> : <EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) ? '' : ' Ask an Admin to set up the Workspace.'}`} action={isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} />}
     </>
   )
 }

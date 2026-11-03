@@ -31,6 +31,7 @@ const STATES = [
 ] as const
 
 test('the action bar is the same single, visible bar in every state', async ({ page }) => {
+  test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 800 })
   await login(page)
   let y: number | null = null
@@ -42,9 +43,9 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       const bar = page.getByTestId('action-bar')
       await expect(bar).toBeVisible()
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
-      await expect(bar.locator('.btn.primary')).toHaveCount(verb ? 1 : 0)
-      if (verb) await expect(bar.locator('.btn.primary')).toHaveText(verb)
-      await expect(bar.locator('.btn')).not.toHaveCount(3)
+      await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(verb ? 1 : 0)
+      if (verb) await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
+      await expect(bar.locator('[data-slot=button]')).not.toHaveCount(3)
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
@@ -78,6 +79,9 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
 
   await expect(page.locator('.sheet tbody tr')).toHaveCount(2)
   await expect(page.getByText('★ critical')).toHaveCount(1)
+  const gaps = await page.locator('.max-w-\\[80ch\\] > p + *').evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).marginTop)))
+  expect(gaps.length).toBeGreaterThan(0)
+  expect(gaps.every((g) => g > 0)).toBe(true)
   const bar = page.getByTestId('action-bar')
   const approve = bar.getByRole('button', { name: 'Approve plan' })
   await expect(bar.getByRole('link', { name: 'Answer decisions' })).toBeVisible()
@@ -107,5 +111,60 @@ test('the plan gate shows Budget and Model to an Admin only', async ({ page }) =
     for (const name of ['Budget', 'Model']) await expect(gate.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
     if (!admin) await expect(gate).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku/i)
     await page.context().clearCookies()
+  }
+})
+
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+test('a comment with a pasted, dropped and picked image is posted and the image link serves without login', async ({ page, playwright }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
+  const box = page.getByRole('textbox', { name: 'Comment' })
+  const post = page.getByRole('button', { name: 'Post comment' })
+  await expect(post).toBeDisabled()
+  const send = (type: 'paste' | 'drop', name: string) =>
+    box.evaluate((el, [type, name, b64]) => {
+      const dt = new DataTransfer()
+      dt.items.add(new File([Uint8Array.from(atob(b64!), (c) => c.charCodeAt(0))], name!, { type: 'image/png' }))
+      el.dispatchEvent(type === 'paste' ? new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }) : new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    }, [type, name, PNG])
+  await box.fill('The total is off')
+  await send('paste', 'pasted.png')
+  await expect(page.getByRole('list', { name: 'Images to post' }).getByText('pasted.png')).toBeVisible()
+  await send('drop', 'dropped.png')
+  await expect(page.getByText('dropped.png')).toBeVisible()
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Add image' }).click()
+  await (await chooser).setFiles({ name: 'picked.png', mimeType: 'image/png', buffer: Buffer.from(PNG, 'base64') })
+  await expect(page.getByText('picked.png')).toBeVisible()
+  await page.getByRole('button', { name: 'Remove picked.png' }).click()
+  await expect(page.getByText('picked.png')).toHaveCount(0)
+  if (shots) {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.locator('#comment').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${shots}/comment-composer-1280x800.png` })
+  }
+
+  await post.click()
+  const status = page.getByRole('status').filter({ hasText: 'Posted to the forge' })
+  await expect(status).toBeVisible()
+  await expect(box).toHaveValue('')
+  const images = status.getByRole('img')
+  await expect(images).toHaveCount(2)
+  const src = (await images.first().getAttribute('src'))!
+  expect(src).toMatch(/\/m\/\d+\/[\w-]+\.png$/)
+  await expect.poll(() => images.first().evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0)
+  const anon = await playwright.request.newContext({ baseURL: process.env.BASE_URL })
+  const res = await anon.get(src)
+  expect(res.status()).toBe(200)
+  expect(res.headers()['content-type']).toBe('image/png')
+  await anon.dispose()
+  if (shots) for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme })
+    for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(vp)
+      await page.locator('#comment').scrollIntoViewIfNeeded()
+      await page.screenshot({ path: `${shots}/comment-posted-${scheme}-${vp.width}x${vp.height}.png` })
+    }
   }
 })

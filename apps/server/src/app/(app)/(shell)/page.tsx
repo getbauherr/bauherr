@@ -7,6 +7,7 @@ import { EpicsView } from '../components/Epics'
 import { BoardView } from '../components/OverviewViews'
 import { epicNamed, epicRestoreUrl, epicsToShow, inEpic } from '../lib/epics'
 import { loadOverview } from '../lib/overview'
+import { isAdmin } from '../lib/settings'
 import { currentWorkspace, rememberEpic, requireBauherr } from '../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +21,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const list = view === 'epics'
   if (view && !graph && !list) redirect(rest.size ? `/?${rest}` : '/')
   const { workspace } = await currentWorkspace()
-  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all' && !graph) : { tickets: [], products: [], epics: [], lookupsCapped: false, wip: {} }
+  const data = workspace ? await loadOverview(workspace.id, sp.state === 'all' && !graph) : { tickets: [], products: [], epics: [], wip: {} }
   const user = await requireBauherr()
   const named = list ? undefined : epicNamed(sp.epic, data.epics)
   if (named !== undefined && named !== (user.uiPrefs?.epic ?? null)) await rememberEpic(user, named)
@@ -39,9 +40,13 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       {list ? (
         epics.length ? <EpicsView epics={epics} /> : <EmptyState text="No open epics." />
       ) : shown.length ? (
-        graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} showProduct={data.products.length > 1 && !product} wip={data.wip} />
+        graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} />
       ) : sp.epic ? (
         <EmptyState text="No open tickets in this epic." action={{ href: '/?epic=', label: 'Clear the epic filter' }} />
+      ) : !data.products.length ? (
+        <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) ? '' : ' Ask an Admin to set up the Workspace.'}`} action={isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} />
+      ) : product ? (
+        <EmptyState text="No open tickets in this Product." action={{ href: '/?product=', label: 'Clear the Product filter' }} />
       ) : (
         <EmptyState text="Describe what you want built." action={{ href: '/requests/new', label: 'New request' }} />
       )}

@@ -6,6 +6,7 @@ import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { gateOn, modeFor, packed } from '../lib/mode'
+import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
@@ -596,4 +597,11 @@ export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; ou
   },
 }
 
-export const TASKS = [pollTickets, runStage, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]
+export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; output: { deleted: number } }> = {
+  slug: 'prune-comment-media',
+  schedule: scheduled('0 30 3 * * *'),
+  retries: 0,
+  handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
+}
+
+export const TASKS = [pollTickets, runStage, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]
