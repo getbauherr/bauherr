@@ -1,5 +1,6 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
+import { s3Storage } from '@payloadcms/storage-s3'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
 import { TASKS } from './jobs'
@@ -9,6 +10,8 @@ import { secret } from './lib/secrets'
 const tenantCollections = Object.fromEntries(
   collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys'].includes(c.slug)).map((c) => [c.slug, {}]),
 )
+
+const mediaBucket = process.env.MEDIA_S3_BUCKET
 
 export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),
@@ -26,6 +29,19 @@ export default buildConfig({
       tenantField: { name: 'workspace' },
       collections: tenantCollections as never,
       userHasAccessToAllTenants: (user) => (user as { role?: string }).role === 'admin',
+    }),
+    // Same code for both stores: MEDIA_S3_BUCKET (+ endpoint, region, keys) switches `media` from the local volume to any S3-compatible bucket. Fields stay in the schema either way (prod runs migrations).
+    s3Storage({
+      enabled: !!mediaBucket,
+      alwaysInsertFields: true,
+      collections: { media: true },
+      bucket: mediaBucket ?? '',
+      config: {
+        endpoint: process.env.MEDIA_S3_ENDPOINT || undefined,
+        region: process.env.MEDIA_S3_REGION || 'auto',
+        forcePathStyle: true,
+        credentials: mediaBucket ? { accessKeyId: secret('MEDIA_S3_ACCESS_KEY_ID'), secretAccessKey: secret('MEDIA_S3_SECRET_ACCESS_KEY') } : undefined,
+      },
     }),
   ],
   jobs: {

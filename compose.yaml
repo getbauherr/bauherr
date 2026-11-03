@@ -5,7 +5,7 @@ x-app: &app
     db: {condition: service_healthy}
     init: {condition: service_completed_successfully}
     gateway: {condition: service_started}
-  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway"]
+  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway", "bauherr-media:/data/media"]
   environment:
     DATABASE_URL: postgres://bauherr:bauherr@db:5432/bauherr
     GATEWAY_URL: http://gateway:4000
@@ -21,6 +21,17 @@ x-app: &app
     OIDC_ISSUER: ${OIDC_ISSUER:-}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
     OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+    # Pasted screenshots: local volume by default; MEDIA_S3_BUCKET (+ endpoint, region, keys) switches to any S3-compatible bucket, see docs/media.md.
+    MEDIA_DIR: /data/media
+    MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-}
+    MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-}
+    MEDIA_S3_REGION: ${MEDIA_S3_REGION:-}
+    MEDIA_S3_ACCESS_KEY_ID: ${MEDIA_S3_ACCESS_KEY_ID:-}
+    MEDIA_S3_SECRET_ACCESS_KEY: ${MEDIA_S3_SECRET_ACCESS_KEY:-}
+    MEDIA_S3_ACCESS_KEY_ID_FILE: ${MEDIA_S3_ACCESS_KEY_ID_FILE:-}
+    MEDIA_S3_SECRET_ACCESS_KEY_FILE: ${MEDIA_S3_SECRET_ACCESS_KEY_FILE:-}
+    MEDIA_MAX_BYTES: ${MEDIA_MAX_BYTES:-}
+    MEDIA_MAX_PER_SESSION: ${MEDIA_MAX_PER_SESSION:-}
 
 services:
   init:
@@ -88,3 +99,4 @@ volumes:
   bauherr-pg:
   bauherr-secrets:
   bauherr-gateway:
+  bauherr-media:

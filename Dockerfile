@@ -3,6 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /repo
 COPY . .
 RUN pnpm install && pnpm build:packages && PAYLOAD_SECRET=build ENCRYPTION_KEY=build pnpm --filter server build
+RUN mkdir -p /data/media
 WORKDIR /repo/apps/server
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 EXPOSE 3000
