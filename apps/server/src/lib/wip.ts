@@ -11,9 +11,9 @@ import { WIP_STAGES, waitingText, wipLimit, type WipStage } from './wip-limits'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** Open Tickets in `stage` that count toward its limit: not waiting for a column, and never parents (their stage is `parent`). */
+/** Open Tickets in `stage` that count toward its limit: all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
-  (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { waitingFor: { exists: false } }] }, overrideAccess: true })).totalDocs
+  (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { waitingFor: { not_equals: stage } }] }, overrideAccess: true })).totalDocs
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
@@ -64,13 +64,15 @@ export const pullWaiting = async (payload: Payload): Promise<number> => {
     const queue = waiting
       .filter((t) => t.waitingFor === stage && !((t.blockedBy as Doc[]) ?? []).some((b) => b.state !== 'closed'))
       .sort((a, b) => executionOrder({ id: a.id, number: a.number, rank: a.rank, stage }, { id: b.id, number: b.number, rank: b.rank, stage }))
-    for (const t of queue) {
-      try {
-        if ((await enterStage(payload, t, stage, () => completeMove(payload, t, stage))) === 'waiting') break
-        await startAfterPull(payload, t, stage)
-        pulled++
-      } catch (e) {
-        payload.logger.error({ err: e, ticket: t.id }, 'pullWaiting failed')
+    for (const ws of new Set(queue.map((t) => id(t.workspace)))) {
+      for (const t of queue.filter((q) => id(q.workspace) === ws)) {
+        try {
+          if ((await enterStage(payload, t, stage, () => completeMove(payload, t, stage))) === 'waiting') break
+          await startAfterPull(payload, t, stage)
+          pulled++
+        } catch (e) {
+          payload.logger.error({ err: e, ticket: t.id }, 'pullWaiting failed')
+        }
       }
     }
   }

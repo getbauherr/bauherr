@@ -68,7 +68,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
     payload.find({ collection: 'products', where: ws, sort: 'name', pagination: false, ...q }),
     payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
   ])
-  const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: (open.docs as unknown as Record<string, any>[]).filter((t) => t.stage === s && !t.waitingFor).length, limit: wipLimit(wsDoc, s) }]))
+  const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: (open.docs as unknown as Record<string, any>[]).filter((t) => t.stage === s && t.waitingFor !== s).length, limit: wipLimit(wsDoc, s) }]))
   const ticketDocs = [...open.docs, ...(closed?.docs ?? [])] as unknown as Record<string, any>[]
   const runRows = recent.docs as unknown as RunRow[]
   const known = new Set(ticketDocs.map((t) => t.id))

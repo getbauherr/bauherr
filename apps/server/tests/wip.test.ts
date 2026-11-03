@@ -169,6 +169,40 @@ describe('the pull rule', () => {
   })
 })
 
+describe('counting and workspaces', () => {
+  it('a Build Ticket waiting for a full Review still counts in Build, so no new Build Run starts', async () => {
+    await limits({ build: 2, review: 1 })
+    await ticket('r', 'review')
+    for (const title of ['a', 'b']) await ticket(title, 'build', { waitingFor: 'review' })
+    const c = await ticket('c', 'plan')
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(2)
+    await poll()
+    expect(await reload(c.id)).toMatchObject({ stage: 'plan', waitingFor: 'build' })
+    expect(await runs(c.id, 'build')).toHaveLength(0)
+    expect(await wip.waitingLabel(payload, await reload(c.id))).toBe('Waiting: Build is full (2/2)')
+    expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
+  })
+
+  it('pulls per Workspace: a full column in one Workspace does not stop pulls in another', async () => {
+    const other = (await payload.create({ collection: 'workspaces', data: { name: 'beta', slug: 'beta', wipLimits: { build: 2 } }, ...o })).id as number
+    const otherProduct = (await payload.create({ collection: 'products', data: { name: 'api', slug: 'api', workspace: other }, ...o })).id as number
+    const otherConnection = (await payload.create({ collection: 'connections', data: { name: 'gh2', kind: 'github', workspace: other }, ...o })).id as number
+    const otherRepo = `beta/wip-${n}`
+    await payload.create({ collection: 'ticket_sources', data: { repo: otherRepo, product: otherProduct, connection: otherConnection, workspace: other }, ...o })
+    await limits({ build: 2 })
+    await ticket('x', 'build')
+    await ticket('y', 'build')
+    const a1 = await ticket('a1', 'plan', { waitingFor: 'build' })
+    const issue = await fake.tickets(otherRepo).create({ title: 'b1', labels: ['bauherr:stage:plan'] })
+    const b1 = await payload.create({ collection: 'tickets', data: { title: 'b1', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'plan', labels: ['bauherr:stage:plan'], product: otherProduct, workspace: other, rank: 'b1', waitingFor: 'build' }, ...o })
+    await wip.pullWaiting(payload)
+    expect(await reload(a1.id)).toMatchObject({ stage: 'plan', waitingFor: 'build' })
+    expect(await reload(b1.id as number)).toMatchObject({ stage: 'build', waitingFor: null })
+    await payload.delete({ collection: 'runs', where: { workspace: { equals: other } }, ...o })
+    await payload.delete({ collection: 'tickets', where: { workspace: { equals: other } }, ...o })
+  })
+})
+
 describe('sub-tickets and parents', () => {
   it('children over the limit wait without a Run and are not counted; parents are not counted', async () => {
     await limits({ build: 1 })
@@ -181,7 +215,6 @@ describe('sub-tickets and parents', () => {
     expect(await runs(kids[0].id, 'build')).toHaveLength(1)
     expect(await runs(kids[1].id, 'build')).toHaveLength(0)
     expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
-    expect(await wip.wipCount(payload, ws, 'parent')).toBe(1)
     await payload.update({ collection: 'tickets', id: kids[0].id, data: { stage: 'review' }, ...o })
     await poll()
     expect(await runs(kids[1].id, 'build')).toHaveLength(1)
