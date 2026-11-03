@@ -508,12 +508,14 @@ export const collections: CollectionConfig[] = [
     date('revokedAt'),
   ]),
   col('media', [
-    rel('session', 'intake_sessions', { required: true }),
+    rel('session', 'intake_sessions'),
+    rel('product', 'products'),
+    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket a comment image belongs to.' } },
     text('name', { required: true }),
-    select('mime', ['image/png', 'image/jpeg', 'image/webp'], { required: true }),
-    { name: 'data', type: 'textarea', required: true, admin: { description: 'Base64, metadata stripped.' } },
+    select('mime', ['image/png', 'image/jpeg', 'image/webp']),
+    { name: 'data', type: 'textarea', admin: { description: 'Legacy base64 rows only; new files live in the upload store.' } },
     { name: 'attached', type: 'checkbox', defaultValue: false, admin: { description: 'Sent to the forge Ticket.' } },
-  ]),
+  ], { upload: { staticDir: process.env.MEDIA_DIR ?? '/data/media', mimeTypes: ['image/png', 'image/jpeg', 'image/webp'] } }),
   col('workflow_versions', [
     num('version'),
     rel('product', 'products', { required: true }),

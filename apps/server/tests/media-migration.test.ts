@@ -25,12 +25,19 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('stores and reads media with its workspace on the migrated schema (push off)', async () => {
+it('stores new files and still reads a legacy base64 row on the migrated schema (push off)', async () => {
   const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id
   const product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace }, ...o })).id
   const session = (await payload.create({ collection: 'intake_sessions', data: { product, workspace }, ...o })).id
-  const m = await payload.create({ collection: 'media', data: { session, workspace, name: 's.png', mime: 'image/png', data: 'AA==' }, ...o })
-  const found = await payload.find({ collection: 'media', where: { workspace: { equals: workspace } }, depth: 0, ...o })
-  expect(found.docs.map((d) => d.id)).toEqual([m.id])
-  expect((await payload.findByID({ collection: 'media', id: m.id, depth: 1, ...o }) as any).session.workspace).toBeTruthy()
+  const { sql } = await import('@payloadcms/db-postgres')
+  await (payload.db as any).drizzle.execute(sql`insert into media (workspace_id, session_id, name, mime, data) values (${workspace}, ${session}, 'old.png', 'image/png', 'AA==')`)
+  const { saveMedia, mediaBytes } = await import('../src/lib/intake/media')
+  const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'))
+  const fresh = await saveMedia(payload, { bytes: png, name: 'new.png', workspace, product, ticketNumber: 7 })
+  const found = await payload.find({ collection: 'media', where: { workspace: { equals: workspace } }, sort: 'id', depth: 0, ...o })
+  expect(found.docs.map((d) => d.name)).toEqual(['old.png', 'new.png'])
+  expect(Buffer.from(await mediaBytes(payload, found.docs[0] as any)).toString('base64')).toBe('AA==')
+  expect([...(await mediaBytes(payload, found.docs[1] as any))]).toEqual([...png])
+  expect(fresh).toMatchObject({ mime: 'image/png', mimeType: 'image/png', ticketNumber: 7 })
+  expect((await payload.findByID({ collection: 'media', id: found.docs[0]!.id, depth: 1, ...o }) as any).session.workspace).toBeTruthy()
 })

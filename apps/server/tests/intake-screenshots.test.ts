@@ -2,7 +2,7 @@ import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { nextTurn, type Draft, type ModelCall } from '../src/lib/intake/engine'
-import { sniff, stripMetadata } from '../src/lib/intake/media'
+import { mediaBytes, sniff, stripMetadata } from '../src/lib/intake/media'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -13,6 +13,7 @@ let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route'
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
 let media: typeof import('../src/app/intake/api/media/[id]/route')
 let shots: typeof import('../src/app/intake/api/sessions/[id]/screenshots/route')
+let pub: typeof import('../src/app/m/[id]/[sig]/route')
 let productId: number
 let keyA: string
 let keyB: string
@@ -34,6 +35,7 @@ beforeAll(async () => {
   actions = await import('../src/lib/actions')
   media = await import('../src/app/intake/api/media/[id]/route')
   shots = await import('../src/app/intake/api/sessions/[id]/screenshots/route')
+  pub = await import('../src/app/m/[id]/[sig]/route')
   sessions = await import('../src/app/intake/api/sessions/route')
   messages = await import('../src/app/intake/api/sessions/[id]/messages/route')
   submit = await import('../src/app/intake/api/sessions/[id]/submit/route')
@@ -123,7 +125,7 @@ it('upload: auth, Workspace isolation, type, size and per-session count are enfo
   expect(ok.map((r) => r.status).sort()).toEqual([201, 201, 201, 201, 201, 409, 409])
   const stored = (await payload.find({ collection: 'media', where: { session: { equals: id } }, ...o })).docs as any[]
   expect(stored).toHaveLength(5)
-  expect(Buffer.from(stored[0].data, 'base64').toString('latin1')).not.toContain('GPS')
+  expect(Buffer.from(await mediaBytes(payload, stored[0])).toString('latin1')).not.toContain('GPS')
   expect((await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o }) as any).screenshots).toBe(5)
 })
 
@@ -155,7 +157,7 @@ it('the engine request carries the screenshots as image blocks; foreign or reuse
   expect(await (await messages.POST(json(keyA, { text: 'the save button does nothing', images: [m1] }), ctx(id))).text()).toMatch(/^event: turn/)
   const content = bodies[0].messages.at(-1).content
   expect(content[0]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/png' } })
-  expect(content[0].source.data).toBe(((await payload.findByID({ collection: 'media', id: m1, depth: 0, ...o })) as any).data)
+  expect(content[0].source.data).toBe(Buffer.from(await mediaBytes(payload, (await payload.findByID({ collection: 'media', id: m1, depth: 0, ...o })) as any)).toString('base64'))
   expect(content.at(-1)).toEqual({ type: 'text', text: 'the save button does nothing' })
   expect((await messages.POST(json(keyA, { text: 'again', images: [m1] }), ctx(id))).status).toBe(200)
   expect(bodies).toHaveLength(1)
@@ -163,7 +165,7 @@ it('the engine request carries the screenshots as image blocks; foreign or reuse
   expect(bodies[1].messages[0].content).toBe('the save button does nothing')
 })
 
-it('a screen request cannot be submitted without a screenshot, then lands with the attachment (adapter) or a link (fallback)', async () => {
+it('a screen request cannot be submitted without a screenshot, then lands with the screenshot as an image link in the Ticket body', async () => {
   const blocked = await newSession()
   vi.stubGlobal('fetch', async () => Response.json({ content: [{ type: 'text', text: JSON.stringify(turn()) }] }))
   await (await messages.POST(json(keyA, { text: 'the save button does nothing' }), ctx(blocked))).text()
@@ -182,18 +184,36 @@ it('a screen request cannot be submitted without a screenshot, then lands with t
     return number as number
   }
 
-  const links = await run()
-  const strip = await payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: productId } }, { 'session.ticketNumber': { equals: links } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, ...o })
+  process.env.PUBLIC_URL = 'https://bauherr.test'
+  const number = await run()
+  const strip = await payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: productId } }, { 'session.ticketNumber': { equals: number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, ...o })
   expect(strip.docs.map((m: any) => m.name)).toEqual(['my_shot.png'])
   expect(strip.docs[0]).not.toHaveProperty('data')
-  expect((await forge.get(String(links))).links).toEqual([expect.stringMatching(/\/intake\/api\/media\/\d+$/)])
+  const t = await forge.get(String(number))
+  expect(t.body).toMatch(/## Screenshots\n!\[my_shot\.png\]\(https:\/\/bauherr\.test\/m\/\d+\/[\w-]+\.png\)\n/)
+  expect(t.links).toEqual([])
+})
 
-  const calls: unknown[][] = []
-  forge.addAttachment = async (...a: unknown[]) => (calls.push(a), 'att-1')
-  const number = await run()
-  delete forge.addAttachment
-  expect(calls).toHaveLength(1)
-  expect(calls[0]!.slice(0, 2)).toEqual([String(number), 'my_shot.png'])
-  expect((calls[0]![2] as Uint8Array).length).toBeGreaterThan(20)
-  expect((await forge.get(String(number))).links).toEqual([])
+it('the Ticket body link serves the image without login, rejects a wrong signature, and a retry does not duplicate the section', async () => {
+  process.env.PUBLIC_URL = 'https://bauherr.test'
+  const forge = fake.tickets(repo) as any
+  const id = await newSession()
+  const { id: m } = await (await shots.POST(await upload(keyA, png(), 'a.png'), ctx(id))).json()
+  await (await messages.POST(json(keyA, { text: 'the save button does nothing', images: [m] }), ctx(id))).text()
+  const { number } = await (await submit.POST(json(keyA, {}), ctx(id))).json()
+  const body = (await forge.get(String(number))).body as string
+  const [, mid, sig] = body.match(/\]\(https:\/\/bauherr\.test\/m\/(\d+)\/([\w-]+\.png)\)/)!
+  const get = (i: string, sg: string) => pub.GET(new Request('http://x.test/m'), { params: Promise.resolve({ id: i, sig: sg }) })
+  const ok = await get(mid!, sig!)
+  expect(ok.status).toBe(200)
+  expect(ok.headers.get('content-type')).toBe('image/png')
+  expect(ok.headers.get('cache-control')).toContain('immutable')
+  expect(ok.headers.get('content-security-policy')).toBe('sandbox')
+  expect(sniff(new Uint8Array(await ok.arrayBuffer()))).toBe('image/png')
+  expect((await get(mid!, `x${sig!.slice(1)}`)).status).toBe(404)
+  expect((await get(String(Number(mid) + 1), sig!)).status).toBe(404)
+
+  await payload.update({ collection: 'intake_sessions', id, data: { status: 'open' }, ...o })
+  expect((await (await submit.POST(json(keyA, {}), ctx(id))).json()).number).toBe(number)
+  expect(((await forge.get(String(number))).body as string).match(/## Screenshots/g)).toHaveLength(1)
 })

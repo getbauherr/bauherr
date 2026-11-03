@@ -89,7 +89,6 @@ export interface TicketSource {
   addLink(id: string, url: string): Promise<void>;
   /** Open sub-tickets of `parentId` whose blockers are all closed. */
   frontier(parentId: string): Promise<TicketSummary[]>;
-  addAttachment?(id: string, name: string, data: Uint8Array): Promise<string>;
 }
 
 export interface Repository {
