@@ -47,6 +47,7 @@ const entry = (slug: string, provider: unknown, params: Record<string, unknown>,
   provider,
   params,
   ...extra,
+  requestHeaders: { remove: ['x-agw-key'] },
   transformation: { model: `llmRequest.model.stripPrefix("ws-${slug}/")` },
 })
 

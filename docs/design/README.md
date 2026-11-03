@@ -32,7 +32,8 @@ A 4px grid: `space-1` to `space-12`. Desktop pages pad `space-8`, phones `space-
 ## Patterns the product is built from
 
 - **Decision sheet**: a table of rows, each with a number, the decision, the recommended default and a `critical` mark. The Bauherr answers once; unanswered non-critical rows take their default. Render it with the `DecisionSheet` component.
-- **Gate**: the two human gates (plan approval, merge) are the only places the product asks for a signature. A `Gate` shows what is being approved, the evidence, the budget and model used, and one primary button.
+- **Gate**: the two human gates (plan approval, merge) are the only places the product asks for a signature. A `Gate` shows what is being approved, the evidence, the budget and model used; the action is the ActionBar's one primary button.
+- **Action bar**: one sticky bar at the top of the Ticket page (docked to the bottom on phones) with a sentence and exactly one primary button; same place in every state.
 - **Status**: every ticket, run and step carries a `StatusChip` (queued, running, succeeded, failed, cancelled, needs human) using the status colors with its word.
 - **Run views**: graph, timeline and list share the same node: name, type, status chip, duration in `mono`. Nodes appear with `duration-panel`; status changes with `duration-state`.
 - **Empty states**: one sentence in `body`, one action. No illustrations.

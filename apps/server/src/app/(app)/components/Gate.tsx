@@ -1,21 +1,18 @@
-import { acceptStagingAction, approvePlanAction, approveProductionAction, grantReviewRoundAction, rerunStage, requestChangesAction, stopReviewAction } from '../lib/actions'
-import Link from 'next/link'
+import { requestChangesAction } from '../lib/actions'
 import { isWebUrl } from '../lib/url'
 import { SubmitButton } from './SubmitButton'
 
 type GateProps = {
-  ticket: number
   number: number
   plan: { title: string; steps: number } | null
   budget: string
   model: string
   sheet: string
-  blocked: string | null
 }
 
-export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: GateProps) {
+export function Gate({ number, plan, budget, model, sheet }: GateProps) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">Approve plan</h2>
         <p className="small muted">#{number} · plan</p>
@@ -27,11 +24,6 @@ export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: Ga
         <dt>Decisions</dt><dd>{sheet}</dd>
       </dl>
       <p className="small muted">Approving starts the Build Run that writes the code and opens the MR.</p>
-      <form action={approvePlanAction}>
-        <input type="hidden" name="ticket" value={ticket} />
-        <SubmitButton className="btn primary" disabled={!!blocked}>Approve plan</SubmitButton>
-        {blocked && <span className="small muted">{blocked}</span>}
-      </form>
     </section>
   )
 }
@@ -39,13 +31,12 @@ export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: Ga
 /** Triage holds the Ticket: the decision sheet below is the action; the last answer moves the Ticket to plan. */
 export function QuestionsGate({ number, answered, total }: { number: number; answered: number; total: number }) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">Answer questions</h2>
         <p className="small muted">#{number} · triage</p>
       </div>
       <p className="body">Triage needs your answers before this Ticket can be planned. {answered} of {total} answered; saving the last critical answer moves the Ticket to plan, where the plan is written.</p>
-      <p><a className="btn primary" href="#decisions">Answer below</a></p>
     </section>
   )
 }
@@ -54,7 +45,7 @@ type ReleaseGateProps = { ticket: number; number: number; title: string; timedOu
 
 export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stagingUrl }: ReleaseGateProps) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">{title}</h2>
         <p className="small muted">#{number} · Staging</p>
@@ -63,11 +54,7 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
       {summaryHtml && <div className="md" dangerouslySetInnerHTML={{ __html: summaryHtml }} />}
       {isWebUrl(stagingUrl) && <p><a className="btn" href={stagingUrl}>Open staging</a></p>}
       <p className="small muted">Accepting confirms the change works on staging; the Ticket then moves on (to production approval if that is on, otherwise to done).</p>
-      <form action={acceptStagingAction}>
-        <input type="hidden" name="ticket" value={ticket} />
-        <SubmitButton className="btn primary">Accept</SubmitButton>
-      </form>
-      <form action={requestChangesAction} className="changes">
+      <form action={requestChangesAction} className="changes" id="changes">
         <input type="hidden" name="ticket" value={ticket} />
         <label className="field">
           <span className="label muted">What needs to change</span>
@@ -81,68 +68,48 @@ export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stag
 
 export function ProductionChecksGate({ number, title }: { number: number; title: string }) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">{title}</h2>
         <p className="small muted">#{number} · Production</p>
       </div>
       <p className="body">The production gate is on, but this Product has no production checks, so no deploy can be observed. Set them to continue; the Ticket then waits for production approval.</p>
-      <Link className="btn primary" href="/settings/products">Open Settings &gt; Products</Link>
     </section>
   )
 }
 
-export function ProductionGate({ ticket, number, title, failed }: { ticket: number; number: number; title: string; failed: boolean }) {
+export function ProductionGate({ number, title, failed }: { number: number; title: string; failed: boolean }) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">{title}</h2>
         <p className="small muted">#{number} · Production</p>
       </div>
       <p className="body">{failed ? 'The production deploy failed or was not reported within 60 minutes. See the production Comment on the forge; approving again retries it.' : "Approving lets the Product's own pipeline deploy this Ticket to production; Bauherr then watches the production checks and closes the Ticket when they pass."}</p>
-      <form action={approveProductionAction}>
-        <input type="hidden" name="ticket" value={ticket} />
-        <SubmitButton className="btn primary">{failed ? 'Approve again' : 'Approve production deploy'}</SubmitButton>
-      </form>
     </section>
   )
 }
 
-export function ReviewCapGate({ ticket, number, title, findingsHtml }: { ticket: number; number: number; title: string; findingsHtml: string | null }) {
+export function ReviewCapGate({ number, title, findingsHtml }: { number: number; title: string; findingsHtml: string | null }) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">{title}</h2>
         <p className="small muted">#{number} · review</p>
       </div>
-      <p className="body">The review sent this Ticket back to Build more often than allowed. Grant one more round, or stop; the MR stays open either way.</p>
+      <p className="body">The review sent this Ticket back to Build more often than allowed. The MR stays open either way.</p>
       {findingsHtml && <div className="md" dangerouslySetInnerHTML={{ __html: findingsHtml }} />}
-      <form action={grantReviewRoundAction}>
-        <input type="hidden" name="ticket" value={ticket} />
-        <SubmitButton className="btn primary">Grant one more round</SubmitButton>
-      </form>
-      <form action={stopReviewAction} className="changes">
-        <input type="hidden" name="ticket" value={ticket} />
-        <label className="field">
-          <span className="label muted">Note (optional)</span>
-          <textarea name="note" rows={2} />
-        </label>
-        <SubmitButton className="btn">Stop</SubmitButton>
-      </form>
     </section>
   )
 }
 
 export function RerunGate({ run, number, title, stage }: { run: number; number: number; title: string; stage: string }) {
   return (
-    <section className="gate" aria-labelledby="gate">
+    <section className="gate" id="details" aria-labelledby="gate">
       <div>
         <h2 className="heading" id="gate">{title}</h2>
         <p className="small muted">#{number} · {stage} · <a className="link" href={`/runs/${run}`}>Run {run}</a></p>
       </div>
-      <form action={rerunStage.bind(null, run)}>
-        <SubmitButton className="btn primary">{`Re-run ${stage}`}</SubmitButton>
-      </form>
     </section>
   )
 }

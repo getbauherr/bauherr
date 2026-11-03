@@ -17,10 +17,11 @@ export function SortableCards({ items }: { items: Item[] }) {
   const router = useRouter()
   const [order, setOrder] = useState(items)
   const [drag, setDrag] = useState<number | null>(null)
+  const [target, setTarget] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => setOrder(items), [items])
 
-  const drop = async (from: number, to: number) => {
+  const reorder = async (from: number, to: number) => {
     if (from === to) return
     const next = move(order, from, to)
     setOrder(next)
@@ -33,17 +34,35 @@ export function SortableCards({ items }: { items: Item[] }) {
     if (!e.altKey || to === i || to < 0 || to >= order.length || !order[to].movable) return
     e.preventDefault()
     const id = order[i].id
-    void drop(i, to).then(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ticket="${id}"]`)?.focus()))
+    void reorder(i, to).then(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ticket="${id}"]`)?.focus()))
   }
-  const over = (e: DragEvent) => drag !== null && e.preventDefault()
+  const from = order.findIndex((x) => x.id === drag)
+  const drop = drag !== null && target !== null && target !== from ? target : null
+  const over = (i: number) => (e: DragEvent) => {
+    if (drag === null) return
+    if (!order[i].movable) return setTarget(null)
+    e.preventDefault()
+    setTarget(i)
+  }
+  const reset = () => {
+    setDrag(null)
+    setTarget(null)
+  }
 
   return (
-    <>
+    <div
+      className="cards"
+      onDragLeave={(e) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) setTarget(null)
+      }}
+    >
       {failed && <p className="muted small" role="alert">Could not save the new order.</p>}
       {order.map((it, i) => (
     <article
       key={it.id}
-      className={`card${drag === it.id ? ' dragging' : ''}`}
+      className={`card${drag === it.id ? ' dragging' : ''}${drop === i ? (from > i ? ' drop-before' : ' drop-after') : ''}`}
+      data-drop={drop === i ? (from > i ? 'before' : 'after') : undefined}
       data-ticket={it.id}
       {...(it.movable && {
         draggable: true,
@@ -55,20 +74,19 @@ export function SortableCards({ items }: { items: Item[] }) {
           e.dataTransfer.setData('text/plain', String(it.id))
           setDrag(it.id)
         },
-        onDragEnd: () => setDrag(null),
-        onDragOver: over,
+        onDragEnd: reset,
         onDrop: (e: DragEvent) => {
           e.preventDefault()
-          const from = order.findIndex((x) => x.id === drag)
-          setDrag(null)
-          if (from >= 0 && order[i].movable) void drop(from, i)
+          reset()
+          if (from >= 0) void reorder(from, i)
         },
       })}
+      onDragOver={over(i)}
     >
       <span className="rank mono muted small" aria-label={`Position ${i + 1}`}>{i + 1}</span>
       {it.node}
     </article>
   ))}
-    </>
+    </div>
   )
 }

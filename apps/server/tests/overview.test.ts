@@ -56,6 +56,15 @@ describe('needsYou', () => {
   it('gives every needs-you value a Gate with an action', () => {
     for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|production-checks|review-cap|rerun)$/), title: expect.any(String) })
   })
+  it('gives every needs-you value a sentence and a verb for the action bar', () => {
+    const ctx = { stage: 'build', missing: ['D2'], open: 1 }
+    for (const need of NEEDS) {
+      expect(GATES[need].sentence(ctx), need).toMatch(/\S/)
+      expect(GATES[need].verb(ctx), need).toMatch(/\S/)
+    }
+    expect(GATES['Run failed'].verb(ctx)).toBe('Re-run build')
+    expect(GATES['Answer decisions'].sentence(ctx)).toContain('D2')
+  })
   it('words the production states', () => {
     expect(releaseWord({ stage: 'release', productionState: 'awaiting_approval', labels: ['bauherr:approved:staging'] })).toBe('awaiting production approval')
     expect(releaseWord({ stage: 'release', productionState: 'deploying' })).toBe('deploying')

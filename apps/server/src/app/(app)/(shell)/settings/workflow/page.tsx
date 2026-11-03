@@ -28,7 +28,7 @@ export default async function Workflow() {
           <thead><tr><th>Name</th><th>When</th><th>What you do</th><th>Where</th><th>On/Off</th><th>How to change</th></tr></thead>
           <tbody>
             {TOUCH_POINTS.map((t) => (
-              <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{t.what}</td><td>{t.where}</td><td>{w.gates.includes(t.id) ? 'On' : 'Off'}</td><td>{t.change}</td></tr>
+              <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{t.what}</td><td>{t.where}</td><td>{w.gates.includes(t.id) ? 'On' : t.id === 'production' ? 'Off (unless a Product asks)' : 'Off'}</td><td>{t.change}</td></tr>
             ))}
           </tbody>
         </table>
