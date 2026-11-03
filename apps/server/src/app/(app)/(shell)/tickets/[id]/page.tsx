@@ -7,8 +7,7 @@ import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { CommentComposer } from '../../../components/CommentComposer'
 import { OwnerChat } from '../../../components/OwnerChat'
-import { DecisionSheet } from '../../../components/DecisionSheet'
-import { Approved, Gate, ProductionChecksGate, ProductionGate, QuestionsGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
+import { Approved, Gate, ProductionChecksGate, ProductionGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
@@ -125,7 +124,6 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           sheet={decisions.length ? `${answered} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
         />
       )}
-      {gate?.kind === 'questions' && <QuestionsGate number={ticket.number} answered={answered} total={decisions.length} />}
       {gate?.kind === 'release' && (
         <ReleaseGate ticket={ticket.id} number={ticket.number} title={gate.title} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} stagingUrl={product.stagingUrl ?? null} />
       )}
@@ -137,8 +135,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {gate?.kind === 'rerun' && runs[0] && <RerunGate run={runs[0].id} number={ticket.number} title={gate.title} stage={runs[0].stage} />}
       {acceptedStaging && <Approved number={ticket.number} label="Accepted on staging" />}
       {labels.includes('bauherr:approved:production') && <Approved number={ticket.number} label="Approved for production" />}
-      {decisions.some((d) => !answers[d.id]) && <OwnerChat ticket={ticket.id} />}
-      {decisions.length > 0 && <DecisionSheet ticket={ticket.id} decisions={decisions} answers={answers} />}
+      {decisions.length > 0 && <OwnerChat ticket={ticket.id} open={decisions.length - answered} />}
 
       {plan && (
         <section className="flex flex-col gap-4" aria-labelledby="plan">

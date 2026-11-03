@@ -42,15 +42,6 @@ export function Gate({ number, plan, budget, model, sheet }: GateProps) {
   )
 }
 
-/** Triage holds the Ticket: the decision sheet below is the action; the last answer moves the Ticket to plan. */
-export function QuestionsGate({ number, answered, total }: { number: number; answered: number; total: number }) {
-  return (
-    <Shell title="Answer questions" meta={`#${number} · triage`}>
-      <p className="body">Triage needs your answers before this Ticket can be planned. {answered} of {total} answered; saving the last critical answer moves the Ticket to plan, where the plan is written.</p>
-    </Shell>
-  )
-}
-
 type ReleaseGateProps = { ticket: number; number: number; title: string; timedOut: boolean; summaryHtml: string | null; stagingUrl: string | null }
 
 export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stagingUrl }: ReleaseGateProps) {

@@ -86,6 +86,10 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Remember the theme choice', labels: ['bauherr:stage:plan'] })
   void ts.comment('21', PLAN.replace(/- \*\*D2[^\n]*\n/, ''))
   void ts.comment('21', WORKLOG)
+  // #22 is the owner-chat spec's second Ticket: two open decisions (D2 critical, asked first).
+  void ts.create({ title: 'Pick the export columns', labels: ['bauherr:stage:plan'] })
+  void ts.comment('22', PLAN)
+  void ts.comment('22', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))
