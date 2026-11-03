@@ -8,6 +8,7 @@ let fake: FakeBackend
 let ws: number
 let product: number
 let release: typeof import('../src/lib/release')
+let jobs: typeof import('../src/jobs')
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
@@ -26,6 +27,7 @@ beforeAll(async () => {
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   release = await import('../src/lib/release')
+  jobs = await import('../src/jobs')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, gateOwners: 'owner', stagingUrl: 'https://staging.example' }, ...o })).id as number
@@ -287,4 +289,16 @@ it('parallel passes: one webhook, one timeout comment, one release', async () =>
     vi.unstubAllGlobals()
     await setProduct({ deployMode: 'observe-ci', deployWebhookUrl: null })
   }
+})
+
+it('a failed label add during the merge pass keeps the DB stage; the next poll restores the forge label', async () => {
+  const { t, pr, n } = await reviewTicket('flaky')
+  fake.merge(repo, pr.number)
+  fake.failNext('addLabels')
+  await release.watchRelease(payload)
+  expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
+  expect((await reload(t.id as number)).mergeSha).toBeTruthy()
+  await (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
+  expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
+  expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
 })

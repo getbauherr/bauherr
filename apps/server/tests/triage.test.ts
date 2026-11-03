@@ -242,3 +242,14 @@ it('the backlog rotates: Tickets never tried go before those tried before', asyn
   await jobs.triageSweep(payload)
   for (const id of untried) expect(await runsOf(id)).toBe(1)
 })
+
+it('a Ticket with a merge sha and a lost stage label keeps its DB stage and gets no Triage Run', async () => {
+  const t = await create('lost label', ['bauherr:stage:release'])
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'release', mergeSha: 'abc123' }, ...o })
+  await fake.tickets(repo).removeLabels(t.n, ['bauherr:stage:release'])
+  await poll()
+  await drain()
+  expect(await triageRuns(t.id)).toHaveLength(0)
+  expect(await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })).toMatchObject({ stage: 'release' })
+  expect(await labelsOf(t.n)).toContain('bauherr:stage:release')
+})

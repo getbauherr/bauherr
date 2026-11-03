@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageOf } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
@@ -19,10 +19,7 @@ import { decrypt } from '../lib/secrets'
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
 export const SESSION_TIMEOUT_MS = 30 * 60_000
-const STAGE_LABEL = /^bauherr:stage:(.+)$/
-
-export const stageOf = (labels: string[]): string | null =>
-  labels.map((l) => STAGE_LABEL.exec(l)?.[1]).find(Boolean) ?? null
+export { stageOf }
 
 /** Decision D2. Fallback only: pack/workflow.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
 const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']
@@ -111,7 +108,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() === new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -348,6 +345,11 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
+          if (prev?.stage && t.state === 'open' && (stage === null || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
+            stage = prev.stage
+            payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
+            try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
+          }
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
           if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN)) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
