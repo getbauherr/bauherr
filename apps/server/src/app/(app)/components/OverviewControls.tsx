@@ -1,6 +1,10 @@
 'use client'
-import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Tab, Tabs } from './ui/tabs'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
+
+const controls = 'flex flex-wrap items-center gap-4 border-b border-border'
+const select = 'h-8 rounded-md border border-border bg-secondary px-2 font-[inherit] text-foreground'
 
 function useHref() {
   const path = usePathname()
@@ -16,9 +20,9 @@ function ProductSelect({ products }: { products: { id: number; name: string }[] 
   const router = useRouter()
   const { params, href } = useHref()
   return (
-    <label className="filter">
-      <span className="label muted">Product</span>
-      <select value={params.get('product') ?? ''} onChange={(e) => router.push(href({ product: e.target.value || null }))}>
+    <label className="flex items-center gap-2">
+      <span className="label text-muted-foreground">Product</span>
+      <select className={select} value={params.get('product') ?? ''} onChange={(e) => router.push(href({ product: e.target.value || null }))}>
         <option value="">All products</option>
         {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
@@ -32,9 +36,9 @@ function EpicSelect({ epics }: { epics: Epics }) {
   const router = useRouter()
   const { params, href } = useHref()
   return epics.length ? (
-    <label className="filter">
-      <span className="label muted">Epic</span>
-      <select value={params.get('epic') ?? ''} onChange={(e) => router.push(href({ epic: e.target.value }))}>
+    <label className="flex items-center gap-2">
+      <span className="label text-muted-foreground">Epic</span>
+      <select className={select} value={params.get('epic') ?? ''} onChange={(e) => router.push(href({ epic: e.target.value }))}>
         <option value="">All</option>
         {epics.map((e) => <option key={e.id} value={e.id}>#{e.number} {e.title}</option>)}
       </select>
@@ -43,7 +47,7 @@ function EpicSelect({ epics }: { epics: Epics }) {
 }
 
 export function RunsControls({ products, epics }: { products: { id: number; name: string }[]; epics: Epics }) {
-  return <div className="controls"><ProductSelect products={products} /><EpicSelect epics={epics} /></div>
+  return products.length > 1 || epics.length ? <div className={controls}>{products.length > 1 && <ProductSelect products={products} />}<EpicSelect epics={epics} /></div> : null
 }
 
 export function TicketControls({ products, epics }: { products: { id: number; name: string }[]; epics: Epics }) {
@@ -54,24 +58,24 @@ export function TicketControls({ products, epics }: { products: { id: number; na
   const list = view === 'epics'
   const done = params.get('done') === '1'
   return (
-    <div className="controls">
-      <nav className="tabs" aria-label="Tickets layout">
-        <Link href={href({ view: null })} aria-current={graph || list ? undefined : 'page'}>Board</Link>
-        <Link href={href({ view: 'graph' })} aria-current={graph ? 'page' : undefined}>Graph</Link>
-        <Link href={href({ view: 'epics', epic: null })} aria-current={list ? 'page' : undefined}>Epics</Link>
-      </nav>
+    <div className={controls}>
+      <Tabs aria-label="Tickets layout" className="mr-auto">
+        <Tab href={href({ view: null })} aria-current={graph || list ? undefined : 'page'}>Board</Tab>
+        <Tab href={href({ view: 'graph' })} aria-current={graph ? 'page' : undefined}>Graph</Tab>
+        <Tab href={href({ view: 'epics', epic: null })} aria-current={list ? 'page' : undefined}>Epics</Tab>
+      </Tabs>
       <ProductSelect products={products} />
       {!list && <EpicSelect epics={epics} />}
       {list && (
-        <div className="seg" role="group" aria-label="Epics shown">
-          <Link href={href({ done: done ? null : '1' })} aria-pressed={done}>Show done</Link>
-        </div>
+        <ToggleGroup aria-label="Epics shown">
+          <ToggleGroupItem href={href({ done: done ? null : '1' })} aria-pressed={done}>Show done</ToggleGroupItem>
+        </ToggleGroup>
       )}
       {!graph && !list && (
-        <div className="seg" role="group" aria-label="Tickets shown">
-          <Link href={href({ state: null })} aria-pressed={!all}>Open</Link>
-          <Link href={href({ state: 'all' })} aria-pressed={all}>All</Link>
-        </div>
+        <ToggleGroup aria-label="Tickets shown">
+          <ToggleGroupItem href={href({ state: null })} aria-pressed={!all}>Open</ToggleGroupItem>
+          <ToggleGroupItem href={href({ state: 'all' })} aria-pressed={all}>All</ToggleGroupItem>
+        </ToggleGroup>
       )}
     </div>
   )

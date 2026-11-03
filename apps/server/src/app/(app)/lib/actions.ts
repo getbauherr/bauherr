@@ -155,9 +155,10 @@ export async function rerunStage(runId: number) {
   redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
 }
 
-/** Force-releases the lease of a running session Run (Admin or Workspace member); the successor Run is claimable at once. */
+/** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */
 export async function releaseRunLock(runId: number) {
   const user = await requireBauherr()
+  if (user.role !== 'admin') redirect(`/runs/${runId}`)
   await releaseLock(await payloadClient(), user, { runId }).catch((e) => {
     if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
   })

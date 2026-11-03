@@ -1,21 +1,25 @@
-const chips: Record<string, [cls: string, text: string]> = {
-  queued: ['queued', 'Queued'],
-  running: ['running', 'Running'],
-  succeeded: ['succeeded', '✓ Succeeded'],
-  failed: ['failed', '× Failed'],
-  cancelled: ['cancelled', 'Cancelled'],
-  needs_human: ['needs', 'Needs human'],
-  awaiting_session: ['queued', 'Waiting for a session'],
-  budget_exhausted: ['needs', 'Budget exhausted'],
-  abandoned: ['cancelled', 'Abandoned'],
+import { Badge } from './ui/badge'
+
+type Variant = 'neutral' | 'muted' | 'accent' | 'ok' | 'warn' | 'destructive'
+
+const chips: Record<string, [variant: Variant, text: string]> = {
+  queued: ['neutral', 'Queued'],
+  running: ['accent', 'Running'],
+  succeeded: ['ok', '✓ Succeeded'],
+  failed: ['destructive', '× Failed'],
+  cancelled: ['muted', 'Cancelled'],
+  needs_human: ['warn', 'Needs human'],
+  awaiting_session: ['neutral', 'Waiting for a session'],
+  budget_exhausted: ['warn', 'Budget exhausted'],
+  abandoned: ['muted', 'Abandoned'],
 }
 
 export function StatusChip({ status }: { status: string }) {
-  const [cls, text] = chips[status] ?? chips.queued
+  const [variant, text] = chips[status] ?? chips.queued
   return (
-    <span className={`chip label ${cls}`}>
-      {cls === 'running' && <span className="spin" />}
+    <Badge variant={variant}>
+      {variant === 'accent' && <span className="size-3 animate-[spin_1.6s_linear_infinite] rounded-full border-[1.5px] border-border border-t-primary motion-reduce:animate-none" />}
       {text}
-    </span>
+    </Badge>
   )
 }

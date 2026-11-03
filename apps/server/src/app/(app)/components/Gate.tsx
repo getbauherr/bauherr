@@ -5,8 +5,9 @@ import { SubmitButton } from './SubmitButton'
 type GateProps = {
   number: number
   plan: { title: string; steps: number } | null
-  budget: string
-  model: string
+  /** Admin-only: cost and model names stay out of the owner's view. */
+  budget?: string
+  model?: string
   sheet: string
 }
 
@@ -19,8 +20,8 @@ export function Gate({ number, plan, budget, model, sheet }: GateProps) {
       </div>
       <dl className="body">
         <dt>Approves</dt><dd>{plan ? `${plan.title} · ${plan.steps} ${plan.steps === 1 ? 'step' : 'steps'}` : 'Plan comment not readable, open it on the forge.'}</dd>
-        <dt>Budget</dt><dd className="mono">{budget}</dd>
-        <dt>Model</dt><dd className="mono">{model}</dd>
+        {budget && <><dt>Budget</dt><dd className="mono">{budget}</dd></>}
+        {model && <><dt>Model</dt><dd className="mono">{model}</dd></>}
         <dt>Decisions</dt><dd>{sheet}</dd>
       </dl>
       <p className="small muted">Approving starts the Build Run that writes the code and opens the MR.</p>

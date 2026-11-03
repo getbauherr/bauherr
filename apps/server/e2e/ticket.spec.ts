@@ -45,6 +45,7 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       await expect(bar.locator('.btn.primary')).toHaveCount(verb ? 1 : 0)
       if (verb) await expect(bar.locator('.btn.primary')).toHaveText(verb)
       await expect(bar.locator('.btn')).not.toHaveCount(3)
+      await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
         y ??= box.y
@@ -91,4 +92,20 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await approve.click()
   await expect(page.getByText('✓ Plan approved')).toBeVisible()
   await expect(approve).toHaveCount(0)
+})
+
+test('the plan gate shows Budget and Model to an Admin only', async ({ page }) => {
+  for (const [who, admin] of [['member@example.com', false], [email, true]] as const) {
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(who)
+    await page.getByLabel('Password').fill(password())
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.locator('.board')).toBeVisible()
+    await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
+    const gate = page.locator('dl.body', { hasText: 'Approves' })
+    await expect(gate.getByText('Decisions', { exact: true })).toBeVisible()
+    for (const name of ['Budget', 'Model']) await expect(gate.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
+    if (!admin) await expect(gate).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku/i)
+    await page.context().clearCookies()
+  }
 })

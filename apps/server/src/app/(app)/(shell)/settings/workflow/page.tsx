@@ -7,11 +7,11 @@ import { currentWorkspace } from '../../../lib/session'
 import type { HumanGate } from '../../../../../lib/mode'
 import { GATE_NAMES } from '../../../../../lib/needs-you'
 
-const TOUCH_POINTS: { id: HumanGate; when: string; what: string; where: string; change: string }[] = [
-  { id: 'refine', when: 'Before planning', what: 'Answer the critical questions of a Triage or plan sheet.', where: 'Ticket page decision sheet or forge comment', change: 'Always on, not switchable.' },
-  { id: 'plan', when: 'Before Build', what: 'Read the plan and approve it (refused while critical decisions are open).', where: 'Ticket page gate or label bauherr:approved:plan', change: 'Off by default: set gate: human on plan in pack/workflow.yaml.' },
-  { id: 'staging', when: 'After the merge request is merged and deployed to staging', what: 'Check staging, then accept or request changes.', where: 'Ticket page gate', change: 'Off by default: set gate: human on release in pack/workflow.yaml.' },
-  { id: 'production', when: 'Before the production deploy', what: "Approve so the Product's own pipeline deploys.", where: 'Ticket page gate', change: 'On by default: remove production_gate: human on release in pack/workflow.yaml, or tick "Ask me before deploying to production" on a Product.' },
+const TOUCH_POINTS: { id: HumanGate; when: string; what: string; where: string }[] = [
+  { id: 'refine', when: 'Before planning', what: 'Answer the critical questions of a Triage or plan sheet.', where: 'Ticket page decision sheet or forge comment' },
+  { id: 'plan', when: 'Before Build', what: 'Read the plan and approve it (refused while critical decisions are open).', where: 'Ticket page gate or label bauherr:approved:plan' },
+  { id: 'staging', when: 'After the merge request is merged and deployed to staging', what: 'Check staging, then accept or request changes.', where: 'Ticket page gate' },
+  { id: 'production', when: 'Before the production deploy', what: "Approve so the Product's own pipeline deploys.", where: 'Ticket page gate' },
 ]
 
 export const dynamic = 'force-dynamic'
@@ -33,19 +33,33 @@ export default async function Workflow() {
         </div>
       </SettingsForm>
       <h2 className="heading">Where you are asked</h2>
-      <p className="small muted">The points where the factory waits for you, in flow order. A Product without production checks shows "Configure production checks" instead of Approve production.</p>
+      <p className="small muted">The points where the factory waits for you, in flow order.</p>
       <div className="scroll">
         <table className="table">
-          <thead><tr><th>Name</th><th>When</th><th>What you do</th><th>Where</th><th>On/Off</th><th>How to change</th></tr></thead>
+          <thead><tr><th>Name</th><th>When</th><th>On/Off</th></tr></thead>
           <tbody>
             {TOUCH_POINTS.map((t) => (
-              <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{t.what}</td><td>{t.where}</td><td>{w.gates.includes(t.id) ? 'On' : t.id === 'production' ? 'Off (unless a Product asks)' : 'Off'}</td><td>{t.change}</td></tr>
+              <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{w.gates.includes(t.id) ? 'On' : t.id === 'production' ? 'Per Product' : 'Off'}</td></tr>
             ))}
           </tbody>
         </table>
       </div>
+      <details>
+        <summary>Details</summary>
+        <div className="stack">
+        <h2 className="heading">What you do and where</h2>
+        <div className="scroll">
+          <table className="table">
+            <thead><tr><th>Name</th><th>What you do</th><th>Where</th></tr></thead>
+            <tbody>
+              {TOUCH_POINTS.map((t) => (
+                <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.what}</td><td>{t.where}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       <h2 className="heading">Stages</h2>
-      <p className="small muted">The base workflow (pack/workflow.yaml) with the run mode each stage has in this Workspace. Read-only.</p>
+      <p className="small muted">The base workflow with the run mode each stage has in this Workspace. Read-only.</p>
       <div className="scroll">
         <table className="table">
           <thead><tr><th>Stage</th><th>Mode</th><th>Gate</th><th>Steps</th></tr></thead>
@@ -76,6 +90,8 @@ export default async function Workflow() {
           </table>
         </div>
       )}
+        </div>
+      </details>
     </>
   )
 }

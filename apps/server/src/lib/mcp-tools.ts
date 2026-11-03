@@ -6,8 +6,8 @@ import type { Payload } from 'payload'
 import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
-import { ownsGate } from './gates'
-import { frontierOrder } from './frontier'
+import { logins, ownsGate } from './gates'
+import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
 import * as knowledge from './knowledge'
@@ -110,6 +110,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   if (run.mode !== 'session') throw new Error(notClaimable)
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
+  if (ticket.stage === 'parent') throw new Error('parents are not claimable')
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, run.stage)
@@ -132,11 +133,14 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = run.stage === 'triage' || run.stage === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
-  return { run: won, leaseToken, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  const skipped = await skippedBefore(c, ticket)
+  return { run: won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
-/** Open, unblocked Tickets in frontier order with their latest Run. */
-const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; latest: Map<unknown, Doc> } | null> => {
+type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[] }
+
+/** Open, unblocked, non-parent Tickets in frontier order with their latest Run; `all` also holds the blocked ones (for skip reasons). */
+const frontier = async (c: Ctx, productSlug?: string): Promise<Frontier | null> => {
   const product = productSlug
     ? (await c.payload.find({ collection: 'products', where: { slug: { equals: productSlug } }, limit: 1, ...scoped(c) })).docs[0]
     : null
@@ -148,7 +152,8 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; la
     ...scoped(c),
     depth: 1,
   })
-  const unblocked = tickets.docs.filter((t: Doc) => !((t.blockedBy as Doc[]) ?? []).some((b) => b.state === 'open'))
+  const all = tickets.docs.filter((t: Doc) => t.stage !== 'parent')
+  const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
     collection: 'runs',
     where: { ticket: { in: unblocked.map((t) => t.id) } },
@@ -158,10 +163,48 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<{ open: Doc[]; la
   })
   const latest = new Map<unknown, Doc>()
   for (const r of runs.docs as Doc[]) if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
-  return { open: frontierOrder(unblocked as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest }
+  return { open: frontierOrder(unblocked as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all }
+}
+
+const openBlockers = (t: Doc): Doc[] => ((t.blockedBy as Doc[]) ?? []).filter((b) => b.state === 'open')
+
+/** Names of the sessions holding a lease in `latest`, by user id. */
+const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unknown, string>> => {
+  const leases = [...latest.values()].filter((r) => r.status === 'running' && r.mode === 'session')
+  return new Map<unknown, string>(
+    (await c.payload.find({ collection: 'bauherren', where: { id: { in: leases.map((r) => id(r.sessionOwner)) } }, limit: 100, depth: 0, overrideAccess: true })).docs.map((u: Doc) => [u.id, u.name ?? u.email]),
+  )
+}
+
+/** Why `t` cannot be claimed right now, or null when it can. */
+const skipReason = (t: Doc, latest: Map<unknown, Doc>, owners: Map<unknown, string>): string | null => {
+  const blockers = openBlockers(t)
+  if (blockers.length) return `blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}`
+  const r = latest.get(t.id)
+  if (r?.status === 'running' && r.mode === 'session') return `leased by ${owners.get(id(r.sessionOwner)) ?? 'another session'}`
+  return isClaimable(r) ? null : 'no claimable Run'
+}
+
+/** The Tickets ahead of `claimed` in the pull order that could not be claimed, with the reason. */
+const skippedBefore = async (c: Ctx, claimed: Doc) => {
+  const f = await frontier(c)
+  if (!f) return []
+  const owners = await leaseOwners(c, f.latest)
+  return f.all
+    .filter((t) => t.id !== claimed.id && executionOrder(t as FrontierTicket, claimed as FrontierTicket) < 0)
+    .sort((a, b) => executionOrder(a as FrontierTicket, b as FrontierTicket))
+    .flatMap((t) => {
+      const reason = skipReason(t, f.latest, owners)
+      return reason ? [{ ticket: t.id, number: t.number, stage: t.stage, reason }] : []
+    })
 }
 
 const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session'
+
+/** Runs `claim_next` could not claim (non-ClaimLost error), by id with the time: `claim_run` does not hold others back behind them for 5 minutes. In-memory, per server process. */
+const failedClaims = new Map<string, number>()
+const FAILED_CLAIM_MS = 5 * 60_000
+const recentlyFailed = (r: Doc): boolean => Date.now() - (failedClaims.get(String(r.id)) ?? 0) < FAILED_CLAIM_MS
 
 export const tools: Tool[] = [
   {
@@ -174,15 +217,14 @@ export const tools: Tool[] = [
       if (!f) return []
       const { open, latest } = f
       const leases = [...latest.values()].filter((r) => r.status === 'running' && r.mode === 'session')
-      const owners = new Map<unknown, string>(
-        (await c.payload.find({ collection: 'bauherren', where: { id: { in: leases.map((r) => id(r.sessionOwner)) } }, limit: 100, depth: 0, overrideAccess: true })).docs.map((u: Doc) => [u.id, u.name ?? u.email]),
-      )
+      const owners = await leaseOwners(c, latest)
       return open.map((t: Doc) => {
         const r = latest.get(t.id)
         return {
           ticket: t.id, number: t.number, title: t.title, url: t.url, stage: t.stage, labels: t.labels, assignee: t.assignee,
           run: r ? { id: r.id, stage: r.stage, status: r.status, mode: r.mode } : null,
           claimable: isClaimable(r),
+          ...(!isClaimable(r) && { reason: skipReason(t, latest, owners) }),
           ...(leases.includes(r as Doc) && { leasedBy: owners.get(id(r!.sessionOwner)) ?? null, leaseExpiresAt: new Date(new Date(r!.heartbeatAt).getTime() + SESSION_TIMEOUT_MS).toISOString() }),
         }
       })
@@ -205,9 +247,18 @@ export const tools: Tool[] = [
   {
     name: 'claim_run',
     access: 'agent',
-    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
+    description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return is accepted (a Run whose claim failed in the last 5 minutes does not count); any other is refused with "take Run N (#T, column) first", a blocked, leased or superseded one with "not claimable now". The check is workspace-wide, while claim_next {product} is product-scoped. Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     inputSchema: obj(runId, ['runId']),
     async run(a, c) {
+      const run = await getRun(c, a.runId)
+      if (isClaimable(run)) {
+        const ticket = await getTicket(c, id(run.ticket))
+        if (ticket.stage === 'parent') throw new Error('parents are not claimable')
+        const f = (await frontier(c))!
+        if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
+        const top = f.open.map((t) => f.latest.get(t.id)).find((r) => isClaimable(r) && !recentlyFailed(r!))
+        if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => f.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
+      }
       return claimRun(c, a.runId)
     },
   },
@@ -218,13 +269,17 @@ export const tools: Tool[] = [
     inputSchema: obj({ product: str('Product slug') }),
     async run(a, c) {
       const f = await frontier(c, a.product)
+      const failed: { run: number | string; reason: string }[] = []
       for (const t of f?.open ?? []) {
         const r = f!.latest.get(t.id)
         if (!isClaimable(r)) continue
         try {
-          return await claimRun(c, r!.id)
+          const claimed = await claimRun(c, r!.id)
+          return { ...claimed, skipped: [...claimed.skipped, ...failed] }
         } catch (e) {
-          if (!(e instanceof ClaimLost)) throw e
+          if (e instanceof ClaimLost) continue
+          failedClaims.set(String(r!.id), Date.now())
+          failed.push({ run: r!.id, reason: `claim failed: ${(e as Error).message}` })
         }
       }
       return null

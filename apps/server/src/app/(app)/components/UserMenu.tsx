@@ -13,7 +13,7 @@ export function UserMenu({ email, admin, workspaces, current, logout, selectWork
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" className="px-2">
-          <span className="avatar">{initials(email)}<span className="sr">User menu</span></span>
+          <span className="grid size-6 place-items-center rounded-sm bg-secondary text-xs/4 font-medium">{initials(email)}<span className="sr-only">User menu</span></span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

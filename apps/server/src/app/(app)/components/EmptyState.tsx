@@ -1,13 +1,14 @@
 import Link from 'next/link'
+import { Button } from './ui/button'
 
 export function EmptyState({ text, action }: { text: string; action?: { href: string; label: string } }) {
   return (
-    <div className="empty">
+    <div className="flex flex-col items-start gap-4 py-12">
       <p className="body">{text}</p>
       {action && (
-        <Link href={action.href} className="btn">
-          {action.label}
-        </Link>
+        <Button asChild variant="outline">
+          <Link href={action.href}>{action.label}</Link>
+        </Button>
       )}
     </div>
   )

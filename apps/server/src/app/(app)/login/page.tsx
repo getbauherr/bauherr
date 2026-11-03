@@ -2,41 +2,45 @@ import { redirect } from 'next/navigation'
 import { oidcDisplayName, oidcEnabled } from '../../../lib/oidc'
 import { login } from '../lib/actions'
 import { getBauherr } from '../lib/session'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   if (await getBauherr()) redirect('/')
   const { error } = await searchParams
   return (
-    <main className="login">
-      <div className="brand">
+    <main className="mx-auto my-12 flex max-w-[360px] flex-col gap-6 px-4">
+      <div className="flex items-center gap-2">
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden>
           <rect x="3" y="3" width="26" height="26" stroke="currentColor" strokeWidth="2" />
           <rect x="3" y="18" width="11" height="11" fill="var(--accent)" />
         </svg>
         <h1 className="display">Bauherr</h1>
       </div>
-      <form action={login}>
-        <label className="field">
-          <span className="small muted">Email</span>
-          <input name="email" type="email" autoComplete="username" required />
+      <form action={login} className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="small text-muted-foreground">Email</span>
+          <Input name="email" type="email" autoComplete="username" required />
         </label>
-        <label className="field">
-          <span className="small muted">Password</span>
-          <input name="password" type="password" autoComplete="current-password" required />
+        <label className="flex flex-col gap-1">
+          <span className="small text-muted-foreground">Password</span>
+          <Input name="password" type="password" autoComplete="current-password" required />
         </label>
         {error === 'oidc-link' ? (
-          <p role="alert" className="err small">This email already has a Bauherr account. Ask an Admin to link it to your SSO identity.</p>
+          <p role="alert" className="small text-destructive">This email already has a Bauherr account. Ask an Admin to link it to your SSO identity.</p>
         ) : error === 'oidc' ? (
-          <p role="alert" className="err small">Single sign-on failed. Try again or use your password.</p>
+          <p role="alert" className="small text-destructive">Single sign-on failed. Try again or use your password.</p>
         ) : (
-          error && <p role="alert" className="err small">Email or password is wrong. Check both and try again.</p>
+          error && <p role="alert" className="small text-destructive">Email or password is wrong. Check both and try again.</p>
         )}
-        <button className="btn primary" style={{ justifyContent: 'center' }}>Sign in</button>
+        <Button>Sign in</Button>
       </form>
       {oidcEnabled() && (
-        <div className="or">
-          <span className="small muted">or</span>
-          <a className="btn" href="/auth/oidc/login" style={{ justifyContent: 'center' }}>Sign in with {oidcDisplayName()}</a>
+        <div className="flex flex-col items-stretch gap-4 text-center">
+          <span className="small flex items-center gap-3 text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">or</span>
+          <Button asChild variant="outline">
+            <a href="/auth/oidc/login">Sign in with {oidcDisplayName()}</a>
+          </Button>
         </div>
       )}
     </main>
