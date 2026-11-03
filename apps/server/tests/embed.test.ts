@@ -3,6 +3,9 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
+let signedIn: { user: unknown; workspace: { id: number } }
+vi.mock('../src/app/(app)/lib/session', () => ({ currentWorkspace: async () => signedIn, payloadClient: async () => payload, workspacesOf: async () => [] }))
+vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 let sessions: typeof import('../src/app/intake/api/sessions/route')
 let messages: typeof import('../src/app/intake/api/sessions/[id]/messages/route')
 let submit: typeof import('../src/app/intake/api/sessions/[id]/submit/route')
@@ -95,6 +98,20 @@ it('answers 403 without CORS headers for a wrong or missing Origin, an unknown t
     expect(r.headers.get('access-control-allow-origin')).toBeNull()
     expect(JSON.stringify(await r.json())).not.toContain('bemb_')
   }
+})
+
+it('the revoke action makes the very next request answer 403', async () => {
+  const { revokeEmbedToken } = await import('../src/app/(app)/(shell)/settings/actions')
+  const t = await embed.createEmbedToken(payload, { product: productId, name: 'via-action', allowedOrigins: [ORIGIN] })
+  const doc = (await payload.find({ collection: 'embed_tokens', where: { tokenHash: { equals: embed.hashToken(t) } }, depth: 0, ...o })).docs[0] as Record<string, any>
+  const user = await payload.create({ collection: 'bauherren', data: { email: 'admin@x.io', password: 'pw-123456', role: 'admin' }, ...o })
+  signedIn = { user, workspace: { id: doc.workspace } }
+  expect((await sessions.POST(call(bearer(t), ORIGIN))).status).toBe(201)
+  const fd = new FormData()
+  fd.set('id', String(doc.id))
+  expect(await revokeEmbedToken({}, fd)).toMatchObject({ saved: true })
+  expect((await sessions.POST(call(bearer(t), ORIGIN))).status).toBe(403)
+  expect((await sessions.POST(call(bearer(t), ORIGIN))).status).toBe(403)
 })
 
 it('a token cannot reach sessions of a Bauherr or another token (404)', async () => {
