@@ -37,6 +37,12 @@ beforeAll(async () => {
 })
 
 afterEach(() => vi.unstubAllGlobals())
+
+const rcSetup = async () => {
+  const connection = (await payload.find({ collection: 'connections', limit: 1, ...o })).docs[0]!.id as number
+  products.rc = (await payload.create({ collection: 'products', data: { name: 'rc', slug: 'rc', workspace: ws, productionGate: true, productionChecks: 'deploy-prod', releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })).id as number
+  await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/rc', product: products.rc, connection, workspace: ws }, ...o })
+}
 afterAll(async () => {
   await payload?.destroy()
   await testDb?.drop(payload)
@@ -150,4 +156,84 @@ it('a persistent publish failure backs off for an hour, caches the notes, and gi
   expect((await fake.tickets('acme/bad').listComments(t.n)).at(-1)!.body).toContain('given up')
   await release.publishReleases(payload, at + 9 * release.RELEASE_RETRY_MS)
   expect((await reload(t.id)).releaseAttempts).toBe(3)
+})
+
+it('pre-release Product: tags the next rc as a pre-release, opens no CHANGELOG MR and waits for image + npm before "Released in"', async () => {
+  await rcSetup()
+  fake.addTag('acme/rc', 'v0.1.0-rc.1')
+  fake.setCommits('acme/rc', [{ sha: 'sha-r', message: 'feat: export' }])
+  const t = await approved('rc', 'Release candidates', 'sha-r')
+  expect(await release.publishRelease(payload, products.rc!)).toMatchObject({ state: 'published' })
+  expect(fake.listReleases('acme/rc')).toMatchObject([{ tag: 'v0.1.0-rc.2', sha: 'sha-r', prerelease: true }])
+  expect(await fake.forge.listPullRequests('acme/rc', 'all')).toHaveLength(0)
+  expect(await reload(t.id)).toMatchObject({ releaseTag: 'v0.1.0-rc.2', releaseSha: 'sha-r', releaseChecksState: 'waiting' })
+  const comments = async () => (await fake.tickets('acme/rc').listComments(t.n)).map((c) => c.body)
+  expect((await comments()).join('\n')).not.toContain('Released in')
+
+  const at = new Date(Date.now()).toISOString()
+  fake.setChecks('acme/rc', 'sha-r', [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }, { id: 2, name: 'npm', status: 'in_progress', conclusion: null, startedAt: at }])
+  expect(await release.watchReleaseChecks(payload)).toBe(0)
+  expect((await reload(t.id)).releaseChecksState).toBe('waiting')
+
+  fake.setChecks('acme/rc', 'sha-r', [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }, { id: 2, name: 'npm', status: 'completed', conclusion: 'failure', startedAt: at, url: 'https://fake/run/2' }])
+  expect(await release.watchReleaseChecks(payload)).toBe(1)
+  expect(await reload(t.id)).toMatchObject({ releaseChecksState: 'failed', releaseRunUrl: 'https://fake/run/2' })
+  expect((await comments()).at(-1)).toContain('failed (npm)')
+  const { needsYou } = await import('../src/lib/needs-you')
+  expect(needsYou({ stage: 'done', labels: [], releaseChecksState: 'failed' }, null)).toBe('Release failed')
+
+  fake.setChecks('acme/rc', 'sha-r', [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }, { id: 3, name: 'npm', status: 'completed', conclusion: 'success', startedAt: at }])
+  expect(await release.watchReleaseChecks(payload)).toBe(1)
+  expect((await reload(t.id)).releaseChecksState).toBe('passed')
+  expect((await comments()).at(-1)).toContain('Released in [v0.1.0-rc.2]')
+})
+
+it('pre-release Product: no finished checks within 60 minutes is Release failed', async () => {
+  const t = await approved('rc', 'Slow release', 'sha-slow')
+  fake.setCommits('acme/rc', [{ sha: 'sha-slow', message: 'fix: slow' }])
+  await release.publishRelease(payload, products.rc!)
+  expect(await release.watchReleaseChecks(payload)).toBe(0)
+  expect(await release.watchReleaseChecks(payload, Date.now() + release.RELEASE_CHECKS_TIMEOUT_MS + 60_000)).toBe(1)
+  expect(await reload(t.id)).toMatchObject({ releaseChecksState: 'failed', releaseRunUrl: fake.listReleases('acme/rc').at(-1)!.url })
+})
+
+it('pre-release Product: a reused older release keeps its own runs (out-of-order approval) and resolves to "Released in"', async () => {
+  const old = Date.now() - 3 * 60 * 60_000
+  fake.setCommits('acme/rc', [{ sha: 'sha-b', message: 'fix: b' }])
+  fake.addRelease('acme/rc', { tag: 'v0.1.0-rc.9', sha: 'sha-a', contains: ['sha-b'], prerelease: true, createdAt: old })
+  const at = new Date(old + 60_000).toISOString()
+  fake.setChecks('acme/rc', 'sha-a', [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at, url: 'https://fake/run/1' }, { id: 2, name: 'npm', status: 'completed', conclusion: 'success', startedAt: at }])
+  const t = await approved('rc', 'Out of order', 'sha-b')
+  await release.publishRelease(payload, products.rc!)
+  expect(fake.listReleases('acme/rc').filter((r) => r.tag === 'v0.1.0-rc.9')).toHaveLength(1)
+  expect(await release.watchReleaseChecks(payload)).toBe(1)
+  expect((await reload(t.id)).releaseChecksState).toBe('passed')
+  expect((await fake.tickets('acme/rc').listComments(t.n)).at(-1)!.body).toContain('Released in [v0.1.0-rc.9]')
+})
+
+it('pre-release Product: a timeout links the workflow run when a check has a url', async () => {
+  fake.setCommits('acme/rc', [{ sha: 'sha-t', message: 'fix: t' }])
+  const t = await approved('rc', 'Timeout link', 'sha-t')
+  await release.publishRelease(payload, products.rc!)
+  const rel = fake.listReleases('acme/rc').at(-1)!
+  fake.setChecks('acme/rc', 'sha-t', [{ id: 9, name: 'image', status: 'in_progress', conclusion: null, startedAt: new Date().toISOString(), url: 'https://fake/run/9' }])
+  expect(await release.watchReleaseChecks(payload, Date.now() + release.RELEASE_CHECKS_TIMEOUT_MS + 60_000)).toBe(1)
+  expect((await reload(t.id)).releaseRunUrl).toBe('https://fake/run/9')
+  expect(rel.url).not.toBe('https://fake/run/9')
+})
+
+it('pre-release Product: a new release of an old commit anchors the window and timeout on the publish time, not the commit date', async () => {
+  const old = new Date(Date.now() - 3 * 60 * 60_000).toISOString()
+  fake.setCommits('acme/rc', [{ sha: 'sha-old', message: 'fix: old' }])
+  fake.setCommitDate('acme/rc', 'sha-old', old)
+  const t = await approved('rc', 'Old commit', 'sha-old')
+  await release.publishRelease(payload, products.rc!)
+  expect(new Date(fake.listReleases('acme/rc').at(-1)!.createdAt!).getTime()).toBeLessThan(Date.now() - 2 * 60 * 60_000)
+  fake.setChecks('acme/rc', 'sha-old', [
+    { id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: old },
+    { id: 2, name: 'npm', status: 'completed', conclusion: 'success', startedAt: old },
+    { id: 3, name: 'release', status: 'in_progress', conclusion: null, startedAt: new Date().toISOString() },
+  ])
+  expect(await release.watchReleaseChecks(payload, Date.now() + 60_000)).toBe(0)
+  expect((await reload(t.id)).releaseChecksState).toBe('waiting')
 })

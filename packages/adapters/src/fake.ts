@@ -18,6 +18,7 @@ interface FakeRepo {
   checks: Map<string, Check[]>;
   commitDates: Map<string, string>;
   releases: Release[];
+  tags: string[];
   /** Commits a release tag contains besides its own (test helper `addRelease`). */
   contains: Map<string, string[]>;
   commits: { sha: string; message: string }[];
@@ -114,12 +115,17 @@ export class FakeBackend implements Backend {
   }
 
   /** Test helper: a release made by the Product's own tooling (or earlier by the factory). */
-  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[] }): Release {
+  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[]; prerelease?: boolean; createdAt?: number | string }): Release {
     const r = this.repo(repo);
     if (o.contains) r.contains.set(o.tag, o.contains);
-    const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}` };
+    const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}`, prerelease: !!o.prerelease, createdAt: new Date(o.createdAt ?? Date.now()).toISOString() };
     r.releases.push(rel);
     return rel;
+  }
+
+  /** Test helper: a tag without a release. */
+  addTag(repo: RepoRef, tag: string): void {
+    this.repo(repo).tags.push(tag);
   }
 
   /** Test helper: releases of `repo`, oldest first. */
@@ -135,7 +141,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map(), releases: [], contains: new Map(), commits: [] };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [] };
       this.repos.set(name, r);
     }
     return r;
@@ -228,7 +234,7 @@ export class FakeBackend implements Backend {
       findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha || this.repo(repo).contains.get(r.tag)?.includes(o.sha)) ?? null,
       createRelease: async (repo, o) => {
         if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
-        return this.addRelease(repo, o);
+        return this.addRelease(repo, { ...o, createdAt: this.repo(repo).commitDates.get(o.sha) });
       },
       updateRelease: async (repo, id, o) => {
         const rel = this.repo(repo).releases.find((r) => r.id === id);
@@ -236,7 +242,8 @@ export class FakeBackend implements Backend {
         rel.body = o.body;
         return { ...rel };
       },
-      latestRelease: async (repo) => this.repo(repo).releases.at(-1) ?? null,
+      latestRelease: async (repo) => this.repo(repo).releases.filter((r) => !r.prerelease).at(-1) ?? null,
+      listTags: async (repo) => [...this.repo(repo).releases.map((r) => r.tag), ...this.repo(repo).tags],
       listCommits: async (repo) => this.repo(repo).commits,
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
       mergePullRequest: async (repo, n, o) => {

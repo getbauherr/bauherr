@@ -14,6 +14,8 @@ type Props = {
   run: number | null
   /** The bar's sentence when nothing is asked of the owner. */
   idle: string
+  /** Workflow run of a failed release. */
+  releaseRunUrl?: string | null
 }
 
 const Post = ({ ticket, action, children, className = 'btn primary' }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; className?: string }) => (
@@ -24,7 +26,7 @@ const Post = ({ ticket, action, children, className = 'btn primary' }: { ticket:
 )
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, need, stage, missing, open, run, idle }: Props) {
+export function ActionBar({ ticket, need, stage, missing, open, run, idle, releaseRunUrl }: Props) {
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open }
   const verb = gate?.verb(ctx) ?? ''
@@ -35,6 +37,7 @@ export function ActionBar({ ticket, need, stage, missing, open, run, idle }: Pro
       case 'Staging not confirmed': return <Post ticket={ticket} action={acceptStagingAction}>{verb}</Post>
       case 'Approve production':
       case 'Production deploy failed': return <Post ticket={ticket} action={approveProductionAction}>{verb}</Post>
+      case 'Release failed': return releaseRunUrl ? <a className="btn primary" href={releaseRunUrl} target="_blank" rel="noreferrer">{verb}</a> : null
       case 'Round cap reached': return <Post ticket={ticket} action={grantReviewRoundAction}>{verb}</Post>
       case 'Run needs you':
       case 'Run failed': return run ? <form action={rerunStage.bind(null, run)}><SubmitButton className="btn primary">{verb}</SubmitButton></form> : null

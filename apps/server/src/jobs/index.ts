@@ -12,7 +12,7 @@ import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
-import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchRelease } from '../lib/release'
+import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
@@ -270,7 +270,11 @@ export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; outp
   schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'publish-release',
-  handler: async ({ req }) => ({ output: { published: await publishReleases(req.payload) } }),
+  handler: async ({ req }) => {
+    const published = await publishReleases(req.payload)
+    await watchReleaseChecks(req.payload)
+    return { output: { published } }
+  },
 }
 
 export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output: { changed: number } }> = {

@@ -26,6 +26,13 @@ it('computes the next semver from conventional commits', () => {
   expect(nextVersion('v1.2.3', ['fix: a\n\nBREAKING CHANGE: gone'])).toBe('2.0.0')
 })
 
+it('numbers pre-releases from the existing rc tags of the next stable version', () => {
+  expect(nextVersion(null, ['feat: a'], [])).toBe('0.1.0-rc.1')
+  expect(nextVersion(null, ['feat: a'], ['v0.1.0-rc.1'])).toBe('0.1.0-rc.2')
+  expect(nextVersion(null, ['fix: a'], ['v0.1.0-rc.2', 'v0.1.0-rc.10', 'v0.2.0-rc.4', 'v0.1.0-rc.x'])).toBe('0.1.0-rc.11')
+  expect(nextVersion('v0.1.0', ['feat: a'], ['v0.1.0', 'v0.1.0-rc.3'])).toBe('0.2.0-rc.1')
+})
+
 it('keeps the rewrite only when every link survived', async () => {
   const notes = '- A ([#7](https://x/7))'
   expect(await rewrite(notes, async () => '- Easier A ([#7](https://x/7))')).toBe('- Easier A ([#7](https://x/7))')

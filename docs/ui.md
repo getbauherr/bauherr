@@ -43,6 +43,7 @@ Writes are server actions in `lib/actions.ts` over `src/lib/actions.ts` (`approv
 | Configure production checks | Configure checks (`/settings/products`) | |
 | Approve production | Approve production | |
 | Production deploy failed | Approve again | |
+| Release failed | Open workflow run (link to the failed `release.yml` run) | |
 | Round cap reached | Grant one more round | Stop |
 | Run needs you, Run failed | Re-run <stage> | |
 

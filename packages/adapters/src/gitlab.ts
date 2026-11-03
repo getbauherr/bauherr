@@ -341,21 +341,24 @@ class GitlabForge implements Forge {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
   }
   private release(r: any): Release {
-    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self };
+    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self, createdAt: r.created_at ?? r.released_at };
   }
   async findRelease(repo: RepoRef, o: { sha: string }) {
     const tags = new Set<string>((await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(o.sha)}/refs?type=tag&per_page=100`)).map((t: any) => t.name));
     const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=30`)).filter((x: any) => tags.has(x.tag_name)).at(-1);
     return r ? this.release(r) : null;
   }
-  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
-    return this.release(await this.h.json('POST', `/projects/${enc(repo)}/releases`, { tag_name: o.tag, ref: o.sha, name: o.name, description: o.body }));
+  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
+    return this.release(await this.h.json('POST', `/projects/${enc(repo)}/releases`, { tag_name: o.tag, ref: o.sha, name: o.prerelease ? `${o.name} (pre-release)` : o.name, description: o.body }));
+  }
+  async listTags(repo: RepoRef) {
+    return (await this.h.paginate(`/projects/${enc(repo)}/repository/tags?per_page=100`)).map((t) => t.name as string);
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     return this.release(await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }));
   }
   async latestRelease(repo: RepoRef) {
-    const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=1`))[0];
+    const r = (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=30`)).find((x: any) => !/^v?\d+\.\d+\.\d+-/.test(x.tag_name));
     return r ? this.release(r) : null;
   }
   async listCommits(repo: RepoRef, o: { from?: string; to: string }) {

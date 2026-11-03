@@ -1,7 +1,7 @@
 import { GATE_NAMES, type Need } from './needs-you'
 
 export type GateCtx = { stage: string; missing: string[]; open: number }
-type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun'
+type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun' | 'release-failed'
 export type GateConfig = {
   kind: Kind
   title: string
@@ -25,6 +25,7 @@ export const GATES: Record<Need, GateConfig> = {
   'Configure production checks': { kind: 'production-checks', title: 'Configure production checks', sentence: () => 'Production approval is on, but this Product has no production checks.', verb: () => 'Configure checks' },
   'Approve production': { kind: 'production', title: 'Approve production deploy', sentence: () => 'Approve the production deploy.', verb: () => GATE_NAMES.production },
   'Production deploy failed': { kind: 'production', title: 'Production deploy failed', sentence: () => 'The production deploy failed or was not reported; approving retries it.', verb: () => 'Approve again' },
+  'Release failed': { kind: 'release-failed', title: 'Release failed', sentence: () => 'The release workflow (image or npm) failed or did not finish; re-run it.', verb: () => 'Open workflow run' },
   'Round cap reached': { kind: 'review-cap', title: 'Round cap reached', sentence: () => 'The review sent this back too often; grant one more round or stop.', verb: () => 'Grant one more round', secondary: 'Stop' },
   'Run needs you': { kind: 'rerun', title: 'Run needs you', sentence: (c) => `The ${c.stage} Run needs you.`, verb: rerun },
   'Run failed': { kind: 'rerun', title: 'Run failed', sentence: (c) => `The ${c.stage} Run failed.`, verb: rerun },

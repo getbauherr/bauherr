@@ -49,9 +49,11 @@ const github = await scoped('connections', { name: 'github' }, {
   capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false },
 })
 await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
-const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production' })
+const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production', releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' })
 // ensure() never updates an existing Product: set the check `production.yml` reports once, never overwrite a changed value.
 if (!product.productionChecks) await payload.update({ collection: 'products', id: product.id, data: { productionGate: true, productionChecks: 'production' }, ...o })
+// Same for the release: pre-releases v0.1.0-rc.N, the factory waits for the `image` and `npm` jobs of release.yml.
+if (!product.releaseChecks) await payload.update({ collection: 'products', id: product.id, data: { releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
 const compiled = parse(readFileSync(fileURLToPath(new URL('../../../pack/workflow.yaml', import.meta.url)), 'utf8'))

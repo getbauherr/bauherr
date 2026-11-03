@@ -10,7 +10,7 @@ export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Round cap reached', 'Run needs you', 'Run failed'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Run needs you', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
 /** Names of the four human touch points, in flow order; Settings > Workflow, docs and README use them. */
 export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
@@ -30,7 +30,7 @@ export const stageOf = (t: { state?: string | null; stage?: string | null }): St
  * D5 (c): a succeeded plan awaiting approval with `unansweredCritical` > 0 is "Answer decisions" (before "Approve plan").
  */
 export const needsYou = (
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; reviewState?: string | null; reviewRounds?: number | null },
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null },
   run: { stage: string; status: string } | null,
   unansweredCritical = 0,
   gates: readonly HumanGate[] = humanGates(),
@@ -50,6 +50,7 @@ export const needsYou = (
     if (ticket.productionState === 'awaiting_approval') return ticket.productionChecksMissing ? 'Configure production checks' : 'Approve production'
     if (ticket.productionState === 'failed' || ticket.productionState === 'timed_out') return 'Production deploy failed'
   }
+  if (ticket.releaseChecksState === 'failed') return 'Release failed'
   if (run?.status === 'failed' && run.stage !== 'triage') return 'Run failed'
   return null
 }
