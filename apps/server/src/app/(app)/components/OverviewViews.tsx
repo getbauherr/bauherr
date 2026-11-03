@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
 import { heartbeatAge } from '../lib/format'
-import { BOARD_STAGES, stageLabel } from '../lib/needs-you'
+import { GATES } from '../lib/gates'
+import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
 import { DECISIONS_LOOKUPS, type RunRow, type TicketRow } from '../lib/overview'
 import { isWebUrl } from '../lib/url'
 import { frontierOrder } from '../../../lib/frontier'
@@ -14,7 +15,7 @@ const Num = ({ t }: { t: TicketRow }) =>
 const Needs = ({ t }: { t: TicketRow }) =>
   t.needsYou ? (
     <span className="label needs" data-gate={t.gate ? '' : undefined}>
-      {t.needsYou}
+      {GATES[t.needsYou as Need].verb({ stage: t.run?.stage ?? '' })}
       {t.gateUnreachable && ' · no reachable owner'}
       {t.gate && ` · ${t.gate.people.map((p) => `@${p}`).join(' ')}${t.gate.people.length ? ' · ' : ''}waiting ${heartbeatAge(t.gate.since).text.replace(' ago', '')}`}
     </span>

@@ -73,6 +73,17 @@ const build = (): FakeBackend => {
   // #15 sits at the review round cap with its escalation Comment.
   void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })
   void ts.comment('15', 'Bauherr needs a human: the review found 1 blocking issue(s), after 2 review rounds.\n\n- [medium] src/retry.ts:12 The loop never stops on a permanent error. Scenario: when the gateway answers 402, then the call is retried forever.')
+  // #16 on staging, #17 a plan without decisions, #18 a build with a failed Run; gated #2 awaits production approval.
+  void ts.create({ title: 'Ship the export header', labels: ['bauherr:stage:release'] })
+  void ts.comment('16', WORKLOG)
+  void ts.comment('16', summary(16))
+  void ts.create({ title: 'Tidy the settings copy', labels: ['bauherr:stage:plan'] })
+  void ts.comment('17', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
+  void ts.comment('17', WORKLOG)
+  void ts.create({ title: 'Fix the date parser', labels: ['bauherr:stage:build'] })
+  void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
+  void gated.comment('2', WORKLOG)
+  void gated.comment('2', summary(2))
   // Knowledge repo of the seeded Workspace: two documents on main and one open write-back PR with red checks.
   const kb = 'acme/knowledge'
   fake.commit(kb, 'main', 'handbook/release-policy.md', '# Release policy\n\nEvery release waits for **staging acceptance**.\n\n## Rollback\n\nRoll back with the previous image tag.\n')
