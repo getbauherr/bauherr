@@ -6,6 +6,7 @@ import { gateOn } from './mode'
 import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
 import { ownerQueue, questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type Session } from './intake/engine'
+import { mediaUrl, type ImageMime } from './intake/media'
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
@@ -815,7 +816,7 @@ const SIBLINGS_MARKER = '<!-- bauherr:intake-siblings -->'
 const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
 
 /** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
-export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number): { title: string; body: string; labels: string[] } => ({
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number, shots: { name: string; url: string }[] = []): { title: string; body: string; labels: string[] } => ({
   title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
   body: [
     '_Requester-supplied, untrusted._',
@@ -823,6 +824,7 @@ export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[
     `## Context\n${plainLine(draft.context)}`,
     `## Acceptance criteria\n${draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n')}`,
     ...(missing.length || draft.links.length ? [`## Open\n${[...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n')}`] : []),
+    ...(shots.length ? [`## Screenshots\n${shots.map((m) => `![${m.name}](${m.url})`).join('\n')}`] : []),
     `<!-- bauherr:intake session=${sessionId}${part === undefined ? '' : ` part=${part}`} -->`,
   ].join('\n\n'),
   labels: [`type:${draft.type}`, `product:${productSlug}`],
@@ -849,13 +851,16 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
     const find = async (marker: string): Promise<{ number: number } | undefined> => {
       for (const c of recent) if ((await ts.get(String(c.number))).body?.includes(marker)) return c
     }
+    const media = (await payload.find({ collection: 'media', where: { session: { equals: s.id } }, sort: 'id', pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+    const shots = media.map((m) => ({ name: m.name as string, url: mediaUrl(m.id, (m.mime ?? m.mimeType) as ImageMime) }))
+    if (shots.length && !/^https:\/\//.test(process.env.PUBLIC_URL ?? '')) payload.logger.warn('PUBLIC_URL is not an https URL: screenshot links in the Ticket body will not load on the forge')
     const drafts = split ?? [session.draft!]
     const tickets: { number: number }[] = []
     for (const [i, d] of drafts.entries()) {
       const part = split ? i : undefined
       const missing = readiness(d, shot, refers, asked).missing
       const marker = `<!-- bauherr:intake session=${s.id}${part === undefined ? '' : ` part=${part}`} -->`
-      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part)))
+      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part, shots)))
       if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
         await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
       }
@@ -865,14 +870,7 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
       const others = tickets.filter((o) => o !== t).map((o) => `#${o.number}`)
       if (others.length && !(await ts.listComments(String(t.number))).some((c) => c.body.startsWith(SIBLINGS_MARKER))) await ts.comment(String(t.number), `${SIBLINGS_MARKER}\nCreated together with ${others.join(', ')}`)
     }
-    const base = process.env.PUBLIC_URL?.replace(/\/$/, '') ?? ''
-    for (const m of (await payload.find({ collection: 'media', where: { and: [{ session: { equals: s.id } }, { attached: { not_equals: true } }] }, sort: 'id', pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
-      for (const t of tickets) {
-        if (ts.addAttachment) await ts.addAttachment(String(t.number), m.name, Buffer.from(m.data, 'base64'))
-        else await ts.addLink(String(t.number), `${base}/intake/api/media/${m.id}`)
-      }
-      await payload.update({ collection: 'media', id: m.id, data: { attached: true }, overrideAccess: true })
-    }
+    for (const m of media.filter((m) => !m.attached)) await payload.update({ collection: 'media', id: m.id, data: { attached: true }, overrideAccess: true })
     const numbers = tickets.map((t) => t.number)
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: numbers[0], ticketNumbers: numbers }, overrideAccess: true })
     return { number: numbers[0]!, ...(split && { numbers }) }

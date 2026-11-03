@@ -1,5 +1,16 @@
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-export const MAX_IMAGES_PER_SESSION = 5
+import { createHmac, timingSafeEqual } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { createLocalReq, type Payload, type PayloadRequest } from 'payload'
+import { secret } from '../secrets'
+
+type Doc = Record<string, any>
+
+/** Upload limits from the environment (D2): `MEDIA_MAX_BYTES` (default 5 MiB), `MEDIA_MAX_PER_SESSION` (default 5). */
+export const mediaLimits = (): { maxBytes: number; maxPerSession: number } => ({
+  maxBytes: Number(process.env.MEDIA_MAX_BYTES) || 5 * 1024 * 1024,
+  maxPerSession: Number(process.env.MEDIA_MAX_PER_SESSION) || 5,
+})
 
 export type ImageMime = 'image/png' | 'image/jpeg' | 'image/webp'
 
@@ -60,4 +71,59 @@ export const stripMetadata = (b: Uint8Array, mime: ImageMime): Uint8Array => {
   const out = join([b.subarray(0, 12), ...parts])
   new DataView(out.buffer).setUint32(4, out.length - 8, true)
   return out
+}
+
+const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' } as const satisfies Record<ImageMime, string>
+
+const sign = (id: number | string): string => createHmac('sha256', secret('PAYLOAD_SECRET')).update(`media:${id}`).digest('base64url')
+
+/** Whether `sig` (with or without a trailing `.ext`) is the signature of media `id`. */
+export const verifyMediaSig = (id: number | string, sig: string): boolean => {
+  const [got, want] = [Buffer.from(sig.replace(/\.\w+$/, '')), Buffer.from(sign(id))]
+  return got.length === want.length && timingSafeEqual(got, want)
+}
+
+/** Public, unguessable, non-expiring link `${PUBLIC_URL}/m/<id>/<sig>.<ext>`; the extension only makes forge image proxies treat it as an image. Rotating `PAYLOAD_SECRET` invalidates every link. */
+export const mediaUrl = (id: number | string, mime: ImageMime): string =>
+  `${(process.env.PUBLIC_URL ?? '').replace(/\/$/, '')}/m/${id}/${sign(id)}.${EXT[mime]}`
+
+export class MediaRejected extends Error {}
+
+/** Sniffs, strips metadata and stores one image in the `media` collection (local volume or S3, whichever is configured). Throws `MediaRejected` for a non-image or corrupt file. */
+export const saveMedia = async (
+  payload: Payload,
+  a: { bytes: Uint8Array; name: string; workspace: number | string; session?: number | string; product?: number | string; ticketNumber?: number },
+): Promise<Doc> => {
+  const mime = sniff(a.bytes)
+  if (!mime) throw new MediaRejected('only png, jpeg or webp images')
+  let clean: Uint8Array
+  try {
+    clean = stripMetadata(a.bytes, mime)
+  } catch {
+    throw new MediaRejected('corrupt image')
+  }
+  const name = a.name.replace(/[^\w.-]+/g, '_').slice(-80) || 'screenshot'
+  return (await payload.create({
+    collection: 'media',
+    data: { name, mime, workspace: a.workspace, session: a.session, product: a.product, ticketNumber: a.ticketNumber },
+    file: { data: Buffer.from(clean), name, mimetype: mime, size: clean.length },
+    overrideAccess: true,
+  })) as Doc
+}
+
+/** The bytes of a stored image: legacy rows from `data`, then the S3 handler when configured, then the local volume, so files written under the other store stay readable after switching. */
+export const mediaBytes = async (payload: Payload, doc: Doc): Promise<Uint8Array> => {
+  if (doc.data) return Buffer.from(doc.data, 'base64')
+  const upload = payload.collections.media!.config.upload
+  for (const handler of upload.handlers ?? []) {
+    try {
+      const res = await handler({ ...(await createLocalReq({}, payload)), headers: new Headers() } as PayloadRequest, { doc: doc as { id: number | string }, headers: new Headers(), params: { collection: 'media', filename: doc.filename, prefix: doc.prefix } })
+      if (res instanceof Response && res.ok) return new Uint8Array(await res.arrayBuffer())
+    } catch {}
+  }
+  try {
+    return await readFile(path.resolve(upload.staticDir!, path.basename(doc.filename)))
+  } catch {
+    throw new Error(`media ${doc.id} unreadable`)
+  }
 }
