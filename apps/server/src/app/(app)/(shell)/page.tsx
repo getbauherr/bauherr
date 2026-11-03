@@ -39,11 +39,11 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       {list ? (
         epics.length ? <EpicsView epics={epics} /> : <EmptyState text="No open epics." />
       ) : shown.length ? (
-        graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} capped={data.lookupsCapped} wip={data.wip} />
+        graph ? <TicketGraph tickets={shown} /> : <BoardView tickets={shown} showProduct={data.products.length > 1 && !product} wip={data.wip} />
       ) : sp.epic ? (
         <EmptyState text="No open tickets in this epic." action={{ href: '/?epic=', label: 'Clear the epic filter' }} />
       ) : (
-        <EmptyState text={`No tickets in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/settings/workspace', label: 'Open settings' }} />
+        <EmptyState text="Describe what you want built." action={{ href: '/requests/new', label: 'New request' }} />
       )}
     </>
   )
