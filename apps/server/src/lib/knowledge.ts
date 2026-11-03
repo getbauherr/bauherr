@@ -37,9 +37,10 @@ export const chunk = (text: string, markdown = true): { heading: string; text: s
   return out
 }
 
-/** Where a path of a source sits in the resolution order core -> workspace -> product; `logical` is the path without the layer prefix. */
-export const layerOf = (path: string, core = false): { layer: Layer; logical: string; product: string | null } => {
+/** Where a path of a source sits in the resolution order core -> workspace -> product; `logical` is the path without the layer prefix. Docs of a Product's own repo (`repoProduct` = its slug) are product layer under `repo-docs/`. */
+export const layerOf = (path: string, core = false, repoProduct?: string): { layer: Layer; logical: string; product: string | null } => {
   if (core) return { layer: 'core', logical: path, product: null }
+  if (repoProduct) return { layer: 'product', logical: `repo-docs/${path}`, product: repoProduct }
   const p = /^products\/([^/]+)\/(.+)$/.exec(path)
   if (p) return { layer: 'product', logical: p[2]!, product: p[1]! }
   return { layer: 'workspace', logical: path.replace(/^workspace\//, ''), product: null }
@@ -58,10 +59,10 @@ const packFiles = (): { path: string; text: string }[] => {
     .sort((a, b) => a.path.localeCompare(b.path))
 }
 
-const replaceSource = async (payload: Payload, workspace: number, source: string, commit: string, files: { path: string; text: string }[], core: boolean) => {
+const replaceSource = async (payload: Payload, workspace: number, source: string, commit: string, files: { path: string; text: string }[], core: boolean, repoProduct?: string) => {
   const rows = files.flatMap((f) =>
     chunk(f.text, isMd(f.path)).map((c) => {
-      const l = layerOf(f.path, core)
+      const l = layerOf(f.path, core, repoProduct)
       return sql`(${workspace}, ${source}, ${l.layer}, ${f.path}, ${l.logical}, ${l.product}, ${c.heading}, ${c.text}, ${commit}, now(), now())`
     }),
   )
@@ -79,7 +80,9 @@ const save = async (payload: Payload, workspace: number, indexed: Record<string,
   return true
 }
 
-/** Re-indexes the core pack (when its content changed) and the Knowledge repo (when its default-branch commit changed); a repo that fails keeps its old index and is not retried for 10 minutes; chunks of any other repo are dropped. Returns whether anything was indexed. */
+const DOCS = /^(README\.md|docs\/.*\.md)$/
+
+/** Re-indexes the core pack (when its content changed), the Knowledge repo and each Product's README.md + docs/**\/*.md (when the default-branch commit changed); a repo that fails keeps its old index and is not retried for 10 minutes; chunks of any other repo are dropped. Returns whether anything was indexed. */
 export const resync = async (payload: Payload, workspaceId: number | string): Promise<boolean> => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspaceId, depth: 0, overrideAccess: true })) as Doc
   const indexed: Record<string, string> = { ...ws.knowledgeIndexed }
@@ -93,36 +96,62 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
     changed = true
   }
 
-  await payload.db.drizzle.execute(sql`DELETE FROM "knowledge_chunks" WHERE "workspace_id" = ${ws.id} AND "source" NOT IN ('core', ${ws.knowledgeRepo ?? ''})`)
+  const find = async (collection: 'products' | 'repositories' | 'ticket_sources', where: Record<string, unknown>): Promise<Doc[]> =>
+    (await payload.find({ collection, where, pagination: false, depth: 0, overrideAccess: true } as never)).docs as Doc[]
+  const products = await find('products', { workspace: { equals: ws.id } })
+  const first = async (collection: 'repositories' | 'ticket_sources') => {
+    const byProduct = new Map<number, Doc>()
+    for (const d of await find(collection, { workspace: { equals: ws.id } })) if (!byProduct.has(id(d.product))) byProduct.set(id(d.product), d)
+    return byProduct
+  }
+  const [repos, sources] = [await first('repositories'), await first('ticket_sources')]
+  const targets = products.flatMap((p) => {
+    const repo = repos.get(p.id)?.fullName as string | undefined
+    const connection = sources.get(p.id)?.connection
+    return repo && connection ? [{ key: `product:${p.id}`, repo, connection, slug: p.slug as string }] : []
+  })
 
-  const failedAt = indexed.gitFailed?.startsWith(`${ws.knowledgeRepo}|`) ? Date.parse(indexed.gitFailed.split('|')[1]!) : 0
-  if (ws.knowledgeRepo && ws.knowledgeConnection) {
-    if (Date.now() - failedAt < BACKOFF_MS) return changed && (await save(payload, ws.id, indexed))
+  const keep = ['core', ws.knowledgeRepo ?? '', ...targets.map((t) => t.repo)]
+  await payload.db.drizzle.execute(sql`DELETE FROM "knowledge_chunks" WHERE "workspace_id" = ${ws.id} AND "source" NOT IN (${sql.join(keep.map((k) => sql`${k}`), sql`, `)})`)
+  for (const k of Object.keys(indexed)) {
+    if (k.startsWith('product:') && !targets.some((t) => k === t.key || k === `${t.key}:failed`)) {
+      delete indexed[k]
+      changed = true
+    }
+  }
+
+  const sync = async (key: string, failKey: string, repo: string, connection: unknown, pick: (path: string) => boolean, slug?: string) => {
+    const failedAt = indexed[failKey]?.startsWith(`${repo}|`) ? Date.parse(indexed[failKey]!.split('|')[1]!) : 0
+    if (Date.now() - failedAt < BACKOFF_MS) return
     try {
-      const forge = backendFor(await connectionInput(payload, ws.knowledgeConnection)).forge
-      const { commit, paths, truncated } = await forge.listFiles(ws.knowledgeRepo)
-      if (indexed.git !== `${ws.knowledgeRepo}@${commit}`) {
-        if (truncated) payload.logger.warn({ workspace: ws.id, repo: ws.knowledgeRepo }, 'knowledge repo tree truncated by GitHub; indexing the files returned')
+      const forge = backendFor(await connectionInput(payload, connection as never)).forge
+      const { commit, paths, truncated } = await forge.listFiles(repo)
+      if (indexed[key] !== `${repo}@${commit}`) {
+        if (truncated) payload.logger.warn({ workspace: ws.id, repo }, 'knowledge repo tree truncated by GitHub; indexing the files returned')
         const files: { path: string; text: string }[] = []
-        for (const path of paths.filter(isMd)) files.push({ path, text: (await forge.getFile(ws.knowledgeRepo, path, commit)).content })
-        await replaceSource(payload, ws.id, ws.knowledgeRepo, commit, files, false)
-        indexed.git = `${ws.knowledgeRepo}@${commit}`
+        for (const path of paths.filter(pick)) files.push({ path, text: (await forge.getFile(repo, path, commit)).content })
+        await replaceSource(payload, ws.id, repo, commit, files, false, slug)
+        indexed[key] = `${repo}@${commit}`
         changed = true
       }
-      if (indexed.gitFailed) {
-        delete indexed.gitFailed
+      if (indexed[failKey]) {
+        delete indexed[failKey]
         changed = true
       }
     } catch (e) {
-      payload.logger.error({ err: e, workspace: ws.id }, 'knowledge resync failed')
-      indexed.gitFailed = `${ws.knowledgeRepo}|${new Date().toISOString()}`
+      payload.logger.error({ err: e, workspace: ws.id, repo }, 'knowledge resync failed')
+      indexed[failKey] = `${repo}|${new Date().toISOString()}`
       await save(payload, ws.id, indexed)
     }
-  } else if (indexed.git || indexed.gitFailed) {
+  }
+
+  if (ws.knowledgeRepo && ws.knowledgeConnection) await sync('git', 'gitFailed', ws.knowledgeRepo, ws.knowledgeConnection, isMd)
+  else if (indexed.git || indexed.gitFailed) {
     delete indexed.git
     delete indexed.gitFailed
     changed = true
   }
+  for (const t of targets) await sync(t.key, `${t.key}:failed`, t.repo, t.connection, (path) => DOCS.test(path), t.slug)
 
   return changed && (await save(payload, ws.id, indexed))
 }

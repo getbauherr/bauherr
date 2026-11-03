@@ -19,6 +19,11 @@ test('Knowledge: search finds a repo document, it renders, write-backs show thei
   await expect(page.getByRole('heading', { name: 'Knowledge', level: 1 })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Documents' }).getByRole('link', { name: 'handbook/release-policy.md' })).toBeVisible()
 
+  const docs = page.getByRole('navigation', { name: 'Documents' })
+  await expect(docs).toContainText('acme/web')
+  await docs.getByRole('link', { name: 'docs/architecture.md' }).click()
+  await expect(page.getByRole('article', { name: 'docs/architecture.md' }).getByRole('heading', { name: 'Architecture' })).toBeVisible()
+
   await page.getByRole('searchbox', { name: 'Search Knowledge' }).fill('"previous image tag"')
   await page.getByRole('button', { name: 'Search' }).click()
   const hit = page.getByRole('region', { name: 'Search results' })
