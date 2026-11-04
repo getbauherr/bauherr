@@ -265,6 +265,24 @@ export const saveBauherr = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
 })
 
+/** Ends a failed-login lockout; the Bauherr can sign in again at once. */
+export const unlockBauherr = act({}, async (c, fd) => {
+  only(c.user)
+  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { lockUntil: null, loginAttempts: 0 }, overrideAccess: true } as never)
+})
+
+/** The creating Admin joins the new Workspace's tenants. */
+export const createWorkspace = act({}, async (c, fd) => {
+  only(c.user)
+  const name = s(fd, 'name')
+  const slug = slugOf(s(fd, 'slug') || name)
+  if (!name || !slug) throw new Error('Name is required.')
+  const ws = await c.payload.create({ collection: 'workspaces', data: { name, slug }, ...c.w } as never)
+  const me = await c.payload.findByID({ collection: 'bauherren', id: c.user.id as number, depth: 0, overrideAccess: true })
+  const have = ((me.tenants ?? []) as { tenant: number | { id: number } }[]).map((t) => ({ tenant: typeof t.tenant === 'object' ? t.tenant.id : t.tenant }))
+  await c.payload.update({ collection: 'bauherren', id: me.id, data: { tenants: [...have, { tenant: ws.id as number }] }, overrideAccess: true } as never)
+})
+
 const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
 
 /** Own record only: the target is always the signed-in Bauherr, never a form value. The key appears once, as the ready-made `claude mcp add` line. */

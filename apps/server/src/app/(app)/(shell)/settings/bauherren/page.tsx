@@ -2,7 +2,7 @@ import { EmptyState } from '../../../components/EmptyState'
 import { Checks, Field, SettingsForm } from '../../../components/SettingsForm'
 import { isAdmin, loadBauherren } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
-import { createBauherr, removeDoc, saveBauherr } from '../actions'
+import { createBauherr, removeDoc, saveBauherr, unlockBauherr } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +22,7 @@ export default async function BauherrenSettings() {
           <tbody>
             {bauherren.map((b) => (
               <tr key={b.id}>
-                <td>{b.email}</td>
+                <td>{b.email}{b.locked && <> <span className="chip label failed">Locked</span></>}</td>
                 <td>{b.role}</td>
                 <td>{b.workspaces.map((w) => w.name).join(', ')}</td>
                 <td>{b.oidcLinked ? 'linked' : <span className="muted">—</span>}</td>
@@ -39,6 +39,11 @@ export default async function BauherrenSettings() {
                           </SettingsForm>
                         </div>
                       </details>
+                      {b.locked && (
+                        <SettingsForm action={unlockBauherr} submit="Unlock" inline>
+                          <input type="hidden" name="id" value={b.id} />
+                        </SettingsForm>
+                      )}
                       {b.id !== user.id && (
                         <SettingsForm action={removeDoc} submit="Remove" confirm="Confirm remove" inline>
                           <input type="hidden" name="collection" value="bauherren" />
