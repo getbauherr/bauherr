@@ -56,6 +56,17 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
   return { rows, total: sessions.totalDocs, multiProduct }
 }
 
+/** Number of the caller's open Drafts with messages in a Workspace (the Requests nav badge). */
+export async function countOwnDrafts(userId: number, workspaceId: number) {
+  const payload = await payloadClient()
+  const { docs } = await payload.find({
+    collection: 'intake_sessions',
+    where: { and: [{ user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }] },
+    select: { messages: true }, depth: 0, pagination: false, overrideAccess: true,
+  })
+  return docs.filter((s) => (s.messages as unknown[] | null)?.length).length
+}
+
 /** The caller's resumable Intake sessions (newest open Drafts with messages) plus the `?session=` one when it is theirs: open, product-user, same Workspace. */
 export async function openSessions(userId: number, workspaceId: number | undefined, wanted?: string) {
   if (workspaceId == null) return { open: [], current: undefined }
