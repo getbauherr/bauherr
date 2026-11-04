@@ -30,7 +30,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   const nav = page.getByRole('navigation', { name: 'Settings' })
   await expect(nav.getByRole('link', { name: 'General' })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'People' })).toBeVisible()
-  const advanced = nav.locator('details.snav-adv')
+  const advanced = nav.locator('details')
   await expect(advanced).not.toHaveAttribute('open', /.*/)
   await nav.getByText('Advanced', { exact: true }).click()
   await expect(advanced).toHaveAttribute('open', '')
@@ -59,6 +59,22 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   const row = page.getByRole('row', { name: new RegExp(added) })
   await expect(row).toContainText('bauherr')
   await expect(row).toContainText('Acme')
+  await row.getByText('Edit', { exact: true }).click()
+  await expect(row.getByLabel('Role')).toBeVisible()
+  await row.getByText('Edit', { exact: true }).click()
+
+  await row.getByRole('button', { name: 'Remove' }).click()
+  await row.getByRole('button', { name: 'Confirm remove' }).click()
+  await expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0)
+
+  await nav.getByRole('link', { name: 'General' }).click()
+  const created = `Zzz ${Date.now()}`
+  const ws = page.locator('section#new-workspace')
+  await ws.getByLabel('Name').fill(created)
+  await ws.getByRole('button', { name: 'Create Workspace' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.locator('header.topbar').getByRole('button', { name: 'User menu' }).click()
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: created })).toBeVisible()
 })
 
 test('an Advanced anchor entry keeps Advanced open and is the only current entry', async ({ page }) => {
@@ -69,7 +85,7 @@ test('an Advanced anchor entry keeps Advanced open and is the only current entry
   await expect(page.locator('header.topbar')).toBeVisible()
   await page.goto('/settings/workspace#tiers')
   const nav = page.getByRole('navigation', { name: 'Settings' })
-  await expect(nav.locator('details.snav-adv')).toHaveAttribute('open', '')
+  await expect(nav.locator('details')).toHaveAttribute('open', '')
   await expect(nav.getByRole('link', { name: 'Model tiers' })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: 'General' })).not.toHaveAttribute('aria-current', 'page')
 })

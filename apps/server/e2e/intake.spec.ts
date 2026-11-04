@@ -25,7 +25,7 @@ const say = async (page: Page, text: string, reply: string | RegExp) => {
 test('a request with several problems ends in one confirmed list and one Ticket per problem', async ({ page }) => {
   await signIn(page)
   await page.goto('/requests/new')
-  await expect(page.getByRole('link', { name: 'New request' })).toHaveCount(1)
+  await expect(page.getByRole('link', { name: 'New request' })).toHaveCount(0)
   await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
   await say(page, 'The invoice total is wrong and also the export is slow', /I will create 3 separate tickets/)
   await expect(page.getByRole('complementary', { name: 'Draft' }).getByRole('listitem')).toContainText(['The invoice total is wrong', 'The export is slow', 'The login page is confusing'], { timeout: 10_000 })
@@ -79,7 +79,8 @@ test('a Product user describes a request, answers the questions and sends a Tick
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.board')).toBeVisible()
 
-  await page.getByRole('link', { name: 'New request' }).click()
+  await page.getByRole('link', { name: /^Requests/ }).click()
+  await page.getByRole('link', { name: 'New request' }).first().click()
   await expect(page.getByRole('heading', { name: 'New request' })).toBeVisible()
   await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
 

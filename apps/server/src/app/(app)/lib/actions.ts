@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
@@ -190,4 +190,37 @@ export async function postCommentAction(ticket: number, body: string, mediaIds: 
     if (e instanceof NotInWorkspace) notFound()
     return { error: e instanceof CommentRefused ? e.message : 'The forge did not accept the comment. Your images are kept; try again.' }
   }
+}
+
+const repairError = (e: unknown): { error: string } => {
+  if (e instanceof NotAdmin || e instanceof Error) return { error: e.message }
+  throw e
+}
+
+/** Admin "Fix state" on the Ticket page. The disclosure posts `kind` (and `stage`); answers an error text instead of throwing. */
+export async function repairTicketAction(ticket: number, _prev: { error?: string; saved?: boolean }, fd: FormData): Promise<{ error?: string; saved?: boolean }> {
+  const { user, payload, workspaceId } = await acting()
+  const kind = String(fd.get('kind'))
+  const stage = String(fd.get('stage'))
+  const repair: Repair | null = kind === 'stage' && (REPAIR_STAGES as readonly string[]).includes(stage) ? { kind, stage: stage as (typeof REPAIR_STAGES)[number] } : kind === 'clear-waiting' || kind === 'reset-counters' || kind === 'rank-top' ? { kind } : null
+  if (!repair) return { error: 'Choose a repair.' }
+  try {
+    await inWorkspace(repairTicket(payload, user, { ticket, workspaceId, repair }))
+  } catch (e) {
+    return repairError(e)
+  }
+  revalidatePath(`/tickets/${ticket}`)
+  return { saved: true }
+}
+
+/** Admin: relink a Build Run to its replacement MR (Run page). */
+export async function relinkRunAction(runId: number, _prev: { error?: string; saved?: boolean }, fd: FormData): Promise<{ error?: string; saved?: boolean }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    await inWorkspace(relinkRunMr(payload, user, { runId, workspaceId, prUrl: String(fd.get('prUrl') ?? '').trim() }))
+  } catch (e) {
+    return repairError(e)
+  }
+  revalidatePath(`/runs/${runId}`)
+  return { saved: true }
 }

@@ -84,7 +84,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
             ))}
           </ul>
         ) : <p className="small muted">No open drafts.</p>}
-        <a className="small muted" href="/requests">All requests</a>
+        <a className="small muted" href="/requests">Requests</a>
         {products.length > 1 && (
           <label className="field">
             <span className="label muted">Product</span>

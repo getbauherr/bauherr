@@ -8,6 +8,8 @@ import { Button } from './ui/button'
 
 type Props = {
   ticket: number
+  /** The Ticket's Product, for the "Configure checks" link. */
+  product: number
   need: Need | null
   stage: string
   missing: string[]
@@ -32,7 +34,7 @@ const Post = ({ ticket, action, children, variant = 'default' }: { ticket: numbe
 )
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl }: Props) {
+export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl }: Props) {
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open, reason }
   const verb = gate?.verb(ctx) ?? ''
@@ -57,7 +59,7 @@ export function ActionBar({ ticket, need, stage, missing, open, run, reason, idl
       case 'Run failed': return run ? <form action={rerunStage.bind(null, run)}><SubmitButton variant="default">{verb}</SubmitButton></form> : null
       case 'Answer decisions':
       case 'Answer questions': return <Button asChild><a href="#answer">Answer {open} question{open === 1 ? '' : 's'}</a></Button>
-      case 'Configure production checks': return <Button asChild><Link href="/settings/products">{verb}</Link></Button>
+      case 'Configure production checks': return <Button asChild><Link href={`/settings/products/${product}#production`}>{verb}</Link></Button>
     }
   })()
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null

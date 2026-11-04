@@ -11,8 +11,9 @@ vi.mock('../src/lib/adapters', () => ({
   backendFor: (c: { id: number; secret: string | null }, limits: unknown) => {
     limitsSeen.push(limits)
     if (!c.secret) throw new Error(`connection ${c.id} has no secret`)
+    const forge = { listRepositories: async () => (c.secret === 'net' ? new Promise(() => {}) : c.secret === 'ghp_x' ? [{ fullName: 'acme/shop' }, { fullName: 'acme/api' }] : Promise.reject(new Error('Bad credentials'))) }
     const whoami = async () => (c.secret === 'ghp_x' ? 'me' : Promise.reject(c.secret === 'net' ? new Error('request timed out after 10s') : Object.assign(new Error('Bad credentials'), { status: 401 })))
-    return { tickets: () => ({ whoami }) }
+    return { forge, tickets: () => ({ whoami }) }
   },
 }))
 let actions: typeof import('../src/app/(app)/(shell)/settings/actions')
@@ -88,6 +89,32 @@ it('a failing ticket source leaves no Product, repository or source behind', asy
   expect({ products: await count('products'), repositories: await count('repositories'), sources: await count('ticket_sources') }).toEqual(before)
 })
 
+it('a failing repository create and a malformed repository name leave no Product behind', async () => {
+  const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
+  const before = await count('products')
+  for (const fullName of ['acme', 'https://github.com/acme/web', 'acme/ web']) {
+    expect(await actions.createProductWithRepo({}, form({ name: 'Bad', fullName, connection }))).toMatchObject({ fields: { fullName: 'Use owner/name, for example acme/shop.' } })
+  }
+  expect(await count('products')).toBe(before)
+  const create = payload.create.bind(payload)
+  const spy = vi.spyOn(payload, 'create').mockImplementation(((args: { collection: string }) => (args.collection === 'repositories' ? Promise.reject(new Error('repo boom')) : create(args as never))) as never)
+  expect(await actions.createProductWithRepo({}, form({ name: 'NoRepo', fullName: 'acme/norepo', connection }))).toEqual({ error: 'repo boom' })
+  spy.mockRestore()
+  expect(await count('products')).toBe(before)
+})
+
+it('repositoriesOf is Admin-only and refuses a Connection of another Workspace', async () => {
+  const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
+  const other = (await payload.create({ collection: 'workspaces', data: { name: 'other', slug: 'other' }, ...o })).id as number
+  const foreign = await payload.create({ collection: 'connections', data: { name: 'Foreign', kind: 'github', secret: 'ghp_x', workspace: other }, ...o })
+  await expect(actions.repositoriesOf(foreign.id as number)).rejects.toThrow('Not in this Workspace')
+  expect(await actions.repositoriesOf(connection)).toEqual(['acme/api', 'acme/shop'])
+  const admin = signedIn
+  signedIn = { user: await payload.create({ collection: 'bauherren', data: { email: 'm2@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o }), workspace: { id: ws } }
+  await expect(actions.repositoriesOf(connection)).rejects.toThrow('Only an Admin')
+  signedIn = admin
+})
+
 const stored = async (id: unknown) => (await import('../src/app/(app)/lib/settings')).loadConnections(ws).then((l) => l.find((c) => c.id === id))
 
 it('a Connection without a secret fails verify with a stored error (sync throw)', async () => {
@@ -117,7 +144,7 @@ it('skipDeploy keeps a configured deploy mode and still marks the step Done', as
 it('a second Product with the same short name is refused', async () => {
   const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
   const before = await count('products')
-  expect(await actions.createProductWithRepo({}, form({ name: 'Shop', fullName: 'acme/shop2', connection }))).toMatchObject({ fields: { slug: expect.stringContaining('already exists') } })
+  expect(await actions.createProductWithRepo({}, form({ name: 'Shop', fullName: 'acme/shop2', connection }))).toMatchObject({ fields: { slug: 'Another Product already uses this short name.' } })
   expect(await count('products')).toBe(before)
 })
 
@@ -125,4 +152,26 @@ it('saving a new secret clears only the verification state', async () => {
   const c = await payload.create({ collection: 'connections', data: { name: 'Keep', kind: 'github', secret: 'ghp_x', workspace: ws, capabilities: { verifiedAt: '2026-01-01', lastError: 'old', scopes: ['repo'] } }, ...o })
   await actions.saveConnection({}, form({ id: c.id, name: 'Keep', kind: 'github', secret: 'ghp_y' }))
   expect((await payload.findByID({ collection: 'connections', id: c.id, ...o })).capabilities).toEqual({ scopes: ['repo'] })
+})
+
+it('listRepos answers the sorted repositories, null when the forge fails or does not answer in 3 s', async () => {
+  const { listRepos } = await import('../src/app/(app)/lib/settings')
+  const ok = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: ws } }, { name: { equals: 'GitHub' } }] }, ...o })).docs[0]!.id as number
+  const bad = await payload.create({ collection: 'connections', data: { name: 'Rejected', kind: 'github', secret: 'bad', workspace: ws }, ...o })
+  const slow = await payload.create({ collection: 'connections', data: { name: 'Slow', kind: 'github', secret: 'net', workspace: ws }, ...o })
+  expect(await listRepos(ok)).toEqual(['acme/api', 'acme/shop'])
+  expect(await listRepos(bad.id as number)).toBeNull()
+  const started = Date.now()
+  expect(await listRepos(slow.id as number)).toBeNull()
+  expect(Date.now() - started).toBeLessThan(5000)
+  expect(limitsSeen.at(-1)).toEqual({ maxRetries: 0, timeoutMs: 3000 })
+})
+
+it('"Other..." posts the typed repository; an empty choice is a field error and creates nothing', async () => {
+  const connection = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: ws } }, { name: { equals: 'GitHub' } }] }, ...o })).docs[0]!.id as number
+  const before = await count('products')
+  expect(await actions.createProductWithRepo({}, form({ name: 'Nothing', fullName: '__other', repoOther: '', connection }))).toMatchObject({ fields: { fullName: 'Choose a repository.' } })
+  expect(await count('products')).toBe(before)
+  expect(await actions.createProductWithRepo({}, form({ name: 'Typed', fullName: '__other', repoOther: 'acme/typed', connection }))).toMatchObject({ saved: true })
+  expect((await payload.find({ collection: 'repositories', where: { fullName: { equals: 'acme/typed' } }, ...o })).totalDocs).toBe(1)
 })

@@ -4,7 +4,7 @@ import { EmptyState } from '../../../../components/EmptyState'
 import { Field, SettingsForm } from '../../../../components/SettingsForm'
 import { DeploySections, RepositoryFields } from '../../../../components/ProductForms'
 import { RadioCards, SettingsSection, SetupChecklist } from '../../../../components/SettingsParts'
-import { isAdmin, loadProduct } from '../../../../lib/settings'
+import { isAdmin, loadProduct, recentChecks } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
 import { addRepository, mintEmbedToken, removeDoc, revokeEmbedToken, saveDeploy } from '../../actions'
 
@@ -22,8 +22,9 @@ const Remove = ({ collection, id, label }: { collection: string; id: number; lab
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
-  const data = await loadProduct(workspace.id, Number((await params).id))
+  const data = await loadProduct(workspace.id, Number((await params).id), isAdmin(user))
   if (!data) notFound()
+  const checks = await recentChecks(data.product.id)
   const { product: p, connections } = data
   const admin = isAdmin(user)
   const d = p.deploy
@@ -33,7 +34,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
   const settings = (
     <>
-      <DeploySections data={data} admin={admin} numbered />
+      <DeploySections data={data} checks={checks} admin={admin} numbered />
 
       <SettingsSection id="release" n={5} title="Release notes" purpose="Release notes are written when you approve production.">
         <RadioCards name="releaseMode" legend="Who makes the release?" value={d.releaseMode} options={[

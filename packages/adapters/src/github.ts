@@ -185,7 +185,7 @@ class GithubTickets implements TicketSource {
     return {
       ...summary(i), body,
       parent: i.parent_issue_url ? String(i.parent_issue_url).split('/').at(-1)! : null,
-      blockedBy: blockers.map((b) => String(b.number)),
+      blockedBy: [...new Set([...blockers.map((b) => String(b.number)), ...relations.blockedBy])],
       links: relations.links,
       closeReason: i.state === 'closed' ? (i.state_reason ?? 'completed') : null,
     };
@@ -323,6 +323,15 @@ class GithubForge implements Forge {
   }
   async listBranches(repo: RepoRef): Promise<Branch[]> {
     return (await this.h.paginate(`/repos/${repo}/branches?per_page=100`)).map((b) => ({ name: b.name, sha: b.commit.sha }));
+  }
+  async getBranch(repo: RepoRef, name: string): Promise<Branch | null> {
+    try {
+      const b = await this.h.json('GET', `/repos/${repo}/branches/${name.split('/').map(encodeURIComponent).join('/')}`);
+      return { name, sha: b.commit.sha };
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) return null;
+      throw e;
+    }
   }
   async createBranch(repo: RepoRef, name: string, from?: string): Promise<Branch> {
     const base = from ?? (await this.getRepository(repo)).defaultBranch;

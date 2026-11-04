@@ -91,3 +91,17 @@ export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; wo
     </ul>
   </Card>
 )
+
+/** The human gates in flow order. The last row (production) is passed in: a switch on the Product page, a state word on /settings/workflow. */
+export function GateLadder({ plan, staging, children }: { plan: boolean; staging: boolean; children: ReactNode }) {
+  const word = (on: boolean) => (on ? 'On' : 'Off')
+  return (
+    <div>
+      <GateRow label="Answer questions" help="Before planning, the agent asks you what is unclear. On the Ticket, after Triage." state="Always on" />
+      <GateRow label="Approve the plan" help="You approve the plan before any code is written. On the Ticket, before Build." state={word(plan)} />
+      <GateRow label="Accept on staging" help="You check the change on staging before it moves on. When off, Bauherr accepts automatically once staging is confirmed. On the Ticket, after the merge." state={word(staging)} />
+      {children}
+      <p className="small muted border-t border-border pt-3">Everything else runs on its own.</p>
+    </div>
+  )
+}

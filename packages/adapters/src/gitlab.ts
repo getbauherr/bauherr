@@ -291,6 +291,15 @@ class GitlabForge implements Forge {
   async listBranches(repo: RepoRef): Promise<Branch[]> {
     return (await this.h.paginate(`/projects/${enc(repo)}/repository/branches?per_page=100`)).map((b) => ({ name: b.name, sha: b.commit.id }));
   }
+  async getBranch(repo: RepoRef, name: string): Promise<Branch | null> {
+    try {
+      const b = await this.h.json('GET', `/projects/${enc(repo)}/repository/branches/${enc(name)}`);
+      return { name, sha: b.commit.id };
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) return null;
+      throw e;
+    }
+  }
   async createBranch(repo: RepoRef, name: string, from?: string): Promise<Branch> {
     const ref = from ?? (await this.getRepository(repo)).defaultBranch;
     const b = await this.h.json('POST', `/projects/${enc(repo)}/repository/branches?branch=${enc(name)}&ref=${enc(ref)}`);

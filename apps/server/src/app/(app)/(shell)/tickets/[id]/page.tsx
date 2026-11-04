@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
 import { mediaLimits } from '../../../../../lib/intake/media'
+import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { CommentComposer } from '../../../components/CommentComposer'
@@ -75,7 +76,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const missing = unansweredCritical(decisions, answers)
   const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
-  const waiting = ticket.state === 'open' ? await waitingLabel(payload, ticket) : null
+  const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
   const capFindings = latestWith(comments, 'Bauherr needs a human:')?.body
@@ -96,7 +97,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="flex flex-col gap-4">
-      <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} />
+      <ActionBar ticket={ticket.id} product={product.id as number} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
       <p className="small text-muted-foreground">{product.name}</p>
       {epic ? (
@@ -179,6 +180,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <p className="text-muted-foreground">No Runs yet.</p>
           )}
         </section>
+        {admin && <FixState ticket={ticket.id} stage={ticket.stage ?? 'triage'} />}
       </TicketDetails>
 
       {!forgeError && <CommentComposer ticket={ticket.id} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} />}
