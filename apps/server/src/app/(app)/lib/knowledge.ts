@@ -64,7 +64,7 @@ export const loadKnowledge = async (workspace: number, q: string | undefined, do
     const s = sources.at(-1)?.name === source ? sources.at(-1)! : sources[sources.push({ name: source, label: label(source), docs: [] }) - 1]!
     s.docs.push({ source, path, title: title(path, heading) })
   }
-  const hits = q?.trim() ? (await search(payload, workspace, q.trim())).filter((h) => admin || h.source !== 'core') : null
+  const hits = q?.trim() ? await search(payload, workspace, q.trim(), 20, undefined, !admin) : null
   const key = parseDocKey(docParam)
   const found = key ? docs.find((d) => d.source === key.source && d.path === key.path) : null
   const text = found ? await readDocument(payload, workspace, found.source, found.path) : null

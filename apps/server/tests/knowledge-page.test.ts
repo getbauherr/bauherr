@@ -104,6 +104,20 @@ describe('loadKnowledge for a member', () => {
   })
 })
 
+describe('member search with a crowded core pack', () => {
+  it('excludes core before the limit, so the own document is still returned', async () => {
+    const lines = Array.from({ length: 25 }, (_, i) => `## Pangolin ${i}\n\npangolin pangolin pangolin\n`).join('\n')
+    writeFileSync(join(process.env.BAUHERR_PACK_DIR!, 'rules/pangolins.md'), `# Pangolins\n\n${lines}`)
+    backend.current.commit(REPO, 'main', 'own.md', '# Own\n\nOne pangolin.\n')
+    const { resync } = await import('../src/lib/knowledge')
+    await resync(payload, withRepo)
+    const adminHits = (await page.loadKnowledge(withRepo, 'pangolin', undefined, admin)).hits!
+    expect(adminHits).toHaveLength(20)
+    expect(adminHits.every((h) => h.source === 'core')).toBe(true)
+    expect((await page.loadKnowledge(withRepo, 'pangolin', undefined, member)).hits!.map((h) => h.path)).toEqual(['own.md'])
+  })
+})
+
 describe('title', () => {
   it('prefers the heading, else de-dashes the file name', () => {
     expect(page.title('docs/x.md', ' Release policy ')).toBe('Release policy')

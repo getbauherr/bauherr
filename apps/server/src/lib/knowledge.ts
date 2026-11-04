@@ -168,14 +168,14 @@ const visible = (alias: string, product?: string) => sql`(${sql.raw(alias)}."lay
 const rank = (alias: string) => sql.raw(`CASE ${alias}."layer" WHEN 'product' THEN 2 WHEN 'workspace' THEN 1 ELSE 0 END`)
 const vector = sql`to_tsvector('simple', coalesce(c."heading", '') || ' ' || coalesce(c."text", ''))`
 
-/** Full-text search over the Workspace's index. Layers resolve core -> workspace -> product (the reader's `product` slug); a document shadowed by a later layer at the same logical path is not returned. */
-export const search = async (payload: Payload, workspace: number | string, q: string, limit = 20, product?: string): Promise<Citation[]> => {
+/** Full-text search over the Workspace's index. Layers resolve core -> workspace -> product (the reader's `product` slug); `excludeCore` drops the core pack before the limit; a document shadowed by a later layer at the same logical path is not returned. */
+export const search = async (payload: Payload, workspace: number | string, q: string, limit = 20, product?: string, excludeCore = false): Promise<Citation[]> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
   const r = await payload.db.drizzle.execute(sql`
     SELECT c."source", c."path", c."heading", c."commit", c."text"
     FROM "knowledge_chunks" c
-    WHERE c."workspace_id" = ${ws} AND ${visible('c', product)}
+    WHERE c."workspace_id" = ${ws} AND ${visible('c', product)}${excludeCore ? sql` AND c."source" <> 'core'` : sql``}
       AND ${vector} @@ websearch_to_tsquery('simple', ${q})
       AND NOT EXISTS (
         SELECT 1 FROM "knowledge_chunks" o

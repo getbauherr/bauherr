@@ -8,8 +8,8 @@ import { Button } from './ui/button'
 
 type Line = { who: 'you' | 'bauherr'; text: string }
 
-/** Modal confirmation for discarding a draft; closes (Escape, Keep draft) through `onClose`. */
-function DiscardDialog({ first, busy, onClose, onDiscard }: { first: string; busy: boolean; onClose: () => void; onDiscard: () => void }) {
+/** Modal confirmation for discarding a draft; `onClose` fires on every close (Escape, Keep draft). */
+function DiscardDialog({ first, busy, error, onClose, onDiscard }: { first: string; busy: boolean; error: string; onClose: () => void; onDiscard: () => void }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => ref.current?.showModal(), [])
   return (
@@ -17,8 +17,9 @@ function DiscardDialog({ first, busy, onClose, onDiscard }: { first: string; bus
       <div className="flex flex-col gap-4">
         <h2 id="discard-title" className="heading">Discard this draft?</h2>
         <p className="body text-muted-foreground">{first}</p>
+        {error && <p className="err" role="alert">{error}</p>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Keep draft</Button>
+          <Button type="button" variant="outline" onClick={() => ref.current?.close()}>Keep draft</Button>
           <Button type="button" variant="destructive" disabled={busy} onClick={onDiscard}>Discard</Button>
         </div>
       </div>
@@ -34,6 +35,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
   const [error, setError] = useState('')
   const [sent, setSent] = useState<number[] | null>(null)
   const [discarding, setDiscarding] = useState<{ id: number; first: string } | null>(null)
+  const [discardError, setDiscardError] = useState('')
   const productRef = useRef(product)
   productRef.current = product
   const [adapter] = useState(() =>
@@ -94,7 +96,18 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
         <AssistantRuntimeProvider runtime={runtime}>
           <ChatThread attachments draftKey={`intake:${userId}:${session ?? 'new'}`} maxHeight="max-h-[60vh]" first={{ label: 'Describe your request', placeholder: 'Describe your request in one sentence' }} next={{ label: 'Your answer', placeholder: 'Your answer' }} />
         </AssistantRuntimeProvider>
-        {discarding && <DiscardDialog first={discarding.first} busy={busy} onClose={() => setDiscarding(null)} onDiscard={async () => { setBusy(true); await discardIntake(discarding.id); window.location.reload() }} />}
+        {discarding && <DiscardDialog first={discarding.first} busy={busy} error={discardError} onClose={() => { setDiscarding(null); setDiscardError('') }} onDiscard={async () => {
+          setBusy(true)
+          setDiscardError('')
+          try {
+            await discardIntake(discarding.id)
+            window.location.reload()
+          } catch {
+            setDiscardError('Could not discard the draft. Please try again.')
+          } finally {
+            setBusy(false)
+          }
+        }} />}
         {error && <p className="err" role="alert">{error}</p>}
         {turn && (turn.ready || turn.exhausted) && <div><button type="button" className="btn primary" disabled={busy} onClick={submit}>{turn.split ? `Create ${turn.split.length} tickets` : 'Submit request'}</button></div>}
       </div>

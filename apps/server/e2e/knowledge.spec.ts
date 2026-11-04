@@ -30,7 +30,7 @@ test('Knowledge: search finds a repo document, it renders, write-backs show thei
   await page.getByRole('button', { name: 'Search' }).click()
   const hit = page.getByRole('region', { name: 'Search results' })
   await expect(hit.getByRole('heading')).toContainText('1 result')
-    await hit.getByRole('link', { name: 'Rollback' }).click()
+  await hit.getByRole('link', { name: 'Rollback' }).click()
   await expect(page.getByRole('article', { name: 'Release policy' }).getByRole('heading', { name: 'Release policy' })).toBeVisible()
   await expect(page.locator('.prose strong')).toHaveText('staging acceptance')
 
@@ -65,10 +65,14 @@ test('Knowledge: a member sees titles only, no Built-in documents, no Write-back
   await expect(page.getByRole('region', { name: 'Write-backs' })).toHaveCount(0)
   await docs.getByRole('link', { name: 'Release policy' }).click()
   await expect(page.getByRole('article', { name: 'Release policy' })).toBeVisible()
+  await expect(page.getByRole('article', { name: 'Release policy' })).not.toContainText(TECHNICAL)
   await page.getByRole('searchbox', { name: 'Search Knowledge' }).fill('"previous image tag"')
   await page.getByRole('button', { name: 'Search' }).click()
   await expect(page.getByRole('region', { name: 'Search results' })).toBeVisible()
   await expect(page.locator('main')).not.toContainText(TECHNICAL)
+  await page.goto('/knowledge?doc=core:rules/evidence.md')
+  await expect(page.getByRole('article')).toHaveCount(0)
+  await expect(page.locator('main')).not.toContainText('evidence')
   const shots = process.env.SHOTS_DIR
   if (shots) {
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {
