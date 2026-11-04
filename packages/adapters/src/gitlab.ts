@@ -404,6 +404,9 @@ class GitlabForge implements Forge {
     }
     return { sha: (await this.file(repo, o.path, o.branch)).blob_id as string };
   }
+  async retargetPullRequest(repo: RepoRef, n: number, base: string) {
+    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}`, { target_branch: base });
+  }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const before = await this.getPullRequest(repo, n);
     let after = before;
@@ -421,6 +424,11 @@ class GitlabForge implements Forge {
     if (!after.mergeSha) throw new GitlabError(0, 'PUT', `merge_requests/${n}/merge`, `merge of !${n} left no merge sha (state ${after.state})`);
     let branchDeleteError: string | undefined;
     if (o.deleteBranch && before.headRepo.toLowerCase() === before.baseRepo.toLowerCase()) {
+      try {
+        for (const s of await this.h.paginate(`/projects/${enc(repo)}/merge_requests?state=opened&target_branch=${enc(before.head)}&per_page=100`)) await this.retargetPullRequest(repo, s.iid, before.base);
+      } catch (e) {
+        return { mergeSha: after.mergeSha, branchDeleteError: `kept ${before.head}: retargeting stacked MRs failed: ${e instanceof Error ? e.message : String(e)}` };
+      }
       await this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(before.head)}`).catch((e) => {
         if (!(e instanceof GitlabError && e.status === 404)) branchDeleteError = e instanceof Error ? e.message : String(e);
       });

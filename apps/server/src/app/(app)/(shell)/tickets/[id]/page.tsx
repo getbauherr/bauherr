@@ -79,6 +79,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
   const capFindings = latestWith(comments, 'Bauherr needs a human:')?.body
+  const reason = (todo === 'Needs you' ? capFindings?.replace(/^Bauherr needs a human:\s*/, '').split('\n')[0] : ['Cancelled', 'Run failed', 'Run needs you'].includes(todo ?? '') ? runs[0]?.error : null)?.slice(0, 300) ?? null
   const stagingSummary = latestWith(comments, SUMMARY_MARKER)?.body
   const acceptedStaging = labels.includes('bauherr:approved:staging')
   const waitingForStaging = ticket.stage === 'release' && !acceptedStaging && !gate
@@ -95,7 +96,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="flex flex-col gap-4">
-      <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} />
+      <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
       <p className="small text-muted-foreground">{product.name}</p>
       {epic ? (

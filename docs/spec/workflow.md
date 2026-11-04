@@ -91,6 +91,23 @@ A Run reads its Goal, reads the worklog first, ends only with an MR or a declare
 - `budget_exhausted`: the gateway answered 429 because the Workspace budget is used up. Terminal, no retry.
 - Concurrency key `ticket:<id>`; `retries: 0` at job level (retry is Bauherr's).
 
+### Liveness
+
+Invariant: every open, non-parent Ticket in plan, build or review has a live Run (`queued`, `awaiting_session`, `running`), a visible wait (`waitingFor`, `blockedBy`, a human gate) or a needs-you with a reason and one primary action. `deadTickets` (`lib/liveness.ts`) lists the Tickets without a live Run or wait, each with a cause:
+
+| Cause | Meaning | Repair (task `watch-liveness`, every 5 minutes) |
+|---|---|---|
+| `mr-missing` | review, the linked MR is closed or none is linked | an open factory MR on `bauherr/<number>-*` is linked to the newest Build Run and the review resumes; none: back to Build with the note to open a new MR |
+| `checks-red` | review escalated, MR open, a finished check failed | back to Build on the same MR, failing checks as Current instructions (no round counted) |
+| `run-failed`, `run-abandoned` | latest Run of the stage failed or was abandoned | one successor Run (`previousRun` set); a second failure in a row stays a need (`Run failed`) |
+| `run-cancelled` | latest Run of the stage was cancelled | none: need `Cancelled` (Re-run, Back to backlog) |
+| `review-escalated` | review `needs_human`, MR open, checks not red | none: need `Needs you` (Back to build) |
+| `triage-expired` | untriaged, marked covered, its only Triage Run ended `abandoned` | `triagedAt` and `triageAttempts` reset, so the next poll offers Triage again |
+
+**MR resolution** (`prOf`): the newest Build Run's `artifacts.prUrl`; when that MR was closed unmerged (or a review/release Ticket has none), the newest open factory MR of the Ticket (head `bauherr/<number>-*`) stands in, with no DB edit. A hand-made replacement can be linked with the MCP tool `relink_mr {runId, leaseToken, prUrl}` (Build Runs). **Stacked MRs**: `mergePullRequest` with `deleteBranch` first retargets every open MR whose base is the merged head branch onto the merged MR's base; if that fails, the branch is kept and the failure is reported as `branchDeleteError`.
+
+Each repair posts one Comment line with the marker `<!-- bauherr:liveness:<cause>:<run id> -->`, which makes it once per (Ticket, cause, Run). An unclaimed Triage Run no longer expires: it waits for a session like any other unclaimed Run (an expiry used up the Ticket's triage attempts). MCP `return_to_build` lets an agent do the `mr-missing` and `checks-red` repairs itself; it is refused for a Ticket that is not dead for one of those causes. Gates stay human-only.
+
 ## 6. Human takeover
 A human assignee or a manual Label move cancels the active Run. Nothing restarts until `bauherr:go` or unassign. The next Run reconciles the worklog ([worklog](../../pack/skills/worklog/SKILL.md)).
 

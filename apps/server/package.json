@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "pretest": "pnpm gen:migrations",
     "test": "vitest run",
+    "test:gateway": "vitest run --config vitest.integration.config.ts",
     "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts",
     "gen:migrations": "tsx scripts/gen-migrations.ts",
     "tokens": "tsx scripts/tokens.ts",

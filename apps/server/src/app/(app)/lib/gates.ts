@@ -1,7 +1,8 @@
 import { GATE_NAMES, type Need } from './needs-you'
 
-export type GateCtx = { stage: string; missing: string[]; open: number }
-type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun' | 'release-failed'
+/** `reason`: why the factory stopped (the Run's error or the latest escalation Comment), shown as the bar's sentence. */
+export type GateCtx = { stage: string; missing: string[]; open: number; reason?: string | null }
+type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun' | 'release-failed' | 'back-to-build' | 'cancelled'
 export type GateConfig = {
   kind: Kind
   title: string
@@ -27,6 +28,8 @@ export const GATES: Record<Need, GateConfig> = {
   'Production deploy failed': { kind: 'production', title: 'Production deploy failed', sentence: () => 'The production deploy failed or was not reported; approving retries it.', verb: () => 'Approve again' },
   'Release failed': { kind: 'release-failed', title: 'Release failed', sentence: () => 'The release workflow (image or npm) failed or did not finish; re-run it.', verb: () => 'Open workflow run' },
   'Round cap reached': { kind: 'review-cap', title: 'Round cap reached', sentence: () => 'The review sent this back too often; grant one more round or stop.', verb: () => 'Grant one more round', secondary: 'Stop' },
-  'Run needs you': { kind: 'rerun', title: 'Run needs you', sentence: (c) => `The ${c.stage} Run needs you.`, verb: rerun },
-  'Run failed': { kind: 'rerun', title: 'Run failed', sentence: (c) => `The ${c.stage} Run failed.`, verb: rerun },
+  'Needs you': { kind: 'back-to-build', title: 'Needs you', sentence: (c) => c.reason || 'The factory could not conclude this review and needs a decision from you.', verb: () => 'Back to build' },
+  Cancelled: { kind: 'cancelled', title: 'Cancelled', sentence: (c) => `The ${c.stage} Run was cancelled${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun, secondary: 'Back to backlog' },
+  'Run needs you': { kind: 'rerun', title: 'Run needs you', sentence: (c) => `The ${c.stage} Run needs you${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },
+  'Run failed': { kind: 'rerun', title: 'Run failed', sentence: (c) => `The ${c.stage} Run failed${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },
 }

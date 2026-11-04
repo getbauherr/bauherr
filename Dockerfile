@@ -9,7 +9,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/runner/package.json packages/runner/
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store pnpm install
 COPY . .
-# `.next/cache` persists between builds, so `next build` is incremental.
+# `.next/cache` persists between local builds (a cache mount; CI keeps only the layer cache, no extra action is allow-listed).
 RUN --mount=type=cache,id=next-cache,target=/repo/apps/server/.next/cache pnpm build:packages && PAYLOAD_SECRET=build ENCRYPTION_KEY=build pnpm --filter server build
 RUN mkdir -p /data/media
 WORKDIR /repo/apps/server
