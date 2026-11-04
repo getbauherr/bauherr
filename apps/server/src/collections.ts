@@ -3,7 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
-import { oidcStrategy } from './lib/oidc-session'
+import { oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
 
@@ -44,7 +44,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
   labels: { singular: 'Bauherr', plural: 'Bauherren' },
-  auth: { useAPIKey: true, strategies: [oidcStrategy] },
+  auth: { useAPIKey: true, strategies: [oidcStrategy], tokenExpiration: SESSION_TTL_S },
   admin: { useAsTitle: 'email' },
   access: {
     admin: isAdmin,
@@ -413,6 +413,7 @@ export const collections: CollectionConfig[] = [
     text('releaseChecks', { admin: { description: 'Comma-separated check names on the release commit (for example image, npm); the Ticket shows "Released in" only when they pass. Empty: do not wait.' } }),
     { name: 'checkRetries', type: 'number', defaultValue: 1, min: 0, max: 1, admin: { description: 'Re-run a failed check once before it counts (1 = on, 0 = off).' } },
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
+    { name: 'reviewChecks', type: 'json', admin: { description: 'Path-based checks a Build must pass before it requests review: {tests: [{src: [globs], tests: [globs]}], schema: [{schema: [globs], migration: [globs]}], evidence: true}. Empty: all off.' } },
     {
       name: 'overlapIgnore',
       type: 'json',

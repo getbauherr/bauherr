@@ -1,3 +1,4 @@
+import { formatReviewChecks } from '@bauherr/runner'
 import { ValidationError } from 'payload'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
 import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../../../lib/mode'
@@ -87,6 +88,7 @@ export async function loadProducts(workspace: number) {
           name: p.name as string,
           slug: p.slug as string,
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string },
+          reviewChecks: formatReviewChecks(p.reviewChecks),
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
             .filter((e) => (e.product?.id ?? e.product) === p.id)

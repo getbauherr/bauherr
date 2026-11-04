@@ -98,6 +98,8 @@ test('by default /admin redirects to /settings, also for an Admin, and /api stay
   const res = await page.request.get('/admin', { maxRedirects: 0 })
   expect(res.status()).toBe(307)
   expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
+  const fn = await page.request.post('/admin', { headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' }, data: '[]', maxRedirects: 0 })
+  expect(fn.status()).toBe(307)
   expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
 })
 

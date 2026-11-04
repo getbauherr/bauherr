@@ -148,7 +148,7 @@ describe('the pull rule', () => {
     await limits({ review: 1 })
     await ticket('a', 'review')
     const b = await ticket('b', 'build')
-    expect(await actions.requestReview(payload, user, { ticket: b.id })).toMatchObject({ stage: 'build', waiting: 'review' })
+    expect(await actions.requestReview(payload, user, { ticket: b.id, evidence: '' })).toMatchObject({ stage: 'build', waiting: 'review' })
     expect(await reload(b.id)).toMatchObject({ stage: 'build', waitingFor: 'review' })
     expect(await jobs.startReviewIfReady(payload, { ...(await reload(b.id)), stage: 'review' })).toBeNull()
     await payload.update({ collection: 'tickets', where: { title: { equals: 'a' } }, data: { stage: 'release' }, ...o } as never)

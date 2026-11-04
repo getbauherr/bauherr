@@ -59,6 +59,15 @@ test('list, Product page, save, validation and the single Delete section', async
   await expect(page.getByRole('radio', { name: /Bauherr makes the release/ })).toBeChecked()
   await expect(page.locator('#production')).toContainText('Ready')
 
+  await page.getByLabel('Rules').fill('src/**')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('line 1: write')).toBeVisible()
+  await page.getByLabel('Rules').fill('src/**, apps/** => tests/**\nschema: collections.ts => migrations/**')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('Rules')).toHaveValue('src/**, apps/** => tests/**\nschema: collections.ts => migrations/**')
+
   await page.locator('#danger').getByRole('button', { name: 'Delete Product' }).click()
   await page.locator('#danger').getByRole('button', { name: 'Confirm remove' }).click()
   await expect(page).toHaveURL(/\/settings\/products$/)

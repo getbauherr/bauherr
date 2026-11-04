@@ -6,6 +6,7 @@ export const GOAL_FILE = '.bauherr/goal.json';
 export const WORKLOG_FILE = '.bauherr/worklog.md';
 export const PLAN_FILE = '.bauherr/plan.md';
 export const REVIEW_FILE = '.bauherr/review.json';
+export const SELF_REVIEW_FILE = '.bauherr/self-review.json';
 export const TRIAGE_FILE = '.bauherr/triage.json';
 /** The MR diff, written by the Runner before a Review agent starts (the agent has no shell). */
 export const DIFF_FILE = '.bauherr/diff.patch';

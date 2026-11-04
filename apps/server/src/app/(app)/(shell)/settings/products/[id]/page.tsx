@@ -41,6 +41,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           { value: 'factory', title: 'Bauherr makes the release', text: 'Bauherr tags the version, publishes the release and opens a CHANGELOG change for you to merge.' },
         ]} />
       </SettingsSection>
+
+      <SettingsSection id="pre-review" n={6} title="Pre-review checks" purpose="Checks on the changed file paths that a change must pass before it goes to review. Empty: off.">
+        <Field name="reviewChecks" label="Rules" hint="One rule per line. Globs are comma-separated. Start a line with schema: for a changed schema file that needs a changed migration file; the line evidence needs a done or deferred row per plan step." example="src/**, apps/** => tests/**" rows={4} defaultValue={p.reviewChecks} />
+      </SettingsSection>
     </>
   )
 
@@ -88,7 +92,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
       {admin ? <SettingsForm action={saveDeploy} submit="Save changes" primary bar><input type="hidden" name="id" value={p.id} />{settings}</SettingsForm> : <fieldset disabled className="stack">{settings}</fieldset>}
 
-      <SettingsSection id="widget" n={6} title="Website widget" purpose="Lets your users send requests from your own site." advanced={revoked.length > 0 && (
+      <SettingsSection id="widget" n={7} title="Website widget" purpose="Lets your users send requests from your own site." advanced={revoked.length > 0 && (
         <div className="scroll">
           <table className="table">
             <thead><tr><th>Revoked widgets</th><th>Sites</th><th>Revoked</th></tr></thead>
