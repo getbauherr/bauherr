@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
 import { GateRow, GateLadder } from '../../../components/SettingsParts'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
+import { Table } from '../../../components/ui/table'
 import { saveOverlapIgnore, saveWipLimits } from '../actions'
 import { isAdmin, loadWorkflow } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
@@ -25,33 +26,33 @@ export default async function Workflow() {
   return (
     <>
       <h2 className="heading">WIP limits</h2>
-      <p className="small muted">Tickets allowed per Board column; empty means no limit. A Ticket waits in the column to its left until the next one has room. Work already in a column always finishes: merges, staging, production and returns are never held. Sub-tickets count, parents do not. Applied on the next poll.</p>
+      <p className="small text-muted-foreground">Tickets allowed per Board column; empty means no limit. A Ticket waits in the column to its left until the next one has room. Work already in a column always finishes: merges, staging, production and returns are never held. Sub-tickets count, parents do not. Applied on the next poll.</p>
       <SettingsForm action={saveWipLimits}>
-        <div className="pair three">
+        <div className="grid grid-cols-3 gap-4 max-sm:grid-cols-1">
           {w.wip.map((c) => (
             <Field key={c.stage} name={`wip_${c.stage}`} label={`${c.stage[0].toUpperCase()}${c.stage.slice(1)} (now ${c.count})`} type="number" min={1} step={1} defaultValue={c.limit ?? ''} />
           ))}
         </div>
       </SettingsForm>
       <h2 className="heading">Paths that never hold a Build</h2>
-      <p className="small muted">A Build does not start while an earlier Ticket in Build or Review changes the same paths (from the plan&apos;s Files section, then the pull request). Paths listed here never hold anything. One path glob per line.</p>
+      <p className="small text-muted-foreground">A Build does not start while an earlier Ticket in Build or Review changes the same paths (from the plan&apos;s Files section, then the pull request). Paths listed here never hold anything. One path glob per line.</p>
       {w.overlap.map((p) => (
-        <section key={p.id} className="stack">
-          <h3 className="small label-strong">{p.name}</h3>
+        <section key={p.id} className="flex flex-col gap-4">
+          <h3 className="small font-medium text-foreground">{p.name}</h3>
           <SettingsForm action={saveOverlapIgnore}>
             <input type="hidden" name="id" value={p.id} />
             <Field name="ignore" label={`Paths that never hold a Build (${p.name})`} rows={4} defaultValue={p.ignore.join('\n')} example="pnpm-lock.yaml" />
           </SettingsForm>
           {p.suggestions.length > 0 && (
             <>
-              <p className="small muted">Suggested from history: changed in at least 25% of the last 100 merged pull requests. Nothing is applied until you add it.</p>
+              <p className="small text-muted-foreground">Suggested from history: changed in at least 25% of the last 100 merged pull requests. Nothing is applied until you add it.</p>
               <ul>
                 {p.suggestions.map((x) => (
                   <li key={x.path}>
                     <SettingsForm action={saveOverlapIgnore} submit="Add" inline>
                       <input type="hidden" name="id" value={p.id} />
                       <input type="hidden" name="add" value={x.path} />
-                      <span className="mono">{x.path}</span> <span className="small muted">{x.percent}%</span>
+                      <span className="mono">{x.path}</span> <span className="small text-muted-foreground">{x.percent}%</span>
                     </SettingsForm>
                   </li>
                 ))}
@@ -61,55 +62,49 @@ export default async function Workflow() {
         </section>
       ))}
       <h2 className="heading">Where you are asked</h2>
-      <p className="small muted">The points where the factory waits for you, in flow order. Approve the plan and Accept on staging are set here for all Products; Ask me before production is set per Product.</p>
+      <p className="small text-muted-foreground">The points where the factory waits for you, in flow order. Approve the plan and Accept on staging are set here for all Products; Ask me before production is set per Product.</p>
       <GateLadder plan={w.ladder.plan} staging={w.ladder.staging}>
         <GateRow label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. On the Ticket, after staging." state={w.ladder.production ? 'On for every Product' : 'Per Product'} />
       </GateLadder>
       <details>
         <summary>Details</summary>
-        <div className="stack">
+        <div className="flex flex-col gap-4">
         <h2 className="heading">What you do and where</h2>
-        <div className="scroll">
-          <table className="table">
-            <thead><tr><th>Name</th><th>When</th><th>What you do</th><th>Where</th></tr></thead>
+        <Table>
+            <thead><tr className="label"><th>Name</th><th>When</th><th>What you do</th><th>Where</th></tr></thead>
             <tbody>
               {TOUCH_POINTS.map((t) => (
                 <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{t.what}</td><td>{t.where}</td></tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
       <h2 className="heading">Stages</h2>
-      <p className="small muted">The base workflow with the run mode each stage has in this Workspace. Read-only.</p>
-      <div className="scroll">
-        <table className="table">
-          <thead><tr><th>Stage</th><th>Mode</th><th>Gate</th><th>Steps</th></tr></thead>
+      <p className="small text-muted-foreground">The base workflow with the run mode each stage has in this Workspace. Read-only.</p>
+      <Table>
+            <thead><tr className="label"><th>Stage</th><th>Mode</th><th>Gate</th><th>Steps</th></tr></thead>
           <tbody>
             {w.stages.map((s) => (
               <tr key={s.name}><td>{s.name}</td><td>{s.mode}</td><td>{s.gate || '—'}</td><td>{s.steps.join(', ') || '—'}</td></tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
       <h2 className="heading">Compiled per Product</h2>
       {!w.versions.length ? (
         <EmptyState text="No Products yet." />
       ) : (
-        <div className="scroll">
-          <table className="table">
-            <thead><tr><th>Product</th><th>Version</th><th>Compiled</th><th>Knowledge overlay</th></tr></thead>
+        <Table>
+            <thead><tr className="label"><th>Product</th><th>Version</th><th>Compiled</th><th>Knowledge overlay</th></tr></thead>
             <tbody>
               {w.versions.map((v) => (
                 <tr key={v.product}>
                   <td>{v.product}</td>
-                  <td>{v.version ?? <span className="muted">none</span>}</td>
+                  <td>{v.version ?? <span className="text-muted-foreground">none</span>}</td>
                   <td>{v.at ? new Date(v.at).toISOString().slice(0, 16).replace('T', ' ') : '—'}</td>
                   <td>{v.version == null ? '—' : v.overlay ? 'differs from base' : 'none'}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
       )}
         </div>
       </details>
