@@ -170,3 +170,20 @@ test('Paths that never hold a Build: saved per Product in Settings > Workflow', 
   await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })
+
+test('the Ticket page Repair disclosure is for an Admin only and resets counters', async ({ page }) => {
+  for (const [who, visible] of [['member@example.com', false], [email, true]] as const) {
+    await signIn(page, who)
+    await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
+    await page.getByText('Details', { exact: true }).click()
+    const repair = page.getByRole('group', { name: 'Repair' })
+    await expect(repair).toHaveCount(visible ? 1 : 0)
+    if (visible) {
+      await repair.getByText('Repair', { exact: true }).click()
+      await repair.getByRole('button', { name: 'Reset counters' }).click()
+      await repair.getByRole('button', { name: 'Confirm reset counters' }).click()
+      await expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+    }
+    await page.context().clearCookies()
+  }
+})

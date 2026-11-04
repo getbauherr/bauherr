@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { sourceOf } from '../../../../../lib/actions'
 import { mediaLimits } from '../../../../../lib/intake/media'
+import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { CommentComposer } from '../../../components/CommentComposer'
@@ -179,6 +180,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <p className="text-muted-foreground">No Runs yet.</p>
           )}
         </section>
+        {admin && <FixState ticket={ticket.id} stage={ticket.stage ?? 'triage'} />}
       </TicketDetails>
 
       {!forgeError && <CommentComposer ticket={ticket.id} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} />}
