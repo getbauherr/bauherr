@@ -513,7 +513,8 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await payload.find({ collection: 'ticket_sources', where: { product: { equals: product.id } }, limit: 1, ...opts })
     ).docs[0]
     const github = await connectionInput(payload, src.connection)
-    await payload.update({ collection: 'runs', id: run.id, data: { status: 'running', startedAt: new Date().toISOString() }, ...opts })
+    const claimed = await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'running', "started_at" = now() WHERE "id" = ${run.id} AND "status" = 'queued' RETURNING "id"`)
+    if (!claimed.rows.length) return { output: { status: 'running' } }
 
     try {
       if (!(await findLlmProvider(payload, run.workspace))) throw new Error('no LLM provider connected')
