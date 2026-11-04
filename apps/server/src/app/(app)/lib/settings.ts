@@ -133,7 +133,7 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
   if (!admin && workspace == null) return []
   const own = admin ? [] : (await workspacesOf(user)).map((w) => w.id)
   const where = admin ? {} : { 'tenants.tenant': { equals: workspace } }
-  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where, sort: 'email', ...o, depth: 1, pagination: false } as never)
+  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where, sort: 'email', ...o, depth: 1, pagination: false, showHiddenFields: true } as never)
   return (docs as unknown as Record<string, any>[]).map((b) => ({
     id: b.id as number,
     email: b.email as string,
@@ -141,6 +141,7 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
     workspaces: ((b.tenants ?? []) as { tenant: { id: number; name: string } | number }[])
       .flatMap((t) => (typeof t.tenant === 'object' && t.tenant ? [t.tenant] : []))
       .filter((w) => admin || own.includes(w.id)),
+    locked: !!b.lockUntil && new Date(b.lockUntil as string).getTime() > Date.now(),
     oidcLinked: !!b.oidcSubject,
     oidcSubject: admin ? ((b.oidcSubject ?? '') as string) : '',
   }))

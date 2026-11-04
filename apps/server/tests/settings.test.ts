@@ -1,7 +1,9 @@
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../src/lib/settings-guards'
 import { createTestDb, type TestDb } from './helpers/test-db'
+
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 let payload: Payload
 const o = { overrideAccess: true } as const
@@ -73,4 +75,39 @@ it('overlapIgnore takes a list of path globs without spaces, and only an Admin m
   const member = await payload.create({ collection: 'bauherren', data: { email: 'oi@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws.id as number }] }, ...o })
   await payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: [] }, user: member, overrideAccess: false }).catch(() => {})
   expect((await payload.findByID({ collection: 'products', id: product.id, ...o })).overlapIgnore).toEqual(['CHANGELOG.md', 'src/gen/**'])
+})
+
+it('unlockBauherr and createWorkspace: Admin-only, unlock clears the lock, create adds the tenant and keeps slugs unique', async () => {
+  const actions = await import('../src/app/(app)/(shell)/settings/actions')
+  const admin = await payload.create({ collection: 'bauherren', data: { email: 'adm@x.io', password: 'pw-123456', role: 'admin' }, ...o })
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'mem@x.io', password: 'pw-123456', role: 'bauherr' }, ...o })
+  const locked = await payload.create({ collection: 'bauherren', data: { email: 'lock@x.io', password: 'pw-123456', role: 'bauherr' }, ...o })
+  await payload.update({ collection: 'bauherren', id: locked.id, data: { lockUntil: new Date(Date.now() + 600_000).toISOString(), loginAttempts: 5 } as never, ...o })
+  const as = async (user: typeof admin) => {
+    const session = await import('../src/app/(app)/lib/session')
+    vi.spyOn(session, 'currentWorkspace').mockResolvedValue({ user, workspaces: [], workspace: null } as never)
+  }
+  const form = (f: Record<string, string>) => Object.entries(f).reduce((fd, [k, v]) => (fd.set(k, v), fd), new FormData())
+
+  const { loadBauherren } = await import('../src/app/(app)/lib/settings')
+  const listed = await loadBauherren(admin as never, null)
+  expect(listed.find((b) => b.id === locked.id)?.locked).toBe(true)
+  expect(listed.find((b) => b.id === member.id)?.locked).toBe(false)
+
+  await as(member)
+  expect((await actions.unlockBauherr({} as never, form({ id: String(locked.id) }))).error).toBeTruthy()
+  expect((await actions.createWorkspace({} as never, form({ name: 'Nope' }))).error).toBeTruthy()
+
+  await as(admin)
+  expect((await actions.unlockBauherr({} as never, form({ id: String(locked.id) }))).saved).toBe(true)
+  const after = (await payload.findByID({ collection: 'bauherren', id: locked.id, depth: 0, showHiddenFields: true, ...o })) as unknown as { lockUntil?: string | null; loginAttempts?: number }
+  expect(after.lockUntil ?? null).toBeNull()
+  expect(after.loginAttempts).toBe(0)
+
+  expect((await actions.createWorkspace({} as never, form({ name: 'Second Workspace' }))).saved).toBe(true)
+  const ws = (await payload.find({ collection: 'workspaces', where: { slug: { equals: 'second-workspace' } }, depth: 0, ...o })).docs[0]
+  expect(ws).toBeTruthy()
+  const me = (await payload.findByID({ collection: 'bauherren', id: admin.id, depth: 0, ...o })) as unknown as { tenants: { tenant: number }[] }
+  expect(me.tenants.map((t) => t.tenant)).toContain(ws.id)
+  expect((await actions.createWorkspace({} as never, form({ name: 'Again', slug: 'second-workspace' }))).error).toBeTruthy()
 })

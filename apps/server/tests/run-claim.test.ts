@@ -53,24 +53,29 @@ const queuedRun = async (title: string) => {
   return (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { equals: 'queued' } }] }, depth: 0, ...o })).docs[0]
 }
 const runOne = () => payload.jobs.run({ queue: 'runs', limit: 1 })
+/** Run ids handed to the executor. A poll may also start Runs for Tickets of earlier tests, so the tests assert that no Run executed twice, not a total. */
+const executed = () => exec.mock.calls.map(([ctx]) => ctx.run.id as string)
+const unique = (ids: string[]) => new Set(ids).size === ids.length
 const handle = (runId: number | string) => (jobs.runStage.handler as (a: unknown) => Promise<unknown>)({ input: { runId }, req: { payload } })
 
 it('parallel workers execute each Run once', async () => {
   await queuedRun('a')
   await queuedRun('b')
   await Promise.all([runOne(), runOne(), runOne()])
-  expect(exec).toHaveBeenCalledTimes(2)
+  expect(executed().length).toBeGreaterThanOrEqual(2)
+  expect(unique(executed())).toBe(true)
 })
 
 it('a second job for a Run that is already executing does nothing', async () => {
   const run = await queuedRun('c')
   await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
   await Promise.all([runOne(), runOne()])
-  expect(exec).toHaveBeenCalledTimes(1)
+  expect(executed().length).toBeGreaterThanOrEqual(1)
+  expect(unique(executed())).toBe(true)
 })
 
 it('two workers handling the same queued Run: one executes it', async () => {
   const run = await queuedRun('d')
   await Promise.all([handle(run.id), handle(run.id)])
-  expect(exec).toHaveBeenCalledTimes(1)
+  expect(executed().filter((id) => id === String(run.id))).toHaveLength(1)
 })

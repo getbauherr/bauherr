@@ -4,13 +4,30 @@ import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { isAdmin, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { ago } from '../../../lib/format'
-import { rotateWorkspaceKey, saveWorkspace } from '../actions'
+import { createWorkspace, rotateWorkspaceKey, saveWorkspace } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
+const NewWorkspace = () => (
+  <section id="new-workspace" className="stack">
+    <h2 className="heading">New Workspace</h2>
+    <SettingsForm action={createWorkspace} submit="Create Workspace" reset>
+      <div className="pair">
+        <Field name="name" label="Name" required />
+        <Field name="slug" label="Slug" hint="Lowercase letters, digits and dashes; defaults to the name." />
+      </div>
+    </SettingsForm>
+  </section>
+)
+
 export default async function WorkspaceSettings() {
   const { user, workspace } = await currentWorkspace()
-  if (!workspace) return <EmptyState text="You have no Workspace yet." />
+  if (!workspace) return (
+    <>
+      <EmptyState text="You have no Workspace yet." />
+      {isAdmin(user) && <NewWorkspace />}
+    </>
+  )
   const w = await loadWorkspaceSettings(workspace.id)
   const admin = isAdmin(user)
   const usd = !admin || w.budgetUnit === 'usd'
@@ -56,6 +73,7 @@ export default async function WorkspaceSettings() {
           </>
         )}
       </SettingsForm>
+      {admin && <NewWorkspace />}
       {health && (
         <>
           <section id="gateway" className="stack">

@@ -59,6 +59,19 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   const row = page.getByRole('row', { name: new RegExp(added) })
   await expect(row).toContainText('bauherr')
   await expect(row).toContainText('Acme')
+
+  await row.getByRole('button', { name: 'Remove' }).click()
+  await row.getByRole('button', { name: 'Confirm remove' }).click()
+  await expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0)
+
+  await nav.getByRole('link', { name: 'General' }).click()
+  const created = `Zzz ${Date.now()}`
+  const ws = page.locator('section#new-workspace')
+  await ws.getByLabel('Name').fill(created)
+  await ws.getByRole('button', { name: 'Create Workspace' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.locator('header.topbar').getByRole('button', { name: 'User menu' }).click()
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: created })).toBeVisible()
 })
 
 test('an Advanced anchor entry keeps Advanced open and is the only current entry', async ({ page }) => {
