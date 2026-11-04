@@ -34,7 +34,7 @@ beforeAll(async () => {
   wip = await import('../src/lib/wip')
   overlap = await import('../src/lib/overlap')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
-  user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
+  user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin', githubLogin: 'maria' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
@@ -63,7 +63,15 @@ const comments = async (number: number) => (await fake.tickets(repo).listComment
 const labelsOf = async (number: number) => (await fake.tickets(repo).get(String(number))).labels
 
 const BODY_WITH_PLAN = '## Problem\nProduction is down.\n\n## Plan\n1. Revert the change.'
-const issue = (title: string, body = '', labels: string[] = [EXPEDITE_LABEL]) => fake.tickets(repo).create({ title, body, labels })
+/** An issue whose labels were set by `actor` (the Admin 'maria' unless a test says otherwise). */
+const issue = async (title: string, body = '', labels: string[] = [EXPEDITE_LABEL], actor = 'maria') => {
+  fake.actingAs = actor
+  try {
+    return await fake.tickets(repo).create({ title, body, labels })
+  } finally {
+    fake.actingAs = 'factory'
+  }
+}
 
 /** An open Ticket in `stage` with a plan declaring `files`, as in the overlap tests. */
 const inBuild = async (title: string, files: string[], extra: Record<string, unknown> = {}) => {
@@ -203,6 +211,16 @@ describe('Triage proposal', () => {
     const done = await reload(t.id)
     expect(done.expedite).toBe(true)
     expect(needsYou({ stage: done.stage, labels: done.labels, expedite: done.expedite }, null)).toBeNull()
+  })
+
+  it('a label set by someone who is not a gate owner or Admin is stripped and the Ticket goes through Triage', async () => {
+    const i = await issue('prod down', BODY_WITH_PLAN, [EXPEDITE_LABEL], 'stranger')
+    await poll()
+    const t = await byNumber(i.number)
+    expect(t.expedite).toBe(false)
+    expect(t.stage).not.toBe('build')
+    expect(await labelsOf(i.number)).not.toContain(EXPEDITE_LABEL)
+    expect((await comments(i.number)).some((c) => c.includes('Bauherr removed `bauherr:expedite`'))).toBe(true)
   })
 
   it('only an Admin can use the Expedite action', async () => {

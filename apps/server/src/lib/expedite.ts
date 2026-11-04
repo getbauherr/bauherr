@@ -64,6 +64,8 @@ export const startExpedites = async (payload: Payload): Promise<number> => {
   for (const t of waiting) {
     try {
       if (t.mergeSha || t.waitingFor || (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) continue
+      // A live Triage Run finishes first (its outcome then meets the flag); a Plan Run must not start next to it.
+      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'triage' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, overrideAccess: true })).totalDocs > 0) continue
       const { tickets: ts } = await forgeOf(payload, id(t.product))
       if (!(await laneOn(payload, id(t.workspace)))) {
         await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })

@@ -468,6 +468,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
             base.labels = labels
+            base.expedite = lane && labels.includes(EXPEDITE_LABEL)
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
