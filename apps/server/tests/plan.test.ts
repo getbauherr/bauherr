@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { decisionsSectionHasRows, openCritical, parseAnswers, subTickets, unansweredCriticalCount, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../src/app/(app)/lib/plan'
+import { decisionsSectionHasRows, openCritical, parseAnswers, planFiles, subTickets, unansweredCriticalCount, parseDecisions, planSummary, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../src/app/(app)/lib/plan'
 import { renderMarkdown } from '../src/app/(app)/lib/markdown'
 
 const plan = `<!-- bauherr:plan -->
@@ -189,4 +189,12 @@ describe('subTickets', () => {
       { title: 'A', body: 'First.' },
     ])
   })
+})
+
+describe('planFiles', () => {
+  it('reads bullets and plain lines, strips backticks, skips blanks and # lines, drops duplicates', () => {
+    expect(planFiles('## Steps\n1. x\n\n## Files\n\n- apps/server/src/a.ts\n* `docs/**`\nplain/path.md\n# comment\n- apps/server/src/a.ts\n\n## Out of scope\n- nope')).toEqual(['apps/server/src/a.ts', 'docs/**', 'plain/path.md'])
+  })
+  it('reads the fixture plan', () => expect(planFiles(plan86)).toEqual(['apps/server/src/app/(app)/lib/plan.ts', 'apps/server/src/lib/intake/**', 'docs/spec/workflow.md']))
+  it('is empty without the section', () => expect(planFiles('## Steps\n1. x')).toEqual([]))
 })

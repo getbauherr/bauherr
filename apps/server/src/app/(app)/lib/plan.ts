@@ -103,6 +103,11 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
   return { title: title.trim(), steps: (section(plan, /Steps\b/).match(/^\s*\d+\.\s/gm) ?? []).length }
 }
 
+/** Path globs of the plan's `## Files` section, one per line (list bullets and backticks stripped); `[]` without the section. */
+export const planFiles = (plan: string): string[] => [
+  ...new Set(section(plan, /Files\b/).split('\n').map((l) => l.trim().replace(/^[-*]\s+/, '').replace(/`/g, '').trim()).filter((l) => l && !l.startsWith('#'))),
+]
+
 export type SubTicket = { title: string; body: string; after?: string }
 
 /** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines; an `after: <sibling title>` line orders it behind that sibling. */
