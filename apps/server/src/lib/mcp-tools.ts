@@ -6,6 +6,7 @@ import type { Payload } from 'payload'
 import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
+import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
 import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
@@ -361,21 +362,22 @@ export const tools: Tool[] = [
   {
     name: 'request_review',
     access: 'agent',
-    description: 'Move the Ticket to the review stage label.',
+    description: 'Move the Ticket to the review stage label. Refused with the failing lines when the Product\'s pre-review checks fail (run_checks shows them first).',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      return requestReview(c.payload, c.user, { ticket: id(run.ticket) })
+      return requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
     },
   },
   {
     name: 'run_checks',
     access: 'agent',
-    description: 'Scorecard rules for the Run (placeholder: every result is unknown).',
+    description: 'The Product\'s pre-review checks against the Ticket\'s open MR and the Run\'s Evidence so far: {failures: []} means request_review passes them. Other scorecard rules are listed with result unknown.',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
-      await getRun(c, a.runId, a)
-      return walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' }))
+      const run = await getRun(c, a.runId, a)
+      const failures = await preReviewFailures(c.payload, await getTicket(c, id(run.ticket)), run.evidence ?? '')
+      return { failures, rules: walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' })) }
     },
   },
   {
@@ -399,7 +401,7 @@ export const tools: Tool[] = [
         await ts.addLink(n, a.prUrl)
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
-      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket) })
+      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
       await ownerWrite(
         c,
         run,

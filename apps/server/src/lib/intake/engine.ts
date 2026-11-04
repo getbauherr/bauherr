@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import type { Decision } from '../../app/(app)/lib/plan'
 
 export const MAX_QUESTIONS = 6
-export const MAX_USER_MESSAGES = 12
+export const MAX_USER_MESSAGES = 40
 export const MAX_MESSAGE_CHARS = 2000
 const SCREEN = /\b(page|screen|button|error|layout|seite|bildschirm|knopf|schaltfl[aä]che|fehler)\b/i
 
@@ -78,6 +78,9 @@ export const ownerQueue = (decisions: Decision[], answers: Record<string, string
 const prompt = async (): Promise<string> =>
   (await readFile(resolve(process.cwd(), '../../pack/skills/intake/SKILL.md'), 'utf8')).replace(/^---[\s\S]*?---\s*/, '')
 
+/** Appended to the system prompt once the question cap is reached: the person may keep adding detail, the assistant no longer asks. */
+const CLOSING = '\n\nThe question limit is reached. Do not ask any question. `question` is a one-sentence acknowledgement of what the person just said; update `draft` (and `split`, `missing`) from it.'
+
 export type ModelCall = (a: { system: string; messages: ModelMessage[]; schema: object }) => Promise<unknown>
 
 /** One Messages-API call through the gateway as the Workspace; the answer is the schema-enforced JSON text. */
@@ -129,16 +132,15 @@ export const checkMessage = (s: Session, text: string): void => {
   if (s.messages.filter((m) => m.role === 'user').length >= MAX_USER_MESSAGES) throw new Error('message limit reached')
 }
 
-/** Adds the user's message (with this turn's screenshots as vision input), asks the model for the next single question and the updated draft, and returns the new session state. */
+/** Adds the user's message (with this turn's screenshots as vision input), asks the model for the next single question (past the question cap: only an acknowledgement) and the updated draft, and returns the new session state. */
 export const nextTurn = async (s: Session, text: string, model: ModelCall, images: Image[] = []): Promise<{ session: Session; turn: Turn; ready: boolean; exhausted: boolean; missing: string[] }> => {
   checkMessage(s, text)
-  if (questionsAsked(s) >= MAX_QUESTIONS) throw new Error('question limit reached')
   const messages: Message[] = [...s.messages, { role: 'user', content: text, ...(images.length && { images: images.map((i) => i.id) }) }]
   const sent: ModelMessage[] = [
     ...s.messages.map(({ role, content }) => ({ role, content })),
     { role: 'user', content: images.length ? [...images.map((i): Block => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })), { type: 'text', text }] : text },
   ]
-  const turn = normalizeTurn(await model({ system: await prompt(), messages: sent, schema: TURN_SCHEMA }))
+  const turn = normalizeTurn(await model({ system: (await prompt()) + (questionsAsked(s) >= MAX_QUESTIONS ? CLOSING : ''), messages: sent, schema: TURN_SCHEMA }))
   const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question }], draft: turn.draft, split: turn.split }
   const [shot, refers, asked] = [(s.screenshots ?? 0) > 0, refersToScreen(session, turn.needsScreenshot), questionsAsked(session)]
   const r = turn.split ? splitReadiness(turn.split, shot, refers, asked) : readiness(turn.draft, shot, refers, asked)

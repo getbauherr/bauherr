@@ -30,6 +30,9 @@ One pinned factory Comment per Ticket, mirrored to `.bauherr/worklog.md` in the 
 **Open**
 - <non-blocking (low) finding or thing not checked>
 
+**Pre-review**
+- Self-review: <n findings, m fixed | skipped, <30 lines>. run_checks: <pass | failing lines>.
+
 **Decisions**
 - YYYY-MM-DD <decision>. Consequence: <what it changes>. By: <person or Run>.
 

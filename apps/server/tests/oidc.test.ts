@@ -54,6 +54,11 @@ describe('session token', () => {
   const exp = now / 1000 + 100
   it('round-trips id and version', () => expect(verifySession(signSession(5, 2, 'k', now), 'k', now + 1000)).toEqual({ id: 5, v: 2 }))
   it('expires', () => expect(verifySession(signSession(5, 0, 'k', now), 'k', now + (SESSION_TTL_S + 1) * 1000)).toBeNull())
+  it('lasts 14 days', () => {
+    expect(SESSION_TTL_S).toBe(14 * 86400)
+    expect(verifySession(signSession(5, 0, 'k', now), 'k', now + 13 * 86400_000)).toEqual({ id: 5, v: 0 })
+    expect(verifySession(signSession(5, 0, 'k', now), 'k', now + 14 * 86400_000 + 1000)).toBeNull()
+  })
   it('checks typ, aud and v', () => {
     const ok = { id: 1, v: 0, typ: 'bauherr-session', aud: 'bauherr', exp }
     expect(verifySession(forge(ok), 'k', now)).toEqual({ id: 1, v: 0 })
