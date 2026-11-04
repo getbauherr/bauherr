@@ -162,6 +162,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
   if ((await c.payload.count({ collection: 'products', where: { and: [{ slug: { equals: slug } }, { workspace: { equals: inWorkspace(c) } }] }, overrideAccess: true } as never)).totalDocs) throw fieldError('slug', 'Another Product already uses this short name.')
   if (s(fd, 'fullName') === OTHER_REPO) fd.set('fullName', s(fd, 'repoOther'))
   if (!s(fd, 'fullName')) throw fieldError('fullName', 'Choose a repository.')
+  if (!/^[\w.-]+(?:\/[\w.-]+)+$/.test(s(fd, 'fullName'))) throw fieldError('fullName', 'Use owner/name, for example acme/shop.')
   const product = await makeProduct(c, fd)
   fd.set('readTickets', 'on')
   try {

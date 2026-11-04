@@ -89,6 +89,32 @@ it('a failing ticket source leaves no Product, repository or source behind', asy
   expect({ products: await count('products'), repositories: await count('repositories'), sources: await count('ticket_sources') }).toEqual(before)
 })
 
+it('a failing repository create and a malformed repository name leave no Product behind', async () => {
+  const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
+  const before = await count('products')
+  for (const fullName of ['acme', 'https://github.com/acme/web', 'acme/ web']) {
+    expect(await actions.createProductWithRepo({}, form({ name: 'Bad', fullName, connection }))).toMatchObject({ fields: { fullName: 'Use owner/name, for example acme/shop.' } })
+  }
+  expect(await count('products')).toBe(before)
+  const create = payload.create.bind(payload)
+  const spy = vi.spyOn(payload, 'create').mockImplementation(((args: { collection: string }) => (args.collection === 'repositories' ? Promise.reject(new Error('repo boom')) : create(args as never))) as never)
+  expect(await actions.createProductWithRepo({}, form({ name: 'NoRepo', fullName: 'acme/norepo', connection }))).toEqual({ error: 'repo boom' })
+  spy.mockRestore()
+  expect(await count('products')).toBe(before)
+})
+
+it('repositoriesOf is Admin-only and refuses a Connection of another Workspace', async () => {
+  const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
+  const other = (await payload.create({ collection: 'workspaces', data: { name: 'other', slug: 'other' }, ...o })).id as number
+  const foreign = await payload.create({ collection: 'connections', data: { name: 'Foreign', kind: 'github', secret: 'ghp_x', workspace: other }, ...o })
+  await expect(actions.repositoriesOf(foreign.id as number)).rejects.toThrow('Not in this Workspace')
+  expect(await actions.repositoriesOf(connection)).toEqual(['acme/api', 'acme/shop'])
+  const admin = signedIn
+  signedIn = { user: await payload.create({ collection: 'bauherren', data: { email: 'm2@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o }), workspace: { id: ws } }
+  await expect(actions.repositoriesOf(connection)).rejects.toThrow('Only an Admin')
+  signedIn = admin
+})
+
 const stored = async (id: unknown) => (await import('../src/app/(app)/lib/settings')).loadConnections(ws).then((l) => l.find((c) => c.id === id))
 
 it('a Connection without a secret fails verify with a stored error (sync throw)', async () => {

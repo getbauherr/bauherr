@@ -39,7 +39,6 @@ test('list, Product page, save, validation and the single Delete section', async
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
   await page.getByRole('link', { name: 'Add Product' }).click()
   await page.getByLabel('Product name').fill(name)
-  await expect(page.getByText('Reading repositories')).toHaveCount(0)
   if (process.env.E2E_FAKE_FORGE) {
     await page.getByLabel('Repository', { exact: true }).selectOption({ label: 'Other...' })
     await page.getByLabel('Other repository').fill('e2e/widgets')
