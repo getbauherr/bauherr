@@ -740,8 +740,11 @@ export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
   if (latest?.status !== 'cancelled' || latest.stage !== t.stage) throw new Error('the Ticket is not cancelled')
   const { ts, n } = await sourceOf(payload, t)
-  await moveStage(payload, ts, t, 'triage')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', reviewState: null }, overrideAccess: true })
+  // No stage label and no stage: the Ticket is untriaged again and the next sweep offers Triage.
+  const stale = (await ts.get(n)).labels.filter((l) => stageOf([l]) !== null)
+  if (stale.length) await ts.removeLabels(n, stale)
+  await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${t.id}`)
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: null, reviewState: null, triagedAt: null, triageAttempts: 0, labels: ((t.labels ?? []) as string[]).filter((l) => stageOf([l]) === null) }, overrideAccess: true })
   await ts.comment(n, `Sent back to the backlog by ${user.email}.`)
   await touch(payload, user, t, 'back-to-backlog')
   return { stage: 'triage' }

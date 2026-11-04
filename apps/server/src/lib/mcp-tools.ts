@@ -550,7 +550,8 @@ export const tools: Tool[] = [
       if (typeof a.reason !== 'string' || !a.reason.trim()) throw new Error('reason required')
       const dead = (await deadTickets(c.payload, id(t.workspace))).find((d) => d.ticket.id === t.id)
       if (!dead || !AGENT_REPAIRED.includes(dead.cause)) throw new Error(`ticket ${t.number} is not dead for a mechanical cause; nothing to repair`)
-      return { outcome: await sendBackToBuild(c.payload, t, a.reason.trim().slice(0, 500)) }
+      // The agent's own words stay out of the next Run's instructions (owner-level text); the tool call keeps them in the audit digest.
+      return { outcome: await sendBackToBuild(c.payload, t, `Sent back to Build by an agent: ${dead.cause === 'mr-missing' ? 'the MR was closed' : 'checks are red on the MR'}.`) }
     },
   },
   {

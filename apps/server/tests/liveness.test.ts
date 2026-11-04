@@ -10,6 +10,7 @@ let member: Record<string, any>
 let product: number
 let ws: number
 let liveness: typeof import('../src/lib/liveness')
+let jobs: typeof import('../src/jobs')
 let actions: typeof import('../src/lib/actions')
 let call: (actor: unknown, name: string, input: unknown) => Promise<any>
 const o = { overrideAccess: true } as const
@@ -27,6 +28,7 @@ beforeAll(async () => {
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   liveness = await import('../src/lib/liveness')
+  jobs = await import('../src/jobs')
   actions = await import('../src/lib/actions')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   const { callTool } = await import('../src/lib/mcp-tools')
@@ -147,6 +149,16 @@ it('mr-missing links the newest open replacement MR', async () => {
   expect((await runs(id, 'build')).some((r) => r.artifacts?.prUrl === urls[1])).toBe(true)
 })
 
+it('at the round cap the owner decides: red checks or a closed MR are not repaired, and an agent cannot send it back', async () => {
+  const red = await seed('review', { reviewState: 'needs_human', mr: 'open', checks: [{ name: 'e2e', status: 'completed', conclusion: 'failure' }] })
+  await payload.update({ collection: 'tickets', id: red.id, data: { reviewRounds: 3 }, ...o })
+  const dead = (await liveness.deadTickets(payload, ws)).find((d) => d.ticket.id === red.id)!
+  expect(dead).toMatchObject({ cause: 'review-escalated', need: 'Round cap reached' })
+  await liveness.sweepLiveness(payload)
+  expect(await reload(red.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+  await expect(call(agent, 'return_to_build', { ticket: red.id, reason: 'x' })).rejects.toThrow(/not dead for a mechanical cause/)
+})
+
 it('review-escalated (MR open, checks not red): not repaired, shown as "Needs you"; Back to build moves it', async () => {
   const { id, n } = await seed('review', { reviewState: 'needs_human', mr: 'open', checks: [{ name: 'ci', status: 'completed', conclusion: 'success' }] })
   const dead = (await liveness.deadTickets(payload, ws)).find((d) => d.ticket.id === id)!
@@ -186,7 +198,10 @@ it('run-cancelled: not repaired, shown as "Cancelled" with its reason', async ()
   const live = await seed('build', { runs: [{ stage: 'build', status: 'awaiting_session' }] })
   await expect(actions.backToBacklog(payload, member, { ticket: live.id })).rejects.toThrow(/not cancelled/)
   expect(await actions.backToBacklog(payload, member, { ticket: id })).toEqual({ stage: 'triage' })
-  expect(await reload(id)).toMatchObject({ stage: 'triage' })
+  expect(await reload(id)).toMatchObject({ stage: null, triagedAt: null })
+  expect((await fake.tickets(repo).get(n)).labels.some((l) => l.startsWith('bauherr:stage:'))).toBe(false)
+  await jobs.triageSweep(payload)
+  expect(await runs(id, 'triage')).toHaveLength(1)
 })
 
 it('a Ticket with a live Run, a wait or a stage-mismatched Run is not dead', async () => {

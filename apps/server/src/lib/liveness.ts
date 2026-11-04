@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, Where } from 'payload'
 import { ACTIVE, startReviewIfReady, startRunIfNeeded, triageable } from '../jobs'
 import { sendBackToBuild, ticketsOf } from './actions'
-import { type Need, needsYou } from './needs-you'
+import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
 type Doc = Record<string, any>
@@ -38,6 +38,8 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
       const mr = await prOf(payload, t)
       if (!mr || mr.pr.state === 'closed') return 'mr-missing'
       if (mr.pr.state === 'merged' || t.reviewState !== 'needs_human') return null
+      // At the round cap the owner decides (grant one more round or stop): never repaired, never agent-callable.
+      if ((t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'review-escalated'
       return mergeChecks(await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)).state === 'red' ? 'checks-red' : 'review-escalated'
     } catch {
       return null
