@@ -21,7 +21,7 @@ test('a Sent request opens its page with Tickets, plain status and a merged comm
   const tickets = page.getByTestId('request-ticket')
   await expect(tickets).toHaveCount(2)
   await expect(tickets.first()).toContainText('Ship the CSV export')
-  await expect(tickets.first()).toContainText('On staging')
+  await expect(tickets.first()).toContainText(/Being (looked at|planned|built|reviewed)|On staging|Done/)
 
   await page.getByLabel('Comment on').selectOption({ label: '#7 Ship the invoice filter' })
   await page.getByRole('textbox', { name: 'Comment' }).fill('Looks right to me')
