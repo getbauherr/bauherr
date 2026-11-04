@@ -7,10 +7,11 @@ import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { CommentComposer } from '../../../components/CommentComposer'
 import { OwnerChat } from '../../../components/OwnerChat'
-import { Approved, Gate, ProductionChecksGate, ProductionGate, ReleaseGate, RerunGate, ReviewCapGate } from '../../../components/Gate'
+import { Gate, ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
+import { TicketDetails } from '../../../components/TicketDetails'
 import { Badge } from '../../../components/ui/badge'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
@@ -83,21 +84,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const waitingForStaging = ticket.stage === 'release' && !acceptedStaging && !gate
   const answered = decisions.filter((d) => answers[d.id]).length
   const live = runs[0] && ['running', 'awaiting_session'].includes(runs[0].status) ? runs[0] : null
-  const idle = `Nothing to do: ${
-    live ? `${live.stage} is running (Run #${live.id}${admin ? `, ${live.mode === 'session' ? 'session' : 'scheduler'}` : ''})`
-    : waitingForStaging ? `waiting for the staging deploy of ${ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}`
+  const idleDetail = `Nothing to do: ${
+    live ? `${live.stage} is running${admin ? ` (Run #${live.id}, ${live.mode === 'session' ? 'session' : 'scheduler'})` : ''}`
+    : waitingForStaging ? `waiting for the staging deploy${admin ? ` of ${ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}` : ''}`
     : ticket.stage === 'review' ? reviewWord(ticket.reviewState).replace(/^./, (c) => c.toLowerCase())
     : stageOf(ticket)}.`
+  const idle = live ? 'The factory is working on this.' : waitingForStaging ? 'Waiting for the staging deploy.' : ticket.stage === 'review' ? 'In review.' : 'Nothing to do.'
+  const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production'].filter(Boolean).join(' · ')
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
 
   return (
     <div className="flex flex-col gap-4">
-      <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} idle={idle} releaseRunUrl={ticket.releaseRunUrl} />
+      <ActionBar ticket={ticket.id} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
-      <p className="small flex flex-wrap items-center gap-4 text-muted-foreground">
-        <span>{product.name}</span>
-        {isWebUrl(ticket.url) && <a className="text-primary" href={ticket.url}>Open on the forge</a>}
-      </p>
+      <p className="small text-muted-foreground">{product.name}</p>
       {epic ? (
         <section className="flex flex-col gap-4" aria-labelledby="subtickets">
           <h2 className="heading" id="subtickets">Sub-tickets</h2>
@@ -105,93 +105,82 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <EpicChildren epic={epic} />
         </section>
       ) : <StagePipeline current={stageOf(ticket)} />}
+      {history && <p className="small text-muted-foreground">{history}</p>}
       {waiting && <Badge variant="warn" className="small self-start" role="status">{waiting}</Badge>}
-      {(blockers.length > 0 || blocks.length > 0) && (
-        <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
-          {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
-          {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
-        </ul>
-      )}
       {forgeError && <p className="small text-muted-foreground">The forge could not be reached; plan and worklog are unavailable.</p>}
 
-      {summary && approved && <Approved number={ticket.number} />}
-      {gate?.kind === 'plan' && (
-        <Gate
-          number={ticket.number}
-          plan={summary ?? null}
-          budget={!admin ? undefined : ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}
-          model={admin ? tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—' : undefined}
-          sheet={decisions.length ? `${answered} of ${decisions.length} answered · ${missing.length} critical open` : 'none'}
-        />
-      )}
-      {gate?.kind === 'release' && (
-        <ReleaseGate ticket={ticket.id} number={ticket.number} title={gate.title} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} stagingUrl={product.stagingUrl ?? null} />
-      )}
-      {gate?.kind === 'production-checks' && <ProductionChecksGate number={ticket.number} title={gate.title} />}
-      {gate?.kind === 'production' && <ProductionGate number={ticket.number} title={gate.title} failed={todo === 'Production deploy failed'} />}
-      {gate?.kind === 'review-cap' && (
-        <ReviewCapGate number={ticket.number} title={gate.title} findingsHtml={capFindings ? renderMarkdown(capFindings) : null} />
-      )}
-      {gate?.kind === 'rerun' && runs[0] && <RerunGate run={runs[0].id} number={ticket.number} title={gate.title} stage={runs[0].stage} />}
-      {acceptedStaging && <Approved number={ticket.number} label="Accepted on staging" />}
-      {labels.includes('bauherr:approved:production') && <Approved number={ticket.number} label="Approved for production" />}
+      {gate?.kind === 'plan' && <Gate plan={summary ?? null} />}
+      {gate?.kind === 'release' && <ReleaseGate ticket={ticket.id} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} />}
       {decisions.length > 0 && <OwnerChat ticket={ticket.id} open={decisions.length - answered} />}
 
-      {plan && (
-        <section className="flex flex-col gap-4" aria-labelledby="plan">
-          <h2 className="heading" id="plan">Plan</h2>
-          <Markdown html={renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER)))} />
-        </section>
-      )}
-      {worklog && (
-        <section className="flex flex-col gap-4" aria-labelledby="worklog">
-          <h2 className="heading" id="worklog">Worklog</h2>
-          <Markdown html={renderMarkdown(withoutWorklogHeading(strip(worklog, WORKLOG_MARKER)))} />
-        </section>
-      )}
-
-      {shots.length > 0 && (
-        <section className="flex flex-col gap-4" aria-labelledby="attachments">
-          <h2 className="heading" id="attachments">Attachments</h2>
-          <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
-            {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
+      <TicketDetails key={ticket.id}>
+        <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
+          {isWebUrl(ticket.url) && <><dt>Forge</dt><dd><a className="text-primary" href={ticket.url}>Open on the forge</a></dd></>}
+          {admin && <><dt>Budget</dt><dd className="mono">{ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}</dd></>}
+          {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
+          {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
+          {decisions.length > 0 && <><dt>Decisions</dt><dd>{answered} of {decisions.length} answered · {missing.length} critical open</dd></>}
+          {!todo && <><dt>Status</dt><dd>{idleDetail}</dd></>}
+        </dl>
+        {(blockers.length > 0 || blocks.length > 0) && (
+          <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
+            {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
+            {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
           </ul>
-        </section>
-      )}
-
-      {!forgeError && <CommentComposer ticket={ticket.id} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} />}
-
-      <section className="flex flex-col gap-4" aria-labelledby="runs">
-        <h2 className="heading" id="runs">Runs</h2>
-        {runs.length ? (
-          <Table>
+        )}
+        {capFindings && gate?.kind === 'review-cap' && <Markdown html={renderMarkdown(capFindings)} />}
+        {plan && (
+          <section className="flex flex-col gap-4" aria-labelledby="plan">
+            <h2 className="heading" id="plan">Plan</h2>
+            <Markdown html={renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER)))} />
+          </section>
+        )}
+        {worklog && (
+          <section className="flex flex-col gap-4" aria-labelledby="worklog">
+            <h2 className="heading" id="worklog">Worklog</h2>
+            <Markdown html={renderMarkdown(withoutWorklogHeading(strip(worklog, WORKLOG_MARKER)))} />
+          </section>
+        )}
+        {shots.length > 0 && (
+          <section className="flex flex-col gap-4" aria-labelledby="attachments">
+            <h2 className="heading" id="attachments">Attachments</h2>
+            <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+              {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
+            </ul>
+          </section>
+        )}
+        <section className="flex flex-col gap-4" aria-labelledby="runs">
+          <h2 className="heading" id="runs">Runs</h2>
+          {runs.length ? (
+            <Table>
               <thead>
-                <tr className="label">{['Run', 'Stage', 'Status', ...(admin ? ['Mode', 'Duration', 'Cost'] : ['When']), 'Evidence'].map((h) => <th key={h}>{h}</th>)}</tr>
+                <tr className="label">{(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence']).map((h) => <th key={h}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {runs.map((r) => (
                   <tr key={r.id}>
-                    <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
-                    <td>{r.stage}</td>
-                    <td><StatusChip status={r.status} /></td>
                     {admin ? (
                       <>
-                        <td>{r.mode}</td>
-                        <td className="mono">{duration(r)}</td>
-                        <td className="mono">{r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : '—'}</td>
+                        <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
+                        <td>{r.stage}</td>
                       </>
                     ) : (
-                      <td className="text-muted-foreground">{ago(r.createdAt)}</td>
+                      <td><Link className="text-primary" href={`/runs/${r.id}`}>{r.stage}</Link></td>
                     )}
+                    <td><StatusChip status={r.status} /></td>
+                    {admin ? <td className="mono">{duration(r)}</td> : <td className="text-muted-foreground">{ago(r.createdAt)}</td>}
                     <td className="small max-w-[32ch] truncate text-muted-foreground" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
                   </tr>
                 ))}
               </tbody>
-          </Table>
-        ) : (
-          <p className="text-muted-foreground">No Runs yet.</p>
-        )}
-      </section>
+            </Table>
+          ) : (
+            <p className="text-muted-foreground">No Runs yet.</p>
+          )}
+        </section>
+      </TicketDetails>
+
+      {!forgeError && <CommentComposer ticket={ticket.id} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} />}
     </div>
   )
 }

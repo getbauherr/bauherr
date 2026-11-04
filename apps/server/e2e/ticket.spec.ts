@@ -77,6 +77,8 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await expect(row.getByText('Answer decisions')).toBeVisible()
   await row.getByRole('link', { name: 'Add a dark theme to the dashboard' }).click()
 
+  await expect(page.locator('#worklog')).toBeHidden()
+  await page.getByText('Details', { exact: true }).click()
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.locator('.sheet')).toHaveCount(0)
   const gaps = await page.locator('.max-w-\\[80ch\\] > p + *').evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).marginTop)))
@@ -95,11 +97,36 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
 
   await approve.click()
-  await expect(page.getByText('✓ Plan approved')).toBeVisible()
+  await expect(page.getByText('Plan approved', { exact: true })).toBeVisible()
   await expect(approve).toHaveCount(0)
 })
 
-test('the plan gate shows Budget and Model to an Admin only', async ({ page }) => {
+test('an approval Ticket shows the bar, title, pipeline and the gate; the rest sits in a closed Details', async ({ page }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
+  const details = page.locator('details')
+  await expect(details).not.toHaveAttribute('open', '')
+  await expect(page.getByTestId('action-bar')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Tidy the settings copy')
+  await expect(page.locator('ol[aria-label=Stage]')).toBeVisible()
+  await expect(page.getByText('Approves', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Approve plan' })).toHaveCount(0)
+  for (const name of ['Budget', 'Model', 'Worklog']) await expect(page.getByText(name, { exact: true })).toBeHidden()
+  await page.getByTestId('action-bar').getByRole('link', { name: 'Show details' }).click()
+  await expect(details).toHaveAttribute('open', '')
+  await expect(details.getByText('Budget', { exact: true })).toBeVisible()
+  await expect(details.getByText('Model', { exact: true })).toBeVisible()
+  await expect(details.getByRole('heading', { name: 'Runs' })).toBeVisible()
+  await expect(details.locator('table thead th')).toHaveText(['Run', 'Stage', 'Status', 'Duration', 'Evidence'])
+  if (shots) {
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme })
+      await page.screenshot({ path: `${shots}/details-open-${scheme}-${page.viewportSize()!.width}x${page.viewportSize()!.height}.png` })
+    }
+  }
+})
+
+test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }) => {
   for (const [who, admin] of [['member@example.com', false], [email, true]] as const) {
     await page.goto('/login')
     await page.getByLabel('Email').fill(who)
@@ -107,12 +134,22 @@ test('the plan gate shows Budget and Model to an Admin only', async ({ page }) =
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.locator('.board')).toBeVisible()
     await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
-    const gate = page.locator('dl.body', { hasText: 'Approves' })
-    await expect(gate.getByText('Decisions', { exact: true })).toBeVisible()
-    for (const name of ['Budget', 'Model']) await expect(gate.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
-    if (!admin) await expect(gate).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku/i)
+    await page.getByText('Details', { exact: true }).click()
+    const details = page.locator('details')
+    for (const name of ['Budget', 'Model']) await expect(details.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
+    if (!admin) await expect(details).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku|Merge commit|#\d+\s*$/i)
+    await expect(details.locator('table thead th')).toHaveText(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence'])
     await page.context().clearCookies()
   }
+})
+
+test('an idle Ticket says it plainly and keeps the technical text in Details', async ({ page }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
+  const bar = page.getByTestId('action-bar')
+  await expect(bar).not.toContainText('Nothing to do:')
+  await page.getByText('Details', { exact: true }).click()
+  await expect(page.locator('details')).toContainText('Nothing to do:')
 })
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='

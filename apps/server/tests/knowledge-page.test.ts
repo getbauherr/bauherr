@@ -16,6 +16,8 @@ let page: typeof import('../src/app/(app)/lib/knowledge')
 let withRepo: number
 let withoutRepo: number
 
+const admin = { admin: true }
+const member = { admin: false }
 let testDb: TestDb
 beforeAll(async () => {
   const pack = mkdtempSync(join(tmpdir(), 'pack-'))
@@ -52,40 +54,75 @@ afterAll(async () => {
 
 describe('loadKnowledge', () => {
   it('lists markdown documents per source, core pack first', async () => {
-    const k = await page.loadKnowledge(withRepo, undefined, undefined)
-    expect(k.sources.map((s) => [s.name, s.docs.map((d) => d.path)])).toEqual([['core', ['rules/evidence.md']], [REPO, ['handbook.md']]])
+    const k = await page.loadKnowledge(withRepo, undefined, undefined, admin)
+    expect(k.sources.map((s) => [s.name, s.label, s.docs.map((d) => [d.path, d.title])])).toEqual([['core', 'Built-in', [['rules/evidence.md', 'Evidence']]], [REPO, 'Your Knowledge', [['handbook.md', 'Handbook']]]])
     expect(k.hits).toBeNull()
     expect(k.doc).toBeNull()
   })
 
   it('searches with citations and renders a document with raw HTML escaped', async () => {
-    const hit = (await page.loadKnowledge(withRepo, 'giraffes', undefined)).hits![0]!
+    const hit = (await page.loadKnowledge(withRepo, 'giraffes', undefined, admin)).hits![0]!
     expect(hit).toMatchObject({ source: REPO, path: 'handbook.md', heading: 'Handbook' })
-    const { doc } = await page.loadKnowledge(withRepo, undefined, page.docKey(hit))
+    const { doc } = await page.loadKnowledge(withRepo, undefined, page.docKey(hit), admin)
     expect(doc!.html).toContain('<strong>carefully</strong>')
     expect(doc!.html).not.toContain('<script>')
   })
 
   it('ignores a document that is not indexed, and does not read across Workspaces', async () => {
-    expect((await page.loadKnowledge(withRepo, undefined, `${REPO}:missing.md`)).doc).toBeNull()
-    const other = await page.loadKnowledge(withoutRepo, 'giraffes', `${REPO}:handbook.md`)
+    expect((await page.loadKnowledge(withRepo, undefined, `${REPO}:missing.md`, admin)).doc).toBeNull()
+    const other = await page.loadKnowledge(withoutRepo, 'giraffes', `${REPO}:handbook.md`, admin)
     expect(other.hits).toEqual([])
     expect(other.doc).toBeNull()
     expect(other.sources.map((s) => s.name)).toEqual(['core'])
   })
 
   it('lists only open bauherr/* PRs with their merge-gate checks; none without a Knowledge repo', async () => {
-    expect((await page.loadKnowledge(withRepo, undefined, undefined)).writeBacks).toEqual([
+    expect((await page.loadKnowledge(withRepo, undefined, undefined, admin)).writeBacks).toEqual([
       expect.objectContaining({ title: 'Write back', head: 'bauherr/7', checks: 'red', failed: ['lint'] }),
     ])
-    expect((await page.loadKnowledge(withoutRepo, undefined, undefined)).writeBacks).toEqual([])
+    expect((await page.loadKnowledge(withoutRepo, undefined, undefined, admin)).writeBacks).toEqual([])
   })
 
   it('degrades to null when the forge fails', async () => {
     const prs = backend.current.forge.listPullRequests
     backend.current.forge.listPullRequests = async () => { throw new Error('down') }
-    expect((await page.loadKnowledge(withRepo, undefined, undefined)).writeBacks).toBeNull()
+    expect((await page.loadKnowledge(withRepo, undefined, undefined, admin)).writeBacks).toBeNull()
     backend.current.forge.listPullRequests = prs
+  })
+})
+
+describe('loadKnowledge for a member', () => {
+  it('hides the core pack in the list, in search and as a document; reads no write-backs from the forge', async () => {
+    const listPullRequests = vi.spyOn(backend.current.forge, 'listPullRequests')
+    const k = await page.loadKnowledge(withRepo, 'zebra', 'core:rules/evidence.md', member)
+    expect(k.sources.map((s) => s.name)).toEqual([REPO])
+    expect(k.hits).toEqual([])
+    expect(k.doc).toBeNull()
+    expect(k.writeBacks).toBeNull()
+    expect(listPullRequests).not.toHaveBeenCalled()
+    listPullRequests.mockRestore()
+  })
+})
+
+describe('member search with a crowded core pack', () => {
+  it('excludes core before the limit, so the own document is still returned', async () => {
+    const lines = Array.from({ length: 25 }, (_, i) => `## Pangolin ${i}\n\npangolin pangolin pangolin\n`).join('\n')
+    writeFileSync(join(process.env.BAUHERR_PACK_DIR!, 'rules/pangolins.md'), `# Pangolins\n\n${lines}`)
+    backend.current.commit(REPO, 'main', 'own.md', '# Own\n\nOne pangolin.\n')
+    const { resync } = await import('../src/lib/knowledge')
+    await resync(payload, withRepo)
+    const adminHits = (await page.loadKnowledge(withRepo, 'pangolin', undefined, admin)).hits!
+    expect(adminHits).toHaveLength(20)
+    expect(adminHits.every((h) => h.source === 'core')).toBe(true)
+    expect((await page.loadKnowledge(withRepo, 'pangolin', undefined, member)).hits!.map((h) => h.path)).toEqual(['own.md'])
+  })
+})
+
+describe('title', () => {
+  it('prefers the heading, else de-dashes the file name', () => {
+    expect(page.title('docs/x.md', ' Release policy ')).toBe('Release policy')
+    expect(page.title('handbook/release-policy.md', '')).toBe('Release policy')
+    expect(page.title('notes_v2.md')).toBe('Notes v2')
   })
 })
 

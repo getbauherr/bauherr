@@ -99,16 +99,16 @@ test('with BAUHERR_DISABLE_ADMIN=1 /admin and its server functions answer 404, /
   expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
 })
 
-test('the Ticket page Runs table shows Mode, Duration and Cost to an Admin only', async ({ page }) => {
-  const runs = page.getByRole('region', { name: 'Runs' })
-  const columns = ['Mode', 'Duration', 'Cost']
+test('the Ticket page Runs table shows Run and Duration to an Admin only and never Mode or Cost', async ({ page }) => {
   for (const [who, visible] of [['member@example.com', false], [email, true]] as const) {
     await signIn(page, who)
     await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
+    await page.getByText('Details', { exact: true }).click()
+    const runs = page.getByRole('region', { name: 'Runs' })
     await expect(runs.getByRole('columnheader', { name: 'Stage' })).toBeVisible()
-    for (const name of columns) await expect(runs.getByRole('columnheader', { name })).toHaveCount(visible ? 1 : 0)
-    if (visible) await expect(runs.getByRole('cell', { name: '$1.5000' })).toBeVisible()
-    else await expect(runs.getByText('$')).toHaveCount(0)
+    for (const name of ['Run', 'Duration']) await expect(runs.getByRole('columnheader', { name, exact: true })).toHaveCount(visible ? 1 : 0)
+    for (const name of ['Mode', 'Cost']) await expect(runs.getByRole('columnheader', { name })).toHaveCount(0)
+    await expect(runs.getByText('$')).toHaveCount(0)
     await page.context().clearCookies()
   }
 })

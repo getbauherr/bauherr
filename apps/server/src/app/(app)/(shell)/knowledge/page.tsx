@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
-import { docKey, loadKnowledge } from '../../lib/knowledge'
-import { repoOf } from '../../../../lib/knowledge'
+import { docKey, loadKnowledge, title } from '../../lib/knowledge'
 import { isAdmin } from '../../lib/settings'
 import { currentWorkspace } from '../../lib/session'
 
@@ -14,7 +13,8 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
   const sp = await searchParams
   const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
-  const { sources, repo, hits, doc, writeBacks } = await loadKnowledge(workspace.id, sp.q, sp.doc)
+  const admin = isAdmin(user)
+  const { sources, repo, hits, doc, writeBacks } = await loadKnowledge(workspace.id, sp.q, sp.doc, { admin })
   const q = sp.q?.trim() ?? ''
   return (
     <>
@@ -26,18 +26,18 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         </label>
         <button className="btn primary" type="submit">Search</button>
       </form>
-      {!repo && (isAdmin(user)
-        ? <EmptyState text="Only the core pack is available. Connect a Knowledge repo to add your own documents." action={{ href: '/settings/workspace', label: 'Open settings' }} />
-        : <EmptyState text="No documents yet." />)}
+      {!repo && (admin
+        ? <EmptyState text="Only the built-in documents are available. Connect a Knowledge repo to add your own documents." action={{ href: '/settings/workspace', label: 'Open settings' }} />
+        : !sources.length && <EmptyState text="No documents yet." />)}
       <div className="kb">
         <nav className="stack" aria-label="Documents">
           {sources.map((s) => (
             <section key={s.name} className="stack">
-              <h2 className="label muted">{s.name === 'core' ? 'Core pack' : repoOf(s.name)}</h2>
+              <h2 className="label muted">{s.label}</h2>
               <ul className="kb-docs">
                 {s.docs.map((d) => (
                   <li key={d.path}>
-                    <Link href={href({ doc: docKey(d) })} aria-current={doc && docKey(doc) === docKey(d) ? 'page' : undefined}>{d.path}</Link>
+                    <Link href={href({ doc: docKey(d) })} aria-current={doc && docKey(doc) === docKey(d) ? 'page' : undefined}>{d.title}</Link>
                   </li>
                 ))}
               </ul>
@@ -50,16 +50,14 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
               <h2 className="heading">{hits.length} {hits.length === 1 ? 'result' : 'results'} for “{q}”</h2>
               {hits.map((h, i) => (
                 <article key={i} className="card-lg stack">
-                  <Link className="link" href={href({ doc: docKey(h), q })}>{h.heading || h.path}</Link>
-                  <p className="small muted mono">{repoOf(h.source)} · {h.path} · {h.commit.slice(0, 7)}</p>
+                  <Link className="link" href={href({ doc: docKey(h), q })}>{h.heading || title(h.path)}</Link>
                   <p className="small">{h.text.replace(/^#.*\n/, '').trim().slice(0, 240)}</p>
                 </article>
               ))}
             </section>
           )}
           {doc ? (
-            <article className="stack" aria-label={doc.path}>
-              <p className="small muted mono">{repoOf(doc.source)} · {doc.path} · {doc.commit.slice(0, 7)}</p>
+            <article className="stack" aria-label={doc.title}>
               <div className="prose" dangerouslySetInnerHTML={{ __html: doc.html }} />
             </article>
           ) : (
@@ -68,7 +66,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
           {!hits && !doc && !sp.doc && <p className="muted">Search, or pick a document on the left.</p>}
         </div>
       </div>
-      {repo && (
+      {admin && repo && (
         <section className="stack" aria-label="Write-backs">
           <h2 className="heading">Write-backs</h2>
           {writeBacks === null ? (
