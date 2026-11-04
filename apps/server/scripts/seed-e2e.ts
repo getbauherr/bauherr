@@ -111,5 +111,6 @@ const request = async (key: string, status: string, extra: Record<string, unknow
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
 await request('Export totals drift', 'open', { user: admin })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
+await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, ticketNumbers: [6, 7] })
 console.log('seeded')
 process.exit(0)
