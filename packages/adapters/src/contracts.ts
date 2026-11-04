@@ -193,7 +193,9 @@ export interface Forge {
   rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean>;
   /** ISO time the commit was made. */
   getCommitDate(repo: RepoRef, sha: string): Promise<string>;
-  /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown); returns the merge commit sha. */
+  /** Moves an open PR onto another base branch (same repo). */
+  retargetPullRequest(repo: RepoRef, number: number, base: string): Promise<void>;
+  /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown). Before the delete, every open PR stacked on that branch (its base) is retargeted to this PR's base, so the delete cannot close it; a failed retarget keeps the branch and is reported as `branchDeleteError`; returns the merge commit sha. */
   mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
   /** Blob paths of `ref` (default branch when omitted) and the commit sha they belong to. */
   listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[]; truncated?: boolean }>;

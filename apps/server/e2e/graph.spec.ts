@@ -32,8 +32,21 @@ test('Graph view: blocked-by chain, ready marker, critical path, node link, no o
   await expect(node(9)).not.toHaveAttribute('data-ready', /.*/)
   await expect(node(9)).toHaveAttribute('aria-label', /, blocked by #8$/)
   await expect(node(10)).toHaveAttribute('data-critical', 'true')
+  await expect(page.getByRole('list', { name: 'Legend' })).toBeHidden()
+  await page.getByText('Legend', { exact: true }).click()
   await expect(page.getByRole('list', { name: 'Legend' })).toContainText('critical path')
-  await expect(page.getByRole('heading', { name: /^No dependencies \(\d+\)/ })).toBeVisible()
+  await expect(page.getByText(/^No dependencies \(\d+/)).toBeVisible()
+  if (process.env.SHOTS_DIR) {
+    for (const [w, h] of [[1280, 800], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h })
+      for (const scheme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: scheme })
+        await page.screenshot({ path: `${process.env.SHOTS_DIR}/graph-legend-open-${scheme}-${w}x${h}.png` })
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 })
+  }
+  await expect(page.getByRole('region', { name: 'No dependencies' }).locator('a.gnode').first()).toBeHidden()
 
   await tabs.getByRole('link', { name: 'Board' }).click()
   await expect(page.locator('.board')).toBeVisible()
@@ -57,7 +70,8 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/?view=graph')
 
-  const iso = page.locator('section[aria-labelledby="tg-iso"]')
+  await page.getByText(/^No dependencies \(\d+/).click()
+  const iso = page.locator('section[aria-label="No dependencies"]')
   await expect(iso.locator('a.gnode').first()).toHaveAttribute('data-stage', 'release')
   expect(await iso.locator('a.gnode').count()).toBeGreaterThanOrEqual(20)
   const headings = await iso.locator('h3').allTextContents()

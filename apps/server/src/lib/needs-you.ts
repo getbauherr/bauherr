@@ -11,7 +11,7 @@ export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Run needs you', 'Run failed'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed'] as const
 export type Need = (typeof NEEDS)[number]
 /** Names of the four human touch points, in flow order; Settings > Workflow, docs and README use them. */
 export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
@@ -42,6 +42,7 @@ export const needsYou = (
   if (stage === 'plan' && gates.includes('plan') && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
   if (stage === 'review' && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
+  if (stage === 'review' && ticket.reviewState === 'needs_human') return 'Needs you'
   if (run?.status === 'needs_human' && run.stage !== 'triage') return 'Run needs you'
   if (stage === 'release' && !accepted) {
     if (ticket.releaseState === 'on_staging' && gates.includes('staging')) return 'Accept on staging'
@@ -52,6 +53,7 @@ export const needsYou = (
     if (ticket.productionState === 'failed' || ticket.productionState === 'timed_out') return 'Production deploy failed'
   }
   if (ticket.releaseChecksState === 'failed') return 'Release failed'
+  if (run?.status === 'cancelled' && run.stage === stage && ['plan', 'build', 'review'].includes(stage)) return 'Cancelled'
   if (run?.status === 'failed' && run.stage !== 'triage') return 'Run failed'
   return null
 }

@@ -3,11 +3,12 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
+import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
@@ -412,6 +413,25 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'relink_mr',
+    access: 'agent',
+    description: 'Build Runs only: link the Ticket to a replacement MR you opened by hand (the earlier one was closed). prUrl must be an open pull request in the Ticket repo from a branch named bauherr/<ticket number>-... (not a fork). The review then runs on that MR.',
+    inputSchema: obj({ ...runId, ...leaseToken, prUrl: str('URL of the open replacement MR') }, ['runId', 'leaseToken', 'prUrl']),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'build') throw new Error('relink_mr is for Build Runs')
+      const ticket = await getTicket(c, id(run.ticket))
+      const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
+      const num = typeof a.prUrl === 'string' ? prNumber(a.prUrl, repo, web) : null
+      const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
+      if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
+        throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
+      }
+      await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
+      return { linked: a.prUrl }
+    },
+  },
+  {
     name: 'submit_review',
     access: 'agent',
     description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
@@ -537,6 +557,20 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       if ((await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })).totalDocs) throw new Error('a session Run holds this Ticket: production approval is for the owner, not an agent')
       return approveProduction(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'return_to_build',
+    access: 'agent',
+    description: 'Repair a dead Ticket: send it back to Build (on its open MR, or with a note to open a new one). Allowed only while the Ticket is dead for a mechanical cause (its MR is missing or its checks are red); refused for a live Ticket and for every decision (gates stay human-only).',
+    inputSchema: obj({ ...ticketId, reason: str('Why it goes back to Build') }, ['ticket', 'reason']),
+    async run(a, c) {
+      const t = await getTicket(c, a.ticket)
+      if (typeof a.reason !== 'string' || !a.reason.trim()) throw new Error('reason required')
+      const dead = (await deadTickets(c.payload, id(t.workspace))).find((d) => d.ticket.id === t.id)
+      if (!dead || !AGENT_REPAIRED.includes(dead.cause)) throw new Error(`ticket ${t.number} is not dead for a mechanical cause; nothing to repair`)
+      // The agent's own words stay out of the next Run's instructions (owner-level text); the tool call keeps them in the audit digest.
+      return { outcome: await sendBackToBuild(c.payload, t, `Sent back to Build by an agent: ${dead.cause === 'mr-missing' ? 'the MR was closed' : 'checks are red on the MR'}.`) }
     },
   },
   {

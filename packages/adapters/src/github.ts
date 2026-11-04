@@ -363,11 +363,19 @@ class GithubForge implements Forge {
       filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions,
     }));
   }
+  async retargetPullRequest(repo: RepoRef, n: number, base: string) {
+    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { base });
+  }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const p = await this.getPullRequest(repo, n);
     const m = await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge`, { merge_method: o.method, ...(o.expectSha ? { sha: o.expectSha } : {}) });
     let branchDeleteError: string | undefined;
     if (o.deleteBranch && p.headRepo.toLowerCase() === p.baseRepo.toLowerCase()) {
+      try {
+        for (const s of await this.h.paginate(`/repos/${repo}/pulls?state=open&base=${encodeURIComponent(p.head)}&per_page=100`)) await this.retargetPullRequest(repo, s.number, p.base);
+      } catch (e) {
+        return { mergeSha: m.sha as string, branchDeleteError: `kept ${p.head}: retargeting stacked PRs failed: ${e instanceof Error ? e.message : String(e)}` };
+      }
       await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${p.head.split('/').map(encodeURIComponent).join('/')}`).catch((e) => {
         if (!(e instanceof GithubError && [404, 422].includes(e.status))) branchDeleteError = e instanceof Error ? e.message : String(e);
       });

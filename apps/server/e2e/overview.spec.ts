@@ -32,6 +32,24 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(tag).toHaveText('Overhaul invoicing')
   await expect(tag).toHaveAttribute('href', /\/tickets\/\d+$/)
   await expect(page.locator('.col[data-stage=build] .card').filter({ hasText: 'Export invoices as CSV' }).locator('.epic-tag')).toHaveCount(0)
+  // card budget (#258): title + status or needs-you verb + epic tag + Product, number and rank excluded; 3 text elements, 4 when it needs the owner
+  const cardTexts = page.locator('.board .card')
+  expect(await cardTexts.count()).toBeGreaterThan(5)
+  for (const card of await cardTexts.all()) {
+    const texts = await card.locator('> :not(.num):not(.rank)').count()
+    expect(texts).toBeLessThanOrEqual((await card.locator('[data-gate], .text-warn').count()) ? 4 : 3)
+    const visible = (await card.evaluate((e) => {
+      const c = e.cloneNode(true) as HTMLElement
+      c.querySelectorAll('.rank').forEach((r) => r.remove())
+      return c.textContent ?? ''
+    }))
+    expect(visible).not.toMatch(/run #\d+|@\w+|\bago\b|heartbeat|waiting \d/i)
+  }
+  await expect(page.locator('.card [data-slot=badge]').first()).toHaveAttribute('title', /.+/)
+  await expect(page.locator('.card a[href^="http"]')).toHaveCount(0)
+  const blocked = page.locator('.card').filter({ hasText: 'Blocked: add the invoice filter' }).first().locator('[data-status=blocked]')
+  await expect(blocked).toHaveText('Blocked')
+  await expect(blocked).toHaveAttribute('title', 'Blocked by #8')
   const shots = process.env.SHOTS_DIR
   if (shots) {
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {
@@ -49,6 +67,14 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
   await expect(page).toHaveURL(/product=/)
   await expect.poll(() => cards.count()).toBeLessThan(before)
+
+  const done = page.getByRole('link', { name: 'Show done' })
+  await expect(done).toHaveAttribute('aria-pressed', 'false')
+  await done.click()
+  await expect(page).toHaveURL(/state=all/)
+  await expect(page.getByRole('link', { name: 'Show done' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('link', { name: 'Show done' }).click()
+  await expect(page).not.toHaveURL(/state=all/)
 
   await page.goto('/?view=list&state=all')
   await expect(page).toHaveURL(/\/\?state=all$/)
@@ -209,7 +235,11 @@ test('A running Run marks its card and names the activity', async ({ page }) => 
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   const card = page.locator('.col[data-stage=build] .card[data-running]').filter({ hasText: 'Live build in progress' })
-  await expect(card).toContainText('building')
+  await expect(card).toContainText('Working')
+  await expect(card.locator('[data-status=working]')).toHaveText('Working')
+  await expect(card.locator('[data-status=working]')).toHaveAttribute('title', /^building/)
+  await expect(card.locator('[data-status=working]')).toHaveAttribute('title', /build Run #\d+ · scheduler/)
+  await expect(card).not.toContainText(/scheduler|Run #/)
 })
 
 test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics with progress; epic page shows sub-tickets', async ({ page }) => {

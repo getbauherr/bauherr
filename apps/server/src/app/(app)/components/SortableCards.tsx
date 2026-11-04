@@ -69,7 +69,7 @@ export function SortableCards({ items }: { items: Item[] }) {
         asChild
         key={it.id}
         className={cn(
-          'card relative items-start gap-1 bg-background p-3',
+          'card group relative items-start gap-1 bg-background p-3',
           it.movable && 'cursor-grab',
           it.running && stripe,
           drag === it.id && 'opacity-50',
@@ -98,7 +98,7 @@ export function SortableCards({ items }: { items: Item[] }) {
         onDragOver={over(i)}
       >
         <article>
-          <span className="mono small absolute top-2 right-3 text-muted-foreground" aria-label={`Position ${i + 1}`}>{i + 1}</span>
+          <span className="rank mono small absolute top-2 right-3 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100" aria-label={`Position ${i + 1}`}>{i + 1}</span>
           {it.node}
         </article>
       </Card>

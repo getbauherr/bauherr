@@ -8,7 +8,7 @@ import { importMap } from './admin/importMap.js'
 
 const serverFunction: ServerFunctionClient = async function (args) {
   'use server'
-  if (process.env.BAUHERR_DISABLE_ADMIN === '1') notFound()
+  if (process.env.BAUHERR_ENABLE_ADMIN !== '1') notFound()
   return handleServerFunctions({ ...args, config, importMap })
 }
 

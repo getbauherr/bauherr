@@ -53,6 +53,11 @@ test('Knowledge link and Workspace switcher are absent for one Workspace without
   await signIn(page, 'solo@example.com')
   await expect(nav(page).getByRole('link', { name: 'Tickets' })).toBeVisible()
   await expect(nav(page).getByRole('link', { name: 'Knowledge' })).toHaveCount(0)
+  // Zeta has its one Product, so the empty Board names the next action instead of asking for an Admin.
+  await expect(page.getByText('Describe what you want built.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'New request' }).first()).toBeVisible()
+  await expect(page.getByText(/Ask an Admin to set up the Workspace/)).toHaveCount(0)
+  await expect(page.getByLabel('Product')).toHaveCount(0)
   await expect(await menu(page)).toBeVisible()
   await expect(page.getByRole('menu').getByText('Workspace', { exact: true })).toHaveCount(0)
 })

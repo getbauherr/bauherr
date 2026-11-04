@@ -114,7 +114,7 @@ To work on tickets from your own Claude Code session instead, create an API key 
 
 | What | Where |
 |---|---|
-| `PORT`, `PUBLIC_URL`, `BAUHERR_DISABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
+| `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
 | Stages, steps, gates | [`pack/workflow.yaml`](pack/workflow.yaml), [docs/spec/workflow.md](docs/spec/workflow.md) |
@@ -122,7 +122,7 @@ To work on tickets from your own Claude Code session instead, create an API key 
 | Budgets, model Tiers, Connections | Settings in the UI |
 | Provider credentials and data flows | [docs/legal.md](docs/legal.md) |
 
-Payload's `/admin` is a developer escape hatch; set `BAUHERR_DISABLE_ADMIN=1` to switch it off.
+Payload's `/admin` is a developer escape hatch and off by default (it redirects to `/settings`); set `BAUHERR_ENABLE_ADMIN=1` to switch it on for Admins. `/api` is unaffected.
 
 ## Architecture
 

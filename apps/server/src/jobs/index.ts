@@ -214,16 +214,9 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Prom
   return rows.length
 }
 
-/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
+/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
-  // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
-  const triage = (
-    await payload.db.drizzle.execute(
-      sql`UPDATE "runs" SET "status" = 'abandoned', "error" = 'unclaimed triage expired', "finished_at" = ${new Date(now).toISOString()}, "updated_at" = now() WHERE "stage" = 'triage' AND "mode" = 'session' AND "status" = 'awaiting_session' AND "updated_at" < ${before} RETURNING "ticket_id"`,
-    )
-  ).rows
-  for (const r of triage) await untriage(payload, Number(r.ticket_id))
   const stale = await payload.find({
     collection: 'runs',
     where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
@@ -231,7 +224,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
-  let handled = triage.length
+  let handled = 0
   for (const run of stale.docs) {
     try {
       if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
@@ -276,6 +269,15 @@ export const watchReviewsTask = watcher('watch-reviews', (p) => watchReviews(p))
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
 export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
 export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
+
+/** Every 5 minutes: repairs Tickets that have no live Run, no wait and no need for the owner (see `lib/liveness.ts`). */
+export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; output: { repaired: number } }> = {
+  slug: 'watch-liveness',
+  schedule: scheduled('0 */5 * * * *'),
+  retries: 0,
+  concurrency: () => 'watch-liveness',
+  handler: async ({ req }) => ({ output: { repaired: await (await import('../lib/liveness')).sweepLiveness(req.payload) } }),
+}
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
@@ -620,4 +622,4 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]
+export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask]

@@ -72,6 +72,8 @@ Ambient presets (`*-ambient`) use the identity of the gateway process, which eve
 
 Presets without a USD catalog flip the Workspace to `budgetUnit: tokens` (`budgetTokens30d`, default 20M); otherwise calls are priced at 0 and the budget never trips. To add prices, drop a catalog file into `deploy/gateway/catalogs/` (compose `init` copies every `*.json`; `renderModels` lists them all in `modelCatalog`) and set `catalog: true` on the preset.
 
+The generated config is checked structurally in `pnpm test` (no Docker). The real `agentgateway --validate-only` run is `pnpm --filter server test:gateway` and the CI job `gateway-validate`; the image is pinned by digest in `compose.yaml`.
+
 ## Open
 
 - In-app `poll-tickets` (Next process, autoRun) processed label changes late or not at all (minutes), while the same handler run via `tsx` saw them at once. Cause not found; smoke polls were triggered with the handler directly. Candidates: Next-patched fetch/job context.
