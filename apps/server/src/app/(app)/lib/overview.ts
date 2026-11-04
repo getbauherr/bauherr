@@ -60,7 +60,7 @@ export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
 /** Open tickets (plus the newest closed ones when `all`), their latest Runs, and the newest Runs of the Workspace. */
-export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; epics: Epic[]; lookupsCapped: boolean; wip: Record<string, { count: number; limit: number | null }> }> => {
+export const loadOverview = cache(async (workspace: number, all: boolean): Promise<{ tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; epics: Epic[]; wip: Record<string, { count: number; limit: number | null }> }> => {
   const payload = await payloadClient()
   const q = { depth: 0, overrideAccess: true } as const
   const ws = { workspace: { equals: workspace } }
@@ -143,5 +143,5 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       }
     }),
   )
-  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics, lookupsCapped: waiting.length > DECISIONS_LOOKUPS, wip }
+  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics, wip }
 })
