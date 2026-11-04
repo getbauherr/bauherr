@@ -13,7 +13,9 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
   useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('[aria-invalid]')?.focus()
+    const invalid = ref.current?.querySelector<HTMLElement>('[aria-invalid]')
+    invalid?.closest('details')?.setAttribute('open', '')
+    invalid?.focus()
   }, [state])
   return (
     <Ctx value={state}>

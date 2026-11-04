@@ -11,8 +11,9 @@ vi.mock('../src/lib/adapters', () => ({
   backendFor: (c: { id: number; secret: string | null }, limits: unknown) => {
     limitsSeen.push(limits)
     if (!c.secret) throw new Error(`connection ${c.id} has no secret`)
+    const forge = { listRepositories: async () => (c.secret === 'net' ? new Promise(() => {}) : c.secret === 'ghp_x' ? [{ fullName: 'acme/shop' }, { fullName: 'acme/api' }] : Promise.reject(new Error('Bad credentials'))) }
     const whoami = async () => (c.secret === 'ghp_x' ? 'me' : Promise.reject(c.secret === 'net' ? new Error('request timed out after 10s') : Object.assign(new Error('Bad credentials'), { status: 401 })))
-    return { tickets: () => ({ whoami }) }
+    return { forge, tickets: () => ({ whoami }) }
   },
 }))
 let actions: typeof import('../src/app/(app)/(shell)/settings/actions')
@@ -117,7 +118,7 @@ it('skipDeploy keeps a configured deploy mode and still marks the step Done', as
 it('a second Product with the same short name is refused', async () => {
   const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
   const before = await count('products')
-  expect(await actions.createProductWithRepo({}, form({ name: 'Shop', fullName: 'acme/shop2', connection }))).toMatchObject({ fields: { slug: expect.stringContaining('already exists') } })
+  expect(await actions.createProductWithRepo({}, form({ name: 'Shop', fullName: 'acme/shop2', connection }))).toMatchObject({ fields: { slug: 'Another Product already uses this short name.' } })
   expect(await count('products')).toBe(before)
 })
 
@@ -125,4 +126,26 @@ it('saving a new secret clears only the verification state', async () => {
   const c = await payload.create({ collection: 'connections', data: { name: 'Keep', kind: 'github', secret: 'ghp_x', workspace: ws, capabilities: { verifiedAt: '2026-01-01', lastError: 'old', scopes: ['repo'] } }, ...o })
   await actions.saveConnection({}, form({ id: c.id, name: 'Keep', kind: 'github', secret: 'ghp_y' }))
   expect((await payload.findByID({ collection: 'connections', id: c.id, ...o })).capabilities).toEqual({ scopes: ['repo'] })
+})
+
+it('listRepos answers the sorted repositories, null when the forge fails or does not answer in 3 s', async () => {
+  const { listRepos } = await import('../src/app/(app)/lib/settings')
+  const ok = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: ws } }, { name: { equals: 'GitHub' } }] }, ...o })).docs[0]!.id as number
+  const bad = await payload.create({ collection: 'connections', data: { name: 'Rejected', kind: 'github', secret: 'bad', workspace: ws }, ...o })
+  const slow = await payload.create({ collection: 'connections', data: { name: 'Slow', kind: 'github', secret: 'net', workspace: ws }, ...o })
+  expect(await listRepos(ok)).toEqual(['acme/api', 'acme/shop'])
+  expect(await listRepos(bad.id as number)).toBeNull()
+  const started = Date.now()
+  expect(await listRepos(slow.id as number)).toBeNull()
+  expect(Date.now() - started).toBeLessThan(5000)
+  expect(limitsSeen.at(-1)).toEqual({ maxRetries: 0, timeoutMs: 3000 })
+})
+
+it('"Other..." posts the typed repository; an empty choice is a field error and creates nothing', async () => {
+  const connection = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: ws } }, { name: { equals: 'GitHub' } }] }, ...o })).docs[0]!.id as number
+  const before = await count('products')
+  expect(await actions.createProductWithRepo({}, form({ name: 'Nothing', fullName: '__other', repoOther: '', connection }))).toMatchObject({ fields: { fullName: 'Choose a repository.' } })
+  expect(await count('products')).toBe(before)
+  expect(await actions.createProductWithRepo({}, form({ name: 'Typed', fullName: '__other', repoOther: 'acme/typed', connection }))).toMatchObject({ saved: true })
+  expect((await payload.find({ collection: 'repositories', where: { fullName: { equals: 'acme/typed' } }, ...o })).totalDocs).toBe(1)
 })

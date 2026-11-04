@@ -15,6 +15,20 @@ const signIn = async (page: Page) => {
   await expect(page.locator('header.topbar')).toBeVisible()
 }
 
+/** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
+const deleteProduct = async (page: Page) => {
+  const repository = page.locator('#repository')
+  for (const label of ['Stop reading tickets', 'Remove repository']) {
+    await repository.locator('details.advanced').evaluate((d: HTMLDetailsElement) => (d.open = true))
+    await repository.getByRole('button', { name: label }).click()
+    await repository.getByRole('button', { name: 'Confirm remove' }).click()
+    await expect(repository.getByRole('button', { name: label })).toHaveCount(0)
+  }
+  await page.locator('#danger').getByRole('button', { name: 'Delete Product' }).click()
+  await page.locator('#danger').getByRole('button', { name: 'Confirm remove' }).click()
+  await expect(page).toHaveURL(/\/settings\/products$/)
+}
+
 test('list, Product page, save, validation and the single Delete section', async ({ page }) => {
   const name = `E2E Widgets ${Date.now()}`
   await signIn(page)
@@ -25,8 +39,13 @@ test('list, Product page, save, validation and the single Delete section', async
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
   await page.getByRole('link', { name: 'Add Product' }).click()
   await page.getByLabel('Product name').fill(name)
+  await expect(page.getByText('Reading repositories')).toHaveCount(0)
+  if (process.env.E2E_FAKE_FORGE) {
+    await page.getByLabel('Repository', { exact: true }).selectOption({ label: 'Other...' })
+    await page.getByLabel('Other repository').fill('e2e/widgets')
+  } else await page.getByLabel('Repository', { exact: true }).fill('e2e/widgets')
   await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page).toHaveURL(/\/settings\/products\/\d+$/)
+  await expect(page).toHaveURL(/\/settings\/products\/\d+#staging$/)
   await expect(page.getByRole('heading', { name })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Setup' })).toContainText('Needs setup')
   await expect(page.getByRole('link', { name: 'Products', exact: true }).first()).toBeVisible()
@@ -68,11 +87,36 @@ test('list, Product page, save, validation and the single Delete section', async
   await page.reload()
   await expect(page.getByLabel('Rules')).toHaveValue('src/**, apps/** => tests/**\nschema: collections.ts => migrations/**')
 
-  await page.locator('#danger').getByRole('button', { name: 'Delete Product' }).click()
-  await page.locator('#danger').getByRole('button', { name: 'Confirm remove' }).click()
-  await expect(page).toHaveURL(/\/settings\/products$/)
+  await deleteProduct(page)
   await expect(page.getByRole('link', { name })).toHaveCount(0)
   expect((await page.goto('/settings/products/999999'))?.status()).toBe(404)
+})
+
+test('add a Product: pick the repository from the forge, a taken short name is refused', async ({ page }) => {
+  test.skip(!process.env.E2E_FAKE_FORGE, 'the Repository select needs the fake forge (BAUHERR_E2E_FAKE_FORGE=1)')
+  const name = `E2E Picker ${Date.now()}`
+  await signIn(page)
+  await page.goto('/settings/products/new')
+  await page.getByLabel('Product name').fill(name)
+  const repo = page.getByLabel('Repository', { exact: true })
+  await expect(repo.getByRole('option', { name: 'acme/web' })).toHaveCount(1)
+  await expect(repo.getByRole('option', { name: 'Other...' })).toHaveCount(1)
+  await repo.selectOption('acme/knowledge')
+  await page.locator('#new summary', { hasText: 'Advanced' }).click()
+  await expect(page.getByLabel('Short name')).toHaveValue(/^e2e-picker-\d+$/)
+  await page.getByRole('button', { name: 'Add Product' }).click()
+  await expect(page).toHaveURL(/\/settings\/products\/\d+#staging$/)
+  await expect(page.locator('#repository')).toContainText('acme/knowledge')
+
+  await page.goto('/settings/products/new')
+  await page.getByLabel('Product name').fill(name)
+  await expect(page.getByLabel('Repository', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Add Product' }).click()
+  await expect(page.getByText('Another Product already uses this short name.')).toBeVisible()
+
+  await page.goto('/settings/products')
+  await page.getByRole('link', { name }).click()
+  await deleteProduct(page)
 })
 
 test('a Product with Tickets or a widget cannot be deleted', async ({ page }) => {
