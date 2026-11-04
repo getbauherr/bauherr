@@ -176,10 +176,10 @@ test('the Ticket page Repair disclosure is for an Admin only and resets counters
     await signIn(page, who)
     await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
     await page.getByText('Details', { exact: true }).click()
-    const repair = page.getByRole('group', { name: 'Repair' })
+    const repair = page.getByRole('region', { name: 'Repair' })
     await expect(repair).toHaveCount(visible ? 1 : 0)
     if (visible) {
-      await repair.getByText('Repair', { exact: true }).click()
+      await repair.getByRole('button', { name: 'Repair', exact: true }).click()
       await repair.getByRole('button', { name: 'Reset counters' }).click()
       await repair.getByRole('button', { name: 'Confirm reset counters' }).click()
       await expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()

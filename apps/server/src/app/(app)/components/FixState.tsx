@@ -1,6 +1,7 @@
 import { REPAIR_STAGES } from '../../../lib/actions'
 import { relinkRunAction, repairTicketAction } from '../lib/actions'
 import { stageLabel } from '../../../lib/needs-you'
+import { Reveal } from './Reveal'
 import { Field, SettingsForm } from './SettingsForm'
 
 const REPAIRS: [kind: string, label: string, hint: string][] = [
@@ -13,8 +14,7 @@ const REPAIRS: [kind: string, label: string, hint: string][] = [
 export function FixState({ ticket, stage }: { ticket: number; stage: string }) {
   const action = repairTicketAction.bind(null, ticket)
   return (
-    <details className="flex flex-col gap-4" aria-label="Repair">
-      <summary className="heading">Repair</summary>
+    <Reveal label="Repair">
       <p className="small text-muted-foreground">Admin only. Fixes a Ticket the factory left in a wrong state.</p>
       <SettingsForm action={action} submit="Set stage" confirm="Confirm set stage" inline>
         <input type="hidden" name="kind" value="stage" />
@@ -26,18 +26,17 @@ export function FixState({ ticket, stage }: { ticket: number; stage: string }) {
           <p className="small text-muted-foreground">{hint}</p>
         </SettingsForm>
       ))}
-    </details>
+    </Reveal>
   )
 }
 
 /** Admin-only: link a Build Run to the replacement MR that took over from a closed one. */
 export function RelinkMr({ run }: { run: number }) {
   return (
-    <details>
-      <summary className="label text-muted-foreground">Relink MR</summary>
+    <Reveal label="Relink MR">
       <SettingsForm action={relinkRunAction.bind(null, run)} submit="Relink" inline>
         <Field name="prUrl" label="Replacement MR URL" hint="An open MR of this Ticket from a bauherr/<number>-... branch." type="url" required />
       </SettingsForm>
-    </details>
+    </Reveal>
   )
 }
