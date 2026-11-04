@@ -279,15 +279,19 @@ describe('gitlab forge', () => {
     const { forge, calls } = setup((m, path) => {
       if (m === 'PUT') merged = true;
       if (path === P) return { squash_option: 'default_on' };
+      if (path.startsWith(`${P}/merge_requests?`)) return [{ iid: 197 }];
+      if (m === 'PUT' && path === `${P}/merge_requests/197`) return {};
       return m === 'DELETE' ? new Response(null, { status: 204 }) : merged ? fx('mr_merged') : fx('mr');
     });
     const r = await forge.mergePullRequest('g/p', 196, { method: 'squash', deleteBranch: true, expectSha: 'abc123' });
     assert.deepEqual(r, { mergeSha: 'def456' });
     assert.deepEqual(calls.map((c) => [c.method, c.path]), [
       ['GET', `${P}/merge_requests/196`], ['GET', P], ['PUT', `${P}/merge_requests/196/merge`], ['GET', `${P}/merge_requests/196`],
+      ['GET', `${P}/merge_requests?state=opened&target_branch=bauherr%2F7-1&per_page=100`], ['PUT', `${P}/merge_requests/197`],
       ['DELETE', `${P}/repository/branches/bauherr%2F7-1`],
     ]);
     assert.deepEqual(calls[2]!.body, { squash: true, sha: 'abc123' });
+    assert.deepEqual(calls[5]!.body, { target_branch: 'main' });
   });
 
   it('merge: a moved head (409) and a not-mergeable MR (405) surface as GitlabError; delete failure is reported', async () => {
@@ -299,6 +303,7 @@ describe('gitlab forge', () => {
     const { forge } = setup((m, path) => {
       if (m === 'PUT') merged = true;
       if (path === P) return {};
+      if (path.startsWith(`${P}/merge_requests?`)) return [];
       return m === 'DELETE' ? new Response('boom', { status: 403 }) : merged ? fx('mr_merged') : fx('mr');
     });
     const r = await forge.mergePullRequest('g/p', 196, { method: 'squash', deleteBranch: true });

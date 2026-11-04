@@ -35,7 +35,7 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
   if (t.stage === 'review') {
     if (t.reviewState === 'merged' || t.reviewState === 'ready_for_human') return null
     try {
-      const mr = await prOf(payload, t)
+      const mr = await prOf(payload, t, { fallback: false })
       if (!mr || mr.pr.state === 'closed') return 'mr-missing'
       if (mr.pr.state === 'merged' || t.reviewState !== 'needs_human') return null
       // At the round cap the owner decides (grant one more round or stop): never repaired, never agent-callable.

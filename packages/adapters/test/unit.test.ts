@@ -153,7 +153,7 @@ describe('appAuth (fake key, fake GitHub)', () => {
 });
 
 describe('github mergePullRequest', () => {
-  const run = async (headRepo: string, del: Response = new Response(null, { status: 204 })) => {
+  const run = async (headRepo: string, del: Response = new Response(null, { status: 204 }), stacked: number[] = [], patch: Response | null = null) => {
     const calls: { method: string; url: string; body: any }[] = [];
     const b = new GithubBackend({
       auth: patAuth('t'),
@@ -162,6 +162,8 @@ describe('github mergePullRequest', () => {
         calls.push({ method, url: new URL(String(u)).pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined });
         if (method === 'PUT') return json({ sha: 'm1', merged: true });
         if (method === 'DELETE') return del;
+        if (method === 'PATCH') return patch ?? json({});
+        if (method === 'GET' && new URL(String(u)).pathname === '/repos/o/r/pulls') return json(stacked.map((number) => ({ number })));
         return json({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'bauherr/7', sha: 'h', repo: { full_name: headRepo } }, base: { ref: 'main', repo: { full_name: 'o/r' } } });
       },
     });
@@ -171,8 +173,20 @@ describe('github mergePullRequest', () => {
   it('PUTs a squash merge pinned to the head sha, then deletes a same-repo branch', async () => {
     const { calls, res } = await run('o/r');
     assert.deepEqual(res, { mergeSha: 'm1' });
-    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['GET /repos/o/r/pulls/7', 'PUT /repos/o/r/pulls/7/merge', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['GET /repos/o/r/pulls/7', 'PUT /repos/o/r/pulls/7/merge', 'GET /repos/o/r/pulls', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
     assert.deepEqual(calls[1]!.body, { merge_method: 'squash', sha: 'h' });
+  });
+  it('retargets the PRs stacked on the head branch to the merged PR base before it deletes the branch', async () => {
+    const { calls, res } = await run('o/r', undefined, [8, 9]);
+    assert.deepEqual(res, { mergeSha: 'm1' });
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`).slice(2), ['GET /repos/o/r/pulls', 'PATCH /repos/o/r/pulls/8', 'PATCH /repos/o/r/pulls/9', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
+    assert.deepEqual(calls.find((c) => c.method === 'PATCH')!.body, { base: 'main' });
+  });
+  it('keeps the branch and reports it when a stacked PR cannot be retargeted', async () => {
+    const { calls, res } = await run('o/r', undefined, [8], new Response('no', { status: 422 }));
+    assert.equal(res.mergeSha, 'm1');
+    assert.match(res.branchDeleteError ?? '', /kept bauherr\/7.*retargeting/);
+    assert.ok(!calls.some((c) => c.method === 'DELETE'));
   });
   it('never deletes a fork head branch', async () => {
     const { calls } = await run('evil/r');

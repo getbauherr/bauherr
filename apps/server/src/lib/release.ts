@@ -98,14 +98,22 @@ export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'gr
   return { state: failed.length ? 'red' : pending ? 'pending' : 'green', failed }
 }
 
-/** The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state; null when there is none or it is not a factory PR (fork, foreign branch). */
-export const prOf = async (payload: Payload, t: Doc) => {
+/**
+ * The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state.
+ * When that MR was closed unmerged (or is not a factory MR), or a Ticket in review/release has none linked, the newest open factory MR of the Ticket (head `bauherr/<number>-*`) stands in, so a replacement MR is reviewed and merged with no DB edit.
+ * Null when there is none. `{ fallback: false }` answers only for the linked MR (the liveness watchdog uses it to find Tickets whose link went stale).
+ */
+export const prOf = async (payload: Payload, t: Doc, o2: { fallback?: boolean } = {}) => {
   const { backend, repo, web, tickets } = await forgeOf(payload, id(t.product))
   const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
   const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).find((x) => x !== null)
-  if (num == null) return null
-  const pr = await backend.forge.getPullRequest(repo, num)
-  return isFactoryPr(pr, repo, t.number) ? { backend, repo, tickets, pr } : null
+  if (num != null) {
+    const pr = await backend.forge.getPullRequest(repo, num)
+    if (isFactoryPr(pr, repo, t.number) && pr.state !== 'closed') return { backend, repo, tickets, pr }
+  } else if (!['review', 'release'].includes(t.stage)) return null
+  if (o2.fallback === false) return null
+  const open = (await backend.forge.listPullRequests(repo, 'open')).filter((p) => p.state === 'open' && isFactoryPr(p, repo, t.number)).sort((a, b) => b.number - a.number)[0]
+  return open ? { backend, repo, tickets, pr: open } : null
 }
 
 const stagingAnswers = async (url: string): Promise<boolean> => {

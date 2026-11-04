@@ -272,13 +272,23 @@ export class FakeBackend implements Backend {
       listTags: async (repo) => [...this.repo(repo).releases.map((r) => r.tag), ...this.repo(repo).tags],
       listCommits: async (repo) => this.repo(repo).commits,
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
+      retargetPullRequest: async (repo, n, base) => {
+        const pr = find(repo, n);
+        if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
+        pr.base = base;
+      },
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
         if (pr.mergeable === false) throw new Error('merge commit cannot be cleanly created');
         if (o.expectSha && o.expectSha !== sha(this.repo(repo), pr.head)) throw new Error(`PR ${n} head moved`);
-        if (o.deleteBranch && pr.headRepo === pr.baseRepo) this.repo(repo).branches.delete(pr.head);
-        return { mergeSha: this.merge(repo, n) };
+        const mergeSha = this.merge(repo, n);
+        if (o.deleteBranch && pr.headRepo === pr.baseRepo) {
+          // Like the real forges: the PRs stacked on the deleted head are moved to this PR's base first.
+          for (const s of this.repo(repo).prs) if (s.state === 'open' && s.base === pr.head) s.base = pr.base;
+          this.repo(repo).branches.delete(pr.head);
+        }
+        return { mergeSha };
       },
     };
   }

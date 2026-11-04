@@ -104,6 +104,8 @@ Invariant: every open, non-parent Ticket in plan, build or review has a live Run
 | `review-escalated` | review `needs_human`, MR open, checks not red | none: need `Needs you` (Back to build) |
 | `triage-expired` | untriaged, marked covered, its only Triage Run ended `abandoned` | `triagedAt` and `triageAttempts` reset, so the next poll offers Triage again |
 
+**MR resolution** (`prOf`): the newest Build Run's `artifacts.prUrl`; when that MR was closed unmerged (or a review/release Ticket has none), the newest open factory MR of the Ticket (head `bauherr/<number>-*`) stands in, with no DB edit. A hand-made replacement can be linked with the MCP tool `relink_mr {runId, leaseToken, prUrl}` (Build Runs). **Stacked MRs**: `mergePullRequest` with `deleteBranch` first retargets every open MR whose base is the merged head branch onto the merged MR's base; if that fails, the branch is kept and the failure is reported as `branchDeleteError`.
+
 Each repair posts one Comment line with the marker `<!-- bauherr:liveness:<cause>:<run id> -->`, which makes it once per (Ticket, cause, Run). An unclaimed Triage Run no longer expires: it waits for a session like any other unclaimed Run (an expiry used up the Ticket's triage attempts). MCP `return_to_build` lets an agent do the `mr-missing` and `checks-red` repairs itself; it is refused for a Ticket that is not dead for one of those causes. Gates stay human-only.
 
 ## 6. Human takeover
