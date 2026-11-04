@@ -1,6 +1,6 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { reviewRoundStats } from '../scripts/review-rounds'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
@@ -94,6 +94,20 @@ it('the evidence rule needs a done/deferred row per plan step and the named test
   await call(member, 'attach_evidence', { ...a, markdown: 'ran tests/a.test.ts' })
   await payload.update({ collection: 'runs', id: a.runId, data: { evidence: `${STEPS}\nran tests/a.test.ts` }, ...o })
   await expect(call(member, 'request_review', a)).resolves.toMatchObject({ stage: 'review' })
+})
+
+it('a truncated tree makes file existence unknown, so named test files are not reported missing', async () => {
+  await payload.update({ collection: 'products', id: product, data: { reviewChecks: RULES }, ...o })
+  const { a } = await seed({ 'src/a.ts': 'x', 'tests/a.test.ts': 'y' })
+  await call(member, 'attach_evidence', { ...a, markdown: 'ran tests/missing.test.ts' })
+  await expect(call(member, 'request_review', a)).rejects.toThrow('tests/missing.test.ts, which does not exist')
+  const list = fake.forge.listFiles
+  vi.spyOn(fake.forge, 'listFiles').mockImplementation(async (r, ref) => ({ ...(await list(r, ref)), truncated: true }))
+  try {
+    expect((await call(member, 'run_checks', a)).failures).toEqual([])
+  } finally {
+    vi.restoreAllMocks()
+  }
 })
 
 it('review-rounds splits merged Tickets at the cutoff', () => {

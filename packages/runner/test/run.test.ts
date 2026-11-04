@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -73,13 +73,15 @@ test('runStage build with mergeBase: a clean merge of main is pushed with no age
   assert.equal(sh(bare, 'ls-tree', '-r', '--name-only', 'bauherr/7-r0'), 'README.md\nmain.txt\nmr.txt');
 });
 
+const bare = (ctx: { connection: { gitBaseUrl?: string } }) => `${ctx.connection.gitBaseUrl!.replace('file://', '')}/o/n.git`;
+
 /** A build whose scripted agent writes `lines` lines to src/a.ts; the self-review pass reports `findings`; a fix pass writes src/fixed.ts. */
-const buildRun = async (lines: number, findings: object[], reviewChecks?: object) => {
+const buildRun = async (lines: number, findings: object[], reviewChecks?: object, onBuild?: () => void) => {
   const writes = (path: string, content: string): StubTool => ({ name: 'Write', input: { file_path: path, content } });
   const gw = await startStubGateway('done', 0, false, (model, prompt, cwd) =>
     model === 'cheap-m' ? (prompt.includes('Self-review of your own') ? writes(`${cwd}/.bauherr/self-review.json`, JSON.stringify({ findings })) : undefined)
     : prompt.includes('Fix pass') ? writes(`${cwd}/src/fixed.ts`, 'export const fixed = 1;\n')
-    : prompt.includes('Build Run') ? writes(`${cwd}/src/a.ts`, 'x\n'.repeat(lines))
+    : prompt.includes('Build Run') ? (onBuild?.(), writes(`${cwd}/src/a.ts`, 'x\n'.repeat(lines)))
     : undefined);
   const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'build' });
   ctx.run.goal.statements = [];
@@ -120,14 +122,39 @@ test('runStage build: 30 changed lines run the self-review on the cheap tier and
   }
 });
 
-test('runStage build: checks still failing after the fix pass end failed with no MR', { timeout: 120_000 }, async () => {
+test('runStage build: checks still failing after the fix pass push the branch and end needs_human with no MR', { timeout: 120_000 }, async () => {
   const { gw, ctx } = await buildRun(30, [], { tests: [{ src: ['src/**'], tests: ['tests/**'] }] });
   try {
     const res = await runStage(ctx);
-    assert.equal(res.status, 'failed', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
     assert.match(res.reason ?? '', /Pre-review checks failed:\n- src\/a\.ts changed but no file matching tests\/\*\*/);
     assert.equal(ctx.prs.length, 0);
     assert.equal(gw.seen.filter((s) => s.body.includes('Fix pass for Ticket')).length >= 1, true);
+    assert.equal(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare(ctx), encoding: 'utf8' }).includes('src/a.ts'), true);
+    assert.match(res.artifacts.pushedSha ?? '', /^[0-9a-f]{40}$/);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: a base that moved past the shallow fetch still diffs against the merge base', { timeout: 120_000 }, async () => {
+  let ctxRef: { connection: { gitBaseUrl?: string } } | undefined;
+  const { gw, ctx } = await buildRun(30, [], { tests: [{ src: ['src/**'], tests: ['tests/**'] }] }, () => {
+    const w = mkdtempSync(join(tmpdir(), 'mv-'));
+    const sh = (...a: string[]) => execFileSync('git', a, { cwd: w, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    sh('clone', '-q', bare(ctxRef!), '.');
+    mkdirSync(join(w, 'tests'));
+    writeFileSync(join(w, 'tests/main.test.ts'), 'm\n');
+    sh('add', '-A');
+    sh('commit', '-qm', 'main test');
+    for (let i = 0; i < 205; i++) sh('commit', '-q', '--allow-empty', '-m', `m${i}`);
+    sh('push', '-q', 'origin', 'main');
+  });
+  ctxRef = ctx;
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
+    assert.match(res.reason ?? '', /src\/a\.ts changed but no file matching tests\/\*\*/);
   } finally {
     await gw.close();
   }

@@ -144,6 +144,8 @@ test('pre-review checks: src needs tests, named tests must exist, schema needs a
   assert.deepEqual(check(ev, [], rows(3), 3), []);
   assert.deepEqual(check(ev, [], rows(2) + '\n| 10 | done | x |', 3), ['Evidence has no done/deferred row for plan step 3']);
   assert.deepEqual(check(ev, [], '| 1 | maybe | x |', 1), ['Evidence has no done/deferred row for plan step 1']);
+  assert.deepEqual(check(ev, [], '| 1 | deferred | later |', 1), []);
+  assert.deepEqual(check(ev, [], '| 1 | deferred | - |', 1), ['Evidence defers plan step 1 without a reason']);
   assert.deepEqual(check(null, ['src/a.ts', 'src/collections.ts'], '', 5), []);
   assert.deepEqual(check({}, ['src/a.ts'], '', 5), []);
 });
@@ -167,6 +169,17 @@ test('evidence carries the plan-step table and extra lines', () => {
   assert.match(md, /\| 2 \| done \|/);
   assert.match(md, /\*\*Self-review\*\*: 0 findings/);
   assert.doesNotMatch(buildEvidence([], []), /Plan step/);
+});
+
+test('evidence plan steps follow the Goal: a blocked Goal defers them and fails the evidence rule without a reason', () => {
+  const plan = '## Steps\n1. x\n2. y';
+  const ev: ReviewChecks = { evidence: true };
+  const blocked = buildEvidence([g('a', 'blocked', 'no tool')], [], plan);
+  assert.match(blocked, /\| 2 \| deferred \| no tool \|/);
+  assert.deepEqual(check(ev, [], blocked, 2), []);
+  const bare = buildEvidence([g('a', 'blocked')], [], plan);
+  assert.match(bare, /\| 1 \| deferred \| - \|/);
+  assert.deepEqual(check(ev, [], bare, 2), ['Evidence defers plan step 1 without a reason', 'Evidence defers plan step 2 without a reason']);
 });
 
 test('self-review pass: cheap tier, review tools, 20% of the budget; fix pass keeps the build tier and the 20% cap', () => {

@@ -14,7 +14,8 @@ export const preReviewFailures = async (payload: Payload, t: Doc, evidence: stri
   const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t.number))
   if (!pr) return ['no open factory MR to check']
   const files = (await backend.forge.listPullRequestFiles(repo, pr.number)).map((f) => f.filename)
-  const tree = new Set((await backend.forge.listFiles(repo, pr.head)).paths)
+  const listing = await backend.forge.listFiles(repo, pr.head)
+  const tree = new Set(listing.paths)
   const plan = latestWith(await tickets.listComments(String(t.number)), PLAN_MARKER)?.body ?? ''
-  return preReviewChecks({ files, evidence, planSteps: planStepCount(plan), exists: (p) => tree.has(p), config })
+  return preReviewChecks({ files, evidence, planSteps: planStepCount(plan), exists: (p) => listing.truncated || tree.has(p), config })
 }

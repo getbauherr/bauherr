@@ -151,8 +151,11 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const message = `bauherr: ticket #${ctx.ticket.number} (run ${ctx.run.id})`;
     if (!(await commitAll(clone, clone.env, message))) return finish('failed', 'build run produced no commits');
     const { dir, env } = { dir: clone.dir, env: clone.env };
-    await git(dir, env, 'fetch', '--depth', '200', '--no-tags', 'origin', `${base}:refs/remotes/origin/${base}`);
-    const diff = (...a: string[]) => git(dir, env, 'diff', ...a, `origin/${base}...HEAD`).catch(() => git(dir, env, 'diff', ...a, `origin/${base}`, 'HEAD'));
+    await git(dir, env, 'fetch', '--depth', '200', '--no-tags', 'origin', `+${base}:refs/remotes/origin/${base}`);
+    const diff = (...a: string[]) => git(dir, env, 'diff', ...a, `origin/${base}...HEAD`).catch(async () => {
+      await git(dir, env, 'fetch', '--unshallow', '--no-tags', 'origin', `${base}:refs/remotes/origin/${base}`);
+      return git(dir, env, 'diff', ...a, `origin/${base}...HEAD`);
+    });
     const extra: string[] = [];
     const pass = async (kind: AgentKind, fix?: string) => {
       const o = { cwd: dir, home: join(clone!.home, 'agent'), proxyUrl: proxy!.url, agentsMd, kind };
@@ -185,7 +188,11 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       await pass('fix', failed.join('\n'));
       if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
       failed = await failures();
-      if (failed.length) return finish('failed', `Pre-review checks failed:\n- ${failed.join('\n- ')}`);
+      if (failed.length) {
+        await commitAndPush(clone, env, message);
+        artifacts.pushedSha = await git(dir, env, 'rev-parse', 'HEAD');
+        return finish('needs_human', `Pre-review checks failed:\n- ${failed.join('\n- ')}`);
+      }
     }
     await commitAndPush(clone, env, message);
     artifacts.evidence = evidence();

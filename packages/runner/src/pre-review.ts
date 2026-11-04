@@ -4,7 +4,7 @@ import { matchesGlob } from 'node:path';
 export type ReviewChecks = {
   tests?: { src: string[]; tests: string[] }[];
   schema?: { schema: string[]; migration: string[] }[];
-  /** The `## Evidence` plan-step table needs a done/deferred row per plan step. */
+  /** The `## Evidence` plan-step table needs a done row, or a deferred row with a reason, per plan step. */
   evidence?: boolean;
 };
 
@@ -39,7 +39,9 @@ export function preReviewChecks(o: { files: string[]; evidence: string; planStep
   }
   if (config.evidence) {
     for (let n = 1; n <= o.planSteps; n++) {
-      if (!new RegExp(`^\\|\\s*${n}\\b[^|]*\\|\\s*(done|deferred)\\b`, 'm').test(evidence)) out.push(`Evidence has no done/deferred row for plan step ${n}`);
+      const row = new RegExp(`^\\|\\s*${n}\\b[^|]*\\|\\s*(done|deferred)\\b[^|]*\\|([^|\\n]*)\\|`, 'm').exec(evidence);
+      if (!row) out.push(`Evidence has no done/deferred row for plan step ${n}`);
+      else if (row[1] === 'deferred' && /^[\s-]*$/.test(row[2]!)) out.push(`Evidence defers plan step ${n} without a reason`);
     }
   }
   return out;
