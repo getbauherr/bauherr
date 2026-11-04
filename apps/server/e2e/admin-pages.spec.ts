@@ -89,17 +89,29 @@ test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and
   await expect(page.getByRole('button', { name: 'Create agent key' })).toBeVisible()
 })
 
-// Needs a dev server started with BAUHERR_DISABLE_ADMIN=1; run with E2E_ADMIN_DISABLED=1.
-test('with BAUHERR_DISABLE_ADMIN=1 /admin and its server functions answer 404, /api stays up', async ({ page }) => {
-  test.skip(process.env.E2E_ADMIN_DISABLED !== '1', 'needs a server with BAUHERR_DISABLE_ADMIN=1')
+test('by default /admin redirects to /settings, also for an Admin, and /api stays up', async ({ page }) => {
+  test.skip(process.env.E2E_ADMIN_ENABLED === '1', 'runs against a server without BAUHERR_ENABLE_ADMIN')
+  const anon = await page.request.get('/admin', { maxRedirects: 0 })
+  expect(anon.status()).toBe(307)
+  expect(new URL(anon.headers().location!, 'http://x.test').pathname).toBe('/settings')
+  await signIn(page, email)
+  const res = await page.request.get('/admin', { maxRedirects: 0 })
+  expect(res.status()).toBe(307)
+  expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
+  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
+})
+
+// Needs a dev server started with BAUHERR_ENABLE_ADMIN=1; run with E2E_ADMIN_ENABLED=1.
+test('with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does not', async ({ page }) => {
+  test.skip(process.env.E2E_ADMIN_ENABLED !== '1', 'needs a server with BAUHERR_ENABLE_ADMIN=1')
   await signIn(page, email)
   const res = await page.request.get('/admin')
-  expect(res.status()).toBe(404)
-  const id = /([0-9a-f]{40,})\\?",\\?"bound\\?":null,\\?"name\\?":\\?"serverFunction/.exec(await res.text())?.[1]
-  expect(id, 'server function id in the /admin layout').toBeTruthy()
-  const fn = await page.request.post('/admin', { headers: { 'next-action': id!, 'content-type': 'text/plain;charset=UTF-8' }, data: '[]' })
-  expect(fn.status()).toBe(404)
-  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
+  expect(res.status()).toBe(200)
+  expect(await res.text()).toMatch(/serverFunction/)
+  await page.context().clearCookies()
+  await signIn(page, 'member@example.com')
+  await page.goto('/admin')
+  await expect(page.getByText('Unauthorized')).toBeVisible()
 })
 
 test('the Ticket page Runs table shows Run and Duration to an Admin only and never Mode or Cost', async ({ page }) => {
