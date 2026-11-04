@@ -327,11 +327,17 @@ class GitlabForge implements Forge {
       };
     });
   }
+  async rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean> {
+    const runs = [...new Set(checks.map((c) => c.runId).filter((r): r is number => !!r))];
+    await Promise.all(runs.map((r) => this.h.json('POST', `/projects/${enc(repo)}/pipelines/${r}/retry`)));
+    return runs.length > 0;
+  }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     const [latest] = await this.h.json('GET', `/projects/${enc(repo)}/pipelines?sha=${enc(sha)}&per_page=1`);
     if (!latest) return [];
     const p = `/projects/${enc(repo)}/pipelines/${latest.id}`;
-    const checks = [...(await this.h.paginate(`${p}/jobs?per_page=100`)), ...(await this.h.paginate(`${p}/bridges?per_page=100`))].map(check);
+    const jobs = (await this.h.paginate(`${p}/jobs?per_page=100`)).map((j) => ({ ...check(j), runId: latest.id as number }));
+    const checks = [...jobs, ...(await this.h.paginate(`${p}/bridges?per_page=100`)).map(check)];
     const synthetic = (status: Check['status'], conclusion: string | null): Check => ({ id: latest.id, name: 'pipeline', status, conclusion });
     if (latest.status === 'failed' && !checks.some((c) => c.conclusion === 'failure')) checks.push(synthetic('completed', 'failure'));
     else if (latest.status === 'canceled' && !checks.some((c) => c.conclusion === 'cancelled')) checks.push(synthetic('completed', 'cancelled'));

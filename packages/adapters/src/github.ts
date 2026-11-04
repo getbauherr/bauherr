@@ -441,10 +441,16 @@ class GithubForge implements Forge {
       : await this.h.json('GET', `/repos/${repo}/commits?sha=${enc(o.to)}&per_page=100`);
     return commits.map((c) => ({ sha: c.sha as string, message: c.commit.message as string }));
   }
+  async rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean> {
+    const runs = [...new Set(checks.map((c) => c.runId).filter((r): r is number => !!r))];
+    await Promise.all(runs.map((r) => this.h.json('POST', `/repos/${repo}/actions/runs/${r}/rerun-failed-jobs`)));
+    return runs.length > 0;
+  }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
-    const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
-      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined, url: c.html_url ?? undefined,
-    }));
+    const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => {
+      const runId = Number(/\/actions\/runs\/(\d+)/.exec(c.html_url ?? '')?.[1]);
+      return { id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined, url: c.html_url ?? undefined, ...(runId && { runId }) };
+    });
     const statuses = (await this.h.json('GET', `/repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
     return [...runs, ...statuses.map((s: any): Check => (s.state === 'pending'
       ? { name: s.context, status: 'in_progress', conclusion: null, startedAt: s.created_at }
