@@ -18,7 +18,7 @@ const login = async (page: Page) => {
   await expect(page.locator('.board')).toBeVisible()
 }
 
-// [slug, Ticket title, primary verb ('' = none)]. Runs before the test that approves the plan of #1.
+// [slug, Ticket title, primary verb ('' = none)].
 const STATES = [
   ['answer-decisions', 'Add a dark theme to the dashboard', 'Answer 2 questions'],
   ['answer-questions', 'Clarify the export scope', 'Answer 1 question'],
@@ -65,6 +65,7 @@ test('the action bar is the same single, visible bar in every state', async ({ p
   await page.setViewportSize({ width: 1280, height: 800 })
 })
 
+// Own seeded Ticket (#24): approving its plan changes nothing the other tests or specs read.
 test('answer the critical decision, then approve the plan', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
@@ -73,9 +74,9 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.board')).toBeVisible()
 
-  const row = page.locator('.card', { hasText: 'Add a dark theme to the dashboard' }).first()
+  const row = page.locator('.card', { hasText: 'Add a light theme to the dashboard' }).first()
   await expect(row.getByText('Answer decisions')).toBeVisible()
-  await row.getByRole('link', { name: 'Add a dark theme to the dashboard' }).click()
+  await row.getByRole('link', { name: 'Add a light theme to the dashboard' }).click()
 
   await expect(page.locator('#worklog')).toBeHidden()
   await page.getByText('Details', { exact: true }).click()
