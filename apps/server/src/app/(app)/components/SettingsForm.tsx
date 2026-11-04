@@ -2,6 +2,7 @@
 import { createContext, startTransition, useActionState, useContext, useId, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import type { FormState } from '../lib/settings'
 import { Button } from './ui/button'
+import { Input } from './ui/input'
 
 const Ctx = createContext<FormState>({})
 
@@ -69,12 +70,12 @@ export function Field({ name, label, hint, example, explain, options, empty, row
   )
 }
 
-/** A `mono` block with a Copy button; the label flips to "Copied" for a moment. */
-export function CopyField({ text }: { text: string }) {
+/** A `mono` block with a Copy button; the label flips to "Copied" for a moment. `block` is multi-line code (scrolls inside its own box) instead of a one-line notice. */
+export function CopyField({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="stack">
-      <p role="status" className="mono notice">{text}</p>
+      {block ? <pre className="mono notice overflow-x-auto">{text}</pre> : <p role="status" className="mono notice">{text}</p>}
       <Button
         type="button"
         variant="outline"
@@ -88,6 +89,63 @@ export function CopyField({ text }: { text: string }) {
         {copied ? 'Copied' : 'Copy'}
       </Button>
     </div>
+  )
+}
+
+export type PickOption = { value: string; label?: string; meta?: string }
+
+/**
+ * A checkbox list that posts its checked values comma-joined under `name`. Saved `value`s missing from `options` stay in the list, checked, with `missingMeta`.
+ * The add row appends a name typed by hand (any non-empty text; `login` also drops a leading @), so a forge that cannot list options never blocks saving.
+ */
+export function MultiPick({ name, legend, hint, options, value, addLabel, example, missingMeta, emptyNote, notice, login, mono = true, disabled }: { name: string; legend: string; hint?: string; options: PickOption[]; value: string[]; addLabel: string; example?: string; missingMeta: string; emptyNote?: string; notice?: string; login?: boolean; mono?: boolean; disabled?: boolean }) {
+  const error = useContext(Ctx).fields?.[name]
+  const uid = useId()
+  const [items, setItems] = useState<PickOption[]>(() => [...options, ...value.filter((v) => !options.some((o) => o.value === v)).map((v) => ({ value: v, meta: missingMeta }))])
+  const [checked, setChecked] = useState(() => new Set(value))
+  const [draft, setDraft] = useState('')
+  const add = () => {
+    const v = draft.replace(/,/g, '').trim().replace(login ? /^@/ : /^$/, '')
+    if (!v) return
+    if (!items.some((i) => i.value === v)) setItems((all) => [...all, { value: v, meta: 'added by hand' }])
+    setChecked((c) => new Set(c).add(v))
+    setDraft('')
+  }
+  return (
+    <fieldset className="checks" disabled={disabled} aria-describedby={error ? `${uid}-e` : undefined}>
+      <legend className="small label-strong">{legend}</legend>
+      {hint && <span className="small muted">{hint}</span>}
+      <input type="hidden" name={name} value={items.filter((i) => checked.has(i.value)).map((i) => i.value).join(',')} />
+      {items.map((i) => (
+        <label key={i.value} className="check">
+          <input type="checkbox" checked={checked.has(i.value)} onChange={(e) => setChecked((c) => { const n = new Set(c); if (e.target.checked) n.add(i.value); else n.delete(i.value); return n })} />
+          <span className="stack-1">
+            <span className={mono ? 'mono break-anywhere' : 'break-anywhere'}>{i.label ?? i.value}</span>
+            {i.meta && <span className="small muted">{i.meta}</span>}
+          </span>
+        </label>
+      ))}
+      {notice && <span className="small muted">{notice}</span>}
+      {!checked.size && emptyNote && <span className="small muted">{emptyNote}</span>}
+      <div className="flex gap-2">
+        <Input
+          aria-label={addLabel}
+          placeholder={example}
+          value={draft}
+          aria-invalid={!!error || undefined}
+          className="min-w-0 flex-1"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              add()
+            }
+          }}
+        />
+        <Button type="button" variant="outline" onClick={add}>Add</Button>
+      </div>
+      {error && <span id={`${uid}-e`} role="alert" className="small err">{error}</span>}
+    </fieldset>
   )
 }
 

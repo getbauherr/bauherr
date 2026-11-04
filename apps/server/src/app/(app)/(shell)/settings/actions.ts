@@ -263,13 +263,26 @@ export const createBauherr = act({}, async (c, fd) => {
   return `Temporary password (shown once): ${password}`
 })
 
+/** Whether the Workspace's first GitHub Connection knows `login`; true when there is none to ask or GitHub cannot answer. */
+const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): Promise<boolean> => {
+  const first = (await c.payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: inWorkspace(c) } }, { kind: { equals: 'github' } }] }, sort: 'id', limit: 1, depth: 0, overrideAccess: true } as never)).docs[0]
+  if (!first) return true
+  try {
+    return await backendFor(await connectionInput(c.payload, first.id as number), { maxRetries: 0, timeoutMs: 10_000 }).tickets('').userExists(login)
+  } catch {
+    return true // GitHub unreachable or rate-limited: saving is never blocked, the login stays unverified
+  }
+}
+
 export const saveBauherr = act({}, async (c, fd) => {
   only(c.user)
   const ids = tenants(fd)
   await known(c, ids)
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
   if (target.role === 'admin' && (s(fd, 'role') !== 'admin' || (id(fd) === c.user.id && !ids.length))) await assertAnotherAdmin(c.payload, id(fd))
-  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
+  const login = s(fd, 'githubLogin').replace(/^@/, '')
+  if (login && login !== target.githubLogin && !(await githubKnows(c, login))) throw Object.assign(new Error('GitHub login unknown.'), { data: { errors: [{ path: 'githubLogin', message: `GitHub does not know @${login}. Check the spelling.` }] } })
+  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), githubLogin: login || null, oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
 })
 
 /** Ends a failed-login lockout; the Bauherr can sign in again at once. */

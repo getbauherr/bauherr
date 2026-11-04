@@ -35,6 +35,7 @@ export default async function BauherrenSettings() {
                             <input type="hidden" name="id" value={b.id} />
                             <Field name="role" label="Role" options={ROLES} defaultValue={b.role} />
                             <Checks name="workspaces" items={items} checked={b.workspaces.map((w) => w.id)} />
+                            <Field name="githubLogin" label="GitHub login" hint="Used to assign and mention you when a Ticket needs your approval." example="sbuckpesch" defaultValue={b.githubLogin} />
                             <Field name="oidcSubject" label="SSO subject" defaultValue={b.oidcSubject} hint="<issuer>|<user ID>. In Keycloak the ID is under Users, the user, ID." />
                           </SettingsForm>
                         </div>
