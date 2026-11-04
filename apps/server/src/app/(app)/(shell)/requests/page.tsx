@@ -29,7 +29,7 @@ export default async function Requests() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      {r.resumable ? <Link className="link" href={`/requests/new?session=${r.id}`}>{r.title}</Link> : r.title}
+                      {r.href ? <Link className="link" href={r.href}>{r.title}</Link> : r.title}
                       {r.ticket && <> {r.ticket.id ? <Link className="link" href={`/tickets/${r.ticket.id}`}>#{r.ticket.number}</Link> : <span>#{r.ticket.number}</span>}</>}
                     </td>
                     {multiProduct && <td>{r.product}</td>}

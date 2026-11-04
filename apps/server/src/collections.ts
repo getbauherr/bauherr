@@ -441,6 +441,7 @@ export const collections: CollectionConfig[] = [
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
     rel('agentKey', 'agent_keys'),
+    text('sessionLabel'),
     date('heartbeatAt'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),

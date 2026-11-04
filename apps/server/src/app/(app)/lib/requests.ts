@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { needsYou, type Need } from './needs-you'
 import { payloadClient } from './session'
 
 type Ref = number | { id: number; name?: string }
@@ -12,6 +13,8 @@ export type RequestRow = {
   title: string
   product: string
   linked: boolean
+  /** Same-origin target of the title link: the request page once sent, the chat for an own Draft. */
+  href: string | null
   resumable: boolean
   updatedAt: string
   ticket: { number: number; id?: number } | null
@@ -48,6 +51,7 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
       title: (problem?.trim() && cut(problem)) || 'Untitled request',
       product: (typeof s.product === 'object' && s.product.name) || '—',
       linked: s.status === 'submitted',
+      href: s.status === 'submitted' ? `/requests/${s.id}` : s.status === 'open' && userId != null && idOf(s.user) === userId ? `/requests/new?session=${s.id}` : null,
       resumable: s.status === 'open' && userId != null && idOf(s.user) === userId,
       updatedAt: s.updatedAt,
       ticket: s.ticketNumber == null ? null : { number: s.ticketNumber, id: t?.id },
@@ -75,4 +79,45 @@ export async function openSessions(userId: number, workspaceId: number | undefin
   const open = (await mine()).filter((s) => (s.messages as unknown[] | null)?.length)
   if (wanted && /^\d{1,9}$/.test(wanted) && !open.some((s) => String(s.id) === wanted)) open.push(...(await mine([{ id: { equals: Number(wanted) } }])))
   return { open, current: open.find((s) => String(s.id) === wanted) ?? open[0] }
+}
+
+/** Plain-language stage of a Ticket; the Board's stage names stay out of the Request page. */
+const LIFECYCLE: Record<string, string> = { triage: 'Being looked at', plan: 'Being planned', build: 'Being built', review: 'Being reviewed', release: 'On staging', parent: 'Split into smaller tickets', done: 'Done' }
+export const lifecycleOf = (t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[t.stage ?? 'triage'] ?? LIFECYCLE.triage!)
+
+export type RequestTicket = { id: number; number: number; title: string; status: string; need: Need | null }
+export type RequestPage = {
+  id: number
+  product: string
+  sent: boolean
+  /** The caller can continue this Draft in the chat. */
+  own: boolean
+  problem: string
+  context: string
+  criteria: string[]
+  tickets: RequestTicket[]
+}
+
+/** One Request for its page, or null when it does not exist, is an owner session or belongs to another Workspace. Linked Tickets are `ticketNumbers` (fallback `ticketNumber`) of the same Product. */
+export async function loadRequest(workspaceId: number, id: number, userId?: number): Promise<RequestPage | null> {
+  const payload = await payloadClient()
+  const o = { overrideAccess: true, pagination: false, depth: 0 } as const
+  const [s] = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, { 'product.workspace': { equals: workspaceId } }, { persona: { not_equals: 'owner' } }, { status: { in: ['open', 'submitted'] } }] }, limit: 1, depth: 1, overrideAccess: true })).docs as unknown as (Session & { draft?: { problem?: string; context?: string; acceptance_criteria?: string[] }; ticketNumbers?: number[] | null })[]
+  if (!s) return null
+  const numbers = s.ticketNumbers?.length ? s.ticketNumbers : s.ticketNumber != null ? [s.ticketNumber] : []
+  const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null }[] : []
+  const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, status: true }, ...o })).docs as unknown as { ticket: number; stage: string; status: string }[] : []
+  return {
+    id: s.id,
+    product: (typeof s.product === 'object' && s.product.name) || '—',
+    sent: s.status === 'submitted',
+    own: s.status === 'open' && userId != null && idOf(s.user) === userId,
+    problem: s.draft?.problem?.trim() ?? '',
+    context: s.draft?.context?.trim() ?? '',
+    criteria: (s.draft?.acceptance_criteria ?? []).filter((c) => c.trim()),
+    tickets: docs.map((t) => ({
+      id: t.id, number: t.number, title: t.title, status: lifecycleOf(t),
+      need: t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, runs.find((r) => r.ticket === t.id) ?? null),
+    })),
+  }
 }
