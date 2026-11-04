@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
+import { GateRow, GateLadder } from '../../../components/SettingsParts'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { saveOverlapIgnore, saveWipLimits } from '../actions'
 import { isAdmin, loadWorkflow } from '../../../lib/settings'
@@ -60,27 +61,20 @@ export default async function Workflow() {
         </section>
       ))}
       <h2 className="heading">Where you are asked</h2>
-      <p className="small muted">The points where the factory waits for you, in flow order.</p>
-      <div className="scroll">
-        <table className="table">
-          <thead><tr><th>Name</th><th>When</th><th>On/Off</th></tr></thead>
-          <tbody>
-            {TOUCH_POINTS.map((t) => (
-              <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{w.gates.includes(t.id) ? 'On' : t.id === 'production' ? 'Per Product' : 'Off'}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="small muted">The points where the factory waits for you, in flow order. Approve the plan and Accept on staging are set here for all Products; Ask me before production is set per Product.</p>
+      <GateLadder plan={w.ladder.plan} staging={w.ladder.staging}>
+        <GateRow label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. On the Ticket, after staging." state={w.ladder.production ? 'On for every Product' : 'Per Product'} />
+      </GateLadder>
       <details>
         <summary>Details</summary>
         <div className="stack">
         <h2 className="heading">What you do and where</h2>
         <div className="scroll">
           <table className="table">
-            <thead><tr><th>Name</th><th>What you do</th><th>Where</th></tr></thead>
+            <thead><tr><th>Name</th><th>When</th><th>What you do</th><th>Where</th></tr></thead>
             <tbody>
               {TOUCH_POINTS.map((t) => (
-                <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.what}</td><td>{t.where}</td></tr>
+                <tr key={t.id}><td>{GATE_NAMES[t.id]}</td><td>{t.when}</td><td>{t.what}</td><td>{t.where}</td></tr>
               ))}
             </tbody>
           </table>

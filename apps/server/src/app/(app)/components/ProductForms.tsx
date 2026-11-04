@@ -1,9 +1,10 @@
 import Link from 'next/link'
-import type { loadProduct } from '../lib/settings'
-import { Field } from './SettingsForm'
-import { GateRow, RadioCards, SettingsSection, StatusCallout, ToggleRow } from './SettingsParts'
+import { namesOf, productionCallouts, productionWorkflow } from '../lib/product-setup'
+import type { loadProduct, RecentCheck } from '../lib/settings'
+import { CopyField, Field, MultiPick } from './SettingsForm'
+import { GateLadder, RadioCards, SettingsSection, StatusCallout, ToggleRow } from './SettingsParts'
 
-const onOff = (v: boolean) => (v ? 'On' : 'Off')
+const CHECKS_UNREADABLE = 'Could not read checks from GitHub right now. Type the check name instead.'
 
 /** Name and the optional short name of a new Product (`/settings/products/new` and /setup). */
 export const ProductNameFields = () => (
@@ -27,15 +28,20 @@ export const RepositoryFields = ({ connections, tickets = true }: { connections:
   </>
 )
 
-/** Staging, Approvals and Production sections of a Product (page `/settings/products/<id>` and step 3 of /setup); render inside the form that saves them. */
-export function DeploySections({ data: { product: p, workflow }, admin, numbered }: { data: NonNullable<Awaited<ReturnType<typeof loadProduct>>>; admin: boolean; numbered?: boolean }) {
+/** Staging, Approvals and Production sections of a Product (page `/settings/products/<id>` and step 3 of /setup); render inside the form that saves them. `checks` are the recent check names from the forge (`recentChecks`), null when it could not be read. */
+export function DeploySections({ data: { product: p, workflow, members }, checks, admin, numbered }: { data: NonNullable<Awaited<ReturnType<typeof loadProduct>>>; checks: RecentCheck[] | null; admin: boolean; numbered?: boolean }) {
   const d = p.deploy
-  const checks = d.productionChecks.split(',').map((c) => c.trim()).filter(Boolean)
+  const production = namesOf(d.productionChecks)
   const num = (i: number) => (numbered ? i + 2 : undefined)
+  const options = (checks ?? []).map((c) => ({ value: c.name, meta: `seen on ${c.seen} of ${c.of} recent commits · last: ${c.lastConclusion}` }))
+  const unreadable = checks?.length ? undefined : CHECKS_UNREADABLE
+  const admins = members.filter((m) => m.admin).map((m) => `@${m.login}`)
+  const status = { checks: production, seen: checks?.map((c) => c.name) ?? null, notifiable: !!d.gateOwners || admins.length > 0 }
+  const [off] = productionCallouts({ ...status, on: false })
   return (
     <>
       <SettingsSection id="staging" n={num(0)} title="Staging" purpose="How merged changes reach the site where you try them." advanced={
-        <Field name="deployChecks" label="Which checks mean deployed to staging?" hint="Check names, comma-separated. Empty: all checks must be green. Use this if a slow or optional check should not hold up staging." example="deploy-staging" defaultValue={d.checks} />
+        <MultiPick name="deployChecks" legend="Which checks mean deployed to staging?" hint="Empty: all checks must be green. Pick some if a slow or optional check should not hold up staging." options={options} value={namesOf(d.checks)} addLabel="Add a check that has not run yet" example="deploy-staging" missingMeta="not seen recently" notice={unreadable} />
       }>
         <RadioCards name="deployMode" legend="How do merged changes reach staging?" value={d.mode} options={[
           { value: 'observe-ci', title: 'My CI deploys to staging', text: 'Bauherr waits until the checks on the merge commit are green.' },
@@ -49,16 +55,28 @@ export function DeploySections({ data: { product: p, workflow }, admin, numbered
 
 
       <SettingsSection id="approvals" n={num(1)} title="Approvals" purpose="Where the process waits for you. Everything else runs on its own.">
-        <div>
-          <GateRow label="Answer questions" help="Before planning, the agent asks you what is unclear." state="Always on" />
-          <GateRow label="Approve the plan" help="You approve the plan before any code is written." state={onOff(workflow.plan)} />
-          <GateRow label="Accept on staging" help="You check the change on staging before it moves on. When off, Bauherr accepts automatically once staging is confirmed." state={onOff(workflow.staging)} />
+        <GateLadder plan={workflow.plan} staging={workflow.staging}>
           <ToggleRow name="productionGate" label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. Your own pipeline does the deploy." defaultChecked={p.productionOn} disabled={workflow.forcesProduction} reason={workflow.forcesProduction ? 'On for every Product by the workflow.' : undefined} />
-          <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
+        </GateLadder>
+        <div className="only-off">
+          <StatusCallout tone="muted" lead={off!.lead}>{off!.text}</StatusCallout>
         </div>
         <p className="small muted">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/settings/workflow">See the workflow</Link>.</>}</p>
+        <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
         <Field name="checkRetries" label="Re-run a failed check once" type="number" min={0} max={1} hint="1: a failed check is re-run once before it sends the change back or stops a release. 0 turns this off." defaultValue={d.checkRetries} />
-        <Field name="gateOwners" label="Who approves?" hint="GitHub logins, comma-separated. They are assigned on GitHub and mentioned when a Ticket waits for an approval. Empty: all Admins with a GitHub login." example="sbuckpesch" defaultValue={d.gateOwners} />
+        <MultiPick
+          name="gateOwners"
+          legend="Who approves?"
+          hint="They are assigned on GitHub and mentioned when a Ticket waits for an approval."
+          options={members.map((m) => ({ value: m.login, label: `${m.email} · @${m.login}` }))}
+          value={namesOf(d.gateOwners)}
+          addLabel="Add GitHub login"
+          example="sbuckpesch"
+          missingMeta="not a Member with this login"
+          emptyNote={admins.length ? `Nobody picked: all Admins with a GitHub login (${admins.join(', ')}).` : undefined}
+          login
+          mono={false}
+        />
       </SettingsSection>
 
 
@@ -66,15 +84,15 @@ export function DeploySections({ data: { product: p, workflow }, admin, numbered
         <SettingsSection id="production" n={num(2)} title="Production" purpose="How Bauherr knows your production deploy finished." advanced={
           <Field name="productionWebhookUrl" label="Also call this URL when I approve" type="url" hint="Optional. Bauherr POSTs {ticket, sha, environment: production} once per approval. Use it if your pipeline cannot listen for the GitHub label." example="https://ci.acme.com/hooks/prod" defaultValue={d.productionWebhookUrl} />
         }>
-          {checks.length ? (
-            <StatusCallout tone="ok" lead="Ready">After you accept on staging, Approve production appears on the Ticket. Bauherr then watches <span className="mono">{checks.join(', ')}</span>.</StatusCallout>
-          ) : (
-            <StatusCallout tone="warn" lead="Not ready">Pick the check that reports your production deploy. Until then Tickets stop at Configure production checks.</StatusCallout>
-          )}
-          <Field name="productionChecks" label="Which check reports the production deploy?" hint="Bauherr marks the deploy as done when these checks succeed on the approved commit. Check names, comma-separated." example="deploy-production" defaultValue={d.productionChecks} />
+          {productionCallouts({ ...status, on: true }).map((c) => <StatusCallout key={c.lead} tone={c.tone} lead={c.lead}>{c.text}</StatusCallout>)}
+          <MultiPick name="productionChecks" legend="Which check reports the production deploy?" hint="Bauherr marks the deploy as done when these checks succeed on the approved commit." options={options} value={production} addLabel="Add a check that has not run yet" example="deploy-production" missingMeta="not seen recently" notice={unreadable} />
           <details className="small muted">
             <summary>How does my pipeline know when to deploy?</summary>
-            <p>When you approve, Bauherr adds the label <span className="mono">bauherr:approved:production</span> to the issue and, if set, calls your URL. Your pipeline deploys and reports a check on the approved commit. Report it on the commit from the Ticket, not on the latest main. Bauherr watches that check and closes the Ticket when it succeeds.</p>
+            <div className="stack mt-3">
+              <p>When you approve, Bauherr adds the label <span className="mono">bauherr:approved:production</span> to the issue and, if set, calls your URL. Your pipeline deploys and reports a check on the approved commit. Report it on the commit from the Ticket, not on the latest main. Bauherr watches that check and closes the Ticket when it succeeds.</p>
+              <p>GitHub Actions example: a workflow that runs when the label is added and reports <span className="mono">{production[0] ?? 'deploy-production'}</span> on the Ticket&apos;s merge commit.</p>
+              <CopyField block text={productionWorkflow(production[0] ?? 'deploy-production')} />
+            </div>
           </details>
         </SettingsSection>
       </div>
