@@ -12,6 +12,8 @@ export type RunRow = {
   ticket: number
   stage: string
   status: string
+  /** Why the Run ended (failed, cancelled, needs_human). */
+  error?: string | null
   mode: string
   sessionOwner: number | null
   heartbeatAt: string | null

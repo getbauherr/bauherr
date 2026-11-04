@@ -1,4 +1,5 @@
 import { ValidationError } from 'payload'
+import { invisibleDead } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
 import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
@@ -256,6 +257,8 @@ export async function loadHealth(workspace: number) {
     running,
     failed,
     oldestQueued: ((oldest.docs[0] as Doc | undefined)?.createdAt ?? null) as string | null,
+    /** Tickets with no live Run, no wait and no need for the owner; the goal is 0. */
+    dead: (await invisibleDead(payload, workspace)).map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause })),
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
     flakes,
   }

@@ -610,18 +610,23 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
     await factoryTouch(payload, t, 'review-cap:auto-grant')
     await mr.tickets.comment(n, `Review round cap reached after ${MAX_REVIEW_ROUNDS} rounds; the factory granted one more round.`)
   }
-  const src = { ts: mr.tickets, n }
-  const text = (opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`).replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
+  const text = opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`
+  await handBackToBuild(payload, t, { ts: mr.tickets, n }, text, lines, low)
+  return 'build'
+}
+
+/** Ticket back to Build: `text` becomes the worklog's Current instructions, `lines` go under Unfinished work and `low` under Open; active review Runs are cancelled and a Build Run is queued. */
+const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: string, lines: string[] = [], low: string[] = []): Promise<void> => {
+  const { ts, n } = src
   const log = await worklogComment(src)
-  let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text), '**Unfinished work**', lines)
+  let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')), '**Unfinished work**', lines)
   if (low.length) worklog = appendToSection(worklog, '**Open**', low)
-  if (log) await src.ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
-  else await src.ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
+  if (log) await ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
+  else await ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
   await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
-  await moveStage(payload, mr.tickets, t, 'build')
+  await moveStage(payload, ts, t, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
-  return 'build'
 }
 
 /**
@@ -695,6 +700,44 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
   const note = a.note?.trim()
   await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}`)
   await touch(payload, user, t, 'review-cap:stop')
+  return { stage: 'triage' }
+}
+
+/**
+ * Back to Build from a review the factory could not conclude (`needs_human`, MR closed or checks red): on the open MR when there is one, else with the note to open a new one on a `bauherr/<number>-*` branch.
+ * Neither counts a review round. Returns `noop` when the Ticket is no longer in review.
+ */
+export const sendBackToBuild = async (payload: Payload, t: Doc, note: string): Promise<ReviewOutcome> => {
+  const fresh = await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })
+  if (fresh.state === 'closed' || fresh.stage !== 'review' || fresh.reviewState === 'merged') return 'noop'
+  const mr = await prOf(payload, fresh)
+  if (mr?.pr.state === 'open') {
+    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human'`)
+    return returnToBuild(payload, fresh, mr, note, [], [], { countRound: false, text: `${note} Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
+  }
+  await handBackToBuild(payload, fresh, await sourceOf(payload, fresh), `${note} Open a new MR on a \`bauherr/${fresh.number}-*\` branch.`)
+  return 'build'
+}
+
+/** Owner action on a stuck review (the "Needs you" need): back to Build, with an optional note for the next Run. */
+export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: TicketId; note?: string; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.state === 'closed' || t.stage !== 'review' || t.reviewState !== 'needs_human') throw new Error('the Ticket is not waiting on you in review')
+  const note = a.note?.trim()
+  const outcome = await sendBackToBuild(payload, t, `Sent back to Build by ${user.email}${note ? `: ${note}` : '.'}`)
+  if (outcome === 'build') await touch(payload, user, t, 'back-to-build')
+  return { outcome }
+}
+
+/** Owner action on a cancelled Ticket (the "Cancelled" need): the Ticket goes to Triage and is planned again; its Runs stay as they are. */
+export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.state === 'closed' || !['plan', 'build', 'review'].includes(t.stage)) throw new Error('the Ticket is not in a factory stage')
+  const { ts, n } = await sourceOf(payload, t)
+  await moveStage(payload, ts, t, 'triage')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', reviewState: null }, overrideAccess: true })
+  await ts.comment(n, `Sent back to the backlog by ${user.email}.`)
+  await touch(payload, user, t, 'back-to-backlog')
   return { stage: 'triage' }
 }
 

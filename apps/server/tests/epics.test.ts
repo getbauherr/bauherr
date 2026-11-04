@@ -33,6 +33,7 @@ describe('epics', () => {
     expect(plainStatus({ ...t, run: { status: 'running' } })).toBe('Working')
     expect(plainStatus({ ...t, blockedBy: [{}] })).toBe('Blocked')
     expect(plainStatus({ ...t, waiting: 'Waiting: Build is full' })).toBe('Waiting')
+    expect(plainStatus({ ...t, needsYou: 'Cancelled', run: { status: 'cancelled', error: 'owner decision pending\nmore' } })).toBe('Needs you: owner decision pending')
     expect(plainStatus(t)).toBe('Queued')
   })
   it('finds epics structurally: stage parent or any Ticket with sub-tickets', () => {
