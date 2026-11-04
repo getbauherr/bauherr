@@ -15,6 +15,7 @@ test('renderCompose pins the image and drops build, container names and host por
   const out = renderCompose(template, '1.2.3')
   assert.match(out, /image: ghcr\.io\/getbauherr\/bauherr:1\.2\.3/)
   assert.doesNotMatch(out, /build: \.|container_name|"127\.0\.0\.1:\d+:|_FILE: \/run\/secrets|\$\{BAUHERR_VERSION/)
+  assert.match(out, /agentgateway:v1\.6\.0@sha256:/)
   assert.match(out, /PAYLOAD_SECRET: \$\{PAYLOAD_SECRET:\?/)
   assert.match(out, /ENCRYPTION_KEY: \$\{ENCRYPTION_KEY:\?/)
   assert.match(out, /ports: \["\$\{PORT:-3000\}:3000"\]/)

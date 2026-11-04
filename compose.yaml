@@ -59,7 +59,7 @@ services:
       interval: 5s
       retries: 10
   gateway:
-    image: cr.agentgateway.dev/agentgateway:v1.6.0
+    image: cr.agentgateway.dev/agentgateway:v1.6.0@sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
     user: "0" # provider key files are 0600 and written by root in app/worker
     command: [-f, /gateway/config.yaml]
     ports: ["127.0.0.1:4000:4000"] # admin API :15000 stays internal
