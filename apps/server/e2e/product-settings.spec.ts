@@ -20,13 +20,13 @@ const deleteProduct = async (page: Page) => {
   const repository = page.locator('#repository')
   for (const label of ['Stop reading tickets', 'Remove repository']) {
     await repository.locator('details.advanced').evaluate((d: HTMLDetailsElement) => (d.open = true))
-    // The role engine crashed intermittently in CI ("text.replace is not a function") when it resolved this button by accessible name; match it by text instead.
+    // Two "Confirm remove" buttons can be on the page at once (one per remove form); a strict-mode violation made Playwright crash while describing them ("text.replace is not a function": the forms carry an `id` input). Take the first.
     await repository.locator('button', { hasText: label }).click()
-    await repository.locator('button', { hasText: 'Confirm remove' }).click()
+    await repository.locator('button', { hasText: 'Confirm remove' }).first().click()
     await expect(repository.locator('button', { hasText: label })).toHaveCount(0)
   }
   await page.locator('#danger').locator('button', { hasText: 'Delete Product' }).click()
-  await page.locator('#danger').locator('button', { hasText: 'Confirm remove' }).click()
+  await page.locator('#danger').locator('button', { hasText: 'Confirm remove' }).first().click()
   await expect(page).toHaveURL(/\/settings\/products$/)
 }
 
