@@ -104,7 +104,7 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
 test('an approval Ticket shows the bar, title, pipeline and the gate; the rest sits in a closed Details', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
-  const details = page.locator('details')
+  const details = page.locator('details:not([aria-label=Repair])')
   await expect(details).not.toHaveAttribute('open', '')
   await expect(page.getByTestId('action-bar')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Tidy the settings copy')
@@ -135,7 +135,7 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
     await expect(page.locator('.board')).toBeVisible()
     await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
     await page.getByText('Details', { exact: true }).click()
-    const details = page.locator('details')
+    const details = page.locator('details:not([aria-label=Repair])')
     for (const name of ['Budget', 'Model']) await expect(details.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
     if (!admin) await expect(details).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku|Merge commit|#\d+\s*$/i)
     await expect(details.locator('table thead th')).toHaveText(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence'])
@@ -149,7 +149,7 @@ test('an idle Ticket says it plainly and keeps the technical text in Details', a
   const bar = page.getByTestId('action-bar')
   await expect(bar).not.toContainText('Nothing to do:')
   await page.getByText('Details', { exact: true }).click()
-  await expect(page.locator('details')).toContainText('Nothing to do:')
+  await expect(page.locator('details:not([aria-label=Repair])')).toContainText('Nothing to do:')
 })
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
