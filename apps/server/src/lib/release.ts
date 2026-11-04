@@ -33,6 +33,16 @@ export const prNumber = (url: unknown, repo: string, web: string): number | null
 export const isFactoryPr = (pr: PullRequest, repo: string, ticketNumber: number): boolean =>
   pr.baseRepo.toLowerCase() === repo.toLowerCase() && pr.headRepo.toLowerCase() === repo.toLowerCase() && pr.head.startsWith(`bauherr/${ticketNumber}-`)
 
+/** Throws unless `prUrl` is an open factory MR of the Ticket (same repo, branch `bauherr/<number>-...`). */
+export const assertOpenFactoryMr = async (payload: Payload, ticket: Doc, prUrl: unknown): Promise<void> => {
+  const { backend, repo, web } = await forgeOf(payload, id(ticket.product))
+  const num = prNumber(prUrl, repo, web)
+  const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
+  if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
+    throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
+  }
+}
+
 /** Ticket source of a Product, authenticated with the Workspace's forge Connection; `web` is that forge's origin. */
 export const forgeOf = async (payload: Payload, product: number | string) => {
   const src = (await payload.find({ collection: 'ticket_sources', where: { product: { equals: product } }, limit: 1, ...o })).docs[0]

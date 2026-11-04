@@ -21,7 +21,7 @@ import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
-import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
+import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -77,6 +77,51 @@ export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: Ticke
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { rank }, overrideAccess: true })
   return { rank }
+}
+
+export class NotAdmin extends Error {
+  constructor() {
+    super('Only an Admin can change this.')
+  }
+}
+
+export const REPAIR_STAGES = ['triage', 'plan', 'build', 'review', 'release'] as const
+export const COUNTERS = ['gatePendingAttempts', 'mergeFailures', 'releaseAttempts', 'reviewRounds', 'conflictReturns'] as const
+export type Repair = { kind: 'stage'; stage: (typeof REPAIR_STAGES)[number] } | { kind: 'clear-waiting' } | { kind: 'reset-counters' } | { kind: 'rank-top' }
+
+/** Admin-only "Fix state": narrow repairs of one Ticket of the selected Workspace, each recorded as a `repair:<kind>` human touch. The stage move writes the forge label through `moveStage` (the poller sees it as the factory's own move). */
+export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId: TicketId; repair: Repair }) => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const r = a.repair
+  if (r.kind === 'stage') {
+    if (!REPAIR_STAGES.includes(r.stage)) throw new Error(`unknown stage ${r.stage}`)
+    const { ts } = await sourceOf(payload, t)
+    await moveStage(payload, ts, t, r.stage)
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: r.stage, waitingFor: null, waitingReason: null }, overrideAccess: true })
+  } else if (r.kind === 'clear-waiting') {
+    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, waitingReason: null }, overrideAccess: true })
+  } else if (r.kind === 'reset-counters') {
+    await payload.update({ collection: 'tickets', id: t.id, data: Object.fromEntries(COUNTERS.map((c) => [c, 0])), overrideAccess: true })
+  } else if (r.kind === 'rank-top') {
+    const first = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: a.workspaceId } }, { id: { not_equals: t.id } }, { rank: { exists: true } }] }, sort: 'rank', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+    if (first) await rankTicket(payload, user, { ticket: t.id, before: null, after: first.id, workspaceId: a.workspaceId })
+  } else {
+    throw new Error('unknown repair')
+  }
+  await touch(payload, user, t, `repair:${r.kind}`)
+}
+
+/** Admin-only: points a Build Run at the replacement MR (same check as the agent's `relink_mr`, without the lease). */
+export const relinkRunMr = async (payload: Payload, user: Doc, a: { runId: TicketId; workspaceId: TicketId; prUrl: string }) => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
+  if (!run || String(id(run.workspace)) !== String(a.workspaceId)) throw new NotInWorkspace()
+  if (run.stage !== 'build') throw new Error('only a Build Run has an MR')
+  const t = await loadIn(payload, user, id(run.ticket), a.workspaceId)
+  await assertOpenFactoryMr(payload, t, a.prUrl)
+  await payload.update({ collection: 'runs', id: run.id, data: { artifacts: { ...(run.artifacts ?? {}), prUrl: a.prUrl } }, overrideAccess: true })
+  await touch(payload, user, t, 'repair:relink-mr')
 }
 
 export class NotReleasable extends Error {

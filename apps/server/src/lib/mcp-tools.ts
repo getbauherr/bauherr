@@ -5,7 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
-import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
+import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
 import { AGENT_REPAIRED, deadTickets } from './liveness'
@@ -414,12 +414,7 @@ export const tools: Tool[] = [
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) {
-        const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
-        const num = prNumber(a.prUrl, repo, web)
-        const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
-        if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
-          throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
-        }
+        await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
         await ts.addLink(n, a.prUrl)
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
@@ -443,12 +438,7 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId, a)
       if (run.stage !== 'build') throw new Error('relink_mr is for Build Runs')
       const ticket = await getTicket(c, id(run.ticket))
-      const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
-      const num = typeof a.prUrl === 'string' ? prNumber(a.prUrl, repo, web) : null
-      const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
-      if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
-        throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
-      }
+      await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
       await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
       return { linked: a.prUrl }
     },
