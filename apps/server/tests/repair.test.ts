@@ -48,10 +48,10 @@ const reload = async (id: number) => (await payload.findByID({ collection: 'tick
 const touches = async (id: number) => (await payload.find({ collection: 'human_touches', where: { ticket: { equals: id } }, ...o })).docs.map((d) => d.kind as string).sort()
 
 it('a non-Admin member cannot repair, and nothing changes', async () => {
-  const { id } = await seed({ reviewRounds: 2, waitingFor: 'build' })
+  const { id } = await seed({ reviewRounds: 2, waitingFor: 'review' })
   await expect(actions.repairTicket(payload, member, { ticket: id, workspaceId: ws, repair: { kind: 'reset-counters' } })).rejects.toThrow('Only an Admin can change this.')
   await expect(actions.relinkRunMr(payload, member, { runId: 1, workspaceId: ws, prUrl: 'x' })).rejects.toThrow('Only an Admin')
-  expect(await reload(id)).toMatchObject({ reviewRounds: 2, waitingFor: 'build' })
+  expect(await reload(id)).toMatchObject({ reviewRounds: 2, waitingFor: 'review' })
   expect(await touches(id)).toEqual([])
 })
 

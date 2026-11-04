@@ -14,6 +14,7 @@ let user: Record<string, any>
 let actions: typeof import('../src/lib/actions')
 let jobs: typeof import('../src/jobs')
 let wip: typeof import('../src/lib/wip')
+let loadOverview: typeof import('../src/app/(app)/lib/overview').loadOverview
 let release: typeof import('../src/lib/release')
 const o = { overrideAccess: true } as const
 let repo = ''
@@ -40,6 +41,7 @@ beforeAll(async () => {
   jobs = await import('../src/jobs')
   wip = await import('../src/lib/wip')
   release = await import('../src/lib/release')
+  loadOverview = (await import('../src/app/(app)/lib/overview')).loadOverview
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
@@ -120,10 +122,10 @@ describe('the pull rule', () => {
   it('pulls right to left and by rank inside a column', async () => {
     await limits({ plan: 1 })
     const a = await ticket('a', 'plan')
-    for (const t of [await ticket('z', 'plan'), await ticket('m', 'plan')]) await wip.enterStage(payload, await reload(t.id), 'plan', async () => {})
-    expect((await reload(a.id)).waitingFor).toBeNull()
+    await ticket('z', 'plan')
+    await ticket('m', 'plan')
     await payload.update({ collection: 'tickets', id: a.id, data: { stage: 'build' }, ...o })
-    await payload.update({ collection: 'tickets', where: { title: { in: ['z', 'm'] } }, data: { stage: 'triage' }, ...o } as never)
+    await payload.update({ collection: 'tickets', where: { title: { in: ['z', 'm'] } }, data: { stage: 'triage', waitingFor: 'plan' }, ...o } as never)
     const waitingTitles = async () => (await payload.find({ collection: 'tickets', where: { waitingFor: { equals: 'plan' } }, ...o })).docs.map((t) => t.title)
     expect((await waitingTitles()).sort()).toEqual(['m', 'z'])
     await wip.pullWaiting(payload)
@@ -209,13 +211,13 @@ describe('counting and workspaces', () => {
 })
 
 describe('sub-tickets and parents', () => {
-  it('children over the limit wait without a Run and are not counted; parents are not counted', async () => {
+  it('children over the limit wait in Plan for Build without a Run and are not counted; parents are not counted', async () => {
     await limits({ build: 1 })
     const p = await ticket('p', 'plan', {}, SUBS)
     await poll()
     expect(await reload(p.id)).toMatchObject({ stage: 'parent' })
     const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: p.id } }, sort: 'number', ...o })).docs as { id: number; stage: string; waitingFor?: string | null }[]
-    expect(kids.map((k) => [k.stage, k.waitingFor ?? null])).toEqual([['build', null], ['build', 'build']])
+    expect(kids.map((k) => [k.stage, k.waitingFor ?? null])).toEqual([['build', null], ['plan', 'build']])
     await poll()
     expect(await runs(kids[0].id, 'build')).toHaveLength(1)
     expect(await runs(kids[1].id, 'build')).toHaveLength(0)
@@ -223,7 +225,51 @@ describe('sub-tickets and parents', () => {
     await payload.update({ collection: 'tickets', id: kids[0].id, data: { stage: 'review' }, ...o })
     await poll()
     expect(await runs(kids[1].id, 'build')).toHaveLength(1)
-    expect((await reload(kids[1].id)).waitingFor).toBeNull()
+    expect(await reload(kids[1].id)).toMatchObject({ stage: 'build', waitingFor: null })
+  })
+})
+
+describe('Board counts and waiting display', () => {
+  it('the Board header count is wipCount', async () => {
+    await limits({ build: 5 })
+    const blocker = await ticket('blocker', 'review')
+    await ticket('running', 'build')
+    await ticket('blocked', 'build', { blockedBy: [blocker.id] })
+    await ticket('waiting', 'plan', { waitingFor: 'build' })
+    await ticket('done', 'build', { state: 'closed' })
+    await ticket('parent', 'parent')
+    const other = (await payload.create({ collection: 'products', data: { name: 'other', slug: `other-${n}`, workspace: ws }, ...o })).id as number
+    await payload.create({ collection: 'tickets', data: { title: 'o', externalId: 'o', number: 999, state: 'open', stage: 'build', labels: [], product: other, workspace: ws, rank: 'o' }, ...o })
+    const { wip: board } = await loadOverview(ws, false)
+    const expected = { plan: await wip.wipCount(payload, ws, 'plan'), build: await wip.wipCount(payload, ws, 'build'), review: await wip.wipCount(payload, ws, 'review'), release: await wip.wipCount(payload, ws, 'release') }
+    for (const s of ['plan', 'build', 'review', 'release'] as const) expect(board[s].count).toBe(expected[s])
+    expect(await wip.wipCounts(payload, ws)).toEqual(expected)
+    expect(expected.build).toBe(3)
+  })
+
+  it('a blocked Ticket shows its blocker, not a capacity message', async () => {
+    await limits({ build: 1 })
+    await ticket('x', 'build')
+    const blocker = await ticket('blocker', 'review')
+    const b = await ticket('b', 'plan', { waitingFor: 'build', blockedBy: [blocker.id] })
+    const row = async () => (await loadOverview(ws, false)).tickets.find((r) => r.id === b.id)!
+    expect(await row()).toMatchObject({ waiting: null, blockedBy: [{ id: blocker.id }] })
+    await payload.update({ collection: 'tickets', id: blocker.id, data: { state: 'closed' }, ...o })
+    expect(await row()).toMatchObject({ waiting: 'Waiting: Build is full (1/1)', blockedBy: [] })
+  })
+
+  it('never stores waitingFor equal to stage', async () => {
+    const t = await ticket('t', 'plan', { waitingFor: 'build' })
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', waitingFor: 'build', waitingReason: 'x' }, ...o })
+    expect(await reload(t.id)).toMatchObject({ stage: 'build', waitingFor: null, waitingReason: null })
+    const u = await ticket('u', 'plan', { waitingFor: 'build' })
+    await payload.update({ collection: 'tickets', id: u.id, data: { stage: 'build' }, ...o })
+    expect(await reload(u.id)).toMatchObject({ waitingFor: null })
+    const db = payload.db.drizzle
+    await db.execute(sql`UPDATE "tickets" SET "waiting_for" = 'build', "waiting_reason" = 'x' WHERE "id" = ${t.id}`)
+    expect((await reload(t.id)).waitingFor).toBe('build')
+    await (await import('../src/migrations/20261104_170000_clear_self_waiting')).up({ db } as never)
+    expect(await reload(t.id)).toMatchObject({ waitingFor: null, waitingReason: null })
   })
 })
 
