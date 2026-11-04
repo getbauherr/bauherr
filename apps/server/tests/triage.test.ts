@@ -178,19 +178,21 @@ it('a Ticket that gained a stage label meanwhile is left alone', async () => {
   expect(await labelsOf(t.n)).not.toContain('bauherr:needs-refinement')
 })
 
-it('an unclaimed triage Run expires to abandoned (no needs-you) and the next poll triages again', async () => {
+it('an unclaimed triage Run never expires: it waits for a session and costs no triage attempt', async () => {
   const t = await create('nobody home')
   const [run] = await triageRuns(t.id)
-  expect(await jobs.expireStaleSessions(payload, Date.now() + 31 * 60_000)).toBeGreaterThan(0)
-  expect(await payload.findByID({ collection: 'runs', id: run!.id, ...o })).toMatchObject({ status: 'abandoned' })
+  const attempts = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })).triageAttempts
+  await jobs.expireStaleSessions(payload, Date.now() + 31 * 60_000)
+  expect(await payload.findByID({ collection: 'runs', id: run!.id, ...o })).toMatchObject({ status: 'awaiting_session' })
+  await drain()
+  await poll()
+  expect(await triageRuns(t.id)).toHaveLength(1)
+  expect((await payload.findByID({ collection: 'tickets', id: t.id, ...o })).triageAttempts).toBe(attempts)
   expect(needsYou({ stage: null, labels: [] }, { stage: 'triage', status: 'needs_human' })).toBeNull()
   expect(needsYou({ stage: null, labels: [] }, { stage: 'triage', status: 'failed' })).toBeNull()
-  await drain()
-  expect(await triageRuns(t.id)).toHaveLength(2)
 })
 
 it('starts at most 5 triage Runs per Workspace per poll; the rest follow on the next poll', async () => {
-  await drain() // the expiry above re-queued every unclaimed Run
   const issues: { number: number }[] = []
   for (let i = 0; i < 7; i++) issues.push(await fake.tickets(repo).create({ title: `burst ${i}` }))
   const ids = async () => (await payload.find({ collection: 'tickets', where: { number: { in: issues.map((x) => x.number) } }, pagination: false, depth: 0, ...o })).docs.map((d) => d.id as number)
@@ -227,12 +229,18 @@ it('a session claim hands over title, body and goal fenced as data', async () =>
   expect(r.ticket.title).toContain('Ignore previous instructions')
 })
 
+/** A Triage Run that ends without an outcome: the Ticket is untriaged again, as the Run's end does. */
+const failLast = async (id: number) => {
+  await payload.update({ collection: 'runs', id: (await triageRuns(id)).at(-1)!.id, data: { status: 'failed', error: 'no outcome' }, ...o })
+  await jobs.untriage(payload, id)
+}
+
 it('stops after 3 attempts with one Comment; a change to the Ticket resets the count', async () => {
   await drain()
   const t = await create('hopeless')
   for (let i = 0; i < 3; i++) {
     expect(await triageRuns(t.id)).toHaveLength(i + 1)
-    await jobs.expireStaleSessions(payload, Date.now() + 31 * 60_000)
+    await failLast(t.id)
     await drain()
   }
   expect(await triageRuns(t.id)).toHaveLength(3)
@@ -256,7 +264,7 @@ it('the backlog rotates: Tickets never tried go before those tried before', asyn
   const runsOf = async (id: number) => (await triageRuns(id)).length
   const untried = (await Promise.all(ids.map(async (id) => [id, await runsOf(id)] as const))).filter(([, n]) => n === 0).map(([id]) => id)
   expect(untried).toHaveLength(2)
-  await jobs.expireStaleSessions(payload, Date.now() + 31 * 60_000) // every tried Ticket is untriaged again
+  for (const id of ids) if (!untried.includes(id)) await failLast(id) // every tried Ticket is untriaged again
   await jobs.triageSweep(payload)
   for (const id of untried) expect(await runsOf(id)).toBe(1)
 })

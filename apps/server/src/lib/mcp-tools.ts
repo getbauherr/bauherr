@@ -3,11 +3,12 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { forgeOf, isFactoryPr, prNumber, prOf } from './release'
 import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
+import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
@@ -537,6 +538,20 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       if ((await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })).totalDocs) throw new Error('a session Run holds this Ticket: production approval is for the owner, not an agent')
       return approveProduction(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'return_to_build',
+    access: 'agent',
+    description: 'Repair a dead Ticket: send it back to Build (on its open MR, or with a note to open a new one). Allowed only while the Ticket is dead for a mechanical cause (its MR is missing or its checks are red); refused for a live Ticket and for every decision (gates stay human-only).',
+    inputSchema: obj({ ...ticketId, reason: str('Why it goes back to Build') }, ['ticket', 'reason']),
+    async run(a, c) {
+      const t = await getTicket(c, a.ticket)
+      if (typeof a.reason !== 'string' || !a.reason.trim()) throw new Error('reason required')
+      const dead = (await deadTickets(c.payload, id(t.workspace))).find((d) => d.ticket.id === t.id)
+      if (!dead || !AGENT_REPAIRED.includes(dead.cause)) throw new Error(`ticket ${t.number} is not dead for a mechanical cause; nothing to repair`)
+      // The agent's own words stay out of the next Run's instructions (owner-level text); the tool call keeps them in the audit digest.
+      return { outcome: await sendBackToBuild(c.payload, t, `Sent back to Build by an agent: ${dead.cause === 'mr-missing' ? 'the MR was closed' : 'checks are red on the MR'}.`) }
     },
   },
   {
