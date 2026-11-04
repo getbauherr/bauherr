@@ -1,4 +1,3 @@
-// burn-in proof (#325)
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
