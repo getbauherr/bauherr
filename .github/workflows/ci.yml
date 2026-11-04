@@ -93,6 +93,20 @@ jobs:
       MEDIA_DIR: /tmp/bauherr-e2e-media
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+      - name: Changed e2e specs (burn-in list)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          specs=$(git diff --name-only --diff-filter=AM "origin/$BASE_REF...HEAD" -- 'apps/server/e2e/*.spec.ts' | sed 's#^apps/server/##' | tr '\n' ' ')
+          # zz-owner-chat.spec.ts depends on ticket.spec.ts (#327): burn them in together until that is gone
+          case " $specs " in
+            *" e2e/ticket.spec.ts "*|*" e2e/zz-owner-chat.spec.ts "*) specs="$specs e2e/ticket.spec.ts e2e/zz-owner-chat.spec.ts" ;;
+          esac
+          specs=$(printf '%s\n' $specs | sort -u | tr '\n' ' ')
+          echo "CHANGED_SPECS=${specs% }" >> "$GITHUB_ENV"
       - run: corepack enable
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: 24, cache: pnpm}
@@ -123,6 +137,13 @@ jobs:
           -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server
           -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e E2E_GATED_PACK -e HOME=/tmp
           mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --reporter=line,html --shard=${{ matrix.shard }}/2
+      - name: Burn in the e2e specs this PR adds or changes (3 repeats, once, in shard 1)
+        if: github.event_name == 'pull_request' && matrix.shard == 1 && env.CHANGED_SPECS != ''
+        run: >
+          docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
+          -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server
+          -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e E2E_GATED_PACK -e HOME=/tmp
+          mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test $CHANGED_SPECS --repeat-each=3 --reporter=line
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
