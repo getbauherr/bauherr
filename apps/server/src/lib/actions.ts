@@ -20,7 +20,8 @@ import { preReviewFailures } from './pre-review'
 import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
+import { retryRed, settleRetries } from './check-retry'
+import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -262,7 +263,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
       await moveStage(payload, ts, t, 'build')
       await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
     })
-    if (entered === 'waiting') return null
+    if (entered !== 'moved') return null
     if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
   }
   await ts.comment(n, 'Plan accepted automatically (plan gate off).')
@@ -517,6 +518,8 @@ export const WAIT_CHECKS_MAX_MS = 2 * 60 * 60_000
 export const MAX_MERGE_FAILURES = 3
 /** Returns to Build because the MR conflicted, before a Ticket needs a human. */
 export const MAX_CONFLICT_RETURNS = 3
+/** Merges of the base that found nothing to merge on the same MR head while the forge still reports it behind or conflicting; the 3rd needs a human. */
+const MAX_MAIN_MERGE_NOOPS = 3
 const BLOCKING = ['high', 'medium']
 export const MAX_FINDINGS = 50
 export const MAX_TEXT = 1000
@@ -577,7 +580,7 @@ const cancelReviewRuns = async (payload: Payload, ticket: TicketId): Promise<voi
 }
 
 /** Parks the Ticket on a human with a Ticket comment (never overwrites a completed merge). */
-const escalate = async (payload: Payload, t: Doc, why: string): Promise<ReviewOutcome> => {
+export const escalate = async (payload: Payload, t: Doc, why: string): Promise<ReviewOutcome> => {
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = 'needs_human', "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "review_state" IS DISTINCT FROM 'merged'`)
   const { ts, n } = await sourceOf(payload, t)
   await ts.comment(n, `Bauherr needs a human: ${why}`)
@@ -626,15 +629,30 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
 }
 
 /**
- * The forge reports the MR as conflicting or behind its base: back to Build, where the Runner merges the base in without an agent (an agent runs only on real conflict markers).
- * Neither a review round nor a failed merge; `conflictReturns` counts only agent-resolved conflicts (the build-result handler), and the 4th needs a human.
+ * The factory merged the base into the MR itself (`mergeMainIntoMr`) and found real conflicts: back to Build, where an agent or session resolves the markers.
+ * Neither a review round nor a failed merge; the 4th conflict return needs a human.
  */
-const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
+export const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
   const returns = Number((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })).conflictReturns ?? 0)
   if (returns >= MAX_CONFLICT_RETURNS) return escalate(payload, t, `the MR conflicted with \`${mr.pr.base}\` ${returns} times after other merges; resolve it by hand.`)
   const reason = `the MR conflicts with \`${mr.pr.base}\` after another merge`
-  const text = `${reason}. In an autonomous Run the Runner merges \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} before you start: resolve only the conflict markers it leaves (keep both sides), git add, git commit, change nothing else. In a session Run merge it yourself (git merge, never rebase or force push). Do not open a new MR.`
-  return returnToBuild(payload, t, mr, reason, [], [], { countRound: false, text, conflictBase: reviewedSha })
+  const text = `${reason}. The factory already tried to merge \`${mr.pr.base}\` into \`${mr.pr.head}\` on MR #${mr.pr.number} and found real conflicts: resolve the conflict markers (keep both sides), git add, git commit, change nothing else. In a session Run merge it yourself (git merge, never rebase or force push). Do not open a new MR.`
+  const outcome = await returnToBuild(payload, t, mr, reason, [], [], { countRound: false, text, conflictBase: reviewedSha })
+  if (outcome === 'build') await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_returns" = COALESCE("conflict_returns", 0) + 1 WHERE "id" = ${t.id}`)
+  return outcome
+}
+
+/**
+ * The forge reports the MR as conflicting or behind its base: the factory merges the base itself, in every Run mode (the `merge-main` job decides with git).
+ * The same head still conflicting or behind after 3 no-op merges needs a human.
+ */
+const mergeMainFirst = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
+  if (t.mainMergeSha === mr.pr.headSha && (t.mainMergeNoops ?? 0) >= MAX_MAIN_MERGE_NOOPS) return escalate(payload, t, `the forge still reports the MR as conflicting with or behind \`${mr.pr.base}\` although the factory found nothing to merge ${t.mainMergeNoops} times; fix the MR by hand.`)
+  await moveReview(payload, t.id, 'waiting_checks')
+  const pending = await payload.count({ collection: 'payload-jobs' as never, where: { and: [{ concurrencyKey: { equals: `merge-main:${t.id}` } }, { completedAt: { exists: false } }, { hasError: { not_equals: true } }] } as never, overrideAccess: true })
+  if (pending.totalDocs) return 'waiting_checks'
+  await payload.jobs.queue({ task: 'merge-main', queue: 'runs', input: { ticketId: Number(t.id), reviewedSha } })
+  return 'waiting_checks'
 }
 
 const CAP_MARKER = 'Bauherr needs a human:'
@@ -702,15 +720,18 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  if (mr.pr.behind && mr.pr.mergeable !== false) {
-    const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
-    if (last?.artifacts?.uptodate && last.artifacts.pushedSha === mr.pr.headSha) return escalate(payload, t, `the forge reports the MR as behind \`${mr.pr.base}\`, but the Runner's merge found nothing to merge; fix the MR by hand.`)
-  }
-  if (mr.pr.mergeable === false || mr.pr.behind) return returnConflictToBuild(payload, t, mr, reviewedSha)
+  if (mr.pr.mergeable === false || mr.pr.behind) return mergeMainFirst(payload, t, mr, reviewedSha)
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
   const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
   const checks = mergeChecks(list, age)
-  if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+  await settleRetries(payload, t, mr.pr.headSha, list)
+  if (checks.state === 'red') {
+    if ((await retryRed(payload, t, product, mr, mr.pr.headSha, latestChecks(list).filter((c) => checks.failed.includes(c.name)), latestChecks(list))) === 'retried') {
+      await moveReview(payload, t.id, 'waiting_checks')
+      return 'waiting_checks'
+    }
+    return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+  }
   if (checks.state === 'pending') {
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
@@ -726,7 +747,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
       return 'waiting_checks'
     }
     const now = await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number).catch(() => null)
-    if (now?.mergeable === false) return returnConflictToBuild(payload, t, { ...mr, pr: now }, reviewedSha)
+    if (now?.mergeable === false) return mergeMainFirst(payload, t, { ...mr, pr: now }, reviewedSha)
     payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `merging the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
@@ -779,18 +800,19 @@ const recoverMergeFailures = async (payload: Payload): Promise<void> => {
 }
 
 /**
- * After a Build Run that only merged the base (or resolved a conflict) on the MR: when the Ticket's own diff is unchanged (the Run's `patchId` equals the latest clean review's `reviewedPatchId`),
+ * After a Build Run or the `merge-main` job (`from`) that only merged the base (or resolved a conflict) on the MR: when the Ticket's own diff is unchanged (the Run's `patchId` equals the latest clean review's `reviewedPatchId`),
  * the verdict moves to the new head and goes through the merge gate again (checks still decide); no Review Run starts. Returns false when a new review is needed.
  */
-export const rebindReview = async (payload: Payload, t: Doc): Promise<boolean> => {
-  if (t.stage !== 'review' || t.state !== 'open' || t.reviewState) return false
+export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: string; pushedSha: string; reviewedPatchId?: string }): Promise<boolean> => {
+  if (t.stage !== 'review' || t.state !== 'open' || (t.reviewState && t.reviewState !== 'waiting_checks')) return false
   const latest = async (stage: string, status: string) =>
     (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: stage } }, { status: { equals: status } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
   const [review, build] = [await latest('review', 'succeeded'), await latest('build', 'succeeded')]
   const stored = review?.artifacts?.review
-  if (review?.verdict !== 'clean' || !review.reviewedPatchId || review.reviewedPatchId !== build?.artifacts?.patchId || typeof stored?.markdown !== 'string') return false
+  const reviewed = review?.reviewedPatchId ?? from?.reviewedPatchId
+  if (review?.verdict !== 'clean' || !reviewed || reviewed !== (from?.patchId ?? build?.artifacts?.patchId) || typeof stored?.markdown !== 'string') return false
   const mr = await prOf(payload, t)
-  if (mr?.pr.state !== 'open' || mr.pr.headSha !== build?.artifacts?.pushedSha) return false
+  if (mr?.pr.state !== 'open' || mr.pr.headSha !== (from?.pushedSha ?? build?.artifacts?.pushedSha)) return false
   await payload.update({ collection: 'runs', id: review.id, data: { reviewedSha: mr.pr.headSha }, overrideAccess: true })
   await concludeReview(payload, t.id, { verdict: 'clean', findings: review.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }, mr.pr.headSha, true)
   return true

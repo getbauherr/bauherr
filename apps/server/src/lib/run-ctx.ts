@@ -61,6 +61,12 @@ export const tierModels = async (payload: Payload, ws: Doc): Promise<Record<stri
   )
 }
 
+/** What the Runner's git commands need to reach the forge. */
+export const gitAccess = (github: ConnectionInput) => {
+  const gitBaseUrl = process.env.BAUHERR_GIT_BASE_URL || (github.kind === 'gitlab' ? webOrigin(github) : undefined)
+  return { gitToken: github.secret!, ...(gitBaseUrl && { gitBaseUrl }), ...(github.kind === 'gitlab' && { gitUser: 'oauth2' }) }
+}
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -70,7 +76,6 @@ export const buildRunCtx = async (
   const opts = { overrideAccess: true } as const
   const workspace = typeof run.workspace === 'object' ? run.workspace.id : run.workspace
   const backend = backendFor(d.github)
-  const gitBaseUrl = process.env.BAUHERR_GIT_BASE_URL || (d.github.kind === 'gitlab' ? webOrigin(d.github) : undefined)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
   const goal = await goalFor(payload, ticket, issue.body, run.stage)
@@ -89,7 +94,7 @@ export const buildRunCtx = async (
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 0.5, tier: run.stage === 'review' ? 'standard' : 'cheap' },
+    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...(run.stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : { maxTurns: 20, maxBudgetUsd: 0.5 }), tier: run.stage === 'review' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...(run.stage !== 'plan' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
@@ -100,10 +105,8 @@ export const buildRunCtx = async (
     connection: {
       gatewayUrl,
       gatewayKey: d.gatewayKey,
-      gitToken: d.github.secret!,
       modelByTier,
-      ...(gitBaseUrl ? { gitBaseUrl } : {}),
-      ...(d.github.kind === 'gitlab' ? { gitUser: 'oauth2' } : {}),
+      ...gitAccess(d.github),
     },
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),

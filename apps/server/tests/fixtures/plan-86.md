@@ -41,6 +41,12 @@ Too large for one MR: the engine and session API come first; UI, screenshots, ow
 - **D7 Language** — Options: language of the user's first message; Product setting. Recommended default: language of the first message. Why: no new config; the draft body follows the same language.
 - **D8 Wayfinder owner flow** — Options: chat only for the owner and keep the form; replace the form. Recommended default: keep the decision sheet form and add the chat as an alternative. Why: the form is the shipped surface (#79), no regression.
 
+## Files
+
+- apps/server/src/app/(app)/lib/plan.ts
+- `apps/server/src/lib/intake/**`
+- docs/spec/workflow.md
+
 ## Out of scope
 
 Magic-link resume and reporter replies (#21 step 3), the dedupe hook, anonymous public intake pages, screenshot redaction, voice input.

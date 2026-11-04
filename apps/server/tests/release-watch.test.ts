@@ -122,6 +122,19 @@ it('evaluates only the latest run of a check name', async () => {
   expect(await summaries(n)).toHaveLength(1)
 })
 
+it('a red staging check is re-run once; red then green confirms staging', async () => {
+  await setProduct({ deployChecks: '' })
+  const { pr, n } = await reviewTicket('retry staging')
+  const sha = fake.merge(repo, pr.number)
+  await release.watchRelease(payload)
+  fake.setChecks(repo, sha, [{ id: 1, runId: 3, name: 'ci', status: 'completed', conclusion: 'failure' }])
+  fake.setRerunChecks(repo, sha, [{ id: 2, runId: 3, name: 'ci', status: 'completed', conclusion: 'success' }])
+  await release.watchRelease(payload)
+  expect(await summaries(n)).toHaveLength(0)
+  await release.watchRelease(payload)
+  expect(await summaries(n)).toHaveLength(1)
+})
+
 it('webhook mode: POSTs once, retries after a non-2xx, confirms only 2 minutes after the request', async () => {
   await setProduct({ deployMode: 'webhook', deployWebhookUrl: 'https://hook.example/deploy', stagingUrl: 'https://staging.example' })
   const status = { hook: 500, staging: 200 }

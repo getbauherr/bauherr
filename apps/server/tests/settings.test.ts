@@ -62,3 +62,15 @@ it('a Ticket, a widget token or an intake session blocks deleting its Product', 
   expect(await blockedBy(payload, 'products', b)).toBe('1 widget tokens')
   expect(await blockedBy(payload, 'products', c)).toBe('1 intake sessions')
 })
+
+it('overlapIgnore takes a list of path globs without spaces, and only an Admin may change it', async () => {
+  const ws = await payload.create({ collection: 'workspaces', data: { name: 'oi', slug: 'oi' }, ...o })
+  const product = await payload.create({ collection: 'products', data: { name: 'oi', slug: 'oi', workspace: ws.id as number }, ...o })
+  expect(product.overlapIgnore).toEqual([])
+  await expect(payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: ['a b'] }, ...o })).rejects.toThrow()
+  await expect(payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: 'CHANGELOG.md' as never }, ...o })).rejects.toThrow()
+  expect((await payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: ['CHANGELOG.md', 'src/gen/**'] }, ...o })).overlapIgnore).toEqual(['CHANGELOG.md', 'src/gen/**'])
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'oi@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws.id as number }] }, ...o })
+  await payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: [] }, user: member, overrideAccess: false }).catch(() => {})
+  expect((await payload.findByID({ collection: 'products', id: product.id, ...o })).overlapIgnore).toEqual(['CHANGELOG.md', 'src/gen/**'])
+})

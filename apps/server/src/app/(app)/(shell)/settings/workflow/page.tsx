@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
-import { saveWipLimits } from '../actions'
+import { saveOverlapIgnore, saveWipLimits } from '../actions'
 import { isAdmin, loadWorkflow } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import type { HumanGate } from '../../../../../lib/mode'
@@ -32,6 +32,33 @@ export default async function Workflow() {
           ))}
         </div>
       </SettingsForm>
+      <h2 className="heading">Paths that never hold a Build</h2>
+      <p className="small muted">A Build does not start while an earlier Ticket in Build or Review changes the same paths (from the plan&apos;s Files section, then the pull request). Paths listed here never hold anything. One path glob per line.</p>
+      {w.overlap.map((p) => (
+        <section key={p.id} className="stack">
+          <h3 className="small label-strong">{p.name}</h3>
+          <SettingsForm action={saveOverlapIgnore}>
+            <input type="hidden" name="id" value={p.id} />
+            <Field name="ignore" label={`Paths that never hold a Build (${p.name})`} rows={4} defaultValue={p.ignore.join('\n')} example="pnpm-lock.yaml" />
+          </SettingsForm>
+          {p.suggestions.length > 0 && (
+            <>
+              <p className="small muted">Suggested from history: changed in at least 25% of the last 100 merged pull requests. Nothing is applied until you add it.</p>
+              <ul>
+                {p.suggestions.map((x) => (
+                  <li key={x.path}>
+                    <SettingsForm action={saveOverlapIgnore} submit="Add" inline>
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="add" value={x.path} />
+                      <span className="mono">{x.path}</span> <span className="small muted">{x.percent}%</span>
+                    </SettingsForm>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      ))}
       <h2 className="heading">Where you are asked</h2>
       <p className="small muted">The points where the factory waits for you, in flow order.</p>
       <div className="scroll">

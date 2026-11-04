@@ -70,6 +70,9 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('heading', { name: 'Factory health' })).toBeVisible()
   await expect(page.getByText('Last poll, acme/web')).toBeVisible()
   await expect(page.getByText('Gateway budget')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Flaky checks' })).toBeVisible()
+  await expect(page.getByRole('row', { name: /^e2e 2 / })).toBeVisible()
+  await expect(page.getByRole('row', { name: /^lint 1 / })).toBeVisible()
 })
 
 test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and no technical settings', async ({ page }) => {
@@ -129,5 +132,24 @@ test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiti
   await page.goto('/settings/workflow')
   await page.getByLabel(/^Build/).fill('')
   await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})
+
+test('Paths that never hold a Build: saved per Product in Settings > Workflow', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workflow')
+  await expect(page.getByRole('heading', { name: 'Paths that never hold a Build' })).toBeVisible()
+  const field = page.getByLabel('Paths that never hold a Build (Acme Web)')
+  const glob = `e2e-${Date.now()}/**`
+  await field.fill(`CHANGELOG.md\n${glob}`)
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.reload()
+  await expect(field).toHaveValue(`CHANGELOG.md\n${glob}`)
+  await field.fill('has space')
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('One path glob per line, without spaces')).toBeVisible()
+  await field.fill('')
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })
