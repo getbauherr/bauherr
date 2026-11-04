@@ -258,18 +258,22 @@ describe('Board counts and waiting display', () => {
     expect(await row()).toMatchObject({ waiting: 'Waiting: Build is full (1/1)', blockedBy: [] })
   })
 
-  it('never stores waitingFor equal to stage', async () => {
+  it('never stores waitingFor equal to stage, except an overlap hold that carries its reason', async () => {
     const t = await ticket('t', 'plan', { waitingFor: 'build' })
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', waitingFor: 'build', waitingReason: 'x' }, ...o })
-    expect(await reload(t.id)).toMatchObject({ stage: 'build', waitingFor: null, waitingReason: null })
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', waitingFor: 'build' }, ...o })
+    expect(await reload(t.id)).toMatchObject({ stage: 'build', waitingFor: null })
     const u = await ticket('u', 'plan', { waitingFor: 'build' })
     await payload.update({ collection: 'tickets', id: u.id, data: { stage: 'build' }, ...o })
     expect(await reload(u.id)).toMatchObject({ waitingFor: null })
+    const held = await ticket('h', 'plan')
+    await payload.update({ collection: 'tickets', id: held.id, data: { stage: 'build', waitingFor: 'build', waitingReason: 'overlaps #1' }, ...o })
+    expect(await reload(held.id)).toMatchObject({ stage: 'build', waitingFor: 'build', waitingReason: 'overlaps #1' })
     const db = payload.db.drizzle
-    await db.execute(sql`UPDATE "tickets" SET "waiting_for" = 'build', "waiting_reason" = 'x' WHERE "id" = ${t.id}`)
+    await db.execute(sql`UPDATE "tickets" SET "waiting_for" = 'build', "waiting_reason" = NULL WHERE "id" = ${t.id}`)
     expect((await reload(t.id)).waitingFor).toBe('build')
     await (await import('../src/migrations/20261104_170000_clear_self_waiting')).up({ db } as never)
-    expect(await reload(t.id)).toMatchObject({ waitingFor: null, waitingReason: null })
+    expect((await reload(t.id)).waitingFor).toBeNull()
+    expect(await reload(held.id)).toMatchObject({ waitingFor: 'build', waitingReason: 'overlaps #1' })
   })
 })
 

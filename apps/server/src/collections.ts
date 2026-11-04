@@ -392,15 +392,14 @@ const tickets = col('tickets', [
 ], {
   indexes: [{ fields: ['product', 'externalId'], unique: true }],
   hooks: {
-    /** The one write guard for "waitingFor is never the Ticket's own stage": covers the poller, `completeMove` and hand edits. */
+    /** The one write guard for "waitingFor is never the Ticket's own stage" (except an overlap hold, which carries a `waitingReason`): covers the poller, `completeMove` and hand edits. */
     beforeChange: [
       ({ data, originalDoc }) => {
         const stage = 'stage' in data ? data.stage : originalDoc?.stage
         const waitingFor = 'waitingFor' in data ? data.waitingFor : originalDoc?.waitingFor
-        if (waitingFor && waitingFor === stage) {
-          data.waitingFor = null
-          data.waitingReason = null
-        }
+        const reason = 'waitingReason' in data ? data.waitingReason : originalDoc?.waitingReason
+        // A Build held for overlapping paths (`waitingReason` "overlaps #N") may sit in Build without a Run: the reason marks it as deliberate.
+        if (waitingFor && waitingFor === stage && !reason) data.waitingFor = null
         return data
       },
     ],
