@@ -79,7 +79,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
           {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
           {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
           {secondary}
-          {canExpedite && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline">Expedite</Post>}
+          {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline">Expedite</Post>}
           {primary}
         </div>
       )}
