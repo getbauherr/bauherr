@@ -98,15 +98,23 @@ const obj = (properties: Record<string, unknown>, required: string[] = []): Tool
 const str = (description: string) => ({ type: 'string', description })
 const runId = { runId: { type: ['number', 'string'], description: 'Run id' } }
 const leaseToken = { leaseToken: str('Lease token returned by claim_run') }
+const sessionArg = { session: str('Stable name of this session (max 64 chars). Pass it on every claim_next, claim_run and list_frontier: a Review of a build you labelled the same is skipped as "your own build".') }
 const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id (Bauherr database id)' } }
 
 class ClaimLost extends Error {}
+
+/** The caller's session label, or null when it sent none (such a session is never skipped). */
+const labelOf = (a: { session?: unknown }): string | null => {
+  if (a.session == null) return null
+  if (typeof a.session !== 'string' || a.session.length > 64) throw new Error('session must be a string of at most 64 characters')
+  return a.session.trim() || null
+}
 
 /** The GitHub login a session Run assigns on the Ticket. */
 const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
 
 /** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
-const claimRun = async (c: Ctx, runId: number | string) => {
+const claimRun = async (c: Ctx, runId: number | string, label: string | null = null) => {
   const run = await getRun(c, runId)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
   if (run.mode !== 'session') throw new Error(notClaimable)
@@ -119,7 +127,7 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -135,11 +143,11 @@ const claimRun = async (c: Ctx, runId: number | string) => {
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = run.stage === 'triage' || run.stage === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
-  const skipped = await skippedBefore(c, ticket)
+  const skipped = await skippedBefore(c, ticket, label)
   return { run: won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
-type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[] }
+type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
 
 /** Open, unblocked, non-parent Tickets in frontier order with their latest Run; `all` also holds the blocked ones (for skip reasons). */
 const frontier = async (c: Ctx, productSlug?: string): Promise<Frontier | null> => {
@@ -164,8 +172,12 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<Frontier | null> 
     ...scoped(c),
   })
   const latest = new Map<unknown, Doc>()
-  for (const r of runs.docs as Doc[]) if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
-  return { open: frontierOrder(unblocked as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all }
+  const builders = new Map<unknown, string | null>()
+  for (const r of runs.docs as Doc[]) {
+    if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
+    if (r.stage === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
+  }
+  return { open: frontierOrder(unblocked as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all, builders }
 }
 
 const openBlockers = (t: Doc): Doc[] => ((t.blockedBy as Doc[]) ?? []).filter((b) => b.state === 'open')
@@ -178,17 +190,22 @@ const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unkno
   )
 }
 
+/** A Review Run on a Ticket whose latest Build Run came from the caller's own (non-empty) session label. */
+const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && f.latest.get(t.id)?.stage === 'review' && f.builders.get(t.id) === label
+
 /** Why `t` cannot be claimed right now, or null when it can. */
-const skipReason = (t: Doc, latest: Map<unknown, Doc>, owners: Map<unknown, string>): string | null => {
+const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: string | null): string | null => {
+  const latest = f.latest
   const blockers = openBlockers(t)
   if (blockers.length) return `blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}`
   const r = latest.get(t.id)
   if (r?.status === 'running' && r.mode === 'session') return `leased by ${owners.get(id(r.sessionOwner)) ?? 'another session'}`
+  if (isClaimable(r) && isOwnBuild(t, f, label)) return 'your own build'
   return isClaimable(r) ? null : 'no claimable Run'
 }
 
 /** The Tickets ahead of `claimed` in the pull order that could not be claimed, with the reason. */
-const skippedBefore = async (c: Ctx, claimed: Doc) => {
+const skippedBefore = async (c: Ctx, claimed: Doc, label: string | null) => {
   const f = await frontier(c)
   if (!f) return []
   const owners = await leaseOwners(c, f.latest)
@@ -196,7 +213,7 @@ const skippedBefore = async (c: Ctx, claimed: Doc) => {
     .filter((t) => t.id !== claimed.id && executionOrder(t as FrontierTicket, claimed as FrontierTicket) < 0)
     .sort((a, b) => executionOrder(a as FrontierTicket, b as FrontierTicket))
     .flatMap((t) => {
-      const reason = skipReason(t, f.latest, owners)
+      const reason = skipReason(t, f, owners, label)
       return reason ? [{ ticket: t.id, number: t.number, stage: t.stage, reason }] : []
     })
 }
@@ -213,8 +230,9 @@ export const tools: Tool[] = [
     name: 'list_frontier',
     access: 'agent',
     description: 'Open, unblocked Tickets with stage and latest Run state. Only claim Tickets with claimable=true; leased ones show leasedBy + leaseExpiresAt: never touch their branch or worktree.',
-    inputSchema: obj({ product: str('Product slug') }),
+    inputSchema: obj({ product: str('Product slug'), ...sessionArg }),
     async run(a, c) {
+      const label = labelOf(a)
       const f = await frontier(c, a.product)
       if (!f) return []
       const { open, latest } = f
@@ -222,11 +240,12 @@ export const tools: Tool[] = [
       const owners = await leaseOwners(c, latest)
       return open.map((t: Doc) => {
         const r = latest.get(t.id)
+        const claimable = isClaimable(r) && !isOwnBuild(t, f, label)
         return {
           ticket: t.id, number: t.number, title: t.title, url: t.url, stage: t.stage, labels: t.labels, assignee: t.assignee,
           run: r ? { id: r.id, stage: r.stage, status: r.status, mode: r.mode } : null,
-          claimable: isClaimable(r),
-          ...(!isClaimable(r) && { reason: skipReason(t, latest, owners) }),
+          claimable,
+          ...(!claimable && { reason: skipReason(t, f, owners, label) }),
           ...(leases.includes(r as Doc) && { leasedBy: owners.get(id(r!.sessionOwner)) ?? null, leaseExpiresAt: new Date(new Date(r!.heartbeatAt).getTime() + SESSION_TIMEOUT_MS).toISOString() }),
         }
       })
@@ -250,33 +269,36 @@ export const tools: Tool[] = [
     name: 'claim_run',
     access: 'agent',
     description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return is accepted (a Run whose claim failed in the last 5 minutes does not count); any other is refused with "take Run N (#T, column) first", a blocked, leased or superseded one with "not claimable now". The check is workspace-wide, while claim_next {product} is product-scoped. Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
-    inputSchema: obj(runId, ['runId']),
+    inputSchema: obj({ ...runId, ...sessionArg }, ['runId']),
     async run(a, c) {
+      const label = labelOf(a)
       const run = await getRun(c, a.runId)
       if (isClaimable(run)) {
         const ticket = await getTicket(c, id(run.ticket))
         if (ticket.stage === 'parent') throw new Error('parents are not claimable')
         const f = (await frontier(c))!
         if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
-        const top = f.open.map((t) => f.latest.get(t.id)).find((r) => isClaimable(r) && !recentlyFailed(r!))
+        const top = f.open.filter((t) => !isOwnBuild(t, f, label)).map((t) => f.latest.get(t.id)).find((r) => isClaimable(r) && !recentlyFailed(r!))
+        if (isOwnBuild(ticket, f, label) && (!top || top.id === run.id)) throw new Error(`Run ${run.id} is your own build: another session reviews it`)
         if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => f.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
       }
-      return claimRun(c, a.runId)
+      return claimRun(c, a.runId, label)
     },
   },
   {
     name: 'claim_next',
     access: 'agent',
     description: 'Claim the top claimable Run in frontier order (right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
-    inputSchema: obj({ product: str('Product slug') }),
+    inputSchema: obj({ product: str('Product slug'), ...sessionArg }),
     async run(a, c) {
+      const label = labelOf(a)
       const f = await frontier(c, a.product)
       const failed: { run: number | string; reason: string }[] = []
       for (const t of f?.open ?? []) {
         const r = f!.latest.get(t.id)
-        if (!isClaimable(r)) continue
+        if (!isClaimable(r) || isOwnBuild(t, f!, label)) continue
         try {
-          const claimed = await claimRun(c, r!.id)
+          const claimed = await claimRun(c, r!.id, label)
           return { ...claimed, skipped: [...claimed.skipped, ...failed] }
         } catch (e) {
           if (e instanceof ClaimLost) continue
