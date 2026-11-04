@@ -57,6 +57,7 @@ export function DeploySections({ data: { product: p, workflow }, admin, numbered
           <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
         </div>
         <p className="small muted">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/settings/workflow">See the workflow</Link>.</>}</p>
+        <Field name="checkRetries" label="Re-run a failed check once" type="number" min={0} max={1} hint="1: a failed check is re-run once before it sends the change back or stops a release. 0 turns this off." defaultValue={d.checkRetries} />
         <Field name="gateOwners" label="Who approves?" hint="GitHub logins, comma-separated. They are assigned on GitHub and mentioned when a Ticket waits for an approval. Empty: all Admins with a GitHub login." example="sbuckpesch" defaultValue={d.gateOwners} />
       </SettingsSection>
 

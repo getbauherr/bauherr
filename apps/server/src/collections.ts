@@ -386,6 +386,8 @@ const tickets = col('tickets', [
   { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
   { name: 'conflictReturnBase', type: 'text', admin: { description: 'The head SHA a review covered before the MR went back to Build to merge the base; the next review covers only the diff from it. Cleared when that review concludes.' } },
   { name: 'conflictReturns', type: 'number', defaultValue: 0, admin: { description: 'Returns to Build because the MR conflicted; the 4th needs a human.' } },
+  { name: 'mainMergeSha', type: 'text', admin: { readOnly: true, description: 'The MR head on which the factory last found nothing to merge; with `mainMergeNoops` it detects a forge that keeps reporting that head behind or conflicting.' } },
+  { name: 'mainMergeNoops', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'No-op merges of the base on `mainMergeSha`; the 3rd needs a human. Reset by a merge that pushes.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
 ], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
 
@@ -409,6 +411,7 @@ export const collections: CollectionConfig[] = [
     select('releaseMode', ['notes-only', 'factory'], { defaultValue: 'notes-only', required: true, admin: { description: 'notes-only: the Product\'s own tooling makes the release, the factory adds the notes. factory: the factory tags, releases and opens a CHANGELOG.md MR.' } }),
     { name: 'releasePrerelease', type: 'checkbox', defaultValue: false, admin: { description: 'factory mode: publish a pre-release v<next>-rc.N instead of a stable version (no CHANGELOG MR).' } },
     text('releaseChecks', { admin: { description: 'Comma-separated check names on the release commit (for example image, npm); the Ticket shows "Released in" only when they pass. Empty: do not wait.' } }),
+    { name: 'checkRetries', type: 'number', defaultValue: 1, min: 0, max: 1, admin: { description: 'Re-run a failed check once before it counts (1 = on, 0 = off).' } },
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
     {
       name: 'overlapIgnore',
@@ -502,6 +505,14 @@ export const collections: CollectionConfig[] = [
     text('baseContent'),
     text('status'),
   ], { access: { create: () => false, update: () => false, delete: () => false } }),
+  col('check_flakes', [
+    rel('ticket', 'tickets', { required: true }),
+    text('checkName', { required: true }),
+    num('checkId'),
+    text('sha', { required: true }),
+    text('runUrl'),
+    select('outcome', ['pending', 'flake', 'failed'], { defaultValue: 'pending', required: true }),
+  ], { indexes: [{ fields: ['ticket', 'sha', 'checkName'], unique: true }] }),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
     select('layer', ['core', 'workspace', 'product'], { required: true }),

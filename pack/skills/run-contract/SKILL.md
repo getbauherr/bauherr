@@ -58,7 +58,7 @@ Refer to the Ticket as `Refs #N` in the MR body and commit messages; never `Clos
 Update the worklog as your last action. Do not push or open the MR yourself: the Runner does after you exit.
 
 ## Conflicts with main
-In an autonomous Run the Runner has already merged the base branch into the MR branch before your turn (a clean merge needs no agent). If the tree is mid-merge, resolve only the conflict markers keeping both sides, `git add`, `git commit`, and change nothing else; do not fetch or push. In a session Run merge the base yourself (`git merge`); never rebase, never force push.
+The factory merges the base into the MR itself and starts a Build Run only on real conflicts, so a Build Run for a conflicting MR means conflict markers. In an autonomous Run the Runner has already started the merge before your turn. If the tree is mid-merge, resolve only the conflict markers keeping both sides, `git add`, `git commit`, and change nothing else; do not fetch or push. In a session Run merge the base yourself (`git merge`); never rebase, never force push.
 
 ## Do not
 - Mark a statement verified without evidence.

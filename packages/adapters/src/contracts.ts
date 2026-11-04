@@ -116,7 +116,7 @@ export interface PullRequest {
   draft: boolean;
   /** False only when the forge reports conflicts with the base (GitLab: `has_conflicts` / `merge_status: cannot_be_merged`); undefined while unknown. */
   mergeable?: boolean;
-  /** True when the forge reports the head as behind the base (GitHub `mergeable_state: behind`, GitLab `need_rebase`); the Runner then merges the base in. */
+  /** True when the forge reports the head as behind the base (GitHub `mergeable_state: behind`, GitLab `need_rebase`); the factory then merges the base in. */
   behind?: boolean;
   /** Set once merged. */
   mergeSha?: string;
@@ -137,6 +137,8 @@ export interface Check {
   startedAt?: string;
   /** Link to the run or status, when the forge has one. */
   url?: string;
+  /** Workflow run (GitHub Actions) or pipeline (GitLab) the check belongs to; `rerunFailed` re-runs it. */
+  runId?: number;
 }
 export interface NewPullRequest {
   title: string;
@@ -187,6 +189,8 @@ export interface Forge {
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
   /** Check runs plus legacy commit statuses (a status is a check named after its context). */
   listChecks(repo: RepoRef, sha: string): Promise<Check[]>;
+  /** Re-runs the failed jobs of the runs these checks belong to; false when nothing could be re-run (commit status, bridge, no `runId`). */
+  rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean>;
   /** ISO time the commit was made. */
   getCommitDate(repo: RepoRef, sha: string): Promise<string>;
   /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown); returns the merge commit sha. */

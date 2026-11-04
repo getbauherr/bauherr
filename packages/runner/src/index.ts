@@ -14,6 +14,7 @@ export { checkGoal } from './goal.js';
 export { materialise, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
+export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
 export const mrBody = (ticketUrl: string, evidence: string): string => `Refs ${ticketUrl}\n\n${evidence}\n`;
