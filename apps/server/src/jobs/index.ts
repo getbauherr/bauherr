@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, stageOf, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
@@ -356,6 +356,18 @@ export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
 }
 
+/** The forge is the truth for dependencies: the full `blockedBy` set (Ticket ids of the Product; a blocker not polled yet is ignored). Empty object on a read error, which keeps the stored set. */
+const forgeBlockers = async (payload: Payload, forge: TicketSource, product: number | string, number: number): Promise<{ blockedBy?: (number | string)[] }> => {
+  try {
+    const { blockedBy } = await forge.get(String(number))
+    const known = blockedBy.length ? await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { externalId: { in: blockedBy } }] }, pagination: false, depth: 0, overrideAccess: true }) : { docs: [] }
+    return { blockedBy: known.docs.map((d) => d.id) }
+  } catch (e) {
+    payload.logger.warn({ err: e, ticket: number }, 'forge dependencies unreadable, keeping the stored set')
+    return {}
+  }
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: scheduled('0 * * * * *'),
@@ -465,6 +477,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (prev?.factoryStage && stage === prev.factoryStage) clearFactoryStage = true
           const data = {
             ...base,
+            ...(await forgeBlockers(payload, backendFor(conn).tickets(src.repo), id(src.product), t.number)),
             stage,
             ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
