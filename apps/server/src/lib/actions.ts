@@ -251,8 +251,8 @@ export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketI
   if (t.state === 'closed' || ['release', 'done', PARENT].includes(t.stage)) throw new Error('the Ticket is past the stages the Expedite lane serves')
   if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Workflow')
   const { ts, n } = await sourceOf(payload, t)
+  await touch(payload, user, t, 'expedite') // before the label: a poll in between must find the touch that vouches for it
   await ts.addLabels(n, [EXPEDITE_LABEL])
-  await touch(payload, user, t, 'expedite')
   if (((t.labels ?? []) as string[]).includes(EXPEDITE_PROPOSED)) await ts.removeLabels(n, [EXPEDITE_PROPOSED])
   return { labelled: EXPEDITE_LABEL }
 }

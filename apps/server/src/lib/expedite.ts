@@ -64,8 +64,10 @@ export const startExpedites = async (payload: Payload): Promise<number> => {
   for (const t of waiting) {
     try {
       if (t.mergeSha || t.waitingFor || (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) continue
-      // A live Triage Run finishes first (its outcome then meets the flag); a Plan Run must not start next to it.
-      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'triage' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, overrideAccess: true })).totalDocs > 0) continue
+      // A Triage Run being worked on finishes first (its outcome then meets the flag); one nobody has claimed is cancelled: the lane skips the Triage queue.
+      const triage = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'triage' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
+      if (triage.some((r) => r.status === 'running')) continue
+      for (const r of triage) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'expedite: the lane skips Triage', finishedAt: new Date().toISOString() }, ...o })
       const { tickets: ts } = await forgeOf(payload, id(t.product))
       if (!(await laneOn(payload, id(t.workspace)))) {
         await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })

@@ -223,6 +223,24 @@ describe('Triage proposal', () => {
     expect((await comments(i.number)).some((c) => c.includes('Bauherr removed `bauherr:expedite`'))).toBe(true)
   })
 
+  it('an unclaimed Triage Run is cancelled on entry; one being worked on makes the Ticket wait', async () => {
+    const i = await issue('prod down', '', [])
+    await poll()
+    const t = await byNumber(i.number)
+    const triage = await runs(t.id, 'triage')
+    expect(triage).toHaveLength(1)
+    fake.actingAs = 'maria'
+    await fake.tickets(repo).addLabels(String(i.number), [EXPEDITE_LABEL])
+    fake.actingAs = 'factory'
+    await payload.update({ collection: 'runs', id: triage[0]!.id, data: { status: 'running' }, ...o })
+    await poll()
+    expect((await reload(t.id)).stage).not.toBe('plan')
+    await payload.update({ collection: 'runs', id: triage[0]!.id, data: { status: 'awaiting_session' }, ...o })
+    await poll()
+    expect((await payload.findByID({ collection: 'runs', id: triage[0]!.id, ...o })).status).toBe('cancelled')
+    expect((await reload(t.id)).stage).toBe('plan')
+  })
+
   it('only an Admin can use the Expedite action', async () => {
     const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
     const t = await inBuild('plain', ['src/a.ts'])
