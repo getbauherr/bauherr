@@ -82,5 +82,7 @@ describe('openSessions ?session= guard', () => {
     await mk({ user: other })
     await mk({ status: 'submitted' })
     expect(await requests.countOwnDrafts(me, ws)).toBe(before + 1)
+    for (let i = 0; i < 11; i++) await mk({})
+    expect(await requests.countOwnDrafts(me, ws)).toBe(before + 12)
   })
 })

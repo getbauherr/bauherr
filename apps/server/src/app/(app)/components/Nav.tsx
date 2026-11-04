@@ -5,7 +5,7 @@ import { Tab, Tabs } from './ui/tabs'
 export function Nav({ needsYou, drafts, hasKnowledge }: { needsYou: number; drafts: number; hasKnowledge: boolean }) {
   const path = usePathname()
   const items = [
-    { href: '/requests', label: 'Requests', current: path.startsWith('/requests'), badge: drafts, noun: 'drafts' },
+    { href: '/requests', label: 'Requests', current: path.startsWith('/requests'), badge: drafts, noun: drafts === 1 ? 'draft' : 'drafts' },
     { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou, noun: 'need you' },
     ...(hasKnowledge ? [{ href: '/knowledge', label: 'Knowledge', current: path.startsWith('/knowledge'), badge: 0, noun: '' }] : []),
   ]

@@ -15,7 +15,7 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
 
   await page.getByRole('link', { name: /^Requests/ }).click()
   await page.getByRole('link', { name: 'New request' }).first().click()
-  await page.getByRole('link', { name: 'Requests', exact: true }).last().click()
+  await page.locator('.intake').getByRole('link', { name: 'Requests', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
   const draft = page.locator('tbody tr').filter({ hasText: 'Export totals drift' })
   await expect(draft).toContainText('Draft')
