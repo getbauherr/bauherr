@@ -3,7 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
-import { oidcStrategy } from './lib/oidc-session'
+import { oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
 
@@ -44,7 +44,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
   labels: { singular: 'Bauherr', plural: 'Bauherren' },
-  auth: { useAPIKey: true, strategies: [oidcStrategy] },
+  auth: { useAPIKey: true, strategies: [oidcStrategy], tokenExpiration: SESSION_TTL_S },
   admin: { useAsTitle: 'email' },
   access: {
     admin: isAdmin,

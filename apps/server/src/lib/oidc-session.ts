@@ -3,7 +3,7 @@ import type { AuthStrategy } from 'payload'
 import { secret } from './secrets'
 
 export const SESSION_COOKIE = 'bauherr-session'
-export const SESSION_TTL_S = 7 * 86400
+export const SESSION_TTL_S = 14 * 86400
 
 const b64 = (b: Buffer | string) => Buffer.from(b).toString('base64url')
 const mac = (body: string, key: string) => createHmac('sha256', key).update(body).digest()
