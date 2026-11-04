@@ -53,4 +53,4 @@ Singular Bauherr, plural Bauherren, never "Bauherrs". People are added, not crea
 
 ## Styling
 
-Pages use `app.css` classes or, for new components, Tailwind v4 utilities with shadcn/ui components (Radix primitives, copied into `apps/server/src/app/(app)/components/ui`, no runtime UI package). Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is not loaded; shadcn roots carry the `aui-root` class for the part they need. Chat UIs use assistant-ui's shadcn components.
+Pages use Tailwind v4 utilities with shadcn/ui components; `app.css` holds only legacy classes of the pages not yet moved (Requests, Intake chat, Settings > Products and the shared form primitives) (Radix primitives, copied into `apps/server/src/app/(app)/components/ui`, no runtime UI package). Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is not loaded; shadcn roots carry the `aui-root` class for the part they need. Chat UIs use assistant-ui's shadcn components.

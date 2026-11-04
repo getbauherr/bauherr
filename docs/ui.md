@@ -118,7 +118,7 @@ Routes `/settings/workspace`, `/products` (list: Product, Repository, Setup word
 
 ## Theming
 
-`pnpm --filter server tokens` generates `(app)/tokens.css` from `docs/design/tokens.json` (also run by `predev`/`prebuild`; commit the result). Light and dark follow `prefers-color-scheme`; the avatar-menu Theme row (System / Light / Dark, menu stays open) sets `data-theme` and stores it in `localStorage` (`bauherr-theme`). Shared classes are in `app.css`.
+`pnpm --filter server tokens` generates `(app)/tokens.css` from `docs/design/tokens.json` (also run by `predev`/`prebuild`; commit the result). Light and dark follow `prefers-color-scheme`; the avatar-menu Theme row (System / Light / Dark, menu stays open) sets `data-theme` and stores it in `localStorage` (`bauherr-theme`). Pages use Tailwind utilities and shadcn components; `app.css` keeps only the legacy rules still used by the Requests page, the Intake chat and the Products pages with the form primitives (`SettingsForm.tsx`, `SettingsParts.tsx`), and shrinks as they move.
 
 ## Add a page
 
