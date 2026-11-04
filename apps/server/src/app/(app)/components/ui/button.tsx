@@ -10,6 +10,7 @@ const variants = cva(
       variant: {
         default: 'border-primary bg-primary text-primary-foreground hover:bg-accent-strong',
         outline: 'border-border bg-card text-foreground hover:bg-secondary',
+        destructive: 'border-destructive bg-destructive text-white! hover:opacity-90',
         ghost: 'border-transparent bg-transparent text-foreground hover:bg-secondary',
       },
       size: { default: 'h-9 px-3', sm: 'h-8 px-3', icon: 'size-9' },
