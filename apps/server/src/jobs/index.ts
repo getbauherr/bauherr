@@ -5,6 +5,7 @@ import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
+import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
@@ -550,7 +551,6 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
-          if (r.artifacts.mergeConflict) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_returns" = COALESCE("conflict_returns", 0) + 1 WHERE "id" = ${ticket.id}`)
           const reviewing = await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts })
           if (!(await rebindReview(payload, reviewing))) await startReviewIfReady(payload, reviewing)
         } catch (e) {
@@ -569,6 +569,17 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await queueReconcile(payload, run.id)
       throw e
     }
+  },
+}
+
+export const mergeMainTask: TaskConfig<{ input: { ticketId: number; reviewedSha?: string | null }; output: Record<string, never> }> = {
+  slug: 'merge-main',
+  retries: 0,
+  concurrency: { key: ({ input }) => `merge-main:${input.ticketId}`, exclusive: true, supersedes: true },
+  inputSchema: [{ name: 'ticketId', type: 'number', required: true }, { name: 'reviewedSha', type: 'text' }],
+  handler: async ({ input, req }) => {
+    await mergeMainIntoMr(req.payload, input.ticketId, input.reviewedSha ?? null)
+    return { output: {} }
   },
 }
 
@@ -604,4 +615,4 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]
+export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]

@@ -116,7 +116,7 @@ export interface PullRequest {
   draft: boolean;
   /** False only when the forge reports conflicts with the base (GitLab: `has_conflicts` / `merge_status: cannot_be_merged`); undefined while unknown. */
   mergeable?: boolean;
-  /** True when the forge reports the head as behind the base (GitHub `mergeable_state: behind`, GitLab `need_rebase`); the Runner then merges the base in. */
+  /** True when the forge reports the head as behind the base (GitHub `mergeable_state: behind`, GitLab `need_rebase`); the factory then merges the base in. */
   behind?: boolean;
   /** Set once merged. */
   mergeSha?: string;
@@ -189,6 +189,8 @@ export interface Forge {
   getCommitDate(repo: RepoRef, sha: string): Promise<string>;
   /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown); returns the merge commit sha. */
   mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
+  /** Merges the base into the head branch on the forge (GitHub update-branch) while the head is still `expectSha`; `conflict` when it cannot (conflicts, or the head moved). Absent where the forge has no merge-based equivalent. */
+  updateBranch?(repo: RepoRef, number: number, o: { expectSha: string }): Promise<'updated' | 'conflict'>;
   /** Blob paths of `ref` (default branch when omitted) and the commit sha they belong to. */
   listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[]; truncated?: boolean }>;
   /** `sha` is the blob sha, to be passed back as `putFile`'s `expectSha`. */

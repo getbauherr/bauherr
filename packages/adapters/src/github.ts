@@ -365,6 +365,15 @@ class GithubForge implements Forge {
     }
     return { mergeSha: m.sha as string, ...(branchDeleteError ? { branchDeleteError } : {}) };
   }
+  async updateBranch(repo: RepoRef, n: number, o: { expectSha: string }): Promise<'updated' | 'conflict'> {
+    try {
+      await this.h.json('PUT', `/repos/${repo}/pulls/${n}/update-branch`, { expected_head_sha: o.expectSha });
+      return 'updated';
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 422) return 'conflict';
+      throw e;
+    }
+  }
   async listFiles(repo: RepoRef, ref?: string) {
     const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
     const tree = await this.h.json('GET', `/repos/${repo}/git/trees/${c.commit.tree.sha}?recursive=1`);
