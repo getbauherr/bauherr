@@ -23,6 +23,8 @@ export interface Ctx {
   /** Set by handlers once a Run or Ticket is loaded; used for the tool_calls row. */
   workspace?: number | string
   run?: number | string
+  /** Name of the tool being called; recorded as the Run's `last_lease_call`. */
+  tool?: string
 }
 export interface Tool {
   name: string
@@ -59,13 +61,20 @@ const assertLease = (run: Doc, a: { leaseToken?: unknown }): void => {
 
 const U = sql`"updated_at" = now()`
 
-/** Applies `set` to the Run only while it is still running, holds `token` and its heartbeat is fresh (one conditional UPDATE); else `lease lost`. */
-const ownerWrite = async (c: Ctx, run: Doc, token: unknown, set: ReturnType<typeof sql>): Promise<void> => {
+/**
+ * Applies `set` to the Run only while it is still running, holds `token` and its heartbeat is fresh (one conditional UPDATE); else `lease lost`.
+ * Every successful call also renews the lease (`heartbeat_at = now()`, unless `renew` is false because `set` clears it) and returns the new `leaseExpiresAt` (ISO).
+ * A wrong token or an expired lease matches no row, so it never renews.
+ */
+const renewLease = async (c: Ctx, run: Doc, token: unknown, set: ReturnType<typeof sql> = U, renew = true): Promise<string> => {
+  const beat = renew ? sql`"heartbeat_at" = now(), ` : sql``
   const r = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET ${set} WHERE "id" = ${run.id} AND "status" = 'running' AND "lease_hash" = ${sha256(String(token))} AND "heartbeat_at" > now() - make_interval(secs => ${SESSION_TIMEOUT_MS / 1000}) RETURNING "id"`,
+    sql`UPDATE "runs" SET ${beat}"last_lease_call" = ${c.tool ?? null}, ${set} WHERE "id" = ${run.id} AND "status" = 'running' AND "lease_hash" = ${sha256(String(token))} AND "heartbeat_at" > now() - make_interval(secs => ${SESSION_TIMEOUT_MS / 1000}) RETURNING (extract(epoch from "heartbeat_at") * 1000)::float8 AS "ms"`,
   )
   if (!r.rows.length) throw new Error(`lease lost: run ${run.id}`)
+  return renew ? new Date(Number(r.rows[0].ms) + SESSION_TIMEOUT_MS).toISOString() : '' // no lease after release
 }
+const ownerWrite = renewLease
 
 /** Loads a Run in the caller's Workspace; `own` additionally requires the live lease. */
 const getRun = async (c: Ctx, runId: number | string, own?: { leaseToken?: unknown }): Promise<Doc> => {
@@ -127,7 +136,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -316,8 +325,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      await ownerWrite(c, run, a.leaseToken, sql`"heartbeat_at" = now(), ${U}`)
-      return { ok: true }
+      return { ok: true, leaseExpiresAt: await renewLease(c, run, a.leaseToken) }
     },
   },
   {
@@ -339,7 +347,9 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       const leased = (await c.payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, limit: 1, showHiddenFields: true, ...scoped(c) })).docs[0]
       if (leased) assertLease(leased, a)
-      return updateWorklog(c.payload, c.user, a)
+      const written = await updateWorklog(c.payload, c.user, a)
+      const leaseExpiresAt = leased ? await renewLease(c, leased, a.leaseToken) : undefined
+      return { ...written, ...(leaseExpiresAt && { leaseExpiresAt }) }
     },
   },
   {
@@ -349,14 +359,14 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, summary: str('What was done'), tokens: { type: 'object', properties: { in: { type: 'number' }, out: { type: 'number' } } } }, ['runId', 'leaseToken', 'summary']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      await ownerWrite(c, run, a.leaseToken, U)
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       const seq = (await c.payload.count({ collection: 'steps', where: { run: { equals: run.id } }, overrideAccess: true })).totalDocs + 1
       const step = await c.payload.create({
         collection: 'steps',
         data: { run: run.id, workspace: id(run.workspace), seq, summary: a.summary, tokensIn: a.tokens?.in, tokensOut: a.tokens?.out, startedAt: now() },
         ...scoped(c),
       })
-      return { step: step.id, seq }
+      return { step: step.id, seq, leaseExpiresAt }
     },
   },
   {
@@ -366,8 +376,8 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Evidence to append') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      await ownerWrite(c, run, a.leaseToken, sql`"evidence" = concat_ws(E'\n\n', NULLIF("evidence", ''), ${a.markdown}::text), ${U}`)
-      return { ok: true }
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken, sql`"evidence" = concat_ws(E'\n\n', NULLIF("evidence", ''), ${a.markdown}::text), ${U}`)
+      return { ok: true, leaseExpiresAt }
     },
   },
   {
@@ -378,7 +388,8 @@ export const tools: Tool[] = [
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
       if (run.stage !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
-      return submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
+      return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })), leaseExpiresAt }
     },
   },
   {
@@ -388,7 +399,8 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      return requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
+      return { ...(await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })), leaseExpiresAt }
     },
   },
   {
@@ -398,8 +410,9 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       const failures = await preReviewFailures(c.payload, await getTicket(c, id(run.ticket)), run.evidence ?? '')
-      return { failures, rules: walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' })) }
+      return { failures, rules: walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' })), leaseExpiresAt }
     },
   },
   {
@@ -439,8 +452,8 @@ export const tools: Tool[] = [
       if (run.stage !== 'build') throw new Error('relink_mr is for Build Runs')
       const ticket = await getTicket(c, id(run.ticket))
       await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
-      await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
-      return { linked: a.prUrl }
+      const leaseExpiresAt = await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
+      return { linked: a.prUrl, leaseExpiresAt }
     },
   },
   {
@@ -516,7 +529,7 @@ export const tools: Tool[] = [
       const auto = a.takeover === 'autonomous'
       const reset = sql`"session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, ${auto ? sql`"mode" = 'autonomous', "status" = 'queued'` : sql`"status" = 'awaiting_session'`}, ${U}`
       if (mine) {
-        await ownerWrite(c, run, a.leaseToken, reset)
+        await renewLease(c, run, a.leaseToken, reset, false)
         const ticket = await getTicket(c, id(run.ticket))
         const { ts, n } = await sourceOf(c.payload, ticket)
         const login = sessionLogin(c)
@@ -658,6 +671,7 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
   const tool = tools.find((t) => t.name === name)
   if (!tool) throw new Error(`unknown tool ${name}`)
   const t0 = Date.now()
+  c.tool = name
   let ok = false
   try {
     if (tool.access !== 'agent' && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
