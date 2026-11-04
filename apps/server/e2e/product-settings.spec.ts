@@ -77,7 +77,8 @@ test('list, Product page, save, validation and the single Delete section', async
   await page.reload()
   await expect(page.getByRole('textbox', { name: 'Staging site' })).toHaveValue('https://staging.e2e.example.com')
   await expect(page.getByRole('radio', { name: /Bauherr makes the release/ })).toBeChecked()
-  await expect(page.locator('#production')).toContainText('Ready')
+  // With the fake forge the new repository is readable but has no check runs yet; without it the forge cannot be read.
+  await expect(page.locator('#production')).toContainText(process.env.E2E_FAKE_FORGE ? 'Almost ready' : 'Ready')
 
   await page.getByLabel('Rules').fill('src/**')
   await page.getByRole('button', { name: 'Save changes' }).click()
