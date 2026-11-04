@@ -202,6 +202,7 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.deepEqual(files.map((x) => x.filename), ['contract/hello.txt']);
       assert.equal(files[0]?.status, 'added');
       assert.ok(Array.isArray(await f.listChecks(repo, (await f.getPullRequest(repo, p.number)).headSha)));
+      assert.equal(await f.rerunFailed(repo, []), false);
     });
 
     it('files: putFile -> getFile -> listFiles, stale expectSha conflicts', async () => {

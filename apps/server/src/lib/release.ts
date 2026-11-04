@@ -3,6 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
+import { retryRed, settleRetries } from './check-retry'
 import { connectionInput, webOrigin } from './connection'
 import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gate-labels'
 import { completeCheap } from './gateway'
@@ -71,12 +72,12 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
 }
 
 /** Latest run per check name (highest id; later entry wins without ids). */
-const latestChecks = (checks: Check[]): Check[] => {
+export const latestChecks = (checks: Check[]): Check[] => {
   const latest = new Map<string, Check>()
   for (const c of checks) if (!latest.has(c.name) || (c.id ?? 0) >= (latest.get(c.name)!.id ?? 0)) latest.set(c.name, c)
   return [...latest.values()]
 }
-const passed = (c: Check | undefined): boolean => c?.status === 'completed' && ['success', 'neutral', 'skipped'].includes(c.conclusion ?? '')
+export const passed = (c: Check | undefined): boolean => c?.status === 'completed' && ['success', 'neutral', 'skipped'].includes(c.conclusion ?? '')
 
 /** Latest run per check name, then every picked check must have passed. */
 const checksGreen = (checks: Check[], names: string[]): boolean => {
@@ -229,8 +230,15 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const names = String(product.deployChecks ?? '').split(',').map((x) => x.trim()).filter(Boolean)
       let onStaging = false
       try {
-        if (product.deployMode !== 'webhook') onStaging = !!t.mergeSha && checksGreen(await backend.forge.listChecks(repo, t.mergeSha), names)
-        else if (!t.deployRequestedAt) {
+        if (product.deployMode !== 'webhook') {
+          if (t.mergeSha) {
+            const list = await backend.forge.listChecks(repo, t.mergeSha)
+            await settleRetries(payload, t, t.mergeSha, list)
+            onStaging = checksGreen(list, names)
+            const failed = latestChecks(list).filter((c) => (!names.length || names.includes(c.name)) && c.status === 'completed' && !passed(c))
+            if (!onStaging && failed.length) await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, failed)
+          }
+        } else if (!t.deployRequestedAt) {
           if (product.deployWebhookUrl && (await cas(payload, t.id, sql`"deploy_requested_at" = ${new Date(now).toISOString()}`, sql`"deploy_requested_at" IS NULL`))) {
             const res = await fetch(product.deployWebhookUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bauherr-delivery': `${t.number}-${t.mergeSha}` }, body: JSON.stringify({ ticket: t.number, sha: t.mergeSha, stagingUrl: product.stagingUrl ?? null }), signal: AbortSignal.timeout(10_000) }).catch((e) => ({ ok: false, status: String(e) }))
             if (!res.ok) {
@@ -349,6 +357,7 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
         }
       }
       const latest = latestChecks(t.mergeSha ? (await backend.forge.listChecks(repo, t.mergeSha)).filter((c) => c.startedAt && new Date(c.startedAt).getTime() >= since) : [])
+      if (t.mergeSha) await settleRetries(payload, t, t.mergeSha, latest)
       const picked = names.map((n) => latest.find((c) => c.name === n))
       const bad = picked.find((c) => c?.status === 'completed' && c.conclusion !== 'success')
       if (picked.length && picked.every(succeeded)) {
@@ -357,6 +366,7 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
           released.push(t)
         }
       } else if (bad) {
+        if (!['skipped', 'neutral'].includes(bad.conclusion ?? '') && (await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, [bad])) === 'retried') continue
         if (await moveProduction(payload, t, ts, 'failed')) await postProduction(payload, t, ts, ['skipped', 'neutral'].includes(bad.conclusion ?? '') ? `failed: deploy check skipped (${bad.name})` : 'failed', names)
       } else if (now - requested > PRODUCTION_TIMEOUT_MS && (await moveProduction(payload, t, ts, 'timed_out'))) await postProduction(payload, t, ts, 'timed out', names)
     } catch (e) {
@@ -462,17 +472,20 @@ export const watchReleaseChecks = async (payload: Payload, now = Date.now()): Pr
   for (const t of tickets) {
     try {
       const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))
-      const names = checkNames(((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc).releaseChecks)
+      const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
+      const names = checkNames(product.releaseChecks)
       const published = new Date(t.releasePublishedAt).getTime()
       const since = new Date(t.releaseChecksSince ?? t.releasePublishedAt).getTime()
       const latest = latestChecks((await backend.forge.listChecks(repo, t.releaseSha)).filter((c) => c.startedAt && new Date(c.startedAt).getTime() >= since - CLOCK_SKEW_MS))
+      await settleRetries(payload, t, t.releaseSha, latest)
       const picked = names.map((n) => latest.find((c) => c.name === n))
       const bad = picked.find((c) => c?.status === 'completed' && c.conclusion !== 'success')
       if (picked.every(succeeded)) {
         await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'passed', releaseRunUrl: null }, ...o })
         await ts.comment(String(t.number), `Released in [${t.releaseTag}](${t.releaseUrl})`)
         changed++
-      } else if ((bad || now - published > RELEASE_CHECKS_TIMEOUT_MS) && t.releaseChecksState === 'waiting') {
+      } else if (bad && t.releaseChecksState === 'waiting' && (await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.releaseSha, [bad])) === 'retried') continue
+      else if ((bad || now - published > RELEASE_CHECKS_TIMEOUT_MS) && t.releaseChecksState === 'waiting') {
         const link = bad?.url ?? latest.find((c) => c.url)?.url ?? t.releaseUrl
         await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'failed', releaseRunUrl: link }, ...o })
         await ts.comment(String(t.number), `Bauherr: release [${t.releaseTag}](${t.releaseUrl}) ${bad ? `failed (${bad.name})` : 'did not finish within 60 minutes'}. ${link}`.trim())

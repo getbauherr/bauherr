@@ -70,6 +70,9 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('heading', { name: 'Factory health' })).toBeVisible()
   await expect(page.getByText('Last poll, acme/web')).toBeVisible()
   await expect(page.getByText('Gateway budget')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Flaky checks' })).toBeVisible()
+  await expect(page.getByRole('row', { name: /^e2e 2 / })).toBeVisible()
+  await expect(page.getByRole('row', { name: /^lint 1 / })).toBeVisible()
 })
 
 test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and no technical settings', async ({ page }) => {

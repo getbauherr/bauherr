@@ -19,7 +19,8 @@ import { moveStage } from './stage-move'
 import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, rankBetween } from './frontier'
-import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
+import { retryRed, settleRetries } from './check-retry'
+import { APPROVED_PRODUCTION, NO_PRODUCTION, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -706,7 +707,14 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
   const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
   const checks = mergeChecks(list, age)
-  if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+  await settleRetries(payload, t, mr.pr.headSha, list)
+  if (checks.state === 'red') {
+    if ((await retryRed(payload, t, product, mr, mr.pr.headSha, latestChecks(list).filter((c) => checks.failed.includes(c.name)))) === 'retried') {
+      await moveReview(payload, t.id, 'waiting_checks')
+      return 'waiting_checks'
+    }
+    return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+  }
   if (checks.state === 'pending') {
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'

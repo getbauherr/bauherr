@@ -84,6 +84,21 @@ export default async function WorkspaceSettings() {
               </tbody>
             </table>
           </div>
+          <h3 className="heading">Flaky checks</h3>
+          {health.flakes.length ? (
+            <div className="scroll">
+              <table className="table">
+                <thead><tr><th>Check</th><th>Passed after retry</th><th>Last seen</th><th>Ticket</th></tr></thead>
+                <tbody>
+                  {health.flakes.map((f) => (
+                    <tr key={f.check}><td className="mono">{f.check}</td><td>{f.count}</td><td>{ago(f.lastSeen)}</td><td>{f.ticket ? `#${f.ticket}` : ''}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="small muted">No check passed after a retry in the last 30 days.</p>
+          )}
           </section>
         </>
       )}
