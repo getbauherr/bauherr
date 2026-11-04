@@ -174,21 +174,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
-      - uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # v5.0.0
-        with:
-          path: ${{ runner.temp }}/gw-image.tar
-          key: agw-${{ hashFiles('compose.yaml') }}
-      - name: Load or pull the gateway image
+      # Pulled by the exact digest-pinned ref from compose.yaml, so `compose up` finds it locally. A saved tar cannot stand in: `docker save` by tag@digest writes no tag and `docker load` does not restore the digest, so the pinned ref would not match.
+      - name: Pre-pull the gateway image (retries ride out a registry blip)
         run: |
-          tar=$RUNNER_TEMP/gw-image.tar
-          if [ -f "$tar" ]; then docker load -i "$tar"; exit 0; fi
           img=$(grep -o 'cr.agentgateway.dev/[^ "]*' compose.yaml)
-          for i in 1 2 3; do
-            docker pull "$img" && break
-            [ "$i" = 3 ] && exit 1
-            sleep 10
+          for i in 1 2 3 4 5; do
+            docker pull "$img" && exit 0
+            sleep $((i * 15))
           done
-          docker save -o "$tar" "$img"
+          exit 1
       - name: Pack the CLI and build the image it pins
         run: |
           pnpm --filter bauherr build
