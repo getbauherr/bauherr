@@ -1,7 +1,8 @@
 import type { ModelCall } from './engine'
+import { assertFakeAllowed } from '../fake-guard'
 
 /** E2E only (`INTAKE_FAKE=1`, never in production): deterministic interview, one step per user message. */
-if (process.env.INTAKE_FAKE === '1' && process.env.NODE_ENV === 'production') throw new Error('INTAKE_FAKE must not be set in production')
+assertFakeAllowed('INTAKE_FAKE')
 
 const STEPS = [
   { question: 'Who is affected, and since when?', context: '', criteria: [] as string[] },

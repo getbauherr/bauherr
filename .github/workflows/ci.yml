@@ -50,6 +50,14 @@ jobs:
           (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$E2E_PASSWORD_FILE")
           docker compose cp "$E2E_PASSWORD_FILE" app:/tmp/e2e-password
           docker compose exec -T -e E2E_EMAIL -e E2E_PASSWORD_FILE=/tmp/e2e-password app pnpm seed:e2e
+      - name: Image refuses the fake forge, even with the marker set at runtime
+        run: |
+          docker compose run -d --no-deps --name fakecheck -e BAUHERR_E2E_FAKE_FORGE=1 -e BAUHERR_TEST_BUILD=1 -p 3011:3000 app
+          status=$(curl --silent --retry 30 --retry-delay 2 --retry-connrefused -o /dev/null -w '%{http_code}' http://localhost:3011/login || true)
+          echo "status $status"; docker logs fakecheck 2>&1 | grep -q 'must not be set in production'
+          [ "${status:0:1}" != 2 ]
+      - if: always()
+        run: docker rm -f fakecheck
       - name: Playwright
         run: >
           docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
@@ -109,14 +117,13 @@ jobs:
           (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$RUNNER_TEMP/e2e-password")
       - run: pnpm build:packages
       - run: pnpm --filter server gen:migrations
-      - run: pnpm --filter server seed:e2e
-      - name: Build the embeddable Intake widget (served from public/intake/widget.js)
-        run: pnpm --filter server build:widget
-      - name: Start the dev server (the fake forge is refused under NODE_ENV=production)
+      - name: Build the server (BAUHERR_TEST_BUILD=1 is inlined, so the fake forge is allowed in this build only)
+        run: BAUHERR_TEST_BUILD=1 pnpm --filter server build
+      - name: Start the server (it migrates on boot, so seed after it is up)
         run: |
-          pnpm --filter server dev > apps/server/e2e/app.log 2>&1 &
+          pnpm --filter server start > apps/server/e2e/app.log 2>&1 &
           curl --fail --silent --retry 60 --retry-delay 2 --retry-connrefused -o /dev/null http://localhost:3000/login
-          for path in / /intake /tickets/1; do curl --silent -o /dev/null "http://localhost:3000$path"; done
+      - run: pnpm --filter server seed:e2e
       - name: Playwright
         run: >
           docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"

@@ -1,8 +1,9 @@
 import { GithubBackend, GitlabBackend, gitlabPat, patAuth, type Backend } from '@bauherr/adapters'
+import { assertFakeAllowed } from './fake-guard'
 import { webOrigin, type ConnectionInput } from './connection'
 
 const fake = process.env.BAUHERR_E2E_FAKE_FORGE === '1'
-if (fake && process.env.NODE_ENV === 'production') throw new Error('BAUHERR_E2E_FAKE_FORGE must not be set in production')
+assertFakeAllowed('BAUHERR_E2E_FAKE_FORGE')
 const fakeForge = fake ? (await import('./fake-forge')).fakeForge : null
 
 /**
