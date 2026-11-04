@@ -1,5 +1,6 @@
 'use server'
 import { randomBytes } from 'node:crypto'
+import { parseReviewChecks } from '@bauherr/runner'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
@@ -121,8 +122,14 @@ export const saveDeploy = act({}, async (c, fd) => {
   if (!Number.isInteger(checkRetries) || checkRetries < 0 || checkRetries > 1) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
   const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
   if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
+  let reviewChecks = null
+  try {
+    reviewChecks = parseReviewChecks(s(fd, 'reviewChecks'))
+  } catch (e) {
+    errors.push({ path: 'reviewChecks', message: (e as Error).message })
+  }
   if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
-  await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
+  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, reviewChecks }, ...c.w } as never)
 })
 
 /** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */

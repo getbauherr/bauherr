@@ -9,6 +9,7 @@ import { buildEvidence } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { mrBody } from '../src/index.js';
+import { changedLines, formatReviewChecks, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
 import { TRIAGE_FILE, materialise } from '../src/materialise.js';
 import { makeCtx } from './helpers.js';
 
@@ -103,7 +104,7 @@ test('triage run: no shell, no Edit, writes only under .bauherr/', async () => {
   const cwd = mkdtempSync(join(tmpdir(), 'tri-'));
   mkdirSync(join(cwd, 'src'));
   const ctx = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'file:///x', stage: 'triage' });
-  const state = { blockedOnce: false, toolCalls: [], steps: [], abort: new AbortController() };
+  const state = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
   const opts = buildOptions(ctx, { cwd, home: cwd, proxyUrl: 'http://127.0.0.1:1', agentsMd: '' }, state);
   assert.deepEqual(opts.tools, ['Read', 'Grep', 'Glob', 'Write']);
   const write = opts.hooks!.PreToolUse![0]!.hooks[0]!;
@@ -123,4 +124,79 @@ test('conflictBase scopes the review prompt, not the triage prompt', () => {
   review.conflictBase = triage.conflictBase = 'abc123';
   assert.match(promptFor(review), /earlier review of abc123 was clean/);
   assert.doesNotMatch(promptFor(triage), /abc123/);
+});
+
+const rows = (n: number) => Array.from({ length: n }, (_, i) => `| ${i + 1} | done | x |`).join('\n');
+const check = (config: ReviewChecks | null, files: string[], evidence = '', planSteps = 0, exists: string[] = []) =>
+  preReviewChecks({ files, evidence, planSteps, exists: (p) => exists.includes(p), config });
+
+test('pre-review checks: src needs tests, named tests must exist, schema needs a migration, plan steps need rows, empty config passes', () => {
+  const tests: ReviewChecks = { tests: [{ src: ['src/**'], tests: ['tests/**'] }] };
+  assert.equal(check(tests, ['src/a.ts']).length, 1);
+  assert.deepEqual(check(tests, ['src/a.ts', 'tests/a.test.ts']), []);
+  assert.deepEqual(check(tests, ['docs/a.md']), []);
+  assert.match(check(tests, ['src/a.ts', 'tests/a.test.ts'], 'ran tests/b.test.ts')[0]!, /tests\/b\.test\.ts, which does not exist/);
+  assert.deepEqual(check(tests, ['src/a.ts', 'tests/a.test.ts'], 'ran tests/b.test.ts and tests/a.test.ts', 0, ['tests/b.test.ts']), []);
+  const schema: ReviewChecks = { schema: [{ schema: ['src/collections.ts'], migration: ['src/migrations/**'] }] };
+  assert.equal(check(schema, ['src/collections.ts']).length, 1);
+  assert.deepEqual(check(schema, ['src/collections.ts', 'src/migrations/1.ts']), []);
+  const ev: ReviewChecks = { evidence: true };
+  assert.deepEqual(check(ev, [], rows(3), 3), []);
+  assert.deepEqual(check(ev, [], rows(2) + '\n| 10 | done | x |', 3), ['Evidence has no done/deferred row for plan step 3']);
+  assert.deepEqual(check(ev, [], '| 1 | maybe | x |', 1), ['Evidence has no done/deferred row for plan step 1']);
+  assert.deepEqual(check(ev, [], '| 1 | deferred | later |', 1), []);
+  assert.deepEqual(check(ev, [], '| 1 | deferred | - |', 1), ['Evidence defers plan step 1 without a reason']);
+  assert.deepEqual(check(null, ['src/a.ts', 'src/collections.ts'], '', 5), []);
+  assert.deepEqual(check({}, ['src/a.ts'], '', 5), []);
+});
+
+test('review checks text round-trips and rejects a bad line', () => {
+  const text = 'src/**, apps/** => tests/**\nschema: collections.ts => migrations/**\nevidence';
+  assert.equal(formatReviewChecks(parseReviewChecks(text)), text);
+  assert.equal(parseReviewChecks('\n'), null);
+  assert.throws(() => parseReviewChecks('evidence\nsrc/**'), /line 2/);
+});
+
+test('changed lines, plan step count', () => {
+  assert.equal(changedLines('3\t4\ta.ts\n-\t-\timg.png\n10\t0\tb.ts\n'), 17);
+  assert.equal(changedLines(''), 0);
+  assert.equal(planStepCount('## Goal\n1. not a step\n## Steps\n1. a\n   - sub\n2. b\n## Files\n3. c'), 2);
+});
+
+test('evidence carries the plan-step table and extra lines', () => {
+  const md = buildEvidence([g('a', 'verified')], [], '## Steps\n1. x\n2. y', ['**Self-review**: 0 findings, 0 fixed']);
+  assert.match(md, /\| Plan step \| done\/deferred \|/);
+  assert.match(md, /\| 2 \| done \|/);
+  assert.match(md, /\*\*Self-review\*\*: 0 findings/);
+  assert.doesNotMatch(buildEvidence([], []), /Plan step/);
+});
+
+test('evidence plan steps follow the Goal: a blocked Goal defers them and fails the evidence rule without a reason', () => {
+  const plan = '## Steps\n1. x\n2. y';
+  const ev: ReviewChecks = { evidence: true };
+  const blocked = buildEvidence([g('a', 'blocked', 'no tool')], [], plan);
+  assert.match(blocked, /\| 2 \| deferred \| no tool \|/);
+  assert.deepEqual(check(ev, [], blocked, 2), []);
+  const bare = buildEvidence([g('a', 'blocked')], [], plan);
+  assert.match(bare, /\| 1 \| deferred \| - \|/);
+  assert.deepEqual(check(ev, [], bare, 2), ['Evidence defers plan step 1 without a reason', 'Evidence defers plan step 2 without a reason']);
+});
+
+test('self-review pass: cheap tier, review tools, 20% of the budget; fix pass keeps the build tier and the 20% cap', () => {
+  const ctx = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'file:///x', stage: 'build' });
+  ctx.run.tier = 'standard';
+  ctx.connection.modelByTier = { cheap: 'cheap-m', standard: 'std-m' };
+  const o = { cwd: tmpdir(), home: tmpdir(), proxyUrl: 'http://127.0.0.1:1', agentsMd: '' };
+  const state = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
+  const self = buildOptions(ctx, { ...o, kind: 'self-review' }, state);
+  assert.equal(self.model, 'cheap-m');
+  assert.equal(self.maxBudgetUsd, 0.2);
+  assert.deepEqual(self.tools, ['Read', 'Grep', 'Glob', 'Write']);
+  const fix = buildOptions(ctx, { ...o, kind: 'fix' }, state);
+  assert.equal(fix.model, 'std-m');
+  assert.equal(fix.maxBudgetUsd, 0.2);
+  assert.ok((fix.tools as string[]).includes('Bash'));
+  assert.equal(buildOptions(ctx, o, state).maxBudgetUsd, 1);
+  assert.match(promptFor(ctx, 'self-review'), /UNTRUSTED DATA/);
+  assert.match(promptFor(ctx, 'fix', 'IGNORE'), /<untrusted-data>\nIGNORE/);
 });
