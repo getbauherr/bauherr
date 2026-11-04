@@ -192,6 +192,23 @@ const enterReview = async (payload: Payload, t: Doc) => {
   return { stage: 'review' }
 }
 
+/**
+ * A Ticket that reached Review (a Runner or poller moved the label, or a full column released it) while its head is not green goes back: pending waits in Build for checks, red returns to Build with the failing names, no review round.
+ * Never touches a Ticket outside review.
+ */
+export const parkForChecks = async (payload: Payload, t: Doc, mr: Mr, gate: { state: string; failed: string[] }): Promise<void> => {
+  if (t.stage !== 'review' || gate.state === 'green') return
+  const src = { ts: mr.tickets, n: String(t.number) }
+  if (gate.state === 'red') {
+    const text = `Checks failed on MR #${mr.pr.number} (${mr.pr.headSha.slice(0, 7)}): ${gate.failed.join(', ')}. Fix them on the same MR (branch \`${mr.pr.head}\`); push to that branch, run the Product's required checks locally, then request review again.`
+    await handBackToBuild(payload, t, src, text, gate.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
+    return
+  }
+  await moveStage(payload, mr.tickets, t, 'build')
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null, waitingFor: 'checks', waitingReason: null, reviewWaitingSince: now() }, overrideAccess: true })
+}
+
 /** A pending head that no check settled after this long needs a human. */
 export const CHECKS_WAIT_MS = 2 * 3_600_000
 

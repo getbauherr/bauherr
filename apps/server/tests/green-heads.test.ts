@@ -33,7 +33,7 @@ beforeAll(async () => {
   const { callTool } = await import('../src/lib/mcp-tools')
   call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   fake = (await import('../src/lib/fake-forge')).fakeForge()
-  ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
+  ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', wipLimits: {}, defaultMode: 'session' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, checkRetries: 0 }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
@@ -130,4 +130,57 @@ it('the ran rule: the Evidence must show each required command with exit code 0 
   await payload.update({ collection: 'runs', id: a.runId, data: { evidence: `on ${pr.headSha.slice(0, 7)}:\n- pnpm typecheck: exit 0\n- pnpm test: exit code 0, 640 passed` }, ...o })
   expect(await call(member, 'request_review', a)).toMatchObject({ stage: 'review' })
   expect((await reload(id)).stage).toBe('review')
+})
+
+/** A Ticket the Runner or poller already moved to Review (label and stage), with its MR head carrying `checks`. */
+const inReview = async (checks: any[]) => {
+  const s = await seed(checks)
+  await payload.update({ collection: 'runs', id: s.a.runId, data: { status: 'succeeded' }, ...o })
+  await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
+  await fake.tickets(repo).addLabels(s.n, ['bauherr:stage:review'])
+  return s
+}
+
+it('the autonomous and poller paths: startReviewIfReady on a red head sends the Ticket back to Build, no Review Run', async () => {
+  const { id } = await inReview(red)
+  const jobs = await import('../src/jobs')
+  expect(await jobs.startReviewIfReady(payload, await reload(id))).toBeNull()
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewRounds: 0, waitingFor: null })
+  expect(await runs(id, 'review')).toHaveLength(0)
+  expect((await runs(id, 'build')).some((r) => ['awaiting_session', 'queued', 'running'].includes(r.status))).toBe(true)
+  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('e2e-fake (1)')
+})
+
+it('startReviewIfReady on a pending head parks the Ticket in Build waiting for checks; green later starts the review', async () => {
+  const { id, pr } = await inReview(running)
+  const jobs = await import('../src/jobs')
+  expect(await jobs.startReviewIfReady(payload, await reload(id))).toBeNull()
+  expect(await reload(id)).toMatchObject({ stage: 'build', waitingFor: 'checks' })
+  expect(await runs(id, 'review')).toHaveLength(0)
+  fake.setChecks(repo, pr.headSha, green)
+  expect(await actions.watchChecks(payload)).toBe(1)
+  expect(await reload(id)).toMatchObject({ stage: 'review', waitingFor: null })
+  expect(await runs(id, 'review')).toHaveLength(1)
+})
+
+it('a green head, and a review that is already running, are not touched', async () => {
+  const { id } = await inReview(green)
+  const jobs = await import('../src/jobs')
+  expect((await jobs.startReviewIfReady(payload, await reload(id)))?.run).toBeTruthy()
+  expect(await reload(id)).toMatchObject({ stage: 'review' })
+  // checks turn red while the review runs: the live review stays, the next call does not park the Ticket
+  const live = await inReview(green)
+  await jobs.startReviewIfReady(payload, await reload(live.id))
+  fake.setChecks(repo, live.pr.headSha, red)
+  expect((await jobs.startReviewIfReady(payload, await reload(live.id)))?.created).toBe(false)
+  expect(await reload(live.id)).toMatchObject({ stage: 'review' })
+})
+
+it('pullWaiting for Review: a Ticket released from a full Review column with a red head goes back to Build', async () => {
+  const { id } = await seed(red)
+  await payload.update({ collection: 'tickets', id, data: { waitingFor: 'review' }, ...o })
+  const wip = await import('../src/lib/wip')
+  await wip.pullWaiting(payload)
+  expect(await reload(id)).toMatchObject({ stage: 'build', waitingFor: null })
+  expect(await runs(id, 'review')).toHaveLength(0)
 })
