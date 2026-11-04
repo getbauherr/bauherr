@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
-import { GateRow, GateLadder } from '../../../components/SettingsParts'
+import { GateRow, GateLadder, ToggleRow } from '../../../components/SettingsParts'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { Table } from '../../../components/ui/table'
-import { saveOverlapIgnore, saveWipLimits } from '../actions'
+import { saveExpediteLane, saveOverlapIgnore, saveWipLimits } from '../actions'
 import { isAdmin, loadWorkflow } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import type { HumanGate } from '../../../../../lib/mode'
@@ -33,6 +33,10 @@ export default async function Workflow() {
             <Field key={c.stage} name={`wip_${c.stage}`} label={`${c.stage[0].toUpperCase()}${c.stage.slice(1)} (now ${c.count})`} type="number" min={1} step={1} defaultValue={c.limit ?? ''} />
           ))}
         </div>
+      </SettingsForm>
+      <h2 className="heading">Expedite lane</h2>
+      <SettingsForm action={saveExpediteLane}>
+        <ToggleRow name="expediteLane" label="Expedite lane" help="A Ticket labelled bauherr:expedite skips Triage, ignores WIP limits and the overlap hold and needs no plan approval; one at a time per Workspace. Off: the label is ignored with a Comment." defaultChecked={w.expediteLane} />
       </SettingsForm>
       <h2 className="heading">Paths that never hold a Build</h2>
       <p className="small text-muted-foreground">A Build does not start while an earlier Ticket in Build or Review changes the same paths (from the plan&apos;s Files section, then the pull request). Paths listed here never hold anything. One path glob per line.</p>

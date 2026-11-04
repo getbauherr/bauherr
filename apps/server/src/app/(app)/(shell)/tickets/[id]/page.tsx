@@ -74,7 +74,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
-  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
+  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
@@ -97,7 +97,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="flex flex-col gap-4">
-      <ActionBar ticket={ticket.id} product={product.id as number} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} />
+      <ActionBar ticket={ticket.id} product={product.id as number} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} canExpedite={ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
       <p className="small text-muted-foreground">{product.name}</p>
       {epic ? (
