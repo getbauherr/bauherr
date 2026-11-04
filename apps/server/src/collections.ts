@@ -413,6 +413,7 @@ export const collections: CollectionConfig[] = [
     text('releaseChecks', { admin: { description: 'Comma-separated check names on the release commit (for example image, npm); the Ticket shows "Released in" only when they pass. Empty: do not wait.' } }),
     { name: 'checkRetries', type: 'number', defaultValue: 1, min: 0, max: 1, admin: { description: 'Re-run a failed check once before it counts (1 = on, 0 = off).' } },
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
+    { name: 'reviewChecks', type: 'json', admin: { description: 'Path-based checks a Build must pass before it requests review: {tests: [{src: [globs], tests: [globs]}], schema: [{schema: [globs], migration: [globs]}], evidence: true}. Empty: all off.' } },
     {
       name: 'overlapIgnore',
       type: 'json',

@@ -30,6 +30,12 @@ A statement is verified only by a recorded result, never by your assertion:
 
 Re-run the check after the last edit; evidence from before the last edit is stale. Format of the MR section: `rules/evidence.md`.
 
+## Before `request_review` (session Build Runs)
+1. If the MR-only diff (`git diff origin/<base>...HEAD --numstat`) has 30 or more changed lines, run a self-review in a subagent on the cheapest model tier (`review` skill, Self-review mode) and fix its high and medium findings once. Under 30 lines, skip this.
+2. `attach_evidence` the plan-step table (`rules/evidence.md`) and a line `Self-review: <n> findings, <m> fixed` (or `skipped, <30 lines`).
+3. Call `run_checks`. It returns the Product's pre-review `failures`; fix them, re-attach the Evidence and call it again. `request_review` (and `finish_run` with an MR) refuses with the same list.
+4. Then `request_review`.
+
 ## Exit rule
 | Run | May end only with |
 |---|---|
