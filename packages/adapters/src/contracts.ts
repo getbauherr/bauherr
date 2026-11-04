@@ -116,7 +116,7 @@ export interface PullRequest {
   draft: boolean;
   /** False only when the forge reports conflicts with the base (GitLab: `has_conflicts` / `merge_status: cannot_be_merged`); undefined while unknown. */
   mergeable?: boolean;
-  /** True when the forge reports the head as behind the base (GitHub `mergeable_state: behind`, GitLab `need_rebase`); the Runner then merges the base in. */
+  /** True when the forge reports the head as behind the base (GitHub `mergeable_state: behind`, GitLab `need_rebase`); the factory then merges the base in. */
   behind?: boolean;
   /** Set once merged. */
   mergeSha?: string;

@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -11,6 +15,7 @@ let product: number
 let ws: number
 let call: (user: Record<string, any>, name: string, input: unknown) => Promise<any>
 let jobs: typeof import('../src/jobs')
+let mergeMain: typeof import('../src/lib/merge-main')
 let actions: typeof import('../src/lib/actions')
 let release: typeof import('../src/lib/release')
 const o = { overrideAccess: true } as const
@@ -19,6 +24,30 @@ const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 const EVIDENCE = 'Closes it\n\n## Evidence\n| Goal | verified |\n'
 
 let testDb: TestDb
+let root: string
+let bare: string
+const work = () => join(root, 'work')
+/** MR branches living in the local bare repo, with the head the forge fake last judged them at. */
+const gitBranches = new Map<string, string>()
+let edits = 0
+const git = (cwd: string, ...a: string[]) =>
+  execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 'dev', GIT_AUTHOR_EMAIL: 'd@x', GIT_COMMITTER_NAME: 'dev', GIT_COMMITTER_EMAIL: 'd@x' } }).toString().trim()
+/** Puts the MR branch into the local bare repo (branched from main, one commit on `mr`), then moves main with one commit on `main`; the forge fake reports the real head from then on. */
+const gitMr = (branch: string, mr: [string, string], main: [string, string]) => {
+  const edit = ([file, text]: [string, string], msg: string) => {
+    execFileSync('sh', ['-c', `printf '%s\\n' "$1" > "$2"`, 'sh', `${text}${++edits}`, join(work(), file)])
+    git(work(), 'add', '-A')
+    git(work(), 'commit', '-m', msg)
+  }
+  git(work(), 'checkout', '-B', branch, 'main')
+  edit(mr, 'mr')
+  git(work(), 'push', '-f', 'origin', branch)
+  git(work(), 'checkout', 'main')
+  edit(main, 'main')
+  git(work(), 'push', 'origin', 'main')
+  gitBranches.set(branch, realHead(branch))
+}
+const realHead = (branch: string) => git(bare, 'rev-parse', `refs/heads/${branch}`)
 beforeAll(async () => {
   testDb = await createTestDb('review')
   process.env.DATABASE_URL = testDb.url
@@ -31,7 +60,29 @@ beforeAll(async () => {
   jobs = await import('../src/jobs')
   actions = await import('../src/lib/actions')
   release = await import('../src/lib/release')
+  mergeMain = await import('../src/lib/merge-main')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
+  root = mkdtempSync(join(tmpdir(), 'bauherr-review-'))
+  bare = join(root, 'acme/web.git')
+  process.env.BAUHERR_GIT_BASE_URL = `file://${root}`
+  git(root, 'init', '--bare', '-b', 'main', bare)
+  git(root, 'clone', bare, work())
+  git(work(), 'checkout', '-B', 'main')
+  git(work(), 'commit', '--allow-empty', '-m', 'init')
+  git(work(), 'push', 'origin', 'main')
+  const { getPullRequest, mergePullRequest } = fake.forge
+  fake.forge.getPullRequest = async (r, n) => {
+    const pr = await getPullRequest(r, n)
+    if (!gitBranches.has(pr.head)) return pr
+    const headSha = realHead(pr.head)
+    if (gitBranches.get(pr.head) !== headSha) {
+      gitBranches.set(pr.head, headSha)
+      fake.setPullRequest(r, n, { mergeable: undefined, behind: undefined })
+      return { ...pr, headSha, mergeable: undefined, behind: undefined }
+    }
+    return { ...pr, headSha }
+  }
+  fake.forge.mergePullRequest = async (r, n, opts) => mergePullRequest(r, n, gitBranches.has((await getPullRequest(r, n)).head) ? { ...opts, expectSha: undefined } : opts)
   const { callTool } = await import('../src/lib/mcp-tools')
   call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
@@ -686,30 +737,40 @@ it('grant_review_round and stop_review over MCP: an agent key is refused, a huma
   expect(await reload(capped.id)).toMatchObject({ stage: 'triage' })
 })
 
-const conflictCheck = async (id: number) => {
-  expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, mergeFailures: 0 })
-  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('the Runner merges `main` into')
-  const build = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })
-  expect(build.totalDocs).toBe(1)
+const buildRuns = async (id: number, status?: string) =>
+  (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, ...(status ? [{ status: { equals: status } }] : [])] }, ...o })).totalDocs
+const mergeJobs = async () => (await payload.count({ collection: 'payload-jobs' as never, where: { taskSlug: { equals: 'merge-main' } } as never, ...o })).totalDocs
+/** The factory merged main itself: no Build Run, the Ticket waits in review for the `merge-main` job. */
+const waitsForMergeJob = async (id: number) => {
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks', mergeFailures: 0, conflictReturns: 0 })
+  expect(await buildRuns(id, 'awaiting_session')).toBe(0)
 }
 
-it('F21: a clean review of a conflicting MR returns to Build without a round or a merge failure', async () => {
+it('F21: a clean review of a conflicting MR queues the merge-main job: no Build Run, no round', async () => {
   const { id, pr } = await seed({ checks: green })
+  const before = await mergeJobs()
   fake.setMergeable(repo, pr.number, false)
-  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'build' })
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
+  expect(await mergeJobs()).toBe(before + 1)
   expect(await prState(pr.number)).toBe('open')
-  await conflictCheck(id)
+  expect((await reload(id)).reviewRounds).toBe(0)
+  await waitsForMergeJob(id)
 })
 
-it('F22: a waiting_checks Ticket whose MR turned unmergeable returns to Build on the next watch pass', async () => {
+it('F22: a waiting_checks Ticket whose MR turned unmergeable queues the merge-main job on the next watch pass', async () => {
   const { id, pr } = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
   expect(await submit(await review(id))).toMatchObject({ outcome: 'waiting_checks' })
+  const before = await mergeJobs()
   fake.setMergeable(repo, pr.number, false)
   await actions.watchReviews(payload)
-  await conflictCheck(id)
+  expect(await mergeJobs()).toBe(before + 1)
+  await actions.watchReviews(payload)
+  await actions.watchReviews(payload)
+  expect(await mergeJobs()).toBe(before + 1)
+  await waitsForMergeJob(id)
 })
 
-it('F23: a merge that fails while the MR reads as conflicting takes the conflict route', async () => {
+it('F23: a merge that fails while the MR reads as conflicting takes the merge-main route', async () => {
   const { id, pr } = await seed({ checks: green })
   const spy = fake.forge.mergePullRequest
   fake.forge.mergePullRequest = async () => {
@@ -717,67 +778,80 @@ it('F23: a merge that fails while the MR reads as conflicting takes the conflict
     throw new Error('merge commit cannot be cleanly created')
   }
   try {
-    expect(await submit(await review(id))).toMatchObject({ outcome: 'build' })
+    expect(await submit(await review(id))).toMatchObject({ outcome: 'waiting_checks' })
   } finally {
     fake.forge.mergePullRequest = spy
   }
-  await conflictCheck(id)
+  await waitsForMergeJob(id)
 })
 
-it('F24: two conflicting PRs: the first merges, the second merges main, is re-reviewed on the new head and merges', async () => {
-  const a = await seed({ checks: green })
-  const b = await seed({ checks: green })
-  expect(await submit(await review(a.id))).toMatchObject({ outcome: 'merged' })
-  fake.setMergeable(repo, b.pr.number, false)
-  expect(await submit(await review(b.id))).toMatchObject({ outcome: 'build' })
-  await conflictCheck(b.id)
-  const before = (await fake.forge.getPullRequest(repo, b.pr.number)).headSha
-  fake.commit(repo, b.branch, 'a.ts', 'merged')
-  const head = (await fake.forge.getPullRequest(repo, b.pr.number)).headSha
-  expect(head).not.toBe(before)
-  expect(await reload(b.id)).toMatchObject({ conflictReturnBase: before, conflictReturns: 0 })
-  await payload.update({ collection: 'tickets', id: b.id, data: { stage: 'review' }, ...o })
-  const r = await review(b.id)
-  expect((await call(member, 'get_ticket', { ticket: b.id })).conflictReturnBase).toBe(before)
-  expect(await submit(r)).toMatchObject({ outcome: 'merged' })
-  expect(await reload(b.id)).toMatchObject({ conflictReturnBase: null })
-  expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: head })
-  expect(await prState(b.pr.number)).toBe('merged')
+/** A clean review of an MR that main moved away from; the two tuples are the file edits of the MR side and the main side. */
+const diverged = async (mr: [string, string], main: [string, string], more: { reviewedPatchId?: string; ticket?: Record<string, unknown> } = {}) => {
+  const s = await seed({ checks: green })
+  gitMr(s.branch, mr, main)
+  const r = await review(s.id)
+  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId: more.reviewedPatchId }, ...o })
+  if (more.ticket) await payload.update({ collection: 'tickets', id: s.id, data: more.ticket, ...o })
+  return { ...s, r, before: realHead(s.branch) }
+}
+const mergeMainJob = async (s: { id: number; before: string }) => mergeMain.mergeMainIntoMr(payload, s.id, s.before)
+
+it.each([
+  ['dirty', (n: number) => fake.setMergeable(repo, n, false)],
+  ['behind', (n: number) => fake.setBehind(repo, n, true)],
+])('F24: an MR %s but textually clean, reviewed in a session (no reviewedPatchId): the job merges main as the bot, the verdict follows the unchanged diff, no Build Run, no new Review Run', async (_, flag) => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
+  flag(s.pr.number)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(git(bare, 'log', '-1', '--format=%an,%cn', `refs/heads/${s.branch}`)).toBe('Bauherr,Bauherr')
+  expect(git(bare, 'log', '-1', '--format=%P', `refs/heads/${s.branch}`).split(' ')).toContain(s.before)
+  expect(await payload.findByID({ collection: 'runs', id: s.r.runId, ...o })).toMatchObject({ reviewedSha: realHead(s.branch) })
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect(await prState(s.pr.number)).toBe('merged')
 })
 
-it('F25: a conflict return at the round cap still goes to Build', async () => {
-  const { id, pr } = await seed({ checks: green })
-  await payload.update({ collection: 'tickets', id, data: { reviewRounds: 2 }, ...o })
-  fake.setMergeable(repo, pr.number, false)
-  expect(await submit(await review(id))).toMatchObject({ outcome: 'build' })
-  expect(await reload(id)).toMatchObject({ stage: 'build', reviewRounds: 2 })
+it('F24: a changed Ticket diff after the merge starts a Review Run, no merge', async () => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'], { reviewedPatchId: 'patch-other' })
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect(await prState(s.pr.number)).toBe('open')
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
 })
 
-it('F26: the next review Run is told the previous reviewed SHA, server-side, regardless of the worklog', async () => {
-  const { id, pr, n, branch } = await seed({ checks: green })
-  const base = pr.headSha
-  fake.setMergeable(repo, pr.number, false)
-  await submit(await review(id))
-  expect((await reload(id)).conflictReturnBase).toBe(base)
-  const log = (await fake.tickets(repo).listComments(n)).find((c) => c.body.startsWith('<!-- bauherr:worklog -->'))!
-  await fake.tickets(repo).updateComment(n, log.id, '<!-- bauherr:worklog -->\n## Worklog\n**Current instructions**\nready for review')
-  fake.commit(repo, branch, 'a.ts', 'merged')
-  fake.setMergeable(repo, pr.number, undefined as any)
-  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
-  const started = await jobs.startReviewIfReady(payload, (await reload(id)) as any)
-  const claim = await claimOnly(payload, call, member, ws, started!.run.id)
-  expect(claim.ticket.conflictReturnBase).toBe(base)
+it('F24: a session review of another head does not lend its verdict to the cloned head', async () => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMain.mergeMainIntoMr(payload, s.id, 'f'.repeat(40))
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect(await prState(s.pr.number)).toBe('open')
+})
+
+it('F25: a real conflict pushes nothing and creates exactly one Build Run, counted, even at the round cap; the next review gets the reviewed SHA', async () => {
+  const s = await diverged(['c.ts', 'mine'], ['c.ts', 'theirs'], { ticket: { reviewRounds: 2 } })
+  fake.setMergeable(repo, s.pr.number, false)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(realHead(s.branch)).toBe(s.before)
+  expect(await reload(s.id)).toMatchObject({ stage: 'build', reviewState: null, mergeFailures: 0, reviewRounds: 2, conflictReturns: 1, conflictReturnBase: s.before })
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(1)
+  expect(await actions.readWorklog(payload, member, { ticket: s.id })).toContain('found real conflicts')
 })
 
 it('F27: a 4th conflict return needs a human instead of looping', async () => {
-  const { id, pr } = await seed({ checks: green })
-  await payload.update({ collection: 'tickets', id, data: { conflictReturns: 3 }, ...o })
-  fake.setMergeable(repo, pr.number, false)
-  expect(await submit(await review(id))).toMatchObject({ outcome: 'needs_human' })
-  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 3 })
+  const s = await diverged(['c.ts', 'mine'], ['c.ts', 'theirs'], { ticket: { conflictReturns: 3 } })
+  fake.setMergeable(repo, s.pr.number, false)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(await reload(s.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 3 })
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
 })
 
-it('F28: recovery: Tickets parked on 3 failed merges return to Build when the MR conflicts; others stay with the human and are checked once', async () => {
+it('F28: recovery: Tickets parked on 3 failed merges go back to the merge gate when the MR conflicts; others stay with the human and are checked once', async () => {
   const parked = async (conflicting: boolean) => {
     const s = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
     await submit(await review(s.id))
@@ -790,22 +864,21 @@ it('F28: recovery: Tickets parked on 3 failed merges return to Build when the MR
   const bad = await parked(true)
   await actions.watchReviews(payload)
   expect(await prState(ok.pr.number)).toBe('open')
-  expect(await reload(bad.id)).toMatchObject({ stage: 'build', mergeFailures: 0, conflictReturns: 0 })
+  await waitsForMergeJob(bad.id)
   expect(await reload(ok.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
 })
 
-/** A clean review of `seed()`'s MR with a stored patch-id, the MR conflicting, then a Runner main-merge Build Run (`patchId`) that moved the head. */
+/** A clean review of `seed()`'s MR with a stored patch-id, still waiting for checks, then a Runner main-merge Build Run (`patchId`) that moved the head and put the Ticket back in review. */
 const mergedByRunner = async (reviewedPatchId: string, patchId: string, pushed: 'head' | 'stale' = 'head', more: Record<string, unknown> = {}) => {
   const s = await seed({ checks: green })
   const r = await review(s.id)
   await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId }, ...o })
-  fake.setMergeable(repo, s.pr.number, false)
-  expect(await submit(r)).toMatchObject({ verdict: 'clean', outcome: 'build' })
-  expect(await reload(s.id)).toMatchObject({ conflictReturns: 0 })
+  fake.setChecks(repo, s.pr.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  expect(await submit(r)).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
   fake.commit(repo, s.branch, 'main.ts', 'merged main')
   const pushedSha = pushed === 'head' ? (await fake.forge.getPullRequest(repo, s.pr.number)).headSha : 'stale-sha'
   await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws, artifacts: { patchId, pushedSha, ...more } }, ...o })
-  const t = await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
+  const t = await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review', reviewState: null }, ...o })
   return { ...s, r, t }
 }
 const reviewRuns = async (id: number) => (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }] }, ...o })).totalDocs
@@ -837,11 +910,11 @@ it('F30: a different patch-id does not re-bind: a new Review Run starts on the n
   expect(await prState(pr.number)).toBe('open')
 })
 
-it('F31: a clean review of an MR behind main (auto-merge on) goes to Build for a Runner merge, without counting a conflict return', async () => {
+it('F31: a clean review of an MR behind main (auto-merge on) queues the merge-main job, without a Build Run or a conflict return', async () => {
   const { id, pr } = await seed({ checks: green })
   fake.setBehind(repo, pr.number, true)
-  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'build' })
-  expect(await reload(id)).toMatchObject({ stage: 'build', conflictReturns: 0 })
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
+  await waitsForMergeJob(id)
   expect(await prState(pr.number)).toBe('open')
 })
 
@@ -855,10 +928,43 @@ it('F32: a head pushed by someone else after the Runner merge is not re-bound: t
   expect(await reviewRuns(id)).toBe(2)
 })
 
-it('F33: the forge keeps reporting behind after a Runner merge that found nothing to merge: the gate escalates instead of looping', async () => {
-  const { id, pr, t } = await mergedByRunner('patch-x', 'patch-x', 'head', { uptodate: true })
-  fake.setBehind(repo, pr.number, true)
-  expect(await actions.rebindReview(payload, t)).toBe(true)
-  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
-  expect(await prState(pr.number)).toBe('open')
+/** A reviewed MR whose branch already contains main while the forge keeps reporting it behind (a lagging `mergeable_state`). */
+const lagging = async () => {
+  const s = await seed({ checks: green })
+  gitMr(s.branch, ['mr.ts', 'x'], ['main.ts', 'y'])
+  git(work(), 'checkout', s.branch)
+  git(work(), 'merge', '--no-edit', 'main')
+  git(work(), 'push', 'origin', s.branch)
+  git(work(), 'checkout', 'main')
+  gitBranches.set(s.branch, realHead(s.branch))
+  const r = await review(s.id)
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+  return { ...s, before: realHead(s.branch) }
+}
+
+it('F33: the forge keeps reporting behind for a head that already contains main: two no-op merges wait, the third needs a human', async () => {
+  const s = await lagging()
+  const queued = await mergeJobs() // a newer pending job supersedes the older one
+  for (const noops of [1, 2]) {
+    await mergeMainJob(s)
+    expect(await reload(s.id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks', mainMergeSha: s.before, mainMergeNoops: noops })
+  }
+  expect(await mergeJobs()).toBe(queued)
+  await mergeMainJob(s)
+  expect(await reload(s.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', mainMergeSha: s.before, mainMergeNoops: 3 })
+  expect(await mergeJobs()).toBe(queued)
+  expect(await prState(s.pr.number)).toBe('open')
+})
+
+it('F33: a merge that pushes (main moved) resets the no-op counter', async () => {
+  const s = await lagging()
+  await mergeMainJob(s)
+  await mergeMainJob(s)
+  expect(await reload(s.id)).toMatchObject({ mainMergeNoops: 2 })
+  git(work(), 'commit', '--allow-empty', '-m', 'main moves')
+  git(work(), 'push', 'origin', 'main')
+  await mergeMainJob(s)
+  expect(realHead(s.branch)).not.toBe(s.before)
+  expect(await reload(s.id)).toMatchObject({ mainMergeSha: null, mainMergeNoops: 0 })
 })
