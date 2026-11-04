@@ -216,6 +216,22 @@ it('pre-release Product: a red release check is re-run once; red then green pass
   expect(await run('sha-red', 'failure')).toBe('failed')
 })
 
+it('pre-release Product: a re-run that never shows up fails past 60 minutes; a skipped check is not re-run', async () => {
+  const run = async (sha: string, conclusion: string, later: number) => {
+    const t = await approved('rc', `Wait ${sha}`, sha)
+    fake.setCommits('acme/rc', [{ sha, message: `fix: ${sha}` }])
+    await release.publishRelease(payload, products.rc!)
+    const at = new Date(Date.now()).toISOString()
+    fake.setChecks('acme/rc', sha, [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }, { id: 2, runId: 6, name: 'npm', status: 'completed', conclusion, startedAt: at }])
+    const before = fake.reruns('acme/rc').length
+    await release.watchReleaseChecks(payload)
+    await release.watchReleaseChecks(payload, Date.now() + later)
+    return { state: (await reload(t.id)).releaseChecksState, reruns: fake.reruns('acme/rc').length - before }
+  }
+  expect(await run('sha-late', 'failure', 61 * 60_000)).toEqual({ state: 'failed', reruns: 1 })
+  expect(await run('sha-skip', 'skipped', 1000)).toEqual({ state: 'failed', reruns: 0 })
+})
+
 it('pre-release Product: a reused older release keeps its own runs (out-of-order approval) and resolves to "Released in"', async () => {
   const old = Date.now() - 3 * 60 * 60_000
   fake.setCommits('acme/rc', [{ sha: 'sha-b', message: 'fix: b' }])

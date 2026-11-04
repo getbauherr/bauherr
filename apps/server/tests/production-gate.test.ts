@@ -142,6 +142,16 @@ it('a failed deploy check is re-run once: red then green deploys, red twice fail
   expect(await run('retry red', red(2))).toMatchObject({ productionState: 'failed' })
 })
 
+it('a re-run that never shows up does not hold the deploy past the timeout', async () => {
+  const { id, sha } = await accepted('retry timeout')
+  await actions.approveProduction(payload, user, { ticket: id })
+  fake.setChecks(repo, sha, [{ id: 1, runId: 9, name: 'deploy-prod', status: 'completed', conclusion: 'failure', startedAt: at(5000) }])
+  await release.watchProduction(payload, Date.now() + 1000)
+  expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
+  await release.watchProduction(payload, Date.now() + 61 * 60_000)
+  expect(await reload(id)).toMatchObject({ productionState: 'failed' })
+})
+
 it('a check that predates the approval does not deploy; an old red run does not fail the retry', async () => {
   const { id, sha } = await accepted('stale checks')
   fake.setChecks(repo, sha, ok('deploy-prod', at(-120_000)))

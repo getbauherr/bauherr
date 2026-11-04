@@ -709,7 +709,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   const checks = mergeChecks(list, age)
   await settleRetries(payload, t, mr.pr.headSha, list)
   if (checks.state === 'red') {
-    if ((await retryRed(payload, t, product, mr, mr.pr.headSha, latestChecks(list).filter((c) => checks.failed.includes(c.name)))) === 'retried') {
+    if ((await retryRed(payload, t, product, mr, mr.pr.headSha, latestChecks(list).filter((c) => checks.failed.includes(c.name)), latestChecks(list))) === 'retried') {
       await moveReview(payload, t.id, 'waiting_checks')
       return 'waiting_checks'
     }

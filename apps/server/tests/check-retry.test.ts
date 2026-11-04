@@ -1,6 +1,6 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -85,6 +85,28 @@ it('fail twice: a re-run that is not listed yet waits, a second red returns to B
   expect(await reload(id)).toMatchObject({ stage: 'build', reviewRounds: 1 })
   expect((await rows(id)).map((r) => r.outcome)).toEqual(['failed'])
   expect(reruns()).toBe(before + 1)
+})
+
+it('a failed check whose workflow run is still in progress waits without claiming or re-running', async () => {
+  const { id, pr } = await seed([check(1, 'failure'), { id: 5, runId: 7, name: 'e2e', status: 'in_progress', conclusion: null }])
+  const before = reruns()
+  expect(await gate(id, pr.headSha)).toBe('waiting_checks')
+  expect(reruns()).toBe(before)
+  expect(await rows(id)).toHaveLength(0)
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewRounds: 0 })
+})
+
+it('a lost claim race waits instead of returning to Build', async () => {
+  const { id, pr } = await seed([check(1, 'failure')])
+  const before = reruns()
+  const spy = vi.spyOn(payload, 'create').mockRejectedValueOnce(new Error('duplicate key'))
+  try {
+    expect(await gate(id, pr.headSha)).toBe('waiting_checks')
+  } finally {
+    spy.mockRestore()
+  }
+  expect(reruns()).toBe(before)
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewRounds: 0 })
 })
 
 it('checkRetries accepts 0 and 1 only', async () => {

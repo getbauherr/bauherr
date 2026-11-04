@@ -78,6 +78,7 @@ export const latestChecks = (checks: Check[]): Check[] => {
   return [...latest.values()]
 }
 export const passed = (c: Check | undefined): boolean => c?.status === 'completed' && ['success', 'neutral', 'skipped'].includes(c.conclusion ?? '')
+export const failedCheck = (c: Check | undefined): c is Check => c?.status === 'completed' && !passed(c)
 
 /** Latest run per check name, then every picked check must have passed. */
 const checksGreen = (checks: Check[], names: string[]): boolean => {
@@ -92,7 +93,7 @@ export const CHECKS_GRACE_MS = 10 * 60_000
 /** Merge gate view of a head's checks: red when a finished check failed, pending while one still runs, else green. No checks at all is green only once the head commit is older than the grace period. */
 export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'green' | 'pending' | 'red'; failed: string[] } => {
   const latest = latestChecks(checks)
-  const failed = latest.filter((c) => c.status === 'completed' && !passed(c)).map((c) => c.name)
+  const failed = latest.filter(failedCheck).map((c) => c.name)
   const pending = latest.some((c) => c.status !== 'completed') || (!latest.length && headAgeMs < CHECKS_GRACE_MS)
   return { state: failed.length ? 'red' : pending ? 'pending' : 'green', failed }
 }
@@ -235,8 +236,8 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
             const list = await backend.forge.listChecks(repo, t.mergeSha)
             await settleRetries(payload, t, t.mergeSha, list)
             onStaging = checksGreen(list, names)
-            const failed = latestChecks(list).filter((c) => (!names.length || names.includes(c.name)) && c.status === 'completed' && !passed(c))
-            if (!onStaging && failed.length) await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, failed)
+            const failed = latestChecks(list).filter((c) => (!names.length || names.includes(c.name)) && failedCheck(c))
+            if (!onStaging && failed.length) await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, failed, latestChecks(list))
           }
         } else if (!t.deployRequestedAt) {
           if (product.deployWebhookUrl && (await cas(payload, t.id, sql`"deploy_requested_at" = ${new Date(now).toISOString()}`, sql`"deploy_requested_at" IS NULL`))) {
@@ -366,7 +367,7 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
           released.push(t)
         }
       } else if (bad) {
-        if (!['skipped', 'neutral'].includes(bad.conclusion ?? '') && (await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, [bad])) === 'retried') continue
+        if (failedCheck(bad) && now - requested <= PRODUCTION_TIMEOUT_MS && (await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, [bad], latest)) === 'retried') continue
         if (await moveProduction(payload, t, ts, 'failed')) await postProduction(payload, t, ts, ['skipped', 'neutral'].includes(bad.conclusion ?? '') ? `failed: deploy check skipped (${bad.name})` : 'failed', names)
       } else if (now - requested > PRODUCTION_TIMEOUT_MS && (await moveProduction(payload, t, ts, 'timed_out'))) await postProduction(payload, t, ts, 'timed out', names)
     } catch (e) {
@@ -484,7 +485,7 @@ export const watchReleaseChecks = async (payload: Payload, now = Date.now()): Pr
         await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'passed', releaseRunUrl: null }, ...o })
         await ts.comment(String(t.number), `Released in [${t.releaseTag}](${t.releaseUrl})`)
         changed++
-      } else if (bad && t.releaseChecksState === 'waiting' && (await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.releaseSha, [bad])) === 'retried') continue
+      } else if (failedCheck(bad) && t.releaseChecksState === 'waiting' && now - published <= RELEASE_CHECKS_TIMEOUT_MS && (await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.releaseSha, [bad], latest)) === 'retried') continue
       else if ((bad || now - published > RELEASE_CHECKS_TIMEOUT_MS) && t.releaseChecksState === 'waiting') {
         const link = bad?.url ?? latest.find((c) => c.url)?.url ?? t.releaseUrl
         await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'failed', releaseRunUrl: link }, ...o })
