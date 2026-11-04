@@ -62,24 +62,6 @@ describe('fake: mergeable', () => {
   });
 });
 
-describe('fake: updateBranch', () => {
-  it('a clean PR gets a new head and loses behind; a conflicting one or a moved head is a conflict', async () => {
-    const b = new FakeBackend();
-    await b.forge.createBranch('o/r', 'feat');
-    b.commit('o/r', 'feat', 'a.txt', 'a');
-    const pr = await b.forge.openPullRequest('o/r', { title: 't', head: 'feat', base: 'main' });
-    const head = pr.headSha;
-    b.setBehind('o/r', pr.number, true);
-    assert.equal(await b.forge.updateBranch!('o/r', pr.number, { expectSha: 'stale' }), 'conflict');
-    assert.equal(await b.forge.updateBranch!('o/r', pr.number, { expectSha: head }), 'updated');
-    const after = await b.forge.getPullRequest('o/r', pr.number);
-    assert.notEqual(after.headSha, head);
-    assert.equal(after.behind, undefined);
-    b.setMergeable('o/r', pr.number, false);
-    assert.equal(await b.forge.updateBranch!('o/r', pr.number, { expectSha: after.headSha }), 'conflict');
-  });
-});
-
 describe('fake: reopen', () => {
   it('reopens a closed ticket, drops the close-reason label, and is idempotent', async () => {
     const b = new FakeBackend({ native: false });

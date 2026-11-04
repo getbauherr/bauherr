@@ -48,7 +48,6 @@ const gitMr = (branch: string, mr: [string, string], main: [string, string]) => 
   gitBranches.set(branch, realHead(branch))
 }
 const realHead = (branch: string) => git(bare, 'rev-parse', `refs/heads/${branch}`)
-const patchOf = (branch: string) => execFileSync('sh', ['-c', `git diff "$(git merge-base main ${branch})..${branch}" | git patch-id --stable`], { cwd: work() }).toString().split(' ')[0]!
 beforeAll(async () => {
   testDb = await createTestDb('review')
   process.env.DATABASE_URL = testDb.url
@@ -747,19 +746,11 @@ const waitsForMergeJob = async (id: number) => {
   expect(await buildRuns(id, 'awaiting_session')).toBe(0)
 }
 
-it('F21: a clean review of a conflicting MR asks the forge to update the branch and queues the merge-main job: no Build Run, no round', async () => {
+it('F21: a clean review of a conflicting MR queues the merge-main job: no Build Run, no round', async () => {
   const { id, pr } = await seed({ checks: green })
   const before = await mergeJobs()
-  const spy = fake.forge.updateBranch!
-  const calls: unknown[] = []
-  fake.forge.updateBranch = async (r, n, opts) => (calls.push(opts), spy(r, n, opts))
   fake.setMergeable(repo, pr.number, false)
-  try {
-    expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
-  } finally {
-    fake.forge.updateBranch = spy
-  }
-  expect(calls).toEqual([{ expectSha: pr.headSha }])
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
   expect(await mergeJobs()).toBe(before + 1)
   expect(await prState(pr.number)).toBe('open')
   expect((await reload(id)).reviewRounds).toBe(0)
@@ -772,7 +763,10 @@ it('F22: a waiting_checks Ticket whose MR turned unmergeable queues the merge-ma
   const before = await mergeJobs()
   fake.setMergeable(repo, pr.number, false)
   await actions.watchReviews(payload)
-  expect(await mergeJobs()).toBeGreaterThan(before)
+  expect(await mergeJobs()).toBe(before + 1)
+  await actions.watchReviews(payload)
+  await actions.watchReviews(payload)
+  expect(await mergeJobs()).toBe(before + 1)
   await waitsForMergeJob(id)
 })
 
@@ -796,7 +790,7 @@ const diverged = async (mr: [string, string], main: [string, string], more: { re
   const s = await seed({ checks: green })
   gitMr(s.branch, mr, main)
   const r = await review(s.id)
-  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId: more.reviewedPatchId ?? patchOf(s.branch) }, ...o })
+  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId: more.reviewedPatchId }, ...o })
   if (more.ticket) await payload.update({ collection: 'tickets', id: s.id, data: more.ticket, ...o })
   return { ...s, r, before: realHead(s.branch) }
 }
@@ -805,7 +799,7 @@ const mergeMainJob = async (s: { id: number; before: string }) => mergeMain.merg
 it.each([
   ['dirty', (n: number) => fake.setMergeable(repo, n, false)],
   ['behind', (n: number) => fake.setBehind(repo, n, true)],
-])('F24: an MR %s but textually clean: the job merges main as the bot, the verdict follows the unchanged diff, no Build Run, no new Review Run', async (_, flag) => {
+])('F24: an MR %s but textually clean, reviewed in a session (no reviewedPatchId): the job merges main as the bot, the verdict follows the unchanged diff, no Build Run, no new Review Run', async (_, flag) => {
   const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
   flag(s.pr.number)
   expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
@@ -818,21 +812,6 @@ it.each([
   expect(await prState(s.pr.number)).toBe('merged')
 })
 
-it('F24: without an updateBranch on the forge the job alone does the same', async () => {
-  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
-  const spy = fake.forge.updateBranch
-  fake.setUpdateBranchUnsupported()
-  fake.setBehind(repo, s.pr.number, true)
-  try {
-    expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
-  } finally {
-    fake.forge.updateBranch = spy
-  }
-  await mergeMainJob(s)
-  expect(await prState(s.pr.number)).toBe('merged')
-  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
-})
-
 it('F24: a changed Ticket diff after the merge starts a Review Run, no merge', async () => {
   const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'], { reviewedPatchId: 'patch-other' })
   fake.setBehind(repo, s.pr.number, true)
@@ -841,6 +820,15 @@ it('F24: a changed Ticket diff after the merge starts a Review Run, no merge', a
   expect(await reviewRuns(s.id)).toBe(2)
   expect(await prState(s.pr.number)).toBe('open')
   expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
+})
+
+it('F24: a session review of another head does not lend its verdict to the cloned head', async () => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMain.mergeMainIntoMr(payload, s.id, 'f'.repeat(40))
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect(await prState(s.pr.number)).toBe('open')
 })
 
 it('F25: a real conflict pushes nothing and creates exactly one Build Run, counted, even at the round cap; the next review gets the reviewed SHA', async () => {
@@ -950,7 +938,6 @@ const lagging = async () => {
   git(work(), 'checkout', 'main')
   gitBranches.set(s.branch, realHead(s.branch))
   const r = await review(s.id)
-  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId: patchOf(s.branch) }, ...o })
   fake.setBehind(repo, s.pr.number, true)
   expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
   return { ...s, before: realHead(s.branch) }

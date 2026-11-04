@@ -638,13 +638,14 @@ export const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, re
 }
 
 /**
- * The forge reports the MR as conflicting or behind its base: the factory merges the base itself, in every Run mode (GitHub update-branch first, then the `merge-main` job decides with git).
+ * The forge reports the MR as conflicting or behind its base: the factory merges the base itself, in every Run mode (the `merge-main` job decides with git).
  * The same head still conflicting or behind after 3 no-op merges needs a human.
  */
 const mergeMainFirst = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
   if (t.mainMergeSha === mr.pr.headSha && (t.mainMergeNoops ?? 0) >= MAX_MAIN_MERGE_NOOPS) return escalate(payload, t, `the forge still reports the MR as conflicting with or behind \`${mr.pr.base}\` although the factory found nothing to merge ${t.mainMergeNoops} times; fix the MR by hand.`)
   await moveReview(payload, t.id, 'waiting_checks')
-  await Promise.resolve(mr.backend.forge.updateBranch?.(mr.repo, mr.pr.number, { expectSha: mr.pr.headSha })).catch(() => {})
+  const pending = await payload.count({ collection: 'payload-jobs' as never, where: { and: [{ concurrencyKey: { equals: `merge-main:${t.id}` } }, { completedAt: { exists: false } }, { hasError: { not_equals: true } }] } as never, overrideAccess: true })
+  if (pending.totalDocs) return 'waiting_checks'
   await payload.jobs.queue({ task: 'merge-main', queue: 'runs', input: { ticketId: Number(t.id), reviewedSha } })
   return 'waiting_checks'
 }
@@ -790,13 +791,14 @@ const recoverMergeFailures = async (payload: Payload): Promise<void> => {
  * After a Build Run or the `merge-main` job (`from`) that only merged the base (or resolved a conflict) on the MR: when the Ticket's own diff is unchanged (the Run's `patchId` equals the latest clean review's `reviewedPatchId`),
  * the verdict moves to the new head and goes through the merge gate again (checks still decide); no Review Run starts. Returns false when a new review is needed.
  */
-export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: string; pushedSha: string }): Promise<boolean> => {
+export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: string; pushedSha: string; reviewedPatchId?: string }): Promise<boolean> => {
   if (t.stage !== 'review' || t.state !== 'open' || (t.reviewState && t.reviewState !== 'waiting_checks')) return false
   const latest = async (stage: string, status: string) =>
     (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: stage } }, { status: { equals: status } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
   const [review, build] = [await latest('review', 'succeeded'), await latest('build', 'succeeded')]
   const stored = review?.artifacts?.review
-  if (review?.verdict !== 'clean' || !review.reviewedPatchId || review.reviewedPatchId !== (from?.patchId ?? build?.artifacts?.patchId) || typeof stored?.markdown !== 'string') return false
+  const reviewed = review?.reviewedPatchId ?? from?.reviewedPatchId
+  if (review?.verdict !== 'clean' || !reviewed || reviewed !== (from?.patchId ?? build?.artifacts?.patchId) || typeof stored?.markdown !== 'string') return false
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open' || mr.pr.headSha !== (from?.pushedSha ?? build?.artifacts?.pushedSha)) return false
   await payload.update({ collection: 'runs', id: review.id, data: { reviewedSha: mr.pr.headSha }, overrideAccess: true })

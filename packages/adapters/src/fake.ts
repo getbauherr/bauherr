@@ -95,11 +95,6 @@ export class FakeBackend implements Backend {
     return pr.mergeSha;
   }
 
-  /** Test helper: removes `updateBranch` from the forge, like a forge without one. */
-  setUpdateBranchUnsupported(): void {
-    delete this.forge.updateBranch;
-  }
-
   /** Test helper: closes an open PR without merging. */
   close(repo: RepoRef, number: number): void {
     const pr = this.repo(repo).prs.find((p) => p.number === number);
@@ -256,12 +251,6 @@ export class FakeBackend implements Backend {
       listTags: async (repo) => [...this.repo(repo).releases.map((r) => r.tag), ...this.repo(repo).tags],
       listCommits: async (repo) => this.repo(repo).commits,
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
-      updateBranch: async (repo, n, o) => {
-        const pr = find(repo, n);
-        if (pr.mergeable === false || o.expectSha !== pr.headSha) return 'conflict';
-        this.commit(repo, pr.head, `main-${this.seq}.txt`, 'main');
-        return 'updated';
-      },
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);

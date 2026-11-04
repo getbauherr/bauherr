@@ -184,29 +184,6 @@ describe('github mergePullRequest', () => {
   });
 });
 
-describe('github updateBranch', () => {
-  const run = async (status: number) => {
-    const calls: { method: string; url: string; body: any }[] = [];
-    const b = new GithubBackend({
-      auth: patAuth('t'),
-      fetch: async (u, init) => {
-        calls.push({ method: String(init?.method), url: new URL(String(u)).pathname, body: JSON.parse(String(init?.body)) });
-        return new Response('{}', { status });
-      },
-    });
-    return { calls, res: await b.forge.updateBranch!('o/r', 7, { expectSha: 'h' }) };
-  };
-  it('PUTs update-branch pinned to the head sha; 202 is updated', async () => {
-    const { calls, res } = await run(202);
-    assert.equal(res, 'updated');
-    assert.deepEqual(calls, [{ method: 'PUT', url: '/repos/o/r/pulls/7/update-branch', body: { expected_head_sha: 'h' } }]);
-  });
-  it('422 is a conflict, any other status throws', async () => {
-    assert.equal((await run(422)).res, 'conflict');
-    await assert.rejects(run(500), /500/);
-  });
-});
-
 describe('github pull request mergeable', () => {
   const get = async (extra: object) => {
     const b = new GithubBackend({

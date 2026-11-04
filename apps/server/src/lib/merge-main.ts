@@ -1,6 +1,5 @@
 import type { Payload } from 'payload'
 import { cloneRepo, commitAndPush, git, mergeBase, patchId } from '@bauherr/runner'
-import { startReviewIfReady } from '../jobs'
 import { connectionInput } from './connection'
 import { escalate, rebindReview, returnConflictToBuild } from './actions'
 import { gitAccess } from './run-ctx'
@@ -23,9 +22,10 @@ export const mergeMainIntoMr = async (payload: Payload, ticketId: number, review
     const attempt = async () => {
       const clone = await cloneRepo({ baseUrl: gitBaseUrl ?? 'https://github.com', repo: mr.repo, defaultBranch: base, token: gitToken, ...(gitUser && { user: gitUser }), branch: mr.pr.head, checkout: mr.pr.head })
       try {
+        const head = await git(clone.dir, clone.env, 'rev-parse', 'HEAD')
         if ((await mergeBase(clone, clone.env, base)) === 'conflict') return null
         const pushed = await commitAndPush(clone, clone.env, `bauherr: merge ${base}`)
-        return { pushed, patchId: await patchId(clone, clone.env, base), pushedSha: await git(clone.dir, clone.env, 'rev-parse', 'HEAD') }
+        return { pushed, patchId: await patchId(clone, clone.env, base), ...(head === reviewedSha && { reviewedPatchId: await patchId(clone, clone.env, base, head) }), pushedSha: await git(clone.dir, clone.env, 'rev-parse', 'HEAD') }
       } finally {
         await clone.cleanup()
       }
@@ -37,7 +37,7 @@ export const mergeMainIntoMr = async (payload: Payload, ticketId: number, review
     if (!merged) await returnConflictToBuild(payload, marked, mr, reviewedSha)
     else if (!(await rebindReview(payload, marked, merged))) {
       await payload.update({ collection: 'tickets', id: t.id, data: { reviewState: null }, ...o })
-      await startReviewIfReady(payload, { ...marked, reviewState: null })
+      await (await import('../jobs')).startReviewIfReady(payload, { ...marked, reviewState: null })
     }
   } catch (e) {
     payload.logger.error({ err: e, ticket: t.id }, 'merging the base into the MR failed')
