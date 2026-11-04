@@ -443,6 +443,8 @@ export const collections: CollectionConfig[] = [
     rel('agentKey', 'agent_keys'),
     text('sessionLabel'),
     date('heartbeatAt'),
+    text('lastLeaseCall'),
+    text('lastSeenSha'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
     text('evidence'),

@@ -214,6 +214,28 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Prom
   return rows.length
 }
 
+/**
+ * A pushed branch is a sign of life: for a stale Build Run, true (and the lease renewed) when the head of its branch (`bauherr/<ticket>-<run>`, else the open MR's head) differs from `last_seen_sha`.
+ * A forge error counts as no push (the lease is judged on heartbeats alone).
+ */
+const renewOnPush = async (payload: Payload, run: Record<string, any>, staleBefore: string): Promise<boolean> => {
+  if (run.stage !== 'build') return false
+  try {
+    const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
+    const { backend, repo } = await forgeOf(payload, id(ticket.product))
+    const branch = `bauherr/${ticket.number}-${run.id}`
+    const head = (await backend.forge.listBranches(repo)).find((b) => b.name === branch)?.sha ?? (await prOf(payload, ticket, { fallback: true }))?.pr.headSha
+    if (!head || head === run.lastSeenSha) return false
+    const r = await payload.db.drizzle.execute(
+      sql`UPDATE "runs" SET "heartbeat_at" = now(), "last_seen_sha" = ${head}, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running' AND "heartbeat_at" < ${staleBefore} RETURNING "id"`,
+    )
+    return r.rows.length > 0
+  } catch (e) {
+    payload.logger.warn({ err: e, run: run.id }, 'branch head check failed; treated as no push')
+    return false
+  }
+}
+
 /** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
@@ -227,7 +249,9 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   let handled = 0
   for (const run of stale.docs) {
     try {
-      if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
+      if (await renewOnPush(payload, run, before)) continue
+      const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
+      if (await abandonRun(payload, run, { reason, escalate: run.stage !== 'triage', staleBefore: before })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
