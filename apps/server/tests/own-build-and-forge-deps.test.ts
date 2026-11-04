@@ -171,4 +171,23 @@ describe('forge dependencies', () => {
     }
     expect((await reload(dependent.id)).blockedBy).toEqual([blocker.id])
   })
+
+  it('a Ticket that names itself as its own blocker is not blocked by itself', async () => {
+    const blocker = await ticket('a', 'build', { awaiting: false })
+    const dependent = await ticket('b', 'build')
+    await poll()
+    const forge = fake.tickets(repo)
+    const real = Object.getPrototypeOf(forge).get
+    ;(forge as any).get = async (id: string) => {
+      const t = await real.call(forge, id)
+      return id === dependent.n ? { ...t, blockedBy: [dependent.n, blocker.n] } : t
+    }
+    try {
+      await touch(dependent.n)
+      await poll()
+    } finally {
+      delete (forge as any).get
+    }
+    expect((await reload(dependent.id)).blockedBy).toEqual([blocker.id])
+  })
 })

@@ -356,10 +356,10 @@ export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
 }
 
-/** The forge is the truth for dependencies: the full `blockedBy` set (Ticket ids of the Product; a blocker not polled yet is ignored). Empty object on a read error, which keeps the stored set. */
+/** The forge is the truth for dependencies: the full `blockedBy` set (Ticket ids of the Product; a blocker not polled yet is ignored). A Ticket naming itself is ignored. Empty object on a read error, which keeps the stored set (the Ticket is read again the next time it changes on the forge). */
 const forgeBlockers = async (payload: Payload, forge: TicketSource, product: number | string, number: number): Promise<{ blockedBy?: (number | string)[] }> => {
   try {
-    const { blockedBy } = await forge.get(String(number))
+    const blockedBy = (await forge.get(String(number))).blockedBy.filter((n) => n !== String(number))
     const known = blockedBy.length ? await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { externalId: { in: blockedBy } }] }, pagination: false, depth: 0, overrideAccess: true }) : { docs: [] }
     return { blockedBy: known.docs.map((d) => d.id) }
   } catch (e) {

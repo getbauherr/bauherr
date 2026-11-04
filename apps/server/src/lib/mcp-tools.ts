@@ -279,7 +279,7 @@ export const tools: Tool[] = [
         const f = (await frontier(c))!
         if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
         const top = f.open.filter((t) => !isOwnBuild(t, f, label)).map((t) => f.latest.get(t.id)).find((r) => isClaimable(r) && !recentlyFailed(r!))
-        if (isOwnBuild(ticket, f, label) && (!top || top.id === run.id)) throw new Error(`Run ${run.id} is your own build: another session reviews it`)
+        if (isOwnBuild(ticket, f, label) && !top) throw new Error(`Run ${run.id} is your own build: another session reviews it`)
         if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => f.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
       }
       return claimRun(c, a.runId, label)
