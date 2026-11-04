@@ -105,7 +105,7 @@ describe('entry', () => {
     expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
   })
 
-  it('the plan gate is off: the succeeded plan moves on to Build', async () => {
+  it('an expedite Ticket skips the plan gate: the succeeded plan moves on to Build', async () => {
     const { fileURLToPath } = await import('node:url')
     process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
     const i = await issue('prod down')
@@ -203,5 +203,28 @@ describe('Triage proposal', () => {
     const done = await reload(t.id)
     expect(done.expedite).toBe(true)
     expect(needsYou({ stage: done.stage, labels: done.labels, expedite: done.expedite }, null)).toBeNull()
+  })
+
+  it('only an Admin can use the Expedite action', async () => {
+    const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
+    const t = await inBuild('plain', ['src/a.ts'])
+    await expect(actions.expedite(payload, member, { ticket: t.id })).rejects.toThrow('Only an Admin')
+    expect(await labelsOf(t.n)).not.toContain(EXPEDITE_LABEL)
+  })
+
+  it('turning the lane off drops the flag of a Ticket already in flight', async () => {
+    const t = await inBuild('flagged', ['src/a.ts'], { expedite: true })
+    expect((await reload(t.id)).expedite).toBe(true)
+    await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: false }, ...o })
+    await (await import('../src/lib/expedite')).startExpedites(payload)
+    expect((await reload(t.id)).expedite).toBe(false)
+  })
+
+  it('a second Ticket flagged while another is in flight gets no bypass', async () => {
+    const { isExpediting } = await import('../src/lib/expedite')
+    const first = await inBuild('first', ['src/a.ts'], { expedite: true })
+    const second = await inBuild('second', ['src/b.ts'], { expedite: true })
+    expect(await isExpediting(payload, await reload(first.id))).toBe(true)
+    expect(await isExpediting(payload, await reload(second.id))).toBe(false)
   })
 })

@@ -1,5 +1,5 @@
 import type { TicketSource } from '@bauherr/adapters'
-import type { Payload } from 'payload'
+import type { Payload, Where } from 'payload'
 import { NEEDS_REFINEMENT } from './needs-you'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
@@ -17,14 +17,20 @@ const HAS_PLAN = /^##\s+(Plan|Steps)\b/im
 export const laneOn = async (payload: Payload, workspace: number | string): Promise<boolean> =>
   ((await payload.findByID({ collection: 'workspaces', id: workspace, select: { expediteLane: true }, ...o })) as Doc).expediteLane !== false
 
-/** Whether another expedite Ticket of the Workspace is in flight. */
-const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> =>
-  (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: id(t.workspace) } }, { expedite: { equals: true } }, { state: { equals: 'open' } }, { stage: { in: IN_FLIGHT } }, { id: { not_equals: t.id } }] }, overrideAccess: true })).totalDocs > 0
+const inFlight = (payload: Payload, t: Doc, extra: Where) =>
+  payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: id(t.workspace) } }, { expedite: { equals: true } }, { state: { equals: 'open' } }, { stage: { in: IN_FLIGHT } }, { id: { not_equals: t.id } }, extra] }, overrideAccess: true })
 
-/** Whether the lane serves `t` now: flagged, the lane on, and either already in flight or the Workspace's expedite slot free. */
+/** Whether another expedite Ticket of the Workspace is in flight. */
+const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> => (await inFlight(payload, t, {})).totalDocs > 0
+
+/**
+ * Whether the lane serves `t` now: flagged, the lane on, and it holds the Workspace's one expedite slot. A Ticket already in flight holds it unless an older flagged Ticket (lower id) is in flight too,
+ * so a second Ticket flagged while another is in flight gets no bypass; one outside the lane enters only when the slot is free.
+ */
 export const isExpediting = async (payload: Payload, t: Doc): Promise<boolean> => {
   if (!t.expedite || t.state === 'closed' || !(await laneOn(payload, id(t.workspace)))) return false
-  return IN_FLIGHT.includes(t.stage) || !(await slotTaken(payload, t))
+  if (IN_FLIGHT.includes(t.stage)) return (await inFlight(payload, t, { id: { less_than: t.id } })).totalDocs === 0
+  return !(await slotTaken(payload, t))
 }
 
 /** Posts `text` under `marker` once per Ticket; a forge error is logged and never stops the caller. */
@@ -47,6 +53,12 @@ export const noteIgnored = (payload: Payload, ts: TicketSource, number: number |
  * The Run itself starts in the same poll (`startMissingRuns`).
  */
 export const startExpedites = async (payload: Payload): Promise<number> => {
+  // A Workspace that turned the lane off drops the flag of every open Ticket (not only the waiting ones): the flag must never outlive the setting.
+  const off = (await payload.find({ collection: 'workspaces', where: { expediteLane: { equals: false } }, select: {}, pagination: false, ...o })).docs.map((w) => w.id)
+  if (off.length) {
+    const flagged = await payload.find({ collection: 'tickets', where: { and: [{ workspace: { in: off } }, { expedite: { equals: true } }] }, select: {}, pagination: false, ...o })
+    for (const t of flagged.docs) await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })
+  }
   const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ expedite: { equals: true } }, { state: { equals: 'open' } }, { or: [{ stage: { exists: false } }, { stage: { equals: 'triage' } }] }] }, sort: 'createdAt', pagination: false, ...o })).docs as Doc[]
   let started = 0
   for (const t of waiting) {

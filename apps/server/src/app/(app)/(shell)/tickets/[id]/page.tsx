@@ -97,7 +97,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="flex flex-col gap-4">
-      <ActionBar ticket={ticket.id} product={product.id as number} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} canExpedite={ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
+      <ActionBar ticket={ticket.id} product={product.id as number} need={todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={missing.map((d) => d.id)} open={decisions.length - answered} run={runs[0]?.id ?? null} reason={reason} idle={idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
       <p className="small text-muted-foreground">{product.name}</p>
       {epic ? (

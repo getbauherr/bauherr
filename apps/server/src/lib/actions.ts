@@ -246,12 +246,13 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
 
 /** The Expedite action: puts the `bauherr:expedite` label on the Ticket (and drops Triage's proposal); the poller turns it into `expedite`. */
 export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  if (user.role !== 'admin') throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.state === 'closed' || ['release', 'done', PARENT].includes(t.stage)) throw new Error('the Ticket is past the stages the Expedite lane serves')
   if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Workflow')
   const { ts, n } = await sourceOf(payload, t)
-  await touch(payload, user, t, 'expedite')
   await ts.addLabels(n, [EXPEDITE_LABEL])
+  await touch(payload, user, t, 'expedite')
   if (((t.labels ?? []) as string[]).includes(EXPEDITE_PROPOSED)) await ts.removeLabels(n, [EXPEDITE_PROPOSED])
   return { labelled: EXPEDITE_LABEL }
 }
@@ -1011,7 +1012,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   const { ts, n } = await sourceOf(payload, doc)
   const current = (await ts.get(n)).labels
   if (stageOf(current)) return { outcome: 'noop' }
-  if (t.expedite && !current.includes(EXPEDITE_LABEL)) await ts.addLabels(n, [EXPEDITE_PROPOSED])
+  if (t.expedite && !current.includes(EXPEDITE_LABEL) && (await laneOn(payload, id(doc.workspace)))) await ts.addLabels(n, [EXPEDITE_PROPOSED])
   if (t.outcome === 'plan') {
     const entered = await enterStage(payload, doc, 'plan', async () => {
       await moveStage(payload, ts, doc, 'plan')

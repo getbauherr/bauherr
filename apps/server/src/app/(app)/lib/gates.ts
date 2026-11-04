@@ -31,6 +31,6 @@ export const GATES: Record<Need, GateConfig> = {
   'Needs you': { kind: 'back-to-build', title: 'Needs you', sentence: (c) => c.reason || 'The factory could not conclude this review and needs a decision from you.', verb: () => 'Back to build' },
   Cancelled: { kind: 'cancelled', title: 'Cancelled', sentence: (c) => `The ${c.stage} Run was cancelled${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun, secondary: 'Back to backlog' },
   'Run needs you': { kind: 'rerun', title: 'Run needs you', sentence: (c) => `The ${c.stage} Run needs you${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },
-  'Expedite?': { kind: 'expedite', title: 'Expedite?', sentence: () => 'Triage proposes the Expedite lane: no queues, no WIP wait, first in line.', verb: () => 'Expedite' },
+  'Expedite?': { kind: 'expedite', title: 'Expedite?', sentence: () => 'Triage proposes the Expedite lane: no Triage queue and no WIP wait.', verb: () => 'Expedite' },
   'Run failed': { kind: 'rerun', title: 'Run failed', sentence: (c) => `The ${c.stage} Run failed${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },
 }

@@ -23,6 +23,6 @@ Set `expedite: true` only when production is down or broken for users, or a fact
 
 ## Output
 Session Run: call `submit_triage {runId, leaseToken, outcome, reason, questions?, expedite?}`.
-Autonomous Run: write `.bauherr/triage.json` as `{"outcome","reason","questions":[{"title","default","alternatives":[]}],"expedite":true}` (`expedite` only to propose it), then set the Goal statement to verified. You have no shell.
+Autonomous Run: write `.bauherr/triage.json` as `{"outcome","reason","questions":[{"title","default","alternatives":[]}]}`, adding `"expedite":true` only to propose the lane for a production-down or factory-blocking bug, then set the Goal statement to verified. You have no shell.
 
 `reason` is one line, always required.
