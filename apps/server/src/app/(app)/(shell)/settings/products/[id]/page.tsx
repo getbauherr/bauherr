@@ -22,7 +22,7 @@ const Remove = ({ collection, id, label }: { collection: string; id: number; lab
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
-  const data = await loadProduct(workspace.id, Number((await params).id))
+  const data = await loadProduct(workspace.id, Number((await params).id), isAdmin(user))
   if (!data) notFound()
   const checks = await recentChecks(data.product.id)
   const { product: p, connections } = data

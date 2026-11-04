@@ -108,13 +108,15 @@ export async function loadProducts(workspace: number) {
 }
 
 /** One Product of the Workspace with the workflow facts and the people who can be gate owners (Members with a GitHub login); undefined when it belongs to another Workspace. */
-export async function loadProduct(workspace: number, id: number) {
+export async function loadProduct(workspace: number, id: number, viewerIsAdmin = false) {
   const { products, connections } = await loadProducts(workspace)
   const product = products.find((p) => p.id === id)
   if (!product) return undefined
   const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, { or: [{ role: { equals: 'admin' } }, { 'tenants.tenant': { equals: workspace } }] }] }, sort: 'email', pagination: false, ...o } as never)
-  const members = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
-  return { product, connections, members, workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
+  const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
+  // Admins are not tenant-scoped: only an Admin sees other Admins' emails; for everyone the callout still knows whether an Admin can be notified.
+  const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
+  return { product, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }

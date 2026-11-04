@@ -29,14 +29,14 @@ export const RepositoryFields = ({ connections, tickets = true }: { connections:
 )
 
 /** Staging, Approvals and Production sections of a Product (page `/settings/products/<id>` and step 3 of /setup); render inside the form that saves them. `checks` are the recent check names from the forge (`recentChecks`), null when it could not be read. */
-export function DeploySections({ data: { product: p, workflow, members }, checks, admin, numbered }: { data: NonNullable<Awaited<ReturnType<typeof loadProduct>>>; checks: RecentCheck[] | null; admin: boolean; numbered?: boolean }) {
+export function DeploySections({ data: { product: p, workflow, members, adminApprover }, checks, admin, numbered }: { data: NonNullable<Awaited<ReturnType<typeof loadProduct>>>; checks: RecentCheck[] | null; admin: boolean; numbered?: boolean }) {
   const d = p.deploy
   const production = namesOf(d.productionChecks)
   const num = (i: number) => (numbered ? i + 2 : undefined)
   const options = (checks ?? []).map((c) => ({ value: c.name, meta: `seen on ${c.seen} of ${c.of} recent commits · last: ${c.lastConclusion}` }))
-  const unreadable = checks?.length ? undefined : CHECKS_UNREADABLE
+  const unreadable = checks ? undefined : CHECKS_UNREADABLE
   const admins = members.filter((m) => m.admin).map((m) => `@${m.login}`)
-  const status = { checks: production, seen: checks?.map((c) => c.name) ?? null, notifiable: !!d.gateOwners || admins.length > 0 }
+  const status = { checks: production, seen: checks?.map((c) => c.name) ?? null, notifiable: !!d.gateOwners || adminApprover }
   const [off] = productionCallouts({ ...status, on: false })
   return (
     <>
@@ -73,7 +73,7 @@ export function DeploySections({ data: { product: p, workflow, members }, checks
           addLabel="Add GitHub login"
           example="sbuckpesch"
           missingMeta="not a Member with this login"
-          emptyNote={admins.length ? `Nobody picked: all Admins with a GitHub login (${admins.join(', ')}).` : undefined}
+          emptyNote={adminApprover ? (admins.length ? `Nobody picked: all Admins with a GitHub login (${admins.join(', ')}).` : 'Nobody picked: all Admins with a GitHub login.') : undefined}
           login
           mono={false}
         />
@@ -90,8 +90,8 @@ export function DeploySections({ data: { product: p, workflow, members }, checks
             <summary>How does my pipeline know when to deploy?</summary>
             <div className="stack mt-3">
               <p>When you approve, Bauherr adds the label <span className="mono">bauherr:approved:production</span> to the issue and, if set, calls your URL. Your pipeline deploys and reports a check on the approved commit. Report it on the commit from the Ticket, not on the latest main. Bauherr watches that check and closes the Ticket when it succeeds.</p>
-              <p>GitHub Actions example: a workflow that runs when the label is added and reports <span className="mono">{production[0] ?? 'deploy-production'}</span> on the Ticket&apos;s merge commit.</p>
-              <CopyField block text={productionWorkflow(production[0] ?? 'deploy-production')} />
+              <p>GitHub Actions example: a workflow that runs when the label is added and reports <span className="mono">{production.join(', ') || 'deploy-production'}</span> on the Ticket&apos;s merge commit.</p>
+              <CopyField block text={productionWorkflow(production.length ? production : ['deploy-production'])} />
             </div>
           </details>
         </SettingsSection>

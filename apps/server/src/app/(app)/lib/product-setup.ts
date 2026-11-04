@@ -47,7 +47,7 @@ export function deployErrors(d: Deploy): Record<string, string> {
 export type Callout = { tone: Tone; lead: string; text: string }
 
 /**
- * The production status callouts, most important first. `seen` holds the check names found on recent commits, or null when the forge could not be read (then a named check counts as ready).
+ * The production status callouts, most important first. `seen` holds the check names found on recent commits, or null when the forge could not be read (then a named check counts as ready, with a note that it is not confirmed).
  * `notifiable` is false when no gate owner and no Admin has a GitHub login.
  */
 export function productionCallouts({ on, checks, seen, notifiable }: { on: boolean; checks: string[]; seen: string[] | null; notifiable: boolean }): Callout[] {
@@ -55,8 +55,10 @@ export function productionCallouts({ on, checks, seen, notifiable }: { on: boole
   const out: Callout[] = []
   const names = checks.join(', ')
   if (!checks.length) out.push({ tone: 'warn', lead: 'Not ready', text: 'Pick the check that reports your production deploy. Until then Tickets stop at Configure production checks.' })
-  else if (seen && !checks.some((c) => seen.includes(c))) out.push({ tone: 'warn', lead: 'Almost ready', text: `${names} ${checks.length === 1 ? 'has' : 'have'} not reported on recent commits. After you approve, Bauherr waits 60 minutes for ${checks.length === 1 ? 'it' : 'them'}, then marks the deploy failed.` })
-  else out.push({ tone: 'ok', lead: 'Ready', text: `After you accept on staging, Approve production appears on the Ticket. Bauherr then watches ${names}.` })
+  else if (seen && !checks.every((c) => seen.includes(c))) {
+    const missing = checks.filter((c) => !seen.includes(c))
+    out.push({ tone: 'warn', lead: 'Almost ready', text: `${missing.join(', ')} ${missing.length === 1 ? 'has' : 'have'} not reported on recent commits. After you approve, Bauherr waits 60 minutes for ${missing.length === 1 ? 'it' : 'them'}, then stops the deploy as timed out.` })
+  } else out.push({ tone: 'ok', lead: 'Ready', text: `After you accept on staging, Approve production appears on the Ticket. Bauherr then watches ${names}.${seen ? '' : ' GitHub could not be read, so the names are not confirmed.'}` })
   if (!notifiable) out.push({ tone: 'warn', lead: 'No approver', text: 'Nobody gets a GitHub notification. Add a login under Who approves.' })
   return out
 }
@@ -64,8 +66,8 @@ export function productionCallouts({ on, checks, seen, notifiable }: { on: boole
 /** Comma-separated check names as a list. */
 export const namesOf = (v: string): string[] => v.split(',').map((c) => c.trim()).filter(Boolean)
 
-/** GitHub Actions workflow for the label-triggered production deploy; it reports `check` on the Ticket's merge commit, not on the latest default branch commit. */
-export const productionWorkflow = (check: string): string => `name: Deploy production
+/** GitHub Actions workflow for the label-triggered production deploy; it reports every check in `checks` on the Ticket's merge commit, not on the latest default branch commit. Names go through an env block, never into the shell command; `${{` is dropped so a name cannot inject an expression. */
+export const productionWorkflow = (checks: string[]): string => `name: Deploy production
 on:
   issues:
     types: [labeled]
@@ -79,15 +81,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: \${{ github.token }}
+      CHECKS: |
+${checks.map((c) => `        ${c.replace(/\$\{\{/g, '').replace(/[\r\n]/g, ' ')}`).join('\n')}
     steps:
       - name: Find the merge commit of the Ticket
         id: ticket
         run: |
-          sha=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --json headRefName,mergeCommit \\
+          sha=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --limit 200 --json headRefName,mergeCommit \\
             --jq '[.[] | select(.headRefName | startswith("bauherr/\${{ github.event.issue.number }}-"))][0].mergeCommit.oid')
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Deploy
         run: ./deploy.sh "\${{ steps.ticket.outputs.sha }}"
-      - name: Report the check on that commit
-        run: gh api "repos/$GITHUB_REPOSITORY/check-runs" -f name=${check} -f head_sha="\${{ steps.ticket.outputs.sha }}" -f status=completed -f conclusion=success
+      - name: Report the checks on that commit
+        env:
+          SHA: \${{ steps.ticket.outputs.sha }}
+        run: |
+          while IFS= read -r name; do
+            [ -n "$name" ] && gh api "repos/$GITHUB_REPOSITORY/check-runs" -f name="$name" -f head_sha="$SHA" -f status=completed -f conclusion=success
+          done <<< "$CHECKS"
 `

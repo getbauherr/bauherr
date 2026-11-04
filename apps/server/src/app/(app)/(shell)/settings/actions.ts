@@ -256,10 +256,15 @@ export const createBauherr = act({}, async (c, fd) => {
   return `Temporary password (shown once): ${password}`
 })
 
-/** Whether the Workspace's first GitHub Connection knows `login`; true when there is none to ask. */
+/** Whether the Workspace's first GitHub Connection knows `login`; true when there is none to ask or GitHub cannot answer. */
 const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): Promise<boolean> => {
   const first = (await c.payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: inWorkspace(c) } }, { kind: { equals: 'github' } }] }, sort: 'id', limit: 1, depth: 0, overrideAccess: true } as never)).docs[0]
-  return !first || backendFor(await connectionInput(c.payload, first.id as number)).tickets('').userExists(login)
+  if (!first) return true
+  try {
+    return await backendFor(await connectionInput(c.payload, first.id as number), { maxRetries: 0, timeoutMs: 10_000 }).tickets('').userExists(login)
+  } catch {
+    return true // GitHub unreachable or rate-limited: saving is never blocked, the login stays unverified
+  }
 }
 
 export const saveBauherr = act({}, async (c, fd) => {

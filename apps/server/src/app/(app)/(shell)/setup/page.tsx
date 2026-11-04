@@ -23,7 +23,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   const shown = asked >= 0 && (first < 0 || asked <= first) ? steps[asked]!.id : current
   const n = steps.findIndex((s) => s.id === shown) + 1
   const pending = github.find((c) => c.status !== 'ok')
-  const deploy = shown === 'deploy' && product ? await loadProduct(workspace.id, product.id) : undefined
+  const deploy = shown === 'deploy' && product ? await loadProduct(workspace.id, product.id, isAdmin(user)) : undefined
   return (
     <>
       <h1 className="title">Set up your Workspace</h1>
