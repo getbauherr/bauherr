@@ -11,12 +11,15 @@ export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : 
 const APPROVED_PLAN = 'bauherr:approved:plan'
 const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?'] as const
 export type Need = (typeof NEEDS)[number]
 /** Names of the four human touch points, in flow order; Settings > Workflow, docs and README use them. */
 export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
 /** Hold label: Triage asked the owner questions; answering them moves the Ticket to plan. */
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
+/** Expedite lane: the label a human sets (or the Expedite action), and the label Triage sets to propose it. */
+export const EXPEDITE_LABEL = 'bauherr:expedite'
+export const EXPEDITE_PROPOSED = 'bauherr:expedite-proposed'
 /** Returns from review to build per Ticket before it needs a human. */
 export const MAX_REVIEW_ROUNDS = 2
 const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
@@ -31,7 +34,7 @@ export const stageOf = (t: { state?: string | null; stage?: string | null }): St
  * D5 (c): a succeeded plan awaiting approval with `unansweredCritical` > 0 is "Answer decisions" (before "Approve plan").
  */
 export const needsYou = (
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null },
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null },
   run: { stage: string; status: string } | null,
   unansweredCritical = 0,
   gates: readonly HumanGate[] = humanGates(),
@@ -39,7 +42,7 @@ export const needsYou = (
   const stage = ticket.stage ?? 'triage'
   const accepted = gates.includes('staging') ? ticket.labels.includes(APPROVED_STAGING) : !!ticket.productionState
   if (stage === 'plan' && run?.stage === 'plan' && IN_PROGRESS.includes(run.status)) return null
-  if (stage === 'plan' && gates.includes('plan') && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
+  if (stage === 'plan' && gates.includes('plan') && !ticket.expedite && !ticket.labels.includes(APPROVED_PLAN) && run?.stage === 'plan' && run.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (stage === 'triage' && ticket.labels.includes(NEEDS_REFINEMENT)) return 'Answer questions'
   if (stage === 'review' && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (stage === 'review' && ticket.reviewState === 'needs_human') return 'Needs you'
@@ -55,6 +58,7 @@ export const needsYou = (
   if (ticket.releaseChecksState === 'failed') return 'Release failed'
   if (run?.status === 'cancelled' && run.stage === stage && ['plan', 'build', 'review'].includes(stage)) return 'Cancelled'
   if (run?.status === 'failed' && run.stage !== 'triage') return 'Run failed'
+  if (ticket.labels.includes(EXPEDITE_PROPOSED) && !ticket.expedite && !ticket.labels.includes(EXPEDITE_LABEL) && stage !== 'release') return 'Expedite?'
   return null
 }
 

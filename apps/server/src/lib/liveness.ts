@@ -65,7 +65,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
     const latest = mine[0] ?? null
     const cause = await causeOf(payload, t, latest)
     if (!cause) continue
-    const need = needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, latest && { stage: latest.stage, status: latest.status })
+    const need = needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, latest && { stage: latest.stage, status: latest.status })
     dead.push({ ticket: t, cause, run: latest, need })
   }
   return dead

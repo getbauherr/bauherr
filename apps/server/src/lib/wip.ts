@@ -4,6 +4,7 @@ import { startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { executionOrder } from './frontier'
 import { logins } from './gates'
 import { NEEDS_REFINEMENT } from './needs-you'
+import { isExpediting } from './expedite'
 import { holdOverlap } from './overlap'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
@@ -13,7 +14,7 @@ type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
 /** The query behind the count of `stage`: open Tickets in it, all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). Release is never waited for (`waitingFor` cannot hold it). */
-export const wipWhere = (workspace: number | string, stage: string): Where => ({ and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, ...(stage === 'release' ? [] : [{ waitingFor: { not_equals: stage } }])] })
+export const wipWhere = (workspace: number | string, stage: string): Where => ({ and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { expedite: { not_equals: true } }, ...(stage === 'release' ? [] : [{ waitingFor: { not_equals: stage } }])] })
 
 /** The number of Tickets taking a slot in `stage`. This is the only definition of the count; the Board header uses `wipCounts`. */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
@@ -25,7 +26,7 @@ export const wipCounts = async (payload: Payload, workspace: number | string): P
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
- * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage. A Build entry is also held (`'held'`, waiting with a reason, no limit involved) while an earlier Ticket overlaps its paths.
+ * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage, nor is an expedite Ticket (it takes an extra slot and is not counted). A Build entry is also held (`'held'`, waiting with a reason, no limit involved) while an earlier Ticket overlaps its paths.
  */
 export const enterStage = async (payload: Payload, t: Doc, stage: Exclude<WipStage, 'release'>, move: () => Promise<void>): Promise<'moved' | 'waiting' | 'held'> => {
   if (stage === 'build' && (await holdOverlap(payload, t))) return 'held'
@@ -36,7 +37,7 @@ export const enterStage = async (payload: Payload, t: Doc, stage: Exclude<WipSta
     if (t.waitingFor) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, waitingReason: null }, ...o })
     return 'moved' as const
   }
-  if (limit == null) return enter()
+  if (limit == null || (await isExpediting(payload, t))) return enter()
   return payload.db.drizzle.transaction(async (tx: any) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, ${WIP_STAGES.indexOf(stage)}::int)`)
     if ((await wipCount(payload, ws, stage)) < limit) return enter()
