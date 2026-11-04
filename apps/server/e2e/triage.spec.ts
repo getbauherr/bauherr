@@ -15,9 +15,9 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.board')).toBeVisible()
 
-  const card = page.locator('.card', { hasText: 'Clarify the export scope' }).first()
+  const card = page.locator('.card', { hasText: 'Settle the export format' }).first()
   await expect(card.getByText('Answer questions')).toBeVisible()
-  await card.getByRole('link', { name: 'Clarify the export scope' }).click()
+  await card.getByRole('link', { name: 'Settle the export format' }).click()
 
   const bar = page.getByTestId('action-bar')
   await bar.getByRole('link', { name: 'Answer 1 question' }).click()

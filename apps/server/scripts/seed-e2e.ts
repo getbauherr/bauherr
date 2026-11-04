@@ -82,6 +82,9 @@ await ensure('tickets', { externalId: 'e2e-gated-2' }, { title: 'Ship the gated 
 for (let n = 101; n <= 122; n++) await ticket(n, `Isolated chore ${n}`, n <= 103 ? 'release' : n <= 106 ? 'review' : n <= 112 ? 'build' : n <= 115 ? 'plan' : n <= 118 ? 'triage' : 'done', product)
 await ticket(21, 'Remember the theme choice', 'plan', product)
 await ticket(22, 'Pick the export columns', 'plan', product)
+// Own Tickets of triage.spec.ts (#23, held by Triage with questions) and of the plan-approval test in ticket.spec.ts (#24, approved there). The numbers follow the fake forge (`src/lib/fake-forge.ts`), which creates them in this order.
+await ticket(23, 'Settle the export format', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
+await ticket(24, 'Add a light theme to the dashboard', 'plan', product)
 await ticket(124, 'Waiting for a Build slot', 'plan', product, { waitingFor: 'build', rank: '000000' })
 const live = await ticket(123, 'Live build in progress', 'build', product, { rank: '900000' })
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
