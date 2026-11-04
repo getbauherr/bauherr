@@ -55,3 +55,13 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
   })
   return { rows, total: sessions.totalDocs, multiProduct }
 }
+
+/** The caller's resumable Intake sessions (newest open Drafts with messages) plus the `?session=` one when it is theirs: open, product-user, same Workspace. */
+export async function openSessions(userId: number, workspaceId: number | undefined, wanted?: string) {
+  if (workspaceId == null) return { open: [], current: undefined }
+  const payload = await payloadClient()
+  const mine = (extra: Where[] = []) => payload.find({ collection: 'intake_sessions', where: { and: [{ user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }, ...extra] }, sort: '-updatedAt', limit: 10, depth: 1, overrideAccess: true }).then((r) => r.docs)
+  const open = (await mine()).filter((s) => (s.messages as unknown[] | null)?.length)
+  if (wanted && /^\d{1,9}$/.test(wanted) && !open.some((s) => String(s.id) === wanted)) open.push(...(await mine([{ id: { equals: Number(wanted) } }])))
+  return { open, current: open.find((s) => String(s.id) === wanted) ?? open[0] }
+}

@@ -53,3 +53,24 @@ describe('loadRequests', () => {
     expect((await requests.loadRequests(ws)).rows.some((r) => r.resumable)).toBe(false)
   })
 })
+
+describe('openSessions ?session= guard', () => {
+  const draft = { problem: 'p', context: '', acceptance_criteria: [], type: 'bug', links: [] }
+  const mk = (extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'open', persona: 'product-user', messages: [{ role: 'user', content: 'hi' }], draft, user: me, ...extra }, ...o } as never).then((s) => String(s.id))
+
+  it('loads own open draft by id and ignores foreign, submitted, owner-persona, other-Workspace and out-of-range ids', async () => {
+    const other = Number((await payload.create({ collection: 'bauherren', data: { email: 'other@example.com', password: 'x-pass-123', role: 'bauherr' }, ...o } as never)).id)
+    const ws2 = Number((await payload.create({ collection: 'workspaces', data: { name: 'r2', slug: 'r2' }, ...o })).id)
+    const product2 = Number((await payload.create({ collection: 'products', data: { name: 'Elsewhere', slug: 'elsewhere', workspace: ws2 }, ...o })).id)
+    const newest = await mk({})
+    const older = await mk({})
+    await payload.update({ collection: 'intake_sessions', id: Number(newest), data: { updatedAt: new Date(Date.now() + 60_000).toISOString() }, ...o } as never)
+    const foreign = [await mk({ user: other }), await mk({ status: 'submitted' }), await mk({ persona: 'owner' }), await mk({ product: product2, workspace: ws2 })]
+    expect(String((await requests.openSessions(me, ws, older)).current?.id)).toBe(older)
+    for (const id of [...foreign, '99999999999']) {
+      const { current, open } = await requests.openSessions(me, ws, id)
+      expect(String(current?.id)).toBe(newest)
+      expect(open.some((s) => String(s.id) === id)).toBe(false)
+    }
+  })
+})
