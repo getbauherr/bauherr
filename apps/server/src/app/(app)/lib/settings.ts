@@ -7,6 +7,8 @@ import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../..
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
+import { backendFor } from '../../../lib/adapters'
+import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
 import { suggestOverlapIgnore } from '../../../lib/overlap'
 import { wipCount } from '../../../lib/wip'
@@ -321,5 +323,19 @@ export async function loadHealth(workspace: number) {
     dead: (await invisibleDead(payload, workspace)).map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause })),
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
     flakes,
+  }
+}
+
+const REPO_LIST_MS = 3000
+
+/** Full names of the repositories a forge Connection can see, sorted; null when the forge fails or does not answer within 3 s (the form then asks for a typed `owner/name`). One attempt, no retries. */
+export async function listRepos(connectionId: number): Promise<string[] | null> {
+  try {
+    const conn = await connectionInput(await payloadClient(), connectionId)
+    const timeout = new Promise<never>((_, reject) => AbortSignal.timeout(REPO_LIST_MS).addEventListener('abort', () => reject(new Error('timeout'))))
+    const repos = await Promise.race([backendFor(conn, { maxRetries: 0, timeoutMs: REPO_LIST_MS }).forge.listRepositories(), timeout])
+    return repos.map((r) => r.fullName).sort()
+  } catch {
+    return null
   }
 }
