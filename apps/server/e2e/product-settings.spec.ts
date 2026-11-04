@@ -21,7 +21,10 @@ const deleteProduct = async (page: Page) => {
   for (const label of ['Stop reading tickets', 'Remove repository']) {
     await repository.locator('details.advanced').evaluate((d: HTMLDetailsElement) => (d.open = true))
     await repository.getByRole('button', { name: label }).click()
-    await repository.getByRole('button', { name: 'Confirm remove' }).click()
+    // Playwright's own click crashed intermittently here in CI ("text.replace is not a function" while previewing the target); a DOM click needs no actionability preview.
+    const confirm = repository.getByRole('button', { name: 'Confirm remove' })
+    await expect(confirm).toBeVisible()
+    await confirm.evaluate((b: HTMLElement) => b.click())
     await expect(repository.getByRole('button', { name: label })).toHaveCount(0)
   }
   await page.locator('#danger').getByRole('button', { name: 'Delete Product' }).click()
