@@ -100,7 +100,8 @@ test('the check picker offers the checks the forge reported and the callout turn
   await expect(production.getByRole('checkbox', { name: /deploy-production/ })).toBeChecked()
   await production.getByText('How does my pipeline know when to deploy?').click()
   await expect(production.getByText('bauherr:approved:production').first()).toBeVisible()
-  await expect(production.locator('pre')).toContainText('name=deploy-production')
+  await expect(production.locator('pre')).toContainText('CHECKS: |')
+  await expect(production.locator('pre')).toContainText('deploy-production')
   await expect(production.getByRole('button', { name: 'Copy' })).toBeVisible()
 
   await production.getByRole('checkbox', { name: /deploy-production/ }).uncheck()
