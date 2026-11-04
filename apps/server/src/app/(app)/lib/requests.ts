@@ -3,7 +3,7 @@ import { payloadClient } from './session'
 
 type Ref = number | { id: number; name?: string }
 type Session = { id: number; product: Ref; status: string; draft?: { problem?: string } | null; ticketNumber?: number | null; updatedAt: string }
-type TicketDoc = { id: number; number: number; title: string; stage?: string | null; product: Ref; parent?: Ref | null }
+type TicketDoc = { id: number; number: number; product: Ref }
 const idOf = (r: Ref | null | undefined) => (typeof r === 'object' ? r?.id : r)
 
 export const REQUESTS_LIMIT = 100
@@ -13,7 +13,7 @@ export type RequestRow = {
   product: string
   linked: boolean
   updatedAt: string
-  ticket: { number: number; id?: number; title?: string; stage?: string | null; children: { id: number; number: number; title: string }[] } | null
+  ticket: { number: number; id?: number } | null
 }
 
 const cut = (s: string) => {
@@ -22,7 +22,7 @@ const cut = (s: string) => {
 }
 
 /** Requests (Intake sessions, embed sessions included) of a Workspace, newest first. Conversation text only feeds the title fallback. */
-export async function loadRequests(workspaceId: number): Promise<{ rows: RequestRow[]; total: number }> {
+export async function loadRequests(workspaceId: number): Promise<{ rows: RequestRow[]; total: number; multiProduct: boolean }> {
   const payload = await payloadClient()
   const o = { overrideAccess: true, pagination: false } as const
   const sessions = await payload.find({
@@ -32,13 +32,11 @@ export async function loadRequests(workspaceId: number): Promise<{ rows: Request
     select: { product: true, status: true, draft: true, ticketNumber: true, updatedAt: true },
     overrideAccess: true,
   })
+  const multiProduct = (await payload.count({ collection: 'products', where: { workspace: { equals: workspaceId } }, overrideAccess: true })).totalDocs > 1
   const docs = sessions.docs as unknown as Session[]
   const pairs = docs.filter((s) => s.ticketNumber != null).map((s) => ({ and: [{ product: { equals: idOf(s.product) } }, { number: { equals: s.ticketNumber } }] as Where[] }))
   const tickets = pairs.length
-    ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, or: pairs }, depth: 0, select: { title: true, number: true, product: true, stage: true }, ...o })).docs as unknown as TicketDoc[]
-    : []
-  const children = tickets.length
-    ? (await payload.find({ collection: 'tickets', where: { parent: { in: tickets.map((t) => t.id) } }, sort: 'number', depth: 0, select: { title: true, number: true, parent: true }, ...o })).docs as unknown as TicketDoc[]
+    ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, or: pairs }, depth: 0, select: { number: true, product: true }, ...o })).docs as unknown as TicketDoc[]
     : []
   const rows = docs.map((s): RequestRow => {
     const productId = idOf(s.product)
@@ -50,11 +48,8 @@ export async function loadRequests(workspaceId: number): Promise<{ rows: Request
       product: (typeof s.product === 'object' && s.product.name) || '—',
       linked: s.status === 'submitted',
       updatedAt: s.updatedAt,
-      ticket: s.ticketNumber == null ? null : {
-        number: s.ticketNumber, id: t?.id, title: t?.title, stage: t?.stage,
-        children: t ? children.filter((c) => idOf(c.parent) === t.id).map((c) => ({ id: c.id, number: c.number, title: c.title })) : [],
-      },
+      ticket: s.ticketNumber == null ? null : { number: s.ticketNumber, id: t?.id },
     }
   })
-  return { rows, total: sessions.totalDocs }
+  return { rows, total: sessions.totalDocs, multiProduct }
 }

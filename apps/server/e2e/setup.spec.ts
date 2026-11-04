@@ -85,9 +85,10 @@ test('an empty Workspace links to /setup and the Admin walks all four steps to a
   await expect(page.getByRole('button', { name: 'Save and continue' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Skip, use defaults' })).toHaveCount(0)
   await page.goto('/setup')
-  await expect(page.getByLabel('Product')).toContainText('Newco Shop')
+  await expect(page.getByLabel('Describe your request')).toBeVisible()
+  await expect(page.getByLabel('Product')).toHaveCount(0)
   await page.reload()
-  await expect(page.getByLabel('Product')).toContainText('Newco Shop')
+  await expect(page.getByLabel('Describe your request')).toBeVisible()
   await shoot(page, '4-request')
 
   const say = async (text: string, reply: string) => {
@@ -99,7 +100,7 @@ test('an empty Workspace links to /setup and the Admin walks all four steps to a
   await say('Finance, last week', 'How should it work once it is fixed?')
   await say('Totals should match', 'Anything to add before I send this?')
   await page.getByRole('button', { name: 'Submit request' }).click()
-  await expect(page.getByRole('status')).toContainText('waits in Triage')
+  await expect(page.getByRole('status')).toContainText("We'll ask if anything is unclear")
 
   await page.goto('/setup')
   for (const l of ['Connect GitHub', 'Add the first Product', 'Staging and gates', 'First request']) await word(page, l, 'Done')
