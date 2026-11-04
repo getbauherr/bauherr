@@ -32,7 +32,7 @@ test('Knowledge: search finds a repo document, it renders, write-backs show thei
   await expect(hit.getByRole('heading')).toContainText('1 result')
   await hit.getByRole('link', { name: 'Rollback' }).click()
   await expect(page.getByRole('article', { name: 'Release policy' }).getByRole('heading', { name: 'Release policy' })).toBeVisible()
-  await expect(page.locator('.prose strong')).toHaveText('staging acceptance')
+  await expect(page.getByRole('article', { name: 'Release policy' }).locator('strong')).toHaveText('staging acceptance')
 
   const wb = page.getByRole('region', { name: 'Write-backs' })
   await expect(wb.getByRole('row', { name: /Write back: lessons from #42/ })).toContainText('× Checks failed')
