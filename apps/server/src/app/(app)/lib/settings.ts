@@ -4,6 +4,8 @@ import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../..
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
+import { forgeOf } from '../../../lib/release'
+import { suggestOverlapIgnore } from '../../../lib/overlap'
 import { wipCount } from '../../../lib/wip'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
@@ -209,9 +211,17 @@ export async function loadWorkflow(workspace: number) {
   ])
   const baseJson = JSON.stringify({ stages: base })
   const wip = await Promise.all(WIP_STAGES.map(async (s) => ({ stage: s, limit: wipLimit(ws, s), count: await wipCount(payload, workspace, s) })))
+  const overlap = await Promise.all(
+    (products.docs as unknown as Doc[]).map(async (p) => {
+      const ignore = (p.overlapIgnore ?? []) as string[]
+      const suggestions = await forgeOf(payload, p.id).then(({ backend, repo }) => suggestOverlapIgnore(backend.forge, repo)).catch(() => [])
+      return { id: p.id as number, name: p.name as string, ignore, suggestions: suggestions.filter((x) => !ignore.includes(x.path)) }
+    }),
+  )
   return {
     stages,
     wip,
+    overlap,
     gates: humanGates(),
     versions: (products.docs as unknown as Doc[]).map((p) => {
       const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)

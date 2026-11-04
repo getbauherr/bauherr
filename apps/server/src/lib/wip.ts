@@ -4,6 +4,7 @@ import { startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { executionOrder } from './frontier'
 import { logins } from './gates'
 import { NEEDS_REFINEMENT } from './needs-you'
+import { holdOverlap } from './overlap'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
 import { WIP_STAGES, waitingText, wipLimit, type WipStage } from './wip-limits'
@@ -17,21 +18,22 @@ export const wipCount = async (payload: Payload, workspace: number | string, sta
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
- * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage.
+ * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage. A Build entry is also held (`'held'`, waiting with a reason, no limit involved) while an earlier Ticket overlaps its paths.
  */
-export const enterStage = async (payload: Payload, t: Doc, stage: Exclude<WipStage, 'release'>, move: () => Promise<void>): Promise<'moved' | 'waiting'> => {
+export const enterStage = async (payload: Payload, t: Doc, stage: Exclude<WipStage, 'release'>, move: () => Promise<void>): Promise<'moved' | 'waiting' | 'held'> => {
+  if (stage === 'build' && (await holdOverlap(payload, t))) return 'held'
   const ws = Number(id(t.workspace))
   const limit = wipLimit(await payload.findByID({ collection: 'workspaces', id: ws, select: { wipLimits: true }, ...o }), stage)
   const enter = async () => {
     await move()
-    if (t.waitingFor) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null }, ...o })
+    if (t.waitingFor) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, waitingReason: null }, ...o })
     return 'moved' as const
   }
   if (limit == null) return enter()
   return payload.db.drizzle.transaction(async (tx: any) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, ${WIP_STAGES.indexOf(stage)}::int)`)
     if ((await wipCount(payload, ws, stage)) < limit) return enter()
-    if (t.waitingFor !== stage) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage }, ...o })
+    if (t.waitingFor !== stage || t.waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: null }, ...o })
     return 'waiting' as const
   })
 }
@@ -67,7 +69,9 @@ export const pullWaiting = async (payload: Payload): Promise<number> => {
     for (const ws of new Set(queue.map((t) => id(t.workspace)))) {
       for (const t of queue.filter((q) => id(q.workspace) === ws)) {
         try {
-          if ((await enterStage(payload, t, stage, () => completeMove(payload, t, stage))) === 'waiting') break
+          const entered = await enterStage(payload, t, stage, () => completeMove(payload, t, stage))
+          if (entered === 'waiting') break
+          if (entered === 'held') continue
           await startAfterPull(payload, t, stage)
           pulled++
         } catch (e) {
@@ -83,5 +87,5 @@ export const pullWaiting = async (payload: Payload): Promise<number> => {
 export const waitingLabel = async (payload: Payload, t: Doc): Promise<string | null> => {
   if (!t.waitingFor) return null
   const ws = await payload.findByID({ collection: 'workspaces', id: id(t.workspace), select: { wipLimits: true }, ...o })
-  return waitingText(t.waitingFor, await wipCount(payload, id(t.workspace), t.waitingFor), wipLimit(ws, t.waitingFor))
+  return waitingText(t.waitingFor, await wipCount(payload, id(t.workspace), t.waitingFor), wipLimit(ws, t.waitingFor), t.waitingReason)
 }

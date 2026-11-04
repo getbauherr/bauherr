@@ -131,3 +131,22 @@ test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiti
   await page.getByRole('button', { name: 'Save' }).first().click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })
+
+test('Paths that never hold a Build: saved per Product in Settings > Workflow', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workflow')
+  await expect(page.getByRole('heading', { name: 'Paths that never hold a Build' })).toBeVisible()
+  const field = page.getByLabel('Paths that never hold a Build (Acme Web)')
+  const glob = `e2e-${Date.now()}/**`
+  await field.fill(`CHANGELOG.md\n${glob}`)
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.reload()
+  await expect(field).toHaveValue(`CHANGELOG.md\n${glob}`)
+  await field.fill('has space')
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('One path glob per line, without spaces')).toBeVisible()
+  await field.fill('')
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})

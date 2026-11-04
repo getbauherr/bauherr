@@ -12,6 +12,7 @@ import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRan
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
+import { holdOverlap } from '../lib/overlap'
 import { enterStage, pullWaiting } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
@@ -324,14 +325,18 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
+/** True while a blocker (loaded at depth 1) is not closed. */
+const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { state?: string }[] | undefined) ?? []).some((b) => b.state !== 'closed')
+
 /** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
   const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: ['plan', 'build'] } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
   for (const t of tickets.docs) {
     try {
-      if (t.waitingFor || ((t.blockedBy as { state?: string }[]) ?? []).some((b) => b.state !== 'closed')) continue
+      if (t.waitingFor || hasOpenBlocker(t)) continue
       if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
       if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
+      if (t.stage === 'build' && (await holdOverlap(payload, t))) continue
       await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
       payload.logger.info({ ticket: t.id, stage: t.stage }, 'run started for a Ticket without one')
     } catch (e) {
@@ -466,8 +471,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
           if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
-          const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !current?.waitingFor && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
+          const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 1, overrideAccess: true }) : null
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !current?.waitingFor && !hasOpenBlocker(current ?? {}) && t.assignees.every((a) => logins(current?.gateAssignees).includes(a)) && !(stage === 'build' && current && (await holdOverlap(payload, current)))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)

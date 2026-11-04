@@ -77,6 +77,18 @@ export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd)
   await payload.update({ collection: 'workspaces', id: wsId, data: { wipLimits: limits }, ...w } as never)
 })
 
+/** Paths that never hold a Build for overlap: the textarea (one glob per line) replaces the list; `add` appends one suggested path. */
+export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
+  only(c.user)
+  const wsId = inWorkspace(c)
+  const product = id(fd)
+  await assertInWorkspace(c.payload, 'products', [product], wsId)
+  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { overlapIgnore: true }, depth: 0, overrideAccess: true })) as { overlapIgnore?: string[] }).overlapIgnore ?? []
+  const lines = fd.has('ignore') ? s(fd, 'ignore').split('\n').map((l) => l.trim()).filter(Boolean) : [...current, s(fd, 'add')]
+  if (lines.some((l) => /\s/.test(l))) throw Object.assign(new Error('Invalid glob.'), { data: { errors: [{ path: 'ignore', message: 'One path glob per line, without spaces' }] } })
+  await c.payload.update({ collection: 'products', id: product, data: { overlapIgnore: [...new Set(lines)] }, ...c.w } as never)
+})
+
 export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) => {
   only(user)
   await rotateKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))

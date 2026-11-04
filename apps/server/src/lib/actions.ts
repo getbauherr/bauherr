@@ -258,7 +258,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
       await moveStage(payload, ts, t, 'build')
       await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
     })
-    if (entered === 'waiting') return null
+    if (entered !== 'moved') return null
     if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
   }
   await ts.comment(n, 'Plan accepted automatically (plan gate off).')

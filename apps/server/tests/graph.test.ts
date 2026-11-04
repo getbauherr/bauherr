@@ -52,4 +52,12 @@ describe('layoutGraph', () => {
     const g = layoutGraph([t(1), t(2, [1]), t(3, [], { run: { status: 'running' } }), t(4, [], { stage: 'done' }), t(5, [], { run: { status: 'failed' } })])
     expect([1, 2, 3, 4, 5].map((i) => node(g, i).ready)).toEqual([true, false, false, false, true])
   })
+  it('draws a hold as a dashed implicit edge and lays the held Ticket after its holder; the hold is never critical', () => {
+    const g = layoutGraph([t(1), t(2, [], { overlaps: 1 })])
+    expect(g.edges).toEqual([{ from: 1, to: 2, critical: false, implicit: true }])
+    expect([1, 2].map((i) => node(g, i).col)).toEqual([0, 1])
+    expect(node(g, 2).ready).toBe(true)
+    expect(layoutGraph([t(1), t(2, [1], { overlaps: 1 })]).edges).toEqual([{ from: 1, to: 2, critical: true }])
+    expect(layoutGraph([t(2, [], { overlaps: 99 })]).edges).toEqual([])
+  })
 })

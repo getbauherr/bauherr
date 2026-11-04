@@ -22,5 +22,5 @@ export const wipLimit = (ws: { wipLimits?: unknown } | null | undefined, stage: 
 
 const label = (s: string) => s[0].toUpperCase() + s.slice(1)
 
-/** "Waiting: Build is full (2/2)". */
-export const waitingText = (stage: string, count: number, limit: number | null): string => `Waiting: ${label(stage)} is full (${count}/${limit ?? count})`
+/** "Waiting: Build is full (2/2)", or "Waiting: overlaps #12" when the Ticket carries a reason. */
+export const waitingText = (stage: string, count: number, limit: number | null, reason?: string | null): string => (reason ? `Waiting: ${reason}` : `Waiting: ${label(stage)} is full (${count}/${limit ?? count})`)
