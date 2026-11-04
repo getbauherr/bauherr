@@ -9,7 +9,7 @@
     "prebuild": "pnpm gen:migrations && pnpm tokens && pnpm build:widget",
     "build": "next build",
     "start": "next start",
-    "jobs": "payload jobs:run --queue runs --cron \"*/5 * * * * *\"",
+    "jobs": "tsx scripts/jobs-runs.ts",
     "jobs:poll": "payload jobs:run --queue poll --handle-schedules --cron \"*/5 * * * * *\"",
     "importmap": "payload generate:importmap",
     "seed:e2e": "tsx scripts/seed-e2e.ts",

@@ -79,10 +79,12 @@ services:
   worker:
     <<: *app
     command: [pnpm, jobs]
+    environment:
+      BAUHERR_MAX_RUNS: ${BAUHERR_MAX_RUNS:-4}
     depends_on:
       app: {condition: service_healthy} # app applies prod migrations on boot
     healthcheck:
-      test: [CMD-SHELL, "pgrep -f jobs:run"]
+      test: [CMD-SHELL, "pgrep -f jobs-runs"]
       interval: 15s
       retries: 3
   poller: # own process: a long agent Run in `worker` must not delay polls
