@@ -16,6 +16,9 @@ interface FakeRepo {
   branches: Map<string, { sha: string; files: Map<string, string> }>;
   prs: PullRequest[];
   checks: Map<string, Check[]>;
+  /** Checks `rerunFailed` switches `checks[sha]` to. */
+  rerunChecks: Map<string, Check[]>;
+  reruns: Check[][];
   commitDates: Map<string, string>;
   releases: Release[];
   tags: string[];
@@ -107,6 +110,16 @@ export class FakeBackend implements Backend {
     this.repo(repo).checks.set(sha, checks);
   }
 
+  /** Test helper: what `listChecks(sha)` reports after the next `rerunFailed`. */
+  setRerunChecks(repo: RepoRef, sha: string, checks: Check[]): void {
+    this.repo(repo).rerunChecks.set(sha, checks);
+  }
+
+  /** Test helper: the `rerunFailed` calls so far. */
+  reruns(repo: RepoRef): Check[][] {
+    return this.repo(repo).reruns;
+  }
+
   /** Test helper: overrides fields of a PR (draft, headRepo, head, ...). */
   setPullRequest(repo: RepoRef, number: number, patch: Partial<PullRequest>): void {
     const pr = this.repo(repo).prs.find((p) => p.number === number);
@@ -146,7 +159,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [] };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [] };
       this.repos.set(name, r);
     }
     return r;
@@ -216,6 +229,13 @@ export class FakeBackend implements Backend {
         return out;
       },
       listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
+      rerunFailed: async (repo, checks) => {
+        const r = this.repo(repo);
+        r.reruns.push(checks);
+        for (const [sha, next] of r.rerunChecks) r.checks.set(sha, next);
+        r.rerunChecks.clear();
+        return checks.length > 0 && checks.every((c) => c.runId);
+      },
       listFiles: async (repo, ref) => {
         const r = this.repo(repo);
         const b = r.branches.get(ref ?? r.defaultBranch);
