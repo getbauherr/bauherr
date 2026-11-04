@@ -7,8 +7,8 @@ import { currentWorkspace } from '../../lib/session'
 export const dynamic = 'force-dynamic'
 
 export default async function Requests() {
-  const { workspace } = await currentWorkspace()
-  const { rows, total, multiProduct } = workspace ? await loadRequests(workspace.id) : { rows: [], total: 0, multiProduct: false }
+  const { user, workspace } = await currentWorkspace()
+  const { rows, total, multiProduct } = workspace ? await loadRequests(workspace.id, user.id as number) : { rows: [], total: 0, multiProduct: false }
   return (
     <>
       <h1 className="title">Requests</h1>
@@ -23,7 +23,7 @@ export default async function Requests() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      {r.title}
+                      {r.resumable ? <Link className="link" href={`/requests/new?session=${r.id}`}>{r.title}</Link> : r.title}
                       {r.ticket && <> {r.ticket.id ? <Link className="link" href={`/tickets/${r.ticket.id}`}>#{r.ticket.number}</Link> : <span>#{r.ticket.number}</span>}</>}
                     </td>
                     {multiProduct && <td>{r.product}</td>}
