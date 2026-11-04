@@ -71,7 +71,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await ws.getByRole('button', { name: 'Create Workspace' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
   await page.locator('header.topbar').getByRole('button', { name: 'User menu' }).click()
-  await expect(page.getByRole('menu').getByRole('button', { name: created })).toBeVisible()
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: created })).toBeVisible()
 })
 
 test('an Advanced anchor entry keeps Advanced open and is the only current entry', async ({ page }) => {
