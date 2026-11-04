@@ -7,6 +7,7 @@ const config: NextConfig = {
   allowedDevOrigins: ['localhost', '127.0.0.1', 'host.docker.internal'],
   serverExternalPackages: ['@bauherr/runner', '@bauherr/adapters'],
   agentRules: false,
+  env: { BAUHERR_TEST_BUILD: process.env.BAUHERR_TEST_BUILD ?? '' },
 }
 
 export default withPayload(config, { devBundleServerPackages: false })
