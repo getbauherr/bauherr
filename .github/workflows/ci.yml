@@ -131,13 +131,6 @@ jobs:
           pnpm --filter server start > apps/server/e2e/app.log 2>&1 &
           curl --fail --silent --retry 60 --retry-delay 2 --retry-connrefused -o /dev/null http://localhost:3000/login
       - run: pnpm --filter server seed:e2e
-      - name: TEMP 20x acceptance run for #326
-        if: matrix.shard == 1
-        run: >
-          docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
-          -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server
-          -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e E2E_GATED_PACK -e HOME=/tmp
-          mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test e2e/ticket.spec.ts -g "single, visible bar" --repeat-each=20 --reporter=line
       - name: Playwright
         run: >
           docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
