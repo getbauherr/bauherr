@@ -94,9 +94,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
       - name: Changed e2e specs (burn-in list)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && matrix.shard == 1
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
