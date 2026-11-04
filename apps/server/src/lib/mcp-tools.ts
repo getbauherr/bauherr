@@ -413,6 +413,25 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'relink_mr',
+    access: 'agent',
+    description: 'Build Runs only: link the Ticket to a replacement MR you opened by hand (the earlier one was closed). prUrl must be an open pull request in the Ticket repo from a branch named bauherr/<ticket number>-... (not a fork). The review then runs on that MR.',
+    inputSchema: obj({ ...runId, ...leaseToken, prUrl: str('URL of the open replacement MR') }, ['runId', 'leaseToken', 'prUrl']),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (run.stage !== 'build') throw new Error('relink_mr is for Build Runs')
+      const ticket = await getTicket(c, id(run.ticket))
+      const { backend, repo, web } = await forgeOf(c.payload, id(ticket.product))
+      const num = typeof a.prUrl === 'string' ? prNumber(a.prUrl, repo, web) : null
+      const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
+      if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
+        throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
+      }
+      await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
+      return { linked: a.prUrl }
+    },
+  },
+  {
     name: 'submit_review',
     access: 'agent',
     description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',

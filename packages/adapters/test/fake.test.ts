@@ -29,6 +29,13 @@ describe('fake: mergePullRequest', () => {
     assert.equal(merged.mergeSha, mergeSha);
     assert.ok(!(await b.forge.listBranches('o/r')).some((x) => x.name === 'feat'));
   });
+  it('retargets the PRs stacked on the deleted head branch to the merged PR base', async () => {
+    const { b, pr } = await setup();
+    await b.forge.createBranch('o/r', 'child', 'feat');
+    const child = await b.forge.openPullRequest('o/r', { title: 'c', head: 'child', base: 'feat' });
+    await b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', deleteBranch: true });
+    assert.deepEqual(await b.forge.getPullRequest('o/r', child.number).then((p) => [p.state, p.base]), ['open', 'main']);
+  });
   it('refuses a moved head and a PR that is not open', async () => {
     const { b, pr } = await setup();
     await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', expectSha: 'stale' }), /head moved/);
