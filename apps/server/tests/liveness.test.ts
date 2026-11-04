@@ -113,6 +113,40 @@ it('checks-red: back to Build on the same MR with the failing checks, no review 
   expect(await liveComments(n)).toHaveLength(1)
 })
 
+it('a repair that throws leaves no marker: the next pass retries it', async () => {
+  const { id, n } = await seed('review', { reviewState: 'needs_human', mr: 'open', checks: [{ name: 'e2e', status: 'completed', conclusion: 'failure' }] })
+  const real = fake.forge.listChecks
+  let calls = 0
+  fake.forge.listChecks = async (...a) => {
+    // 1st call classifies the Ticket, the 2nd is the repair's own read
+    if (++calls === 2) throw new Error('forge down')
+    return real(...a)
+  }
+  try {
+    await liveness.sweepLiveness(payload)
+    expect(await liveComments(n)).toHaveLength(0)
+    expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human' })
+    await liveness.sweepLiveness(payload)
+  } finally {
+    fake.forge.listChecks = real
+  }
+  expect(await reload(id)).toMatchObject({ stage: 'build' })
+  expect(await liveComments(n)).toHaveLength(1)
+})
+
+it('mr-missing links the newest open replacement MR', async () => {
+  const { id, number } = await seed('review', { reviewState: 'needs_human', mr: 'closed' })
+  const urls: string[] = []
+  for (const suffix of ['a', 'b']) {
+    const branch = `bauherr/${number}-${suffix}`
+    await fake.forge.createBranch(repo, branch)
+    fake.commit(repo, branch, `${suffix}.ts`, suffix)
+    urls.push((await fake.forge.openPullRequest(repo, { title: suffix, body: EVIDENCE, head: branch, base: 'main' })).url)
+  }
+  await liveness.sweepLiveness(payload)
+  expect((await runs(id, 'build')).some((r) => r.artifacts?.prUrl === urls[1])).toBe(true)
+})
+
 it('review-escalated (MR open, checks not red): not repaired, shown as "Needs you"; Back to build moves it', async () => {
   const { id, n } = await seed('review', { reviewState: 'needs_human', mr: 'open', checks: [{ name: 'ci', status: 'completed', conclusion: 'success' }] })
   const dead = (await liveness.deadTickets(payload, ws)).find((d) => d.ticket.id === id)!
@@ -149,6 +183,8 @@ it('run-cancelled: not repaired, shown as "Cancelled" with its reason', async ()
   await liveness.sweepLiveness(payload)
   expect(await runs(id, 'build')).toHaveLength(1)
   expect(await liveComments(n)).toHaveLength(0)
+  const live = await seed('build', { runs: [{ stage: 'build', status: 'awaiting_session' }] })
+  await expect(actions.backToBacklog(payload, member, { ticket: live.id })).rejects.toThrow(/not cancelled/)
   expect(await actions.backToBacklog(payload, member, { ticket: id })).toEqual({ stage: 'triage' })
   expect(await reload(id)).toMatchObject({ stage: 'triage' })
 })

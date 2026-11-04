@@ -20,10 +20,10 @@ export type Dead = { ticket: Doc; cause: Cause; run: Doc | null; need: Need | nu
 
 const STAGES = ['plan', 'build', 'review']
 
-/** The open factory MR of a Ticket, found by branch name when the linked MR is closed or missing. */
+/** The newest open factory MR of a Ticket (highest number), found by branch name when the linked MR is closed or missing. */
 const replacementMr = async (payload: Payload, t: Doc) => {
   const { backend, repo } = await forgeOf(payload, id(t.product))
-  return (await backend.forge.listPullRequests(repo, 'open')).find((pr) => isFactoryPr(pr, repo, t.number) && pr.state === 'open') ?? null
+  return (await backend.forge.listPullRequests(repo, 'open')).filter((pr) => isFactoryPr(pr, repo, t.number) && pr.state === 'open').sort((a, b) => b.number - a.number)[0] ?? null
 }
 
 const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Cause | null> => {
@@ -69,13 +69,15 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
   return dead
 }
 
-/** Marks a repair on the Ticket: the marker makes it once per (Ticket, cause, Run). Returns false when it was already done. */
-const claimRepair = async (payload: Payload, d: Dead, what: string): Promise<boolean> => {
-  const ts = await ticketsOf(payload, id(d.ticket.product))
-  const n = String(d.ticket.number)
-  const marker = `<!-- bauherr:liveness:${d.cause}:${d.run?.id ?? 'none'} -->`
-  if ((await ts.listComments(n)).some((c) => c.body.startsWith(marker))) return false
-  await ts.comment(n, `${marker}\nBauherr liveness: ${d.cause}. ${what}`)
+const markerOf = (d: Dead): string => `<!-- bauherr:liveness:${d.cause}:${d.run?.id ?? 'none'} -->`
+
+/** Whether this (Ticket, cause, Run) was already repaired: its marker Comment exists. */
+const repaired = async (payload: Payload, d: Dead): Promise<boolean> =>
+  (await (await ticketsOf(payload, id(d.ticket.product))).listComments(String(d.ticket.number))).some((c) => c.body.startsWith(markerOf(d)))
+
+/** Records a finished repair as one Comment line with the marker. Written after the repair, so a repair that threw is retried by the next pass. */
+const record = async (payload: Payload, d: Dead, what: string): Promise<true> => {
+  await (await ticketsOf(payload, id(d.ticket.product))).comment(String(d.ticket.number), `${markerOf(d)}\nBauherr liveness: ${d.cause}. ${what}`)
   return true
 }
 
@@ -86,38 +88,39 @@ const failedTwice = async (payload: Payload, run: Doc): Promise<boolean> => {
   return !!prev && prev.stage === run.stage && ['failed', 'abandoned'].includes(prev.status)
 }
 
-/** Repairs one dead Ticket by its cause; returns whether it acted. */
+/** Repairs one dead Ticket by its cause; returns whether it acted. The marker Comment is written only after the repair succeeded. */
 export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
   const t = d.ticket
+  if (!REPAIRED.includes(d.cause) || (await repaired(payload, d))) return false
   switch (d.cause) {
     case 'run-failed':
     case 'run-abandoned': {
-      if (!d.run || (await failedTwice(payload, d.run)) || !(await claimRepair(payload, d, `Started one new ${d.run.stage} Run.`))) return false
+      if (!d.run || (await failedTwice(payload, d.run))) return false
       const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, d.run.stage)
-      if (created) await payload.update({ collection: 'runs', id: run.id, data: { previousRun: d.run.id }, ...o })
-      return created
+      if (!created) return false
+      await payload.update({ collection: 'runs', id: run.id, data: { previousRun: d.run.id }, ...o })
+      return record(payload, d, `Started one new ${d.run.stage} Run.`)
     }
     case 'triage-expired': {
-      if (!(await claimRepair(payload, d, 'Triage is offered again.'))) return false
       await payload.update({ collection: 'tickets', id: t.id, data: { triagedAt: null, triageAttempts: 0 }, ...o })
-      return true
+      return record(payload, d, 'Triage is offered again.')
     }
     case 'mr-missing': {
       const found = await replacementMr(payload, t)
-      if (!(await claimRepair(payload, d, found ? `Linked ${found.url} and resumed the review.` : 'The MR was closed; back to Build.'))) return false
-      if (!found) return (await sendBackToBuild(payload, t, 'The MR was closed.')) === 'build'
-      const set = sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: found.url })}::jsonb, "updated_at" = now()`
-      const done = await payload.db.drizzle.execute(sql`UPDATE "runs" SET ${set} WHERE "id" = (SELECT "id" FROM "runs" WHERE "ticket_id" = ${t.id} AND "stage" = 'build' ORDER BY "created_at" DESC LIMIT 1) RETURNING "id"`)
-      if (!done.rows.length) return (await sendBackToBuild(payload, t, 'The MR was closed.')) === 'build'
+      const relinked = found && (await payload.db.drizzle.execute(sql`UPDATE "runs" SET "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: found.url })}::jsonb, "updated_at" = now() WHERE "id" = (SELECT "id" FROM "runs" WHERE "ticket_id" = ${t.id} AND "stage" = 'build' ORDER BY "created_at" DESC LIMIT 1) RETURNING "id"`)).rows.length > 0
+      if (!relinked) {
+        if ((await sendBackToBuild(payload, t, 'The MR was closed.')) !== 'build') return false
+        return record(payload, d, 'The MR was closed; back to Build.')
+      }
       await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human'`)
       await startReviewIfReady(payload, { ...t, reviewState: null })
-      return true
+      return record(payload, d, `Linked ${found.url} and resumed the review.`)
     }
     case 'checks-red': {
-      if (!(await claimRepair(payload, d, 'Failing checks on the MR; back to Build.'))) return false
       const mr = await prOf(payload, t)
       const failed = mr ? mergeChecks(await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)).failed : []
-      return (await sendBackToBuild(payload, t, `Checks failed on the MR head: ${failed.join(', ') || 'see the MR'}. Make them pass.`)) === 'build'
+      if ((await sendBackToBuild(payload, t, `Checks failed on the MR head: ${failed.join(', ') || 'see the MR'}. Make them pass.`)) !== 'build') return false
+      return record(payload, d, 'Failing checks on the MR; back to Build.')
     }
     default:
       return false

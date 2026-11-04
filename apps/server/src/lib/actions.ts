@@ -737,6 +737,8 @@ export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: Tick
 export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.state === 'closed' || !['plan', 'build', 'review'].includes(t.stage)) throw new Error('the Ticket is not in a factory stage')
+  const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  if (latest?.status !== 'cancelled' || latest.stage !== t.stage) throw new Error('the Ticket is not cancelled')
   const { ts, n } = await sourceOf(payload, t)
   await moveStage(payload, ts, t, 'triage')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', reviewState: null }, overrideAccess: true })
