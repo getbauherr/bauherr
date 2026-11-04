@@ -101,7 +101,9 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
           setDiscardError('')
           try {
             await discardIntake(discarding.id)
-            window.location.reload()
+            // revalidatePath refreshes the list; only the open session's chat needs a fresh page
+            if (String(discarding.id) === session) window.location.reload()
+            else setDiscarding(null)
           } catch {
             setDiscardError('Could not discard the draft. Please try again.')
           } finally {

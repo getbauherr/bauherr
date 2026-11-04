@@ -343,6 +343,14 @@ describe('gitlab forge', () => {
     assert.deepEqual(calls.find((c) => c.method === 'PUT')!.body, { squash: false });
   });
 
+  it('rerunFailed retries the pipeline of the failed jobs once; checks without a pipeline re-run nothing', async () => {
+    const { forge, calls } = setup((_m, path) => (path.includes('/jobs') ? fx('jobs') : path.includes('/bridges') ? [] : path.endsWith('/retry') ? {} : fx('pipelines')));
+    const failed = (await forge.listChecks('g/p', 'abc123')).filter((c) => c.conclusion === 'failure');
+    assert.equal(await forge.rerunFailed('g/p', [...failed, ...failed]), true);
+    assert.deepEqual(calls.filter((c) => c.method === 'POST').map((c) => c.path), [`${P}/pipelines/2994845015/retry`]);
+    assert.equal(await forge.rerunFailed('g/p', [{ name: 'child', status: 'completed', conclusion: 'failure' }]), false);
+  });
+
   it('listChecks: failed pipeline without jobs is red, failed bridge is red, running pipeline without jobs is pending', async () => {
     const run = (status: string, bridges: unknown[] = []) => setup((_m, path) => (path.includes('/jobs') ? [] : path.includes('/bridges') ? bridges : [{ id: 5, status }])).forge.listChecks('g/p', 's');
     assert.deepEqual((await run('failed')).map((c) => [c.name, c.status, c.conclusion]), [['pipeline', 'completed', 'failure']]);

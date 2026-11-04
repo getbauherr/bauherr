@@ -197,6 +197,41 @@ it('pre-release Product: no finished checks within 60 minutes is Release failed'
   expect(await reload(t.id)).toMatchObject({ releaseChecksState: 'failed', releaseRunUrl: fake.listReleases('acme/rc').at(-1)!.url })
 })
 
+it('pre-release Product: a red release check is re-run once; red then green passes, red twice fails', async () => {
+  const run = async (sha: string, second: string) => {
+    const t = await approved('rc', `Retry ${sha}`, sha)
+    fake.setCommits('acme/rc', [{ sha, message: `fix: ${sha}` }])
+    await release.publishRelease(payload, products.rc!)
+    const at = new Date(Date.now()).toISOString()
+    const npm = (id: number, conclusion: string) => ({ id, runId: 5, name: 'npm', status: 'completed', conclusion, startedAt: at })
+    const image = { id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }
+    fake.setChecks('acme/rc', sha, [image, npm(2, 'failure')])
+    expect(await release.watchReleaseChecks(payload)).toBe(0)
+    expect((await reload(t.id)).releaseChecksState).toBe('waiting')
+    fake.setChecks('acme/rc', sha, [image, npm(3, second)])
+    await release.watchReleaseChecks(payload)
+    return (await reload(t.id)).releaseChecksState
+  }
+  expect(await run('sha-flk', 'success')).toBe('passed')
+  expect(await run('sha-red', 'failure')).toBe('failed')
+})
+
+it('pre-release Product: a re-run that never shows up fails past 60 minutes; a skipped check is not re-run', async () => {
+  const run = async (sha: string, conclusion: string, later: number) => {
+    const t = await approved('rc', `Wait ${sha}`, sha)
+    fake.setCommits('acme/rc', [{ sha, message: `fix: ${sha}` }])
+    await release.publishRelease(payload, products.rc!)
+    const at = new Date(Date.now()).toISOString()
+    fake.setChecks('acme/rc', sha, [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }, { id: 2, runId: 6, name: 'npm', status: 'completed', conclusion, startedAt: at }])
+    const before = fake.reruns('acme/rc').length
+    await release.watchReleaseChecks(payload)
+    await release.watchReleaseChecks(payload, Date.now() + later)
+    return { state: (await reload(t.id)).releaseChecksState, reruns: fake.reruns('acme/rc').length - before }
+  }
+  expect(await run('sha-late', 'failure', 61 * 60_000)).toEqual({ state: 'failed', reruns: 1 })
+  expect(await run('sha-skip', 'skipped', 1000)).toEqual({ state: 'failed', reruns: 0 })
+})
+
 it('pre-release Product: a reused older release keeps its own runs (out-of-order approval) and resolves to "Released in"', async () => {
   const old = Date.now() - 3 * 60 * 60_000
   fake.setCommits('acme/rc', [{ sha: 'sha-b', message: 'fix: b' }])

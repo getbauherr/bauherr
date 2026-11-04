@@ -70,6 +70,9 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('heading', { name: 'Factory health' })).toBeVisible()
   await expect(page.getByText('Last poll, acme/web')).toBeVisible()
   await expect(page.getByText('Gateway budget')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Flaky checks' })).toBeVisible()
+  await expect(page.getByRole('row', { name: /^e2e 2 / })).toBeVisible()
+  await expect(page.getByRole('row', { name: /^lint 1 / })).toBeVisible()
 })
 
 test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and no technical settings', async ({ page }) => {
@@ -86,17 +89,31 @@ test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and
   await expect(page.getByRole('button', { name: 'Create agent key' })).toBeVisible()
 })
 
-// Needs a dev server started with BAUHERR_DISABLE_ADMIN=1; run with E2E_ADMIN_DISABLED=1.
-test('with BAUHERR_DISABLE_ADMIN=1 /admin and its server functions answer 404, /api stays up', async ({ page }) => {
-  test.skip(process.env.E2E_ADMIN_DISABLED !== '1', 'needs a server with BAUHERR_DISABLE_ADMIN=1')
+test('by default /admin redirects to /settings, also for an Admin, and /api stays up', async ({ page }) => {
+  test.skip(process.env.E2E_ADMIN_ENABLED === '1', 'runs against a server without BAUHERR_ENABLE_ADMIN')
+  const anon = await page.request.get('/admin', { maxRedirects: 0 })
+  expect(anon.status()).toBe(307)
+  expect(new URL(anon.headers().location!, 'http://x.test').pathname).toBe('/settings')
+  await signIn(page, email)
+  const res = await page.request.get('/admin', { maxRedirects: 0 })
+  expect(res.status()).toBe(307)
+  expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
+  const fn = await page.request.post('/admin', { headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' }, data: '[]', maxRedirects: 0 })
+  expect(fn.status()).toBe(307)
+  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
+})
+
+// Needs a dev server started with BAUHERR_ENABLE_ADMIN=1; run with E2E_ADMIN_ENABLED=1.
+test('with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does not', async ({ page }) => {
+  test.skip(process.env.E2E_ADMIN_ENABLED !== '1', 'needs a server with BAUHERR_ENABLE_ADMIN=1')
   await signIn(page, email)
   const res = await page.request.get('/admin')
-  expect(res.status()).toBe(404)
-  const id = /([0-9a-f]{40,})\\?",\\?"bound\\?":null,\\?"name\\?":\\?"serverFunction/.exec(await res.text())?.[1]
-  expect(id, 'server function id in the /admin layout').toBeTruthy()
-  const fn = await page.request.post('/admin', { headers: { 'next-action': id!, 'content-type': 'text/plain;charset=UTF-8' }, data: '[]' })
-  expect(fn.status()).toBe(404)
-  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
+  expect(res.status()).toBe(200)
+  expect(await res.text()).toMatch(/serverFunction/)
+  await page.context().clearCookies()
+  await signIn(page, 'member@example.com')
+  await page.goto('/admin')
+  await expect(page.getByText('Unauthorized')).toBeVisible()
 })
 
 test('the Ticket page Runs table shows Run and Duration to an Admin only and never Mode or Cost', async ({ page }) => {
@@ -132,5 +149,24 @@ test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiti
   await page.goto('/settings/workflow')
   await page.getByLabel(/^Build/).fill('')
   await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})
+
+test('Paths that never hold a Build: saved per Product in Settings > Workflow', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workflow')
+  await expect(page.getByRole('heading', { name: 'Paths that never hold a Build' })).toBeVisible()
+  const field = page.getByLabel('Paths that never hold a Build (Acme Web)')
+  const glob = `e2e-${Date.now()}/**`
+  await field.fill(`CHANGELOG.md\n${glob}`)
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.reload()
+  await expect(field).toHaveValue(`CHANGELOG.md\n${glob}`)
+  await field.fill('has space')
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('One path glob per line, without spaces')).toBeVisible()
+  await field.fill('')
+  await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })

@@ -44,7 +44,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
       <ul className="small m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-muted-foreground" aria-label="Legend">
         <li><span className="inline-block size-3 border-2 border-ok align-[-2px]" /> <span className="label text-ok">ready</span> no open blockers, not being worked on</li>
         <li><span className="inline-block h-[3px] w-3 bg-primary align-[3px]" /> <span className="label text-primary">critical path</span> longest chain of open blockers</li>
-        <li>Left stripe: stage. Arrow: blocker to blocked.</li>
+        <li>Left stripe: stage. Arrow: blocker to blocked. Dashed arrow: holds the Build for overlapping files.</li>
       </ul>
       </details>
       {linked.length > 0 && (
@@ -54,7 +54,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
             {edges.map((e) => {
               const a = at.get(e.from)!, b = at.get(e.to)!
               const x1 = x(a.col) + W, y1 = y(a.row) + H / 2, x2 = x(b.col), y2 = y(b.row) + H / 2, dx = Math.max(GX, (x2 - x1) / 2)
-              return <path key={`${e.from}-${e.to}`} className="gedge fill-none stroke-border [stroke-width:1.5] data-[critical]:stroke-primary data-[critical]:[stroke-width:2.5]" data-critical={e.critical || undefined} d={`M${x1} ${y1}C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`} markerEnd="url(#tg-arrow)" />
+              return <path key={`${e.from}-${e.to}`} className="gedge fill-none stroke-border [stroke-width:1.5] data-[implicit]:[stroke-dasharray:5_4] data-[critical]:stroke-primary data-[critical]:[stroke-width:2.5]" data-critical={e.critical || undefined} data-implicit={e.implicit || undefined} d={`M${x1} ${y1}C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`} markerEnd="url(#tg-arrow)" />
             })}
             {linked.map((n) => <Node key={n.id} t={byId.get(n.id)!} n={n} x={x(n.col)} y={y(n.row)} />)}
           </svg>

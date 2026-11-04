@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { EmptyState } from '../../../components/EmptyState'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { isAdmin, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
@@ -74,6 +75,7 @@ export default async function WorkspaceSettings() {
               <tbody>
                 <tr><th>Jobs, last 24 h (instance-wide)</th><td>{health.queued} queued · {health.running} running · <span className={health.failed ? 'err' : ''}>{health.failed} failed{health.failed ? ' (needs attention)' : ''}</span></td></tr>
                 <tr><th>Oldest queued job (instance-wide)</th><td>{health.oldestQueued ? ago(health.oldestQueued) : 'none waiting'}</td></tr>
+                <tr><th>Dead tickets</th><td><span className={health.dead.length ? 'err' : ''}>{health.dead.length}</span>{health.dead.map((d) => <span key={d.id}> · <Link href={`/tickets/${d.id}`}>#{d.number}</Link> ({d.cause})</span>)}</td></tr>
                 {health.sources.map((s) => (
                   <tr key={s.repo}>
                     <th>Last poll, {s.repo}</th>
@@ -84,6 +86,21 @@ export default async function WorkspaceSettings() {
               </tbody>
             </table>
           </div>
+          <h3 className="heading">Flaky checks</h3>
+          {health.flakes.length ? (
+            <div className="scroll">
+              <table className="table">
+                <thead><tr><th>Check</th><th>Passed after retry</th><th>Last seen</th><th>Ticket</th></tr></thead>
+                <tbody>
+                  {health.flakes.map((f) => (
+                    <tr key={f.check}><td className="mono">{f.check}</td><td>{f.count}</td><td>{ago(f.lastSeen)}</td><td>{f.ticket ? `#${f.ticket}` : ''}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="small muted">No check passed after a retry in the last 30 days.</p>
+          )}
           </section>
         </>
       )}

@@ -30,6 +30,12 @@ A statement is verified only by a recorded result, never by your assertion:
 
 Re-run the check after the last edit; evidence from before the last edit is stale. Format of the MR section: `rules/evidence.md`.
 
+## Before `request_review` (session Build Runs)
+1. If the MR-only diff (`git diff origin/<base>...HEAD --numstat`) has 30 or more changed lines, run a self-review in a subagent on the cheapest model tier (`review` skill, Self-review mode) and fix its high and medium findings once. Under 30 lines, skip this.
+2. `attach_evidence` the plan-step table (`rules/evidence.md`) and a line `Self-review: <n> findings, <m> fixed` (or `skipped, <30 lines`).
+3. Call `run_checks`. It returns the Product's pre-review `failures`; fix them, re-attach the Evidence and call it again. `request_review` (and `finish_run` with an MR) refuses with the same list.
+4. Then `request_review`.
+
 ## Exit rule
 | Run | May end only with |
 |---|---|
@@ -40,7 +46,7 @@ Re-run the check after the last edit; evidence from before the last edit is stal
 The Stop hook (`hooks/stop-goal-check.ts`) refuses to end the turn while a statement is unverified and undeclared. It re-prompts once with the unmet list; a second miss ends the Run `needs_human`.
 
 ## What the Runner does for you in Plan
-Your Goal in a Plan Run is only: write `.bauherr/plan.md` with the sections `## Goal` and `## Steps`, covering every acceptance criterion. For work too large for one MR, add a final `## Sub-tickets` section with one item per child, `- **Title** — one-line body` (acceptance criteria may continue on indented lines; an indented line `after: <exact title of another item>` makes it wait for that item, otherwise items are independent); on approval each item becomes its own pre-approved Ticket and this Ticket only tracks them. Items added to the Ticket after approval are not pre-approved. You have no tool to post Comments. After you exit, the Runner posts the file as the plan Comment (first line `<!-- bauherr:plan -->`), writes the Ticket's Goal statements into the worklog Comment (`<!-- bauherr:worklog -->`) and ends the Run `succeeded`. Build Runs: the Runner commits, pushes, opens the MR with the `## Evidence` section, Links it on the Ticket and sets the stage to review.
+Your Goal in a Plan Run is only: write `.bauherr/plan.md` with the sections `## Goal`, `## Steps` and `## Files`, covering every acceptance criterion. `## Files` lists every path the plan changes, one path glob per line (`- apps/server/src/lib/*.ts`), and nothing else; the factory holds a Build while an earlier Ticket changes the same paths. For work too large for one MR, add a final `## Sub-tickets` section with one item per child, `- **Title** — one-line body` (acceptance criteria may continue on indented lines; an indented line `after: <exact title of another item>` makes it wait for that item, otherwise items are independent); on approval each item becomes its own pre-approved Ticket and this Ticket only tracks them. Items added to the Ticket after approval are not pre-approved. You have no tool to post Comments. After you exit, the Runner posts the file as the plan Comment (first line `<!-- bauherr:plan -->`), writes the Ticket's Goal statements into the worklog Comment (`<!-- bauherr:worklog -->`) and ends the Run `succeeded`. Build Runs: the Runner commits, pushes, opens the MR with the `## Evidence` section, Links it on the Ticket and sets the stage to review.
 
 ## Declare a blocker
 Use only when you cannot proceed without a person or a missing input. A blocker is specific and actionable:
@@ -58,7 +64,7 @@ Refer to the Ticket as `Refs #N` in the MR body and commit messages; never `Clos
 Update the worklog as your last action. Do not push or open the MR yourself: the Runner does after you exit.
 
 ## Conflicts with main
-In an autonomous Run the Runner has already merged the base branch into the MR branch before your turn (a clean merge needs no agent). If the tree is mid-merge, resolve only the conflict markers keeping both sides, `git add`, `git commit`, and change nothing else; do not fetch or push. In a session Run merge the base yourself (`git merge`); never rebase, never force push.
+The factory merges the base into the MR itself and starts a Build Run only on real conflicts, so a Build Run for a conflicting MR means conflict markers. In an autonomous Run the Runner has already started the merge before your turn. If the tree is mid-merge, resolve only the conflict markers keeping both sides, `git add`, `git commit`, and change nothing else; do not fetch or push. In a session Run merge the base yourself (`git merge`); never rebase, never force push.
 
 ## Do not
 - Mark a statement verified without evidence.

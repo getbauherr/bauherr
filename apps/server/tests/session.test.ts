@@ -76,14 +76,33 @@ it('the requeue migration gives a successor to Runs that expired unclaimed', asy
   expect((await payload.count({ collection: 'runs', where: { ticket: { equals: ticket.id } }, ...o })).totalDocs).toBe(2)
 })
 
-it('two parallel expiry passes abandon an unclaimed Triage Run and untriage its Ticket once', async () => {
+it('the expiry passes leave an unclaimed Triage Run and its Ticket alone', async () => {
   const { expireStaleSessions, startRunIfNeeded } = await import('../src/jobs')
   const ticket = await seedTicket('p', 'session')
   await payload.update({ collection: 'tickets', id: ticket.id, data: { triagedAt: new Date().toISOString() }, ...o })
   const { run } = await startRunIfNeeded(payload, ticket, 'triage')
   const later = Date.now() + 3 * 3600_000
   const handled = await Promise.all([expireStaleSessions(payload, later), expireStaleSessions(payload, later)])
-  expect(handled[0] + handled[1]).toBe(1)
-  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('abandoned')
-  expect((await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })).triagedAt).toBeNull()
+  expect(handled[0] + handled[1]).toBe(0)
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('awaiting_session')
+  expect((await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })).triagedAt).not.toBeNull()
+})
+
+it('password sign-in lasts 14 days and drafts survive logout and a new sign-in', async () => {
+  const { generatePayloadCookie } = await import('payload')
+  const { SESSION_TTL_S } = await import('../src/lib/oidc-session')
+  const user = await payload.create({ collection: 'bauherren', data: { email: 'l@x.io', password: 'pw-123456', role: 'admin' }, ...o })
+  const ticket = await seedTicket('d')
+  const draft = await payload.create({ collection: 'intake_sessions', data: { product: ticket.product as number, workspace: ticket.workspace as number, user: user.id, persona: 'product-user', status: 'open', messages: [{ role: 'user', content: 'x' }] }, ...o } as never)
+
+  const login = () => payload.login({ collection: 'bauherren', data: { email: 'l@x.io', password: 'pw-123456' } })
+  const first = await login()
+  const now = Date.now() / 1000
+  expect(Math.abs(first.exp! - (now + SESSION_TTL_S))).toBeLessThan(5)
+  const cookie = generatePayloadCookie({ collectionAuthConfig: payload.collections.bauherren.config.auth, cookiePrefix: payload.config.cookiePrefix, token: first.token!, returnCookieAsObject: true })
+  expect(Math.abs(new Date(cookie.expires!).getTime() / 1000 - (now + SESSION_TTL_S))).toBeLessThan(5)
+
+  await payload.update({ collection: 'bauherren', id: user.id, data: { sessionVersion: 1 }, ...o })
+  await login()
+  expect(await payload.findByID({ collection: 'intake_sessions', id: draft.id, ...o })).toMatchObject({ status: 'open' })
 })

@@ -5,6 +5,7 @@ import { hasProductionChecks } from './mode'
 import { type Need, needsYou } from './needs-you'
 import { publicUrl } from './oidc'
 import { startRunIfNeeded } from '../jobs'
+import { holdOverlap } from './overlap'
 import { forgeOf, id } from './release'
 
 type Doc = Record<string, any>
@@ -110,7 +111,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const factory = [...mine, ...added]
   if ((t.stage === 'plan' || t.stage === 'build') && t.state === 'open' && !t.waitingFor && logins(t.assignees).every((a) => factory.includes(a))) {
     const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, ...o })
-    if (!runs.totalDocs) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
+    if (!runs.totalDocs && !(t.stage === 'build' && (await holdOverlap(payload, t)))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
   }
   return true
 }

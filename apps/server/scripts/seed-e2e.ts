@@ -16,7 +16,7 @@ const ensure = async (collection: string, where: Record<string, unknown>, data: 
 }
 
 const email = env('E2E_EMAIL')
-await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-admin' })
+const admin = (await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-admin' })).id
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme', wipLimits: {} })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
 const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug: 'zeta' })).id
@@ -91,6 +91,7 @@ for (const [i, [at, summary]] of steps.entries()) {
   const step = await ensure('steps', { run: build.id, seq: i + 1 }, { run: build.id, seq: i + 1, summary, startedAt: `2026-10-30T${at}Z`, tokensIn: 4000, tokensOut: 1100, workspace })
   if (i > 0) await ensure('tool_calls', { toolUseId: `e2e-tool-${i}` }, { toolUseId: `e2e-tool-${i}`, step: step.id, run: build.id, name: i === 1 ? 'Edit' : 'run_checks', inputDigest: '{"path":"src/export.ts"}', status: 'ok', durationMs: i === 1 ? 90000 : 120000, workspace })
 }
+for (const [checkName, sha] of [['e2e', 'sha-a'], ['e2e', 'sha-b'], ['lint', 'sha-a']] as const) await ensure('check_flakes', { ticket: t2, sha, checkName }, { ticket: t2, sha, checkName, outcome: 'flake', workspace })
 await ensure('human_touches', { kind: 'approve:plan', ticket: t2 }, { kind: 'approve:plan', ticket: t2, actor: email, at: '2026-10-30T09:05:00Z', workspace })
 const widgetOnly = (await ensure('products', { slug: 'acme-widget' }, { name: 'Acme Widget', slug: 'acme-widget', workspace })).id
 await ensure('embed_tokens', { name: 'Widget only' }, { name: 'Widget only', product: widgetOnly, tokenHash: 'e2e-widget-only-hash', workspace })
@@ -105,7 +106,7 @@ await run(t5, 'review', 'succeeded', {
 })
 const request = async (key: string, status: string, extra: Record<string, unknown>) =>
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
-await request('Export totals drift', 'open', {})
+await request('Export totals drift', 'open', { user: admin })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
 console.log('seeded')
 process.exit(0)

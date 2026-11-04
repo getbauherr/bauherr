@@ -5,6 +5,7 @@ import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
+import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
@@ -12,6 +13,7 @@ import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRan
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
+import { holdOverlap } from '../lib/overlap'
 import { enterStage, pullWaiting } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
@@ -212,16 +214,9 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Prom
   return rows.length
 }
 
-/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones wait indefinitely, except Triage Runs (`updatedAt` older than that), which end `abandoned`. Returns how many were handled. */
+/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). Returns how many were handled. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
-  // An unclaimed Triage Run is not a human's problem: it ends `abandoned` and the Ticket is triaged again by the next poll.
-  const triage = (
-    await payload.db.drizzle.execute(
-      sql`UPDATE "runs" SET "status" = 'abandoned', "error" = 'unclaimed triage expired', "finished_at" = ${new Date(now).toISOString()}, "updated_at" = now() WHERE "stage" = 'triage' AND "mode" = 'session' AND "status" = 'awaiting_session' AND "updated_at" < ${before} RETURNING "ticket_id"`,
-    )
-  ).rows
-  for (const r of triage) await untriage(payload, Number(r.ticket_id))
   const stale = await payload.find({
     collection: 'runs',
     where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { heartbeatAt: { less_than: before } }] },
@@ -229,7 +224,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
-  let handled = triage.length
+  let handled = 0
   for (const run of stale.docs) {
     try {
       if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
@@ -274,6 +269,15 @@ export const watchReviewsTask = watcher('watch-reviews', (p) => watchReviews(p))
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
 export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
 export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
+
+/** Every 5 minutes: repairs Tickets that have no live Run, no wait and no need for the owner (see `lib/liveness.ts`). */
+export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; output: { repaired: number } }> = {
+  slug: 'watch-liveness',
+  schedule: scheduled('0 */5 * * * *'),
+  retries: 0,
+  concurrency: () => 'watch-liveness',
+  handler: async ({ req }) => ({ output: { repaired: await (await import('../lib/liveness')).sweepLiveness(req.payload) } }),
+}
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
@@ -324,14 +328,18 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
+/** True while a blocker (loaded at depth 1) is not closed. */
+const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { state?: string }[] | undefined) ?? []).some((b) => b.state !== 'closed')
+
 /** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
   const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: ['plan', 'build'] } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
   for (const t of tickets.docs) {
     try {
-      if (t.waitingFor || ((t.blockedBy as { state?: string }[]) ?? []).some((b) => b.state !== 'closed')) continue
+      if (t.waitingFor || hasOpenBlocker(t)) continue
       if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
       if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
+      if (t.stage === 'build' && (await holdOverlap(payload, t))) continue
       await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
       payload.logger.info({ ticket: t.id, stage: t.stage }, 'run started for a Ticket without one')
     } catch (e) {
@@ -466,8 +474,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
           if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
-          const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true }) : null
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !current?.waitingFor && t.assignees.every((a) => logins(current?.gateAssignees).includes(a))) {
+          const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 1, overrideAccess: true }) : null
+          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !current?.waitingFor && !hasOpenBlocker(current ?? {}) && t.assignees.every((a) => logins(current?.gateAssignees).includes(a)) && !(stage === 'build' && current && (await holdOverlap(payload, current)))) {
             await startRunIfNeeded(payload, ticket, stage)
           }
           if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
@@ -550,7 +558,6 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
-          if (r.artifacts.mergeConflict) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_returns" = COALESCE("conflict_returns", 0) + 1 WHERE "id" = ${ticket.id}`)
           const reviewing = await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts })
           if (!(await rebindReview(payload, reviewing))) await startReviewIfReady(payload, reviewing)
         } catch (e) {
@@ -569,6 +576,17 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await queueReconcile(payload, run.id)
       throw e
     }
+  },
+}
+
+export const mergeMainTask: TaskConfig<{ input: { ticketId: number; reviewedSha?: string | null }; output: Record<string, never> }> = {
+  slug: 'merge-main',
+  retries: 0,
+  concurrency: { key: ({ input }) => `merge-main:${input.ticketId}`, exclusive: true, supersedes: true },
+  inputSchema: [{ name: 'ticketId', type: 'number', required: true }, { name: 'reviewedSha', type: 'text' }],
+  handler: async ({ input, req }) => {
+    await mergeMainIntoMr(req.payload, input.ticketId, input.reviewedSha ?? null)
+    return { output: {} }
   },
 }
 
@@ -604,4 +622,4 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask]
+export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask]

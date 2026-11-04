@@ -224,6 +224,22 @@ describe('github listChecks', () => {
   });
 });
 
+describe('github rerunFailed', () => {
+  it('re-runs the failed jobs of each Actions run once; checks without a run id re-run nothing', async () => {
+    const calls: string[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => json(init?.method === 'POST' ? (calls.push(new URL(String(u)).pathname), {}) : String(u).includes('/status') ? { statuses: [] } : { check_runs: [{ id: 1, name: 'a', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/o/r/actions/runs/77/job/1' }, { id: 2, name: 'b', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/o/r/actions/runs/77/job/2' }] }),
+    });
+    const checks = await b.forge.listChecks('o/r', 'h');
+    assert.deepEqual(checks.map((c) => c.runId), [77, 77]);
+    assert.equal(await b.forge.rerunFailed('o/r', checks), true);
+    assert.deepEqual(calls, ['/repos/o/r/actions/runs/77/rerun-failed-jobs']);
+    assert.equal(await b.forge.rerunFailed('o/r', [{ name: 'ci/a', status: 'completed', conclusion: 'failure' }]), false);
+    assert.equal(calls.length, 1);
+  });
+});
+
 describe('github file requests', () => {
   type Call = { method: string; url: string; body: any };
   const setup = (reply: (c: Call) => Response) => {

@@ -1,5 +1,6 @@
 'use server'
 import { randomBytes } from 'node:crypto'
+import { parseReviewChecks } from '@bauherr/runner'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
@@ -77,6 +78,18 @@ export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd)
   await payload.update({ collection: 'workspaces', id: wsId, data: { wipLimits: limits }, ...w } as never)
 })
 
+/** Paths that never hold a Build for overlap: the textarea (one glob per line) replaces the list; `add` appends one suggested path. */
+export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
+  only(c.user)
+  const wsId = inWorkspace(c)
+  const product = id(fd)
+  await assertInWorkspace(c.payload, 'products', [product], wsId)
+  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { overlapIgnore: true }, depth: 0, overrideAccess: true })) as { overlapIgnore?: string[] }).overlapIgnore ?? []
+  const lines = fd.has('ignore') ? s(fd, 'ignore').split('\n').map((l) => l.trim()).filter(Boolean) : [...current, s(fd, 'add')]
+  if (lines.some((l) => /\s/.test(l))) throw Object.assign(new Error('Invalid glob.'), { data: { errors: [{ path: 'ignore', message: 'One path glob per line, without spaces' }] } })
+  await c.payload.update({ collection: 'products', id: product, data: { overlapIgnore: [...new Set(lines)] }, ...c.w } as never)
+})
+
 export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) => {
   only(user)
   await rotateKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
@@ -103,12 +116,20 @@ export const createProduct = act({}, async (c, fd) => {
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const data = { stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
+  const checkRetries = Number(s(fd, 'checkRetries') || 1)
+  const data = { checkRetries, stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
   const errors = Object.entries(deployErrors(data)).map(([path, message]) => ({ path, message }))
+  if (!Number.isInteger(checkRetries) || checkRetries < 0 || checkRetries > 1) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
   const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
   if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
+  let reviewChecks = null
+  try {
+    reviewChecks = parseReviewChecks(s(fd, 'reviewChecks'))
+  } catch (e) {
+    errors.push({ path: 'reviewChecks', message: (e as Error).message })
+  }
   if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
-  await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
+  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, reviewChecks }, ...c.w } as never)
 })
 
 /** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */

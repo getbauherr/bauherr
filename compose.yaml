@@ -16,7 +16,7 @@ x-app: &app
     PAYLOAD_SECRET_FILE: /run/secrets/payload_secret
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
-    BAUHERR_DISABLE_ADMIN: ${BAUHERR_DISABLE_ADMIN:-}
+    BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
     # Optional OIDC sign-in, see docs/auth.md. Empty OIDC_ISSUER = password login only.
     OIDC_ISSUER: ${OIDC_ISSUER:-}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -59,7 +59,7 @@ services:
       interval: 5s
       retries: 10
   gateway:
-    image: cr.agentgateway.dev/agentgateway:v1.6.0
+    image: cr.agentgateway.dev/agentgateway:v1.6.0@sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
     user: "0" # provider key files are 0600 and written by root in app/worker
     command: [-f, /gateway/config.yaml]
     ports: ["127.0.0.1:4000:4000"] # admin API :15000 stays internal

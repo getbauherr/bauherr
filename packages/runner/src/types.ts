@@ -1,3 +1,5 @@
+import type { ReviewChecks } from './pre-review.js';
+
 export type StepRecord = {
   runId: string;
   messageId: string;
@@ -30,7 +32,7 @@ export type RunCtx = {
     tier: 'cheap' | 'standard' | 'strong';
   };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string };
-  product: { id?: string; repo: string; defaultBranch: string };
+  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
   /** Build Run on an existing MR: the Runner merges the base branch in before the agent (and skips the agent when the merge is clean). */

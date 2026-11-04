@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { payloadClient } from './session'
 
-export const RERUNNABLE = ['failed', 'needs_human']
+export const RERUNNABLE = ['failed', 'needs_human', 'cancelled']
 export const STEP_LIMIT = 500
 
 export type RunDoc = {

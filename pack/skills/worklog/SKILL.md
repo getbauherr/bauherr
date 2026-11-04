@@ -30,6 +30,9 @@ One pinned factory Comment per Ticket, mirrored to `.bauherr/worklog.md` in the 
 **Open**
 - <non-blocking (low) finding or thing not checked>
 
+**Pre-review**
+- Self-review: <n findings, m fixed | skipped, <30 lines>. run_checks: <pass | failing lines>.
+
 **Decisions**
 - YYYY-MM-DD <decision>. Consequence: <what it changes>. By: <person or Run>.
 
@@ -51,7 +54,7 @@ A human may edit the Comment in the forge at any time. When a Run starts:
 4. If an edit contradicts the Goal, declare a blocker (see `run-contract`) instead of picking one.
 
 ## Conflicts with main
-When the Current instructions say the MR conflicts, an autonomous Run finds the base already merged by the Runner and resolves only the conflict markers left in the tree (`git add`, `git commit`, nothing else); a session Run merges the base itself. Never rebase, never force push. Note the resolution under Decisions.
+When the Current instructions say the MR conflicts, the factory has already tried the merge and found real conflict markers (a clean merge never creates a Build Run). An autonomous Run finds the merge started by the Runner and resolves only the conflict markers left in the tree (`git add`, `git commit`, nothing else); a session Run merges the base itself. Never rebase, never force push. Note the resolution under Decisions.
 
 ## Notify affected Tickets
 When a Decision changes another Ticket (interface, schema, order, scope):
