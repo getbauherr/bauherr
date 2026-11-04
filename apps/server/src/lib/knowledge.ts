@@ -200,15 +200,15 @@ export const read = async (payload: Payload, workspace: number | string, path: s
 }
 
 /** Markdown documents of the Workspace's index, per source (core pack first), with the commit they were indexed at. */
-export const documents = async (payload: Payload, workspace: number | string): Promise<{ source: string; path: string; commit: string }[]> => {
+export const documents = async (payload: Payload, workspace: number | string): Promise<{ source: string; path: string; commit: string; heading: string }[]> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
   const r = await payload.db.drizzle.execute(sql`
-    SELECT "source", "path", min("commit") AS "commit" FROM "knowledge_chunks"
+    SELECT "source", "path", min("commit") AS "commit", (array_agg("heading" ORDER BY "id"))[1] AS "heading" FROM "knowledge_chunks"
     WHERE "workspace_id" = ${ws} AND "path" LIKE '%.md'
     GROUP BY "source", "path"
     ORDER BY ("source" = 'core') DESC, "source", "path"`)
-  return r.rows as unknown as { source: string; path: string; commit: string }[]
+  return r.rows as unknown as { source: string; path: string; commit: string; heading: string }[]
 }
 
 /** One document by its source and full path (no layer resolution); null when the index has none. */

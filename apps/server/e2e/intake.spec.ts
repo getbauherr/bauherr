@@ -67,7 +67,7 @@ test('closing the tab mid-interview and coming back resumes the session, the dra
   await say(page, 'Finance, last week', 'How should it work once it is fixed?')
   await say(page, 'Totals should match', 'Anything to add before I send this?')
   await page.getByRole('button', { name: 'Submit request' }).click()
-  await expect(page.getByRole('status')).toContainText('waits in Triage')
+  await expect(page.getByRole('status')).toContainText("We'll ask if anything is unclear")
 })
 
 test('a Product user describes a request, answers the questions and sends a Ticket to Triage', async ({ page }) => {
@@ -98,5 +98,35 @@ test('a Product user describes a request, answers the questions and sends a Tick
   await expect(page.getByRole('complementary', { name: 'Draft' })).toContainText('No rounding drift on export')
 
   await page.getByRole('button', { name: 'Submit request' }).click()
-  await expect(page.getByRole('status')).toContainText('waits in Triage')
+  await expect(page.getByRole('status')).toContainText("We'll ask if anything is unclear")
+})
+
+test('Discard asks in a dialog first; Keep draft leaves the draft, Discard removes it', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/requests/new')
+  const product = Number(await page.getByLabel('Product').locator('option', { hasText: 'Acme Web' }).getAttribute('value'))
+  const session = (texts: string[]) =>
+    page.evaluate(async ({ product, texts }) => {
+      const { id } = (await (await fetch('/intake/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product }) })).json()) as { id: number }
+      for (const text of texts) await (await fetch(`/intake/api/sessions/${id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) })).text()
+      return id
+    }, { product, texts })
+  await session(['The discard check is broken'])
+  const current = await session(['The totals are wrong', 'Finance, last week', 'Totals should match'])
+  await page.goto(`/requests/new?session=${current}`)
+
+  const drafts = page.getByRole('list', { name: 'Your drafts' })
+  await drafts.getByRole('button', { name: 'Discard' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Discard this draft?' })
+  await expect(dialog).toContainText('The discard check is broken')
+  await dialog.getByRole('button', { name: 'Keep draft' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(drafts).toContainText('The discard check is broken')
+
+  await drafts.getByRole('button', { name: 'Discard' }).click()
+  await dialog.getByRole('button', { name: 'Discard' }).click()
+  await expect(page.getByText('No open drafts.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Submit request' }).click()
+  await expect(page.getByRole('status')).toContainText("We'll ask if anything is unclear")
 })

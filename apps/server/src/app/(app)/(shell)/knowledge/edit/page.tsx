@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
 import { KnowledgeEditor } from '../../../components/KnowledgeEditor'
+import { title } from '../../../lib/knowledge'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { EditRefused, loadDocument } from '../../../../../lib/knowledge-edit'
 
@@ -14,8 +15,8 @@ export default async function EditKnowledge({ searchParams }: { searchParams: Pr
     const doc = await loadDocument(await payloadClient(), user, workspace.id, path)
     return (
       <>
-        <h2 className="heading">Edit {path}</h2>
-        <p className="small muted">Saving opens a pull request on the Knowledge repo; it merges when its checks are green.</p>
+        <h2 className="heading">Edit {title(path, /^#\s+(.+)$/m.exec(doc.content)?.[1])}</h2>
+        <p className="small muted">Your change is checked and published automatically.</p>
         <KnowledgeEditor path={path} content={doc.content} sha={doc.sha} />
       </>
     )
