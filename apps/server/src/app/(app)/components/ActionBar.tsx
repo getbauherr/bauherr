@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { acceptStagingAction, approvePlanAction, approveProductionAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
 import type { Need } from '../lib/needs-you'
+import { isWebUrl } from '../lib/url'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
 
@@ -17,6 +18,8 @@ type Props = {
   idle: string
   /** Workflow run of a failed release. */
   releaseRunUrl?: string | null
+  /** The Product's staging site, linked next to Accept. */
+  stagingUrl?: string | null
 }
 
 const Post = ({ ticket, action, children, variant = 'default' }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; variant?: 'default' | 'outline' }) => (
@@ -27,7 +30,7 @@ const Post = ({ ticket, action, children, variant = 'default' }: { ticket: numbe
 )
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, need, stage, missing, open, run, idle, releaseRunUrl }: Props) {
+export function ActionBar({ ticket, need, stage, missing, open, run, idle, releaseRunUrl, stagingUrl }: Props) {
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open }
   const verb = gate?.verb(ctx) ?? ''
@@ -59,6 +62,7 @@ export function ActionBar({ ticket, need, stage, missing, open, run, idle, relea
       {gate && (
         <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">
           {gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
+          {gate.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
           {secondary}
           {primary}
         </div>

@@ -49,6 +49,7 @@ test('a screenshot pasted into New request is sent with the request and shown in
   // The poller is not running here: sync the created Ticket the way it would.
   const ticket = (await api(`tickets?where[number][equals]=${number}&where[product][equals]=${product.id}&depth=0`)).docs[0] ?? (await api('tickets', { title: 'The shot check is broken', externalId: `e2e-intake-${number}`, number: Number(number), state: 'open', stage: 'triage', product: product.id, workspace: product.workspace })).doc
   await page.goto(`/tickets/${ticket.id}`)
+  await page.getByText('Details', { exact: true }).click()
   await expect(page.getByRole('img', { name: 'pasted-shot.png' })).toBeVisible()
   expect((await page.request.get((await page.getByRole('img', { name: 'pasted-shot.png' }).getAttribute('src'))!)).headers()['content-type']).toBe('image/png')
 })
