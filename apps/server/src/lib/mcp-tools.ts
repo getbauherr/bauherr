@@ -362,7 +362,7 @@ export const tools: Tool[] = [
   {
     name: 'request_review',
     access: 'agent',
-    description: 'Move the Ticket to the review stage label. Refused with the failing lines when the Product\'s pre-review checks fail (run_checks shows them first).',
+    description: 'Move the Ticket to the review stage label. Refused with the failing lines when the Product\'s pre-review checks fail (run_checks shows them first). Review only green heads: with red required checks on the MR head it answers {refused, checks} and stays in Build (fix, push, ask again); with pending checks it answers {waiting: "checks"} and the factory moves the Ticket to Review when they are green.',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
@@ -383,7 +383,7 @@ export const tools: Tool[] = [
   {
     name: 'finish_run',
     access: 'agent',
-    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason.',
+    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
     inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
@@ -401,7 +401,10 @@ export const tools: Tool[] = [
         await ts.addLink(n, a.prUrl)
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
-      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
+      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') {
+        const asked = await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
+        if ('refused' in asked) throw new Error(`${asked.refused}: fix them on the MR, push, run the required checks, then finish again`)
+      }
       await ownerWrite(
         c,
         run,

@@ -17,5 +17,5 @@ export const preReviewFailures = async (payload: Payload, t: Doc, evidence: stri
   const listing = await backend.forge.listFiles(repo, pr.head)
   const tree = new Set(listing.paths)
   const plan = latestWith(await tickets.listComments(String(t.number)), PLAN_MARKER)?.body ?? ''
-  return preReviewChecks({ files, evidence, planSteps: planStepCount(plan), exists: (p) => listing.truncated || tree.has(p), config })
+  return preReviewChecks({ files, evidence, headSha: pr.headSha, planSteps: planStepCount(plan), exists: (p) => listing.truncated || tree.has(p), config })
 }

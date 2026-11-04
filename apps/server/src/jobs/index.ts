@@ -9,7 +9,7 @@ import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchReviews } from '../lib/actions'
 import { NEEDS_REFINEMENT } from '../lib/needs-you'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
@@ -265,7 +265,10 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
   },
 })
 
-export const watchReviewsTask = watcher('watch-reviews', (p) => watchReviews(p))
+export const watchReviewsTask = watcher('watch-reviews', async (p) => {
+  await watchReviews(p)
+  await watchChecks(p)
+})
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
 export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
 export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))

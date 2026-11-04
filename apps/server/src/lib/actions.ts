@@ -167,14 +167,81 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
   const t = await loadTicket(payload, user, a.ticket)
   const failures = await preReviewFailures(payload, t, a.evidence)
   if (failures.length) throw new Error(`Pre-review checks failed:\n- ${failures.join('\n- ')}`)
-  const { ts, n } = await sourceOf(payload, t)
+  // Review only green heads: the required checks of the MR head decide before a reviewer is involved.
+  const mr = await prOf(payload, t)
+  if (mr?.pr.state === 'open') {
+    const gate = await checksGate(payload, t, mr)
+    if (gate.state === 'red') return { stage: t.stage as string, refused: `checks red: ${gate.failed.join(', ')}`, checks: gate.failed }
+    if (gate.state === 'pending') {
+      await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: 'checks', waitingReason: null, reviewWaitingSince: t.waitingFor === 'checks' && t.reviewWaitingSince ? t.reviewWaitingSince : now() }, overrideAccess: true })
+      return { stage: t.stage as string, waiting: 'checks' }
+    }
+  }
+  return enterReview(payload, t)
+}
+
+/** The move into review (WIP rule included) and the Review Run; shared by `request_review` and the checks watcher. */
+const enterReview = async (payload: Payload, t: Doc) => {
+  const { ts } = await sourceOf(payload, t)
   const entered = await enterStage(payload, t, 'review', async () => {
     await moveStage(payload, ts, t, 'review')
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review' }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review', reviewWaitingSince: null }, overrideAccess: true })
   })
   if (entered === 'waiting') return { stage: t.stage as string, waiting: 'review' }
-  await startReviewIfReady(payload, { ...t, stage: 'review' })
+  await startReviewIfReady(payload, (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as Doc)
   return { stage: 'review' }
+}
+
+/** A pending head that no check settled after this long needs a human. */
+export const CHECKS_WAIT_MS = 2 * 3_600_000
+
+/**
+ * Required checks of the MR head: `green`, `pending` (a check still runs, none registered yet within the grace period, or #291's retry of a red one is under way) or `red` with the failed names.
+ * One definition for the gate before Review and the merge gate.
+ */
+export const checksGate = async (payload: Payload, t: Doc, mr: Mr, at = Date.now()): Promise<{ state: 'green' | 'pending' | 'red'; failed: string[] }> => {
+  const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
+  const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
+  const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
+  const checks = mergeChecks(list, age)
+  await settleRetries(payload, t, mr.pr.headSha, list)
+  if (checks.state === 'red' && (await retryRed(payload, t, product, mr, mr.pr.headSha, latestChecks(list).filter((c) => checks.failed.includes(c.name)), latestChecks(list))) === 'retried') return { state: 'pending', failed: [] }
+  return checks
+}
+
+/**
+ * Per minute: Tickets in Build that asked for review while the head's checks were pending (`waitingFor: 'checks'`). Green: into Review. Red: back to Build with the failing names (no review round).
+ * Pending past CHECKS_WAIT_MS: the latest Build Run goes `needs_human` (shown as "Run needs you" with the reason). Returns how many Tickets moved.
+ */
+export const watchChecks = async (payload: Payload, at = Date.now()): Promise<number> => {
+  const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'build' } }, { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  let moved = 0
+  for (const t of waiting) {
+    try {
+      const mr = await prOf(payload, t)
+      if (!mr || mr.pr.state !== 'open') {
+        await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
+        continue
+      }
+      const gate = await checksGate(payload, t, mr, at)
+      if (gate.state === 'green') {
+        await enterReview(payload, t)
+        moved++
+      } else if (gate.state === 'red') {
+        await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
+        const text = `Checks failed on MR #${mr.pr.number} (${mr.pr.headSha.slice(0, 7)}): ${gate.failed.join(', ')}. Fix them on the same MR (branch \`${mr.pr.head}\`); push to that branch, run the Product's required checks locally, then request review again.`
+        await handBackToBuild(payload, t, { ts: mr.tickets, n: String(t.number) }, text, gate.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
+        moved++
+      } else if (t.reviewWaitingSince && at - new Date(t.reviewWaitingSince).getTime() > CHECKS_WAIT_MS) {
+        const run = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+        if (run) await payload.update({ collection: 'runs', id: run.id, data: { status: 'needs_human', error: `the required checks on ${mr.pr.headSha.slice(0, 7)} were still pending after 2 hours` }, overrideAccess: true })
+        await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
+      }
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'watchChecks failed')
+    }
+  }
+  return moved
 }
 
 const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
@@ -769,17 +836,8 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     return 'waiting_checks'
   }
   if (mr.pr.mergeable === false || mr.pr.behind) return mergeMainFirst(payload, t, mr, reviewedSha)
-  const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
-  const age = list.length ? Infinity : at - Date.parse(await mr.backend.forge.getCommitDate(mr.repo, mr.pr.headSha))
-  const checks = mergeChecks(list, age)
-  await settleRetries(payload, t, mr.pr.headSha, list)
-  if (checks.state === 'red') {
-    if ((await retryRed(payload, t, product, mr, mr.pr.headSha, latestChecks(list).filter((c) => checks.failed.includes(c.name)), latestChecks(list))) === 'retried') {
-      await moveReview(payload, t.id, 'waiting_checks')
-      return 'waiting_checks'
-    }
-    return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
-  }
+  const checks = await checksGate(payload, t, mr, at)
+  if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
   if (checks.state === 'pending') {
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'

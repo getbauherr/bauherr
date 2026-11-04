@@ -351,7 +351,7 @@ const tickets = col('tickets', [
   { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
-  select('waitingFor', ['plan', 'build', 'review'], { admin: { description: 'The full column this Ticket waits to enter. It stays ready in its column (and counts toward that column limit) and has no Run.' } }),
+  select('waitingFor', ['plan', 'build', 'review', 'checks'], { admin: { description: 'The full column this Ticket waits to enter, or checks (asked for review while the MR head checks run). It stays in its column (and counts toward that column limit) and has no Run.' } }),
   text('waitingReason', { admin: { description: 'Why it waits when not a full column, e.g. "overlaps #12" (a Build held for shared paths).' } }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),
