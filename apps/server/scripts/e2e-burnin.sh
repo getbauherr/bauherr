@@ -5,8 +5,12 @@ set -euo pipefail
 
 for pass in 1 2 3; do
   echo "::group::burn-in pass $pass/3"
-  pkill -f 'next start' || true
-  while pgrep -f 'next start' > /dev/null; do sleep 1; done
+  # the parent `next start` forks `next-server`, which keeps the port and its in-memory fake forge (answers of earlier specs) when only the parent is killed: stop both so every pass starts a clean server
+  pkill -9 -f 'next start' || true
+  pkill -9 -f 'next-server' || true
+  fuser -k -9 3000/tcp || true
+  for _ in $(seq 1 30); do pgrep -f 'next start|next-server' > /dev/null || break; sleep 1; done
+  pgrep -af 'next start|next-server' || true
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
   # the server migrates on boot, so seed after it is up
   pnpm --filter server start >> apps/server/e2e/app.log 2>&1 &
