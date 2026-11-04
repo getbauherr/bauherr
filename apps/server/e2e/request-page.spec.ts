@@ -28,7 +28,7 @@ test('a Sent request opens its page with Tickets, plain status and a merged comm
   await page.getByRole('button', { name: 'Post comment' }).click()
   await expect(page.getByText('Posted to the forge.')).toBeVisible()
   await page.reload()
-  await expect(page.getByTestId('request-comment').filter({ hasText: 'Looks right to me' })).toContainText('#7')
+  await expect(page.getByTestId('request-comment').filter({ hasText: 'Looks right to me' }).last()).toContainText('#7')
 
   const shots = process.env.SHOTS_DIR
   if (shots) {
