@@ -33,16 +33,20 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
   const at = new Map(nodes.map((n) => [n.id, n]))
   const linked = nodes.filter((n) => !n.isolated)
   const isolated = nodes.filter((n) => n.isolated)
+  const running = isolated.filter((n) => activity(byId.get(n.id)!)).length
   const cols = Math.max(0, ...linked.map((n) => n.col)) + 1
   const rows = Math.max(0, ...linked.map((n) => n.row)) + 1
   return (
     <>
       {cycle && <p className="label text-destructive">Dependency cycle found; some blocked-by links are not drawn.</p>}
+      <details>
+      <summary className="label">Legend</summary>
       <ul className="small m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-muted-foreground" aria-label="Legend">
         <li><span className="inline-block size-3 border-2 border-ok align-[-2px]" /> <span className="label text-ok">ready</span> no open blockers, not being worked on</li>
         <li><span className="inline-block h-[3px] w-3 bg-primary align-[3px]" /> <span className="label text-primary">critical path</span> longest chain of open blockers</li>
         <li>Left stripe: stage. Arrow: blocker to blocked. Dashed arrow: holds the Build for overlapping files.</li>
       </ul>
+      </details>
       {linked.length > 0 && (
         <div className="overflow-x-auto">
           <svg className="block max-w-none" role="group" aria-label="Ticket dependency graph" width={x(cols) - GX + PAD} height={y(rows) - GY + PAD}>
@@ -57,8 +61,9 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
         </div>
       )}
       {isolated.length > 0 && (
-        <section aria-labelledby="tg-iso">
-          <h2 className="label" id="tg-iso">No dependencies ({isolated.length})</h2>
+        <details>
+        <summary className="label">No dependencies ({isolated.length}{running ? `, ${running} running` : ''})</summary>
+        <section aria-label="No dependencies">
           {[...Array(6).keys()].map((g) => {
             const group = isolated.filter((n) => stageGroup(byId.get(n.id)!.stage) === g)
             if (!group.length) return null
@@ -74,6 +79,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
             )
           })}
         </section>
+        </details>
       )}
     </>
   )
