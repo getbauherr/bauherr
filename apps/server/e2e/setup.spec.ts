@@ -68,7 +68,7 @@ test('an empty Workspace links to /setup and the Admin walks all four steps to a
   await page.getByLabel('Product name').fill('Rollback Probe')
   await page.getByLabel('Repository').evaluate((el: HTMLInputElement) => el.removeAttribute('required'))
   await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page.getByRole('alert').first()).toBeVisible()
+  await expect(page.locator('[role=alert].err').first()).toBeVisible()
   expect(((await (await page.request.get('/api/products?where[name][equals]=Rollback%20Probe&depth=0')).json()).docs as unknown[]).length).toBe(0)
 
   await page.getByLabel('Product name').fill('Newco Shop')
