@@ -13,8 +13,9 @@ import { rotateKey } from '../../../../lib/gateway'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
-import { isAdmin, only, presetFor, run, type FormState } from '../../lib/settings'
+import { isAdmin, listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
+import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
 import { WIP_STAGES } from '../../../../lib/wip-limits'
 
@@ -97,8 +98,6 @@ export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) =
 
 const inWs = (c: Awaited<ReturnType<typeof ctx>>, collection: string, ...ids: (number | undefined)[]) => assertInWorkspace(c.payload, collection, ids, inWorkspace(c))
 
-const slugOf = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-
 /** Creates the Product (short name derived from the name when empty) and returns its id. */
 const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => {
   const name = s(fd, 'name')
@@ -106,12 +105,6 @@ const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => 
   if (!/^[a-z0-9-]+$/.test(slug)) throw Object.assign(new Error('Short name invalid.'), { data: { errors: [{ path: 'slug', message: 'Use lowercase letters, digits and dashes.' }] } })
   return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
 }
-
-/** Creates the Product and opens its page. */
-export const createProduct = act({}, async (c, fd) => {
-  only(c.user)
-  redirect(`/settings/products/${await makeProduct(c, fd)}`)
-})
 
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
@@ -152,11 +145,24 @@ export const addRepository = act({}, async (c, fd) => {
   await makeRepository(c, id(fd), fd)
 })
 
-/** Product, repository and ticket source in one go; the Product is deleted again when a later create fails. */
+/** Repositories of a Connection for the Repository select; null when the forge does not answer in time. Admin only. */
+export async function repositoriesOf(connection: number): Promise<string[] | null> {
+  const c = await ctx()
+  only(c.user)
+  await inWs(c, 'connections', Number(connection))
+  return listRepos(Number(connection))
+}
+
+const fieldError = (path: string, message: string) => Object.assign(new Error(message), { data: { errors: [{ path, message }] } })
+
+/** Product, repository and ticket source in one go; what was created is deleted again when a later create fails. `open=1` continues to the new Product's Staging section. */
 export const createProductWithRepo = act({}, async (c, fd) => {
   only(c.user)
   const slug = s(fd, 'slug') || slugOf(s(fd, 'name'))
-  if ((await c.payload.count({ collection: 'products', where: { and: [{ slug: { equals: slug } }, { workspace: { equals: inWorkspace(c) } }] }, overrideAccess: true } as never)).totalDocs) throw Object.assign(new Error('Short name taken.'), { data: { errors: [{ path: 'slug', message: 'A Product with this short name already exists in this Workspace.' }] } })
+  if ((await c.payload.count({ collection: 'products', where: { and: [{ slug: { equals: slug } }, { workspace: { equals: inWorkspace(c) } }] }, overrideAccess: true } as never)).totalDocs) throw fieldError('slug', 'Another Product already uses this short name.')
+  if (s(fd, 'fullName') === OTHER_REPO) fd.set('fullName', s(fd, 'repoOther'))
+  if (!s(fd, 'fullName')) throw fieldError('fullName', 'Choose a repository.')
+  if (!/^[\w.-]+(?:\/[\w.-]+)+$/.test(s(fd, 'fullName'))) throw fieldError('fullName', 'Use owner/name, for example acme/shop.')
   const product = await makeProduct(c, fd)
   fd.set('readTickets', 'on')
   try {
@@ -165,6 +171,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
     await c.payload.delete({ collection: 'products', id: product, ...c.w } as never)
     throw e
   }
+  if (fd.get('open') === '1') redirect(`/settings/products/${product}#staging`)
 })
 
 /** "Skip, use defaults" on /setup: a save without changes, which marks the Product's staging and gates as seen. */
@@ -256,13 +263,26 @@ export const createBauherr = act({}, async (c, fd) => {
   return `Temporary password (shown once): ${password}`
 })
 
+/** Whether the Workspace's first GitHub Connection knows `login`; true when there is none to ask or GitHub cannot answer. */
+const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): Promise<boolean> => {
+  const first = (await c.payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: inWorkspace(c) } }, { kind: { equals: 'github' } }] }, sort: 'id', limit: 1, depth: 0, overrideAccess: true } as never)).docs[0]
+  if (!first) return true
+  try {
+    return await backendFor(await connectionInput(c.payload, first.id as number), { maxRetries: 0, timeoutMs: 10_000 }).tickets('').userExists(login)
+  } catch {
+    return true // GitHub unreachable or rate-limited: saving is never blocked, the login stays unverified
+  }
+}
+
 export const saveBauherr = act({}, async (c, fd) => {
   only(c.user)
   const ids = tenants(fd)
   await known(c, ids)
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
   if (target.role === 'admin' && (s(fd, 'role') !== 'admin' || (id(fd) === c.user.id && !ids.length))) await assertAnotherAdmin(c.payload, id(fd))
-  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
+  const login = s(fd, 'githubLogin').replace(/^@/, '')
+  if (login && login !== target.githubLogin && !(await githubKnows(c, login))) throw Object.assign(new Error('GitHub login unknown.'), { data: { errors: [{ path: 'githubLogin', message: `GitHub does not know @${login}. Check the spelling.` }] } })
+  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), githubLogin: login || null, oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
 })
 
 /** Ends a failed-login lockout; the Bauherr can sign in again at once. */

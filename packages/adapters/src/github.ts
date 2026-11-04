@@ -185,7 +185,7 @@ class GithubTickets implements TicketSource {
     return {
       ...summary(i), body,
       parent: i.parent_issue_url ? String(i.parent_issue_url).split('/').at(-1)! : null,
-      blockedBy: blockers.map((b) => String(b.number)),
+      blockedBy: [...new Set([...blockers.map((b) => String(b.number)), ...relations.blockedBy])],
       links: relations.links,
       closeReason: i.state === 'closed' ? (i.state_reason ?? 'completed') : null,
     };
