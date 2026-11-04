@@ -342,7 +342,8 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
       const orphan = found ? undefined : local.get(item.title)
-      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel(gateOn('plan') ? 'plan' : 'build')] }))
+      const held = !found && !orphan && column === 'build' && room-- <= 0
+      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel(held ? 'plan' : column)] }))
       const link: Record<string, unknown> = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
       const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
       if (doc?.rank) prev = doc.rank as string
@@ -358,7 +359,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       }
       const row = await upsertTicket(
         payload,
-        { ...link, ...(!found && !orphan && room-- <= 0 && { waitingFor: column }), workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
+        { ...link, ...(held && { waitingFor: 'build' }), workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
         link,
       )
       spawned.set(item.title, { id: child.id, docId: row.id })

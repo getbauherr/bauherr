@@ -207,7 +207,7 @@ it('run-cancelled: not repaired, shown as "Cancelled" with its reason', async ()
 it('a Ticket with a live Run, a wait or a stage-mismatched Run is not dead', async () => {
   const live = await seed('build', { runs: [{ stage: 'build', status: 'failed' }, { stage: 'build', status: 'awaiting_session' }] })
   const waiting = await seed('build', { runs: [{ stage: 'build', status: 'failed' }] })
-  await payload.update({ collection: 'tickets', id: waiting.id, data: { waitingFor: 'build' }, ...o })
+  await payload.update({ collection: 'tickets', id: waiting.id, data: { waitingFor: 'review' }, ...o })
   const dead = (await liveness.deadTickets(payload, ws)).map((d) => d.ticket.id)
   expect(dead).not.toContain(live.id)
   expect(dead).not.toContain(waiting.id)

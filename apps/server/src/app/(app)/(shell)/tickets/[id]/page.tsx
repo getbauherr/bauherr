@@ -76,7 +76,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const missing = unansweredCritical(decisions, answers)
   const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
-  const waiting = ticket.state === 'open' ? await waitingLabel(payload, ticket) : null
+  const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
   const capFindings = latestWith(comments, 'Bauherr needs a human:')?.body
