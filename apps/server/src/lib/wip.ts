@@ -1,5 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
+import type { Payload, Where } from 'payload'
 import { startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { executionOrder } from './frontier'
 import { logins } from './gates'
@@ -12,9 +12,16 @@ import { WIP_STAGES, waitingText, wipLimit, type WipStage } from './wip-limits'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** Open Tickets in `stage` that count toward its limit: all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). Release is never waited for (`waitingFor` cannot hold it). */
+/** The query behind the count of `stage`: open Tickets in it, all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). Release is never waited for (`waitingFor` cannot hold it). */
+export const wipWhere = (workspace: number | string, stage: string): Where => ({ and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, ...(stage === 'release' ? [] : [{ waitingFor: { not_equals: stage } }])] })
+
+/** The number of Tickets taking a slot in `stage`. This is the only definition of the count; the Board header uses `wipCounts`. */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
-  (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, ...(stage === 'release' ? [] : [{ waitingFor: { not_equals: stage } }])] }, overrideAccess: true })).totalDocs
+  (await payload.count({ collection: 'tickets', where: wipWhere(workspace, stage), overrideAccess: true })).totalDocs
+
+/** `wipCount` of every limited column. */
+export const wipCounts = async (payload: Payload, workspace: number | string): Promise<Record<WipStage, number>> =>
+  Object.fromEntries(await Promise.all(WIP_STAGES.map(async (s) => [s, await wipCount(payload, workspace, s)]))) as Record<WipStage, number>
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
