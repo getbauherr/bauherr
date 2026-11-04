@@ -144,6 +144,28 @@ jobs:
       - run: pnpm --filter bauherr test
       - run: pnpm --filter bauherr exec npm pack --dry-run
 
+  # Needs the real agentgateway binary; a registry outage is a warning, a validation failure is red.
+  gateway-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
+      - run: pnpm install --frozen-lockfile
+      - name: Pull the gateway image
+        id: pull
+        run: |
+          img=$(grep -o 'cr.agentgateway.dev/[^ "]*' compose.yaml)
+          for i in 1 2 3; do
+            docker pull "$img" && { echo pulled=true >> "$GITHUB_OUTPUT"; exit 0; }
+            sleep 10
+          done
+          echo "::warning::registry unavailable, skipping gateway validation"
+          echo pulled=false >> "$GITHUB_OUTPUT"
+      - if: steps.pull.outputs.pulled == 'true'
+        run: pnpm --filter server test:gateway
+
   cli-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -152,6 +174,21 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/gw-image.tar
+          key: agw-${{ hashFiles('compose.yaml') }}
+      - name: Load or pull the gateway image
+        run: |
+          tar=$RUNNER_TEMP/gw-image.tar
+          if [ -f "$tar" ]; then docker load -i "$tar"; exit 0; fi
+          img=$(grep -o 'cr.agentgateway.dev/[^ "]*' compose.yaml)
+          for i in 1 2 3; do
+            docker pull "$img" && break
+            [ "$i" = 3 ] && exit 1
+            sleep 10
+          done
+          docker save -o "$tar" "$img"
       - name: Pack the CLI and build the image it pins
         run: |
           pnpm --filter bauherr build
