@@ -181,6 +181,10 @@ export class FakeBackend implements Backend {
       listRepositories: async () => [...this.repos.keys()].map((n) => view(n, n)),
       getRepository: async (repo) => view(repo, repo),
       listBranches: async (repo) => [...this.repo(repo).branches].map(([name, b]): Branch => ({ name, sha: b.sha })),
+      getBranch: async (repo, name) => {
+        const b = this.repo(repo).branches.get(name);
+        return b ? { name, sha: b.sha } : null;
+      },
       createBranch: async (repo, name, from) => {
         const r = this.repo(repo);
         const src = r.branches.get(from ?? r.defaultBranch);

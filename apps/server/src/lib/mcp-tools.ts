@@ -72,7 +72,7 @@ const renewLease = async (c: Ctx, run: Doc, token: unknown, set: ReturnType<type
     sql`UPDATE "runs" SET ${beat}"last_lease_call" = ${c.tool ?? null}, ${set} WHERE "id" = ${run.id} AND "status" = 'running' AND "lease_hash" = ${sha256(String(token))} AND "heartbeat_at" > now() - make_interval(secs => ${SESSION_TIMEOUT_MS / 1000}) RETURNING (extract(epoch from "heartbeat_at") * 1000)::float8 AS "ms"`,
   )
   if (!r.rows.length) throw new Error(`lease lost: run ${run.id}`)
-  return new Date(Number(r.rows[0].ms) + SESSION_TIMEOUT_MS).toISOString()
+  return renew ? new Date(Number(r.rows[0].ms) + SESSION_TIMEOUT_MS).toISOString() : '' // no lease after release
 }
 const ownerWrite = renewLease
 
@@ -347,8 +347,9 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       const leased = (await c.payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, limit: 1, showHiddenFields: true, ...scoped(c) })).docs[0]
       if (leased) assertLease(leased, a)
+      const written = await updateWorklog(c.payload, c.user, a)
       const leaseExpiresAt = leased ? await renewLease(c, leased, a.leaseToken) : undefined
-      return { ...(await updateWorklog(c.payload, c.user, a)), ...(leaseExpiresAt && { leaseExpiresAt }) }
+      return { ...written, ...(leaseExpiresAt && { leaseExpiresAt }) }
     },
   },
   {

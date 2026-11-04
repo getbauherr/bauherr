@@ -214,30 +214,45 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Prom
   return rows.length
 }
 
+/** A running session Build Run is checked for a push once its heartbeat is this old, i.e. while its lease is still valid. */
+const PUSH_CHECK_AFTER_MS = (SESSION_TIMEOUT_MS * 2) / 3
+
 /**
- * A pushed branch is a sign of life: for a stale Build Run, true (and the lease renewed) when the head of its branch (`bauherr/<ticket>-<run>`, else the open MR's head) differs from `last_seen_sha`.
- * A forge error counts as no push (the lease is judged on heartbeats alone).
+ * A pushed branch is a sign of life. For running session Build Runs whose heartbeat is older than `PUSH_CHECK_AFTER_MS` but not expired yet, the head of the Run's branch (`bauherr/<ticket>-<run>`, else the head of the MR the Run carries in `artifacts.prUrl`) is compared with `last_seen_sha`; a different head renews the lease.
+ * An expired lease is never revived here (a late owner still gets `lease lost`), and a forge error skips the Run for this sweep. A session that pushed once and then died gets one extra lease.
+ * Returns how many leases were renewed.
  */
-const renewOnPush = async (payload: Payload, run: Record<string, any>, staleBefore: string): Promise<boolean> => {
-  if (run.stage !== 'build') return false
-  try {
-    const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
-    const { backend, repo } = await forgeOf(payload, id(ticket.product))
-    const branch = `bauherr/${ticket.number}-${run.id}`
-    const head = (await backend.forge.listBranches(repo)).find((b) => b.name === branch)?.sha ?? (await prOf(payload, ticket, { fallback: true }))?.pr.headSha
-    if (!head || head === run.lastSeenSha) return false
-    const r = await payload.db.drizzle.execute(
-      sql`UPDATE "runs" SET "heartbeat_at" = now(), "last_seen_sha" = ${head}, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running' AND "heartbeat_at" < ${staleBefore} RETURNING "id"`,
-    )
-    return r.rows.length > 0
-  } catch (e) {
-    payload.logger.warn({ err: e, run: run.id }, 'branch head check failed; treated as no push')
-    return false
+const renewOnPushes = async (payload: Payload, now: number): Promise<number> => {
+  const expired = new Date(now - SESSION_TIMEOUT_MS).toISOString()
+  const checkBefore = new Date(now - PUSH_CHECK_AFTER_MS).toISOString()
+  const due = await payload.find({
+    collection: 'runs',
+    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { stage: { equals: 'build' } }, { heartbeatAt: { less_than: checkBefore } }, { heartbeatAt: { greater_than_equal: expired } }] },
+    pagination: false,
+    depth: 0,
+    overrideAccess: true,
+  })
+  let renewed = 0
+  for (const run of due.docs) {
+    try {
+      const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
+      const { backend, repo } = await forgeOf(payload, id(ticket.product))
+      const head = (await backend.forge.getBranch(repo, `bauherr/${ticket.number}-${run.id}`))?.sha ?? ((run.artifacts as { prUrl?: string } | null)?.prUrl ? (await prOf(payload, ticket, { fallback: true }))?.pr.headSha : undefined)
+      if (!head || head === run.lastSeenSha) continue
+      const r = await payload.db.drizzle.execute(
+        sql`UPDATE "runs" SET "heartbeat_at" = now(), "last_seen_sha" = ${head}, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running' AND "heartbeat_at" < ${checkBefore} AND "heartbeat_at" >= ${expired} RETURNING "id"`,
+      )
+      if (r.rows.length) renewed++
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'branch head check failed; skipped this sweep')
+    }
   }
+  return renewed
 }
 
-/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). Returns how many were handled. */
+/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). A Build Run that pushed to its branch is renewed before it expires (`renewOnPushes`). Returns how many were abandoned. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
+  await renewOnPushes(payload, now)
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   const stale = await payload.find({
     collection: 'runs',
@@ -249,7 +264,6 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   let handled = 0
   for (const run of stale.docs) {
     try {
-      if (await renewOnPush(payload, run, before)) continue
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
       if (await abandonRun(payload, run, { reason, escalate: run.stage !== 'triage', staleBefore: before })) handled++
     } catch (e) {

@@ -65,23 +65,58 @@ it('report_step renews the lease: no abandon at 31 minutes after the last call',
   expect((await row(run.id)).status).toBe('abandoned')
 })
 
-it('a moved branch head renews the lease; an unmoved one is abandoned', async () => {
+it('a moved branch head renews the lease before it expires; an unmoved one is abandoned', async () => {
   const { run } = await claimed()
   const branch = `bauherr/1-${run.id}`
   await fake.forge.createBranch('acme/web', branch)
-  await silent(run.id, 31)
+  await silent(run.id, 25)
   await jobs.expireStaleSessions(payload)
   const first = await row(run.id)
   expect(first.status).toBe('running')
   expect(first.lastSeenSha).toBeTruthy()
-  await silent(run.id, 31)
+  expect(Date.now() - new Date(first.heartbeatAt).getTime()).toBeLessThan(60_000)
+  await silent(run.id, 25)
+  await jobs.expireStaleSessions(payload)
+  expect(Date.now() - new Date((await row(run.id)).heartbeatAt).getTime()).toBeGreaterThan(24 * 60_000)
   fake.commit('acme/web', branch, 'f.txt', 'x')
   await jobs.expireStaleSessions(payload)
-  expect((await row(run.id)).status).toBe('running')
-  expect((await row(run.id)).lastSeenSha).not.toBe(first.lastSeenSha)
+  const moved = await row(run.id)
+  expect(moved.lastSeenSha).not.toBe(first.lastSeenSha)
+  expect(Date.now() - new Date(moved.heartbeatAt).getTime()).toBeLessThan(60_000)
   await silent(run.id, 31)
   await jobs.expireStaleSessions(payload)
   expect((await row(run.id)).status).toBe('abandoned')
+})
+
+it('an expired lease is not revived by a push, and a late call gets lease lost', async () => {
+  const { run, leaseToken } = await claimed()
+  const branch = `bauherr/1-${run.id}`
+  await fake.forge.createBranch('acme/web', branch)
+  await silent(run.id, 35)
+  const before = (await row(run.id)).heartbeatAt
+  await expect(call(member, 'heartbeat', { runId: run.id, leaseToken })).rejects.toThrow('lease lost')
+  await jobs.expireStaleSessions(payload)
+  expect((await row(run.id)).status).toBe('abandoned')
+  expect((await row(run.id)).heartbeatAt).toBe(before)
+})
+
+it('a forge error neither renews nor abandons a Run that is still inside its lease', async () => {
+  const { run } = await claimed()
+  await silent(run.id, 25)
+  const before = (await row(run.id)).heartbeatAt
+  const forge = fake.forge as any
+  const real = forge.getBranch
+  forge.getBranch = async () => {
+    throw new Error('rate limited')
+  }
+  try {
+    await jobs.expireStaleSessions(payload)
+  } finally {
+    forge.getBranch = real
+  }
+  const after = await row(run.id)
+  expect(after.status).toBe('running')
+  expect(after.heartbeatAt).toBe(before)
 })
 
 it('lease-checked responses carry leaseExpiresAt', async () => {
