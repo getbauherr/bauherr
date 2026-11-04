@@ -89,6 +89,11 @@ it('unlockBauherr and createWorkspace: Admin-only, unlock clears the lock, creat
   }
   const form = (f: Record<string, string>) => Object.entries(f).reduce((fd, [k, v]) => (fd.set(k, v), fd), new FormData())
 
+  const { loadBauherren } = await import('../src/app/(app)/lib/settings')
+  const listed = await loadBauherren(admin as never, null)
+  expect(listed.find((b) => b.id === locked.id)?.locked).toBe(true)
+  expect(listed.find((b) => b.id === member.id)?.locked).toBe(false)
+
   await as(member)
   expect((await actions.unlockBauherr({} as never, form({ id: String(locked.id) }))).error).toBeTruthy()
   expect((await actions.createWorkspace({} as never, form({ name: 'Nope' }))).error).toBeTruthy()

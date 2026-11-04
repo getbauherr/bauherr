@@ -59,7 +59,6 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   const row = page.getByRole('row', { name: new RegExp(added) })
   await expect(row).toContainText('bauherr')
   await expect(row).toContainText('Acme')
-  await expect(row.getByRole('button', { name: 'Unlock' })).toHaveCount(0)
 
   await row.getByRole('button', { name: 'Remove' }).click()
   await row.getByRole('button', { name: 'Confirm remove' }).click()

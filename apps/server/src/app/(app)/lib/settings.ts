@@ -133,7 +133,7 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
   if (!admin && workspace == null) return []
   const own = admin ? [] : (await workspacesOf(user)).map((w) => w.id)
   const where = admin ? {} : { 'tenants.tenant': { equals: workspace } }
-  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where, sort: 'email', ...o, depth: 1, pagination: false } as never)
+  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where, sort: 'email', ...o, depth: 1, pagination: false, showHiddenFields: true } as never)
   return (docs as unknown as Record<string, any>[]).map((b) => ({
     id: b.id as number,
     email: b.email as string,
