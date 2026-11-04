@@ -43,6 +43,8 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   expect((await list()).status()).toBe(401)
 
   await page.goto('/settings/audit')
+  await page.getByLabel('Ticket', { exact: true }).fill('#2') // the touch of the seeded Ticket; other specs approve plans of their own Tickets
+  await page.getByRole('button', { name: 'Filter' }).click()
   await expect(page.getByRole('cell', { name: 'approve:plan' })).toBeVisible()
   await page.getByRole('link', { name: 'Tool calls' }).click()
   await expect(page.getByRole('cell', { name: 'run_checks' })).toBeVisible()
