@@ -17,6 +17,8 @@ Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
 | Release (shown as Staging) | none; Bauherr observes the Product's CI (or a deploy webhook) after the MR merged | staging summary Comment + staging acceptance |
 | Done | none | Ticket closed `completed` on staging acceptance (never on merge) |
 
+Pre-review (Build): a Build whose MR-only diff has 30 or more changed lines ends with a self-review on the Workspace `cheap` tier (review rubric, at most 20% of the Run budget, no separate Run) and one fix pass for its high and medium findings; low findings and the line `Self-review: <n> findings, <m> fixed` go into the Evidence. The autonomous Runner does this before it pushes; a session Run does it as a skill duty ([run-contract](../../pack/skills/run-contract/SKILL.md)), shown in its Evidence. Then the Product's `reviewChecks` (Settings > Products, one rule per line; empty = off) run on the changed file paths only, never on a language: `src/** => tests/**` (changed source needs a changed test file, and test files named in the Evidence must exist), `schema: <globs> => <globs>` (a changed schema file needs a changed migration file) and `evidence` (the `## Evidence` plan-step table has a `done` or `deferred` row per plan step). A failing check blocks `request_review` (and `finish_run` with an MR) with the failing lines and the Ticket stays in Build; `run_checks` returns the same list. The Runner gets one fix pass, then the Run ends `failed` without pushing.
+
 Config per stage: label, gate (`human` or absent; see §2), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
 
 ## 2. Gates and approvals

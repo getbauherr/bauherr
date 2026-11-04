@@ -96,7 +96,7 @@ export const buildRunCtx = async (
     ...(existingPr && { existingPr }),
     ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(run.stage === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
-    product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
+    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: ((await payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, ...opts })) as Doc).reviewChecks },
     connection: {
       gatewayUrl,
       gatewayKey: d.gatewayKey,

@@ -87,11 +87,16 @@ export async function interdiff(c: Clone, env: NodeJS.ProcessEnv, base: string, 
   }
 }
 
-/** Commit leftover changes and push; returns false when the agent produced no commits. */
-export async function commitAndPush(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
+/** Commits all changes; false when the branch has no commit beyond where it started. */
+export async function commitAll(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
   await git(c.dir, env, 'add', '-A');
   if ((await git(c.dir, env, 'status', '--porcelain')) !== '') await git(c.dir, env, 'commit', '-m', message);
-  if ((await git(c.dir, env, 'rev-parse', 'HEAD')) === c.baseSha) return false;
+  return (await git(c.dir, env, 'rev-parse', 'HEAD')) !== c.baseSha;
+}
+
+/** Commit leftover changes and push; returns false when the agent produced no commits. */
+export async function commitAndPush(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
+  if (!(await commitAll(c, env, message))) return false;
   await git(c.dir, env, 'push', 'origin', `HEAD:refs/heads/${c.branch}`);
   return true;
 }

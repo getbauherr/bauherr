@@ -16,6 +16,7 @@ import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { moveStage } from './stage-move'
+import { preReviewFailures } from './pre-review'
 import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, rankBetween } from './frontier'
@@ -160,8 +161,11 @@ export const postComment = async (payload: Payload, user: Doc, a: { ticket: Tick
   return links.map((l) => l.url)
 }
 
-export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId }) => {
+/** Moves the Ticket to review. The Product's pre-review checks run first and block the move; `evidence` is the calling Run's Evidence. */
+export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; evidence: string }) => {
   const t = await loadTicket(payload, user, a.ticket)
+  const failures = await preReviewFailures(payload, t, a.evidence)
+  if (failures.length) throw new Error(`Pre-review checks failed:\n- ${failures.join('\n- ')}`)
   const { ts, n } = await sourceOf(payload, t)
   const entered = await enterStage(payload, t, 'review', async () => {
     await moveStage(payload, ts, t, 'review')

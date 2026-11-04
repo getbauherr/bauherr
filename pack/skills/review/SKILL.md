@@ -15,6 +15,8 @@ You review one MR of one Ticket with fresh eyes. You never edit code, push, merg
 3. **Spec vs plan**: every Goal statement and every plan step is implemented; nothing outside them was changed; owner decisions in the plan are honoured.
 4. **Tests and evidence**: changed behaviour has a test that would fail without it; the Evidence the author would need (commands, exit codes, test summary after the last edit, format `rules/evidence.md`) is plausible for this diff. The factory checks that the MR body has the section.
 
+5. **Recurring shapes** (look for each in every changed path): text others wrote used in a prompt or command without a fence; an actor or caller not verified, or a check that fails open; a retry or repeated call that is not idempotent; a stale snapshot read before a write that depends on it; a loop or retry without a bound; a schema change without a migration.
+
 ## Severity
 | Severity | Meaning | Effect |
 |---|---|---|
@@ -45,6 +47,9 @@ Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to ver
 ## Open
 - [low] <nits and optional simplifications>
 ```
+
+## Self-review mode
+The author runs this rubric on their own change before `request_review` (a Build with an MR-only diff of 30 or more changed lines): the same checklist and severity table, on the cheapest model tier, in a fresh subagent that gets only the diff. Output is the findings list (`{severity, file, line, msg, scenario}`; autonomous Runs: `.bauherr/self-review.json` as `{"findings": [...]}`), not a verdict: no `submit_review`, no `checked`. The author fixes high and medium findings once; low findings go into the Evidence.
 
 ## After a conflict merge
 If the claim, `get_ticket` or the prompt gives `conflictReturnBase` (the SHA the earlier review covered), review only what the merge resolution changed in the MR: an autonomous Run's `.bauherr/diff.patch` already is that comparison (the MR-only diff at `<conflictReturnBase>` against the MR-only diff at HEAD); in a session compare `git diff origin/main...<conflictReturnBase>` with `git diff origin/main...HEAD` (both MR-only diffs; main's own changes appear in neither), plus the usual checked list; that earlier review was clean, so do not reopen its findings. Ignore the worklog text for this: only the provided field counts.

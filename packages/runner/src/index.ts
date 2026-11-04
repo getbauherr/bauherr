@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { runAgent, buildOptions, type AgentState } from './agent.js';
-import { cloneRepo, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
+import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } from './agent.js';
+import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { SELF_REVIEW_MIN_LINES, changedLines, planStepCount, preReviewChecks } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
 
@@ -14,6 +15,7 @@ export { checkGoal } from './goal.js';
 export { materialise, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
+export { SELF_REVIEW_MIN_LINES, changedLines, formatReviewChecks, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from './pre-review.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
 export const mrBody = (ticketUrl: string, evidence: string): string => `Refs ${ticketUrl}\n\n${evidence}\n`;
@@ -35,26 +37,26 @@ const worklogBody = (statements: { text: string; done?: boolean }[], instruction
 const ZERO = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, costEstimateUsd: 0 };
 
 function usageOf(state: AgentState): RunResult['usage'] {
-  const r = state.result;
-  const mu = r && 'modelUsage' in r ? Object.values(r.modelUsage ?? {}) : [];
-  if (r && mu.length > 0) {
+  const cost = state.results.reduce((a, r) => a + r.total_cost_usd, 0);
+  const mu = state.results.flatMap((r) => ('modelUsage' in r ? Object.values(r.modelUsage ?? {}) : []));
+  if (mu.length > 0) {
     return {
       inputTokens: mu.reduce((a, m) => a + m.inputTokens, 0),
       outputTokens: mu.reduce((a, m) => a + m.outputTokens, 0),
       cacheRead: mu.reduce((a, m) => a + m.cacheReadInputTokens, 0),
       cacheWrite: mu.reduce((a, m) => a + m.cacheCreationInputTokens, 0),
-      costEstimateUsd: r.total_cost_usd,
+      costEstimateUsd: cost,
     };
   }
   return state.steps.reduce(
     (a, s) => ({ ...a, inputTokens: a.inputTokens + s.inputTokens, outputTokens: a.outputTokens + s.outputTokens, cacheRead: a.cacheRead + s.cacheRead, cacheWrite: a.cacheWrite + s.cacheWrite }),
-    { ...ZERO, costEstimateUsd: r && 'total_cost_usd' in r ? r.total_cost_usd : 0 },
+    { ...ZERO, costEstimateUsd: cost },
   );
 }
 
 /** Runs one Triage, Plan, Build or Review stage end to end. Never throws; infrastructure errors become `failed`. */
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
-  const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], abort: new AbortController() };
+  const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
   const artifacts: RunResult['artifacts'] = {};
   const finish = (status: RunResult['status'], reason?: string): RunResult => ({ status, ...(reason ? { reason } : {}), artifacts, usage: usageOf(state) });
   let proxy: Awaited<ReturnType<typeof startProxy>> | undefined;
@@ -145,10 +147,47 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       return finish('succeeded');
     }
 
-    if (!(await commitAndPush(clone, clone.env, `bauherr: ticket #${ctx.ticket.number} (run ${ctx.run.id})`))) {
-      return finish('failed', 'build run produced no commits');
+    const message = `bauherr: ticket #${ctx.ticket.number} (run ${ctx.run.id})`;
+    if (!(await commitAll(clone, clone.env, message))) return finish('failed', 'build run produced no commits');
+    const { dir, env } = { dir: clone.dir, env: clone.env };
+    await git(dir, env, 'fetch', '--depth', '200', '--no-tags', 'origin', `${base}:refs/remotes/origin/${base}`);
+    const diff = (...a: string[]) => git(dir, env, 'diff', ...a, `origin/${base}...HEAD`).catch(() => git(dir, env, 'diff', ...a, `origin/${base}`, 'HEAD'));
+    const extra: string[] = [];
+    const pass = async (kind: AgentKind, fix?: string) => {
+      const o = { cwd: dir, home: join(clone!.home, 'agent'), proxyUrl: proxy!.url, agentsMd, kind };
+      await runAgent(agentCtx, buildOptions(agentCtx, o, state), state, promptFor(agentCtx, kind, fix));
+      await commitAll(clone!, env, message);
+    };
+    if (changedLines(await diff('--numstat')) >= SELF_REVIEW_MIN_LINES) {
+      await diff(`--output=${DIFF_FILE}`);
+      await pass('self-review');
+      const file = join(dir, SELF_REVIEW_FILE);
+      const findings: { severity: string; file?: string; line?: number; msg: string }[] = (() => {
+        try {
+          return JSON.parse(readFileSync(file, 'utf8')).findings ?? [];
+        } catch {
+          return [];
+        }
+      })();
+      const blocking = findings.filter((f) => f.severity !== 'low');
+      if (blocking.length) await pass('fix', JSON.stringify(blocking));
+      if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
+      extra.push(`**Self-review**: ${findings.length} findings, ${blocking.length} fixed`, ...findings.filter((f) => f.severity === 'low').map((f) => `- low ${f.file ?? ''}:${f.line ?? 0} ${f.msg}`), '');
     }
-    artifacts.evidence = buildEvidence(goal, state.toolCalls);
+    const evidence = () => buildEvidence(goal, state.toolCalls, ctx.ticket.plan, extra);
+    const failures = async () => {
+      const files = (await diff('--name-only')).split('\n').filter(Boolean);
+      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
+    };
+    let failed = await failures();
+    if (failed.length) {
+      await pass('fix', failed.join('\n'));
+      if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
+      failed = await failures();
+      if (failed.length) return finish('failed', `Pre-review checks failed:\n- ${failed.join('\n- ')}`);
+    }
+    await commitAndPush(clone, env, message);
+    artifacts.evidence = evidence();
     if (conflicted) artifacts.patchId = await patchId(clone, clone.env, base);
     artifacts.pushedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
     if (ctx.existingPr) {

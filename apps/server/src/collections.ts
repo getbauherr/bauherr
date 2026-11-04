@@ -409,6 +409,7 @@ export const collections: CollectionConfig[] = [
     { name: 'releasePrerelease', type: 'checkbox', defaultValue: false, admin: { description: 'factory mode: publish a pre-release v<next>-rc.N instead of a stable version (no CHANGELOG MR).' } },
     text('releaseChecks', { admin: { description: 'Comma-separated check names on the release commit (for example image, npm); the Ticket shows "Released in" only when they pass. Empty: do not wait.' } }),
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
+    { name: 'reviewChecks', type: 'json', admin: { description: 'Path-based checks a Build must pass before it requests review: {tests: [{src: [globs], tests: [globs]}], schema: [{schema: [globs], migration: [globs]}], evidence: true}. Empty: all off.' } },
   ]),
   connections,
   col('repositories', [text('fullName', { required: true }), rel('product', 'products', { required: true })]),
