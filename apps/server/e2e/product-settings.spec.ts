@@ -20,13 +20,13 @@ const deleteProduct = async (page: Page) => {
   const repository = page.locator('#repository')
   for (const label of ['Stop reading tickets', 'Remove repository']) {
     await repository.locator('details.advanced').evaluate((d: HTMLDetailsElement) => (d.open = true))
-    // Two "Confirm remove" buttons can be on the page at once (one per remove form); a strict-mode violation made Playwright crash while describing them ("text.replace is not a function": the forms carry an `id` input). Take the first.
+    // Every remove form has a hidden "Confirm remove" button; matching all of them is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input). Take the visible one.
     await repository.locator('button', { hasText: label }).click()
-    await repository.locator('button', { hasText: 'Confirm remove' }).first().click()
+    await repository.locator('button:visible', { hasText: 'Confirm remove' }).click()
     await expect(repository.locator('button', { hasText: label })).toHaveCount(0)
   }
   await page.locator('#danger').locator('button', { hasText: 'Delete Product' }).click()
-  await page.locator('#danger').locator('button', { hasText: 'Confirm remove' }).first().click()
+  await page.locator('#danger').locator('button:visible', { hasText: 'Confirm remove' }).click()
   await expect(page).toHaveURL(/\/settings\/products$/)
 }
 
