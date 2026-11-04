@@ -56,6 +56,11 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
   return { rows, total: sessions.totalDocs, multiProduct }
 }
 
+/** Number of the caller's open Drafts with messages in a Workspace (the Requests nav badge). */
+export async function countOwnDrafts(userId: number, workspaceId: number) {
+  return (await openSessions(userId, workspaceId)).open.length
+}
+
 /** The caller's resumable Intake sessions (newest open Drafts with messages) plus the `?session=` one when it is theirs: open, product-user, same Workspace. */
 export async function openSessions(userId: number, workspaceId: number | undefined, wanted?: string) {
   if (workspaceId == null) return { open: [], current: undefined }

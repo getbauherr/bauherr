@@ -73,4 +73,14 @@ describe('openSessions ?session= guard', () => {
       expect(open.some((s) => String(s.id) === id)).toBe(false)
     }
   })
+
+  it('countOwnDrafts counts only the caller\'s open Drafts that have messages', async () => {
+    const before = await requests.countOwnDrafts(me, ws)
+    const other = Number((await payload.create({ collection: 'bauherren', data: { email: 'counter@example.com', password: 'x-pass-123', role: 'bauherr' }, ...o } as never)).id)
+    await mk({})
+    await mk({ messages: [] })
+    await mk({ user: other })
+    await mk({ status: 'submitted' })
+    expect(await requests.countOwnDrafts(me, ws)).toBe(before + 1)
+  })
 })

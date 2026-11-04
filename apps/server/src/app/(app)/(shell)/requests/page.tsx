@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Button } from '../../components/ui/button'
 import { EmptyState } from '../../components/EmptyState'
 import { ago } from '../../lib/format'
 import { loadRequests, REQUESTS_LIMIT } from '../../lib/requests'
@@ -11,7 +12,12 @@ export default async function Requests() {
   const { rows, total, multiProduct } = workspace ? await loadRequests(workspace.id, user.id as number) : { rows: [], total: 0, multiProduct: false }
   return (
     <>
-      <h1 className="title">Requests</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="title">Requests</h1>
+        <Button asChild>
+          <Link href="/requests/new">New request</Link>
+        </Button>
+      </div>
       {rows.length ? (
         <>
           <div className="scroll">
@@ -37,7 +43,7 @@ export default async function Requests() {
           {total > REQUESTS_LIMIT && <p className="muted small">Showing the newest {REQUESTS_LIMIT}</p>}
         </>
       ) : (
-        <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} />
+        <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/requests/new', label: 'New request' }} />
       )}
     </>
   )
