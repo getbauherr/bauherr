@@ -125,6 +125,7 @@ test('typing a check name works without a forge, and the ticket link points at t
 })
 
 test('Members: an unknown GitHub login is refused, a known one is saved', async ({ page }) => {
+  test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (knows the logins fake and e2e-admin)')
   await signIn(page)
   await page.goto('/settings/bauherren')
   const member = 'member@example.com'
