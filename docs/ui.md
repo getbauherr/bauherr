@@ -54,6 +54,9 @@ Writes are server actions in `lib/actions.ts` over `src/lib/actions.ts` (`approv
 | Run needs you, Run failed | Re-run <stage> | |
 | Cancelled | Re-run <stage> | Back to backlog |
 | Needs you | Back to build (optional note) | |
+| Expedite? | Expedite | |
+
+**Expedite** (`expediteAction` over `expedite` in `src/lib/actions.ts`): while a Ticket is open, not yet in `release`, not flagged, and the Workspace has the Expedite lane on, the ActionBar shows an outline "Expedite" button next to the primary action. It puts the `bauherr:expedite` label on the Ticket (and removes Triage's `bauherr:expedite-proposed`); the next poll sets `tickets.expedite`. Triage's proposal is the needs-you "Expedite?" whose primary is the same button. Settings > Workflow has the "Expedite lane" switch (Admin). See `docs/spec/workflow.md` "Expedite lane".
 
 **Staging gate** (backend in `src/lib/actions.ts`, UI follows): a Ticket in `release` whose `releaseState` is `on_staging` shows the staging summary Comment, and the bar links the Product's `stagingUrl` as "Open staging"; the bar's "Accept on staging" calls `acceptStaging`, "Request changes" (note required) calls `requestChanges`. Needs-you reads "Accept on staging" for that state and "Staging not confirmed" for `timed_out`. MCP: `post_staging_summary`, `accept_staging`, `request_changes`. Per-Product `stagingUrl`, deploy mode, webhook URL, required checks, gate owners (GitHub logins notified at human gates, picked from the Members with a GitHub login or added by login; empty = Admins with a GitHub login), release mode and the switch "Ask me before production" (shows the effective state: on and disabled while the workflow forces it) are edited on the Product page `/settings/products/<id>`.
 

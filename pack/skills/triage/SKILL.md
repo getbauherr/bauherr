@@ -18,8 +18,11 @@ You judge one Ticket cheaply and record one outcome. You never edit code, push, 
 
 Prefer `plan` when a default plus a later correction fixes it cheaply. Do not ask what the repository answers. Ask once, all questions together ([decision-sheet](../decision-sheet/SKILL.md)).
 
+## Expedite proposal
+Set `expedite: true` only when production is down or broken for users, or a factory-blocking bug stops all other work. Never for a feature, a nuisance or "important". It is a proposal: the owner sees an "Expedite?" and decides with one click; it changes nothing by itself. Give the reason in `reason`.
+
 ## Output
-Session Run: call `submit_triage {runId, leaseToken, outcome, reason, questions?}`.
-Autonomous Run: write `.bauherr/triage.json` as `{"outcome","reason","questions":[{"title","default","alternatives":[]}]}`, then set the Goal statement to verified. You have no shell.
+Session Run: call `submit_triage {runId, leaseToken, outcome, reason, questions?, expedite?}`.
+Autonomous Run: write `.bauherr/triage.json` as `{"outcome","reason","questions":[{"title","default","alternatives":[]}],"expedite":true}` (`expedite` only to propose it), then set the Goal statement to verified. You have no shell.
 
 `reason` is one line, always required.
