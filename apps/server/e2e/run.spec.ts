@@ -43,7 +43,7 @@ test('Run page: timeline, list, collapsed details, re-run; an owner sees only th
   await expect(tabs.getByRole('link', { name: 'Timeline' })).toHaveAttribute('aria-current', 'page')
 
   await page.goto('/runs')
-  await rows.filter({ hasText: 'Needs human' }).getByRole('link').first().click()
+  await rows.filter({ hasText: 'Needs human' }).filter({ hasText: 'Recover the stalled import' }).getByRole('link').first().click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   const needsHuman = page.url()
   await page.getByRole('button', { name: 'Re-run stage' }).click()

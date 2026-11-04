@@ -86,11 +86,13 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(page).toHaveURL(/\/runs$/)
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
   await expect(page.locator('table thead th')).toHaveText(['Ticket', 'Stage', 'Status', 'When'])
-  await expect(page.locator('table tbody tr')).toHaveCount(7)
   await expect(page.locator('table tbody tr').first().locator('td').last()).toHaveText(/(ago|just now)$/)
   await expect(main.getByRole('link', { name: /^Tickets/ })).not.toHaveAttribute('aria-current', 'page')
-  await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
+  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
   await expect(page).toHaveURL(/\/runs\?product=/)
+  // other specs start Runs on Acme Web Tickets, so assert the seeded Runs by Ticket instead of the row count
+  for (const title of ['Tidy the settings copy', 'Fix the date parser', 'Add a dark theme to the dashboard', 'Export invoices as CSV', 'Live build in progress']) await expect(page.locator('table tbody tr').filter({ hasText: title }).first()).toBeVisible()
+  await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
   await expect(page.locator('table tbody tr')).toHaveCount(2)
 })
 
@@ -209,7 +211,7 @@ test('hovering or dropping on a closed card in a mixed column shows no drop posi
   const closed = col.locator('.card:not([draggable=true])')
   const marks = col.locator('[data-drop]')
   const titles = () => col.locator('.card .ticket-title').allTextContents()
-  await expect(closed).toHaveCount(3)
+  await expect(closed.filter({ hasText: /Invoice numbering|Signup analytics|Remove importer cron/ })).toHaveCount(3) // the seeded closed Tickets; release.spec accepts more
   await expect(col.locator('.card .ticket-title', { hasText: 'Retire the legacy importer' })).toHaveCount(0)
   const before = await titles()
   const at = async (l: typeof open) => {
