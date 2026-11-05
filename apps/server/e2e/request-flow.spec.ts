@@ -11,7 +11,7 @@ test('a draft saved before logout is reopened from Requests, finished, sent and 
   test.setTimeout(90_000)
   const signIn = async () => {
     await page.goto('/login')
-    await page.getByLabel('Email').fill(email)
+    await page.getByLabel('Email').fill('signout-flow@example.com') // signing out ends every session of the user, so this test has one of its own
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.locator('header.topbar')).toBeVisible()

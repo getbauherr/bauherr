@@ -18,7 +18,7 @@ const ensure = async (collection: string, where: Record<string, unknown>, data: 
 const email = env('E2E_EMAIL')
 const admin = (await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-admin' })).id
 // A sign-out bumps the user's sessionVersion and ends every session of that user, so a spec that signs out signs in as a user of its own.
-for (const [who, login] of [['signout-shell', 'e2e-signout-shell'], ['signout-requests', 'e2e-signout-requests']]) await ensure('bauherren', { email: `${who}@example.com` }, { email: `${who}@example.com`, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: login })
+for (const [who, login] of [['signout-shell', 'e2e-signout-shell'], ['signout-requests', 'e2e-signout-requests'], ['signout-flow', 'e2e-signout-flow']]) await ensure('bauherren', { email: `${who}@example.com` }, { email: `${who}@example.com`, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: login })
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme', wipLimits: {} })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
 const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug: 'zeta' })).id

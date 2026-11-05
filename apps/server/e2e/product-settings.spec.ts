@@ -19,17 +19,17 @@ const signIn = async (page: Page) => {
 const confirmRemove = async (scope: Locator, label: string) => {
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
   await expect(async () => {
+    // hydration can close the <details> again, so it is opened on every attempt
+    await scope.locator('details.advanced').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
     if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
-    await expect(confirm).toBeVisible({ timeout: 2_000 })
-  }).toPass({ timeout: 15_000 })
-  await confirm.click()
+    await confirm.click({ timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
 }
 
 /** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
 const deleteProduct = async (page: Page) => {
   const repository = page.locator('#repository')
   for (const label of ['Stop reading tickets', 'Remove repository']) {
-    await repository.locator('details.advanced').evaluate((d: HTMLDetailsElement) => (d.open = true))
     await confirmRemove(repository, label)
     await expect(repository.locator('button', { hasText: label })).toHaveCount(0)
   }
