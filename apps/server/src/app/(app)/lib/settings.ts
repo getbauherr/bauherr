@@ -12,6 +12,7 @@ import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
 import { suggestOverlapIgnore } from '../../../lib/overlap'
 import { wipCount } from '../../../lib/wip'
+import { FORGE_TIMEOUT_MS, within } from './overview'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -321,7 +322,7 @@ export async function loadHealth(workspace: number) {
     failed,
     oldestQueued: ((oldest.docs[0] as Doc | undefined)?.createdAt ?? null) as string | null,
     /** Tickets with no live Run, no wait and no need for the owner; the goal is 0. */
-    dead: (await invisibleDead(payload, workspace)).map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause })),
+    dead: (await within(invisibleDead(payload, workspace), FORGE_TIMEOUT_MS).catch(() => [])).map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause })),
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
     flakes,
   }
