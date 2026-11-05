@@ -265,3 +265,38 @@ describe('Triage proposal', () => {
     expect(await isExpediting(payload, await reload(second.id))).toBe(false)
   })
 })
+
+describe('pull order', () => {
+  it('claim_next returns the expedite Run before older Builds and Reviews; heartbeat names it', async () => {
+    const { callTool } = await import('../src/lib/mcp-tools')
+    const agent = await payload.create({ collection: 'bauherren', data: { email: `s${++n}@x.io`, password: 'pw-123456', role: 'admin' }, ...o })
+    const call = (name: string, input: unknown) => callTool({ payload, user: agent, actor: { kind: 'human' } }, name, input) as Promise<any>
+    const awaiting = (ticket: number, stage: string) => payload.create({ collection: 'runs', data: { ticket, stage, mode: 'session', status: 'awaiting_session', workspace: ws }, ...o })
+    const mine = await inBuild('c', ['src/c.ts'])
+    const myRun = await awaiting(mine.id, 'build')
+    const { leaseToken } = await call('claim_run', { runId: myRun.id })
+    const old = await inBuild('a', ['src/a.ts'])
+    await awaiting(old.id, 'build')
+    const rev = await inBuild('b', ['src/b.ts'], { stage: 'review' })
+    await awaiting(rev.id, 'review')
+    expect((await call('heartbeat', { runId: myRun.id, leaseToken })).expedite).toBeUndefined()
+
+    const i = await issue('prod down', BODY_WITH_PLAN)
+    await poll()
+    const hot = await byNumber(i.number)
+    const hotRun = (await runs(hot.id, 'build'))[0]
+    await payload.update({ collection: 'runs', id: hotRun.id, data: { mode: 'session', status: 'awaiting_session' }, ...o })
+
+    const frontier = await call('list_frontier', {})
+    expect(frontier[0]).toMatchObject({ ticket: hot.id, claimable: true })
+    expect((await call('heartbeat', { runId: myRun.id, leaseToken })).expedite).toEqual({ ticket: hot.id, run: hotRun.id })
+    expect((await call('claim_next', {})).run.id).toBe(hotRun.id)
+  })
+
+  it('an expedite Ticket outside the lane (lane off) gets no priority', async () => {
+    const { frontierOrder } = await import('../src/lib/frontier')
+    const t = (id: number, extra = {}) => ({ id, number: id, stage: 'build', rank: String(id), ...extra })
+    expect(frontierOrder([t(1), t(2, { stage: 'plan', expediting: true })], new Map()).map((x) => x.id)).toEqual([2, 1])
+    expect(frontierOrder([t(1), t(2, { stage: 'plan', expediting: false })], new Map()).map((x) => x.id)).toEqual([1, 2])
+  })
+})

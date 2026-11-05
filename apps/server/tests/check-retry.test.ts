@@ -3,6 +3,12 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
+const scan = vi.hoisted(() => ({ hang: false }))
+vi.mock('../src/lib/liveness', async (orig) => {
+  const real = await orig<typeof import('../src/lib/liveness')>()
+  return { ...real, invisibleDead: (...a: Parameters<typeof real.invisibleDead>) => (scan.hang ? new Promise<never>(() => {}) : real.invisibleDead(...a)) }
+})
+
 let payload: Payload
 let fake: FakeBackend
 let product: number
@@ -143,4 +149,15 @@ it('Factory health lists the flaky checks of the Workspace by count', async () =
   const { loadHealth } = await import('../src/app/(app)/lib/settings')
   const ours = (await loadHealth(ws)).flakes.filter((f) => ['lint', 'e2e', 'old'].includes(f.check))
   expect(ours.map((f) => [f.check, f.count])).toEqual([['e2e', 2], ['lint', 1]])
+})
+
+it('Factory health reports the dead-Ticket scan as unavailable when it times out, never as zero', async () => {
+  const { loadHealth } = await import('../src/app/(app)/lib/settings')
+  expect((await loadHealth(ws)).dead).toEqual([])
+  scan.hang = true
+  try {
+    expect((await loadHealth(ws, 50)).dead).toBeNull()
+  } finally {
+    scan.hang = false
+  }
 })

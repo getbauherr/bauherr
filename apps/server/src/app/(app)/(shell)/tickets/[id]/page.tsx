@@ -18,11 +18,11 @@ import { Badge } from '../../../components/ui/badge'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
-import { loadOverview } from '../../../lib/overview'
+import { FORGE_TIMEOUT_MS, loadOverviewRows, within } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { checkLines, reachedStages, stageHistory } from '../../../lib/stage-history'
 import { isAdmin } from '../../../lib/settings'
@@ -53,6 +53,15 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const q = { depth: 0, overrideAccess: true } as const
   const [ticket] = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: workspace.id } }] }, limit: 1, ...q })).docs as Doc[]
   if (!ticket) notFound()
+  const forge = (async () => {
+    try {
+      const { ts, n } = await sourceOf(payload, ticket)
+      const [comments, t] = await within(Promise.all([ts.listComments(n), ts.get(n)]), FORGE_TIMEOUT_MS)
+      return { comments: comments as { body: string }[], labels: t.labels, forgeError: false }
+    } catch {
+      return { comments: [] as { body: string }[], labels: ticket.labels ?? ([] as string[]), forgeError: true }
+    }
+  })()
   const [product, ws, runs, blockers, blocks, shots] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
@@ -62,18 +71,11 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
   ])
 
-  const epic = (await loadOverview(workspace.id, false)).epics.find((e) => e.id === ticket.id)
-  let comments: { body: string }[] = []
-  let labels: string[] = ticket.labels ?? []
-  let forgeError = false
-  try {
-    const { ts, n } = await sourceOf(payload, ticket)
-    ;[comments, labels] = await Promise.all([ts.listComments(n), ts.get(n).then((t) => t.labels)])
-  } catch {
-    forgeError = true
-  }
+  const [{ comments, labels, forgeError }, overview] = await Promise.all([forge, loadOverviewRows(workspace.id, false)])
+  const epic = overview.epics.find((e) => e.id === ticket.id)
   const plan = latestWith(comments, PLAN_MARKER)?.body
   const worklog = firstWith(comments, WORKLOG_MARKER)?.body
+  const investigation = latestWith(comments, INVESTIGATION_MARKER)?.body
   const sheet = sheetOf(comments)?.body
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
@@ -152,6 +154,12 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           <section className="flex flex-col gap-4" aria-labelledby="plan">
             <h2 className="heading" id="plan">Plan</h2>
             <Markdown html={renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER)))} />
+          </section>
+        )}
+        {investigation && (
+          <section className="flex flex-col gap-4" aria-labelledby="investigation">
+            <h2 className="heading" id="investigation">Investigation</h2>
+            <Markdown html={renderMarkdown(strip(investigation, INVESTIGATION_MARKER))} />
           </section>
         )}
         {worklog && (
