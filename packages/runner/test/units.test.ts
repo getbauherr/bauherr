@@ -157,6 +157,17 @@ test('review checks text round-trips and rejects a bad line', () => {
   assert.throws(() => parseReviewChecks('evidence\nsrc/**'), /line 2/);
 });
 
+test('ran rule: each command needs exit code 0 in the Evidence and the pushed SHA; text round-trips', () => {
+  const config = parseReviewChecks('ran: pnpm typecheck\nran: pnpm test')!;
+  assert.deepEqual(config.ran, ['pnpm typecheck', 'pnpm test']);
+  assert.equal(formatReviewChecks(config), 'ran: pnpm typecheck\nran: pnpm test');
+  const run = (evidence: string) => preReviewChecks({ files: [], evidence, planSteps: 0, headSha: 'abcdef1234', exists: () => true, config });
+  assert.deepEqual(run('abcdef1: pnpm typecheck exit 0\npnpm test: exit code 0'), []);
+  assert.deepEqual(run('abcdef1: pnpm typecheck exit 0'), ['Evidence does not show `pnpm test` with exit code 0']);
+  assert.deepEqual(run('pnpm typecheck exit 1\npnpm test exit 0 abcdef1'), ['Evidence does not show `pnpm typecheck` with exit code 0']);
+  assert.match(run('pnpm typecheck exit 0\npnpm test exit 0')[0]!, /does not name the pushed head abcdef1/);
+});
+
 test('changed lines, plan step count', () => {
   assert.equal(changedLines('3\t4\ta.ts\n-\t-\timg.png\n10\t0\tb.ts\n'), 17);
   assert.equal(changedLines(''), 0);
