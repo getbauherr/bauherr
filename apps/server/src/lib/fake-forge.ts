@@ -87,6 +87,8 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Fix the date parser', labels: ['bauherr:stage:build'] })
   // #21 is the owner-chat spec's own Ticket: one open decision, so it needs no other spec's answers.
   for (const n of [19, 20]) void placeholder(n)
+  // The seeded "Fix the date parser" is Ticket number 20 here: its plan Comment is what the stage-history spec reads.
+  void ts.comment('20', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
   void ts.create({ title: 'Remember the theme choice', labels: ['bauherr:stage:plan'] })
   void ts.comment('21', PLAN.replace(/- \*\*D2[^\n]*\n/, ''))
   void ts.comment('21', WORKLOG)
