@@ -94,3 +94,19 @@ test('an Advanced anchor entry keeps Advanced open and is the only current entry
   await expect(nav.getByRole('link', { name: 'Model tiers' })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: 'General' })).not.toHaveAttribute('aria-current', 'page')
 })
+
+test('at 390 px the Next step bar does not cover the last field of the Workspace page', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.locator('header.topbar')).toBeVisible()
+  await page.goto('/settings/workspace')
+  const bar = page.getByRole('region', { name: 'Next step' })
+  await expect(bar).toBeVisible()
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  const field = page.locator('main input:visible, main select:visible, main textarea:visible').last()
+  const box = (await field.boundingBox())!
+  expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
+})

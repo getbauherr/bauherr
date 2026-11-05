@@ -1,9 +1,9 @@
-import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
-import { NextStepBar } from './NextStepBar'
+import { NextStepBar, type NextStepPrimary } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
 
@@ -41,42 +41,49 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open, reason }
   const verb = gate?.verb(ctx) ?? ''
-  const primary = !need ? null : (() => {
+  const fid = `bar-${ticket}`
+  const post = (action: (f: FormData) => Promise<void>): { primary: NextStepPrimary; form: ReactNode } => ({
+    primary: { label: verb, form: fid },
+    form: <form id={fid} action={action}><input type="hidden" name="ticket" value={ticket} /></form>,
+  })
+  const step: { primary?: NextStepPrimary; form?: ReactNode } = !need ? {} : (() => {
     switch (need) {
-      case 'Expedite?': return <Post ticket={ticket} action={expediteAction}>{verb}</Post>
-      case 'Approve plan': return <Post ticket={ticket} action={approvePlanAction}>{verb}</Post>
+      case 'Expedite?': return post(expediteAction)
+      case 'Approve plan': return post(approvePlanAction)
       case 'Accept on staging':
-      case 'Staging not confirmed': return <Post ticket={ticket} action={acceptStagingAction}>{verb}</Post>
+      case 'Staging not confirmed': return post(acceptStagingAction)
       case 'Approve production':
-      case 'Production deploy failed': return <Post ticket={ticket} action={approveProductionAction}>{verb}</Post>
-      case 'Release failed': return releaseRunUrl ? <Button asChild><a href={releaseRunUrl} target="_blank" rel="noreferrer">{verb}</a></Button> : null
-      case 'Round cap reached': return <Post ticket={ticket} action={grantReviewRoundAction}>{verb}</Post>
-      case 'Needs you': return (
-        <form action={backToBuildAction}>
-          <input type="hidden" name="ticket" value={ticket} />
-          <input name="note" aria-label="Note for the next Run" placeholder="Note for the next Run (optional)" className="min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm" />
-          <SubmitButton variant="default">{verb}</SubmitButton>
-        </form>
-      )
+      case 'Production deploy failed': return post(approveProductionAction)
+      case 'Release failed': return releaseRunUrl ? { primary: { label: verb, href: releaseRunUrl, newTab: true } } : {}
+      case 'Round cap reached': return post(grantReviewRoundAction)
+      case 'Needs you': return {
+        primary: { label: verb, form: fid },
+        form: (
+          <form id={fid} action={backToBuildAction}>
+            <input type="hidden" name="ticket" value={ticket} />
+            <input name="note" aria-label="Note for the next Run" placeholder="Note for the next Run (optional)" className="min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          </form>
+        ),
+      }
       case 'Cancelled':
       case 'Run needs you':
-      case 'Run failed': return run ? <form action={rerunStage.bind(null, run)}><SubmitButton variant="default">{verb}</SubmitButton></form> : null
+      case 'Run failed': return run ? { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run)} /> } : {}
       case 'Answer decisions':
-      case 'Answer questions': return <Button asChild><a href="#answer">Answer {open} question{open === 1 ? '' : 's'}</a></Button>
-      case 'Configure production checks': return <Button asChild><Link href={`/settings/products/${product}#production`}>{verb}</Link></Button>
+      case 'Answer questions': return { primary: { label: `Answer ${open} question${open === 1 ? '' : 's'}`, href: '#answer' } }
+      case 'Configure production checks': return { primary: { label: verb, href: `/settings/products/${product}#production` } }
     }
   })()
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
-    <NextStepBar sentence={gate ? gate.sentence(ctx) : idle}>
+    <NextStepBar sentence={gate ? gate.sentence(ctx) : idle} primary={step.primary}>
       {(gate || canExpedite) && (
-        <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">
+        <>
           {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
           {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
           {secondary}
           {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline">Expedite</Post>}
-          {primary}
-        </div>
+          {step.form}
+        </>
       )}
     </NextStepBar>
   )

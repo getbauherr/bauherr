@@ -112,9 +112,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
           }
         }} />}
         {error && <p className="err" role="alert">{error}</p>}
-        <NextStepBar sentence="Describe the change, then send it">
-          {turn && (turn.ready || turn.exhausted) && <Button disabled={busy} onClick={submit}>{turn.split ? `Create ${turn.split.length} tickets` : 'Submit request'}</Button>}
-        </NextStepBar>
+        <NextStepBar sentence="Describe the change, then send it" primary={turn && (turn.ready || turn.exhausted) ? { label: turn.split ? `Create ${turn.split.length} tickets` : 'Submit request', disabled: busy, onClick: submit } : undefined} />
       </div>
       {draft?.problem && (
         <aside className="card-lg stack" aria-label="Draft">

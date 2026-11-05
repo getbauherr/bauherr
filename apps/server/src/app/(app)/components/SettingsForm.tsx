@@ -11,6 +11,7 @@ const Ctx = createContext<FormState>({})
 export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm, bar, copy }: { confirm?: string; bar?: boolean; copy?: boolean; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {})
   const ref = useRef<HTMLFormElement>(null)
+  const formId = useId()
   const [dirty, setDirty] = useState(false)
   useEffect(() => {
     if (state.saved) setDirty(false)
@@ -31,6 +32,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
     <Ctx value={state}>
       <form
         ref={ref}
+        id={formId}
         className={inline ? 'sform inline' : 'sform'}
         onChange={bar ? () => setDirty(true) : undefined}
         onSubmit={(e) => {
@@ -40,11 +42,8 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
         }}
       >
         {bar && (
-          <NextStepBar sentence={dirty ? 'Unsaved changes' : 'Change the settings below, then save'}>
-            <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">
-              {status}
-              <Button disabled={pending}>{submit}</Button>
-            </div>
+          <NextStepBar sentence={dirty ? 'Unsaved changes' : 'Change the settings below, then save'} primary={{ label: submit, disabled: pending, form: formId }}>
+            {status}
           </NextStepBar>
         )}
         {children}
