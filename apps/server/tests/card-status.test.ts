@@ -17,6 +17,9 @@ describe('cardStatus', () => {
     expect(cardStatus({ ...all, run: null }, true)!.status).toBe('Blocked')
     expect(cardStatus({ ...all, run: null, blockedBy: [] }, true)!.status).toBe('Waiting')
   })
+  it('a live investigation Run is Investigating', () => {
+    expect(cardStatus({ ...base, run: run('running', { investigation: { failedRuns: [1, 2] } }) }, false)!.status).toBe('Investigating')
+  })
   it('non-admins get the activity word only: no Run id, stage, login or heartbeat', () => {
     expect(cardStatus({ ...base, run: run('running'), owner: 'ada' }, false, now)!.tip).toBe('building')
   })

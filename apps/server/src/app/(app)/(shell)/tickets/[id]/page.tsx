@@ -21,7 +21,7 @@ import { loadOverview } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
@@ -70,6 +70,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   }
   const plan = latestWith(comments, PLAN_MARKER)?.body
   const worklog = firstWith(comments, WORKLOG_MARKER)?.body
+  const investigation = latestWith(comments, INVESTIGATION_MARKER)?.body
   const sheet = sheetOf(comments)?.body
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
@@ -135,6 +136,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <section className="flex flex-col gap-4" aria-labelledby="plan">
             <h2 className="heading" id="plan">Plan</h2>
             <Markdown html={renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER)))} />
+          </section>
+        )}
+        {investigation && (
+          <section className="flex flex-col gap-4" aria-labelledby="investigation">
+            <h2 className="heading" id="investigation">Investigation</h2>
+            <Markdown html={renderMarkdown(strip(investigation, INVESTIGATION_MARKER))} />
           </section>
         )}
         {worklog && (
