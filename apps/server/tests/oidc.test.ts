@@ -1,7 +1,9 @@
 import { createHmac } from 'node:crypto'
-import { beforeAll, describe, expect, it } from 'vitest'
+import type { Payload } from 'payload'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { claimAt, emailOk, mergeClaims, resolveAccount, roleFrom, syncFrom, workspaceSlugsFrom } from '../src/lib/oidc'
-import { oidcStrategy, SESSION_COOKIE, signSession, SESSION_TTL_S, verifySession } from '../src/lib/oidc-session'
+import { createTestDb, type TestDb } from './helpers/test-db'
+import { isLocked, oidcStrategy, SESSION_COOKIE, signSession, SESSION_TTL_S, verifySession } from '../src/lib/oidc-session'
 
 const claims = { realm_access: { roles: ['offline_access', 'bauherr-admin'] }, groups: ['/acme', 'beta', 7] }
 
@@ -88,4 +90,40 @@ describe('oidc strategy', () => {
   it('rejects a stale version', async () => expect((await run({ id: 7, sessionVersion: 1 })).user).toBeNull())
   it('rejects a locked user', async () => expect((await run({ id: 7, sessionVersion: 0, lockUntil: new Date(Date.now() + 60_000).toISOString() })).user).toBeNull())
   it('rejects a missing user', async () => expect((await run(null)).user).toBeNull())
+})
+
+describe('oidc strategy against the database', () => {
+  let payload: Payload
+  let testDb: TestDb
+  beforeAll(async () => {
+    testDb = await createTestDb('oidc_lock')
+    process.env.DATABASE_URL = testDb.url
+    process.env.PAYLOAD_SECRET ??= 'test-secret'
+    process.env.ENCRYPTION_KEY ??= 'test-key'
+    const { getPayload } = await import('payload')
+    payload = await getPayload({ config: (await import('../src/payload.config')).default })
+  })
+  afterAll(async () => {
+    await payload?.destroy()
+    await testDb?.drop(payload)
+  })
+  const day = 86400_000
+  const authFor = async (email: string, lockUntil?: Date) => {
+    const b = await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456-x', role: 'bauherr' } as never, overrideAccess: true })
+    if (lockUntil) await payload.update({ collection: 'bauherren', id: b.id, data: { lockUntil: lockUntil.toISOString(), loginAttempts: 5 } as never, overrideAccess: true })
+    const headers = new Headers({ cookie: `${SESSION_COOKIE}=${signSession(b.id, b.sessionVersion ?? 0)}` })
+    return { b, user: (await payload.auth({ headers })).user as Record<string, unknown> | null }
+  }
+  it('rejects a locked Bauherr', async () => {
+    const { b, user } = await authFor('locked@example.com', new Date(Date.now() + day))
+    const stored = await payload.findByID({ collection: 'bauherren', id: b.id, overrideAccess: true, showHiddenFields: true })
+    expect(user).toBeNull()
+    expect(isLocked(stored.lockUntil)).toBe(true)
+  })
+  it('accepts an expired lock', async () => expect((await authFor('expired@example.com', new Date(Date.now() - day))).user).toMatchObject({ _strategy: 'oidc' }))
+  it('accepts an unlocked Bauherr without hidden auth fields', async () => {
+    const { user } = await authFor('open@example.com')
+    expect(user).toMatchObject({ _strategy: 'oidc' })
+    for (const k of ['hash', 'salt', 'loginAttempts', 'lockUntil']) expect(user).not.toHaveProperty(k)
+  })
 })
