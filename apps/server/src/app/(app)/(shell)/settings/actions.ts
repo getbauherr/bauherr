@@ -116,7 +116,7 @@ export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
   const checkRetries = Number(s(fd, 'checkRetries') || 1)
-  const data = { checkRetries, stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
+  const data = { checkRetries, stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
   const errors = Object.entries(deployErrors(data)).map(([path, message]) => ({ path, message }))
   if (!Number.isInteger(checkRetries) || checkRetries < 0 || checkRetries > 1) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
   const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
@@ -128,7 +128,10 @@ export const saveDeploy = act({}, async (c, fd) => {
     errors.push({ path: 'reviewChecks', message: (e as Error).message })
   }
   if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
-  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, reviewChecks }, ...c.w } as never)
+  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { expediteSkipStaging: true }, ...c.w } as never)) as { expediteSkipStaging?: boolean | null }
+  const flipped = data.expediteSkipStaging !== !!before.expediteSkipStaging
+  const who = flipped ? { expediteSkipStagingBy: data.expediteSkipStaging ? c.user.email : null, expediteSkipStagingAt: data.expediteSkipStaging ? new Date().toISOString() : null } : {}
+  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, ...who, reviewChecks }, ...c.w } as never)
 })
 
 /** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */

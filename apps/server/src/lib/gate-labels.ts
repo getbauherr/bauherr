@@ -2,7 +2,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { LabelEvent } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { gateOwnersOf, logins } from './gates'
-import { EXPEDITE_LABEL } from './needs-you'
+import { EXPEDITE_LABEL, EXPEDITE_SKIP_TOUCH } from './needs-you'
 import { humanGates } from './mode'
 import { id } from './release'
 
@@ -14,7 +14,7 @@ export const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is stripped as well (the factory writes it only while the gate is on; gate-off Tickets advance through `advancePlan`, which needs no label). */
 export const GATE_LABELS = [
   { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: true },
-  { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging'], strictWhenOff: true },
+  { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging', EXPEDITE_SKIP_TOUCH], strictWhenOff: true },
   // The Expedite lane is not a gate, but its label skips Triage and the plan approval, so it is held to the same rule: a gate owner or Admin, or the factory's own Expedite action (`expedite` touch).
   { gate: 'expedite', label: EXPEDITE_LABEL, kind: 'expedite', recorded: ['expedite'], strictWhenOff: true },
 ] as const
