@@ -1,0 +1,48 @@
+import { describe, expect, it } from 'vitest'
+import { nextStep } from '../src/lib/next-step'
+
+const base = { ticket: { state: 'open', stage: 'build' }, need: null, run: null, waiting: null, blockers: [], admin: true }
+
+describe('nextStep', () => {
+  it('is enabled on the owner\'s turn, labelled with the need', () => {
+    expect(nextStep({ ...base, need: 'Approve plan' })).toMatchObject({ label: 'Approve plan', enabled: true })
+    expect(nextStep({ ...base, need: 'Accept on staging', blockers: [{ id: 1, number: 9 }] }).enabled).toBe(true)
+  })
+  it('an open blocker beats a live Run and links the blocker', () => {
+    const s = nextStep({ ...base, blockers: [{ id: 5, number: 339 }], run: { id: 7, stage: 'build', status: 'running' } })
+    expect(s).toMatchObject({ enabled: false, reason: 'Blocked by #339.', href: '/tickets/5' })
+  })
+  it('a live Run names the Run to an Admin only', () => {
+    const run = { id: 735, stage: 'build', status: 'running' }
+    expect(nextStep({ ...base, run })).toMatchObject({ reason: 'The factory is working on this (Run 735).', href: '/runs/735' })
+    const member = nextStep({ ...base, run, admin: false })
+    expect(member.reason).toBe('The factory is working on this.')
+    expect(member.href).toBeUndefined()
+  })
+  it('an overlap hold names the holder', () => {
+    const s = nextStep({ ...base, ticket: { stage: 'build', waitingFor: 'build', waitingReason: 'overlaps #356' }, waiting: 'Waiting: overlaps #356' })
+    expect(s).toMatchObject({ enabled: false, reason: 'Queued for Build: waits for #356, which changes the same files. Starts by itself.' })
+  })
+  it('a full column and waiting checks', () => {
+    expect(nextStep({ ...base, ticket: { stage: 'plan', waitingFor: 'build' }, waiting: 'Waiting: Build is full (2/2)' }).reason).toBe('Queued for Build: Build is full (2/2). Starts by itself.')
+    expect(nextStep({ ...base, ticket: { stage: 'review', waitingFor: 'checks' }, waiting: 'Waiting for checks' }).reason).toBe('Waiting for the MR checks to finish. Review starts by itself.')
+  })
+  it('release, review, closed and idle say who is next', () => {
+    expect(nextStep({ ...base, ticket: { stage: 'release', labels: [] } }).reason).toBe('The factory is waiting for the staging deploy.')
+    expect(nextStep({ ...base, ticket: { stage: 'release', labels: ['bauherr:approved:staging'] } }).reason).toBe('The factory is releasing this.')
+    expect(nextStep({ ...base, ticket: { stage: 'review', reviewState: 'waiting_checks' } }).reason).toBe('In review: review clean, waiting for checks to finish.')
+    expect(nextStep({ ...base, ticket: { state: 'closed', stage: 'done' } }).label).toBe('Done')
+    expect(nextStep(base).reason).toBe('The factory picks this up next.')
+  })
+  it('an escalated live Run says Escalated; a stopped Run the factory still retries is not the owner\'s', () => {
+    const esc = { id: 9, stage: 'build', status: 'running', escalation: { step: 2, reason: 'the first attempt failed' } }
+    expect(nextStep({ ...base, run: esc })).toMatchObject({ label: 'Escalated', enabled: false, reason: 'Escalated to the strong model (step 2 of 4): the first attempt failed (Run 9).', href: '/runs/9' })
+    expect(nextStep({ ...base, run: esc, admin: false }).reason).toBe('Escalated to the strong model (step 2 of 4): the first attempt failed.')
+    expect(nextStep({ ...base, run: { id: 9, stage: 'build', status: 'failed' } })).toMatchObject({ label: 'Escalating', enabled: false })
+    expect(nextStep({ ...base, run: { id: 9, stage: 'plan', status: 'failed' } }).label).not.toBe('Escalating')
+    expect(nextStep({ ...base, need: 'Run failed', run: { id: 9, stage: 'build', status: 'failed' } })).toMatchObject({ label: 'Run failed', enabled: true })
+  })
+  it('never says there is nothing to do', () => {
+    for (const ticket of [{ stage: 'plan' }, { stage: 'triage' }, { stage: 'review' }, { stage: 'release' }]) expect(nextStep({ ...base, ticket }).reason).not.toMatch(/nothing to do/i)
+  })
+})

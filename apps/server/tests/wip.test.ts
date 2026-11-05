@@ -264,7 +264,7 @@ describe('Board counts and waiting display', () => {
     const row = async () => (await loadOverview(ws, false)).tickets.find((r) => r.id === b.id)!
     expect(await row()).toMatchObject({ waiting: null, blockedBy: [{ id: blocker.id }] })
     await payload.update({ collection: 'tickets', id: blocker.id, data: { state: 'closed' }, ...o })
-    expect(await row()).toMatchObject({ waiting: 'Waiting: Build is full (1/1)', blockedBy: [] })
+    expect(await row()).toMatchObject({ waiting: 'Queued for Build: Build is full (1/1). Starts by itself.', blockedBy: [] })
   })
 
   it('never stores waitingFor equal to stage, except an overlap hold that carries its reason', async () => {
