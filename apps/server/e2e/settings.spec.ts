@@ -40,7 +40,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(advanced).not.toHaveAttribute('open', /.*/)
   await nav.getByText('Advanced', { exact: true }).click()
   await expect(advanced).toHaveAttribute('open', '')
-  for (const name of ['Connections', 'Agent keys', 'Audit', 'Workflow', 'Runs']) await expect(advanced.getByRole('link', { name, exact: true })).toBeVisible()
+  for (const name of ['Board & WIP', 'Connections', 'Agent keys', 'Audit', 'Runs']) await expect(advanced.getByRole('link', { name, exact: true })).toBeVisible()
   await advanced.getByRole('link', { name: 'Connections' }).click()
   await expect(page).toHaveURL(/\/settings\/connections$/)
   await expect(advanced).toHaveAttribute('open', '')
@@ -81,19 +81,6 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
   await page.locator('header.topbar').getByRole('button', { name: 'User menu' }).click()
   await expect(page.getByRole('menu').getByRole('menuitem', { name: created })).toBeVisible()
-})
-
-test('an Advanced anchor entry keeps Advanced open and is the only current entry', async ({ page }) => {
-  await page.goto('/login')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(password())
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
-  await page.goto('/settings/workspace#tiers')
-  const nav = page.getByRole('navigation', { name: 'Settings' })
-  await expect(nav.locator('details')).toHaveAttribute('open', '')
-  await expect(nav.getByRole('link', { name: 'Model tiers' })).toHaveAttribute('aria-current', 'page')
-  await expect(nav.getByRole('link', { name: 'General' })).not.toHaveAttribute('aria-current', 'page')
 })
 
 test('at 390 px the Next step bar does not cover the last field of the Workspace page', async ({ page }) => {

@@ -45,7 +45,7 @@ export function BoardView({ tickets, showProduct, admin, wip }: { tickets: Ticke
           <section data-stage={s}>
               <h2 className="label">
                 {stageLabel(s)}{' '}
-                {wip[s]?.limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="text-muted-foreground">{rows.length}</span>}
+                {wip[s]?.limit != null ? (admin ? <Link href="/settings/workflow#wip" className="hover:underline"><span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span></Link> : <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span>) : <span className="text-muted-foreground">{rows.length}</span>}
               </h2>
               <SortableCards
                 items={rows.map((t) => {

@@ -19,6 +19,7 @@ export default async function BauherrenSettings() {
   const items = workspaces.map((w) => ({ id: w.id, label: w.name }))
   return (
     <>
+      <h2 className="heading">People</h2>
       {!bauherren.length && <EmptyState text="No Bauherren yet." />}
       <Table>
           <thead><tr className="label"><th>Email</th><th>Role</th><th>Workspaces</th><th>SSO</th>{admin && <th />}</tr></thead>

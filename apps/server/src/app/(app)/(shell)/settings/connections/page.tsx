@@ -21,6 +21,7 @@ export default async function ConnectionSettings() {
   const connections = await loadConnections(workspace.id)
   return (
     <>
+      <h2 className="heading">Connections</h2>
       {!connections.length && <EmptyState text={`${workspace.name} has no Connections yet.`} />}
       {connections.length > 0 && (
         <Table>

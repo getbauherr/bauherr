@@ -32,6 +32,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<Re
   const { rows, errors } = await loadAudit(workspace.id, tab, sp)
   return (
     <>
+      <h2 className="heading">Audit</h2>
       <Tabs aria-label="Audit">
         <Tab href="/settings/audit" aria-current={tab === 'touches' ? 'page' : undefined}>Touches</Tab>
         <Tab href="/settings/audit?tab=calls" aria-current={tab === 'calls' ? 'page' : undefined}>Tool calls</Tab>
