@@ -106,7 +106,7 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
   if (!s) return null
   const numbers = s.ticketNumbers?.length ? s.ticketNumbers : s.ticketNumber != null ? [s.ticketNumber] : []
   const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }[] : []
-  const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, status: true }, ...o })).docs as unknown as { ticket: number; stage: string; status: string }[] : []
+  const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, status: true, reasonKind: true }, ...o })).docs as unknown as { ticket: number; stage: string; status: string; reasonKind?: string | null }[] : []
   return {
     id: s.id,
     product: (typeof s.product === 'object' && s.product.name) || '—',

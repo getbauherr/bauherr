@@ -8,7 +8,7 @@ import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
-import { escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
+import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
 import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
@@ -156,8 +156,8 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label)
   const escalated = await isEscalated(c.payload, won)
-  if (escalated && run.stage === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', { maxTurns: 200, maxBudgetUsd: 5 }))
-  return { run: escalated ? { ...won, tier: 'strong' } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  if (escalated && run.stage === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
@@ -451,11 +451,14 @@ export const tools: Tool[] = [
   {
     name: 'finish_run',
     access: 'agent',
-    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
-    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'leaseToken', 'status']),
+    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
+    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
       if (a.status !== 'succeeded' && !a.reason) throw new Error('reason is required unless succeeded')
+      if (a.reasonKind !== undefined && !['decision', 'access', 'stuck'].includes(a.reasonKind)) throw new Error('reasonKind must be decision|access|stuck')
+      const defaulted = a.status === 'needs_human' && !a.reasonKind
+      const reasonKind = a.status === 'succeeded' ? null : (a.reasonKind ?? (a.status === 'needs_human' ? 'decision' : null))
       const run = await getRun(c, a.runId, a)
       const ticket = await getTicket(c, id(run.ticket))
       const { ts, n } = await sourceOf(c.payload, ticket)
@@ -472,10 +475,10 @@ export const tools: Tool[] = [
         c,
         run,
         a.leaseToken,
-        sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
+        sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
       if (run.stage === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
-      return { status: a.status }
+      return { status: a.status, ...(defaulted && { note: 'reasonKind was missing: treated as decision, so the owner gets this. Pass stuck when a stronger model could solve it.' }) }
     },
   },
   {

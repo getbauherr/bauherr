@@ -173,7 +173,7 @@ it('starts the missing Run when recording a gate assignee, but never for a hand-
   const mk = async (title: string, assignees: string) => {
     const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:build'] })
     const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, state: 'open', stage: 'build', labels: ['bauherr:stage:build'], assignees, product, workspace: ws }, ...o })
-    await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'plan', status: 'failed', mode: 'autonomous', workspace: ws }, ...o })
+    await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'plan', status: 'failed', reasonKind: 'decision', mode: 'autonomous', workspace: ws }, ...o })
     return t.id as number
   }
   const runs = async (id: number) => (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }] }, ...o })).totalDocs

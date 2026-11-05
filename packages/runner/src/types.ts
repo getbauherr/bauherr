@@ -69,8 +69,11 @@ export type RunCtx = {
 export type RunResult = {
   status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
   reason?: string;
+  /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
+  reasonKind?: ReasonKind;
   artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 
-export type GoalStatement = { text: string; status: 'unverified' | 'verified' | 'blocked'; reason?: string };
+export type ReasonKind = 'decision' | 'access' | 'stuck';
+export type GoalStatement = { text: string; status: 'unverified' | 'verified' | 'blocked'; reason?: string; kind?: ReasonKind };

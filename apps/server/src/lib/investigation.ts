@@ -9,6 +9,8 @@ import { moveStage } from './stage-move'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
+/** `escalation.reason` of the one strong fix round at the review round cap; the review after it runs strong too. */
+export const REVIEW_CAP_REASON = 'review round cap'
 export const MAX_INVESTIGATIONS = 2
 export const REASON = 'failed twice: investigate'
 export const DECISIONS = ['revise', 'fix-ticket', 'needs-human'] as const
@@ -18,11 +20,15 @@ export type InvestigationInput = { cause: string; decision: Decision; fix?: { ti
 /** Owner addition (2026-11-05): investigation Plan Runs get 60 turns and $2; the fresh Build Run after one gets double its normal caps. All run on the `strong` tier. */
 export const escalatedCaps = (stage: string, base: { maxTurns: number; maxBudgetUsd: number }) => (stage === 'plan' ? { maxTurns: 60, maxBudgetUsd: 2 } : { maxTurns: base.maxTurns * 2, maxBudgetUsd: base.maxBudgetUsd * 2 })
 
+/** Normal caps of a stage's Run, before `escalatedCaps` doubles them. */
+export const baseCaps = (stage: string) => (stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
+
 const investigationRuns = async (payload: Payload, ticket: number | string): Promise<Doc[]> =>
   ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket } }, { stage: { equals: 'plan' } }] }, sort: 'id', pagination: false, ...o })).docs as Doc[]).filter((r) => r.investigation)
 
-/** Whether the Run is an escalated one: an investigation Plan Run, or the first Build Run started after the Ticket's latest investigation. */
+/** Whether the Run is an escalated one: it carries `escalation`, is an investigation Plan Run, or is the first Build Run started after the Ticket's latest investigation. */
 export const isEscalated = async (payload: Payload, run: Doc): Promise<boolean> => {
+  if (run.escalation) return true
   if (run.stage === 'plan') return !!run.investigation
   if (run.stage !== 'build') return false
   const last = (await investigationRuns(payload, id(run.ticket))).filter((r) => r.id < run.id).pop()
@@ -40,8 +46,9 @@ const note = async (payload: Payload, t: Doc, text: string): Promise<void> => {
   else await ts.comment(n, `${INVESTIGATION_MARKER}\n# Investigations\n\n${text}`)
 }
 
-/** Records the escalation of an escalated Build Run once in the investigation Comment. */
+/** Records the escalation of a Build Run escalated by an investigation once in the investigation Comment; ladder escalations are noted by `escalate`. */
 export const noteEscalatedBuild = async (payload: Payload, run: Doc, caps: { maxTurns: number; maxBudgetUsd: number }): Promise<void> => {
+  if (run.escalation) return
   const t = (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc
   const line = `Escalated: Build Run #${run.id} on tier strong (${caps.maxTurns} turns, $${caps.maxBudgetUsd}).`
   const ts = await ticketsOf(payload, id(t.product))

@@ -24,6 +24,9 @@ export type RunRow = {
   createdAt: string
   /** Set on an investigation Plan Run. */
   investigation?: unknown
+  /** Set on an escalated Run: { step, reason, previousRuns }. */
+  escalation?: { step: number; reason: string } | null
+  reasonKind?: string | null
 }
 export type TicketRow = {
   id: number
@@ -60,7 +63,7 @@ export const RUNS_LIMIT = 100
 export const DECISIONS_LOOKUPS = 20
 const CLOSED_LIMIT = 200
 export const FORGE_TIMEOUT_MS = 3000
-const RUN_FIELDS = { ticket: true, stage: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, createdAt: true } as const
+const RUN_FIELDS = { ticket: true, stage: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, createdAt: true, escalation: true, investigation: true, reasonKind: true } as const
 
 export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
