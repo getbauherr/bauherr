@@ -6,6 +6,8 @@ import { makeIntakeAdapter, toMessages, type Turn } from './chat/intake-adapter'
 import { ChatThread } from './chat/thread'
 import { Button } from './ui/button'
 
+const LAST_PRODUCT = 'bauherr-product'
+
 type Line = { who: 'you' | 'bauherr'; text: string }
 
 /** Modal confirmation for discarding a draft; `onClose` fires on every close (Escape, Keep draft). */
@@ -36,6 +38,19 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
   const [sent, setSent] = useState<number[] | null>(null)
   const [discarding, setDiscarding] = useState<{ id: number; first: string } | null>(null)
   const [discardError, setDiscardError] = useState('')
+  const pick = (id: number) => {
+    setProduct(id)
+    try {
+      localStorage.setItem(LAST_PRODUCT, String(id))
+    } catch {}
+  }
+  useEffect(() => {
+    if (initial) return
+    try {
+      const last = Number(localStorage.getItem(LAST_PRODUCT))
+      if (products.some((p) => p.id === last)) setProduct(last)
+    } catch {}
+  }, [initial, products])
   const productRef = useRef(product)
   productRef.current = product
   const [adapter] = useState(() =>
@@ -88,7 +103,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
         {products.length > 1 && (
           <label className="field">
             <span className="label muted">Product</span>
-            <select value={product} onChange={(e) => setProduct(Number(e.target.value))} disabled={!!session}>
+            <select value={product} onChange={(e) => pick(Number(e.target.value))} disabled={!!session}>
               {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>

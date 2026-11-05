@@ -63,7 +63,9 @@ export async function loadWorkspaceSettings(id: number) {
     budgetUnit: (ws.budgetUnit ?? 'usd') as 'usd' | 'tokens',
     budgetUsd30d: ws.budgetUsd30d as number | null,
     budgetTokens30d: ws.budgetTokens30d as number | null,
-    modelByTier: (ws.modelByTier ?? {}) as Record<string, string>,
+    // Tiers are stored as `<connection>/<model>`; the form shows the bare id of the first Connection, which `saveWorkspace` qualifies again.
+    modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
+    modelChoices: preset.defaultModels ? [...new Set(Object.values(preset.defaultModels))] : null,
     defaultMode: (ws.defaultMode ?? '') as string,
     modeByStage: (ws.modeByStage ?? {}) as Record<string, string>,
     placeholders: preset.defaultModels ?? DEFAULT_MODEL_BY_TIER,

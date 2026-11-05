@@ -70,6 +70,48 @@ export function Field({ name, label, hint, example, explain, options, empty, row
   )
 }
 
+const OTHER = '__other'
+
+function Picker({ name, label, options, defaultValue, empty, hint, example, required }: { name: string; label: string; options: Opt[]; defaultValue: string; empty?: string; hint?: string; example?: string; required?: boolean }) {
+  const error = useContext(Ctx).fields?.[name]
+  const uid = useId()
+  const values = options.map((o) => (Array.isArray(o) ? o[0] : o))
+  const known = values.includes(defaultValue) || (!defaultValue && empty !== undefined)
+  const start = known ? defaultValue : defaultValue ? OTHER : (values[0] ?? '')
+  const [choice, setChoice] = useState(start)
+  const [typed, setTyped] = useState(known ? '' : defaultValue)
+  const hidden = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const form = hidden.current?.form
+    const back = () => (setChoice(start), setTyped(known ? '' : defaultValue))
+    form?.addEventListener('reset', back)
+    return () => form?.removeEventListener('reset', back)
+  }, [start, known, defaultValue])
+  const described = [hint && `${uid}-h`, error && `${uid}-e`].filter(Boolean).join(' ') || undefined
+  return (
+    <div className="field">
+      <label htmlFor={uid} className="small label-strong">{label}</label>
+      {hint && <span id={`${uid}-h`} className="small muted">{hint}</span>}
+      <input ref={hidden} type="hidden" name={name} value={choice === OTHER ? typed : choice} />
+      <select id={uid} value={choice} aria-invalid={!!error || undefined} aria-describedby={described} onChange={(e) => setChoice(e.target.value)}>
+        {empty !== undefined && <option value="">{empty}</option>}
+        {options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>))}
+        <option value={OTHER}>Other...</option>
+      </select>
+      {choice === OTHER && <Input aria-label={`${label}, other`} placeholder={example} value={typed} required={required} aria-invalid={!!error || undefined} onChange={(e) => setTyped(e.target.value)} />}
+      {error && <span id={`${uid}-e`} role="alert" className="small err">{error}</span>}
+    </div>
+  )
+}
+
+/**
+ * A select of the known `options` plus "Other..." for a typed value, posted under `name`. Without options (a source that could not list them) it is the plain text field, so saving is never blocked.
+ * `empty` adds a leading blank option with that label.
+ */
+export function PickField({ options, empty, defaultValue = '', ...rest }: { name: string; label: string; options: Opt[] | null; defaultValue?: string; empty?: string; hint?: string; example?: string; placeholder?: string; required?: boolean }) {
+  return options?.length ? <Picker {...rest} options={options} empty={empty} defaultValue={defaultValue} /> : <Field {...rest} defaultValue={defaultValue} />
+}
+
 /** A `mono` block with a Copy button; the label flips to "Copied" for a moment. `block` is multi-line code (scrolls inside its own box) instead of a one-line notice. */
 export function CopyField({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false)
