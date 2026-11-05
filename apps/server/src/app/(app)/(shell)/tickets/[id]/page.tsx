@@ -21,8 +21,8 @@ import { FORGE_TIMEOUT_MS, loadOverviewRows, within } from '../../../lib/overvie
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
-import { needsYou, stageOf } from '../../../lib/needs-you'
-import { INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
+import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { checkLines, reachedStages, stageHistory } from '../../../lib/stage-history'
 import { isAdmin } from '../../../lib/settings'
@@ -76,11 +76,12 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const plan = latestWith(comments, PLAN_MARKER)?.body
   const worklog = firstWith(comments, WORKLOG_MARKER)?.body
   const investigation = latestWith(comments, INVESTIGATION_MARKER)?.body
+  const escalations = latestWith(comments, ESCALATION_MARKER)?.body
   const sheet = sheetOf(comments)?.body
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
-  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite }, (runs[0] as { stage: string; status: string } | undefined) ?? null, missing.length)
+  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
@@ -90,7 +91,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const stagingSummary = latestWith(comments, SUMMARY_MARKER)?.body
   const acceptedStaging = labels.includes('bauherr:approved:staging')
   const answered = decisions.filter((d) => answers[d.id]).length
-  const idle = nextStep({ ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), admin })
+  const idle = nextStep({ ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), admin })
   const decisionsOpen = decisions.length - answered > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production'].filter(Boolean).join(' · ')
   const reached = reachedStages({ state: ticket.state, stage: stageOf(ticket) }, runs as { stage: string }[])
@@ -146,6 +147,12 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           <section className="flex flex-col gap-4" aria-labelledby="plan">
             <h2 className="heading" id="plan">Plan</h2>
             <Markdown html={renderMarkdown(withoutDecisions(strip(plan, PLAN_MARKER)))} />
+          </section>
+        )}
+        {escalations && (
+          <section className="flex flex-col gap-4" aria-labelledby="escalations">
+            <h2 className="heading" id="escalations">Escalations</h2>
+            <Markdown html={renderMarkdown(strip(escalations, ESCALATION_MARKER))} />
           </section>
         )}
         {investigation && (

@@ -34,6 +34,14 @@ describe('nextStep', () => {
     expect(nextStep({ ...base, ticket: { state: 'closed', stage: 'done' } }).label).toBe('Done')
     expect(nextStep(base).reason).toBe('The factory picks this up next.')
   })
+  it('an escalated live Run says Escalated; a stopped Run the factory still retries is not the owner\'s', () => {
+    const esc = { id: 9, stage: 'build', status: 'running', escalation: { step: 2, reason: 'the first attempt failed' } }
+    expect(nextStep({ ...base, run: esc })).toMatchObject({ label: 'Escalated', enabled: false, reason: 'Escalated to the strong model (step 2 of 4): the first attempt failed (Run 9).', href: '/runs/9' })
+    expect(nextStep({ ...base, run: esc, admin: false }).reason).toBe('Escalated to the strong model (step 2 of 4): the first attempt failed.')
+    expect(nextStep({ ...base, run: { id: 9, stage: 'build', status: 'failed' } })).toMatchObject({ label: 'Escalating', enabled: false })
+    expect(nextStep({ ...base, run: { id: 9, stage: 'plan', status: 'failed' } }).label).not.toBe('Escalating')
+    expect(nextStep({ ...base, need: 'Run failed', run: { id: 9, stage: 'build', status: 'failed' } })).toMatchObject({ label: 'Run failed', enabled: true })
+  })
   it('never says there is nothing to do', () => {
     for (const ticket of [{ stage: 'plan' }, { stage: 'triage' }, { stage: 'review' }, { stage: 'release' }]) expect(nextStep({ ...base, ticket }).reason).not.toMatch(/nothing to do/i)
   })

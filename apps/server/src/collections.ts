@@ -480,6 +480,8 @@ export const collections: CollectionConfig[] = [
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
     { name: 'investigation', type: 'json', admin: { description: 'Set only on an investigation Plan Run: { failedRuns: number[], stage }. The Run runs on the strong tier.' } },
+    { name: 'escalation', type: 'json', admin: { description: 'Set only on an escalated Run: { step: 2 | 3, reason, previousRuns: number[] }. Written with the create; the Run runs on the strong tier with doubled caps.' } },
+    select('reasonKind', ['decision', 'access', 'stuck'], { admin: { description: 'Why a Run stopped: decision (product question) and access (credential, setting) reach the owner, stuck escalates. On failed Runs it is set when the escalation ladder ended at the owner.' } }),
     text('evidence'),
     json('goal'),
     select('verdict', ['clean', 'changes']),

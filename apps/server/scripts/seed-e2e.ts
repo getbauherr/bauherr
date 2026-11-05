@@ -17,6 +17,12 @@ const ensure = async (collection: string, where: Record<string, unknown>, data: 
 
 const email = env('E2E_EMAIL')
 const admin = (await ensure('bauherren', { email }, { email, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-admin' })).id
+// A sign-out bumps the user's sessionVersion and ends every session of that user, so a spec that signs out signs in as a user of its own.
+for (const [who, login] of [['signout-shell', 'e2e-signout-shell'], ['signout-requests', 'e2e-signout-requests'], ['signout-flow', 'e2e-signout-flow']]) await ensure('bauherren', { email: `${who}@example.com` }, { email: `${who}@example.com`, password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: login })
+// one admin per Playwright worker (e2e/user.ts): concurrent logins of one user can lose each other's session
+const workerAdmins = [admin]
+for (const w of [1, 2]) workerAdmins.push((await ensure('bauherren', { email: email.replace('@', `-w${w}@`) }, { email: email.replace('@', `-w${w}@`), password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: `e2e-admin-w${w}` })).id)
+const draftOwner = (await ensure('bauherren', { email: 'draft-owner@example.com' }, { email: 'draft-owner@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-draft-owner' })).id // owns the seeded Draft; only requests.spec signs in as this user, and its tests run in one worker
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme', wipLimits: {} })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
 const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug: 'zeta' })).id
@@ -99,7 +105,7 @@ const live = await ticket(123, 'Live build in progress', 'build', product, { ran
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'plan', 'succeeded', { startedAt: '2026-10-30T12:05:00Z', finishedAt: '2026-10-30T12:06:00Z' })
-await run(t18, 'build', 'failed', { startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
+await run(t18, 'build', 'failed', { reasonKind: 'decision', startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
 await run(t24, 'plan', 'succeeded', { startedAt: '2026-10-30T09:30:00Z', finishedAt: '2026-10-30T09:32:00Z' })
 // The owner-chat spec's Tickets have a plan Run in progress from the start ("the plan is being written" is what its answers lead to), so the spec does not depend on how long the server has been up for the factory to start one.
 await ensure('runs', { ticket: t21, stage: 'plan', status: 'running' }, { ticket: t21, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
@@ -129,7 +135,7 @@ await run(t5, 'review', 'succeeded', {
 })
 const request = async (key: string, status: string, extra: Record<string, unknown>) =>
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
-await request('Export totals drift', 'open', { user: admin })
+await request('Export totals drift', 'open', { user: draftOwner })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
 await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, ticketNumbers: [6, 7] })
 console.log('seeded')

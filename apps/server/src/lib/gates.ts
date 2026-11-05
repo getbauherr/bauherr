@@ -54,7 +54,7 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * A gate whose owners are all rejected for good is not notified and is flagged `gateUnreachable`; it is retried each sweep.
  * Returns whether the Ticket row changed.
  */
-export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string } | null): Promise<boolean> => {
+export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
   const productionChecksMissing = t.stage === 'release' && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
   const candidate = t.state === 'closed' && t.releaseChecksState !== 'failed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run)
   const held: Need | null = t.gateNotified ?? null
@@ -137,7 +137,7 @@ export const syncGates = async (payload: Payload, expediteOnly = false): Promise
   let changed = 0
   for (const t of tickets) {
     try {
-      if (await syncGate(payload, t, (latest.get(t.id) as { id: number; stage: string; status: string } | undefined) ?? null)) changed++
+      if (await syncGate(payload, t, (latest.get(t.id) as { id: number; stage: string; status: string; reasonKind?: string | null } | undefined) ?? null)) changed++
     } catch (e) {
       payload.logger.error({ err: e, ticket: t.id }, 'syncGate failed')
     }

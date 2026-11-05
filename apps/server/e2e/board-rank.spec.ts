@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { email } from './user'
 
-const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.use({ viewport: { width: 1280, height: 2400 } }) // the whole column is on screen, so a drag needs no scrolling

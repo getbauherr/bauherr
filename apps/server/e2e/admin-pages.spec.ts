@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { email } from './user'
+import { confirmClick } from './confirm'
 
-const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
@@ -37,8 +38,7 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(row).toContainText(key.slice(0, 8))
   await expect(page.getByText(key)).toHaveCount(0)
   await expect(page.getByText('Never give this key to an agent; it can approve gates.')).toBeVisible()
-  await row.getByRole('button', { name: 'Revoke' }).click()
-  await row.getByRole('button', { name: 'Confirm revoke' }).click()
+  await confirmClick(row.getByRole('button', { name: 'Revoke' }), row.getByRole('button', { name: 'Confirm revoke' }), (t) => expect(row).toContainText('revoked', { timeout: t }))
   await expect(row).toContainText('revoked')
   expect((await list()).status()).toBe(401)
 
@@ -185,9 +185,7 @@ test('the Ticket page Repair disclosure is for an Admin only and resets counters
     await expect(repair).toHaveCount(visible ? 1 : 0)
     if (visible) {
       await repair.getByRole('button', { name: 'Repair', exact: true }).click()
-      await repair.getByRole('button', { name: 'Reset counters' }).click()
-      await repair.getByRole('button', { name: 'Confirm reset counters' }).click()
-      await expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+      await confirmClick(repair.getByRole('button', { name: 'Reset counters' }), repair.getByRole('button', { name: 'Confirm reset counters' }), (t) => expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible({ timeout: t }))
     }
     await page.context().clearCookies()
   }

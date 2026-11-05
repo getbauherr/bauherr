@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
+const email = 'draft-owner@example.com' // owns the seeded Draft (seed-e2e.ts)
+
+test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 test('Requests list shows Draft and Sent rows with plain wording and Ticket links', async ({ page }) => {
   await page.goto('/')
@@ -42,7 +43,7 @@ test('an own Draft opens from Requests after logout and login and is finished an
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 and INTAKE_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
   const signIn = async () => {
     await page.goto('/login')
-    await page.getByLabel('Email').fill(email)
+    await page.getByLabel('Email').fill('signout-requests@example.com') // signing out ends every session of the user, so this test has one of its own
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.locator('header.topbar')).toBeVisible()

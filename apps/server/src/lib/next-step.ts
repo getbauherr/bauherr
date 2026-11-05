@@ -12,10 +12,12 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
  * agent-side owner, first match: open blocker, live Run, waiting state (overlap, full column, checks), release/review wait, idle.
  * `waiting` is `waitingText` of a waiting Ticket; `admin` gates the Run number and link (Runs are an Admin view).
  */
-export const nextStep = ({ ticket, need, run, waiting, blockers, admin }: { ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string } | null; waiting: string | null; blockers: { id: number; number: number }[]; admin: boolean }): NextStep => {
+export const nextStep = ({ ticket, need, run, waiting, blockers, admin }: { ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; admin: boolean }): NextStep => {
   if (need) return { label: need, enabled: true, reason: '' }
   if (blockers.length) return { label: 'Blocked', enabled: false, reason: `Blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}.`, href: `/tickets/${blockers[0]!.id}` }
+  if (run && ['running', 'awaiting_session'].includes(run.status) && run.escalation) return { label: 'Escalated', enabled: false, reason: `Escalated to the strong model (step ${run.escalation.step} of 4): ${run.escalation.reason}${admin ? ` (Run ${run.id})` : ''}.`, ...(admin ? { href: `/runs/${run.id}` } : {}) }
   if (run && ['running', 'awaiting_session'].includes(run.status)) return { label: 'Working', enabled: false, reason: `The factory is working on this${admin ? ` (Run ${run.id})` : ''}.`, ...(admin ? { href: `/runs/${run.id}` } : {}) }
+  if (run && run.stage === ticket.stage && ['failed', 'cancelled', 'needs_human'].includes(run.status)) return { label: 'Escalating', enabled: false, reason: 'The last Run stopped; the factory retries it on a stronger model by itself.' }
   const wait = ticket.waitingFor
   if (wait === 'checks') return { label: 'Waiting for checks', enabled: false, reason: 'Waiting for the MR checks to finish. Review starts by itself.' }
   if (wait && waiting) {

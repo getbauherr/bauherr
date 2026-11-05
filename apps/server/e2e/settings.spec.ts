@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { email } from './user'
+import { confirmClick } from './confirm'
 
-const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
@@ -69,8 +70,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(row.getByLabel('Role')).toBeVisible()
   await row.getByText('Edit', { exact: true }).click()
 
-  await row.getByRole('button', { name: 'Remove' }).click()
-  await row.getByRole('button', { name: 'Confirm remove' }).click()
+  await confirmClick(row.getByRole('button', { name: 'Remove' }), row.getByRole('button', { name: 'Confirm remove' }), (t) => expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0, { timeout: t }))
   await expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0)
 
   await nav.getByRole('link', { name: 'General' }).click()

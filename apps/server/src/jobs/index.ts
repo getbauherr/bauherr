@@ -5,7 +5,7 @@ import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
-import { submitInvestigation, type InvestigationInput } from '../lib/investigation'
+import { REVIEW_CAP_REASON, submitInvestigation, type InvestigationInput } from '../lib/investigation'
 import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
@@ -155,7 +155,9 @@ export const startReviewIfReady = async (payload: Payload, t: Record<string, any
       return null
     }
   }
-  return startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review')
+  // A fix round granted at the review round cap is reviewed on the strong tier too.
+  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  return startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review', build?.escalation?.reason === REVIEW_CAP_REASON ? { escalation: build.escalation } : {})
 }
 
 /** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
@@ -175,21 +177,32 @@ export const abandonRun = async (
   const prev = o.escalate && run.previousRun ? await payload.findByID({ collection: 'runs', id: id(run.previousRun), depth: 0, overrideAccess: true }) : null
   const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
+  // The successor is the strong retry (ladder step 2); an investigation Run stays one.
+  const escalation = run.escalation ?? (run.investigation || run.stage === 'triage' ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
-      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
+      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "reason_kind" = ${status === 'needs_human' ? 'stuck' : null}::"enum_runs_reason_kind", "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
     )
     if (!done.rows.length) return false
     // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
       await tx.execute(
-        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id})`,
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "escalation", "investigation") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb)`,
       )
     }
     return true
   })
   if (!ended) return null
+  if (status === 'abandoned' && escalation?.step === 2) {
+    try {
+      const { noteRetry } = await import('../lib/escalation')
+      const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
+      await noteRetry(payload, ticket, { ...run, status: 'abandoned' }, o.reason)
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'escalation comment failed; the next liveness pass writes it')
+    }
+  }
   if (status === 'needs_human') {
     try {
       const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
@@ -616,6 +629,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
           status: r.status,
           artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
           error: r.status === 'succeeded' ? null : r.reason,
+          ...(r.status === 'needs_human' && { reasonKind: r.reasonKind ?? 'decision' }),
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null, reviewedPatchId: r.artifacts.reviewedPatchId || null }),
           tokensIn: r.usage.inputTokens,
           tokensOut: r.usage.outputTokens,
@@ -662,7 +676,7 @@ export const concludeInvestigation = async (payload: Payload, ticket: Record<str
     await submitInvestigation(payload, stored, { ...(input as InvestigationInput), model })
     if ((input as InvestigationInput).decision === 'needs-human') {
       const question = (input as InvestigationInput).question!
-      await payload.update({ collection: 'runs', id: run.id, data: { status: 'needs_human', error: question }, overrideAccess: true })
+      await payload.update({ collection: 'runs', id: run.id, data: { status: 'needs_human', error: question, reasonKind: 'decision' }, overrideAccess: true })
       await (await forgeOf(payload, id(ticket.product))).tickets.comment(String(ticket.number), `Bauherr needs a human: ${question}`)
     }
   } catch (e) {
