@@ -6,7 +6,7 @@ import { activity, ago, heartbeatAge } from '../lib/format'
 import { GATES } from '../lib/gates'
 import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
 import type { RunRow, TicketRow } from '../lib/overview'
-import { frontierOrder } from '../../../lib/frontier'
+import { executionOrder } from '../../../lib/frontier'
 import { SortableCards } from './SortableCards'
 import { StatusChip } from './StatusChip'
 import { Badge } from './ui/badge'
@@ -34,18 +34,18 @@ const EpicTag = ({ t }: { t: TicketRow }) =>
 const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="ticket-title flex-1 hover:underline">{t.title}</Link>
 
 export function BoardView({ tickets, showProduct, admin, wip }: { tickets: TicketRow[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }> }) {
-  const latest = new Map(tickets.flatMap((t) => (t.run ? [[t.id, t.run] as const] : [])))
   return (
     <>
     <div className="board flex items-start gap-4 overflow-x-auto">
       {BOARD_STAGES.map((s) => {
-        const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0, expediting: t.expedite })), latest)
+        // The column shows the owner's rank, not the pull order: a card never jumps because it is blocked or in progress (the status badge says so). Only the Hotfix lane sorts first.
+        const rows = tickets.filter((t) => t.stage === s).map((t) => ({ ...t, expediting: t.expedite })).sort(executionOrder)
         return (
           <Card key={s} asChild className="col flex-none basis-[260px] p-3">
           <section data-stage={s}>
               <h2 className="label">
                 {stageLabel(s)}{' '}
-                {wip[s]?.limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span> : <span className="text-muted-foreground">{rows.length}</span>}
+                {wip[s]?.limit != null ? (admin ? <Link href="/settings/workflow#wip" className="hover:underline"><span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span></Link> : <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span>) : <span className="text-muted-foreground">{rows.length}</span>}
               </h2>
               <SortableCards
                 items={rows.map((t) => {

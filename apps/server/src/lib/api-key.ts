@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { Payload } from 'payload'
+import { ACCOUNT_LOCKED, accountLocked } from './oidc-session'
 
 const o = { collection: 'bauherren', overrideAccess: true, depth: 0 } as const
 
@@ -53,13 +54,14 @@ export const revokeAgentKey = async (payload: Payload, user: Owner, keyId: numbe
 export const listAgentKeys = async (payload: Payload, user: Owner) =>
   (await payload.find({ ...ak, where: { owner: { equals: own(user) } }, sort: '-createdAt', pagination: false })).docs as unknown as { id: number; label: string; prefix: string; lastUsedAt?: string; revokedAt?: string }[]
 
-/** Looks a bearer token up by hash; rejects unknown and revoked keys, touches `lastUsedAt`, returns the key and its owner. */
+/** Looks a bearer token up by hash; rejects unknown and revoked keys, throws `ACCOUNT_LOCKED` for a locked owner, touches `lastUsedAt`, returns the key and its owner. */
 export const resolveAgentKey = async (payload: Payload, token: string): Promise<{ keyId: number | string; owner: Record<string, any> } | null> => {
   const { docs } = await payload.find({ ...ak, where: { keyHash: { equals: hashOf(token) } }, limit: 1, showHiddenFields: true })
   const key = docs[0] as unknown as { id: number | string; owner: number | string; revokedAt?: string | null } | undefined
   if (!key || key.revokedAt) return null
   const owner = (await payload.findByID({ ...o, id: key.owner }).catch(() => null)) as Record<string, any> | null
   if (!owner) return null
+  if (await accountLocked(payload, owner.id)) throw new Error(ACCOUNT_LOCKED)
   await payload.update({ ...ak, id: key.id, data: { lastUsedAt: new Date().toISOString() } })
   return { keyId: key.id, owner: { ...owner, collection: 'bauherren' } }
 }

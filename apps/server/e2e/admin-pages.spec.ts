@@ -58,7 +58,7 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await page.getByRole('button', { name: 'Filter' }).click()
   await expect(page.getByRole('link', { name: 'acme/web#2' }).first()).toBeVisible()
 
-  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Workflow' }).click()
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Board & WIP' }).click()
   await expect(page.getByRole('heading', { name: 'Where you are asked' })).toBeVisible()
   for (const name of ['Answer questions', 'Approve the plan', 'Accept on staging', 'Ask me before production']) await expect(page.locator('.toggle-row').filter({ hasText: name })).toBeVisible()
   await expect(page.locator('.toggle-row').filter({ hasText: 'Answer questions' })).toContainText('Always on')
@@ -69,7 +69,8 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('cell', { name: 'Acme Web' })).toBeVisible()
   await expect(page.getByText('workflow.yaml')).toHaveCount(0)
 
-  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Factory health' }).click()
+  await page.goto('/settings/workspace')
+  await page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: 'Factory health' }).click()
   await expect(page.getByRole('heading', { name: 'Factory health' })).toBeVisible()
   await expect(page.getByText('Last poll, acme/web')).toBeVisible()
   await expect(page.getByText('Gateway budget')).toBeVisible()
@@ -189,4 +190,30 @@ test('the Ticket page Repair disclosure is for an Admin only and resets counters
     }
     await page.context().clearCookies()
   }
+})
+
+test('every Settings nav link opens a page whose heading matches, none is an anchor', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workspace')
+  const nav = page.getByRole('navigation', { name: 'Settings' })
+  await nav.getByText('Advanced', { exact: true }).click()
+  const links = await nav.getByRole('link').evaluateAll((as) => as.map((a) => [a.textContent!, a.getAttribute('href')!]))
+  expect(links.length).toBeGreaterThan(5)
+  for (const [label, href] of links) {
+    expect(href).not.toContain('#')
+    await page.goto(href)
+    await expect(page.getByRole('heading', { name: label, exact: true }).first()).toBeVisible()
+  }
+})
+
+test('the Board WIP count links to the WIP limits section', async ({ page }) => {
+  await signIn(page, email)
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('1')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.goto('/?view=board')
+  await page.locator('section.col[data-stage="build"] h2 a').click()
+  await expect(page).toHaveURL(/\/settings\/workflow#wip$/)
+  await expect(page.getByRole('heading', { name: 'WIP limits' })).toBeVisible()
 })

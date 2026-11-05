@@ -4,6 +4,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import { resolveAgentKey } from '../../lib/api-key'
+import { ACCOUNT_LOCKED, lockedRequests } from '../../lib/oidc-session'
 import { callTool, tools, type Ctx } from '../../lib/mcp-tools'
 
 export const runtime = 'nodejs'
@@ -16,12 +17,21 @@ export const dynamic = 'force-dynamic'
 const handle = async (req: Request): Promise<Response> => {
   const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
   const payload = await getPayload({ config })
-  const agent = token ? await resolveAgentKey(payload, token) : null
-  const personal = token && !agent ? (await payload.auth({ headers: new Headers({ authorization: `bauherren API-Key ${token}` }) })).user : null
+  const headers = new Headers({ authorization: `bauherren API-Key ${token}` })
+  let locked = false
+  let agent: Awaited<ReturnType<typeof resolveAgentKey>> = null
+  try {
+    agent = token ? await resolveAgentKey(payload, token) : null
+  } catch (e) {
+    if (e instanceof Error && e.message === ACCOUNT_LOCKED) locked = true
+    else throw e
+  }
+  const personal = token && !agent && !locked ? (await payload.auth({ headers, req: { headers } as never })).user : null
+  locked ||= lockedRequests.has(headers)
   const user = agent?.owner ?? (personal?.collection === 'bauherren' ? personal : null)
   const actor: Ctx['actor'] = agent ? { kind: 'agent', keyId: agent.keyId } : { kind: 'human' }
   if (!user) {
-    return Response.json({ jsonrpc: '2.0', error: { code: -32001, message: 'unauthorized' }, id: null }, { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } })
+    return Response.json({ jsonrpc: '2.0', error: { code: -32001, message: locked ? ACCOUNT_LOCKED : 'unauthorized' }, id: null }, { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } })
   }
   const server = new Server({ name: 'bauherr', version: '0.1.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

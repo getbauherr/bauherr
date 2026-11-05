@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import type { AuthStrategy } from 'payload'
+import type { AuthStrategy, Payload } from 'payload'
 import { secret } from './secrets'
 
 export const SESSION_COOKIE = 'bauherr-session'
@@ -30,17 +30,25 @@ export const verifySession = (token: string, key = secret('PAYLOAD_SECRET'), now
 
 export const isLocked = (lockUntil?: string | null): boolean => !!lockUntil && new Date(lockUntil).getTime() > Date.now()
 
+export const ACCOUNT_LOCKED = 'This account is locked.'
+
+/** Request headers whose API-key lookup hit a locked account; lets the caller of `payload.auth` tell a lock from an unknown key. */
+export const lockedRequests = new WeakSet<Headers>()
+
+/** Whether the Bauherr is locked. `lockUntil` is hidden: it is read alone so hash/salt never reach callers. A failed read fails closed. */
+export const accountLocked = async (payload: Payload, id: number | string): Promise<boolean> => {
+  const lock = await payload.findByID({ collection: 'bauherren', id, depth: 0, overrideAccess: true, showHiddenFields: true, select: { lockUntil: true } }).catch(() => null)
+  return !lock || isLocked(lock.lockUntil as string | null | undefined)
+}
+
 export const oidcStrategy: AuthStrategy = {
   name: 'oidc',
   authenticate: async ({ payload, headers }) => {
     const token = headers.get('cookie')?.split(/;\s*/).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1)
     const session = token ? verifySession(token) : null
     if (!session) return { user: null }
-    const q = { collection: 'bauherren', id: session.id, depth: 0, overrideAccess: true } as const
-    const doc = await payload.findByID(q).catch(() => null)
+    const doc = await payload.findByID({ collection: 'bauherren', id: session.id, depth: 0, overrideAccess: true }).catch(() => null)
     if (!doc || doc.sessionVersion !== session.v) return { user: null }
-    // lockUntil is a hidden field; read it alone so hash/salt never reach req.user. A failed read fails closed.
-    const lock = await payload.findByID({ ...q, showHiddenFields: true, select: { lockUntil: true } }).catch(() => null)
-    return { user: lock && !isLocked(lock.lockUntil as string | null | undefined) ? { ...doc, collection: 'bauherren', _strategy: 'oidc' } : null }
+    return { user: (await accountLocked(payload, doc.id)) ? null : { ...doc, collection: 'bauherren', _strategy: 'oidc' } }
   },
 }

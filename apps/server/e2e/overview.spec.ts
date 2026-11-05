@@ -36,7 +36,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   const cardTexts = page.locator('.board .card')
   expect(await cardTexts.count()).toBeGreaterThan(5)
   for (const card of await cardTexts.all()) {
-    const texts = await card.locator('> :not(.num):not(.rank)').count()
+    const texts = await card.locator('> :not(.num):not(.rank):not(.menu)').count()
     expect(texts).toBeLessThanOrEqual(((await card.locator('[data-gate], .text-warn').count()) ? 4 : 3) + ((await card.locator('[data-hotfix]').count()) ? 1 : 0))
     const visible = (await card.evaluate((e) => {
       const c = e.cloneNode(true) as HTMLElement
@@ -103,6 +103,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
 })
 
 test('drag a Board card above another: the order survives a reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 2400 }) // the whole column is on screen, so a drag needs no scrolling
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await page.getByLabel('Email').fill(email)
@@ -124,6 +125,7 @@ test('drag a Board card above another: the order survives a reload', async ({ pa
 })
 
 test('dragging a Board card shows the drop position', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 2400 }) // the whole column is on screen, so a drag needs no scrolling
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await page.getByLabel('Email').fill(email)

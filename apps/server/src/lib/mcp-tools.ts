@@ -495,7 +495,7 @@ export const tools: Tool[] = [
   {
     name: 'submit_review',
     access: 'agent',
-    description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
+    description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area, each note 1-1000 characters; a longer or empty note is refused with an error: shorten it and call again). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
     inputSchema: obj(
       {
         ...runId,

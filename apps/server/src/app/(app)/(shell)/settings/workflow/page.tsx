@@ -25,7 +25,8 @@ export default async function Workflow() {
   const w = await loadWorkflow(workspace.id)
   return (
     <>
-      <h2 className="heading">WIP limits</h2>
+      <h2 className="heading">Board &amp; WIP</h2>
+      <h3 id="wip" className="heading">WIP limits</h3>
       <p className="small text-muted-foreground">Tickets allowed per Board column; empty means no limit. A Ticket waits in the column to its left until the next one has room. Work already in a column always finishes: merges, staging, production and returns are never held. Sub-tickets count, parents do not. Applied on the next poll.</p>
       <SettingsForm action={saveWipLimits}>
         <div className="grid grid-cols-3 gap-4 max-sm:grid-cols-1">

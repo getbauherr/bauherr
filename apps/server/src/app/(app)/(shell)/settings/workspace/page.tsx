@@ -43,7 +43,12 @@ export default async function WorkspaceSettings() {
   const budget = !admin ? ([] as string[]) : !w.gatewayOn ? ['Gateway off', 'text-muted-foreground'] : !spend ? ['Unavailable', 'text-muted-foreground'] : spend.limitUsd == null ? ['No limit', 'text-ok'] : spend.spentUsd >= spend.limitUsd ? ['Exhausted', 'text-destructive'] : spend.spentUsd >= 0.8 * spend.limitUsd ? ['Near limit', 'text-warn'] : ['OK', 'text-ok']
   return (
     <>
-      <h2 className="heading">{w.name}</h2>
+      <h2 className="heading">General</h2>
+      {health && (
+        <nav aria-label="On this page" className="small flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+          {[['tiers', 'Model tiers'], ['run-mode', 'Run mode'], ['knowledge', 'Knowledge repo'], ['gateway', 'Gateway key'], ['health', 'Factory health']].map(([id, label]) => <a key={id} href={`#${id}`} className="hover:text-foreground">{label}</a>)}
+        </nav>
+      )}
       <SettingsForm action={saveWorkspace} submit="Save" primary bar>
         {admin && <Field name="name" label="Name" defaultValue={w.name} />}
         <div className={PAIR}>
