@@ -402,7 +402,7 @@ export const releaseMarker = (sha: string) => `<!-- bauherr:release:${sha} -->`
 export const RELEASE_WAIT_MS = 6 * 60 * 60_000
 
 /** Prepends the release to CHANGELOG.md (after `## Unreleased`) on `bauherr/release-<tag>` and opens an MR; a human merges it. Safe to repeat: an existing branch or MR is kept. */
-const changelogPr = async (forge: Forge, repo: string, release: Release, marker: string, now: number) => {
+export const changelogPr = async (forge: Forge, repo: string, release: Release, marker: string, now: number) => {
   const branch = `bauherr/release-${release.tag}`
   const base = (await forge.getRepository(repo)).defaultBranch
   if (!(await forge.listBranches(repo)).some((b) => b.name === branch)) {
@@ -433,6 +433,7 @@ export const publishRelease = async (payload: Payload, productId: number | strin
   const batch = (await payload.find({ collection: 'tickets', where: unreleased([{ product: { equals: productId } }]), sort: 'productionRequestedAt', limit: 200, pagination: false, ...o })).docs as Doc[]
   if (!batch.length) return { state: 'none' }
   const product = (await payload.findByID({ collection: 'products', id: productId, ...o })) as Doc
+  if (product.releaseMode === 'manual') return { state: 'none' }
   const { backend, repo, tickets: ts } = await forgeOf(payload, productId)
   const forge = backend.forge
   const shas = [...new Set(batch.map((t) => t.productionApprovedSha as string))]

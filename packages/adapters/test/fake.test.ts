@@ -13,6 +13,19 @@ for (const native of [true, false]) {
   });
 }
 
+describe('fake: releases', () => {
+  it('lists releases newest first; a commit is its own ancestor, others only when set', async () => {
+    const b = new FakeBackend();
+    b.addRelease('o/r', { tag: 'v1', sha: 'a' });
+    b.addRelease('o/r', { tag: 'v2', sha: 'b' });
+    assert.deepEqual((await b.forge.listReleases('o/r')).map((r) => r.tag), ['v2', 'v1']);
+    assert.equal(await b.forge.isAncestor('o/r', 'a', 'a'), true);
+    assert.equal(await b.forge.isAncestor('o/r', 'a', 'b'), false);
+    b.setAncestors('o/r', 'b', ['a']);
+    assert.equal(await b.forge.isAncestor('o/r', 'a', 'b'), true);
+  });
+});
+
 describe('fake: mergePullRequest', () => {
   const setup = async () => {
     const b = new FakeBackend();

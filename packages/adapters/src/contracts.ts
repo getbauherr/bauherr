@@ -209,6 +209,10 @@ export interface Forge {
   findRelease(repo: RepoRef, o: { sha: string }): Promise<Release | null>;
   /** Creates the tag on `sha` and publishes the release. */
   createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }): Promise<Release>;
+  /** Published (non-draft) releases, newest first (at most 30). */
+  listReleases(repo: RepoRef): Promise<Release[]>;
+  /** Whether commit `base` is `head` or one of its ancestors. */
+  isAncestor(repo: RepoRef, base: string, head: string): Promise<boolean>;
   /** Names of all tags, with or without a release. */
   listTags(repo: RepoRef): Promise<string[]>;
   updateRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
