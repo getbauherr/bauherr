@@ -22,6 +22,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(next.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
   await expect(page.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
   await expect(next).toContainText('Change the settings below')
+  await page.getByLabel('Budget per 30 days').fill(amount + '0')
   await page.getByLabel('Budget per 30 days').fill(amount)
   await expect(next).toContainText('Unsaved changes')
   await next.getByRole('button', { name: 'Save' }).click()
