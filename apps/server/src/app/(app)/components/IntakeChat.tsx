@@ -5,6 +5,7 @@ import { discardIntake } from '../lib/actions'
 import { makeIntakeAdapter, toMessages, type Turn } from './chat/intake-adapter'
 import { ChatThread } from './chat/thread'
 import { Button } from './ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 const LAST_PRODUCT = 'bauherr-product'
 
@@ -103,9 +104,10 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
         {products.length > 1 && (
           <label className="field">
             <span className="label muted">Product</span>
-            <select value={product} onChange={(e) => pick(Number(e.target.value))} disabled={!!session}>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <Select value={String(product)} onValueChange={(v) => pick(Number(v))} disabled={!!session}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{products.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
+            </Select>
           </label>
         )}
         <AssistantRuntimeProvider runtime={runtime}>

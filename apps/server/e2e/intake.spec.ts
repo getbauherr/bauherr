@@ -26,7 +26,8 @@ test('a request with several problems ends in one confirmed list and one Ticket 
   await signIn(page)
   await page.goto('/requests/new')
   await expect(page.getByRole('link', { name: 'New request' })).toHaveCount(0)
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByLabel('Product').click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
   await say(page, 'The invoice total is wrong and also the export is slow', /I will create 3 separate tickets/)
   await expect(page.getByRole('complementary', { name: 'Draft' }).getByRole('listitem')).toContainText(['The invoice total is wrong', 'The export is slow', 'The login page is confusing'], { timeout: 10_000 })
   await page.getByRole('button', { name: 'Create 3 tickets' }).click()
@@ -36,7 +37,8 @@ test('a request with several problems ends in one confirmed list and one Ticket 
 test('a screenshot pasted into New request is sent with the request and shown in the created Ticket', async ({ page }) => {
   await signIn(page)
   await page.goto('/requests/new')
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByLabel('Product').click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
   await say(page, 'The shot check is broken', 'Who is affected, and since when?')
   await give(page.getByLabel(/Describe your request|Your answer/), 'paste', { name: 'pasted-shot.png', type: 'image/png', base64: PNG })
   await expect(page.getByText('pasted-shot.png')).toBeVisible()
@@ -57,7 +59,8 @@ test('a screenshot pasted into New request is sent with the request and shown in
 test('closing the tab mid-interview and coming back resumes the session, the draft and unsent text', async ({ page }) => {
   await signIn(page)
   await page.goto('/requests/new')
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByLabel('Product').click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
   await say(page, 'The resume check is broken', 'Who is affected, and since when?')
   await page.getByLabel('Your answer').fill('half typed answer')
   await page.reload()
@@ -82,7 +85,8 @@ test('a Product user describes a request, answers the questions and sends a Tick
   await page.getByRole('link', { name: /^Requests/ }).click()
   await page.getByRole('link', { name: 'New request' }).first().click()
   await expect(page.getByRole('heading', { name: 'New request' })).toBeVisible()
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByLabel('Product').click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
 
   const say = async (text: string, reply: string) => {
     await page.getByLabel(/Describe your request|Your answer/).fill(text)
@@ -106,7 +110,7 @@ test('a Product user describes a request, answers the questions and sends a Tick
 test('Discard asks in a dialog first; Keep draft leaves the draft, Discard removes it', async ({ page }) => {
   await signIn(page)
   await page.goto('/requests/new')
-  const product = Number(await page.getByLabel('Product').locator('option', { hasText: 'Acme Web' }).getAttribute('value'))
+  const product = ((await (await page.request.get('/api/products?where[name][equals]=Acme%20Web&depth=0')).json()) as { docs: { id: number }[] }).docs[0]!.id
   const session = (texts: string[]) =>
     page.evaluate(async ({ product, texts }) => {
       const { id } = (await (await fetch('/intake/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product }) })).json()) as { id: number }

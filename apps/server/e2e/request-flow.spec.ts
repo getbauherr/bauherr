@@ -36,7 +36,8 @@ test('a draft saved before logout is reopened from Requests, finished, sent and 
 
   await signIn()
   await page.goto('/requests/new')
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByLabel('Product').click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
   await say(title, 'Who is affected, and since when?')
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
