@@ -6,6 +6,9 @@ import { makeIntakeAdapter, toMessages, type Turn } from './chat/intake-adapter'
 import { ChatThread } from './chat/thread'
 import { NextStepBar } from './NextStepBar'
 import { Button } from './ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+
+const LAST_PRODUCT = 'bauherr-product'
 
 type Line = { who: 'you' | 'bauherr'; text: string }
 
@@ -37,6 +40,19 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
   const [sent, setSent] = useState<number[] | null>(null)
   const [discarding, setDiscarding] = useState<{ id: number; first: string } | null>(null)
   const [discardError, setDiscardError] = useState('')
+  const pick = (id: number) => {
+    setProduct(id)
+    try {
+      localStorage.setItem(LAST_PRODUCT, String(id))
+    } catch {}
+  }
+  useEffect(() => {
+    if (initial) return
+    try {
+      const last = Number(localStorage.getItem(LAST_PRODUCT))
+      if (products.some((p) => p.id === last)) setProduct(last)
+    } catch {}
+  }, [initial, products])
   const productRef = useRef(product)
   productRef.current = product
   const [adapter] = useState(() =>
@@ -89,9 +105,10 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
         {products.length > 1 && (
           <label className="field">
             <span className="label muted">Product</span>
-            <select value={product} onChange={(e) => setProduct(Number(e.target.value))} disabled={!!session}>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <Select value={String(product)} onValueChange={(v) => pick(Number(v))} disabled={!!session}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{products.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
+            </Select>
           </label>
         )}
         <AssistantRuntimeProvider runtime={runtime}>

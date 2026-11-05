@@ -45,14 +45,14 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(page).toHaveURL(/\/settings\/connections$/)
   await expect(advanced).toHaveAttribute('open', '')
   const form = page.locator('section', { hasText: 'Add Connection' })
-  const name = `Bedrock ${Date.now()}`
+  const name = `Foundry ${Date.now()}`
   await form.getByLabel('Name').fill(name)
   await form.getByLabel('Kind').selectOption('llm-provider')
-  await form.getByLabel('Provider preset').selectOption('bedrock')
+  await form.getByLabel('Provider preset').selectOption('foundry')
   await form.getByLabel('Secret').fill('dummy')
   await form.getByRole('button', { name: 'Add Connection' }).click()
-  await expect(form.getByText('required for bedrock')).toBeVisible()
-  await form.getByLabel('AWS region').fill('us-east-1')
+  await expect(form.getByText('required for foundry')).toBeVisible()
+  await form.getByLabel('Azure resource').fill('e2e-resource')
   await form.getByRole('button', { name: 'Add Connection' }).click()
   await expect(page.getByRole('cell', { name })).toBeVisible()
 
