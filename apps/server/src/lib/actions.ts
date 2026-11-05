@@ -20,7 +20,7 @@ import { moveStage } from './stage-move'
 import { preReviewFailures } from './pre-review'
 import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
-import { NoRoom, rankBetween } from './frontier'
+import { NoRoom, evenRanks, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 
@@ -54,30 +54,55 @@ const loadIn = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId
   return t
 }
 
-/** Moves a Ticket between two neighbours of its Workspace's Board order (`before` above, `after` below; either may be absent). */
+/** A rank longer than this triggers a rebalance of the Workspace. */
+export const MAX_RANK_LENGTH = 12
+
+/** Replaces every rank of the Workspace by short, evenly spaced keys in the same order (one statement, so atomic). */
+export const rebalanceRanks = async (payload: Payload, workspaceId: TicketId): Promise<void> => {
+  const r = await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${workspaceId} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C", "id"`)
+  if (!r.rows.length) return
+  const keys = evenRanks(r.rows.length)
+  const values = sql.join(r.rows.map((row, i) => sql`(${row.id}::int, ${keys[i]}::text)`), sql`, `)
+  await payload.db.drizzle.execute(sql`UPDATE "tickets" AS t SET "rank" = v.rank FROM (VALUES ${values}) AS v(id, rank) WHERE t."id" = v.id`)
+}
+
+/** Moves a Ticket between two neighbours of its Workspace's Board order (`before` above, `after` below; either may be absent). A key past `MAX_RANK_LENGTH` rebalances the Workspace first. */
 export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: TicketId; before?: TicketId | null; after?: TicketId | null; workspaceId: TicketId }): Promise<{ rank: string }> => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  const rankOf = async (n?: TicketId | null) => (n == null ? null : ((await loadIn(payload, user, n, a.workspaceId)).rank as string | null) ?? null)
-  let [lo, hi] = [await rankOf(a.before), await rankOf(a.after)]
-  // At a stage-group boundary the displayed neighbours can be out of rank order: the card then sits just above `after`, below its predecessor in rank.
-  if (lo !== null && hi !== null && lo >= hi) {
-    const r = await payload.db.drizzle.execute(sql`SELECT max("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" COLLATE "C" < ${hi}`)
-    lo = (r.rows[0]?.rank as string | null) ?? null
+  const place = async (): Promise<string> => {
+    const rankOf = async (n?: TicketId | null) => (n == null ? null : ((await loadIn(payload, user, n, a.workspaceId)).rank as string | null) ?? null)
+    let [lo, hi] = [await rankOf(a.before), await rankOf(a.after)]
+    // At a stage-group boundary the displayed neighbours can be out of rank order: the card then sits just above `after`, below its predecessor in rank.
+    if (lo !== null && hi !== null && lo >= hi) {
+      const r = await payload.db.drizzle.execute(sql`SELECT max("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" COLLATE "C" < ${hi}`)
+      lo = (r.rows[0]?.rank as string | null) ?? null
+    }
+    // Known limitation: two concurrent drops between the same neighbours can get equal ranks; the order then falls back to the Ticket number.
+    try {
+      return rankBetween(lo, hi)
+    } catch (e) {
+      if (!(e instanceof NoRoom)) throw e
+      // `hi` is `lo` plus trailing zeros: move `after` up past its successor to open a gap, order unchanged.
+      const r = await payload.db.drizzle.execute(sql`SELECT min("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "rank" COLLATE "C" > ${hi}`)
+      const moved = rankBetween(hi, (r.rows[0]?.rank as string | null) ?? null)
+      await payload.update({ collection: 'tickets', id: id(a.after), data: { rank: moved }, overrideAccess: true })
+      return rankBetween(lo, moved)
+    }
   }
-  // Known limitation: two concurrent drops between the same neighbours can get equal ranks; the order then falls back to the Ticket number.
-  let rank: string
-  try {
-    rank = rankBetween(lo, hi)
-  } catch (e) {
-    if (!(e instanceof NoRoom)) throw e
-    // `hi` is `lo` plus trailing zeros: move `after` up past its successor to open a gap, order unchanged.
-    const r = await payload.db.drizzle.execute(sql`SELECT min("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "rank" COLLATE "C" > ${hi}`)
-    const moved = rankBetween(hi, (r.rows[0]?.rank as string | null) ?? null)
-    await payload.update({ collection: 'tickets', id: id(a.after), data: { rank: moved }, overrideAccess: true })
-    rank = rankBetween(lo, moved)
+  let rank = await place()
+  if (rank.length > MAX_RANK_LENGTH) {
+    await rebalanceRanks(payload, a.workspaceId)
+    rank = await place()
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { rank }, overrideAccess: true })
   return { rank }
+}
+
+/** "Send to top of the queue": the Ticket gets a rank below every other of its Workspace, so it is first within its stage group. */
+export const rankFirst = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId: TicketId }): Promise<{ rank: string }> => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const r = await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C", "id" LIMIT 1`)
+  return rankTicket(payload, user, { ticket: t.id, before: null, after: (r.rows[0]?.id as number | undefined) ?? null, workspaceId: a.workspaceId })
 }
 
 export class NotAdmin extends Error {
@@ -105,8 +130,7 @@ export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: Tic
   } else if (r.kind === 'reset-counters') {
     await payload.update({ collection: 'tickets', id: t.id, data: Object.fromEntries(COUNTERS.map((c) => [c, 0])), overrideAccess: true })
   } else if (r.kind === 'rank-top') {
-    const first = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: a.workspaceId } }, { id: { not_equals: t.id } }, { rank: { exists: true } }] }, sort: 'rank', limit: 1, depth: 0, overrideAccess: true })).docs[0]
-    if (first) await rankTicket(payload, user, { ticket: t.id, before: null, after: first.id, workspaceId: a.workspaceId })
+    await rankFirst(payload, user, { ticket: t.id, workspaceId: a.workspaceId })
   } else {
     throw new Error('unknown repair')
   }

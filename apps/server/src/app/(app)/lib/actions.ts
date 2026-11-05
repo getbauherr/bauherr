@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
@@ -172,6 +172,13 @@ export async function releaseRunLock(runId: number) {
 export async function rankTicketAction(ticket: number, before: number | null, after: number | null) {
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(rankTicket(payload, user, { ticket, before, after, workspaceId }))
+  revalidatePath('/')
+}
+
+/** Persists "Send to top of the queue": first among the Workspace's Tickets of its stage group. */
+export async function rankFirstAction(ticket: number) {
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(rankFirst(payload, user, { ticket, workspaceId }))
   revalidatePath('/')
 }
 
