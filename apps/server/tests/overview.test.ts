@@ -35,7 +35,13 @@ describe('needsYou', () => {
     expect(needsYou(t('build'), r('build', 'needs_human'))).toBe('Run needs you')
     expect(needsYou(t('review'), r('build', 'succeeded'))).toBeNull()
     expect(needsYou(t('review'), r('build', 'needs_human'))).toBe('Run needs you')
-    expect(needsYou(t('build'), r('build', 'failed'))).toBe('Run failed')
+    expect(needsYou(t('build'), { ...r('build', 'failed'), reasonKind: 'decision' })).toBe('Run failed')
+  })
+  it('hides a failed Run until the escalation ladder ended, and a stuck needs_human Run always', () => {
+    expect(needsYou(t('build'), r('build', 'failed'))).toBeNull()
+    expect(needsYou(t('build'), { ...r('build', 'failed'), reasonKind: 'stuck' })).toBeNull()
+    expect(needsYou(t('build'), { ...r('build', 'needs_human'), reasonKind: 'stuck' })).toBeNull()
+    expect(needsYou(t('build'), { ...r('build', 'needs_human'), reasonKind: 'access' })).toBe('Run needs you')
   })
   it('asks to accept on staging once the deploy is observed, and flags a timeout', () => {
     const rel = (releaseState: string | null, labels: string[] = []) => ({ stage: 'release', labels, releaseState })

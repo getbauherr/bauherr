@@ -62,7 +62,7 @@ function usageOf(state: AgentState): RunResult['usage'] {
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
   const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
   const artifacts: RunResult['artifacts'] = {};
-  const finish = (status: RunResult['status'], reason?: string): RunResult => ({ status, ...(reason ? { reason } : {}), artifacts, usage: usageOf(state) });
+  const finish = (status: RunResult['status'], reason?: string, reasonKind?: RunResult['reasonKind']): RunResult => ({ status, ...(reason ? { reason } : {}), ...(reasonKind ? { reasonKind } : {}), artifacts, usage: usageOf(state) });
   let proxy: Awaited<ReturnType<typeof startProxy>> | undefined;
   let clone: Awaited<ReturnType<typeof cloneRepo>> | undefined;
   try {
@@ -118,7 +118,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const r = state.result;
     if (!r) return finish('failed', 'agent ended without a result');
     if (r.subtype !== 'success') return finish('failed', r.subtype);
-    if (state.verdict?.kind === 'needs_human') return finish('needs_human', state.verdict.reason);
+    if (state.verdict?.kind === 'needs_human') return finish('needs_human', state.verdict.reason, state.verdict.reasonKind);
 
     const goal = readGoal(join(clone.dir, GOAL_FILE));
     if (ctx.run.stage === 'review') {
@@ -204,7 +204,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       if (failed.length) {
         await commitAndPush(clone, env, message);
         artifacts.pushedSha = await git(dir, env, 'rev-parse', 'HEAD');
-        return finish('needs_human', `Pre-review checks failed:\n- ${failed.join('\n- ')}`);
+        return finish('needs_human', `Pre-review checks failed:\n- ${failed.join('\n- ')}`, 'stuck');
       }
     }
     await commitAndPush(clone, env, message);

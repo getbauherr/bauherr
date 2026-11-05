@@ -1,11 +1,11 @@
 import { activity, heartbeatAge } from './format'
 import type { TicketRow } from './overview'
 
-export type CardStatus = 'Working' | 'Investigating' | 'Blocked' | 'Waiting'
+export type CardStatus = 'Working' | 'Escalated' | 'Investigating' | 'Blocked' | 'Waiting'
 
 /** The one-word status, first match: Working (latest Run live), Blocked, Waiting. Shared by the Board card and the Epics view. */
-export const statusOf = (t: { run: { status: string; investigation?: unknown } | null; blockedBy: unknown[]; waiting: string | null }): CardStatus | null =>
-  t.run && ['running', 'awaiting_session'].includes(t.run.status) ? (t.run.investigation ? 'Investigating' : 'Working') : t.blockedBy.length ? 'Blocked' : t.waiting ? 'Waiting' : null
+export const statusOf = (t: { run: { status: string; investigation?: unknown; escalation?: unknown } | null; blockedBy: unknown[]; waiting: string | null }): CardStatus | null =>
+  t.run && ['running', 'awaiting_session'].includes(t.run.status) ? (t.run.investigation ? 'Investigating' : t.run.escalation ? 'Escalated' : 'Working') : t.blockedBy.length ? 'Blocked' : t.waiting ? 'Waiting' : null
 
 /**
  * `tip` is the detail hidden from the card: the activity word for Working (plus stage, Run id, who and heartbeat for admins only), blocker ids, the wait reason.
@@ -18,7 +18,8 @@ export function cardStatus(t: Pick<TicketRow, 'run' | 'owner' | 'blockedBy' | 'w
   if (!status || !r) return null
   const at = r.heartbeatAt ?? r.startedAt
   const who = r.mode === 'session' ? (t.owner ?? 'session') : 'scheduler'
-  return { status, tip: [activity({ run: r }) ?? 'Working', ...(admin ? [`${r.stage} Run #${r.id}`, who, at && heartbeatAge(at, now).text] : [])].filter(Boolean).join(' · ') }
+  const e = r.escalation
+  return { status, tip: [e ? `Escalated to strong (step ${e.step} of 4): ${e.reason}` : null, activity({ run: r }) ?? 'Working', ...(admin ? [`${r.stage} Run #${r.id}`, who, at && heartbeatAge(at, now).text] : [])].filter(Boolean).join(' · ') }
 }
 
 /** Text elements a card shows besides its muted number: title, status or needs-you verb, epic tag, and the Product when room is left. */

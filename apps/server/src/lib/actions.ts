@@ -27,6 +27,8 @@ import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProductio
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
 type Doc = Record<string, any>
+/** Written with the create of an escalated Run (`runs.escalation`). */
+export type Escalation = { step: 2 | 3; reason: string; previousRuns: number[] }
 type TicketId = number | string
 
 const now = () => new Date().toISOString()
@@ -769,7 +771,7 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
  * Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work.
  * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
  */
-const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string; conflictBase?: string | null } = {}): Promise<ReviewOutcome> => {
+const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string; conflictBase?: string | null; escalation?: Escalation } = {}): Promise<ReviewOutcome> => {
   const countRound = opts.countRound ?? true
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
@@ -788,12 +790,12 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
     await mr.tickets.comment(n, `Review round cap reached after ${MAX_REVIEW_ROUNDS} rounds; the factory granted one more round.`)
   }
   const text = opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`
-  await handBackToBuild(payload, t, { ts: mr.tickets, n }, text, lines, low)
+  await handBackToBuild(payload, t, { ts: mr.tickets, n }, text, lines, low, opts.escalation)
   return 'build'
 }
 
 /** Ticket back to Build: `text` becomes the worklog's Current instructions, `lines` go under Unfinished work and `low` under Open; active review Runs are cancelled and a Build Run is queued. */
-const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: string, lines: string[] = [], low: string[] = []): Promise<void> => {
+const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: string, lines: string[] = [], low: string[] = [], escalation?: Escalation): Promise<void> => {
   const { ts, n } = src
   const log = await worklogComment(src)
   let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')), '**Unfinished work**', lines)
@@ -801,7 +803,7 @@ const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: stri
   if (log) await ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
-  await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
+  await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build', escalation ? { escalation } : {})
   await moveStage(payload, ts, t, 'build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
 }
@@ -884,15 +886,15 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
  * Back to Build from a review the factory could not conclude (`needs_human`, MR closed or checks red): on the open MR when there is one, else with the note to open a new one on a `bauherr/<number>-*` branch.
  * Neither counts a review round. Returns `noop` when the Ticket is no longer in review.
  */
-export const sendBackToBuild = async (payload: Payload, t: Doc, note: string): Promise<ReviewOutcome> => {
+export const sendBackToBuild = async (payload: Payload, t: Doc, note: string, escalation?: Escalation): Promise<ReviewOutcome> => {
   const fresh = await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })
   if (fresh.state === 'closed' || fresh.stage !== 'review' || fresh.reviewState === 'merged') return 'noop'
   const mr = await prOf(payload, fresh)
   if (mr?.pr.state === 'open') {
     await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human'`)
-    return returnToBuild(payload, fresh, mr, note, [], [], { countRound: false, text: `${note} Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
+    return returnToBuild(payload, fresh, mr, note, [], [], { countRound: false, escalation, text: `${note} Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
   }
-  await handBackToBuild(payload, fresh, await sourceOf(payload, fresh), `${note} Open a new MR on a \`bauherr/${fresh.number}-*\` branch.`)
+  await handBackToBuild(payload, fresh, await sourceOf(payload, fresh), `${note} Open a new MR on a \`bauherr/${fresh.number}-*\` branch.`, [], [], escalation)
   return 'build'
 }
 

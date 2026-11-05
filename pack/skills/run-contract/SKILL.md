@@ -60,6 +60,13 @@ Use only when you cannot proceed without a person or a missing input. A blocker 
 Write it in the worklog under "unfinished work" and as your final message. "Tests are flaky" is not a blocker; the failing test, its output and your two attempts are.
 Questions for the human go through the `decision-sheet` skill, never mid-Run chat.
 
+### Reason kind
+Every blocker has a kind (`finish_run` `reasonKind`; autonomous: `"kind"` on the blocked statement in `.bauherr/goal.json`):
+- `decision`: a product question only the owner can answer (e.g. D1b on #58: which of two behaviours to ship). Reaches the owner.
+- `access`: a credential, a repo setting or a permission you lack (e.g. the merge queue setting is off). Reaches the owner.
+- `stuck`: anything else (e.g. "tests still red after 3 tries"). The factory retries it by itself on a stronger model, so write what you tried.
+A missing kind counts as `decision`. When the claim says `tier: 'strong'` (`run.escalation` holds the step and the reason), a stronger attempt is expected: use the strongest model available to you and read the earlier Runs' errors first.
+
 ## End
 Refer to the Ticket as `Refs #N` in the MR body and commit messages; never `Closes`, `Fixes` or `Resolves`: only acceptance on staging closes a Ticket.
 

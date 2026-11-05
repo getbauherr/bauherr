@@ -23,7 +23,7 @@ const Needs = ({ t }: { t: TicketRow }) => (
 )
 
 const Status = ({ s }: { s: NonNullable<ReturnType<typeof cardStatus>> }) => (
-  <Badge variant={['Working', 'Investigating'].includes(s.status) ? 'accent' : 'muted'} data-status={s.status.toLowerCase()} title={s.tip} aria-label={s.status === 'Working' ? undefined : `${s.status}: ${s.tip}`}>{s.status}</Badge>
+  <Badge variant={['Working', 'Escalated', 'Investigating'].includes(s.status) ? 'accent' : 'muted'} data-status={s.status.toLowerCase()} title={s.tip} aria-label={s.status === 'Working' ? undefined : `${s.status}: ${s.tip}`}>{s.status}</Badge>
 )
 
 const EpicTag = ({ t }: { t: TicketRow }) =>

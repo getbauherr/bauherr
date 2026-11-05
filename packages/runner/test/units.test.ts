@@ -22,7 +22,17 @@ test('goal check: block once, then needs_human; blocker ends needs_human; all ve
   assert.match((first as { reason: string }).reason, /a/);
   assert.equal(checkGoal([g('a')], true).kind, 'needs_human');
   const b = checkGoal([g('a', 'blocked', 'need key')], false);
-  assert.deepEqual(b, { kind: 'needs_human', reason: 'a: need key' });
+  assert.deepEqual(b, { kind: 'needs_human', reason: 'a: need key', reasonKind: 'decision' });
+});
+
+test('goal check: the blocker kind becomes the reasonKind; a blocker without one is a decision, unmet statements are stuck', () => {
+  const k = (text: string, kind?: 'decision' | 'access' | 'stuck') => ({ text, status: 'blocked' as const, reason: 'r', ...(kind && { kind }) });
+  const kindOf = (goal: ReturnType<typeof k>[]) => (checkGoal(goal, false) as { reasonKind: string }).reasonKind;
+  assert.equal(kindOf([k('a', 'stuck')]), 'stuck');
+  assert.equal(kindOf([k('a', 'access'), k('b', 'stuck')]), 'access');
+  assert.equal(kindOf([k('a', 'stuck'), k('b', 'decision')]), 'decision');
+  assert.equal(kindOf([k('a')]), 'decision');
+  assert.equal((checkGoal([g('a')], true) as { reasonKind: string }).reasonKind, 'stuck');
 });
 
 test('write scope guard: inside ok, outside/.git/symlink escape denied, owned paths enforced', () => {

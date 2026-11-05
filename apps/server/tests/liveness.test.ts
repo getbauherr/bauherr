@@ -149,13 +149,11 @@ it('mr-missing links the newest open replacement MR', async () => {
   expect((await runs(id, 'build')).some((r) => r.artifacts?.prUrl === urls[1])).toBe(true)
 })
 
-it('at the round cap the owner decides: red checks or a closed MR are not repaired, and an agent cannot send it back', async () => {
+it('at the round cap a closed MR is not repaired as a cap, and an agent cannot send it back', async () => {
   const red = await seed('review', { reviewState: 'needs_human', mr: 'open', checks: [{ name: 'e2e', status: 'completed', conclusion: 'failure' }] })
   await payload.update({ collection: 'tickets', id: red.id, data: { reviewRounds: 3 }, ...o })
   const dead = (await liveness.deadTickets(payload, ws)).find((d) => d.ticket.id === red.id)!
   expect(dead).toMatchObject({ cause: 'review-escalated', need: 'Round cap reached' })
-  await liveness.sweepLiveness(payload)
-  expect(await reload(red.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
   await expect(call(agent, 'return_to_build', { ticket: red.id, reason: 'x' })).rejects.toThrow(/not dead for a mechanical cause/)
 })
 
@@ -176,7 +174,7 @@ it('run-failed: one successor Run; the second failure in a row goes back for inv
   expect(await causeOf(id)).toBe('run-failed')
   await liveness.sweepLiveness(payload)
   const [failed, successor] = await runs(id, 'build')
-  expect(successor).toMatchObject({ status: 'awaiting_session' })
+  expect(successor).toMatchObject({ status: 'awaiting_session', escalation: { step: 2, reason: 'boom', previousRuns: [failed!.id] } })
   expect(successor!.previousRun).toBe(failed!.id)
   expect(await liveComments(n)).toHaveLength(1)
   await liveness.sweepLiveness(payload)
@@ -186,7 +184,7 @@ it('run-failed: one successor Run; the second failure in a row goes back for inv
   expect(await runs(id, 'build')).toHaveLength(2)
   expect(await reload(id)).toMatchObject({ stage: 'plan', waitingReason: 'failed twice: investigate' })
   expect((await runs(id, 'plan'))[0]!.investigation).toEqual({ failedRuns: [failed!.id, successor!.id], stage: 'build' })
-  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'failed' })).toBe('Run failed')
+  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'failed' })).toBeNull()
 })
 
 it('run-cancelled: not repaired, shown as "Cancelled" with its reason', async () => {

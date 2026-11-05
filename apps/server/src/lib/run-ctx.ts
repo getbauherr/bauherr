@@ -5,7 +5,7 @@ import { moveStage } from './stage-move'
 import { enterStage } from './wip'
 import { backendFor } from './adapters'
 import { prOf } from './release'
-import { escalatedCaps, isEscalated, noteEscalatedBuild } from './investigation'
+import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild } from './investigation'
 import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
 import { webOrigin, type ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
@@ -93,7 +93,7 @@ export const buildRunCtx = async (
   const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
-  const base = run.stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : { maxTurns: 20, maxBudgetUsd: 0.5 }
+  const base = baseCaps(run.stage)
   const escalated = await isEscalated(payload, run)
   const caps = escalated ? escalatedCaps(run.stage, base) : base
   if (escalated && run.stage === 'build') await noteEscalatedBuild(payload, run, caps)
