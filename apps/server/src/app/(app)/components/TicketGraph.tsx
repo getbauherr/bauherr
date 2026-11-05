@@ -5,6 +5,7 @@ import { stageLabel } from '../lib/needs-you'
 import type { TicketRow } from '../lib/overview'
 import { activity } from '../lib/format'
 
+const DONE_LIMIT = 12
 const W = 220, H = 64, GX = 72, GY = 20, PAD = 4
 const x = (col: number) => PAD + col * (W + GX)
 const y = (row: number) => PAD + row * (H + GY)
@@ -61,25 +62,23 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
         </div>
       )}
       {isolated.length > 0 && (
-        <details>
-        <summary className="label">No dependencies ({isolated.length}{running ? `, ${running} running` : ''})</summary>
-        <section aria-label="No dependencies">
+        <section aria-labelledby="tg-isolated">
+          <h2 className="label" id="tg-isolated">Without dependencies ({isolated.length}{running ? `, ${running} running` : ''})</h2>
           {[...Array(6).keys()].map((g) => {
-            const group = isolated.filter((n) => stageGroup(byId.get(n.id)!.stage) === g)
-            if (!group.length) return null
-            const list = (
-              <ul className="mt-2 mb-4 flex list-none flex-wrap gap-3 p-0">
-                {group.map((n) => <li key={n.id}><svg className="block max-w-none" role="group" aria-label={`Ticket #${byId.get(n.id)!.number}`} width={W + PAD * 2} height={H + PAD * 2}><Node t={byId.get(n.id)!} n={n} x={PAD} y={PAD} /></svg></li>)}
-              </ul>
-            )
-            return g === 5 ? (
-              <details key={g}><summary className="label">Show {group.length} more</summary>{list}</details>
-            ) : (
-              <section key={g} aria-labelledby={`tg-iso-${g}`}><h3 className="label" id={`tg-iso-${g}`}>{stageLabel(byId.get(group[0].id)!.stage)} ({group.length})</h3>{list}</section>
+            const all = isolated.filter((n) => stageGroup(byId.get(n.id)!.stage) === g)
+            if (!all.length) return null
+            const group = g === 5 ? [...all].sort((p, q) => byId.get(q.id)!.number - byId.get(p.id)!.number).slice(0, DONE_LIMIT) : all
+            return (
+              <section key={g} aria-labelledby={`tg-iso-${g}`}>
+                <h3 className="label" id={`tg-iso-${g}`}>{g === 5 ? 'done' : stageLabel(byId.get(group[0].id)!.stage)} ({all.length})</h3>
+                <ul className="mt-2 mb-4 flex list-none flex-wrap gap-3 p-0">
+                  {group.map((n) => <li key={n.id}><svg className="block max-w-none" role="group" aria-label={`Ticket #${byId.get(n.id)!.number}`} width={W + PAD * 2} height={H + PAD * 2}><Node t={byId.get(n.id)!} n={n} x={PAD} y={PAD} /></svg></li>)}
+                </ul>
+                {all.length > group.length && <Link className="small" href="/?done=1">All done Tickets</Link>}
+              </section>
             )
           })}
         </section>
-        </details>
       )}
     </>
   )
