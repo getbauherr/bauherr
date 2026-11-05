@@ -42,7 +42,7 @@ export default async function WorkspaceSettings() {
   return (
     <>
       <h2 className="heading">{w.name}</h2>
-      <SettingsForm action={saveWorkspace} primary>
+      <SettingsForm action={saveWorkspace} submit="Save" primary bar>
         {admin && <Field name="name" label="Name" defaultValue={w.name} />}
         <div className={PAIR}>
           <Field name="budgetUnit" label="Budget unit" options={admin ? [['usd', 'USD'], ['tokens', 'Tokens']] : [['usd', 'USD']]} defaultValue={usd ? 'usd' : w.budgetUnit} />

@@ -42,7 +42,9 @@ test('a screenshot pasted into New request is sent with the request and shown in
   await expect(page.getByText('pasted-shot.png')).toBeVisible()
   await say(page, 'Finance, last week', 'How should it work once it is fixed?')
   await say(page, 'Totals should match', 'Anything to add before I send this?')
-  await page.getByRole('button', { name: 'Submit request' }).click()
+  const bar = page.getByRole('region', { name: 'Next step' })
+  await expect(page.locator('[data-slot=button][data-variant=default]').filter({ hasNotText: 'Send' })).toHaveCount(1)
+  await bar.getByRole('button', { name: 'Submit request' }).click()
   const number = /Request #(\d+) sent/.exec(await page.getByRole('status').innerText())![1]
   const api = async (path: string, data?: object) => (await (data ? page.request.post(`/api/${path}`, { data }) : page.request.get(`/api/${path}`))).json()
   const product = (await api('products?where[name][equals]=Acme%20Web&depth=0')).docs[0]

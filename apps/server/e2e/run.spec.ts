@@ -46,7 +46,9 @@ test('Run page: timeline, list, collapsed details, re-run; an owner sees only th
   await rows.filter({ hasText: 'Needs human' }).filter({ hasText: 'Recover the stalled import' }).getByRole('link').first().click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   const needsHuman = page.url()
-  await page.getByRole('button', { name: 'Re-run stage' }).click()
+  const bar = page.getByRole('region', { name: 'Next step' })
+  await expect(page.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
+  await bar.getByRole('button', { name: 'Re-run stage' }).click()
   await page.getByRole('button', { name: /Confirm re-run/ }).click()
   await expect(page.getByText('A Run is already active for this stage').or(page.getByText(/^(Queued|Needs human|Waiting for a session)$/).first())).toBeVisible()
 

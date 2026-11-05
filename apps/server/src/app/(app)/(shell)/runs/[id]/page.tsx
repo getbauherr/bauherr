@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ListView, TimelineView } from '../../../components/RunViews'
 import { ConfirmButton } from '../../../components/SettingsForm'
+import { NextStepBar } from '../../../components/NextStepBar'
 import { RelinkMr } from '../../../components/FixState'
 import { Markdown } from '../../../components/Markdown'
 import { StatusChip } from '../../../components/StatusChip'
@@ -42,6 +43,15 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   ]
   return (
     <>
+      {(rerun || (admin && leased)) && (
+        <NextStepBar sentence={rerun ? `This ${run.stage} Run ended as ${run.status}. Start it again when ready.` : `This Run holds a lock. Release it if the session is gone.`}>
+          {rerun ? (
+            <form action={rerunStage.bind(null, run.id)}><ConfirmButton label="Re-run stage" confirm={`Confirm re-run ${run.stage}`} primary /></form>
+          ) : (
+            <form action={releaseRunLock.bind(null, run.id)}><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${run.id}`} primary /></form>
+          )}
+        </NextStepBar>
+      )}
       <header className="flex flex-col gap-4">
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
         <p className="body"><StatusChip status={run.status} /> <span className="text-muted-foreground">{run.stage}</span></p>
@@ -92,13 +102,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
             <Link className="text-primary" href={`/tickets/${ticket.id}`}>Ticket #{ticket.number}</Link>
             {isWebUrl(prUrl) && <a className="text-primary" href={prUrl}>Merge request</a>}
           </p>
-          {rerun && (
-            <form action={rerunStage.bind(null, run.id)} className="flex flex-wrap items-center gap-3"><ConfirmButton label="Re-run stage" confirm={`Confirm re-run ${run.stage}`} /></form>
-          )}
           {admin && run.stage === 'build' && <RelinkMr run={run.id} />}
-          {admin && leased && (
-            <form action={releaseRunLock.bind(null, run.id)} className="flex flex-wrap items-center gap-3"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${run.id}`} /></form>
-          )}
         </aside>
         </Card>
       </div>

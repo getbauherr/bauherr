@@ -1,6 +1,7 @@
 'use client'
 import { createContext, startTransition, useActionState, useContext, useId, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import type { FormState } from '../lib/settings'
+import { NextStepBar } from './NextStepBar'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 
@@ -10,7 +11,9 @@ const Ctx = createContext<FormState>({})
 export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm, bar, copy }: { confirm?: string; bar?: boolean; copy?: boolean; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {})
   const ref = useRef<HTMLFormElement>(null)
+  const [dirty, setDirty] = useState(false)
   useEffect(() => {
+    if (state.saved) setDirty(false)
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
   useEffect(() => {
@@ -18,23 +21,39 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
     invalid?.closest('details')?.setAttribute('open', '')
     invalid?.focus()
   }, [state])
+  const status = (
+    <>
+      {state.saved && <span role="status" className="small ok">Saved</span>}
+      {state.error && <span role="alert" className="small err">{state.error}</span>}
+    </>
+  )
   return (
     <Ctx value={state}>
       <form
         ref={ref}
         className={inline ? 'sform inline' : 'sform'}
+        onChange={bar ? () => setDirty(true) : undefined}
         onSubmit={(e) => {
           e.preventDefault()
           const fd = new FormData(e.currentTarget)
           startTransition(() => formAction(fd))
         }}
       >
+        {bar && (
+          <NextStepBar sentence={dirty ? 'Unsaved changes' : 'Change the settings below, then save'}>
+            <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">
+              {status}
+              <Button disabled={pending}>{submit}</Button>
+            </div>
+          </NextStepBar>
+        )}
         {children}
-        <div className={bar ? 'actions savebar' : 'actions'}>
-          {confirm ? <ConfirmButton label={submit} confirm={confirm} primary={primary} /> : <Button variant={primary ? 'default' : 'outline'} disabled={pending}>{submit}</Button>}
-          {state.saved && <span role="status" className="small ok">Saved</span>}
-          {state.error && <span role="alert" className="small err">{state.error}</span>}
-        </div>
+        {!bar && (
+          <div className="actions">
+            {confirm ? <ConfirmButton label={submit} confirm={confirm} primary={primary} /> : <Button variant={primary ? 'default' : 'outline'} disabled={pending}>{submit}</Button>}
+            {status}
+          </div>
+        )}
         {state.notice && (copy ? <CopyField text={state.notice} /> : <p role="status" className="mono notice">{state.notice}</p>)}
       </form>
     </Ctx>

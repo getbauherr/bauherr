@@ -3,6 +3,7 @@ import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuil
 import { GATES } from '../lib/gates'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
+import { NextStepBar } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
 
@@ -67,13 +68,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   })()
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
-    <div
-      className="sticky top-0 z-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-md border border-border bg-card px-4 py-3 text-card-foreground max-sm:fixed max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:flex-col max-sm:items-stretch max-sm:rounded-none max-sm:border-0 max-sm:border-t max-sm:pb-[calc(var(--space-3)+env(safe-area-inset-bottom))] [&_form]:contents"
-      data-testid="action-bar"
-      role="region"
-      aria-label="Next step"
-    >
-      <p className="min-w-0 flex-[1_1_20ch] text-pretty">{gate ? gate.sentence(ctx) : idle}</p>
+    <NextStepBar sentence={gate ? gate.sentence(ctx) : idle}>
       {(gate || canExpedite) && (
         <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">
           {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
@@ -83,6 +78,6 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
           {primary}
         </div>
       )}
-    </div>
+    </NextStepBar>
   )
 }
