@@ -639,7 +639,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
 }
 
 /** An autonomous investigation Run ends with its `.bauherr/investigation.json`: record it; a question for the owner ends the Run `needs_human`. A bad file fails the Run. */
-const concludeInvestigation = async (payload: Payload, ticket: Record<string, any>, run: Record<string, any>, input: unknown, model?: string) => {
+export const concludeInvestigation = async (payload: Payload, ticket: Record<string, any>, run: Record<string, any>, input: unknown, model?: string) => {
   const fail = (error: string) => payload.update({ collection: 'runs', id: run.id, data: { status: 'failed', error }, overrideAccess: true })
   try {
     const stored = await payload.findByID({ collection: 'runs', id: run.id, depth: 0, overrideAccess: true })

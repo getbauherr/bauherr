@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, Where } from 'payload'
 import { ACTIVE, startReviewIfReady, startRunIfNeeded, triageable } from '../jobs'
 import { sendBackToBuild, ticketsOf } from './actions'
-import { startInvestigation } from './investigation'
+import { resumeInvestigations, startInvestigation } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
@@ -135,7 +135,7 @@ export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
 
 /** One watchdog pass: repairs every dead Ticket whose cause the factory can fix itself. Returns how many it repaired. */
 export const sweepLiveness = async (payload: Payload): Promise<number> => {
-  let repaired = 0
+  let repaired = await resumeInvestigations(payload)
   for (const d of await deadTickets(payload)) {
     if (!REPAIRED.includes(d.cause)) continue
     try {

@@ -55,19 +55,50 @@ const describeFailure = async (payload: Payload, r: Doc): Promise<string> => {
   return `- Run #${r.id} (${r.stage}, ${r.status}): ${String(r.error ?? 'no error recorded').split('\n')[0]!.slice(0, 300)}${tools.length ? `; last step: ${tools.join(', ')}` : ''}`
 }
 
+/** Moves the Ticket to Plan and writes the failures section of the investigation Comment; each step is a no-op once done, so a retry after a forge error completes it. */
+const completeInvestigation = async (payload: Payload, t: Doc, run: Doc): Promise<boolean> => {
+  const ts = await ticketsOf(payload, id(t.product))
+  const fresh = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc
+  if (fresh.stage !== 'plan' && fresh.stage !== run.investigation.stage) return false
+  let did = false
+  if (fresh.stage !== 'plan') {
+    did = true
+    await moveStage(payload, ts, fresh, 'plan')
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'plan', waitingFor: null, waitingReason: REASON }, overrideAccess: true })
+  }
+  const line = `Investigation Run #${run.id}`
+  if (latestWith(await ts.listComments(String(t.number)), INVESTIGATION_MARKER)?.body.includes(line)) return did
+  const failed = (await Promise.all((run.investigation.failedRuns as number[]).map((r) => payload.findByID({ collection: 'runs', id: r, ...o })))) as Doc[]
+  const nth = (await investigationRuns(payload, t.id)).findIndex((r) => r.id === run.id) + 1
+  await note(payload, t, `## Investigation ${nth}: ${run.investigation.stage} failed twice\n${line} (tier strong).\n\n${(await Promise.all(failed.map((r) => describeFailure(payload, r)))).join('\n')}`)
+  return true
+}
+
 /**
- * A stage failed twice: the Ticket leaves its WIP slot for Plan with the reason, and one investigation Plan Run starts (strong tier, even when Plan is full) carrying both failed Run ids.
- * The failures are written to the Ticket's investigation Comment. Returns false when the Ticket already had `MAX_INVESTIGATIONS`.
+ * A stage failed twice: one investigation Plan Run starts (strong tier) carrying both failed Run ids, written with the create so the Run is an investigation from its first moment.
+ * The Ticket leaves its WIP slot for Plan with the reason (Plan WIP does not hold it back) and the failures go into the investigation Comment; a step that failed is finished by `resumeInvestigations`.
+ * Returns false when the Ticket already had `MAX_INVESTIGATIONS`.
  */
 export const startInvestigation = async (payload: Payload, t: Doc, failed: Doc[]): Promise<boolean> => {
-  const count = (await investigationRuns(payload, t.id)).length
-  if (count >= MAX_INVESTIGATIONS) return false
+  if ((await investigationRuns(payload, t.id)).length >= MAX_INVESTIGATIONS) return false
   const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'plan', { investigation: { failedRuns: failed.map((r) => r.id), stage: failed[0]!.stage } })
-  const ts = await ticketsOf(payload, id(t.product))
-  await moveStage(payload, ts, t, 'plan')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'plan', waitingFor: null, waitingReason: REASON }, overrideAccess: true })
-  if (created) await note(payload, t, `## Investigation ${count + 1}: ${failed[0]!.stage} failed twice\nInvestigation Run #${run.id} (tier strong).\n\n${(await Promise.all(failed.map((r) => describeFailure(payload, r)))).join('\n')}`)
+  if (!run.investigation) return false
+  await completeInvestigation(payload, t, run)
   return created
+}
+
+/** Finishes investigations a forge error interrupted: a live investigation Run whose Ticket is not yet in Plan or whose Comment section is missing. Returns how many it finished. */
+export const resumeInvestigations = async (payload: Payload): Promise<number> => {
+  const live = (await payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'plan' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
+  let n = 0
+  for (const run of live.filter((r) => r.investigation)) {
+    try {
+      if (await completeInvestigation(payload, (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc, run)) n++
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'resuming the investigation failed')
+    }
+  }
+  return n
 }
 
 /**

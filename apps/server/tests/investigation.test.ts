@@ -10,6 +10,7 @@ let product: number
 let ws: number
 let liveness: typeof import('../src/lib/liveness')
 let wip: typeof import('../src/lib/wip')
+let jobs: typeof import('../src/jobs')
 let inv: typeof import('../src/lib/investigation')
 let call: (actor: unknown, name: string, input: unknown) => Promise<any>
 let agent: { kind: 'agent'; keyId: number | string }
@@ -30,6 +31,7 @@ beforeAll(async () => {
   liveness = await import('../src/lib/liveness')
   wip = await import('../src/lib/wip')
   inv = await import('../src/lib/investigation')
+  jobs = await import('../src/jobs')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   const { callTool } = await import('../src/lib/mcp-tools')
   call = (actor, name, input) => callTool({ payload, user: member, actor: actor as never }, name, input)
@@ -157,4 +159,69 @@ it('needs-human records the question; submit_investigation refuses a Run that is
   expect(await comment(n)).toContain('Question: Add the deploy key?')
   const plain = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'plan', status: 'running', mode: 'session', workspace: ws }, ...o })
   expect(await inv.isEscalated(payload, plain)).toBe(false)
+})
+
+it('a forge error after the Run is created is finished by the next pass: still one investigation Run, Comment and Plan move complete', async () => {
+  const { id, n, first, second } = await seedTwiceFailed()
+  const ts = fake.tickets(repo)
+  const real = ts.addLabels
+  ts.addLabels = async () => {
+    throw new Error('forge down')
+  }
+  try {
+    await liveness.sweepLiveness(payload)
+  } finally {
+    ts.addLabels = real
+  }
+  const [run] = await runs(id, 'plan')
+  expect(run).toMatchObject({ investigation: { failedRuns: [first.id, second.id], stage: 'build' } })
+  expect(await reload(id)).toMatchObject({ stage: 'build' })
+  expect(await comment(n)).toBe('')
+  expect(await liveness.sweepLiveness(payload)).toBeGreaterThanOrEqual(1)
+  expect(await runs(id, 'plan')).toHaveLength(1)
+  expect(await reload(id)).toMatchObject({ stage: 'plan', waitingReason: 'failed twice: investigate' })
+  expect(await comment(n)).toContain(`Investigation Run #${run!.id}`)
+  await liveness.sweepLiveness(payload)
+  expect((await comment(n)).match(/Investigation Run #/g)).toHaveLength(1)
+})
+
+/** The Runner's `.bauherr/investigation.json` reaches the server as `artifacts.investigation`; the job concludes it. */
+const conclude = async (input: unknown) => {
+  const { id, n } = await seedTwiceFailed()
+  await fake.tickets(repo).addLabels(n, ['bauherr:approved:plan'])
+  await liveness.sweepLiveness(payload)
+  const [run] = await runs(id, 'plan')
+  await payload.update({ collection: 'runs', id: run!.id, data: { status: 'succeeded' }, ...o })
+  await jobs.concludeInvestigation(payload, await reload(id), run!, input, 'm-strong')
+  return { id, n, run: (await payload.findByID({ collection: 'runs', id: run!.id, depth: 0, ...o })) as Record<string, any> }
+}
+
+it('autonomous revise: the approval is withdrawn and the Comment names the decision, tier and model', async () => {
+  const { id, n, run } = await conclude({ cause: 'plan too big', decision: 'revise' })
+  expect(run.status).toBe('succeeded')
+  expect(run.artifacts.investigation).toEqual({ decision: 'revise' })
+  expect((await fake.tickets(repo).get(n)).labels).not.toContain('bauherr:approved:plan')
+  expect(await comment(n)).toContain('plan too big')
+  expect(await comment(n)).toContain('tier strong, model m-strong')
+  expect(await reload(id)).toMatchObject({ stage: 'plan', waitingReason: null })
+})
+
+it('autonomous fix-ticket: files the bug and blocks the Ticket', async () => {
+  const { id, n, run } = await conclude({ cause: 'cap too low', decision: 'fix-ticket', fix: { title: 'Raise cap', body: 'b' } })
+  const fixNumber = run.artifacts.investigation.fix.number as number
+  expect((await fake.tickets(repo).get(String(fixNumber))).labels).toContain('type:bug')
+  expect((await fake.tickets(repo).get(n)).blockedBy).toContain(String(fixNumber))
+  expect(await reload(id)).toMatchObject({ stage: 'plan', waitingFor: 'build' })
+})
+
+it('autonomous needs-human: the Run ends needs_human with the question, posted on the Ticket', async () => {
+  const { n, run } = await conclude({ cause: 'no key', decision: 'needs-human', question: 'Add the key?' })
+  expect(run).toMatchObject({ status: 'needs_human', error: 'Add the key?' })
+  expect((await fake.tickets(repo).listComments(n)).map((c) => c.body)).toContain('Bauherr needs a human: Add the key?')
+})
+
+it('autonomous: a bad decision fails the Run', async () => {
+  const { run } = await conclude({ cause: 'c', decision: 'retry' })
+  expect(run).toMatchObject({ status: 'failed' })
+  expect(run.error).toMatch(/decision must be/)
 })
