@@ -205,11 +205,11 @@ export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.
   }
 }
 
-/** A scheduled job left `processing` with no update for STALE_JOB_MS (killed worker, hung fetch) blocks its concurrency key forever: mark it failed so the schedule resumes. */
-export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Promise<number> => {
+/** A scheduled job left `processing` with no update for `maxAgeMs` (default STALE_JOB_MS; killed worker, hung fetch; 0 at poller start, when no live process owns one) blocks its concurrency key forever: mark it failed so the schedule resumes. */
+export const reclaimStaleJobs = async (payload: Payload, now = Date.now(), maxAgeMs = STALE_JOB_MS): Promise<number> => {
   const rows = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(scheduledSlugs().map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - STALE_JOB_MS).toISOString()} RETURNING "id", "task_slug"`,
+      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(scheduledSlugs().map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - maxAgeMs).toISOString()} RETURNING "id", "task_slug"`,
     )
   ).rows
   for (const r of rows) payload.logger.warn({ job: r.id, task: r.task_slug }, 'reclaimed stale scheduled job')
