@@ -62,14 +62,19 @@ const runs = async (id: number, stage: string) => (await payload.find({ collecti
 const plan = (files?: string[]) => `## Goal\n- Ship it\n\n## Steps\n1. Do it${files ? `\n\n## Files\n${files.map((f) => `- ${f}`).join('\n')}` : ''}`
 
 /** An open Ticket in `stage` with a plan declaring `files` (none: no `## Files`); a plan Ticket gets a succeeded plan Run, a build Ticket a plain plan Comment. */
-const ticket = async (title: string, stage: 'plan' | 'build' | 'review', files?: string[], extra: Record<string, unknown> = {}) => {
-  const labels = [`bauherr:stage:${stage}`]
+const ticket = async (title: string, stage: 'plan' | 'build' | 'review', files?: string[], extra: Record<string, unknown> = {}, run: 'queued' | 'running' | 'needs_human' | 'none' = 'queued') => {
+  const labels = [`bauherr:stage:${stage}`, ...(extra.bug ? ['type:bug'] : [])]
+  delete extra.bug
   const issue = await fake.tickets(repo).create({ title, labels })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, labels, product, workspace: ws, rank: title, ...extra }, ...o })
   if (stage === 'plan') {
     await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'plan', status: 'succeeded', mode: 'autonomous', workspace: ws }, ...o })
     await actions.submitPlan(payload, user, { ticket: t.id as number, markdown: plan(files) })
-  } else await fake.tickets(repo).comment(String(issue.number), `${PLAN_MARKER}\n${plan(files)}`)
+  } else {
+    await fake.tickets(repo).comment(String(issue.number), `${PLAN_MARKER}\n${plan(files)}`)
+    // A Ticket in Build or Review has work in flight unless a test says otherwise.
+    if (run !== 'none') await payload.create({ collection: 'runs', data: { ticket: t.id, stage, status: run, mode: 'autonomous', workspace: ws }, ...o })
+  }
   return { id: t.id as number, n: issue.number }
 }
 
@@ -175,6 +180,43 @@ describe('the Build hold', () => {
     await actions.requestChanges(payload, user, { ticket: b.id, note: 'again' })
     expect(await reload(b.id)).toMatchObject({ stage: 'build', waitingFor: null })
     expect(await runs(b.id, 'build')).toHaveLength(1)
+  })
+
+  it('an earlier Build Ticket that waits on a human holds nothing, one with a running Run does', async () => {
+    const idle = await ticket('a', 'build', ['src/x.ts'], {}, 'needs_human')
+    const b = await ticket('b', 'plan', ['src/x.ts'])
+    await poll()
+    expect(await reload(b.id)).toMatchObject({ stage: 'build', waitingFor: null })
+
+    await payload.update({ collection: 'tickets', id: b.id, data: { stage: 'plan', waitingFor: null }, ...o })
+    await payload.update({ collection: 'tickets', id: idle.id, data: { stage: 'release' }, ...o })
+    const a2 = await ticket('a2', 'build', ['src/y.ts'], {}, 'running')
+    const c = await ticket('c', 'plan', ['src/y.ts'])
+    await poll()
+    expect(await reload(c.id)).toMatchObject({ stage: 'plan', waitingFor: 'build', waitingReason: `overlaps #${a2.n}` })
+  })
+
+  it('a bug goes before a feature that has not started, but not before one that is running', async () => {
+    const feature = await ticket('a', 'build', ['src/x.ts'], {}, 'queued')
+    const bug = await ticket('b', 'plan', ['src/x.ts'], { bug: true })
+    await poll()
+    expect(await reload(bug.id)).toMatchObject({ stage: 'build', waitingFor: null })
+    expect(await runs(bug.id, 'build')).toHaveLength(1)
+
+    await payload.update({ collection: 'tickets', id: feature.id, data: { stage: 'release' }, ...o })
+    const running = await ticket('c', 'build', ['src/z.ts'], {}, 'running')
+    const bug2 = await ticket('d', 'plan', ['src/z.ts'], { bug: true })
+    await poll()
+    expect(await reload(bug2.id)).toMatchObject({ stage: 'plan', waitingFor: 'build', waitingReason: `overlaps #${running.n}` })
+  })
+
+  it('a feature is held by a later-ranked bug in flight that shares paths, not by one that does not', async () => {
+    const feature = await ticket('a', 'build', ['src/x.ts'], {}, 'none')
+    await ticket('y', 'build', ['docs/y.md'], { bug: true }, 'running')
+    expect(await overlap.holdOverlap(payload, await reload(feature.id))).toBe(false)
+    const bug = await ticket('z', 'build', ['src/x.ts'], { bug: true }, 'running')
+    expect(await overlap.holdOverlap(payload, await reload(feature.id))).toBe(true)
+    expect(await reload(feature.id)).toMatchObject({ waitingFor: 'build', waitingReason: `overlaps #${bug.n}` })
   })
 
   it('a WIP wait clears a stale overlap reason', async () => {
