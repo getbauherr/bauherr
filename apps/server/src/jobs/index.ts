@@ -474,7 +474,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             base.expedite = lane && labels.includes(EXPEDITE_LABEL)
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
-          if (base.expedite && !prev?.expedite) base.expediteAt = new Date().toISOString()
+          if (base.expedite && !prev?.expediteAt) base.expediteAt = new Date().toISOString()
           let stage = stageOf(labels)
           if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== 'triage' || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
             stage = prev.stage

@@ -71,7 +71,7 @@ it('skips the staging gate for a Hotfix only when the Product opted in, and reco
   await release.watchRelease(payload)
   expect(await reload(off.id)).toMatchObject({ stage: 'release', releaseState: 'on_staging', productionState: null })
 
-  await payload.update({ collection: 'products', id: product, data: { expediteSkipStaging: true, productionGate: true, productionChecks: 'deploy-prod' }, ...o })
+  await payload.update({ collection: 'products', id: product, data: { expediteSkipStaging: true, expediteSkipStagingBy: 'setter@x.io', expediteSkipStagingAt: '2026-11-05T08:00:00Z', productionGate: true, productionChecks: 'deploy-prod' }, ...o })
   const normal = await releaseTicket('normal', false)
   const hot = await releaseTicket('hot', true)
   await release.watchRelease(payload)
@@ -79,5 +79,37 @@ it('skips the staging gate for a Hotfix only when the Product opted in, and reco
   expect(await reload(hot.id)).toMatchObject({ stage: 'release', productionState: 'awaiting_approval' })
   expect(await reload(off.id)).toMatchObject({ productionState: 'awaiting_approval' })
   expect((await fake.tickets(repo).get(hot.n)).labels).toContain('bauherr:approved:staging')
-  expect((await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: hot.id } }, { kind: { equals: 'auto:staging' } }] }, ...o })).totalDocs).toBe(1)
+  const touches = (await payload.find({ collection: 'human_touches', where: { ticket: { equals: hot.id } }, ...o })).docs as Record<string, any>[]
+  expect(touches).toHaveLength(1)
+  expect(touches[0]).toMatchObject({ kind: 'auto:staging:expedite-skip', actor: 'factory' })
+  expect(touches[0].status).toContain('expediteSkipStaging, enabled by setter@x.io at 2026-11-05')
+})
+
+it('5 parallel gate passes post one notice', async () => {
+  const hot = await releaseTicket('parallel', true)
+  await Promise.all([1, 2, 3, 4, 5].map(() => gates.syncGates(payload, true)))
+  expect(await gateComments(hot.n)).toHaveLength(1)
+})
+
+it('releases the notice claim when the forge fails, so the next pass posts', async () => {
+  const hot = await releaseTicket('forge down', true)
+  const ts = fake.tickets(repo)
+  const orig = ts.comment.bind(ts)
+  ts.comment = (async () => { throw new Error('forge down') }) as typeof ts.comment
+  await gates.syncGates(payload, true)
+  ts.comment = orig
+  expect(await gateComments(hot.n)).toHaveLength(0)
+  await gates.syncGates(payload, true)
+  expect(await gateComments(hot.n)).toHaveLength(1)
+})
+
+it('sets expediteAt for a Ticket first seen with the label', async () => {
+  const { pollTickets } = await import('../src/jobs')
+  fake.actingAs = 'fake'
+  const i = await fake.tickets(repo).create({ title: 'prod down', labels: ['bauherr:expedite'] })
+  fake.actingAs = 'factory'
+  await (pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
+  const t = (await payload.find({ collection: 'tickets', where: { number: { equals: i.number } }, ...o })).docs[0] as Record<string, any>
+  expect(t.expedite).toBe(true)
+  expect(t.expediteAt).toBeTruthy()
 })

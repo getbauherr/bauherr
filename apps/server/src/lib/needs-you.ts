@@ -19,6 +19,8 @@ export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: '
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
 /** Expedite lane: the label a human sets (or the Expedite action), and the label Triage sets to propose it. */
 export const EXPEDITE_LABEL = 'bauherr:expedite'
+/** Touch kind of a staging gate skipped for a Hotfix by the Product setting `expediteSkipStaging`. */
+export const EXPEDITE_SKIP_TOUCH = 'auto:staging:expedite-skip'
 export const EXPEDITE_PROPOSED = 'bauherr:expedite-proposed'
 /** Returns from review to build per Ticket before it needs a human. */
 export const MAX_REVIEW_ROUNDS = 2

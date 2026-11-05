@@ -5,6 +5,7 @@ import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)
 import { backendFor } from './adapters'
 import { retryRed, settleRetries } from './check-retry'
 import { connectionInput, webOrigin } from './connection'
+import { EXPEDITE_SKIP_TOUCH } from './needs-you'
 import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gate-labels'
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
@@ -181,10 +182,10 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
  * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (workflow `production_gate` or `Product.productionGate`), then it waits for production approval; without `productionChecks` the Ticket shows the "Configure production checks" gate instead (see `needsYou`).
  * `touch` records the human acceptance; the automatic path (release gate off) records an `auto:staging` touch of the factory, which is also what makes its label verifiable.
  */
-export const passStaging = async (payload: Payload, t: Doc, human?: () => Promise<unknown>): Promise<{ approved: string; stage: 'release' | 'done' }> => {
+export const passStaging = async (payload: Payload, t: Doc, human?: () => Promise<unknown>, skip?: Doc): Promise<{ approved: string; stage: 'release' | 'done' }> => {
   const { tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
-  const touch = human ?? (() => payload.create({ collection: 'human_touches', data: { kind: 'auto:staging', ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: new Date().toISOString() }, ...o }))
+  const touch = human ?? (() => payload.create({ collection: 'human_touches', data: { kind: skip ? EXPEDITE_SKIP_TOUCH : 'auto:staging', ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: new Date().toISOString(), ...(skip && { status: `Product setting expediteSkipStaging, enabled by ${skip.expediteSkipStagingBy ?? 'unknown'} at ${skip.expediteSkipStagingAt ?? 'unknown'}` }) }, ...o }))
   // remove first so the label event is the factory's own, not an earlier agent's
   const label = async () => {
     await touch()
@@ -222,7 +223,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
       // Product `expediteSkipStaging` is the human decision to skip the staging gate for a Hotfix; passStaging still records the staging touch.
       if (t.stage === 'release' && (auto || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
-        if (!t.productionState) await passStaging(payload, t)
+        if (!t.productionState) await passStaging(payload, t, undefined, auto ? undefined : product)
         continue
       }
       if (t.stage === 'release' && t.releaseState && t.releaseState !== 'waiting') continue

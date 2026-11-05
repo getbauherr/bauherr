@@ -128,7 +128,10 @@ export const saveDeploy = act({}, async (c, fd) => {
     errors.push({ path: 'reviewChecks', message: (e as Error).message })
   }
   if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
-  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, reviewChecks }, ...c.w } as never)
+  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { expediteSkipStaging: true }, ...c.w } as never)) as { expediteSkipStaging?: boolean | null }
+  const flipped = data.expediteSkipStaging !== !!before.expediteSkipStaging
+  const who = flipped ? { expediteSkipStagingBy: data.expediteSkipStaging ? c.user.email : null, expediteSkipStagingAt: data.expediteSkipStaging ? new Date().toISOString() : null } : {}
+  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, ...who, reviewChecks }, ...c.w } as never)
 })
 
 /** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */
