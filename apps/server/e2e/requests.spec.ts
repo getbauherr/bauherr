@@ -54,7 +54,8 @@ test('an own Draft opens from Requests after logout and login and is finished an
   }
   await signIn()
   await page.goto('/requests/new')
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByLabel('Product').click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
   await say('The reopen check is broken', 'Who is affected, and since when?')
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()

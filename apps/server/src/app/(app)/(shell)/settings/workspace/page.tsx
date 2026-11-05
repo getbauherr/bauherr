@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { EmptyState } from '../../../components/EmptyState'
-import { Field, SettingsForm } from '../../../components/SettingsForm'
+import { Field, PickField, SettingsForm } from '../../../components/SettingsForm'
 import { Table } from '../../../components/ui/table'
-import { isAdmin, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
+import { isAdmin, listRepos, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { ago } from '../../../lib/format'
+import { KnowledgeRepo } from '../../../components/KnowledgeRepo'
 import { createWorkspace, rotateWorkspaceKey, saveWorkspace } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -36,13 +37,14 @@ export default async function WorkspaceSettings() {
   const w = await loadWorkspaceSettings(workspace.id)
   const admin = isAdmin(user)
   const usd = !admin || w.budgetUnit === 'usd'
+  const repos = admin && w.knowledgeConnection ? await listRepos(Number(w.knowledgeConnection)) : null
   const health = admin ? await loadHealth(workspace.id) : null
   const spend = w.spend
   const budget = !admin ? ([] as string[]) : !w.gatewayOn ? ['Gateway off', 'text-muted-foreground'] : !spend ? ['Unavailable', 'text-muted-foreground'] : spend.limitUsd == null ? ['No limit', 'text-ok'] : spend.spentUsd >= spend.limitUsd ? ['Exhausted', 'text-destructive'] : spend.spentUsd >= 0.8 * spend.limitUsd ? ['Near limit', 'text-warn'] : ['OK', 'text-ok']
   return (
     <>
       <h2 className="heading">{w.name}</h2>
-      <SettingsForm action={saveWorkspace} primary>
+      <SettingsForm action={saveWorkspace} submit="Save" primary bar>
         {admin && <Field name="name" label="Name" defaultValue={w.name} />}
         <div className={PAIR}>
           <Field name="budgetUnit" label="Budget unit" options={admin ? [['usd', 'USD'], ['tokens', 'Tokens']] : [['usd', 'USD']]} defaultValue={usd ? 'usd' : w.budgetUnit} />
@@ -55,7 +57,7 @@ export default async function WorkspaceSettings() {
           <h2 className="heading">Model tiers{w.tiersRequired ? '' : ' (empty = preset default)'}</h2>
           <div className={TRIPLE}>
             {(['cheap', 'standard', 'strong'] as const).map((t) => (
-              <Field key={t} name={`tier_${t}`} label={t[0].toUpperCase() + t.slice(1)} defaultValue={w.modelByTier[t] ?? ''} placeholder={w.placeholders[t]} required={w.tiersRequired} />
+              <PickField key={t} name={`tier_${t}`} label={t[0].toUpperCase() + t.slice(1)} options={w.modelChoices} empty={`Preset default (${w.placeholders[t]})`} defaultValue={w.modelByTier[t] ?? ''} placeholder={w.placeholders[t]} required={w.tiersRequired} />
             ))}
           </div>
         </section>
@@ -71,8 +73,7 @@ export default async function WorkspaceSettings() {
         <section id="knowledge" className={SECTION}>
           <h2 className="heading">Knowledge repo</h2>
           <div className={PAIR}>
-            <Field name="knowledgeConnection" label="Connection" options={w.githubConnections} empty="none" defaultValue={w.knowledgeConnection} />
-            <Field name="knowledgeRepo" label="Repository (owner/name)" defaultValue={w.knowledgeRepo} placeholder="acme/knowledge" />
+            <KnowledgeRepo connections={w.githubConnections} connection={w.knowledgeConnection} repos={repos} repo={w.knowledgeRepo} />
           </div>
         </section>
           </>
@@ -97,7 +98,7 @@ export default async function WorkspaceSettings() {
               <tbody>
                 <tr><th>Jobs, last 24 h (instance-wide)</th><td>{health.queued} queued · {health.running} running · <span className={health.failed ? 'text-destructive' : ''}>{health.failed} failed{health.failed ? ' (needs attention)' : ''}</span></td></tr>
                 <tr><th>Oldest queued job (instance-wide)</th><td>{health.oldestQueued ? ago(health.oldestQueued) : 'none waiting'}</td></tr>
-                <tr><th>Dead tickets</th><td><span className={health.dead.length ? 'text-destructive' : ''}>{health.dead.length}</span>{health.dead.map((d) => <span key={d.id}> · <Link href={`/tickets/${d.id}`}>#{d.number}</Link> ({d.cause})</span>)}</td></tr>
+                <tr><th>Dead tickets</th><td>{!health.dead ? <span className="text-muted-foreground">Could not be checked right now.</span> : <span className={health.dead.length ? 'text-destructive' : ''}>{health.dead.length}</span>}{health.dead?.map((d) => <span key={d.id}> · <Link href={`/tickets/${d.id}`}>#{d.number}</Link> ({d.cause})</span>)}</td></tr>
                 {health.sources.map((s) => (
                   <tr key={s.repo}>
                     <th>Last poll, {s.repo}</th>

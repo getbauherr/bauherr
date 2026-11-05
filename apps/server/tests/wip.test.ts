@@ -84,6 +84,15 @@ const ticket = async (title: string, stage: string, extra: Record<string, unknow
   return { id: t.id as number, n: String(issue.number) }
 }
 
+describe('Board data', () => {
+  it('lists the sub-tickets of an epic by number, not by creation order', async () => {
+    const epic = await ticket('epic', 'parent')
+    for (const number of [30, 10, 20]) await ticket(`c${number}`, 'build', { parent: epic.id, number })
+    const found = (await loadOverview(ws, false)).epics.find((e) => e.id === epic.id)!
+    expect(found.children.map((c) => c.number)).toEqual([10, 20, 30])
+  })
+})
+
 describe('the pull rule', () => {
   it('a third approved plan starts no Build Run while Build is full (gate off); a freed slot pulls it on the next poll', async () => {
     await limits({ build: 2 })

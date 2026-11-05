@@ -5,6 +5,7 @@ import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
+import { submitInvestigation, type InvestigationInput } from '../lib/investigation'
 import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
@@ -53,7 +54,7 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
   ).docs[0]
 
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
-export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string) => {
+export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}) => {
   const findActive = async () =>
     (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
   const existing = await findActive()
@@ -64,7 +65,7 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   try {
     run = await payload.create({
       collection: 'runs',
-      data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace },
+      data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace, ...extra },
     })
   } catch (e) {
     const winner = (e as { name?: string }).name === 'ValidationError' && (await findActive())
@@ -204,11 +205,11 @@ export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.
   }
 }
 
-/** A scheduled job left `processing` with no update for STALE_JOB_MS (killed worker, hung fetch) blocks its concurrency key forever: mark it failed so the schedule resumes. */
-export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Promise<number> => {
+/** A scheduled job left `processing` with no update for `maxAgeMs` (default STALE_JOB_MS; killed worker, hung fetch; 0 at poller start, when no live process owns one) blocks its concurrency key forever: mark it failed so the schedule resumes. */
+export const reclaimStaleJobs = async (payload: Payload, now = Date.now(), maxAgeMs = STALE_JOB_MS): Promise<number> => {
   const rows = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(scheduledSlugs().map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - STALE_JOB_MS).toISOString()} RETURNING "id", "task_slug"`,
+      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(scheduledSlugs().map((s) => sql`${s}`), sql`, `)}) AND "updated_at" < ${new Date(now - maxAgeMs).toISOString()} RETURNING "id", "task_slug"`,
     )
   ).rows
   for (const r of rows) payload.logger.warn({ job: r.id, task: r.task_slug }, 'reclaimed stale scheduled job')
@@ -612,6 +613,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await queueReconcile(payload, run.id)
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
+      if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
       if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
@@ -634,6 +636,22 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       throw e
     }
   },
+}
+
+/** An autonomous investigation Run ends with its `.bauherr/investigation.json`: record it; a question for the owner ends the Run `needs_human`. A bad file fails the Run. */
+export const concludeInvestigation = async (payload: Payload, ticket: Record<string, any>, run: Record<string, any>, input: unknown, model?: string) => {
+  const fail = (error: string) => payload.update({ collection: 'runs', id: run.id, data: { status: 'failed', error }, overrideAccess: true })
+  try {
+    const stored = await payload.findByID({ collection: 'runs', id: run.id, depth: 0, overrideAccess: true })
+    await submitInvestigation(payload, stored, { ...(input as InvestigationInput), model })
+    if ((input as InvestigationInput).decision === 'needs-human') {
+      const question = (input as InvestigationInput).question!
+      await payload.update({ collection: 'runs', id: run.id, data: { status: 'needs_human', error: question }, overrideAccess: true })
+      await (await forgeOf(payload, id(ticket.product))).tickets.comment(String(ticket.number), `Bauherr needs a human: ${question}`)
+    }
+  } catch (e) {
+    await fail(`investigation: ${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 export const mergeMainTask: TaskConfig<{ input: { ticketId: number; reviewedSha?: string | null }; output: Record<string, never> }> = {

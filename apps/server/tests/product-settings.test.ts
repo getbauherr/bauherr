@@ -36,6 +36,17 @@ it('loadProduct answers undefined for a Product of another Workspace and shows t
   expect(found?.product.setup.production).toBe('On, needs checks')
 })
 
+it('loadWorkspaceSettings offers the preset models and shows the first Connection\'s tiers as bare ids', async () => {
+  const { loadWorkspaceSettings } = await import('../src/app/(app)/lib/settings')
+  const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'ps-tiers', slug: 'ps-tiers' }, ...o })).id as number
+  await payload.create({ collection: 'connections', data: { name: 'Anthropic', kind: 'llm-provider', provider: 'anthropic', config: {}, secret: 'k', workspace }, ...o })
+  await payload.create({ collection: 'connections', data: { name: 'Greenpt', kind: 'llm-provider', provider: 'greenpt', config: {}, secret: 'k', workspace }, ...o })
+  await payload.update({ collection: 'workspaces', id: workspace, data: { modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'greenpt/glm-5.3', strong: 'anthropic/claude-opus-5-5' } }, ...o })
+  const w = await loadWorkspaceSettings(workspace)
+  expect(w.modelChoices).toEqual(['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'])
+  expect(w.modelByTier).toEqual({ cheap: 'claude-haiku-5-5', standard: 'greenpt/glm-5.3', strong: 'claude-opus-5-5' })
+})
+
 const base = { repositories: [{}], sources: [{}], embedTokens: [], deploy: { stagingUrl: 'https://s.example.com', mode: 'observe-ci', webhookUrl: '', productionChecks: 'deploy-prod' } }
 
 it('setupOf counts open steps and words the production approval', () => {

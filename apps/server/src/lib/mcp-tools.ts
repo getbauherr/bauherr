@@ -8,7 +8,9 @@ import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
+import { escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
 import { AGENT_REPAIRED, deadTickets } from './liveness'
+import { isExpediting } from './expedite'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
@@ -153,7 +155,9 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const fence = run.stage === 'triage' || run.stage === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label)
-  return { run: won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  const escalated = await isEscalated(c.payload, won)
+  if (escalated && run.stage === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', { maxTurns: 200, maxBudgetUsd: 5 }))
+  return { run: escalated ? { ...won, tier: 'strong' } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
@@ -172,6 +176,7 @@ const frontier = async (c: Ctx, productSlug?: string): Promise<Frontier | null> 
     depth: 1,
   })
   const all = tickets.docs.filter((t: Doc) => t.stage !== 'parent')
+  for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
     collection: 'runs',
@@ -297,7 +302,7 @@ export const tools: Tool[] = [
   {
     name: 'claim_next',
     access: 'agent',
-    description: 'Claim the top claimable Run in frontier order (right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
+    description: 'Claim the top claimable Run in frontier order (Tickets of the expedite lane first, then right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
     inputSchema: obj({ product: str('Product slug'), ...sessionArg }),
     async run(a, c) {
       const label = labelOf(a)
@@ -321,11 +326,15 @@ export const tools: Tool[] = [
   {
     name: 'heartbeat',
     access: 'agent',
-    description: 'Keep a session Run alive. Send at least every 10 minutes; 30 minutes of silence ends your lease: the Run is abandoned and a new claimable Run takes over.',
+    description: 'Keep a session Run alive; `expedite: {ticket, run}` in the answer names an unclaimed expedite Run that beats yours. Send at least every 10 minutes; 30 minutes of silence ends your lease: the Run is abandoned and a new claimable Run takes over.',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      return { ok: true, leaseExpiresAt: await renewLease(c, run, a.leaseToken) }
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
+      const f = await frontier(c)
+      const label = (run.sessionLabel as string | null) ?? null
+      const next = f?.open.find((t) => t.expediting && t.id !== id(run.ticket) && isClaimable(f.latest.get(t.id)) && !isOwnBuild(t, f, label))
+      return { ok: true, leaseExpiresAt, ...(next && { expedite: { ticket: next.id, run: f!.latest.get(next.id)!.id } }) }
     },
   },
   {
@@ -390,6 +399,30 @@ export const tools: Tool[] = [
       if (run.stage !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })), leaseExpiresAt }
+    },
+  },
+  {
+    name: 'submit_investigation',
+    access: 'agent',
+    description: 'Investigation Plan Runs only (a Run on a Ticket whose Build failed twice; read the <!-- bauherr:investigation --> Comment first). Records the cause and one decision in the Ticket\'s investigation Comment. revise: the plan was wrong, then post a revised plan with submit_plan. fix-ticket: the cause is in the factory or repo; files a type:bug Ticket (fix.title, fix.body) and sets it blocked-by, Build restarts by itself once it is closed. needs-human: ask the owner a concrete question, then finish_run needs_human. Call once.',
+    inputSchema: obj(
+      {
+        ...runId,
+        ...leaseToken,
+        cause: str('The named cause of both failures'),
+        decision: { enum: ['revise', 'fix-ticket', 'needs-human'] },
+        fix: { type: 'object', description: 'fix-ticket only', properties: { title: str('Title of the fix Ticket'), body: str('Body of the fix Ticket') }, required: ['title'] },
+        question: str('needs-human only: the concrete question'),
+        model: str('The model you ran on, for the escalation line'),
+      },
+      ['runId', 'leaseToken', 'cause', 'decision'],
+    ),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (!run.investigation) throw new Error(`run ${run.id} is not an investigation Run`)
+      if ((run.artifacts as { investigation?: unknown } | null)?.investigation) throw new Error('the investigation was already submitted')
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
+      return { ...(await submitInvestigation(c.payload, run, a as InvestigationInput)), leaseExpiresAt }
     },
   },
   {

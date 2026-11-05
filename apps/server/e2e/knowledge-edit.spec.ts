@@ -16,7 +16,10 @@ test('edit a Knowledge document: save is confirmed in plain words', async ({ pag
   await page.goto('/knowledge/edit?path=workspace/rules/style.md')
   await expect(page.getByRole('heading', { name: /^Edit (?!.*\.md)/ })).toBeVisible()
   await page.getByLabel('Document text').fill('# Style\n\nKeep it very short.\n')
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  const bar = page.getByRole('region', { name: 'Next step' })
+  await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
+  await expect(page.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
+  await bar.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('status')).toHaveText('Saved. Your change goes live once its checks pass.')
   await expect(page.getByRole('status').getByRole('link')).toHaveCount(0)
 

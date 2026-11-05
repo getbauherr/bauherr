@@ -97,8 +97,11 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
 
-  await approve.click()
+  const actions: string[] = []
+  page.on('request', (r) => { if (r.method() === 'POST' && r.headers()['next-action']) actions.push(r.url()) })
+  await approve.dblclick()
   await expect(page.getByText('Plan approved', { exact: true })).toBeVisible()
+  expect(actions).toHaveLength(1)
   await expect(approve).toHaveCount(0)
 })
 
@@ -206,4 +209,26 @@ test('a comment with a pasted, dropped and picked image is posted and the image 
       await page.screenshot({ path: `${shots}/comment-posted-${scheme}-${vp.width}x${vp.height}.png` })
     }
   }
+})
+
+test('a passed stage opens its history without moving the Ticket; an unreached one is not a link', async ({ page }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Fix the date parser' }).first().getByRole('link', { name: 'Fix the date parser' }).click()
+  const strip = page.locator('ol[aria-label=Stage]')
+  await expect(page.getByTestId('stage-history')).toHaveCount(0)
+  await expect(strip.getByRole('link', { name: 'review' })).toHaveCount(0)
+  await expect(strip.getByText('review')).toHaveAttribute('aria-disabled', 'true')
+  await expect(strip.getByText('review')).toHaveAttribute('title', 'Not reached yet')
+  await strip.getByRole('link', { name: 'plan' }).click()
+  await expect(page).toHaveURL(/\?stage=plan$/)
+  const panel = page.getByTestId('stage-history')
+  await expect(panel).toContainText('Plan history')
+  await expect(panel).toContainText('dark theme for the dashboard')
+  await expect(panel.locator('tbody tr')).toHaveCount(1)
+  await expect(panel.getByText('✓ Succeeded')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('stage-history')).toBeVisible()
+  await expect(strip.locator('[aria-current=step]')).toContainText('build')
+  await page.goto(page.url().replace('stage=plan', 'stage=review'))
+  await expect(page.getByTestId('stage-history')).toHaveCount(0)
 })
