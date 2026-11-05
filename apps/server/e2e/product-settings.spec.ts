@@ -16,13 +16,14 @@ const signIn = async (page: Page) => {
 }
 
 const confirmRemove = async (scope: Locator, label: string) => {
-  const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
   // matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one; hydration can close the <details> again, so it is opened on every attempt
+  const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
   await expect(async () => {
     await scope.locator('details.advanced').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
     if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
-    await confirm.click({ timeout: 2_000 })
+    await expect(confirm).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 20_000 })
+  await confirm.click({ noWaitAfter: true })
 }
 
 /** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
