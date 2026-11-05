@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import { ticketsOf } from '../../../lib/actions'
 import { hasProductionChecks } from '../../../lib/mode'
+import { nextStep } from '../../../lib/next-step'
 import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
@@ -48,7 +49,7 @@ export type TicketRow = {
   blockedBy: { id: number; number: number }[]
   /** Number of the Ticket whose paths hold this Build, else null. */
   overlaps: number | null
-  /** "Waiting: Build is full (2/2)" while the Ticket waits for a full column; null otherwise. */
+  /** "Queued for Build: Build is full (2/2). Starts by itself." (`nextStep` reason) while the Ticket waits for a full column; null otherwise. */
   waiting: string | null
   /** Parent Ticket of a sub-ticket. */
   parent: { id: number; number: number; title: string } | null
@@ -130,7 +131,7 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
       needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null,
-      waiting: isOpen && t.waitingFor && !blockedBy.length ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason) : null,
+      waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ ticket: t, need: null, run: null, waiting: waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,

@@ -9,7 +9,7 @@ export const BOARD_STAGES: readonly Stage[] = ['triage', 'plan', 'build', 'revie
 export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : s)
 
 export const APPROVED_PLAN = 'bauherr:approved:plan'
-const APPROVED_STAGING = 'bauherr:approved:staging'
+export const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
 export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?'] as const
 export type Need = (typeof NEEDS)[number]

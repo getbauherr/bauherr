@@ -14,14 +14,14 @@ import { StageHistory } from '../../../components/StageHistory'
 import { StagePipeline } from '../../../components/StagePipeline'
 import { StatusChip } from '../../../components/StatusChip'
 import { TicketDetails } from '../../../components/TicketDetails'
-import { Badge } from '../../../components/ui/badge'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
 import { FORGE_TIMEOUT_MS, loadOverviewRows, within } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
-import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
+import { nextStep } from '../../../../../lib/next-step'
+import { needsYou, stageOf } from '../../../lib/needs-you'
 import { INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { checkLines, reachedStages, stageHistory } from '../../../lib/stage-history'
@@ -89,15 +89,9 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const reason = (todo === 'Needs you' ? capFindings?.replace(/^Bauherr needs a human:\s*/, '').split('\n')[0] : ['Cancelled', 'Run failed', 'Run needs you'].includes(todo ?? '') ? runs[0]?.error : null)?.slice(0, 300) ?? null
   const stagingSummary = latestWith(comments, SUMMARY_MARKER)?.body
   const acceptedStaging = labels.includes('bauherr:approved:staging')
-  const waitingForStaging = ticket.stage === 'release' && !acceptedStaging && !gate
   const answered = decisions.filter((d) => answers[d.id]).length
-  const live = runs[0] && ['running', 'awaiting_session'].includes(runs[0].status) ? runs[0] : null
-  const idleDetail = `Nothing to do: ${
-    live ? `${live.stage} is running${admin ? ` (Run #${live.id}, ${live.mode === 'session' ? 'session' : 'scheduler'})` : ''}`
-    : waitingForStaging ? `waiting for the staging deploy${admin ? ` of ${ticket.mergeSha?.slice(0, 7) ?? 'the merge commit'}` : ''}`
-    : ticket.stage === 'review' ? reviewWord(ticket.reviewState).replace(/^./, (c) => c.toLowerCase())
-    : stageOf(ticket)}.`
-  const idle = live ? 'The factory is working on this.' : waitingForStaging ? 'Waiting for the staging deploy.' : ticket.stage === 'review' ? 'In review.' : 'Nothing to do.'
+  const idle = nextStep({ ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), admin })
+  const decisionsOpen = decisions.length - answered > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production'].filter(Boolean).join(' · ')
   const reached = reachedStages({ state: ticket.state, stage: stageOf(ticket) }, runs as { stage: string }[])
   const selected = reached.find((s) => s === stageParam)
@@ -127,12 +121,11 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       ) : <StagePipeline current={stageOf(ticket)} reached={reached} selected={selected} />}
       {stageData && !epic && <StageHistory data={stageData} admin={admin} />}
       {history && <p className="small text-muted-foreground">{history}</p>}
-      {waiting && <Badge variant="warn" className="small self-start" role="status">{waiting}</Badge>}
       {forgeError && <p className="small text-muted-foreground">The forge could not be reached; plan and worklog are unavailable.</p>}
 
       {gate?.kind === 'plan' && <Gate plan={summary ?? null} />}
       {gate?.kind === 'release' && <ReleaseGate ticket={ticket.id} timedOut={todo === 'Staging not confirmed'} summaryHtml={stagingSummary ? renderMarkdown(strip(stagingSummary, SUMMARY_MARKER)) : null} />}
-      {decisions.length > 0 && <OwnerChat ticket={ticket.id} open={decisions.length - answered} />}
+      {decisionsOpen && <OwnerChat ticket={ticket.id} open={decisions.length - answered} />}
 
       <TicketDetails key={ticket.id}>
         <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
@@ -140,8 +133,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           {admin && <><dt>Budget</dt><dd className="mono">{ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}</dd></>}
           {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
           {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
-          {decisions.length > 0 && <><dt>Decisions</dt><dd>{answered} of {decisions.length} answered · {missing.length} critical open</dd></>}
-          {!todo && <><dt>Status</dt><dd>{idleDetail}</dd></>}
+          {decisions.length > 0 && <><dt>Decisions</dt><dd>{approved ? `${answered} answered` : `${answered} of ${decisions.length} answered · ${missing.length} critical open`}</dd></>}
         </dl>
         {(blockers.length > 0 || blocks.length > 0) && (
           <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">

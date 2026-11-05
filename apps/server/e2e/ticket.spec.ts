@@ -18,7 +18,7 @@ const login = async (page: Page) => {
   await expect(page.locator('.board')).toBeVisible()
 }
 
-// [slug, Ticket title, primary verb ('' = none)].
+// [slug, Ticket title, primary verb].
 const STATES = [
   ['answer-decisions', 'Add a dark theme to the dashboard', 'Answer 2 questions'],
   ['answer-questions', 'Clarify the export scope', 'Answer 1 question'],
@@ -27,7 +27,7 @@ const STATES = [
   ['approve-production', 'Ship the gated header', 'Approve production'],
   ['round-cap', 'Harden the retry loop', 'Grant one more round'],
   ['run-failed', 'Fix the date parser', 'Re-run build'],
-  ['none', 'Export invoices as CSV', ''],
+  ['none', 'Export invoices as CSV', 'Queued'],
 ] as const
 
 test('the action bar is the same single, visible bar in every state', async ({ page }) => {
@@ -43,8 +43,8 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       const bar = page.getByTestId('action-bar')
       await expect(bar).toBeVisible()
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
-      await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(verb ? 1 : 0)
-      if (verb) await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
+      await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
+      await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
       await expect(bar.locator('[data-slot=button]')).not.toHaveCount(3)
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
@@ -147,13 +147,40 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
   }
 })
 
-test('an idle Ticket says it plainly and keeps the technical text in Details', async ({ page }) => {
+// Own seeded Tickets #25-#27: read-only, so no other spec's data is touched.
+const nextStepOf = async (page: Page, title: string) => {
   await login(page)
-  await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
+  await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
   const bar = page.getByTestId('action-bar')
-  await expect(bar).not.toContainText('Nothing to do:')
+  const step = bar.locator('[data-slot=button][data-variant=default]')
+  await expect(step).toHaveCount(1)
+  return { bar, step }
+}
+const reasonOf = async (page: Page, step: ReturnType<Page['locator']>) => page.locator(`[id="${await step.getAttribute('aria-describedby')}"]`)
+
+test('an approved plan held by an overlap shows a disabled button with the overlap reason and no decision box', async ({ page }) => {
+  const { bar, step } = await nextStepOf(page, 'Hold the approved export tweak')
+  const reason = 'Queued for Build: waits for #356, which changes the same files. Starts by itself.'
+  await expect(step).toBeDisabled()
+  await expect(bar.getByTitle(reason)).toHaveCount(1)
+  await expect(await reasonOf(page, step)).toHaveText(reason)
+  await expect(bar).not.toContainText('Nothing to do')
+  await expect(page.getByRole('region', { name: 'Answer questions' })).toHaveCount(0)
   await page.getByText('Details', { exact: true }).click()
-  await expect(page.locator('details')).toContainText('Nothing to do:')
+  await expect(page.locator('details')).toContainText('0 answered')
+})
+
+test('a plan waiting for approval shows an enabled Approve plan button', async ({ page }) => {
+  const { step } = await nextStepOf(page, 'Approve the retry policy')
+  await expect(step).toHaveText('Approve plan')
+  await expect(step).toBeEnabled()
+})
+
+test('a Ticket in Build shows a disabled button naming the Run', async ({ page }) => {
+  const { bar, step } = await nextStepOf(page, 'Build the retry policy')
+  await expect(step).toBeDisabled()
+  await expect(bar.locator('[title]').filter({ has: step })).toHaveAttribute('title', /^The factory is working on this \(Run \d+\)\.$/)
+  await expect(await reasonOf(page, step)).toHaveText(/\(Run \d+\)/)
 })
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
