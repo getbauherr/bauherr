@@ -18,16 +18,20 @@ test('Workspace: model tiers are selects with Other..., the Knowledge repo is a 
   await signIn(page)
   await page.goto('/settings/workspace')
   const tier = page.getByLabel('Standard', { exact: true })
-  await expect(tier).toHaveJSProperty('tagName', 'SELECT')
-  await expect(tier.locator('option')).toContainText(['Preset default (claude-sonnet-5-5)', 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'Other...'])
-  await tier.selectOption({ label: 'Other...' })
+  await expect(tier).toHaveRole('combobox')
+  await tier.click()
+  await expect(page.getByRole('option')).toHaveText(['Preset default (claude-sonnet-5-5)', 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'Other...'])
+  await page.getByRole('option', { name: 'Other...' }).click()
   await expect(page.getByLabel('Standard, other')).toBeVisible()
   await page.reload()
 
   const repo = page.getByLabel('Repository', { exact: true })
   if (fake) {
-    await expect(repo).toHaveJSProperty('tagName', 'SELECT')
-    await expect(repo).toHaveValue('acme/knowledge')
+    await expect(repo).toHaveRole('combobox')
+    await expect(repo).toHaveText('acme/knowledge')
+    await repo.click()
+    await page.getByRole('option', { name: 'Other...' }).click()
+    await page.getByLabel('Repository, other').fill('acme/knowledge') // the typed value must post under the field name
   } else {
     await expect(page.getByText('Could not list repositories; type owner/name.')).toBeVisible()
     await expect(repo).toHaveJSProperty('tagName', 'INPUT')
@@ -36,7 +40,9 @@ test('Workspace: model tiers are selects with Other..., the Knowledge repo is a 
   await page.getByRole('button', { name: 'Save' }).first().click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
   await page.reload()
-  await expect(page.getByLabel('Repository', { exact: true })).toHaveValue('acme/knowledge')
+  const saved = page.getByLabel('Repository', { exact: true })
+  if (fake) await expect(saved).toHaveText('acme/knowledge')
+  else await expect(saved).toHaveValue('acme/knowledge')
 })
 
 test('Connections: GitLab Base URL and the AWS region are prefilled', async ({ page }) => {
@@ -48,8 +54,8 @@ test('Connections: GitLab Base URL and the AWS region are prefilled', async ({ p
   await form.getByLabel('Kind').selectOption('llm-provider')
   await form.getByLabel('Provider preset').selectOption('bedrock')
   const region = form.getByLabel('AWS region')
-  await expect(region).toHaveJSProperty('tagName', 'SELECT')
-  await expect(region).toHaveValue('us-east-1')
+  await expect(region).toHaveRole('combobox')
+  await expect(region).toHaveText('us-east-1')
 })
 
 test('Members: Role defaults to bauherr and Workspaces are checkboxes, not ids', async ({ page }) => {

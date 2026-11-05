@@ -3,6 +3,7 @@ import { createContext, startTransition, useActionState, useContext, useId, useE
 import type { FormState } from '../lib/settings'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 const Ctx = createContext<FormState>({})
 
@@ -71,6 +72,7 @@ export function Field({ name, label, hint, example, explain, options, empty, row
 }
 
 const OTHER = '__other'
+const NONE = '__none' // Radix items cannot have an empty value
 
 function Picker({ name, label, options, defaultValue, empty, hint, example, required }: { name: string; label: string; options: Opt[]; defaultValue: string; empty?: string; hint?: string; example?: string; required?: boolean }) {
   const error = useContext(Ctx).fields?.[name]
@@ -93,11 +95,14 @@ function Picker({ name, label, options, defaultValue, empty, hint, example, requ
       <label htmlFor={uid} className="small label-strong">{label}</label>
       {hint && <span id={`${uid}-h`} className="small muted">{hint}</span>}
       <input ref={hidden} type="hidden" name={name} value={choice === OTHER ? typed : choice} />
-      <select id={uid} value={choice} aria-invalid={!!error || undefined} aria-describedby={described} onChange={(e) => setChoice(e.target.value)}>
-        {empty !== undefined && <option value="">{empty}</option>}
-        {options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>))}
-        <option value={OTHER}>Other...</option>
-      </select>
+      <Select value={choice === '' ? NONE : choice} onValueChange={(v) => setChoice(v === NONE ? '' : v)}>
+        <SelectTrigger id={uid} aria-invalid={!!error || undefined} aria-describedby={described}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {empty !== undefined && <SelectItem value={NONE}>{empty}</SelectItem>}
+          {options.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return <SelectItem key={v} value={v}>{l}</SelectItem> })}
+          <SelectItem value={OTHER}>Other...</SelectItem>
+        </SelectContent>
+      </Select>
       {choice === OTHER && <Input aria-label={`${label}, other`} placeholder={example} value={typed} required={required} aria-invalid={!!error || undefined} onChange={(e) => setTyped(e.target.value)} />}
       {error && <span id={`${uid}-e`} role="alert" className="small err">{error}</span>}
     </div>
