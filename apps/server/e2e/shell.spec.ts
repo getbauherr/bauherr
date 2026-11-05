@@ -6,11 +6,13 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
+const signOutEmail = 'signout-shell@example.com' // signing out ends every session of the user, so this spec has one of its own
+
 test('slim shell: nav, New request, avatar menu with theme, sign out', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await expect(page).toHaveURL(/\/login$/)
-  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Email').fill(signOutEmail)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
 
@@ -29,7 +31,7 @@ test('slim shell: nav, New request, avatar menu with theme, sign out', async ({ 
 
   await bar.getByRole('button', { name: 'User menu' }).click()
   const menu = page.getByRole('menu')
-  await expect(menu).toContainText(email)
+  await expect(menu).toContainText(signOutEmail)
   await expect(menu.getByRole('menuitem', { name: 'Settings' })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: /Bauherren|API key/ })).toHaveCount(0)
   await menu.getByRole('group', { name: 'Theme' }).getByRole('menuitemradio', { name: 'Dark' }).click()

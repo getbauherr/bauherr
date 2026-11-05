@@ -42,7 +42,7 @@ test('an own Draft opens from Requests after logout and login and is finished an
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 and INTAKE_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
   const signIn = async () => {
     await page.goto('/login')
-    await page.getByLabel('Email').fill(email)
+    await page.getByLabel('Email').fill('signout-requests@example.com') // signing out ends every session of the user, so this test has one of its own
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.locator('header.topbar')).toBeVisible()

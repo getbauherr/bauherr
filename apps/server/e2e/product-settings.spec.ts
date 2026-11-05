@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
 const email = process.env.E2E_EMAIL!
@@ -15,18 +15,25 @@ const signIn = async (page: Page) => {
   await expect(page.locator('header.topbar')).toBeVisible()
 }
 
+/** Arms a ConfirmButton (the first click turns "label" into "Confirm remove") and clicks the confirm. A click before hydration does nothing, so the arming click repeats until the confirm shows; matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one. */
+const confirmRemove = async (scope: Locator, label: string) => {
+  const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
+  await expect(async () => {
+    if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
+    await expect(confirm).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 15_000 })
+  await confirm.click()
+}
+
 /** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
 const deleteProduct = async (page: Page) => {
   const repository = page.locator('#repository')
   for (const label of ['Stop reading tickets', 'Remove repository']) {
     await repository.locator('details.advanced').evaluate((d: HTMLDetailsElement) => (d.open = true))
-    // Both remove forms can show "Confirm remove" at once, and hidden ones exist too: matching several is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input). Take the first visible one (the form of the button just clicked comes first in the DOM).
-    await repository.locator('button', { hasText: label }).click()
-    await repository.locator('button:visible', { hasText: 'Confirm remove' }).first().click()
+    await confirmRemove(repository, label)
     await expect(repository.locator('button', { hasText: label })).toHaveCount(0)
   }
-  await page.locator('#danger').locator('button', { hasText: 'Delete Product' }).click()
-  await page.locator('#danger').locator('button:visible', { hasText: 'Confirm remove' }).first().click()
+  await confirmRemove(page.locator('#danger'), 'Delete Product')
   await expect(page).toHaveURL(/\/settings\/products$/)
 }
 
