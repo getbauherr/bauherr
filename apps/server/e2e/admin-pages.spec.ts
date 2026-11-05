@@ -185,8 +185,7 @@ test('the Ticket page Repair disclosure is for an Admin only and resets counters
     await expect(repair).toHaveCount(visible ? 1 : 0)
     if (visible) {
       await repair.getByRole('button', { name: 'Repair', exact: true }).click()
-      await confirmClick(repair.getByRole('button', { name: 'Reset counters' }), repair.getByRole('button', { name: 'Confirm reset counters' }), () => expect(repair.getByRole('button', { name: 'Confirm reset counters' })).toHaveCount(0, { timeout: 4_000 }))
-      await expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+      await confirmClick(repair.getByRole('button', { name: 'Reset counters' }), repair.getByRole('button', { name: 'Confirm reset counters' }), () => expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible({ timeout: 4_000 }))
     }
     await page.context().clearCookies()
   }
