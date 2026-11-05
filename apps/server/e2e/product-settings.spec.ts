@@ -21,9 +21,8 @@ const confirmRemove = async (scope: Locator, label: string) => {
   await expect(async () => {
     await scope.locator('details.advanced').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
     if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
-    await expect(confirm).toBeVisible({ timeout: 2_000 })
+    await confirm.click({ timeout: 2_000, noWaitAfter: true })
   }).toPass({ timeout: 20_000 })
-  await confirm.click({ noWaitAfter: true })
 }
 
 /** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
