@@ -132,6 +132,7 @@ describe('bypasses', () => {
   it('the overlap hold never holds an expedite Build, and later Tickets wait for it', async () => {
     const early = await inBuild('a', ['src/app/**'])
     const hot = await inBuild('z', ['src/app/page.tsx'], { expedite: true })
+    await payload.create({ collection: 'runs', data: { ticket: hot.id, stage: 'build', status: 'running', mode: 'autonomous', workspace: ws }, ...o })
     expect(await overlap.holdOverlap(payload, await reload(hot.id))).toBe(false)
     expect((await reload(hot.id)).waitingFor).toBeFalsy()
     // a lower rank than `hot`, yet it waits for it
