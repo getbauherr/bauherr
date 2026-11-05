@@ -1,9 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { rankTicketAction } from '../lib/actions'
+import { useEffect, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { rankFirstAction, rankTicketAction } from '../lib/actions'
 import { cn } from '@/lib/utils'
+import { CardMenu, longPress, type CardAction } from './CardMenu'
 import { Card } from './ui/card'
 
 const before = "before:pointer-events-none before:absolute before:inset-x-0 before:-top-2 before:h-0.5 before:rounded-[1px] before:bg-primary before:content-['']"
@@ -18,13 +19,14 @@ const move = <T,>(xs: T[], from: number, to: number): T[] => {
   return out
 }
 
-/** One Board column: cards sortable by drag and drop or Alt+ArrowUp/Down; a move persists via `rankTicketAction`. */
+/** One Board column: cards sortable by drag and drop, Alt+ArrowUp/Down or the card menu; a move persists via `rankTicketAction`. The Hotfix lane sits above the ranked cards and is ranked on its own: neighbours are always those of the same lane. */
 export function SortableCards({ items }: { items: Item[] }) {
   const router = useRouter()
   const [order, setOrder] = useState(items)
   const [drag, setDrag] = useState<number | null>(null)
   const [target, setTarget] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
+  const [menu, setMenu] = useState<number | null>(null)
   useEffect(() => setOrder(items), [items])
 
   const reorder = async (from: number, to: number) => {
@@ -32,12 +34,33 @@ export function SortableCards({ items }: { items: Item[] }) {
     const next = move(order, from, to)
     setOrder(next)
     setFailed(false)
-    await rankTicketAction(next[to].id, next[to - 1]?.id ?? null, next[to + 1]?.id ?? null).catch(() => setFailed(true))
+    const lane = next.filter((x) => x.hotfix === next[to].hotfix)
+    const at = lane.indexOf(next[to])
+    await rankTicketAction(next[to].id, lane[at - 1]?.id ?? null, lane[at + 1]?.id ?? null).catch(() => setFailed(true))
     router.refresh()
+  }
+  const sameLane = (a: number, b: number) => !!order[a].hotfix === !!order[b].hotfix
+  const toQueueTop = async (i: number) => {
+    const first = order.findIndex((x) => !!x.hotfix === !!order[i].hotfix)
+    setOrder(move(order, i, first))
+    setFailed(false)
+    await rankFirstAction(order[i].id).catch(() => setFailed(true))
+    router.refresh()
+  }
+  const actions = (i: number): CardAction[] => {
+    const lane = order.flatMap((x, j) => (sameLane(i, j) ? [j] : []))
+    const p = lane.indexOf(i)
+    return [
+      { label: 'Send to top', run: () => void reorder(i, lane[0]), disabled: p === 0 },
+      { label: 'Send to bottom', run: () => void reorder(i, lane[lane.length - 1]), disabled: p === lane.length - 1 },
+      { label: 'Move up', run: () => void reorder(i, lane[p - 1]), disabled: p === 0 },
+      { label: 'Move down', run: () => void reorder(i, lane[p + 1]), disabled: p === lane.length - 1 },
+      { label: 'Send to top of the queue', run: () => void toQueueTop(i), disabled: false },
+    ]
   }
   const keys = (i: number) => (e: KeyboardEvent<HTMLElement>) => {
     const to = i + (e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0)
-    if (!e.altKey || to === i || to < 0 || to >= order.length || !order[to].movable) return
+    if (!e.altKey || to === i || to < 0 || to >= order.length || !order[to].movable || !sameLane(i, to)) return
     e.preventDefault()
     const id = order[i].id
     void reorder(i, to).then(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ticket="${id}"]`)?.focus()))
@@ -46,7 +69,7 @@ export function SortableCards({ items }: { items: Item[] }) {
   const drop = drag !== null && target !== null && target !== from ? target : null
   const over = (i: number) => (e: DragEvent) => {
     if (drag === null) return
-    if (!order[i].movable) return setTarget(null)
+    if (!order[i].movable || !sameLane(i, from)) return setTarget(null)
     e.preventDefault()
     setTarget(i)
   }
@@ -98,9 +121,11 @@ export function SortableCards({ items }: { items: Item[] }) {
           },
         })}
         onDragOver={over(i)}
+        {...(it.movable && { onContextMenu: (e: MouseEvent) => { e.preventDefault(); setMenu(it.id) }, ...longPress(() => setMenu(it.id)) })}
       >
         <article>
-          <span className="rank mono small absolute top-2 right-3 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100" aria-label={`Position ${i + 1}`}>{i + 1}</span>
+          <span className="rank mono small absolute top-2 right-9 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100" aria-label={`Position ${i + 1}`}>{i + 1}</span>
+          {it.movable && <CardMenu open={menu === it.id} onOpenChange={(o) => setMenu(o ? it.id : null)} actions={actions(i)} />}
           {it.node}
         </article>
       </Card>

@@ -19,6 +19,18 @@ export const rankBetween = (a: string | null, b: string | null): string => {
   }
 }
 
+/** `n` evenly spaced, equally long keys in ascending order, with room between each pair and before the first. */
+export const evenRanks = (n: number): string[] => {
+  const w = Math.max(3, Math.ceil(Math.log(n + 1) / Math.log(ALPHABET.length)) + 2)
+  const step = Math.floor(ALPHABET.length ** w / (n + 1))
+  return Array.from({ length: n }, (_, i) => {
+    let v = (i + 1) * step
+    let key = ''
+    for (let d = 0; d < w; d++, v = Math.floor(v / ALPHABET.length)) key = ALPHABET[v % ALPHABET.length] + key
+    return key
+  })
+}
+
 export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean; expediting?: boolean; reviewRounds?: number | null }
 export type FrontierRun = { stage: string; status: string; mode?: string; previousRun?: unknown }
 
