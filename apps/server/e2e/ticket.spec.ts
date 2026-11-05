@@ -179,7 +179,7 @@ test('a plan waiting for approval shows an enabled Approve plan button', async (
 test('a Ticket in Build shows a disabled button naming the Run', async ({ page }) => {
   const { bar, step } = await nextStepOf(page, 'Build the retry policy')
   await expect(step).toBeDisabled()
-  await expect(bar.locator('[title]').filter({ has: step })).toHaveAttribute('title', /^The factory is working on this \(Run \d+\)\.$/)
+  await expect(bar.getByTitle(/^The factory is working on this \(Run \d+\)\.$/)).toHaveCount(1)
   await expect(await reasonOf(page, step)).toHaveText(/\(Run \d+\)/)
 })
 
