@@ -93,7 +93,7 @@ const live = await ticket(123, 'Live build in progress', 'build', product, { ran
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'plan', 'succeeded', { startedAt: '2026-10-30T12:05:00Z', finishedAt: '2026-10-30T12:06:00Z' })
-await run(t18, 'build', 'failed', { startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
+await run(t18, 'build', 'failed', { reasonKind: 'decision', startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
 await run(t24, 'plan', 'succeeded', { startedAt: '2026-10-30T09:30:00Z', finishedAt: '2026-10-30T09:32:00Z' })
 // The owner-chat spec's Tickets have a plan Run in progress from the start ("the plan is being written" is what its answers lead to), so the spec does not depend on how long the server has been up for the factory to start one.
 await ensure('runs', { ticket: t21, stage: 'plan', status: 'running' }, { ticket: t21, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
