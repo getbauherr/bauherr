@@ -1,3 +1,4 @@
+import type { Check, Forge } from '@bauherr/adapters'
 import { formatReviewChecks } from '@bauherr/runner'
 import { ValidationError } from 'payload'
 import { invisibleDead } from '../../../lib/liveness'
@@ -6,6 +7,8 @@ import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../..
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
+import { backendFor } from '../../../lib/adapters'
+import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
 import { suggestOverlapIgnore } from '../../../lib/overlap'
 import { wipCount } from '../../../lib/wip'
@@ -106,12 +109,66 @@ export async function loadProducts(workspace: number) {
   }
 }
 
-/** One Product of the Workspace with the workflow facts the Product page shows; undefined when it belongs to another Workspace. */
-export async function loadProduct(workspace: number, id: number) {
+/** One Product of the Workspace with the workflow facts and the people who can be gate owners (Members with a GitHub login); undefined when it belongs to another Workspace. */
+export async function loadProduct(workspace: number, id: number, viewerIsAdmin = false) {
   const { products, connections } = await loadProducts(workspace)
   const product = products.find((p) => p.id === id)
   if (!product) return undefined
-  return { product, connections, workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
+  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, { or: [{ role: { equals: 'admin' } }, { 'tenants.tenant': { equals: workspace } }] }] }, sort: 'email', pagination: false, ...o } as never)
+  const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
+  // Admins are not tenant-scoped: only an Admin sees other Admins' emails; for everyone the callout still knows whether an Admin can be notified.
+  const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
+  return { product, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
+}
+
+export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
+
+const RECENT_COMMITS = 5
+const MAX_COMMITS_READ = 10
+
+/**
+ * Check names reported on the newest commits of the default branch plus `extraShas` (merge commits of recent Tickets), at most 10 commits in all.
+ * Sorted by how often a name was seen, then by name. `null` when the forge could not be read within `timeoutMs`.
+ */
+export async function collectChecks(forge: Forge, repo: string, extraShas: string[], timeoutMs = 3000): Promise<RecentCheck[] | null> {
+  const read = async () => {
+    const { defaultBranch } = await forge.getRepository(repo)
+    const head = (await forge.listBranches(repo)).find((b) => b.name === defaultBranch)?.sha
+    const newest = head ? (await forge.listCommits(repo, { to: head })).slice(0, RECENT_COMMITS).map((c) => c.sha) : []
+    const shas = [...new Set([...newest, ...extraShas])].slice(0, MAX_COMMITS_READ)
+    const runs = (await Promise.all(shas.map((sha) => forge.listChecks(repo, sha).catch(() => null)))).filter((r): r is Check[] => r !== null)
+    if (shas.length && !runs.length) return null
+    const byName = new Map<string, RecentCheck>()
+    for (const checks of runs) {
+      const latest = new Map<string, Check>()
+      for (const c of checks) if (!latest.has(c.name) || (c.id ?? 0) >= (latest.get(c.name)!.id ?? 0)) latest.set(c.name, c)
+      for (const [name, c] of latest) {
+        const seen = byName.get(name)
+        byName.set(name, { name, seen: (seen?.seen ?? 0) + 1, of: runs.length, lastConclusion: seen?.lastConclusion ?? c.conclusion ?? c.status })
+      }
+    }
+    return [...byName.values()].sort((a, b) => b.seen - a.seen || a.name.localeCompare(b.name))
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([read(), new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), timeoutMs)))])
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** The check names the Product's forge reported lately, for the check pickers; `null` when there is no forge or it does not answer. Read-only, call it on the Product page only. */
+export async function recentChecks(productId: number): Promise<RecentCheck[] | null> {
+  try {
+    const payload = await payloadClient()
+    const { backend, repo } = await forgeOf(payload, productId)
+    const merged = await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: productId } }, { mergeSha: { exists: true } }] }, sort: '-id', limit: RECENT_COMMITS, select: { mergeSha: true }, ...o } as never)
+    return await collectChecks(backend.forge, repo, (merged.docs as unknown as { mergeSha?: string }[]).flatMap((t) => t.mergeSha || []))
+  } catch {
+    return null
+  }
 }
 
 export async function loadConnections(workspace: number) {
@@ -142,6 +199,7 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
       .flatMap((t) => (typeof t.tenant === 'object' && t.tenant ? [t.tenant] : []))
       .filter((w) => admin || own.includes(w.id)),
     locked: !!b.lockUntil && new Date(b.lockUntil as string).getTime() > Date.now(),
+    githubLogin: (b.githubLogin ?? '') as string,
     oidcLinked: !!b.oidcSubject,
     oidcSubject: admin ? ((b.oidcSubject ?? '') as string) : '',
   }))
@@ -206,7 +264,7 @@ export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: 
 export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
   const base = packed()
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true }, ...o } as never)) as Doc
+  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true, expediteLane: true }, ...o } as never)) as Doc
   const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
   const where = { workspace: { equals: workspace } }
   const [products, versions] = await Promise.all([
@@ -225,8 +283,10 @@ export async function loadWorkflow(workspace: number) {
   return {
     stages,
     wip,
+    expediteLane: ws.expediteLane !== false,
     overlap,
     gates: humanGates(),
+    ladder: { plan: gateOn('plan'), staging: gateOn('release'), production: productionGateOn() },
     versions: (products.docs as unknown as Doc[]).map((p) => {
       const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)
       return { product: p.name as string, version: (v?.version ?? null) as number | null, at: (v?.createdAt ?? null) as string | null, overlay: v ? JSON.stringify(v.compiled) !== baseJson : false }
@@ -264,5 +324,19 @@ export async function loadHealth(workspace: number) {
     dead: (await invisibleDead(payload, workspace)).map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause })),
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
     flakes,
+  }
+}
+
+const REPO_LIST_MS = 3000
+
+/** Full names of the repositories a forge Connection can see, sorted; null when the forge fails or does not answer within 3 s (the form then asks for a typed `owner/name`). One attempt, no retries. */
+export async function listRepos(connectionId: number): Promise<string[] | null> {
+  try {
+    const conn = await connectionInput(await payloadClient(), connectionId)
+    const timeout = new Promise<never>((_, reject) => AbortSignal.timeout(REPO_LIST_MS).addEventListener('abort', () => reject(new Error('timeout'))))
+    const repos = await Promise.race([backendFor(conn, { maxRetries: 0, timeoutMs: REPO_LIST_MS }).forge.listRepositories(), timeout])
+    return repos.map((r) => r.fullName).sort()
+  } catch {
+    return null
   }
 }

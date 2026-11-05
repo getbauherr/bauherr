@@ -58,7 +58,7 @@ it('claim returns a token; the same user with another token or none is refused',
   const { leaseToken, run: claimed } = await call(member, 'claim_run', { runId: run.id })
   expect(leaseToken).toMatch(/^[\w-]{43}$/)
   expect(claimed.leaseHash).toBeUndefined()
-  await expect(call(member, 'heartbeat', { runId: run.id, leaseToken })).resolves.toEqual({ ok: true })
+  await expect(call(member, 'heartbeat', { runId: run.id, leaseToken })).resolves.toMatchObject({ ok: true })
   await expect(call(member, 'heartbeat', { runId: run.id, leaseToken: 'x'.repeat(43) })).rejects.toThrow(`run ${run.id} is leased by another session`)
   await expect(call(member, 'report_step', { runId: run.id, summary: 's' })).rejects.toThrow('leased by another session')
   await expect(call(member, 'release_run', { runId: run.id })).rejects.toThrow('leased by another session')

@@ -6,7 +6,7 @@ import { SettingsForm } from '../../components/SettingsForm'
 import { ConnectionForm } from '../../components/SettingsConnectionForm'
 import { SettingsSection, SetupChecklist, StatusCallout } from '../../components/SettingsParts'
 import { loadSetup } from '../../lib/setup'
-import { connectionPresets, isAdmin, loadProduct } from '../../lib/settings'
+import { connectionPresets, isAdmin, loadProduct, recentChecks } from '../../lib/settings'
 import { currentWorkspace } from '../../lib/session'
 import { createProductWithRepo, saveDeploy, skipDeploy, verifyConnection } from '../settings/actions'
 
@@ -23,7 +23,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   const shown = asked >= 0 && (first < 0 || asked <= first) ? steps[asked]!.id : current
   const n = steps.findIndex((s) => s.id === shown) + 1
   const pending = github.find((c) => c.status !== 'ok')
-  const deploy = shown === 'deploy' && product ? await loadProduct(workspace.id, product.id) : undefined
+  const deploy = shown === 'deploy' && product ? await loadProduct(workspace.id, product.id, isAdmin(user)) : undefined
   return (
     <>
       <h1 className="title">Set up your Workspace</h1>
@@ -52,7 +52,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
         <>
           <SettingsForm action={saveDeploy} submit="Save and continue" primary>
             <input type="hidden" name="id" value={deploy.product.id} />
-            <DeploySections data={deploy} admin />
+            <DeploySections data={deploy} checks={await recentChecks(deploy.product.id)} admin />
           </SettingsForm>
           {!steps[n - 1]!.done && (
             <SettingsForm action={skipDeploy} submit="Skip, use defaults">

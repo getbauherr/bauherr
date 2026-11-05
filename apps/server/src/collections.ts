@@ -119,6 +119,7 @@ const workspaces = col(
       access: { update: ({ req }) => req.user?.role === 'admin' },
       admin: { description: 'Tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit.' },
     },
+    { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Workflow: off ignores the bauherr:expedite label.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
@@ -351,7 +352,8 @@ const tickets = col('tickets', [
   { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
-  select('waitingFor', ['plan', 'build', 'review'], { admin: { description: 'The full column this Ticket waits to enter. It stays ready in its column (and counts toward that column limit) and has no Run.' } }),
+  select('waitingFor', ['plan', 'build', 'review'], { admin: { description: 'The full column this Ticket waits to enter from an earlier column; never its own stage. It stays ready in its column and has no Run.' } }),
+  { name: 'expedite', type: 'checkbox', defaultValue: false, admin: { description: 'Carries the bauherr:expedite label while the Workspace has the Expedite lane on: skips Triage, bypasses WIP and the overlap hold, no plan gate.' } },
   text('waitingReason', { admin: { description: 'Why it waits when not a full column, e.g. "overlaps #12" (a Build held for shared paths).' } }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),
@@ -389,7 +391,22 @@ const tickets = col('tickets', [
   { name: 'mainMergeSha', type: 'text', admin: { readOnly: true, description: 'The MR head on which the factory last found nothing to merge; with `mainMergeNoops` it detects a forge that keeps reporting that head behind or conflicting.' } },
   { name: 'mainMergeNoops', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'No-op merges of the base on `mainMergeSha`; the 3rd needs a human. Reset by a merge that pushes.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
-], { indexes: [{ fields: ['product', 'externalId'], unique: true }] })
+], {
+  indexes: [{ fields: ['product', 'externalId'], unique: true }],
+  hooks: {
+    /** The one write guard for "waitingFor is never the Ticket's own stage" (except an overlap hold, which carries a `waitingReason`): covers the poller, `completeMove` and hand edits. */
+    beforeChange: [
+      ({ data, originalDoc }) => {
+        const stage = 'stage' in data ? data.stage : originalDoc?.stage
+        const waitingFor = 'waitingFor' in data ? data.waitingFor : originalDoc?.waitingFor
+        const reason = 'waitingReason' in data ? data.waitingReason : originalDoc?.waitingReason
+        // A Build held for overlapping paths (`waitingReason` "overlaps #N") may sit in Build without a Run: the reason marks it as deliberate.
+        if (waitingFor && waitingFor === stage && !reason) data.waitingFor = null
+        return data
+      },
+    ],
+  },
+})
 
 export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted', 'abandoned']
 
@@ -441,7 +458,10 @@ export const collections: CollectionConfig[] = [
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
     rel('agentKey', 'agent_keys'),
+    text('sessionLabel'),
     date('heartbeatAt'),
+    text('lastLeaseCall'),
+    text('lastSeenSha'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
     text('evidence'),

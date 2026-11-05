@@ -2,6 +2,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { LabelEvent } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { gateOwnersOf, logins } from './gates'
+import { EXPEDITE_LABEL } from './needs-you'
 import { humanGates } from './mode'
 import { id } from './release'
 
@@ -14,10 +15,12 @@ export const APPROVED_STAGING = 'bauherr:approved:staging'
 export const GATE_LABELS = [
   { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: true },
   { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging'], strictWhenOff: true },
+  // The Expedite lane is not a gate, but its label skips Triage and the plan approval, so it is held to the same rule: a gate owner or Admin, or the factory's own Expedite action (`expedite` touch).
+  { gate: 'expedite', label: EXPEDITE_LABEL, kind: 'expedite', recorded: ['expedite'], strictWhenOff: true },
 ] as const
 
 /** Whether the workflow has the gate on (#175). */
-export const gateIsOn = (gate: (typeof GATE_LABELS)[number]['gate']) => humanGates().includes(gate)
+export const gateIsOn = (gate: (typeof GATE_LABELS)[number]['gate']) => gate === 'expedite' || humanGates().includes(gate)
 
 /** A recorded touch legitimises a factory-login label only when it was recorded shortly before the label event. */
 export const TOUCH_WINDOW_MS = 10 * 60_000
@@ -86,7 +89,7 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
     await ts.removeLabels(n, [g.label])
     const marker = REJECTED_MARKER(g.label, ev.at)
     if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-      await ts.comment(n, `${marker}\nBauherr removed \`${g.label}\`: ${on ? `it was set by ${ev.actor}, who is not a gate owner or Admin of this Product. Use the Approve button on the Ticket page.` : `the ${g.gate} gate is off, so the label approves nothing.`}`)
+      await ts.comment(n, `${marker}\nBauherr removed \`${g.label}\`: ${on ? `it was set by ${ev.actor}, who is not a gate owner or Admin of this Product. Use the ${g.gate === 'expedite' ? 'Expedite' : 'Approve'} button on the Ticket page.` : `the ${g.gate} gate is off, so the label approves nothing.`}`)
     }
   }
   return verdict

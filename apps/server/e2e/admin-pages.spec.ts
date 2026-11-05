@@ -43,6 +43,8 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   expect((await list()).status()).toBe(401)
 
   await page.goto('/settings/audit')
+  await page.getByLabel('Ticket', { exact: true }).fill('#2') // the touch of the seeded Ticket; other specs approve plans of their own Tickets
+  await page.getByRole('button', { name: 'Filter' }).click()
   await expect(page.getByRole('cell', { name: 'approve:plan' })).toBeVisible()
   await page.getByRole('link', { name: 'Tool calls' }).click()
   await expect(page.getByRole('cell', { name: 'run_checks' })).toBeVisible()
@@ -58,8 +60,9 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
 
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Workflow' }).click()
   await expect(page.getByRole('heading', { name: 'Where you are asked' })).toBeVisible()
-  await expect(page.locator('table').first().locator('thead th')).toHaveText(['Name', 'When', 'On/Off'])
-  for (const name of ['Refine', 'Approve plan', 'Accept on staging', 'Approve production']) await expect(page.locator('table').first().getByRole('cell', { name, exact: true })).toBeVisible()
+  for (const name of ['Answer questions', 'Approve the plan', 'Accept on staging', 'Ask me before production']) await expect(page.locator('.toggle-row').filter({ hasText: name })).toBeVisible()
+  await expect(page.locator('.toggle-row').filter({ hasText: 'Answer questions' })).toContainText('Always on')
+  await expect(page.locator('.toggle-row').filter({ hasText: 'Ask me before production' })).toContainText(/On for every Product|Per Product/)
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeHidden()
   await page.getByText('Details', { exact: true }).click()
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeVisible()
@@ -169,4 +172,21 @@ test('Paths that never hold a Build: saved per Product in Settings > Workflow', 
   await field.fill('')
   await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})
+
+test('the Ticket page Repair disclosure is for an Admin only and resets counters', async ({ page }) => {
+  for (const [who, visible] of [['member@example.com', false], [email, true]] as const) {
+    await signIn(page, who)
+    await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
+    await page.getByText('Details', { exact: true }).click()
+    const repair = page.getByRole('region', { name: 'Repair' })
+    await expect(repair).toHaveCount(visible ? 1 : 0)
+    if (visible) {
+      await repair.getByRole('button', { name: 'Repair', exact: true }).click()
+      await repair.getByRole('button', { name: 'Reset counters' }).click()
+      await repair.getByRole('button', { name: 'Confirm reset counters' }).click()
+      await expect(repair.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+    }
+    await page.context().clearCookies()
+  }
 })

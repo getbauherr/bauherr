@@ -70,6 +70,10 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
   void gated.comment('1', WORKLOG)
   void gated.comment('1', summary(1))
+  // acme/checks: a Product whose production deploy check `deploy-production` shows up in the Settings check picker.
+  const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
+  fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])
+  fake.setChecks('acme/checks', checks, [{ name: 'deploy-production', status: 'completed', conclusion: 'success' }, { name: 'lint', status: 'completed', conclusion: 'success' }])
   // #15 sits at the review round cap with its escalation Comment.
   void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })
   void ts.comment('15', 'Bauherr needs a human: the review found 1 blocking issue(s), after 2 review rounds.\n\n- [medium] src/retry.ts:12 The loop never stops on a permanent error. Scenario: when the gateway answers 402, then the call is retried forever.')
@@ -90,6 +94,12 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Pick the export columns', labels: ['bauherr:stage:plan'] })
   void ts.comment('22', PLAN)
   void ts.comment('22', WORKLOG)
+  // #23 is the triage spec's own Ticket (held by Triage with questions), #24 the plan-approval test's own Ticket (two open decisions).
+  void ts.create({ title: 'Settle the export format', labels: ['bauherr:needs-refinement'] })
+  void ts.comment('23', QUESTIONS)
+  void ts.create({ title: 'Add a light theme to the dashboard', labels: ['bauherr:stage:plan'] })
+  void ts.comment('24', PLAN)
+  void ts.comment('24', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))

@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, stageOf, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
@@ -10,7 +10,8 @@ import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
-import { NEEDS_REFINEMENT } from '../lib/needs-you'
+import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
+import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
@@ -114,7 +115,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && !t.expedite && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -214,8 +215,45 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now()): Prom
   return rows.length
 }
 
-/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). Returns how many were handled. */
+/** A running session Build Run is checked for a push once its heartbeat is this old, i.e. while its lease is still valid. */
+const PUSH_CHECK_AFTER_MS = (SESSION_TIMEOUT_MS * 2) / 3
+
+/**
+ * A pushed branch is a sign of life. For running session Build Runs whose heartbeat is older than `PUSH_CHECK_AFTER_MS` but not expired yet, the head of the Run's branch (`bauherr/<ticket>-<run>`, else the head of the MR the Run carries in `artifacts.prUrl`) is compared with `last_seen_sha`; a different head renews the lease.
+ * An expired lease is never revived here (a late owner still gets `lease lost`), and a forge error skips the Run for this sweep. A session that pushed once and then died gets one extra lease.
+ * Returns how many leases were renewed.
+ */
+const renewOnPushes = async (payload: Payload, now: number): Promise<number> => {
+  const expired = new Date(now - SESSION_TIMEOUT_MS).toISOString()
+  const checkBefore = new Date(now - PUSH_CHECK_AFTER_MS).toISOString()
+  const due = await payload.find({
+    collection: 'runs',
+    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { stage: { equals: 'build' } }, { heartbeatAt: { less_than: checkBefore } }, { heartbeatAt: { greater_than_equal: expired } }] },
+    pagination: false,
+    depth: 0,
+    overrideAccess: true,
+  })
+  let renewed = 0
+  for (const run of due.docs) {
+    try {
+      const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
+      const { backend, repo } = await forgeOf(payload, id(ticket.product))
+      const head = (await backend.forge.getBranch(repo, `bauherr/${ticket.number}-${run.id}`))?.sha ?? ((run.artifacts as { prUrl?: string } | null)?.prUrl ? (await prOf(payload, ticket, { fallback: true }))?.pr.headSha : undefined)
+      if (!head || head === run.lastSeenSha) continue
+      const r = await payload.db.drizzle.execute(
+        sql`UPDATE "runs" SET "heartbeat_at" = now(), "last_seen_sha" = ${head}, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running' AND "heartbeat_at" < ${checkBefore} AND "heartbeat_at" >= ${expired} RETURNING "id"`,
+      )
+      if (r.rows.length) renewed++
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'branch head check failed; skipped this sweep')
+    }
+  }
+  return renewed
+}
+
+/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). A Build Run that pushed to its branch is renewed before it expires (`renewOnPushes`). Returns how many were abandoned. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
+  await renewOnPushes(payload, now)
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   const stale = await payload.find({
     collection: 'runs',
@@ -227,7 +265,8 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   let handled = 0
   for (const run of stale.docs) {
     try {
-      if (await abandonRun(payload, run, { reason: 'session lease expired', escalate: run.stage !== 'triage', staleBefore: before })) handled++
+      const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
+      if (await abandonRun(payload, run, { reason, escalate: run.stage !== 'triage', staleBefore: before })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
@@ -321,10 +360,9 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
 /** Polls in which a Ticket's unverifiable gate label is retried before it waits for the next label change. */
 const MAX_GATE_ATTEMPTS = 30
 
-/** Plan gate off: advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
+/** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
-  if (gateOn('plan')) return
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }, ...(gateOn('plan') ? [{ expedite: { equals: true } }] : [])] }, pagination: false, depth: 0, overrideAccess: true })
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
@@ -356,6 +394,18 @@ export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
 }
 
+/** The forge is the truth for dependencies: the full `blockedBy` set (Ticket ids of the Product; a blocker not polled yet is ignored). A Ticket naming itself is ignored. Empty object on a read error, which keeps the stored set (the Ticket is read again the next time it changes on the forge). */
+const forgeBlockers = async (payload: Payload, forge: TicketSource, product: number | string, number: number): Promise<{ blockedBy?: (number | string)[] }> => {
+  try {
+    const blockedBy = (await forge.get(String(number))).blockedBy.filter((n) => n !== String(number))
+    const known = blockedBy.length ? await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { externalId: { in: blockedBy } }] }, pagination: false, depth: 0, overrideAccess: true }) : { docs: [] }
+    return { blockedBy: known.docs.map((d) => d.id) }
+  } catch (e) {
+    payload.logger.warn({ err: e, ticket: number }, 'forge dependencies unreadable, keeping the stored set')
+    return {}
+  }
+}
+
 export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { polled: number } }> = {
   slug: 'poll-tickets',
   schedule: scheduled('0 * * * * *'),
@@ -385,6 +435,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
         }
         let revertFailed = false
+        const lane = await laneOn(payload, id(src.workspace))
         for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
@@ -408,13 +459,16 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             sourceUpdatedAt: t.updatedAt,
             triageAttempts: 0,
             gatePendingAttempts: 0,
+            expedite: lane && t.labels.includes(EXPEDITE_LABEL),
           }
+          if (!lane && t.labels.includes(EXPEDITE_LABEL)) await noteIgnored(payload, backendFor(conn).tickets(src.repo), t.number)
           let labels = t.labels
           if (GATE_LABELS.some((g) => labels.includes(g.label))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
             base.labels = labels
+            base.expedite = lane && labels.includes(EXPEDITE_LABEL)
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
@@ -465,6 +519,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (prev?.factoryStage && stage === prev.factoryStage) clearFactoryStage = true
           const data = {
             ...base,
+            ...(await forgeBlockers(payload, backendFor(conn).tickets(src.repo), id(src.product), t.number)),
             stage,
             ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
             ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
@@ -490,6 +545,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     }
     await closeFinishedParents(payload)
     await pullWaiting(payload)
+    await startExpedites(payload)
     await startMissingRuns(payload)
     await advancePlans(payload)
     await triageSweep(payload)

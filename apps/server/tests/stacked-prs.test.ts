@@ -107,7 +107,7 @@ it('relink_mr links an open factory MR of the Ticket and refuses a foreign branc
   const closed = await openPr(number, 'closed')
   await fake.forge.closePullRequest(repo, closed.number)
   for (const prUrl of [foreign.url, closed.url, 'https://example.com/x']) await expect(call(member, 'relink_mr', { runId: run.id, leaseToken, prUrl })).rejects.toThrow(/open pull request/)
-  expect(await call(member, 'relink_mr', { runId: run.id, leaseToken, prUrl: next.url })).toEqual({ linked: next.url })
+  expect(await call(member, 'relink_mr', { runId: run.id, leaseToken, prUrl: next.url })).toMatchObject({ linked: next.url })
   expect((await payload.findByID({ collection: 'runs', id: run.id, depth: 0, ...o })).artifacts).toMatchObject({ prUrl: next.url })
   await expect(call(member, 'relink_mr', { runId: run.id, leaseToken: 'bogus', prUrl: next.url })).rejects.toThrow()
 })

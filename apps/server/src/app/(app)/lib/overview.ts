@@ -5,6 +5,7 @@ import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
 import { type Epic, epicWhere, plainStatus } from './epics'
+import { wipCounts } from '../../../lib/wip'
 import { WIP_STAGES, waitingText, wipLimit } from '../../../lib/wip-limits'
 
 export type RunRow = {
@@ -71,7 +72,8 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
     payload.find({ collection: 'products', where: ws, sort: 'name', pagination: false, ...q }),
     payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
   ])
-  const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: (open.docs as unknown as Record<string, any>[]).filter((t) => t.stage === s && t.waitingFor !== s).length, limit: wipLimit(wsDoc, s) }]))
+  const counts = await wipCounts(payload, workspace)
+  const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
   const ticketDocs = [...open.docs, ...(closed?.docs ?? [])] as unknown as Record<string, any>[]
   const runRows = recent.docs as unknown as RunRow[]
   const known = new Set(ticketDocs.map((t) => t.id))
@@ -101,6 +103,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
   const rows = ticketDocs.map((t): TicketRow => {
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
+    const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
     return {
       id: t.id,
       number: t.number,
@@ -113,13 +116,13 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
-      waiting: isOpen && t.waitingFor ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason) : null,
+      needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null,
+      waiting: isOpen && t.waitingFor && !blockedBy.length ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason) : null,
       overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
       gateUnreachable: isOpen && !t.gateNotifiedAt ? (t.gateUnreachable ?? null) : null,
-      blockedBy: isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : [],
+      blockedBy,
     }
   })
   const byRow = new Map(rows.map((r) => [r.id, r]))

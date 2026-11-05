@@ -71,19 +71,29 @@ const gated = (await ensure('products', { slug: 'acme-gated' }, { name: 'Acme Ga
 await ensure('repositories', { fullName: 'acme/gated' }, { fullName: 'acme/gated', product: gated, workspace })
 await ensure('ticket_sources', { repo: 'acme/gated' }, { repo: 'acme/gated', product: gated, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 await ensure('tickets', { externalId: 'e2e-gated-1' }, { title: 'Ship the gated export', externalId: 'e2e-gated-1', number: 1, url: 'https://github.com/acme/gated/issues/1', state: 'open', labels: ['bauherr:stage:release'], ...rel, product: gated, workspace, rank: '000016' })
+const checksProduct = (await ensure('products', { slug: 'acme-checks' }, { name: 'Acme Checks', slug: 'acme-checks', workspace })).id
+await ensure('repositories', { fullName: 'acme/checks' }, { fullName: 'acme/checks', product: checksProduct, workspace })
+await ensure('ticket_sources', { repo: 'acme/checks' }, { repo: 'acme/checks', product: checksProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 await ticket(15, 'Harden the retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
 await ticket(16, 'Ship the export header', 'release', product, rel)
 const t17 = await ticket(19, 'Tidy the settings copy', 'plan', product)
 const t18 = await ticket(20, 'Fix the date parser', 'build', product)
 await ensure('tickets', { externalId: 'e2e-gated-2' }, { title: 'Ship the gated header', externalId: 'e2e-gated-2', number: 2, url: 'https://github.com/acme/gated/issues/2', state: 'open', labels: ['bauherr:stage:release', 'bauherr:approved:staging'], ...rel, productionState: 'awaiting_approval', product: gated, workspace, rank: '000017' })
 for (let n = 101; n <= 122; n++) await ticket(n, `Isolated chore ${n}`, n <= 103 ? 'release' : n <= 106 ? 'review' : n <= 112 ? 'build' : n <= 115 ? 'plan' : n <= 118 ? 'triage' : 'done', product)
-await ticket(21, 'Remember the theme choice', 'plan', product)
-await ticket(22, 'Pick the export columns', 'plan', product)
+const t21 = await ticket(21, 'Remember the theme choice', 'plan', product)
+const t22 = await ticket(22, 'Pick the export columns', 'plan', product)
+// Own Tickets of triage.spec.ts (#23, held by Triage with questions) and of the plan-approval test in ticket.spec.ts (#24, approved there). The numbers follow the fake forge (`src/lib/fake-forge.ts`), which creates them in this order.
+await ticket(23, 'Settle the export format', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
+const t24 = await ticket(24, 'Add a light theme to the dashboard', 'plan', product)
 await ticket(124, 'Waiting for a Build slot', 'plan', product, { waitingFor: 'build', rank: '000000' })
 const live = await ticket(123, 'Live build in progress', 'build', product, { rank: '900000' })
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'build', 'failed', { startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
+await run(t24, 'plan', 'succeeded', { startedAt: '2026-10-30T09:30:00Z', finishedAt: '2026-10-30T09:32:00Z' })
+// The owner-chat spec's Tickets have a plan Run in progress from the start ("the plan is being written" is what its answers lead to), so the spec does not depend on how long the server has been up for the factory to start one.
+await ensure('runs', { ticket: t21, stage: 'plan', status: 'running' }, { ticket: t21, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
+await ensure('runs', { ticket: t22, stage: 'plan', status: 'running' }, { ticket: t22, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t1, 'plan', 'succeeded', { startedAt: '2026-10-30T09:00:00Z', finishedAt: '2026-10-30T09:02:30Z', costUsd: 0.1234 })
 const build = await run(t2, 'build', 'succeeded', { startedAt: '2026-10-30T09:10:00Z', finishedAt: '2026-10-30T09:25:12Z', gatewayCostUsd: 1.5, model: 'claude-sonnet-4-5', tokensIn: 12000, tokensOut: 3400, tokensCache: 8000, evidence: 'Checks: pass', artifacts: { prUrl: 'https://github.com/acme/web/pull/12' } })
 const steps = [['09:10:05', 'Read the plan and the repo'], ['09:14:00', 'Implement the CSV export'], ['09:21:30', 'Run the checks']] as const
@@ -97,6 +107,9 @@ const widgetOnly = (await ensure('products', { slug: 'acme-widget' }, { name: 'A
 await ensure('embed_tokens', { name: 'Widget only' }, { name: 'Widget only', product: widgetOnly, tokenHash: 'e2e-widget-only-hash', workspace })
 await ensure('workflow_versions', { product }, { version: 1, product, compiled: { stages: [{ name: 'plan' }] }, workspace })
 await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
+// run.spec.ts re-runs this Run: it lives on Acme Checks, which no other spec counts Runs of (overview.spec.ts counts those of Acme Web and Acme Shop).
+const stalled = (await ensure('tickets', { externalId: 'e2e-checks-1' }, { title: 'Recover the stalled import', externalId: 'e2e-checks-1', number: 1, url: 'https://github.com/acme/checks/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: checksProduct, workspace, rank: '000025' })).id
+await run(stalled, 'build', 'needs_human', { startedAt: '2026-10-30T10:30:00Z' })
 await run(t5, 'review', 'succeeded', {
   startedAt: '2026-10-30T11:00:00Z', finishedAt: '2026-10-30T11:04:00Z', verdict: 'changes',
   findings: [
@@ -108,5 +121,6 @@ const request = async (key: string, status: string, extra: Record<string, unknow
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
 await request('Export totals drift', 'open', { user: admin })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
+await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, ticketNumbers: [6, 7] })
 console.log('seeded')
 process.exit(0)

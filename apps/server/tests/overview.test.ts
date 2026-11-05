@@ -54,7 +54,7 @@ describe('needsYou', () => {
     expect(needsYou(rel('deployed'), run)).toBeNull()
   })
   it('gives every needs-you value a Gate with an action', () => {
-    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|production-checks|release-failed|review-cap|rerun|back-to-build|cancelled)$/), title: expect.any(String) })
+    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|production-checks|release-failed|review-cap|rerun|back-to-build|cancelled|expedite)$/), title: expect.any(String) })
   })
   it('gives every needs-you value a sentence and a verb for the action bar', () => {
     const ctx = { stage: 'build', missing: ['D2'], open: 1 }

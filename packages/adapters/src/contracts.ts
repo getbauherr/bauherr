@@ -175,6 +175,8 @@ export interface Forge {
   listRepositories(): Promise<Repository[]>;
   getRepository(repo: RepoRef): Promise<Repository>;
   listBranches(repo: RepoRef): Promise<Branch[]>;
+  /** One branch and its head sha, or null when it does not exist (a single request, unlike `listBranches`). */
+  getBranch(repo: RepoRef, name: string): Promise<Branch | null>;
   /** Branches off `from` (default branch when omitted). */
   createBranch(repo: RepoRef, name: string, from?: string): Promise<Branch>;
   openPullRequest(repo: RepoRef, pr: NewPullRequest): Promise<PullRequest>;

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ListView, TimelineView } from '../../../components/RunViews'
 import { ConfirmButton } from '../../../components/SettingsForm'
+import { RelinkMr } from '../../../components/FixState'
 import { Markdown } from '../../../components/Markdown'
 import { StatusChip } from '../../../components/StatusChip'
 import { Badge } from '../../../components/ui/badge'
@@ -94,6 +95,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           {rerun && (
             <form action={rerunStage.bind(null, run.id)} className="flex flex-wrap items-center gap-3"><ConfirmButton label="Re-run stage" confirm={`Confirm re-run ${run.stage}`} /></form>
           )}
+          {admin && run.stage === 'build' && <RelinkMr run={run.id} />}
           {admin && leased && (
             <form action={releaseRunLock.bind(null, run.id)} className="flex flex-wrap items-center gap-3"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${run.id}`} /></form>
           )}

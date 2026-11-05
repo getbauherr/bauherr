@@ -242,6 +242,7 @@ describe('stage entry honours blockedBy', () => {
     process.env.BAUHERR_PACK_DIR = new URL('./fixtures/gated-pack', import.meta.url).pathname
     const blocker = await ticket('blocker', 'review', ['docs/x.md'])
     const c = await ticket('c', 'plan', ['src/c.ts'], { blockedBy: [blocker.id] })
+    await fake.tickets(repo).addBlockedBy(String(c.n), String(blocker.n)) // expandPlan mirrors `after:` edges to the forge, which now owns the set
     await actions.approvePlan(payload, user, { ticket: c.id })
     await poll()
     expect(await reload(c.id)).toMatchObject({ stage: 'build' })
