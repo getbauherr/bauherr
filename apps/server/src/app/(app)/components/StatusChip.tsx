@@ -8,16 +8,16 @@ const chips: Record<string, [variant: Variant, text: string]> = {
   succeeded: ['ok', '✓ Succeeded'],
   failed: ['destructive', '× Failed'],
   cancelled: ['muted', 'Cancelled'],
-  needs_human: ['warn', 'Needs human'],
+  needs_human: ['warn', 'Waiting for you'],
   awaiting_session: ['neutral', 'Waiting for a session'],
   budget_exhausted: ['warn', 'Budget exhausted'],
   abandoned: ['muted', 'Abandoned'],
 }
 
-export function StatusChip({ status }: { status: string }) {
+export function StatusChip({ status, reason }: { status: string; reason?: string | null }) {
   const [variant, text] = chips[status] ?? chips.queued
   return (
-    <Badge variant={variant}>
+    <Badge variant={variant} title={status === 'needs_human' && reason ? reason : undefined}>
       {variant === 'accent' && <span className="size-3 animate-[spin_1.6s_linear_infinite] rounded-full border-[1.5px] border-border border-t-primary motion-reduce:animate-none" />}
       {text}
     </Badge>
