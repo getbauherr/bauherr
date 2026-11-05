@@ -86,7 +86,7 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
   const blockerIds = [...new Set(ticketDocs.flatMap((t) => (t.blockedBy ?? []) as number[]))]
   const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
   const docsOf = async (collection: string, extra: object): Promise<Record<string, any>[]> => ((await payload.find({ collection, pagination: false, ...q, ...extra } as never)).docs as unknown as Record<string, any>[])
-  const tickets = (where: object) => docsOf('tickets', { where: { and: [ws, where] } })
+  const tickets = (where: object, sort?: string) => docsOf('tickets', { where: { and: [ws, where] }, sort })
   const owned = async (latest: Map<number, RunRow>): Promise<Map<number, string>> => {
     const ownerIds = [...new Set([...latest.values()].filter((r) => LIVE.includes(r.status) && r.mode === 'session' && r.sessionOwner).map((r) => r.sessionOwner!))]
     return new Map(ownerIds.length ? (await docsOf('bauherren', { where: { id: { in: ownerIds } } })).map((o) => [o.id as number, String(o.email).split('@')[0]] as const) : [])
@@ -99,7 +99,7 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
       if (ticketDocs.length) for (const r of (await docsOf('runs', { where: { ticket: { in: ticketDocs.map((t) => t.id) } }, sort: '-createdAt', select: RUN_FIELDS })) as unknown as RunRow[]) if (!latest.has(r.ticket)) latest.set(r.ticket, r)
       return [latest, await owned(latest)] as const
     })(),
-    tickets({ parent: { exists: true } }),
+    tickets({ parent: { exists: true } }, 'number'),
     wipCounts(payload, workspace),
   ])
   const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
