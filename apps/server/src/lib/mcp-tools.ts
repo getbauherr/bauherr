@@ -499,6 +499,7 @@ export const tools: Tool[] = [
         ...leaseToken,
         outcome: { enum: ['plan', 'refine', 'skip'] },
         reason: str('One line'),
+        expedite: { type: 'boolean', description: 'Propose the expedite lane (production down or factory blocked); the owner decides' },
         questions: { type: 'array', maxItems: 10, description: 'refine only', items: { type: 'object', properties: { title: str('The question'), default: str('Recommended answer'), alternatives: { type: 'array', maxItems: 5, items: { type: 'string' } } }, required: ['title', 'default'] } },
       },
       ['runId', 'leaseToken', 'outcome', 'reason'],

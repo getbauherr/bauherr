@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
@@ -63,6 +63,13 @@ export async function approvePlanAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(approvePlan(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function expediteAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(expedite(payload, user, { ticket, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
 }
 

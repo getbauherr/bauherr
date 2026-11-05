@@ -105,7 +105,7 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
   const [s] = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, { 'product.workspace': { equals: workspaceId } }, { persona: { not_equals: 'owner' } }, { status: { in: ['open', 'submitted'] } }] }, limit: 1, depth: 1, overrideAccess: true })).docs as unknown as (Session & { draft?: { problem?: string; context?: string; acceptance_criteria?: string[] }; ticketNumbers?: number[] | null })[]
   if (!s) return null
   const numbers = s.ticketNumbers?.length ? s.ticketNumbers : s.ticketNumber != null ? [s.ticketNumber] : []
-  const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null }[] : []
+  const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }[] : []
   const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, status: true }, ...o })).docs as unknown as { ticket: number; stage: string; status: string }[] : []
   return {
     id: s.id,
@@ -117,7 +117,7 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
     criteria: (s.draft?.acceptance_criteria ?? []).filter((c) => c.trim()),
     tickets: docs.map((t) => ({
       id: t.id, number: t.number, title: t.title, status: lifecycleOf(t),
-      need: t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, runs.find((r) => r.ticket === t.id) ?? null),
+      need: t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, runs.find((r) => r.ticket === t.id) ?? null),
     })),
   }
 }

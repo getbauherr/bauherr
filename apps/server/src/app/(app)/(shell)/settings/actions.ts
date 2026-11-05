@@ -79,6 +79,12 @@ export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd)
   await payload.update({ collection: 'workspaces', id: wsId, data: { wipLimits: limits }, ...w } as never)
 })
 
+/** Settings > Workflow "Expedite lane": off makes the Workspace ignore the `bauherr:expedite` label. */
+export const saveExpediteLane = act({}, async ({ user, workspace, payload, w }, fd) => {
+  only(user)
+  await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { expediteLane: fd.get('expediteLane') === 'on' }, ...w } as never)
+})
+
 /** Paths that never hold a Build for overlap: the textarea (one glob per line) replaces the list; `add` appends one suggested path. */
 export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
   only(c.user)
