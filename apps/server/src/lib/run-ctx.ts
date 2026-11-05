@@ -5,6 +5,8 @@ import { moveStage } from './stage-move'
 import { enterStage } from './wip'
 import { backendFor } from './adapters'
 import { prOf } from './release'
+import { escalatedCaps, isEscalated, noteEscalatedBuild } from './investigation'
+import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
 import { webOrigin, type ConnectionInput } from './connection'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { forgeOf, id } from './release'
@@ -91,13 +93,18 @@ export const buildRunCtx = async (
   const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
+  const base = run.stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : { maxTurns: 20, maxBudgetUsd: 0.5 }
+  const escalated = await isEscalated(payload, run)
+  const caps = escalated ? escalatedCaps(run.stage, base) : base
+  if (escalated && run.stage === 'build') await noteEscalatedBuild(payload, run, caps)
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...(run.stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : { maxTurns: 20, maxBudgetUsd: 0.5 }), tier: run.stage === 'review' ? 'standard' : 'cheap' },
+    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...caps, tier: escalated ? 'strong' : run.stage === 'review' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
-      ...(run.stage !== 'plan' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
+      ...((run.stage !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
+      ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
     ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(run.stage === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),

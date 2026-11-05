@@ -1,6 +1,7 @@
 export const PLAN_MARKER = '<!-- bauherr:plan -->'
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 export const TRIAGE_MARKER = '<!-- bauherr:triage -->'
+export const INVESTIGATION_MARKER = '<!-- bauherr:investigation -->'
 export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
 export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[] }

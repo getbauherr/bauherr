@@ -7,6 +7,7 @@ export const WORKLOG_FILE = '.bauherr/worklog.md';
 export const PLAN_FILE = '.bauherr/plan.md';
 export const REVIEW_FILE = '.bauherr/review.json';
 export const SELF_REVIEW_FILE = '.bauherr/self-review.json';
+export const INVESTIGATION_FILE = '.bauherr/investigation.json';
 export const TRIAGE_FILE = '.bauherr/triage.json';
 /** The MR diff, written by the Runner before a Review agent starts (the agent has no shell). */
 export const DIFF_FILE = '.bauherr/diff.patch';
@@ -45,6 +46,7 @@ export function materialise(cwd: string, ctx: RunCtx): string {
       (ctx.run.stage === 'triage' ? untrustedBlock : (t: string) => t)(ctx.run.goal.statements.map((s) => `- ${s}`).join('\n')),
     `## Worklog (\`${WORKLOG_FILE}\`)\n${untrusted(ctx, worklog || '(empty)')}`,
     ...(ctx.ticket.plan ? [`## Approved plan\n${untrusted(ctx, ctx.ticket.plan)}`] : []),
+    ...(ctx.ticket.investigation ? [`## Investigation (both failed Runs)\n${ctx.ticket.investigation}`] : []),
     fenced(ctx)
       ? `## Ticket #${ctx.ticket.number}\n${ctx.ticket.url}\n\n${untrustedBlock(`Title: ${ctx.ticket.title}\n\n${ctx.ticket.body}`)}`
       : `## Ticket #${ctx.ticket.number}: ${ctx.ticket.title}\n${ctx.ticket.url}\n\n${ctx.ticket.body}`,
