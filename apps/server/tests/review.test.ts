@@ -348,6 +348,15 @@ it('F3: a review without the full checked list goes to a human, not to a merge',
   expect((await comments(n)).some((c) => c.includes('did not account for: evidence'))).toBe(true)
 })
 
+it('a checked note over 1000 characters or empty is refused with its area and length, a valid one is accepted', () => {
+  const base = { verdict: 'clean', findings: [], markdown: 'm' }
+  const with_ = (note: string) => ({ ...base, checked: checked.map((c, i) => (i === 0 ? { ...c, note } : c)) })
+  const area = checked[0]!.area
+  expect(() => actions.normalizeReview(with_('x'.repeat(1001)))).toThrow(`checked.${area}: note is 1001 characters, max 1000`)
+  expect(() => actions.normalizeReview(with_('  '))).toThrow(`checked.${area}: note is empty`)
+  expect(actions.normalizeReview(with_('x'.repeat(1000))).problem).toBeUndefined()
+})
+
 it('F6/F7: review output is bounded and findings are one line', () => {
   const base = { verdict: 'changes', markdown: 'm', checked }
   const bad = (f: object) => expect(() => actions.normalizeReview({ ...base, findings: [{ ...medium, ...f }] })).toThrow('finding 0')
