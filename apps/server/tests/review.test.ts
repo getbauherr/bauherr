@@ -110,9 +110,9 @@ const seed = async (o2: { body?: string; checks?: any[] } = {}) => {
   if (o2.checks) fake.setChecks(repo, pr.headSha, o2.checks)
   return { t, pr, n: String(issue.number), branch, id: t.id as number }
 }
-/** Starts and claims the Review Run. */
+/** Starts and claims the Review Run. Starts it directly: these tests exercise the merge gate on heads whose checks changed after the review began; the entry gate (green heads only) is covered in `green-heads.test.ts`. */
 const review = async (id: number) => {
-  const started = await jobs.startReviewIfReady(payload, (await reload(id)) as any)
+  const started = await jobs.startRunIfNeeded(payload, (await reload(id)) as any, 'review')
   const { leaseToken } = await claimOnly(payload, call, member, ws, started!.run.id)
   return { runId: started!.run.id as number, leaseToken: leaseToken as string }
 }

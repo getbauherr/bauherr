@@ -40,6 +40,7 @@ Every MR carries a `## Evidence` section. The Runner appends it from recorded St
 - A failing or skipped check is listed, never omitted.
 - No prose summary replaces a row; a row without a reference is `unverified`.
 - Checks are recorded by the Runner; copying output by hand is not evidence.
+- A Product may require commands: a `ran: <command>` rule needs the Evidence to show that command with exit code 0 and the pushed head SHA (first 7 characters), run after the last edit.
 - A Product may require, per path rule, tests for changed source, a migration for a changed schema and a row per plan step: `request_review` is refused with the failing lines otherwise.
 
 See `run-contract` for the exit rule.

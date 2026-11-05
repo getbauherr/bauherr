@@ -10,7 +10,7 @@ import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchReviews } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
@@ -145,7 +145,17 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
 export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
   if (t.stage !== 'review' || t.state !== 'open' || t.reviewState || t.waitingFor) return null
   const mr = await prOf(payload, t)
-  return mr?.pr.state === 'open' ? startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review') : null
+  if (mr?.pr.state !== 'open') return null
+  // Review only green heads, whichever path moved the Ticket here (session, autonomous Runner, poller, pull from a full column). A review already under way is left alone.
+  const live = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, overrideAccess: true })
+  if (!live.totalDocs) {
+    const gate = await checksGate(payload, t, mr)
+    if (gate.state !== 'green') {
+      await parkForChecks(payload, t, mr, gate)
+      return null
+    }
+  }
+  return startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review')
 }
 
 /** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
@@ -305,7 +315,10 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
   },
 })
 
-export const watchReviewsTask = watcher('watch-reviews', (p) => watchReviews(p))
+export const watchReviewsTask = watcher('watch-reviews', async (p) => {
+  await watchReviews(p)
+  await watchChecks(p)
+})
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
 export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
 export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
