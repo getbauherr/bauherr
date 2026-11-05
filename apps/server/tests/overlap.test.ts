@@ -210,6 +210,15 @@ describe('the Build hold', () => {
     expect(await reload(bug2.id)).toMatchObject({ stage: 'plan', waitingFor: 'build', waitingReason: `overlaps #${running.n}` })
   })
 
+  it('a feature is held by a later-ranked bug in flight that shares paths, not by one that does not', async () => {
+    const feature = await ticket('a', 'build', ['src/x.ts'], {}, 'none')
+    await ticket('y', 'build', ['docs/y.md'], { bug: true }, 'running')
+    expect(await overlap.holdOverlap(payload, await reload(feature.id))).toBe(false)
+    const bug = await ticket('z', 'build', ['src/x.ts'], { bug: true }, 'running')
+    expect(await overlap.holdOverlap(payload, await reload(feature.id))).toBe(true)
+    expect(await reload(feature.id)).toMatchObject({ waitingFor: 'build', waitingReason: `overlaps #${bug.n}` })
+  })
+
   it('a WIP wait clears a stale overlap reason', async () => {
     await payload.update({ collection: 'workspaces', id: ws, data: { wipLimits: { build: 1 } }, ...o })
     await ticket('a', 'build', ['docs/a.md'])

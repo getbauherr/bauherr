@@ -41,19 +41,19 @@ export const ticketPaths = async (payload: Payload, t: Doc, ignore: string[]): P
 
 const LIVE_RUN = ['queued', 'awaiting_session', 'running']
 const HUMAN_WAIT = ['needs_human', 'failed', 'cancelled']
-const isBug = (t: Doc) => ((t.labels ?? []) as string[]).includes('type:bug')
+const isBug = (t: Doc) => ((t.labels ?? []) as string[]).some((l) => l === 'type:bug' || l === 'urgent')
 
 /** What an earlier Ticket has in flight, or null when it holds nothing: a live Run, or an open MR; a Ticket that waits on a human (its latest Run needs_human, failed or cancelled) holds nothing. `started`: a Run is running or an MR is open, not just queued. */
 const inFlight = async (payload: Payload, e: Doc): Promise<{ started: boolean } | null> => {
-  const [latest] = (await payload.find({ collection: 'runs', where: { ticket: { equals: e.id } }, sort: '-createdAt', limit: 1, ...o })).docs as Doc[]
-  const live = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: e.id } }, { status: { in: LIVE_RUN } }] }, limit: 20, ...o })).docs as Doc[]
-  if (!live.length && latest && HUMAN_WAIT.includes(latest.status)) return null
+  const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: e.id } }, sort: '-createdAt', limit: 50, ...o })).docs as Doc[]
+  const live = runs.filter((r) => LIVE_RUN.includes(r.status))
+  if (!live.length && runs[0] && HUMAN_WAIT.includes(runs[0].status)) return null
   const pr = await prOf(payload, e).catch(() => null)
   if (!live.length && !pr) return null
   return { started: !!pr || live.some((r) => r.status === 'running') }
 }
 
-/** The first open Ticket of `t`'s Product in Build or Review that comes before `t` as a Build, has work in flight and shares a path with it; null when none. A bug goes before a feature that has not started: that feature does not hold it. */
+/** The first open Ticket of `t`'s Product in Build or Review that comes before `t` as a Build, has work in flight and shares a path with it; null when none. A bug goes before a feature that has not started: that feature does not hold it, and a feature is held by any bug in flight, whatever its rank. */
 export const overlappingTicket = async (payload: Payload, t: Doc): Promise<Doc | null> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), select: { overlapIgnore: true }, ...o })) as Doc
   const ignore = (product.overlapIgnore ?? []) as string[]
@@ -61,7 +61,7 @@ export const overlappingTicket = async (payload: Payload, t: Doc): Promise<Doc |
   if (!mine.length) return null
   const me = { id: t.id, number: t.number, rank: t.rank, stage: 'build' }
   const earlier = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(t.product) } }, { state: { equals: 'open' } }, { stage: { in: ['build', 'review'] } }, { id: { not_equals: t.id } }] }, pagination: false, ...o })).docs as Doc[])
-    .filter((e) => e.expedite || executionOrder(e as never, me) < 0)
+    .filter((e) => e.expedite || executionOrder(e as never, me) < 0 || (!isBug(t) && isBug(e)))
     .sort((a, b) => executionOrder(a as never, b as never))
   for (const e of earlier) {
     const flight = await inFlight(payload, e)
