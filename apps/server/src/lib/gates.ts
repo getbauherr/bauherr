@@ -6,7 +6,8 @@ import { type Need, needsYou } from './needs-you'
 import { publicUrl } from './oidc'
 import { startRunIfNeeded } from '../jobs'
 import { holdOverlap } from './overlap'
-import { forgeOf, id } from './release'
+import { cas, forgeOf, id } from './release'
+import { sql } from '@payloadcms/db-postgres'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -95,7 +96,16 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
     complete = mentioned.length > 0 && mentioned.every((l) => assigned.includes(l) || added.includes(l))
     const marker = `<!-- bauherr:gate:${want}:${createHash('sha1').update(`${want}${run?.id ?? ''}`).digest('hex')} -->`
     if (mentioned.length && !(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-      await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${want} — ${publicUrl()}/tickets/${t.id}`)
+      // Parallel watcher passes would all see "no Comment yet": one conditional UPDATE decides who posts; a forge error releases the claim so the next pass retries.
+      const claim = marker
+      if (await cas(payload, t.id, sql`"gate_notice_claim" = ${claim}`, sql`"gate_notice_claim" IS DISTINCT FROM ${claim}`)) {
+        try {
+          await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${t.expedite ? 'Hotfix, ' : ''}${want} — ${publicUrl()}/tickets/${t.id}`)
+        } catch (e) {
+          await cas(payload, t.id, sql`"gate_notice_claim" = NULL`, sql`"gate_notice_claim" = ${claim}`)
+          throw e
+        }
+      }
     }
   }
   const notified = complete ? want : null
@@ -117,8 +127,8 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
 }
 
 /** Syncs the gate of every open Ticket and of closed ones still holding one; a failing Ticket does not stop the others. */
-export const syncGates = async (payload: Payload): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }] }, pagination: false, ...o })).docs as Doc[]
+export const syncGates = async (payload: Payload, expediteOnly = false): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', sort: '-expedite', where: { and: [...(expediteOnly ? [{ expedite: { equals: true } }] : []), { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }] }] }, pagination: false, ...o })).docs as Doc[]
   if (!tickets.length) return 0
   const latest = new Map<number, Doc>()
   for (const r of (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]) {

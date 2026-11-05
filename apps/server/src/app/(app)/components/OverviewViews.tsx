@@ -39,7 +39,7 @@ export function BoardView({ tickets, showProduct, admin, wip }: { tickets: Ticke
     <>
     <div className="board flex items-start gap-4 overflow-x-auto">
       {BOARD_STAGES.map((s) => {
-        const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0 })), latest)
+        const rows = frontierOrder(tickets.filter((t) => t.stage === s).map((t) => ({ ...t, blocked: t.blockedBy.length > 0, expediting: t.expedite })), latest)
         return (
           <Card key={s} asChild className="col flex-none basis-[260px] p-3">
           <section data-stage={s}>
@@ -54,9 +54,11 @@ export function BoardView({ tickets, showProduct, admin, wip }: { tickets: Ticke
                     id: t.id,
                     movable: t.open,
                     running: activity(t) !== null,
+                    hotfix: t.expedite,
                     node: (
                       <>
                         {title(t)}
+                        {t.expedite && <span className="label text-destructive" data-hotfix>Hotfix</span>}
                         {t.needsYou ? <Needs t={t} /> : st && <Status s={st} />}
                         <EpicTag t={t} />
                         {t.product && showsProduct(t, st !== null, showProduct) && <span className="small text-muted-foreground">{t.product.name}</span>}

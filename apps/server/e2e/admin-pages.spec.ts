@@ -73,6 +73,7 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('heading', { name: 'Factory health' })).toBeVisible()
   await expect(page.getByText('Last poll, acme/web')).toBeVisible()
   await expect(page.getByText('Gateway budget')).toBeVisible()
+  await expect(page.getByRole('row', { name: /Expedite lead time \(last 5\)/ })).toContainText('12 min from flag to merge')
   await expect(page.getByRole('heading', { name: 'Flaky checks' })).toBeVisible()
   await expect(page.getByRole('row', { name: /^e2e 2 / })).toBeVisible()
   await expect(page.getByRole('row', { name: /^lint 1 / })).toBeVisible()

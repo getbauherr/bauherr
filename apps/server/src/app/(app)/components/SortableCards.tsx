@@ -10,7 +10,7 @@ const before = "before:pointer-events-none before:absolute before:inset-x-0 befo
 const after = "after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-2 after:h-0.5 after:rounded-[1px] after:bg-primary after:content-['']"
 const stripe = 'border-primary [background:linear-gradient(var(--accent),var(--accent))_left_top/3px_40%_no-repeat,var(--surface-000)] animate-stripe motion-reduce:animate-none motion-reduce:[background-size:3px_100%]'
 
-type Item = { id: number; node: ReactNode; movable: boolean; running?: boolean }
+type Item = { id: number; node: ReactNode; movable: boolean; running?: boolean; hotfix?: boolean }
 
 const move = <T,>(xs: T[], from: number, to: number): T[] => {
   const out = [...xs]
@@ -72,12 +72,14 @@ export function SortableCards({ items }: { items: Item[] }) {
           'card group relative items-start gap-1 bg-background p-3',
           it.movable && 'cursor-grab',
           it.running && stripe,
+          it.hotfix && 'border-destructive',
           drag === it.id && 'opacity-50',
           drop === i && (from > i ? before : after),
         )}
         data-drop={drop === i ? (from > i ? 'before' : 'after') : undefined}
         data-ticket={it.id}
         data-running={it.running || undefined}
+        data-lane={it.hotfix ? 'hotfix' : undefined}
         {...(it.movable && {
           draggable: true,
           tabIndex: 0,

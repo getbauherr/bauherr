@@ -311,6 +311,7 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
   concurrency: () => slug,
   handler: async ({ req }) => {
     await run(req.payload)
+    await syncGates(req.payload, true) // a Hotfix's gate notice goes out in the same pass, not on the next sweep
     return { output: {} }
   },
 })
@@ -474,6 +475,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             triageAttempts: 0,
             gatePendingAttempts: 0,
             expedite: lane && t.labels.includes(EXPEDITE_LABEL),
+            expediteAt: undefined as string | undefined,
           }
           if (!lane && t.labels.includes(EXPEDITE_LABEL)) await noteIgnored(payload, backendFor(conn).tickets(src.repo), t.number)
           let labels = t.labels
@@ -485,6 +487,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             base.expedite = lane && labels.includes(EXPEDITE_LABEL)
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
+          if (base.expedite && !prev?.expediteAt) base.expediteAt = new Date().toISOString()
           let stage = stageOf(labels)
           if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== 'triage' || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
             stage = prev.stage
