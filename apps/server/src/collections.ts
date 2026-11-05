@@ -352,7 +352,7 @@ const tickets = col('tickets', [
   { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
-  select('waitingFor', ['plan', 'build', 'review'], { admin: { description: 'The full column this Ticket waits to enter from an earlier column; never its own stage. It stays ready in its column and has no Run.' } }),
+  select('waitingFor', ['plan', 'build', 'review', 'checks'], { admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
   date('expediteAt'),
   text('gateNoticeClaim'),
   { name: 'expedite', type: 'checkbox', defaultValue: false, admin: { description: 'Carries the bauherr:expedite label while the Workspace has the Expedite lane on: skips Triage, bypasses WIP and the overlap hold, no plan gate.' } },
