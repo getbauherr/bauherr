@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
+import type { NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
 import { FormPending, NextStepBar, type NextStepPrimary } from './NextStepBar'
@@ -19,8 +20,8 @@ type Props = {
   run: number | null
   /** Why the factory stopped (Run error or escalation Comment), part of the sentence. */
   reason?: string | null
-  /** The bar's sentence when nothing is asked of the owner. */
-  idle: string
+  /** The disabled step shown when it is not the owner's turn: its reason is the bar's sentence and the button's tooltip. */
+  idle: NextStep
   /** Workflow run of a failed release. */
   releaseRunUrl?: string | null
   /** The Product's staging site, linked next to Accept. */
@@ -76,7 +77,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   })()
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
-    <NextStepBar sentence={gate ? gate.sentence(ctx) : idle} primary={step.primary}>
+    <NextStepBar sentence={gate ? gate.sentence(ctx) : idle.href ? <a className="text-primary" href={idle.href}>{idle.reason}</a> : idle.reason} primary={step.primary ?? (need ? undefined : { label: idle.label, disabled: true, reason: idle.reason })}>
       {(gate || canExpedite) && (
         <>
           {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
