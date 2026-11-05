@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { give, PNG } from './paste'
+import { email } from './user'
 
-const email = process.env.E2E_EMAIL!
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 and INTAKE_FAKE=1 (set E2E_FAKE_FORGE=1 here)')

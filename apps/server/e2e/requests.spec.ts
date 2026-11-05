@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
+const email = 'draft-owner@example.com' // owns the seeded Draft (seed-e2e.ts)
+
+test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 test('Requests list shows Draft and Sent rows with plain wording and Ticket links', async ({ page }) => {
   await page.goto('/')

@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { email } from './user'
 
-const email = process.env.E2E_EMAIL!
 const shots = process.env.SHOTS_DIR
 const forced = !process.env.E2E_GATED_PACK // the default pack turns the production approval on for every Product
 
