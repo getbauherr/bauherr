@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, Where } from 'payload'
 import { ACTIVE, startReviewIfReady, startRunIfNeeded, triageable } from '../jobs'
 import { sendBackToBuild, ticketsOf } from './actions'
+import { resumeInvestigations, startInvestigation } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
@@ -83,11 +84,11 @@ const record = async (payload: Payload, d: Dead, what: string): Promise<true> =>
   return true
 }
 
-/** The Run's own Run chain says a successor already failed the same stage: a second failure is the owner's decision. */
-const failedTwice = async (payload: Payload, run: Doc): Promise<boolean> => {
-  if (!run.previousRun) return false
+/** The Run's own Run chain says a successor already failed the same stage: the earlier failed Run, else null. */
+const failedTwice = async (payload: Payload, run: Doc): Promise<Doc | null> => {
+  if (!run.previousRun) return null
   const prev = await payload.findByID({ collection: 'runs', id: id(run.previousRun), ...o }).catch(() => null)
-  return !!prev && prev.stage === run.stage && ['failed', 'abandoned'].includes(prev.status)
+  return prev && prev.stage === run.stage && ['failed', 'abandoned'].includes(prev.status) ? prev : null
 }
 
 /** Repairs one dead Ticket by its cause; returns whether it acted. The marker Comment is written only after the repair succeeded. */
@@ -97,8 +98,11 @@ export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
   switch (d.cause) {
     case 'run-failed':
     case 'run-abandoned': {
-      if (!d.run || (await failedTwice(payload, d.run))) return false
-      const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, d.run.stage)
+      if (!d.run) return false
+      const prev = await failedTwice(payload, d.run)
+      // A second Build failure goes back for investigation; any other stage, and a Ticket past its investigations, stays with the owner.
+      if (prev) return d.run.stage === 'build' && (await startInvestigation(payload, t, [prev, d.run])) && record(payload, d, 'Failed twice: back to Plan for investigation.')
+      const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, d.run.stage, d.run.investigation ? { investigation: d.run.investigation } : {})
       if (!created) return false
       await payload.update({ collection: 'runs', id: run.id, data: { previousRun: d.run.id }, ...o })
       return record(payload, d, `Started one new ${d.run.stage} Run.`)
@@ -131,7 +135,7 @@ export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
 
 /** One watchdog pass: repairs every dead Ticket whose cause the factory can fix itself. Returns how many it repaired. */
 export const sweepLiveness = async (payload: Payload): Promise<number> => {
-  let repaired = 0
+  let repaired = await resumeInvestigations(payload)
   for (const d of await deadTickets(payload)) {
     if (!REPAIRED.includes(d.cause)) continue
     try {

@@ -22,6 +22,8 @@ export type RunRow = {
   finishedAt: string | null
   costUsd: number | null
   createdAt: string
+  /** Set on an investigation Plan Run. */
+  investigation?: unknown
 }
 export type TicketRow = {
   id: number

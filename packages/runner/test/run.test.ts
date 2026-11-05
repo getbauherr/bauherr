@@ -159,3 +159,39 @@ test('runStage build: a base that moved past the shallow fetch still diffs again
     await gw.close();
   }
 });
+
+/** An investigation Plan Run whose scripted agent runs `command` in the clone (the Stop hook needs the Goal verified, so each script writes goal.json too). */
+const investigationRun = async (files: { investigation?: string; plan?: string }) => {
+  const goal = `printf '%s' '[{"text":"g","status":"verified","evidence":"e"}]' > .bauherr/goal.json`;
+  const put = (name: string, body: string) => `printf '%s' '${body}' > ${name}`;
+  const command = [goal, ...(files.investigation === undefined ? [] : [put('.bauherr/investigation.json', files.investigation)]), ...(files.plan === undefined ? [] : [put('.bauherr/plan.md', files.plan)])].join(' && ');
+  const gw = await startStubGateway('done', 0, false, () => ({ name: 'Bash', input: { command, description: 'write the investigation files' } }));
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'plan' });
+  ctx.ticket.investigation = '<!-- bauherr:investigation -->\nFailed build Runs: #1, #2';
+  try {
+    return { res: await runStage(ctx), ctx };
+  } finally {
+    await gw.close();
+  }
+};
+
+test('runStage investigation: no investigation.json fails the Run', { timeout: 120_000 }, async () => {
+  const { res, ctx } = await investigationRun({});
+  assert.equal(res.status, 'failed', JSON.stringify({ res, logs: ctx.logs }));
+  assert.match(res.reason ?? '', /wrote no \.bauherr\/investigation\.json/);
+  assert.equal(ctx.comments.length, 0);
+});
+
+test('runStage investigation: invalid JSON fails the Run', { timeout: 120_000 }, async () => {
+  const { res, ctx } = await investigationRun({ investigation: 'not json' });
+  assert.equal(res.status, 'failed', JSON.stringify({ res, logs: ctx.logs }));
+  assert.match(res.reason ?? '', /is not valid JSON/);
+});
+
+test('runStage investigation: a fix-ticket file needs no plan.md and ends succeeded with the decision as an artifact', { timeout: 120_000 }, async () => {
+  const investigation = { cause: 'cap too low', decision: 'fix-ticket', fix: { title: 'Raise the cap', body: 'b' } };
+  const { res, ctx } = await investigationRun({ investigation: JSON.stringify(investigation) });
+  assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+  assert.deepEqual(res.artifacts.investigation, investigation);
+  assert.equal(ctx.comments.length, 0, 'no plan Comment is posted');
+});

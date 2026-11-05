@@ -171,7 +171,7 @@ it('review-escalated (MR open, checks not red): not repaired, shown as "Needs yo
   expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('try the other approach')
 })
 
-it('run-failed: one successor Run; the second failure in a row stays a need', async () => {
+it('run-failed: one successor Run; the second failure in a row goes back for investigation', async () => {
   const { id, n } = await seed('build', { runs: [{ stage: 'build', status: 'failed', error: 'boom' }] })
   expect(await causeOf(id)).toBe('run-failed')
   await liveness.sweepLiveness(payload)
@@ -184,7 +184,8 @@ it('run-failed: one successor Run; the second failure in a row stays a need', as
   await payload.update({ collection: 'runs', id: successor!.id, data: { status: 'failed', error: 'boom again' }, ...o })
   await liveness.sweepLiveness(payload)
   expect(await runs(id, 'build')).toHaveLength(2)
-  expect(await causeOf(id)).toBe('run-failed')
+  expect(await reload(id)).toMatchObject({ stage: 'plan', waitingReason: 'failed twice: investigate' })
+  expect((await runs(id, 'plan'))[0]!.investigation).toEqual({ failedRuns: [failed!.id, successor!.id], stage: 'build' })
   expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'failed' })).toBe('Run failed')
 })
 

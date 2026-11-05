@@ -4,7 +4,7 @@ import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } fr
 import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, GOAL_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, GOAL_FILE, INVESTIGATION_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, planStepCount, preReviewChecks } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
@@ -25,6 +25,9 @@ export const PLAN_MARKER = '<!-- bauherr:plan -->';
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
 /** Agent-verifiable Goal of a Plan Run; the Ticket's own Goal moves into the worklog. */
 const PLAN_GOAL = [`\`${PLAN_FILE}\` exists with the sections \`## Goal\` and \`## Steps\``, 'every Ticket acceptance criterion is covered by a step under `## Steps`'];
+
+/** Agent-verifiable Goal of an investigation Plan Run. */
+const INVESTIGATION_GOAL = [`\`${INVESTIGATION_FILE}\` exists with the cause and one decision (revise, fix-ticket or needs-human)`];
 
 /** Agent-verifiable Goal of a Triage Run. */
 const TRIAGE_GOAL = [`\`${TRIAGE_FILE}\` exists with an outcome (plan, refine or skip) and a reason`];
@@ -95,7 +98,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       artifacts.mergeConflict = true;
     }
-    const fixedGoal = ctx.run.stage === 'plan' ? PLAN_GOAL : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
+    const fixedGoal = ctx.run.stage === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.stage === 'review') {
@@ -139,6 +142,16 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       return finish('succeeded');
     }
     if (ctx.run.stage === 'plan') {
+      if (ctx.ticket.investigation) {
+        const file = join(clone.dir, INVESTIGATION_FILE);
+        if (!existsSync(file)) return finish('failed', `investigation run wrote no ${INVESTIGATION_FILE}`);
+        try {
+          artifacts.investigation = JSON.parse(readFileSync(file, 'utf8'));
+        } catch {
+          return finish('failed', `${INVESTIGATION_FILE} is not valid JSON`);
+        }
+        if ((artifacts.investigation as { decision?: string }).decision !== 'revise') return finish('succeeded');
+      }
       const planFile = join(clone.dir, PLAN_FILE);
       const plan = existsSync(planFile) ? readFileSync(planFile, 'utf8').replace(PLAN_MARKER, '').trim() : '';
       if (!/^##\s+Goal\s*$/m.test(plan) || !/^##\s+Steps\s*$/m.test(plan)) return finish('failed', `plan run wrote no ${PLAN_FILE} with sections Goal and Steps`);

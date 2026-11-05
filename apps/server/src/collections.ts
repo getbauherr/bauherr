@@ -464,6 +464,7 @@ export const collections: CollectionConfig[] = [
     text('lastSeenSha'),
     text('leaseHash', { hidden: true }),
     rel('previousRun', 'runs'),
+    { name: 'investigation', type: 'json', admin: { description: 'Set only on an investigation Plan Run: { failedRuns: number[], stage }. The Run runs on the strong tier.' } },
     text('evidence'),
     json('goal'),
     select('verdict', ['clean', 'changes']),
