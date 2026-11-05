@@ -3,7 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
-import { oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
+import { ACCOUNT_LOCKED, accountLocked, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
 
@@ -54,6 +54,16 @@ const bauherren: CollectionConfig = {
     update: ({ req }) => (req.user?.role === 'admin' ? true : { id: { equals: req.user?.id } }),
   },
   hooks: {
+    // Payload's built-in API-key strategy ignores lockUntil: refuse the lookup while the request is still unauthenticated.
+    afterRead: [
+      async ({ doc, req }) => {
+        if (!req.user && req.headers?.get?.('authorization')?.startsWith('bauherren API-Key ') && (await accountLocked(req.payload, doc.id))) {
+          lockedRequests.add(req.headers)
+          throw new Error(ACCOUNT_LOCKED)
+        }
+        return doc
+      },
+    ],
     beforeChange: [
       async ({ data, operation, req }) => {
         if (operation === 'create' && !req.context.oidc && (await req.payload.count({ collection: 'bauherren' })).totalDocs === 0) {
