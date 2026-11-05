@@ -13,7 +13,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
   return (
     <>
       <TopBar user={user} workspaces={workspaces} workspace={workspace} needsYou={needsYou} drafts={drafts} hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)} />
-      <main className="flex flex-col gap-6 p-8 max-sm:p-4 max-sm:has-[[data-testid=action-bar]]:pb-[calc(132px+var(--space-4))]">{children}</main>
+      <main className="flex flex-col gap-6 p-8 max-sm:p-4 max-sm:has-[[data-testid=action-bar]]:pb-[calc(var(--next-step-h,132px)+var(--space-4))]">{children}</main>
       <footer className="small muted p-8 pt-0 max-sm:p-4">
         <Link href="/release-notes" data-testid="app-version">v{appVersion()}</Link>
       </footer>

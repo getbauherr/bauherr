@@ -46,7 +46,14 @@ test('Run page: timeline, list, collapsed details, re-run; an owner sees only th
   await rows.filter({ hasText: 'Waiting for you' }).filter({ hasText: 'Recover the stalled import' }).getByRole('link').first().click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   const needsHuman = page.url()
-  await page.getByRole('button', { name: 'Re-run stage' }).click()
+  const bar = page.getByRole('region', { name: 'Next step' })
+  await expect(page.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  const last = (await page.locator('main > :last-child').boundingBox())!
+  expect(last.y + last.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await bar.getByRole('button', { name: 'Re-run stage' }).click()
   await page.getByRole('button', { name: /Confirm re-run/ }).click()
   await expect(page.getByText('A Run is already active for this stage').or(page.getByText(/^(Queued|Waiting for you|Waiting for a session)$/).first())).toBeVisible()
 

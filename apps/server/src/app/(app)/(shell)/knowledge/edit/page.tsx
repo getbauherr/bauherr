@@ -16,7 +16,6 @@ export default async function EditKnowledge({ searchParams }: { searchParams: Pr
     return (
       <>
         <h2 className="heading">Edit {title(path, /^#\s+(.+)$/m.exec(doc.content)?.[1])}</h2>
-        <p className="small text-muted-foreground">Your change is checked and published automatically.</p>
         <KnowledgeEditor path={path} content={doc.content} sha={doc.sha} />
       </>
     )

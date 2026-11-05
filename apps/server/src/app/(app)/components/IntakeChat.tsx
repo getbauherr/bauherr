@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { discardIntake } from '../lib/actions'
 import { makeIntakeAdapter, toMessages, type Turn } from './chat/intake-adapter'
 import { ChatThread } from './chat/thread'
+import { NextStepBar } from './NextStepBar'
 import { Button } from './ui/button'
 
 type Line = { who: 'you' | 'bauherr'; text: string }
@@ -111,7 +112,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
           }
         }} />}
         {error && <p className="err" role="alert">{error}</p>}
-        {turn && (turn.ready || turn.exhausted) && <div><button type="button" className="btn primary" disabled={busy} onClick={submit}>{turn.split ? `Create ${turn.split.length} tickets` : 'Submit request'}</button></div>}
+        <NextStepBar sentence="Describe the change, then send it" primary={turn && (turn.ready || turn.exhausted) ? { label: turn.split ? `Create ${turn.split.length} tickets` : 'Submit request', disabled: busy, onClick: submit } : undefined} />
       </div>
       {draft?.problem && (
         <aside className="card-lg stack" aria-label="Draft">
