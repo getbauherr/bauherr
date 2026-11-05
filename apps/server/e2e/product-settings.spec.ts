@@ -15,24 +15,26 @@ const signIn = async (page: Page) => {
   await expect(page.locator('header.topbar')).toBeVisible()
 }
 
-const confirmRemove = async (scope: Locator, label: string, done: () => Promise<void>) => {
+const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
   // matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one; hydration can close the <details> again, so it is opened on every attempt
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
+  const holds = (timeout: number) => done(timeout).then(() => true, () => false)
   await expect(async () => {
+    if (await holds(500)) return
     await scope.locator('details.advanced').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
     if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
     await confirm.click({ timeout: 2_000, noWaitAfter: true })
-    await done()
-  }).toPass({ timeout: 30_000 })
+    await done(8_000)
+  }).toPass({ timeout: 40_000 })
 }
 
 /** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
 const deleteProduct = async (page: Page) => {
   const repository = page.locator('#repository')
   for (const label of ['Stop reading tickets', 'Remove repository']) {
-    await confirmRemove(repository, label, () => expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: 4_000 }))
+    await confirmRemove(repository, label, (t) => expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: t }))
   }
-  await confirmRemove(page.locator('#danger'), 'Delete Product', () => expect(page).toHaveURL(/\/settings\/products$/, { timeout: 4_000 }))
+  await confirmRemove(page.locator('#danger'), 'Delete Product', (t) => expect(page).toHaveURL(/\/settings\/products$/, { timeout: t }))
 }
 
 test('list, Product page, save, validation and the single Delete section', async ({ page }) => {
