@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -69,8 +70,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(row.getByLabel('Role')).toBeVisible()
   await row.getByText('Edit', { exact: true }).click()
 
-  await row.getByRole('button', { name: 'Remove' }).click()
-  await row.getByRole('button', { name: 'Confirm remove' }).click()
+  await confirmClick(row.getByRole('button', { name: 'Remove' }), row.getByRole('button', { name: 'Confirm remove' }))
   await expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0)
 
   await nav.getByRole('link', { name: 'General' }).click()

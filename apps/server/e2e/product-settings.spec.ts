@@ -15,11 +15,10 @@ const signIn = async (page: Page) => {
   await expect(page.locator('header.topbar')).toBeVisible()
 }
 
-/** Arms a ConfirmButton (the first click turns "label" into "Confirm remove") and clicks the confirm. A click before hydration does nothing, so the arming click repeats until the confirm shows; matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one. */
 const confirmRemove = async (scope: Locator, label: string) => {
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
+  // matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one; hydration can close the <details> again, so it is opened on every attempt
   await expect(async () => {
-    // hydration can close the <details> again, so it is opened on every attempt
     await scope.locator('details.advanced').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
     if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
     await confirm.click({ timeout: 2_000 })
