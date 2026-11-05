@@ -19,10 +19,10 @@ export const rankBetween = (a: string | null, b: string | null): string => {
   }
 }
 
-export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean; reviewRounds?: number | null }
+export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean; expediting?: boolean; reviewRounds?: number | null }
 export type FrontierRun = { stage: string; status: string; mode?: string; previousRun?: unknown }
 
-/** Right to left (release, review, build, plan, triage), then the owner's rank, then number; blocked and leased Tickets last. Pure; `latest` maps Ticket id to its latest Run. */
+/** Expedite first, then right to left (release, review, build, plan, triage), then the owner's rank, then number; blocked and leased Tickets last. Pure; `latest` maps Ticket id to its latest Run. */
 export const frontierOrder = <T extends FrontierTicket>(tickets: T[], latest: Map<T['id'], FrontierRun>): T[] => {
   const parked = (t: T) => t.blocked || (latest.get(t.id)?.status === 'running' && latest.get(t.id)?.mode === 'session')
   return [...tickets].sort((a, b) => Number(!!parked(a)) - Number(!!parked(b)) || executionOrder(a, b))
@@ -39,5 +39,5 @@ export const stageGroup = (stage?: string | null): number => {
   return i < 0 ? EXECUTION_STAGES.length : i
 }
 
-/** Comparator for the order work is done in: stage group, then the owner's rank, then number. */
-export const executionOrder = (a: FrontierTicket, b: FrontierTicket): number => stageGroup(a.stage) - stageGroup(b.stage) || cmp(a.rank, b.rank) || a.number - b.number
+/** Comparator for the order work is done in: Tickets served by the expedite lane first, then stage group, the owner's rank, number. */
+export const executionOrder = (a: FrontierTicket, b: FrontierTicket): number => Number(!!b.expediting) - Number(!!a.expediting) || stageGroup(a.stage) - stageGroup(b.stage) || cmp(a.rank, b.rank) || a.number - b.number
