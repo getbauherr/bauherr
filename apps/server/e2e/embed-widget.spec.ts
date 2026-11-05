@@ -51,7 +51,7 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   await expect(host.getByRole('status')).toContainText('your request #')
 
   await page.reload()
-  await confirmClick(product.getByRole('row', { name }).getByRole('button', { name: 'Revoke' }), product.getByRole('button', { name: 'Confirm revoke' }))
+  await confirmClick(product.getByRole('row', { name }).getByRole('button', { name: 'Revoke' }), product.getByRole('button', { name: 'Confirm revoke' }), () => expect(product.getByRole('button', { name: 'Confirm revoke' })).toHaveCount(0, { timeout: 4_000 }))
   await expect(product.getByRole('row', { name })).toHaveCount(0)
   await product.getByText('Advanced', { exact: true }).click()
   const row = product.getByRole('row', { name })

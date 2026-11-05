@@ -70,7 +70,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(row.getByLabel('Role')).toBeVisible()
   await row.getByText('Edit', { exact: true }).click()
 
-  await confirmClick(row.getByRole('button', { name: 'Remove' }), row.getByRole('button', { name: 'Confirm remove' }))
+  await confirmClick(row.getByRole('button', { name: 'Remove' }), row.getByRole('button', { name: 'Confirm remove' }), () => expect(row.getByRole('button', { name: 'Confirm remove' })).toHaveCount(0, { timeout: 4_000 }))
   await expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0)
 
   await nav.getByRole('link', { name: 'General' }).click()

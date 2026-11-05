@@ -54,7 +54,7 @@ test('Run page: timeline, list, collapsed details, re-run; an owner sees only th
   const last = (await page.locator('main > :last-child').boundingBox())!
   expect(last.y + last.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
   await page.setViewportSize({ width: 1280, height: 800 })
-  await confirmClick(bar.getByRole('button', { name: 'Re-run stage' }), page.getByRole('button', { name: /Confirm re-run/ }))
+  await confirmClick(bar.getByRole('button', { name: 'Re-run stage' }), page.getByRole('button', { name: /Confirm re-run/ }), () => expect(page.getByRole('button', { name: /Confirm re-run/ })).toHaveCount(0, { timeout: 4_000 }))
   await expect(page.getByText('A Run is already active for this stage').or(page.getByText(/^(Queued|Waiting for you|Waiting for a session)$/).first())).toBeVisible()
 
   const owner = await (await browser.newContext()).newPage()
