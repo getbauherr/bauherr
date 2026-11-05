@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { email } from './user'
 
-const email = process.env.E2E_EMAIL!
 const shots = process.env.SHOTS_DIR
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 

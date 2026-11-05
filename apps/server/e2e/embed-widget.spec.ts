@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { give, PNG } from './paste'
+import { email } from './user'
+import { confirmClick } from './confirm'
 
-const email = process.env.E2E_EMAIL!
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 and INTAKE_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
@@ -50,8 +51,7 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   await expect(host.getByRole('status')).toContainText('your request #')
 
   await page.reload()
-  await product.getByRole('row', { name }).getByRole('button', { name: 'Revoke' }).click()
-  await product.getByRole('button', { name: 'Confirm revoke' }).click()
+  await confirmClick(product.getByRole('row', { name }).getByRole('button', { name: 'Revoke' }), product.getByRole('button', { name: 'Confirm revoke' }), (t) => expect(product.getByRole('row', { name })).toHaveCount(0, { timeout: t }))
   await expect(product.getByRole('row', { name })).toHaveCount(0)
   await product.getByText('Advanced', { exact: true }).click()
   const row = product.getByRole('row', { name })
