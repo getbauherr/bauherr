@@ -144,10 +144,6 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           specs=$(git diff --name-only --diff-filter=AMR "origin/$BASE_REF...HEAD" -- 'apps/server/e2e/*.spec.ts' | sed 's#^apps/server/##' | tr '\n' ' ')
-          # zz-owner-chat.spec.ts depends on ticket.spec.ts (#327): burn them in together until that is gone
-          case " $specs " in
-            *" e2e/ticket.spec.ts "*|*" e2e/zz-owner-chat.spec.ts "*) specs="$specs e2e/ticket.spec.ts e2e/zz-owner-chat.spec.ts" ;;
-          esac
           specs=$(printf '%s\n' $specs | sort -u | tr '\n' ' ')
           echo "CHANGED_SPECS=${specs% }" >> "$GITHUB_ENV"
       - run: corepack enable

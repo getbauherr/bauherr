@@ -94,6 +94,12 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Pick the export columns', labels: ['bauherr:stage:plan'] })
   void ts.comment('22', PLAN)
   void ts.comment('22', WORKLOG)
+  // #23 is the triage spec's own Ticket (held by Triage with questions), #24 the plan-approval test's own Ticket (two open decisions).
+  void ts.create({ title: 'Settle the export format', labels: ['bauherr:needs-refinement'] })
+  void ts.comment('23', QUESTIONS)
+  void ts.create({ title: 'Add a light theme to the dashboard', labels: ['bauherr:stage:plan'] })
+  void ts.comment('24', PLAN)
+  void ts.comment('24', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))

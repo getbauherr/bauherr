@@ -264,7 +264,7 @@ export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: 
 export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
   const base = packed()
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true }, ...o } as never)) as Doc
+  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true, expediteLane: true }, ...o } as never)) as Doc
   const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
   const where = { workspace: { equals: workspace } }
   const [products, versions] = await Promise.all([
@@ -283,6 +283,7 @@ export async function loadWorkflow(workspace: number) {
   return {
     stages,
     wip,
+    expediteLane: ws.expediteLane !== false,
     overlap,
     gates: humanGates(),
     ladder: { plan: gateOn('plan'), staging: gateOn('release'), production: productionGateOn() },

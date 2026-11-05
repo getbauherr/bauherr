@@ -116,7 +116,7 @@ export const loadOverview = cache(async (workspace: number, all: boolean): Promi
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds }, run) : null,
+      needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason) : null,
       overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,

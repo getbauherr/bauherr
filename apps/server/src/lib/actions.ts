@@ -2,8 +2,9 @@ import { APPROVED_PLAN, type TicketSource, MergePendingError, stageLabel, stageO
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
+import { laneOn } from './expedite'
 import { gateOn } from './mode'
-import { MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
+import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
 import { decrypt } from './secrets'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
@@ -327,6 +328,19 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
   return { approved: APPROVED_PLAN }
 }
 
+/** The Expedite action: puts the `bauherr:expedite` label on the Ticket (and drops Triage's proposal); the poller turns it into `expedite`. */
+export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (t.state === 'closed' || ['release', 'done', PARENT].includes(t.stage)) throw new Error('the Ticket is past the stages the Expedite lane serves')
+  if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Workflow')
+  const { ts, n } = await sourceOf(payload, t)
+  await touch(payload, user, t, 'expedite') // before the label: a poll in between must find the touch that vouches for it
+  await ts.addLabels(n, [EXPEDITE_LABEL])
+  if (((t.labels ?? []) as string[]).includes(EXPEDITE_PROPOSED)) await ts.removeLabels(n, [EXPEDITE_PROPOSED])
+  return { labelled: EXPEDITE_LABEL }
+}
+
 /** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
 export const lastRankAfter = async (payload: Payload, workspace: number | string): Promise<string> => {
   const r = await payload.db.drizzle.execute(sql`SELECT "rank" FROM "tickets" WHERE "workspace_id" = ${workspace} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C" DESC LIMIT 1`)
@@ -368,7 +382,7 @@ const covered = async (ts: TicketSource, n: string) => {
  * An unanswered critical decision puts the Ticket back on the refine hold instead (answering re-plans); otherwise it goes to `build` (or `parent`, its Sub-tickets going straight to Build).
  */
 export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | 'parent' | 'refine' | null> => {
-  if (gateOn('plan') || t.stage !== 'plan' || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
+  if ((gateOn('plan') && !t.expedite) || t.stage !== 'plan' || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
   const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
   if (run?.stage !== 'plan' || run.status !== 'succeeded') return null
   const { ts, n } = await sourceOf(payload, t)
@@ -395,7 +409,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
     if (entered !== 'moved') return null
     if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
   }
-  await ts.comment(n, 'Plan accepted automatically (plan gate off).')
+  await ts.comment(n, gateOn('plan') ? 'Plan accepted automatically (expedite).' : 'Plan accepted automatically (plan gate off).')
   return parent ? 'parent' : 'build'
 }
 
@@ -1038,7 +1052,8 @@ export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<
   return resumed
 }
 
-export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[] }
+/** `expedite`: Triage proposes the expedite lane (production down, factory blocked); a human decides. */
+export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[]; expedite?: true }
 export const MAX_QUESTIONS = 10
 
 /** One line without the characters the decision-sheet parser treats as structure. */
@@ -1054,7 +1069,7 @@ export const normalizeTriage = (raw: any): Triage => {
     if (!title || !def) throw new Error(`question ${i} needs a title and a default`)
     return { title, default: def, alternatives: (Array.isArray(q.alternatives) ? q.alternatives : []).map((a: unknown) => plain(a, 300)).filter(Boolean).slice(0, 5) }
   })
-  return { outcome: raw.outcome, reason: plain(raw.reason, 1000), questions }
+  return { outcome: raw.outcome, reason: plain(raw.reason, 1000), questions, ...(raw.expedite === true && { expedite: true as const }) }
 }
 
 /** The questions as a decision sheet in the plan's format; every row is critical, so the owner answers all of them. */
@@ -1070,7 +1085,9 @@ export const triageSheet = (t: Triage): string =>
 export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage): Promise<{ outcome: Triage['outcome'] | 'noop' }> => {
   const doc = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
   const { ts, n } = await sourceOf(payload, doc)
-  if (stageOf((await ts.get(n)).labels)) return { outcome: 'noop' }
+  const current = (await ts.get(n)).labels
+  if (stageOf(current)) return { outcome: 'noop' }
+  if (t.expedite && !current.includes(EXPEDITE_LABEL) && (await laneOn(payload, id(doc.workspace)))) await ts.addLabels(n, [EXPEDITE_PROPOSED])
   if (t.outcome === 'plan') {
     const entered = await enterStage(payload, doc, 'plan', async () => {
       await moveStage(payload, ts, doc, 'plan')

@@ -2,6 +2,7 @@ import type { Forge } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, latestWith, planFiles } from '../app/(app)/lib/plan'
 import { executionOrder } from './frontier'
+import { isExpediting } from './expedite'
 import { forgeOf, id, prOf } from './release'
 
 type Doc = Record<string, any>
@@ -46,7 +47,7 @@ export const overlappingTicket = async (payload: Payload, t: Doc): Promise<Doc |
   if (!mine.length) return null
   const me = { id: t.id, number: t.number, rank: t.rank, stage: 'build' }
   const earlier = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(t.product) } }, { state: { equals: 'open' } }, { stage: { in: ['build', 'review'] } }, { id: { not_equals: t.id } }] }, pagination: false, ...o })).docs as Doc[])
-    .filter((e) => executionOrder(e as never, me) < 0)
+    .filter((e) => e.expedite || executionOrder(e as never, me) < 0)
     .sort((a, b) => executionOrder(a as never, b as never))
   for (const e of earlier) {
     const theirs = await ticketPaths(payload, e, ignore)
@@ -55,8 +56,9 @@ export const overlappingTicket = async (payload: Payload, t: Doc): Promise<Doc |
   return null
 }
 
-/** The Build hold: when an earlier Ticket overlaps, marks `t` as waiting for Build with "overlaps #N" and returns true; else false (the caller clears the mark on entry). */
+/** The Build hold (never for an expedite Ticket, which holds later overlapping Tickets instead): when an earlier Ticket overlaps, marks `t` as waiting for Build with "overlaps #N" and returns true; else false (the caller clears the mark on entry). */
 export const holdOverlap = async (payload: Payload, t: Doc): Promise<boolean> => {
+  if (await isExpediting(payload, t)) return false
   const other = await overlappingTicket(payload, t)
   if (!other) return false
   const waitingReason = `overlaps #${other.number}`

@@ -10,7 +10,8 @@ import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchReviews, checksGate, parkForChecks } from '../lib/actions'
-import { NEEDS_REFINEMENT } from '../lib/needs-you'
+import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
+import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
 import { isForward, moveStage } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
@@ -114,7 +115,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && !t.expedite && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -372,10 +373,9 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
 /** Polls in which a Ticket's unverifiable gate label is retried before it waits for the next label change. */
 const MAX_GATE_ATTEMPTS = 30
 
-/** Plan gate off: advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
+/** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
-  if (gateOn('plan')) return
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }, ...(gateOn('plan') ? [{ expedite: { equals: true } }] : [])] }, pagination: false, depth: 0, overrideAccess: true })
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
@@ -448,6 +448,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
         }
         let revertFailed = false
+        const lane = await laneOn(payload, id(src.workspace))
         for (const t of [...changes, ...retried]) {
           const found = await payload.find({
             collection: 'tickets',
@@ -471,13 +472,16 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             sourceUpdatedAt: t.updatedAt,
             triageAttempts: 0,
             gatePendingAttempts: 0,
+            expedite: lane && t.labels.includes(EXPEDITE_LABEL),
           }
+          if (!lane && t.labels.includes(EXPEDITE_LABEL)) await noteIgnored(payload, backendFor(conn).tickets(src.repo), t.number)
           let labels = t.labels
           if (GATE_LABELS.some((g) => labels.includes(g.label))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
             base.labels = labels
+            base.expedite = lane && labels.includes(EXPEDITE_LABEL)
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           let stage = stageOf(labels)
@@ -554,6 +558,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     }
     await closeFinishedParents(payload)
     await pullWaiting(payload)
+    await startExpedites(payload)
     await startMissingRuns(payload)
     await advancePlans(payload)
     await triageSweep(payload)
