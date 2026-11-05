@@ -74,6 +74,33 @@ const toOwner = async (payload: Payload, t: Doc, run: Doc, why: string): Promise
   return false
 }
 
+/** The step-2 line for the Run a strong retry replaced; skipped when it is already in the Comment. */
+export const noteRetry = async (payload: Payload, t: Doc, stopped: Doc, reason: string): Promise<void> => {
+  const mode = await modeFor(payload, id(t.workspace), stopped.stage)
+  const caps = escalatedCaps(stopped.stage, baseCaps(stopped.stage))
+  const key = `after ${stopped.stage} Run #${stopped.id} (`
+  await note(payload, t, key, `- Step 2 of ${LADDER_STEPS} ${key}${stopped.status}, ${cost(stopped)}): ${reason.split('\n')[0]!.slice(0, 300)}. Retry on strong (${await strongModel(payload, t, mode)}), ${caps.maxTurns} turns, $${caps.maxBudgetUsd}.`)
+}
+
+/** Writes the step-2 line of live strong retries whose line is missing (an abandoned session Run's successor is created in SQL, a forge error can lose the line). Returns how many it wrote. */
+export const resumeEscalationNotes = async (payload: Payload): Promise<number> => {
+  const live = (await payload.find({ collection: 'runs', where: { and: [{ status: { in: ['queued', 'awaiting_session', 'running'] } }, { escalation: { exists: true } }, { previousRun: { exists: true } }] }, pagination: false, ...o })).docs as Doc[]
+  let n = 0
+  for (const run of live.filter((r) => r.escalation?.step === 2 && r.escalation.reason !== REVIEW_CAP_REASON && !String(r.escalation.reason).startsWith('invalid review output'))) {
+    try {
+      const stopped = (await payload.findByID({ collection: 'runs', id: id(run.previousRun), ...o })) as Doc
+      const t = (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc
+      const before = latestWith(await (await ticketsOf(payload, id(t.product))).listComments(String(t.number)), ESCALATION_MARKER)?.body ?? ''
+      await noteRetry(payload, t, stopped, String(run.escalation.reason))
+      const after = latestWith(await (await ticketsOf(payload, id(t.product))).listComments(String(t.number)), ESCALATION_MARKER)?.body ?? ''
+      if (after !== before) n++
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'resuming the escalation note failed')
+    }
+  }
+  return n
+}
+
 /**
  * One rung up the ladder for a stopped Run (failed, abandoned or `needs_human` + `stuck`): a strong retry with doubled caps, an investigation (Build, after a strong Run failed) or the owner.
  * Returns what it started, or false when the ladder ended at the owner (budget out, no rung left, or a human-only reason).
@@ -92,8 +119,7 @@ export const escalate = async (payload: Payload, t: Doc, run: Doc, reason: strin
     await note(payload, t, key, `- Step 3 of ${LADDER_STEPS} ${stopped}. Investigation on strong (${model}), 60 turns, $2.`)
     return (await startInvestigation(payload, t, prev ? [prev, run] : [run])) ? 'Failed twice: back to Plan for investigation.' : toOwner(payload, t, run, 'no investigation left')
   }
-  const caps = escalatedCaps(run.stage, baseCaps(run.stage))
-  await note(payload, t, key, `- Step 2 of ${LADDER_STEPS} ${stopped}. Retry on strong (${model}), ${caps.maxTurns} turns, $${caps.maxBudgetUsd}.`)
+  await noteRetry(payload, t, run, reason)
   const extra = run.investigation ? { investigation: run.investigation } : { escalation: { step: 2, reason: reason.split('\n')[0]!.slice(0, 300), previousRuns: [run.id] } }
   const { created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, run.stage, { previousRun: run.id, ...extra })
   return created ? `Started one new ${run.stage} Run on strong.` : false

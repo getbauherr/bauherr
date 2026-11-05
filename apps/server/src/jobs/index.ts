@@ -194,6 +194,15 @@ export const abandonRun = async (
     return true
   })
   if (!ended) return null
+  if (status === 'abandoned' && escalation?.step === 2) {
+    try {
+      const { noteRetry } = await import('../lib/escalation')
+      const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
+      await noteRetry(payload, ticket, { ...run, status: 'abandoned' }, o.reason)
+    } catch (e) {
+      payload.logger.warn({ err: e, run: run.id }, 'escalation comment failed; the next liveness pass writes it')
+    }
+  }
   if (status === 'needs_human') {
     try {
       const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })

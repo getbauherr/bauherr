@@ -231,3 +231,46 @@ it('an exhausted Workspace budget sends an autonomous escalation to the owner wi
     await payload.update({ collection: 'workspaces', id: ws, data: { defaultMode: 'session' }, ...o })
   }
 })
+
+const ENDS: [string, Record<string, unknown>][] = [
+  ['failed', { status: 'failed', error: 'boom' }],
+  ['abandoned', { status: 'abandoned', error: 'lease' }],
+  ['cancelled', { status: 'cancelled', error: 'timeout' }],
+  ...[undefined, 'decision', 'access', 'stuck'].map((k): [string, Record<string, unknown>] => [`needs_human/${k}`, { status: 'needs_human', error: 'q', ...(k && { reasonKind: k }) }]),
+]
+
+for (const stage of ['plan', 'build', 'review'] as const) {
+  for (const [name, end] of ENDS) {
+    it(`invariant: a ${stage} Run that ended ${name} is, after one sweep, escalating, a need or listed by invisibleDead`, async () => {
+      const { id } = await seed(stage, { mr: stage === 'review', runs: [{ stage, ...end }] })
+      await liveness.sweepLiveness(payload)
+      const live = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, ...o })
+      const dead = (await liveness.deadTickets(payload, ws)).find((d) => d.ticket.id === id)
+      expect(live.totalDocs > 0 || !!dead?.need).toBe(true)
+      expect((await liveness.invisibleDead(payload, ws)).some((d) => d.ticket.id === id)).toBe(false)
+    })
+  }
+}
+
+it('a failed review Run on a review Ticket without a verdict is escalated to a strong review', async () => {
+  const { id } = await seed('review', { mr: true, runs: [{ stage: 'review', status: 'failed', error: 'review run wrote no review.json' }] })
+  await liveness.sweepLiveness(payload)
+  expect((await runs(id, 'review'))[1]).toMatchObject({ status: 'awaiting_session', escalation: { step: 2 } })
+})
+
+it('an unknown blocker kind is a decision', async () => {
+  const { checkGoal } = await import('../../../packages/runner/src/goal')
+  expect((checkGoal([{ text: 'a', status: 'blocked', reason: 'r', kind: 'Stuck' as never }], false) as { reasonKind: string }).reasonKind).toBe('decision')
+})
+
+it('an abandoned session Run writes the strong retry line itself, and the sweep fills it in when it failed', async () => {
+  const { id, n } = await seed('build', { runs: [{ stage: 'build', status: 'running', heartbeatAt: new Date().toISOString() }] })
+  const [r1] = await runs(id, 'build')
+  await jobs.abandonRun(payload, r1!, { reason: 'lease expired', escalate: true })
+  expect(await ladder(n)).toContain(`Step 2 of 4 after build Run #${r1!.id} (abandoned`)
+  const ts = fake.tickets(repo)
+  const cmt = (await ts.listComments(n)).find((c) => c.body.startsWith(MARKER))!
+  await ts.updateComment(n, cmt.id, MARKER)
+  expect(await liveness.sweepLiveness(payload)).toBeGreaterThanOrEqual(1)
+  expect(await ladder(n)).toContain(`after build Run #${r1!.id} (abandoned`)
+})

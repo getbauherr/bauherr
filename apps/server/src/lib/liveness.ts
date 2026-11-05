@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, Where } from 'payload'
 import { ACTIVE, startReviewIfReady, triageable } from '../jobs'
 import { sendBackToBuild, ticketsOf } from './actions'
-import { escalate, escalateInvalidReview, escalateReviewCap } from './escalation'
+import { escalate, escalateInvalidReview, escalateReviewCap, resumeEscalationNotes } from './escalation'
 import { resumeInvestigations } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
@@ -41,7 +41,9 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
     try {
       const mr = await prOf(payload, t, { fallback: false })
       if (!mr || mr.pr.state === 'closed') return 'mr-missing'
-      if (mr.pr.state === 'merged' || t.reviewState !== 'needs_human') return null
+      if (mr.pr.state === 'merged') return null
+      // No verdict applied and the review Run ended without one: the Run's own end state decides (escalate, or a need).
+      if (t.reviewState !== 'needs_human') return !t.reviewState && latest?.stage === 'review' ? runEnd(latest) : null
       // At the round cap one strong fix round is repaired, then the owner decides (grant one more round or stop); never agent-callable.
       if ((t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'review-escalated'
       return mergeChecks(await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)).state === 'red' ? 'checks-red' : 'review-escalated'
@@ -49,7 +51,11 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
       return null
     }
   }
-  if (!latest || latest.stage !== t.stage) return null
+  return latest && latest.stage === t.stage ? runEnd(latest) : null
+}
+
+/** The cause of a Run that ended without finishing its stage. */
+const runEnd = (latest: Doc): Cause | null => {
   if (latest.status === 'needs_human') return latest.reasonKind === 'stuck' ? 'run-stuck' : null
   return ({ failed: 'run-failed', cancelled: 'run-cancelled', abandoned: 'run-abandoned' } as const)[latest.status as 'failed'] ?? null
 }
@@ -68,7 +74,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
     const mine = runs.filter((r) => id(r.ticket) === t.id)
     if (mine.some((r) => ACTIVE.includes(r.status))) continue
     const latest = mine[0] ?? null
-    const cause = await causeOf(payload, t, latest)
+    const cause = (await causeOf(payload, t, latest)) ?? (latest && latest.stage === t.stage && ['failed', 'abandoned', 'cancelled', 'needs_human'].includes(latest.status) ? 'unknown' : null)
     if (!cause) continue
     const need = needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
     dead.push({ ticket: t, cause, run: latest, need })
@@ -137,7 +143,7 @@ export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
 
 /** One watchdog pass: repairs every dead Ticket whose cause the factory can fix itself. Returns how many it repaired. */
 export const sweepLiveness = async (payload: Payload): Promise<number> => {
-  let repaired = await resumeInvestigations(payload)
+  let repaired = (await resumeInvestigations(payload)) + (await resumeEscalationNotes(payload))
   for (const d of await deadTickets(payload)) {
     if (!REPAIRED.includes(d.cause)) continue
     try {

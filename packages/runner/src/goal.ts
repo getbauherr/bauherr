@@ -25,7 +25,7 @@ export function checkGoal(goal: GoalStatement[], alreadyBlocked: boolean): GoalV
   }
   if (blocked.length > 0) {
     // A blocker without a kind counts as a decision, so a real product question is never retried on a stronger model.
-    const kinds = blocked.map((s) => s.kind ?? 'decision');
+    const kinds = blocked.map((s) => (s.kind === 'access' || s.kind === 'stuck' ? s.kind : 'decision'));
     const reasonKind = kinds.includes('decision') ? 'decision' : kinds.includes('access') ? 'access' : 'stuck';
     return { kind: 'needs_human', reason: blocked.map((s) => `${s.text}: ${s.reason ?? 'blocked'}`).join('; '), reasonKind };
   }
