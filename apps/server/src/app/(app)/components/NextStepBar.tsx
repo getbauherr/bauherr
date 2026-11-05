@@ -1,5 +1,6 @@
 'use client'
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useFormStatus } from 'react-dom'
 import { Button } from './ui/button'
 
 /**
@@ -8,10 +9,29 @@ import { Button } from './ui/button'
  */
 export type NextStepPrimary = { label: string; disabled?: boolean; reason?: string; onClick?: () => void; href?: string; newTab?: boolean; form?: string; confirm?: string }
 
+/** Put inside a form that a primary submits with `form`: tells the bar while the server action runs, so the button is disabled at once. */
+export function FormPending() {
+  const { pending } = useFormStatus()
+  const ref = useRef<HTMLSpanElement>(null)
+  useLayoutEffect(() => {
+    ref.current?.closest('form')?.dispatchEvent(new CustomEvent('formpending', { detail: pending }))
+  }, [pending])
+  return <span ref={ref} hidden />
+}
+
 /** The frame of the one place the owner acts on a page: sentence left, `children` then the primary button right, sticky at the top on desktop, fixed to the bottom at 640px and below. `main` pads for it (`--next-step-h`). */
 export function NextStepBar({ sentence, primary, children }: { sentence: ReactNode; primary?: NextStepPrimary; children?: ReactNode }) {
   const uid = useId()
   const [armed, setArmed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const formId = primary?.form
+  useEffect(() => {
+    const form = formId ? document.getElementById(formId) : null
+    if (!form) return
+    const on = (e: Event) => setSubmitting((e as CustomEvent<boolean>).detail)
+    form.addEventListener('formpending', on)
+    return () => form.removeEventListener('formpending', on)
+  }, [formId])
   const p = primary
   const button = !p ? null : p.href ? (
     <Button asChild><a href={p.href} {...(p.newTab ? { target: '_blank', rel: 'noreferrer' } : {})}>{p.label}</a></Button>
@@ -19,13 +39,18 @@ export function NextStepBar({ sentence, primary, children }: { sentence: ReactNo
     <span title={p.disabled ? p.reason : undefined} className="contents">
       {armed && !p.disabled && <Button type="button" variant="outline" onClick={() => setArmed(false)}>Cancel</Button>}
       <Button
-        type={p.form && (!p.confirm || armed) ? 'submit' : 'button'}
+        type={p.form ? 'submit' : 'button'}
         form={p.form}
-        disabled={p.disabled}
+        disabled={p.disabled || submitting}
         aria-describedby={p.disabled && p.reason ? `${uid}-r` : undefined}
-        onClick={p.confirm && !armed ? () => setArmed(true) : p.onClick}
+        onClick={(e) => {
+          if (p.confirm && !armed) {
+            e.preventDefault()
+            setArmed(true)
+          } else p.onClick?.()
+        }}
       >
-        {armed && p.confirm ? p.confirm : p.label}
+        {submitting ? 'Working…' : armed && p.confirm ? p.confirm : p.label}
       </Button>
       {p.disabled && p.reason && <span id={`${uid}-r`} className="sr-only">{p.reason}</span>}
     </span>

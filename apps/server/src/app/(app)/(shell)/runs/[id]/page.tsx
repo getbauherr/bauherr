@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ListView, TimelineView } from '../../../components/RunViews'
-import { NextStepBar } from '../../../components/NextStepBar'
+import { FormPending, NextStepBar } from '../../../components/NextStepBar'
 import { RelinkMr } from '../../../components/FixState'
 import { Markdown } from '../../../components/Markdown'
 import { StatusChip } from '../../../components/StatusChip'
@@ -47,7 +47,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           sentence={rerun ? `This ${run.stage} Run ended as ${run.status}. Start it again when ready.` : `This Run holds a lock. Release it if the session is gone.`}
           primary={rerun ? { label: 'Re-run stage', confirm: `Confirm re-run ${run.stage}`, form: 'run-action' } : { label: 'Release lock', confirm: `Confirm release lock on run ${run.id}`, form: 'run-action' }}
         >
-          <form id="run-action" action={rerun ? rerunStage.bind(null, run.id) : releaseRunLock.bind(null, run.id)} />
+          <form id="run-action" action={rerun ? rerunStage.bind(null, run.id) : releaseRunLock.bind(null, run.id)}><FormPending /></form>
         </NextStepBar>
       )}
       <header className="flex flex-col gap-4">

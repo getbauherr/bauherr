@@ -97,8 +97,11 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
 
-  await approve.click()
+  const actions: string[] = []
+  page.on('request', (r) => { if (r.method() === 'POST' && r.headers()['next-action']) actions.push(r.url()) })
+  await approve.dblclick()
   await expect(page.getByText('Plan approved', { exact: true })).toBeVisible()
+  expect(actions).toHaveLength(1)
   await expect(approve).toHaveCount(0)
 })
 

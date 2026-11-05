@@ -3,7 +3,7 @@ import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuil
 import { GATES } from '../lib/gates'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
-import { NextStepBar, type NextStepPrimary } from './NextStepBar'
+import { FormPending, NextStepBar, type NextStepPrimary } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
 
@@ -44,7 +44,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   const fid = `bar-${ticket}`
   const post = (action: (f: FormData) => Promise<void>): { primary: NextStepPrimary; form: ReactNode } => ({
     primary: { label: verb, form: fid },
-    form: <form id={fid} action={action}><input type="hidden" name="ticket" value={ticket} /></form>,
+    form: <form id={fid} action={action}><input type="hidden" name="ticket" value={ticket} /><FormPending /></form>,
   })
   const step: { primary?: NextStepPrimary; form?: ReactNode } = !need ? {} : (() => {
     switch (need) {
@@ -62,12 +62,13 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
           <form id={fid} action={backToBuildAction}>
             <input type="hidden" name="ticket" value={ticket} />
             <input name="note" aria-label="Note for the next Run" placeholder="Note for the next Run (optional)" className="min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            <FormPending />
           </form>
         ),
       }
       case 'Cancelled':
       case 'Run needs you':
-      case 'Run failed': return run ? { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run)} /> } : {}
+      case 'Run failed': return run ? { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run)}><FormPending /></form> } : {}
       case 'Answer decisions':
       case 'Answer questions': return { primary: { label: `Answer ${open} question${open === 1 ? '' : 's'}`, href: '#answer' } }
       case 'Configure production checks': return { primary: { label: verb, href: `/settings/products/${product}#production` } }
