@@ -26,7 +26,7 @@ Sign-in rules:
 - Linking policy: an Admin edits the Bauherr under Settings, Bauherren and sets `oidcSubject` to `<issuer>|<id>`. In Keycloak the id is Users, the user, ID. The value is unique across Bauherren.
 - Session: cookie `bauherr-session`, an HS256 token signed with `PAYLOAD_SECRET` (claims `id`, `v`, `typ=bauherr-session`, `aud=bauherr`, 14 days, HttpOnly, `Secure` when `PUBLIC_URL` is https), accepted by the UI, `/admin` (only when `BAUHERR_ENABLE_ADMIN=1`) and the REST API through the Payload auth strategy `oidc`.
 - Lifetime: sessions last 14 days (`SESSION_TTL_S`) for SSO and password sign-in (the Bauherren `auth.tokenExpiration` uses the same constant); logout ends them at once.
-- Revocation: the token carries the Bauherr's `sessionVersion`. It is rejected when the version differs, the account is locked, or the Bauherr no longer exists. Signing out of the UI increments `sessionVersion`, which ends every SSO session of that Bauherr. Logging out of `/admin` (when enabled) does not bump it.
+- Revocation: the token carries the Bauherr's `sessionVersion`. It is rejected when the version differs, the account is locked, or the Bauherr no longer exists. Signing out of the UI increments `sessionVersion`, which ends every SSO session of that Bauherr. Logging out of `/admin` (when enabled) does not bump it. A locked account's session stops working until the lock ends or an Admin unlocks it (Settings, People).
 - Errors: `/login?error=oidc` (any failure) and `/login?error=oidc-link` (link required). Server logs carry `oidc_login_failed` or `oidc_callback_failed` plus the error name and message only; tokens, claims and emails are never logged.
 
 ## Keycloak example

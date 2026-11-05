@@ -40,6 +40,17 @@ it('reclaims only stale scheduled jobs, never run-stage', async () => {
   expect(await state(run)).toMatchObject({ processing: true })
 })
 
+it('maxAgeMs 0 (poller start) reclaims an orphaned scheduled job but never run-stage', async () => {
+  const orphan = await insert('watch-production', { processing: true, updated: 0.02 })
+  const run = await insert('run-stage', { processing: true, updated: 0.02 })
+  const young = await insert('watch-release', { processing: true, updated: 10 })
+  expect(await jobs.reclaimStaleJobs(payload)).toBe(0)
+  expect(await jobs.reclaimStaleJobs(payload, Date.now(), 0)).toBeGreaterThanOrEqual(2)
+  expect(await state(orphan)).toEqual({ processing: false, has_error: true })
+  expect(await state(young)).toEqual({ processing: false, has_error: true })
+  expect(await state(run)).toMatchObject({ processing: true })
+})
+
 it('a job in a legitimate forge back-off (3 x 300 s) is not reclaimed', async () => {
   const waiting = await insert('watch-reviews', { processing: true, updated: 16 })
   expect(await jobs.reclaimStaleJobs(payload)).toBe(0)

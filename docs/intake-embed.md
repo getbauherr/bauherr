@@ -13,3 +13,4 @@ Requests from any other origin, or with a revoked token, get 403. A token is bou
 
 `/intake/widget.js` is a static bundle built from `apps/server/src/app/intake/widget` (`pnpm --filter server build:widget`, part of `dev` and `build`). It holds React and assistant-ui and renders in a shadow root; `tests/widget-size.test.ts` keeps it within 250 KB gzip.
 The widget resumes an open interview after a page load (the session id is kept in the browser's localStorage per token).
+After the 6th question the assistant stops asking and only acknowledges and updates the draft; the visitor can keep adding detail and **Submit request** stays available. A session accepts at most 40 visitor messages.
