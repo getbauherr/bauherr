@@ -696,6 +696,11 @@ export const normalizeReview = (raw: any): Review => {
     return { severity: f.severity, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario }
   })
   const derived = findings.some((f: Finding) => BLOCKING.includes(f.severity)) ? 'changes' : 'clean'
+  for (const c of Array.isArray(raw.checked) ? raw.checked : []) {
+    if (!c || !CHECKED_AREAS.includes(c.area)) continue
+    if (typeof c.note !== 'string' || !c.note.trim()) throw new Error(`checked.${c.area}: note is empty`)
+    if (c.note.length > MAX_TEXT) throw new Error(`checked.${c.area}: note is ${c.note.length} characters, max ${MAX_TEXT}`)
+  }
   const noted = new Set((Array.isArray(raw.checked) ? raw.checked : []).filter((c: any) => c && typeof c.note === 'string' && c.note.trim() && c.note.length <= MAX_TEXT).map((c: any) => c.area))
   const missing = CHECKED_AREAS.filter((a) => !noted.has(a))
   const problem = raw.verdict !== derived ? `the declared verdict "${raw.verdict}" contradicts the findings (${derived})` : missing.length ? `the review did not account for: ${missing.join(', ')}` : undefined
