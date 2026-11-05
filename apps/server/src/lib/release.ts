@@ -1,6 +1,6 @@
 import { type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
+import type { Payload, Where } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
 import { retryRed, settleRetries } from './check-retry'
@@ -212,7 +212,7 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
   const auto = !gateOn('release')
-  const waiting = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [])] }
+  const waiting: Where = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [{ and: [{ releaseState: { equals: 'on_staging' } }, { expedite: { equals: true } }] }])] }
   const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: ['review', 'release'] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
@@ -220,7 +220,8 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
-      if (t.stage === 'release' && auto && t.releaseState === 'on_staging') {
+      // Product `expediteSkipStaging` is the human decision to skip the staging gate for a Hotfix; passStaging still records the staging touch.
+      if (t.stage === 'release' && (auto || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
         if (!t.productionState) await passStaging(payload, t)
         continue
       }

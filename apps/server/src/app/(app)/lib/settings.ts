@@ -94,7 +94,7 @@ export async function loadProducts(workspace: number) {
           touched: Date.parse(p.updatedAt) - Date.parse(p.createdAt) >= 1000,
           name: p.name as string,
           slug: p.slug as string,
-          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string },
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
@@ -319,7 +319,11 @@ export async function loadHealth(workspace: number, deadMs = FORGE_TIMEOUT_MS) {
   const flakes = [...byCheck.values()]
     .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
     .slice(0, 5)
+  const hotfixes = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { expedite: { equals: true } }, { expediteAt: { exists: true } }, { releaseAt: { exists: true } }] }, sort: '-releaseAt', limit: 5, pagination: false, select: { expediteAt: true, releaseAt: true }, ...o } as never)).docs as unknown as Doc[]
+  const leadMs = hotfixes.map((h) => new Date(h.releaseAt).getTime() - new Date(h.expediteAt).getTime()).filter((ms) => ms >= 0)
   return {
+    /** Mean time from the Expedite flag to the merge of the last 5 Hotfixes; null when there is none. */
+    expediteLeadMs: leadMs.length ? Math.round(leadMs.reduce((a, b) => a + b, 0) / leadMs.length) : null,
     queued,
     running,
     failed,

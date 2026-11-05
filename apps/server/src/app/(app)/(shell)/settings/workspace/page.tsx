@@ -105,6 +105,7 @@ export default async function WorkspaceSettings() {
                     <td>{s.polledAt ? ago(s.polledAt) : 'never'}{s.error && <span className="text-destructive"> · Failed: {s.error}</span>}</td>
                   </tr>
                 ))}
+                <tr><th>Expedite lead time (last 5)</th><td>{health.expediteLeadMs == null ? <span className="text-muted-foreground">No Hotfix merged yet.</span> : `${Math.max(1, Math.round(health.expediteLeadMs / 6e4))} min from flag to merge`}</td></tr>
                 <tr><th>Gateway budget</th><td><span className={budget[1]}>{budget[0]}</span>{spend ? ` · $${spend.spentUsd.toFixed(2)}${spend.limitUsd == null ? '' : ` of $${spend.limitUsd}`}` : ''}</td></tr>
               </tbody>
           </Table>

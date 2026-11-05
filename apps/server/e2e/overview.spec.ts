@@ -37,7 +37,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   expect(await cardTexts.count()).toBeGreaterThan(5)
   for (const card of await cardTexts.all()) {
     const texts = await card.locator('> :not(.num):not(.rank)').count()
-    expect(texts).toBeLessThanOrEqual((await card.locator('[data-gate], .text-warn').count()) ? 4 : 3)
+    expect(texts).toBeLessThanOrEqual(((await card.locator('[data-gate], .text-warn').count()) ? 4 : 3) + ((await card.locator('[data-hotfix]').count()) ? 1 : 0))
     const visible = (await card.evaluate((e) => {
       const c = e.cloneNode(true) as HTMLElement
       c.querySelectorAll('.rank').forEach((r) => r.remove())
@@ -50,6 +50,12 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   const blocked = page.locator('.card').filter({ hasText: 'Blocked: add the invoice filter' }).first().locator('[data-status=blocked]')
   await expect(blocked).toHaveText('Blocked')
   await expect(blocked).toHaveAttribute('title', 'Blocked by #8')
+  // Hotfix swimlane (#373): the lane's card is marked and first in its column, above every ranked card
+  const buildCards = page.locator('.col[data-stage=build] .card')
+  await expect(buildCards.first()).toHaveAttribute('data-lane', 'hotfix')
+  await expect(buildCards.first().locator('[data-hotfix]')).toHaveText('Hotfix')
+  await expect(buildCards.first()).toContainText('Hotfix: checkout crash')
+  await expect(page.locator('.card [data-hotfix]')).toHaveCount(1)
   const shots = process.env.SHOTS_DIR
   if (shots) {
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {
