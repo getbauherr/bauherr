@@ -125,3 +125,22 @@ it('more parallel starts than the pool holds finish without hanging', async () =
   expect(await anchors(id)).toHaveLength(1)
   expect(await scans()).toHaveLength(1)
 }, 30_000)
+
+it('a Product whose start throws is logged and backed off; the others still run and it does not block the next tick', async () => {
+  const { securityScanSweep } = await import('../src/jobs')
+  const scan = await import('../src/lib/security-scan')
+  const bad = await product({ enabled: true, cron: EVERY_MINUTE, lastScanAt: ago(30) })
+  const good = [await product({ enabled: true, cron: EVERY_MINUTE, lastScanAt: ago(2) }), await product({ enabled: true, cron: EVERY_MINUTE, lastScanAt: ago(1) })]
+  const real = scan.startSecurityScan
+  vi.spyOn(scan, 'startSecurityScan').mockImplementation(async (p, id) => {
+    if (id === bad) throw new Error('403 on issue create')
+    return real(p, id)
+  })
+  const error = vi.spyOn(payload.logger, 'error')
+  expect(await securityScanSweep(payload)).toBe(2)
+  expect(await scans()).toHaveLength(2)
+  expect(error).toHaveBeenCalledWith(expect.objectContaining({ product: bad }), expect.stringContaining('failed'))
+  expect(new Date(await lastScanAt(bad)).getTime()).toBeGreaterThan(Date.now() - 60_000)
+  expect(await Promise.all(good.map(lastScanAt))).not.toContain(undefined)
+  expect(await securityScanSweep(payload)).toBe(0)
+})

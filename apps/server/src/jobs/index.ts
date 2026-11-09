@@ -751,7 +751,7 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
 /** Products scanned per tick; the rest wait for the next hour. */
 export const SCANS_PER_TICK = 5
 
-/** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning. Returns the Runs created. */
+/** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning, and one whose start throws is logged and backed off (`lastScanAt` set). Returns the Runs created. */
 export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
   const products = (await payload.find({ collection: 'products', where: { 'securityScan.enabled': { equals: true } }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
   const since = (p: Record<string, any>) => new Date(p.securityScan?.lastScanAt ?? p.createdAt)
@@ -769,12 +769,17 @@ export const securityScanSweep = async (payload: Payload, now = new Date()): Pro
     .slice(0, SCANS_PER_TICK)
   let started = 0
   for (const p of due) {
-    if (await budgetOut(payload, id(p.workspace))) {
-      payload.logger.warn({ product: p.id }, 'security scan skipped: budget spent')
-      continue
+    try {
+      if (await budgetOut(payload, id(p.workspace))) {
+        payload.logger.warn({ product: p.id }, 'security scan skipped: budget spent')
+        continue
+      }
+      if ((await startSecurityScan(payload, p.id)).created) started++
+    } catch (e) {
+      // Back off: a Product that cannot start counts as scanned now, so it neither starves the others nor retries every hour.
+      payload.logger.error({ err: e, product: p.id }, 'security scan start failed')
+      await payload.update({ collection: 'products', id: p.id, data: { securityScan: { ...p.securityScan, lastScanAt: now.toISOString() } }, overrideAccess: true }).catch((err) => payload.logger.error({ err, product: p.id }, 'security scan back-off failed'))
     }
-    const created = (await startSecurityScan(payload, p.id)).created
-    if (created) started++
   }
   return started
 }
