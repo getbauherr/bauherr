@@ -4,7 +4,8 @@ import { useRef, useState, useTransition } from 'react'
 import { previewRelease, shipReleaseAction } from '../(shell)/releases/actions'
 import { Markdown } from './Markdown'
 import { NextStepBar } from './NextStepBar'
-import { Input } from './ui/input'
+import { Checkbox } from './ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Textarea } from './ui/textarea'
 
 type Row = { id: number; number: number; title: string; kind: string }
@@ -12,16 +13,17 @@ type Past = { tag: string; url: string; at: string | null; html: string }
 
 const VERSION = /^\d+\.\d+\.\d+(-rc\.\d+)?$/
 
-/** Tickets waiting for a release (ticked), the proposed version and notes (both editable), the ship button in the next-step bar, and the past releases. */
-export function ReleasePanel({ product, admin, tickets, version: v0, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; version: string; notes: string; past: Past[] }) {
+/** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the model-written summary and the notes (both editable), the ship button in the next-step bar, and the past releases. */
+export function ReleasePanel({ product, admin, tickets, version: v0, versions, notes: n0, summary: s0, past }: { product: number; admin: boolean; tickets: Row[]; version: string; versions: string[]; notes: string; summary: string; past: Past[] }) {
   const router = useRouter()
   const [picked, setPicked] = useState(() => new Set(tickets.map((t) => t.id)))
   const [version, setVersion] = useState(v0)
   const [notes, setNotes] = useState(n0)
+  const [summary, setSummary] = useState(s0)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [pending, start] = useTransition()
-  const generated = useRef({ version: v0, notes: n0 })
+  const generated = useRef({ version: v0, notes: n0, summary: s0 })
   const n = picked.size
 
   const toggle = (id: number) => {
@@ -34,12 +36,13 @@ export function ReleasePanel({ product, admin, tickets, version: v0, notes: n0, 
       setError(null)
       if (version === generated.current.version) setVersion(r.version)
       if (notes === generated.current.notes) setNotes(r.notes)
+      if (summary === generated.current.summary) setSummary(r.summary)
       generated.current = r
     })
   }
   const ship = () =>
     start(async () => {
-      const r = await shipReleaseAction({ product, ids: [...picked], version, notes })
+      const r = await shipReleaseAction({ product, ids: [...picked], version, notes, summary })
       if ('error' in r) return setError(r.error)
       setError(null)
       setDone(r.tag)
@@ -61,7 +64,7 @@ export function ReleasePanel({ product, admin, tickets, version: v0, notes: n0, 
             {tickets.map((t) => (
               <li key={t.id}>
                 <label className="flex items-center gap-3">
-                  <input type="checkbox" checked={picked.has(t.id)} disabled={!admin} onChange={() => toggle(t.id)} />
+                  <Checkbox checked={picked.has(t.id)} disabled={!admin} onChange={() => toggle(t.id)} />
                   <span>{t.title}</span>
                   <span className="label text-muted-foreground">{t.kind}</span>
                   <span className="mono small text-muted-foreground">#{t.number}</span>
@@ -73,9 +76,16 @@ export function ReleasePanel({ product, admin, tickets, version: v0, notes: n0, 
       </section>
       <section className="flex flex-col gap-3" aria-labelledby="draft">
         <h2 className="heading" id="draft">This release</h2>
-        <label className="flex max-w-xs flex-col gap-1">
-          <span className="small label-strong">Version</span>
-          <Input value={version} onChange={(e) => setVersion(e.target.value.trim())} disabled={!admin} className="mono" />
+        <div className="flex max-w-xs flex-col gap-1">
+          <span className="small label-strong" id="version-label">Version</span>
+          <Select value={version} onValueChange={setVersion} disabled={!admin}>
+            <SelectTrigger aria-labelledby="version-label" className="mono"><SelectValue /></SelectTrigger>
+            <SelectContent>{versions.map((v) => <SelectItem key={v} value={v} className="mono">{v}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="small label-strong">Summary</span>
+          <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!admin} rows={3} className="max-w-[80ch]" />
         </label>
         <label className="flex flex-col gap-1">
           <span className="small label-strong">Release notes</span>

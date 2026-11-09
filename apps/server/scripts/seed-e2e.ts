@@ -143,6 +143,8 @@ for (const [slug, name, repo, titles, releaseAt] of [
   const p = (await ensure('products', { slug }, { name, slug, workspace, releaseMode: 'manual', releaseReminderDays: 7 })).id
   await ensure('repositories', { fullName: repo }, { fullName: repo, product: p, workspace })
   await ensure('ticket_sources', { repo }, { repo, product: p, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+  // Done before releases were shipped from the page (release recorded by the other path): never waiting.
+  if (slug === 'acme-relist') await ensure('tickets', { externalId: `e2e-${slug}-old` }, { title: 'Relist the earlier release', externalId: `e2e-${slug}-old`, number: 9, url: `https://github.com/${repo}/issues/9`, state: 'closed', labels: [], stage: 'done', mergeSha: `${slug}-sha-old`, releasePublishedAt: '2026-09-01T09:00:00Z', releaseAt: '2026-09-01T09:00:00Z', product: p, workspace, rank: '000199' })
   for (const [i, title] of titles.entries()) await ensure('tickets', { externalId: `e2e-${slug}-${i + 1}` }, { title, externalId: `e2e-${slug}-${i + 1}`, number: i + 1, url: `https://github.com/${repo}/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `${slug}-sha-${i + 1}`, releaseAt, product: p, workspace, rank: String(200 + i).padStart(6, '0') })
 }
 const request = async (key: string, status: string, extra: Record<string, unknown>) =>

@@ -40,7 +40,9 @@ export default async function Releases({ searchParams }: { searchParams: Promise
           admin={isAdmin(user)}
           tickets={draft.waiting.map((t) => ({ id: t.id as number, number: t.number as number, title: t.title as string, kind: kindOf(t) }))}
           version={draft.version}
+          versions={draft.versions}
           notes={draft.notes}
+          summary={draft.summary}
           past={draft.past.map((r) => ({ tag: r.tag, url: r.url, at: r.createdAt ?? null, html: renderMarkdown(r.body.replace(/<!--[\s\S]*?-->/g, '').trim()) }))}
         />
       ) : (

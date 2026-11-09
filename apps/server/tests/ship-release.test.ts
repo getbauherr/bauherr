@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -65,6 +65,26 @@ it('lists done Tickets without a release', async () => {
   await payload.update({ collection: 'tickets', id: a.id, data: { releasedIn: 'v0.0.1' }, ...o })
   const b = await done('ship', 'Totals', 'sha-b', 2)
   expect((await ship.waitingTickets(payload, products.ship!)).map((t) => t.id)).toEqual([b.id])
+})
+
+it('does not list or remind about Tickets released before the page: release recorded, or merge in the latest release', async () => {
+  await payload.update({ collection: 'products', id: products.old!, data: { releaseReminderDays: 1 }, ...o })
+  const a = await done('old', 'Notes only', 'sha-o1', 1)
+  await payload.update({ collection: 'tickets', id: a.id, data: { releasePublishedAt: '2026-10-01T00:00:00Z', releaseAt: '2026-10-01T00:00:00Z' }, ...o })
+  await done('old', 'In the rc', 'sha-o2', 2)
+  await done('old', 'Released url', 'sha-o3', 3).then((t) => payload.update({ collection: 'tickets', id: t.id, data: { releaseUrl: 'https://x/r', releaseAt: '2026-10-01T00:00:00Z' }, ...o }))
+  const fresh = await done('old', 'Fresh', 'sha-o4', 4)
+  fake.setAncestors('acme/old', 'sha-o2', ['sha-o1'])
+  await fake.forge.createRelease('acme/old', { tag: 'v0.1.0-rc.1', sha: 'sha-o2', name: 'v0.1.0-rc.1', body: 'x', prerelease: true })
+  expect((await ship.waitingTickets(payload, products.old!)).map((t) => t.id)).toEqual([fresh.id])
+  await payload.update({ collection: 'tickets', id: fresh.id, data: { releasedIn: 'v0.2.0' }, ...o })
+  expect((await ship.releaseReminders(payload, ws)).find((r) => r.product.id === products.old)).toBeUndefined()
+})
+
+it('offers the bumps of the last release as version choices', () => {
+  expect(ship.versionChoices(null)).toEqual(['0.1.0'])
+  expect(ship.versionChoices('v1.2.3')).toEqual(['1.2.4', '1.3.0', '2.0.0'])
+  expect(ship.versionChoices('v1.3.0-rc.2')).toEqual(['1.3.0-rc.3', '1.3.1', '1.4.0', '2.0.0'])
 })
 
 it('ships: tag on the newest merge, release, comments, releasedIn, CHANGELOG MR and one ship:release touch', async () => {

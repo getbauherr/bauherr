@@ -4,7 +4,8 @@ import type { Payload } from 'payload'
 import { latestWith } from '../app/(app)/lib/plan'
 import { NotAdmin, NotInWorkspace } from './actions'
 import { cas, changelogPr, forgeOf, id, releaseMarker } from './release'
-import { collectItem, renderNotes as renderItems } from './release-notes'
+import { completeCheap } from './gateway'
+import { collectItem, renderNotes as renderItems, summarizeRelease } from './release-notes'
 import { personOf } from './person'
 import { SUMMARY_MARKER } from './summary'
 
@@ -16,9 +17,23 @@ const isDuplicate = (e: unknown): boolean => {
   return false
 }
 
-/** Tickets of the Product that are done and in no release yet, oldest first. */
-export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> =>
-  (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
+/** Tickets of the Product that are done and in no release yet, oldest first. Tickets released before this page existed (notes-only/factory release, or a merge contained in the latest release) are not waiting. */
+export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
+  const docs = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
+  const { backend, repo } = await forgeOf(payload, product)
+  const latest = (await backend.forge.listReleases(repo))[0]
+  if (!latest) return docs
+  const released = await Promise.all(docs.map((t) => !!t.mergeSha && backend.forge.isAncestor(repo, t.mergeSha, latest.sha)))
+  return docs.filter((_, i) => !released[i])
+}
+
+/** Versions offered for the next release: patch, minor, major from the last stable version, plus the next rc when the last release is an rc. No previous release = 0.1.0. */
+export const versionChoices = (last: string | null): string[] => {
+  const m = last && /^v?(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/.exec(last)
+  if (!m) return ['0.1.0']
+  const [major, minor, patch] = m.slice(1, 4).map(Number) as [number, number, number]
+  return [...(m[4] ? [`${major}.${minor}.${patch}-rc.${Number(m[4]) + 1}`] : []), `${major}.${minor}.${patch + 1}`, `${major}.${minor + 1}.0`, `${major + 1}.0.0`]
+}
 
 /** Next version (no `v`) from the last release tag: while that is an rc the rc number goes up; else any `breaking` label = major, any `type:feature` = minor, else patch; no previous release = 0.1.0. */
 export const proposeVersion = (last: string | null, tickets: { labels?: string[] | null }[]): string => {
@@ -74,7 +89,13 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   const { backend, repo, tickets: ts } = await forgeOf(payload, product)
   const [waiting, past] = await Promise.all([waitingTickets(payload, product), backend.forge.listReleases(repo)])
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
-  return { waiting, picked, version: proposeVersion(past[0]?.tag ?? null, picked), notes: picked.length ? await renderNotes(ts, picked) : '', past }
+  const notes = picked.length ? await renderNotes(ts, picked) : ''
+  let summary = ''
+  if (process.env.GATEWAY_URL && notes) {
+    const ws = (await payload.findByID({ collection: 'workspaces', id: id((await payload.findByID({ collection: 'products', id: product, ...o })).workspace), ...o })) as Doc
+    summary = await summarizeRelease(notes, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user))
+  }
+  return { waiting, picked, version: proposeVersion(past[0]?.tag ?? null, picked), versions: versionChoices(past[0]?.tag ?? null), notes, summary, past }
 }
 
 const productIn = async (payload: Payload, product: number | string, workspaceId: number | string) => {
@@ -82,14 +103,14 @@ const productIn = async (payload: Payload, product: number | string, workspaceId
 }
 
 /** Admin-only: ships the Tickets `ids` (each must be waiting for a release) of a Product of the Workspace as `version`. */
-export const shipSelected = async (payload: Payload, user: Doc, a: { workspaceId: number | string; product: number | string; ids: (number | string)[]; version: string; notes: string }): Promise<{ tag: string; url: string }> => {
+export const shipSelected = async (payload: Payload, user: Doc, a: { workspaceId: number | string; product: number | string; ids: (number | string)[]; version: string; notes: string; summary?: string }): Promise<{ tag: string; url: string }> => {
   if (user.role !== 'admin') throw new NotAdmin()
   await productIn(payload, a.product, a.workspaceId)
   if (!/^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(a.version)) throw new Error('The version must look like 0.2.0 or 0.2.0-rc.1')
   const ids = a.ids.map(String)
   const tickets = (await waitingTickets(payload, a.product)).filter((t) => ids.includes(String(t.id)))
   if (tickets.length !== new Set(ids).size) throw new Error('A selected Ticket is no longer waiting for a release; reload the page')
-  return shipRelease(payload, user, { product: a.product, tickets, version: a.version, notes: a.notes })
+  return shipRelease(payload, user, { product: a.product, tickets, version: a.version, notes: a.summary?.trim() ? `${a.summary.trim()}\n\n${a.notes}` : a.notes })
 }
 
 /** The owner's reminder (manual Product only): done Tickets have waited longer than `releaseReminderDays` (default 7) for a release. Null when nothing is due. Computed on every Board load, so it needs no stored state and posts no Comment. */
@@ -104,7 +125,7 @@ export const releaseReminder = (product: { releaseMode?: string | null; releaseR
 export const releaseReminders = async (payload: Payload, workspaceId: number | string): Promise<{ product: { id: number; name: string }; count: number; days: number }[]> => {
   const products = (await payload.find({ collection: 'products', where: { and: [{ workspace: { equals: workspaceId } }, { releaseMode: { equals: 'manual' } }] }, pagination: false, ...o })).docs as Doc[]
   const out = await Promise.all(products.map(async (p) => {
-    const r = releaseReminder(p, (await waitingTickets(payload, p.id)) as { updatedAt: string }[])
+    const r = releaseReminder(p, (await waitingTickets(payload, p.id).catch(() => [])) as { updatedAt: string }[])
     return r && { product: { id: p.id as number, name: p.name as string }, ...r }
   }))
   return out.filter((r) => r !== null)
