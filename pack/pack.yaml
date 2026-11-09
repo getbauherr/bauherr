@@ -15,12 +15,13 @@ skills:
   - {path: skills/coordinate, purpose: Parallel lanes with owners (research in v0.1)}
   - {path: skills/manager, purpose: Manager thread over a queue of similar items (Review in v0.1)}
   - {path: skills/decision-sheet, purpose: Human-interaction protocol}
+  - {path: skills/security-scan, purpose: Read-only security scan Run - procedure, root-cause grouping, severity rubric, findings.json}
   - {path: skills/effort-policy, purpose: Model and effort selection}
 rules:
   - {path: rules/team-policy.md, purpose: One agent per Run; patterns only via stage config; forbidden patterns}
   - {path: rules/egress.md, purpose: Code and context leave only via the gateway}
   - {path: rules/evidence.md, purpose: Required content of the MR ## Evidence section}
-  - {path: rules/security-context.md, purpose: Per-Product SECURITY-CONTEXT.md and template}
+  - {path: rules/security-context.md, purpose: Per-Product SECURITY-CONTEXT.md in the Knowledge repo, and template}
 hooks:
   manifest: hooks/hooks.yaml
   items:

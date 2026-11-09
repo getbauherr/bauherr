@@ -6,17 +6,26 @@ import { parse } from 'yaml'
 export type Mode = 'session' | 'autonomous'
 const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
 
-const workflowPath = () => resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'), 'workflow.yaml')
+const packDir = () => process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
+const workflowPath = () => resolve(packDir(), 'workflow.yaml')
+const stagesOf = (path: string): PackStage[] => (parse(readFileSync(path, 'utf8')) as { stages?: PackStage[] }).stages ?? []
 
 export type PackStage = { name: string; mode?: unknown; gate?: string; production_gate?: string; exclude_labels?: string[]; steps?: { kind: string; skill?: string }[] }
 let packStages: { path: string; stages: PackStage[] } | undefined
 
-/** Stages of pack/workflow.yaml, read once per path; unreadable or malformed file yields []. */
+/** Stages of pack/workflow.yaml, then those of the optional pack/workflow-security.yaml (not Board columns), read once per path; an unreadable or malformed workflow.yaml yields [], a bad security file adds nothing. */
 export const packed = (): PackStage[] => {
   const path = workflowPath()
   if (packStages?.path !== path) {
     try {
-      packStages = { path, stages: (parse(readFileSync(path, 'utf8')) as { stages?: PackStage[] }).stages ?? [] }
+      const security = (() => {
+        try {
+          return stagesOf(resolve(packDir(), 'workflow-security.yaml'))
+        } catch {
+          return []
+        }
+      })()
+      packStages = { path, stages: [...stagesOf(path), ...security] }
     } catch {
       return []
     }
@@ -48,9 +57,9 @@ export const workflowStages = (): string[] => packed().map((s) => s.name)
 
 type WorkspaceModes = { defaultMode?: string | null; modeByStage?: Record<string, unknown> | null }
 
-/** `modeFor` for an already loaded Workspace. */
+/** `modeFor` for an already loaded Workspace. A `scan` Run is always autonomous: only the Runner gives it read-only tools, the fence and the findings path. */
 export const resolveMode = (ws: WorkspaceModes, stage: string): Mode =>
-  [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed().find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
+  stage === 'scan' ? 'autonomous' : [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed().find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
 
 /**
  * Mode a Run of `stage` starts in. Precedence: Workspace.modeByStage[stage], Workspace.defaultMode,

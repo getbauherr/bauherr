@@ -6,15 +6,16 @@ import { enterStage } from './wip'
 import { backendFor } from './adapters'
 import { prOf } from './release'
 import { dequeueBeforeChange } from './merge-mode'
-import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild } from './investigation'
+import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, scanCaps } from './investigation'
 import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
 import { webOrigin, type ConnectionInput } from './connection'
 import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
+import { read as readKnowledge } from './knowledge'
 
 export { tierModels }
 
-export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)' }
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)', scan: 'the scan findings are recorded' }
 /** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
 const AUTONOMOUS_BUILD_GOAL = 'the change is implemented and the checks pass'
 export type GoalStage = keyof typeof DEFAULT_GOAL
@@ -78,19 +79,20 @@ export const buildRunCtx = async (
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
   const modelByTier = await tierModels(payload, ws)
-  const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
+  const mr = run.stage === 'plan' || run.stage === 'triage' || run.stage === 'scan' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   // A Build Run pushes to this MR: a queued entry must be taken out first, a push would invalidate it.
   if (run.stage === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
-  const base = baseCaps(run.stage)
+  const productDoc = (await payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, ...opts })) as Doc
+  const base = run.stage === 'scan' ? scanCaps(productDoc) : baseCaps(run.stage)
   const escalated = await isEscalated(payload, run)
   const caps = escalated ? escalatedCaps(run.stage, base) : base
   if (escalated && run.stage === 'build') await noteEscalatedBuild(payload, run, caps)
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...caps, tier: escalated ? 'strong' : run.stage === 'review' ? 'standard' : 'cheap' },
+    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...caps, tier: escalated ? 'strong' : run.stage === 'review' || run.stage === 'scan' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...((run.stage !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
@@ -98,7 +100,8 @@ export const buildRunCtx = async (
     ...(existingPr && { existingPr }),
     ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(run.stage === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
-    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: ((await payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, ...opts })) as Doc).reviewChecks },
+    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
+      ...(run.stage === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
     connection: {
       gatewayUrl,
       gatewayKey: d.gatewayKey,

@@ -25,14 +25,14 @@ export type ToolCallRecord = {
 export type RunCtx = {
   run: {
     id: string;
-    stage: 'triage' | 'plan' | 'build' | 'review';
+    stage: 'triage' | 'plan' | 'build' | 'review' | 'scan';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
     tier: 'cheap' | 'standard' | 'strong' | 'auto';
   };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
-  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null };
+  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
   /** Build Run on an existing MR: the Runner merges the base branch in before the agent (and skips the agent when the merge is clean). */
@@ -71,7 +71,7 @@ export type RunResult = {
   reason?: string;
   /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

@@ -21,7 +21,17 @@ export type InvestigationInput = { cause: string; decision: Decision; fix?: { ti
 export const escalatedCaps = (stage: string, base: { maxTurns: number; maxBudgetUsd: number }) => (stage === 'plan' ? { maxTurns: 60, maxBudgetUsd: 2 } : { maxTurns: base.maxTurns * 2, maxBudgetUsd: base.maxBudgetUsd * 2 })
 
 /** Normal caps of a stage's Run, before `escalatedCaps` doubles them. */
-export const baseCaps = (stage: string) => (stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
+export const baseCaps = (stage: string) => (stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : stage === 'scan' ? { maxTurns: 30, maxBudgetUsd: 2 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
+
+/** Hard ceiling of one scan Run's USD budget, whatever the Product asks for. */
+export const SCAN_MAX_BUDGET_USD = 10
+
+/** Caps of a scan Run: the Product's `securityScan` overrides on top of `baseCaps('scan')`, the budget clamped to SCAN_MAX_BUDGET_USD. */
+export const scanCaps = (product: { securityScan?: { maxTurns?: number | null; maxBudgetUsd?: number | null } | null } = {}) => {
+  const base = baseCaps('scan')
+  const { maxTurns, maxBudgetUsd } = product.securityScan ?? {}
+  return { maxTurns: maxTurns || base.maxTurns, maxBudgetUsd: Math.min(maxBudgetUsd || base.maxBudgetUsd, SCAN_MAX_BUDGET_USD) }
+}
 
 const investigationRuns = async (payload: Payload, ticket: number | string): Promise<Doc[]> =>
   ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket } }, { stage: { equals: 'plan' } }] }, sort: 'id', pagination: false, ...o })).docs as Doc[]).filter((r) => r.investigation)
