@@ -64,6 +64,8 @@ export async function loadWorkspaceSettings(id: number) {
     budgetUnit: (ws.budgetUnit ?? 'usd') as 'usd' | 'tokens',
     budgetUsd30d: ws.budgetUsd30d as number | null,
     budgetTokens30d: ws.budgetTokens30d as number | null,
+    hasRouter: !!ws.routerKey,
+    routerBudgetShare: (ws.routerBudgetShare ?? 20) as number,
     // Tiers are stored as `<connection>/<model>`; the form shows the bare id of the first Connection, which `saveWorkspace` qualifies again.
     modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
     modelChoices: preset.defaultModels ? [...new Set(Object.values(preset.defaultModels))] : null,
@@ -95,6 +97,7 @@ export async function loadProducts(workspace: number) {
           name: p.name as string,
           slug: p.slug as string,
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number },
+          merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens

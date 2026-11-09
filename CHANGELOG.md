@@ -9,6 +9,26 @@ All notable changes to this project are documented in this file. Format: [Keep a
 ### Features
 - Upgrade agentgateway v1.6.0 → v1.7.0 ([#444](https://github.com/getbauherr/bauherr/issues/444), [#447 chore(deps): agentgateway v1.7.0 (Refs #444)](https://github.com/getbauherr/bauherr/pull/447))
 
+## 0.1.1 - 2026-11-09
+
+### Features
+- Router profile: vLLM Semantic Router and auto tier ([#58](https://github.com/getbauherr/bauherr/issues/58), [#431 feat(router): Router compose profile, router key and auto tier (Refs #58)](https://github.com/getbauherr/bauherr/pull/431))
+  - `docker compose --profile router up` starts the vLLM Semantic Router (vllm-sr v0.4.0, pinned) with its Envoy front. Without the profile nothing router-related starts and no model weights are downloaded (D2).
+  - The gateway has a virtual model `ws-<slug>/<connection>/auto` served by the router. A Workspace creates it by adding an LLM Connection with the new preset `router`, which needs no secret from the user.
+  - **The router calls back into the gateway with a dedicated router key for the Workspace** (D1b = 1, owner 2026-11-09). Bauherr creates the key and stores it encrypted like the Workspace gateway key. The gateway attributes its spend to the Workspace, and inner calls appear in `request_logs` under `workspace-<slug>`.
+  - A Runner tier `auto` exists: `tierModels` resolves it to the router model when the Workspace has a `router` Connection, and a Run with `tier: auto` sends its model calls through the router.
+  - A tier other than `auto` behaves exactly as today. Workspaces without a `router` Connection are unaffected (no new required config).
+  - The gateway config with a `router` entry passes `agentgateway --validate-only` (`gateway-config.test.ts`).
+  - `docs/router.md` answers the wayfinder question: how the key travels, how spend is attributed, what is double-counted (D4), the single-Workspace limit (D3), and the measured smoke result.
+- measure PR wall time after the build-once change (#294 follow-up) ([#347](https://github.com/getbauherr/bauherr/issues/347), [#433 ci(server): Template DB for tests and 3-way shard (Refs #347)](https://github.com/getbauherr/bauherr/pull/433))
+- Releases page and manual mode ([#405](https://github.com/getbauherr/bauherr/issues/405), [#425 feat(release): Releases page: pick done Tickets, ship a version; manual mode reminder (Refs #405)](https://github.com/getbauherr/bauherr/pull/425))
+- Payload's REST sign-in /api/bauherren/login bypasses the sign-in queue and its cap ([#428](https://github.com/getbauherr/bauherr/issues/428), [#429 fix(auth): REST sign-in through the sign-in queue, per-IP limit, GraphQL off (Refs #428)](https://github.com/getbauherr/bauherr/pull/429))
+- stable 'released before', one date source, retry-safe ship e2e ([#430](https://github.com/getbauherr/bauherr/issues/430), [#435 fix(release): Backfill old releases once, retry-safe ship e2e (Refs #430)](https://github.com/getbauherr/bauherr/pull/435))
+- docs/auth.md: say when the IP limit is trustworthy (TRUSTED_PROXY_HOPS) ([#432](https://github.com/getbauherr/bauherr/issues/432), [#434 fix(auth): Short x-forwarded-for chains share one IP bucket; document IP-limit trust (Refs #432)](https://github.com/getbauherr/bauherr/pull/434))
+- Lows from #347 and #430, plus #347's 10-run CI measurement (2026-11-09) ([#436](https://github.com/getbauherr/bauherr/issues/436), [#441 fix(core): Board reminder skips earlier releases, retry-gated ship e2e, per-run template DB (Refs #436)](https://github.com/getbauherr/bauherr/pull/441))
+- Follow-ups from #58: migrations crash on newer Workspace columns; router doubles the gateway budget ([#438](https://github.com/getbauherr/bauherr/issues/438), [#443 fix(router): Schema-safe migration, router-key revoke and tier checks (Refs #438)](https://github.com/getbauherr/bauherr/pull/443))
+- npm trusted publishing fails with E401 (setup-node registry-url placeholder token) ([#439](https://github.com/getbauherr/bauherr/issues/439), [#440 fix(release): Publish npm via trusted publishing without registry-url (Refs #439)](https://github.com/getbauherr/bauherr/pull/440))
+
 
 ## 0.1.0 - 2026-11-09
 

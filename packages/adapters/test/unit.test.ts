@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, createVerify, generateKeyPairSync } from 'node:crypto';
 import { describe, it } from 'node:test';
 import {
-  appAuth, closeReasonLabel, Conflict, FakeBackend, GithubBackend, githubWebhooks, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
+  appAuth, closeReasonLabel, Conflict, FakeBackend, GithubBackend, githubWebhooks, NotQueueableError, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
 } from '../src/index.js';
 
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
@@ -386,5 +386,64 @@ describe('github file requests', () => {
     await fresh.f.putFile('o/r', { branch: 'b', path: 'p', content: 'c', message: 'm', expectSha: '' });
     assert.deepEqual(fresh.calls.map((c) => c.method), ['GET', 'PUT']);
     assert.equal('sha' in fresh.calls[1]!.body, false);
+  });
+});
+
+describe('github merge queue', () => {
+  const run = <T>(handler: (method: string, path: string, body: any) => Response, call: (f: GithubBackend['forge']) => Promise<T>) => {
+    const calls: { method: string; path: string; body: any }[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        const call = { method: String(init?.method), path: new URL(String(u)).pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined };
+        calls.push(call);
+        return handler(call.method, call.path, call.body);
+      },
+    });
+    return call(b.forge).then((res) => ({ res, calls }));
+  };
+  const pull = (state: Record<string, unknown> = {}) => ({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'bauherr/7', sha: 'h', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } }, node_id: 'PR_1', ...state });
+  const gql = (data: unknown) => json({ data });
+
+  it('queueSupport is true when the default branch has a merge queue', async () => {
+    for (const [mergeQueue, want] of [[{ id: 'MQ' }, true], [null, false]] as const) {
+      const { res, calls } = await run((_m, path) => (path === '/graphql' ? gql({ repository: { mergeQueue } }) : json({ full_name: 'o/r', default_branch: 'trunk' })), (f) => f.queueSupport('o/r'));
+      assert.equal(res, want);
+      assert.deepEqual(calls[1]!.body.variables, { o: 'o', n: 'r', b: 'trunk' });
+    }
+  });
+  it('queueSupport surfaces GraphQL errors instead of reporting no queue', async () => {
+    await assert.rejects(run((_m, path) => (path === '/graphql' ? json({ errors: [{ message: 'Resource not accessible' }] }) : json({ default_branch: 'main' })), (f) => f.queueSupport('o/r')), /Resource not accessible/);
+  });
+  it('requiredChecks lists the contexts of the required_status_checks rules', async () => {
+    const rules = [{ type: 'merge_queue', parameters: {} }, { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'ci' }, { context: 'e2e (1)' }] } }];
+    const { res, calls } = await run(() => json(rules), (f) => f.requiredChecks('o/r', 'main'));
+    assert.deepEqual(res, ['ci', 'e2e (1)']);
+    assert.equal(calls[0]!.path, '/repos/o/r/rules/branches/main');
+  });
+  it('enqueue PUTs merge-async with the pinned head; 409 means already queued; 400 and 405 are NotQueueableError', async () => {
+    const ok = await run((m) => (m === 'PUT' ? json({}, { status: 202 }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' }));
+    assert.deepEqual(ok.res, { state: 'queued' });
+    assert.deepEqual(ok.calls.at(-1), { method: 'PUT', path: '/repos/o/r/pulls/7/merge-async', body: { merge_action: 'merge_queue', sha: 'h' } });
+    assert.deepEqual((await run((m) => (m === 'PUT' ? new Response('pending', { status: 409 }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' }))).res, { state: 'queued' });
+    for (const status of [400, 405]) {
+      await assert.rejects(run((m) => (m === 'PUT' ? new Response('Changes must be made through the merge queue', { status }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' })), (e) => e instanceof NotQueueableError && /merge queue/.test(e.message));
+    }
+    await assert.rejects(run((m) => (m === 'PUT' ? new Response('boom', { status: 500 }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' })), /500/);
+  });
+  it('enqueue of a merged PR reports merged with its sha and sends nothing', async () => {
+    const { res, calls } = await run(() => json(pull({ merged_at: '2026-11-01T00:00:00Z', merge_commit_sha: 'm9' })), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' }));
+    assert.deepEqual(res, { state: 'merged', mergeSha: 'm9' });
+    assert.ok(!calls.some((c) => c.method === 'PUT'));
+  });
+  it('isQueued reads mergeQueueEntry; dequeue mutates only a queued PR', async () => {
+    const entry = (e: unknown) => (m: string, path: string) => (path === '/graphql' ? gql({ repository: { pullRequest: { mergeQueueEntry: e } } }) : json(pull()));
+    assert.equal((await run(entry({ id: 'E' }), (f) => f.isQueued('o/r', 7))).res, true);
+    assert.equal((await run(entry(null), (f) => f.isQueued('o/r', 7))).res, false);
+    const idle = await run(entry(null), (f) => f.dequeuePullRequest('o/r', 7));
+    assert.equal(idle.calls.length, 1);
+    const queued = await run(entry({ id: 'E' }), (f) => f.dequeuePullRequest('o/r', 7));
+    assert.match(queued.calls.at(-1)!.body.query, /dequeuePullRequest/);
+    assert.deepEqual(queued.calls.at(-1)!.body.variables, { id: 'PR_1' });
   });
 });

@@ -165,6 +165,7 @@ const workspaces = col(
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
+    { name: 'routerBudgetShare', type: 'number', defaultValue: 20, min: 1, max: 99, admin: { description: 'Percent of the budget for `auto` traffic while a router Connection exists.' } },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
     select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
@@ -212,7 +213,7 @@ const workspaces = col(
           if (!gatewayEnabled()) return
           if (
             operation === 'create' ||
-            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d'] as const).some((k) => doc[k] !== previousDoc?.[k])
+            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d', 'routerBudgetShare'] as const).some((k) => doc[k] !== previousDoc?.[k])
           )
             await ensureKey(req, doc.id)
           else if (!isDeepStrictEqual(doc.modelByTier, previousDoc?.modelByTier)) await syncRouterKey(req, doc.id)
@@ -361,7 +362,10 @@ const connections = col(
           if (!gatewayEnabled()) return
           if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, slug, decrypt(raw.secret), preset.secret.ext)
           await removeProvider(raw.workspace.slug, slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
-          if (router) await ensureRouterKey(req, raw.workspace.id)
+          if (router) {
+            await ensureRouterKey(req, raw.workspace.id)
+            await ensureKey(req, raw.workspace.id)
+          }
           else if (isRouter(previousDoc?.config) && !conns.some((c) => isRouter(c.config))) await revokeRouterKey(req, raw.workspace.id, raw.workspace.slug)
           await renderModels(req)
           if (!process.env.GATEWAY_URL) return
@@ -442,8 +446,10 @@ const tickets = col('tickets', [
   text('releaseSha'),
   select('releaseChecksState', ['waiting', 'passed', 'failed']),
   text('releaseRunUrl'),
-  select('reviewState', ['waiting_checks', 'merged', 'ready_for_human', 'needs_human']),
+  select('reviewState', ['waiting_checks', 'queued', 'merged', 'ready_for_human', 'needs_human']),
   date('reviewWaitingSince'),
+  { name: 'queuedAt', type: 'date', admin: { readOnly: true, description: 'When the MR entered the forge merge queue (`reviewState` queued).' } },
+  { name: 'trainFailures', type: 'number', defaultValue: 0, admin: { description: 'Times the merge queue or train dropped the MR (its checks failed there); the 3rd needs a human.' } },
   { name: 'mergeFailures', type: 'number', defaultValue: 0, admin: { description: 'Consecutive failed merge attempts; the 3rd needs a human.' } },
   text('gateNotified'),
   date('gateNotifiedAt'),
@@ -489,6 +495,9 @@ export const collections: CollectionConfig[] = [
     text('expediteSkipStagingBy'),
     date('expediteSkipStagingAt'),
     { name: 'autoMerge', type: 'checkbox', defaultValue: true, admin: { description: 'Squash-merge the factory MR after a clean review and green checks.' } },
+    select('mergeMode', ['direct', 'queue', 'train'], { defaultValue: 'direct', required: true, admin: { description: 'direct: the factory squash-merges the MR itself. queue: it enqueues the reviewed head in the forge\'s merge queue. train: reserved for the factory-built train.' } }),
+    { name: 'trainState', type: 'json', admin: { readOnly: true, description: 'The running factory train; null unless one is running.' } },
+    { name: 'mergePreflight', type: 'json', admin: { readOnly: true, description: 'Result of the last repo preflight for queue mode: {ok, problems, at}.' } },
     { name: 'productionGate', type: 'checkbox', defaultValue: false, admin: { description: 'Accepting on staging waits for an explicit production approval instead of moving to done; the Product\'s own pipeline deploys.' } },
     text('productionWebhookUrl', { admin: { description: 'Optional: POSTed once on production approval; a pipeline may instead react to the bauherr:approved:production label.' } }),
     select('releaseMode', ['notes-only', 'factory', 'manual'], { defaultValue: 'notes-only', required: true, admin: { description: 'notes-only: the Product\'s own tooling makes the release, the factory adds the notes. factory: the factory tags, releases and opens a CHANGELOG.md MR. manual: no automatic release; a person ships it from the forge release flow.' } }),

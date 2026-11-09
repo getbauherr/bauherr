@@ -3,7 +3,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
-import { Conflict } from './contracts.js';
+import { Conflict, NotQueueableError } from './contracts.js';
 import { timedFetch } from './http.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 
@@ -390,6 +390,40 @@ class GithubForge implements Forge {
       });
     }
     return { mergeSha: m.sha as string, ...(branchDeleteError ? { branchDeleteError } : {}) };
+  }
+  private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    const r = await this.h.json('POST', '/graphql', { query, variables });
+    if (r.errors?.length) throw new Error(`GitHub GraphQL: ${r.errors.map((e: { message: string }) => e.message).join('; ')}`);
+    return r.data as T;
+  }
+  async queueSupport(repo: RepoRef) {
+    const [owner, name] = repo.split('/');
+    const d = await this.graphql<{ repository: { mergeQueue: unknown } }>('query($o:String!,$n:String!,$b:String!){repository(owner:$o,name:$n){mergeQueue(branch:$b){id}}}', { o: owner, n: name, b: (await this.getRepository(repo)).defaultBranch });
+    return !!d.repository.mergeQueue;
+  }
+  async requiredChecks(repo: RepoRef, branch: string) {
+    const rules = await this.h.json('GET', `/repos/${repo}/rules/branches/${branch.split('/').map(enc).join('/')}`);
+    return (rules as any[]).filter((r) => r.type === 'required_status_checks').flatMap((r) => (r.parameters?.required_status_checks ?? []).map((c: { context: string }) => c.context));
+  }
+  async enqueuePullRequest(repo: RepoRef, n: number, o: { expectSha: string }) {
+    const p = await this.getPullRequest(repo, n);
+    if (p.state === 'merged') return { state: 'merged' as const, ...(p.mergeSha ? { mergeSha: p.mergeSha } : {}) };
+    try {
+      await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge-async`, { merge_action: 'merge_queue', sha: o.expectSha });
+    } catch (e) {
+      if (e instanceof GithubError && [400, 405].includes(e.status)) throw new NotQueueableError(e.message);
+      if (!(e instanceof GithubError && e.status === 409)) throw e; // 409: already pending in the queue
+    }
+    return { state: 'queued' as const };
+  }
+  async isQueued(repo: RepoRef, n: number) {
+    const [owner, name] = repo.split('/');
+    const d = await this.graphql<{ repository: { pullRequest: { mergeQueueEntry: unknown } | null } }>('query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){mergeQueueEntry{id}}}}', { o: owner, n: name, p: n });
+    return !!d.repository.pullRequest?.mergeQueueEntry;
+  }
+  async dequeuePullRequest(repo: RepoRef, n: number) {
+    if (!(await this.isQueued(repo, n))) return;
+    await this.graphql('mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}', { id: (await this.h.json('GET', `/repos/${repo}/pulls/${n}`)).node_id });
   }
   async listFiles(repo: RepoRef, ref?: string) {
     const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
