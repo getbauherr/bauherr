@@ -76,7 +76,7 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
     if (!winner) throw e
     return { run: winner, created: false }
   }
-  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id }, req })
+  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id }, req: req as PayloadRequest | undefined })
   return { run, created: true }
 }
 
