@@ -59,7 +59,7 @@ export function BoardView({ tickets, showProduct, admin, wip }: { tickets: Ticke
                       <>
                         {title(t)}
                         {t.expedite && <span className="label text-destructive" data-hotfix>Hotfix</span>}
-                        {t.needsYou ? <Needs t={t} /> : st && <Status s={st} />}
+                        {t.needsYou ? <Needs t={t} /> : t.releasedIn ? <span className="label text-muted-foreground" data-released>Released in {t.releasedIn}</span> : st && <Status s={st} />}
                         <EpicTag t={t} />
                         {t.product && showsProduct(t, st !== null, showProduct) && <span className="small text-muted-foreground">{t.product.name}</span>}
                         <Num t={t} />

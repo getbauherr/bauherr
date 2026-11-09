@@ -96,7 +96,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const idle = nextStep({ ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
   // OwnerChat hides itself when nothing is open on load; it stays mounted while decisions exist, so the refresh after the last answer keeps its summary.
   const decisionsShown = decisions.length > 0 && !approved
-  const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production'].filter(Boolean).join(' · ')
+  const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   const reached = reachedStages({ state: ticket.state, stage: stageOf(ticket) }, runs as { stage: string }[])
   const selected = reached.find((s) => s === stageParam)
   let mr: { url: string; headSha: string | null; checks: ReturnType<typeof checkLines> } | null = null

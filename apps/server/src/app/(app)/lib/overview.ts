@@ -40,6 +40,8 @@ export type TicketRow = {
   reviewRounds: number
   /** Hotfix: the Expedite lane serves this open Ticket. */
   expedite: boolean
+  /** Tag of the release the Ticket shipped in, e.g. v0.2.0. */
+  releasedIn: string | null
   product: { id: number; name: string } | null
   run: RunRow | null
   /** Email local-part of the session owner of a live Run; null for scheduler Runs. */
@@ -130,6 +132,7 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
       rank: t.rank ?? null,
       reviewRounds: t.reviewRounds ?? 0,
       expedite: isOpen && !!t.expedite,
+      releasedIn: t.releasedIn ?? null,
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,

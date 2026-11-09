@@ -114,6 +114,17 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))
+  // releases.spec.ts: done Tickets (#1..) of two manual Products, merged as `<slug>-sha-<n>` in order, so the newest merge contains the others.
+  for (const [repo, slug, titles] of [['acme/relist', 'acme-relist', ['Relist the export totals', 'Relist the invoice filter', 'Relist the CSV header']], ['acme/reship', 'acme-reship', ['Reship the export totals', 'Reship the invoice filter']]] as const) {
+    const t = fake.tickets(repo)
+    for (const [i, title] of titles.entries()) {
+      void t.create({ title, labels: ['wayfinder:map'] })
+      void t.comment(String(i + 1), summary(i + 1))
+      fake.setCommitDate(repo, `${slug}-sha-${i + 1}`, `2026-11-0${i + 1}T10:00:00Z`)
+    }
+    fake.setAncestors(repo, `${slug}-sha-${titles.length}`, titles.map((_, i) => `${slug}-sha-${i + 1}`))
+  }
+  fake.commit('acme/reship', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
   // Knowledge repo of the seeded Workspace: two documents on main and one open write-back PR with red checks.
   const kb = 'acme/knowledge'
   fake.commit(kb, 'main', 'handbook/release-policy.md', '# Release policy\n\nEvery release waits for **staging acceptance**.\n\n## Rollback\n\nRoll back with the previous image tag.\n')

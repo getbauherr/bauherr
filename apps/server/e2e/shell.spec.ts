@@ -21,7 +21,7 @@ test('slim shell: nav, New request, avatar menu with theme, sign out', async ({ 
   const nav = bar.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: /^Tickets/ })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: /^Requests/ })).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(3)
+  await expect(nav.getByRole('link')).toHaveCount(4)
   await expect(nav.getByRole('link', { name: 'Knowledge' })).toBeVisible()
   await expect(bar.getByRole('link', { name: 'New request' })).toHaveCount(0)
   await nav.getByRole('link', { name: /^Requests/ }).click()
