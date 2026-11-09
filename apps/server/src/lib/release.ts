@@ -98,6 +98,16 @@ const checksGreen = (checks: Check[], names: string[]): boolean => {
   return picked.length > 0 && picked.every(passed)
 }
 
+/** Staging runs the newest default-branch commit, so a Ticket is confirmed when its merge commit or a later commit that descends from it (a batch tip, a queue group) is green. */
+const stagingConfirmed = async (forge: Forge, repo: string, mergeSha: string, mergeChecksList: Check[], names: string[]): Promise<boolean> => {
+  if (checksGreen(mergeChecksList, names)) return true
+  const later = (await forge.listCommits(repo, { from: mergeSha, to: (await forge.getRepository(repo)).defaultBranch })).slice(0, 20)
+  for (const c of later) {
+    if (c.sha !== mergeSha && checksGreen(await forge.listChecks(repo, c.sha), names) && (await forge.isAncestor(repo, mergeSha, c.sha))) return true
+  }
+  return false
+}
+
 /** CI gets this long after the head commit to register its first check before "no checks" counts as green. */
 export const CHECKS_GRACE_MS = 10 * 60_000
 
@@ -255,7 +265,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
           if (t.mergeSha) {
             const list = await backend.forge.listChecks(repo, t.mergeSha)
             await settleRetries(payload, t, t.mergeSha, list)
-            onStaging = checksGreen(list, names)
+            onStaging = await stagingConfirmed(backend.forge, repo, t.mergeSha, list, names)
             const failed = latestChecks(list).filter((c) => (!names.length || names.includes(c.name)) && failedCheck(c))
             if (!onStaging && failed.length) await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, failed, latestChecks(list))
           }

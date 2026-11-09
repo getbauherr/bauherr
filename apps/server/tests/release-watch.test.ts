@@ -1,6 +1,6 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -311,4 +311,54 @@ it('a failed label add during the merge pass keeps the DB stage; the next poll r
   await (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
   expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
   expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
+})
+
+describe('staging on a descendant SHA', () => {
+  const tip = (sha: string) => fake.setCommits(repo, [{ sha, message: 'tip' }])
+  afterEach(() => fake.setCommits(repo, []))
+
+  it('a later green tip confirms both Tickets of one batch', async () => {
+    await setProduct({ deployChecks: '' })
+    const a = await reviewTicket('batch a')
+    const b = await reviewTicket('batch b')
+    const shaA = fake.merge(repo, a.pr.number)
+    const shaB = fake.merge(repo, b.pr.number)
+    await release.watchRelease(payload)
+    fake.setChecks(repo, shaA, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+    fake.setChecks(repo, shaB, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+    fake.setChecks(repo, 'batch-tip', green)
+    fake.setAncestors(repo, 'batch-tip', [shaA, shaB])
+    tip('batch-tip')
+    await release.watchRelease(payload)
+    expect(await summaries(a.n)).toHaveLength(1)
+    expect(await summaries(b.n)).toHaveLength(1)
+  })
+
+  it('a red or pending later tip does not confirm', async () => {
+    await setProduct({ deployChecks: '' })
+    const { pr, n } = await reviewTicket('late red')
+    const sha = fake.merge(repo, pr.number)
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+    fake.setAncestors(repo, 'red-tip', [sha])
+    tip('red-tip')
+    fake.setChecks(repo, 'red-tip', [{ name: 'ci', status: 'completed', conclusion: 'failure' }])
+    await release.watchRelease(payload)
+    fake.setChecks(repo, 'red-tip', [{ name: 'ci', status: 'in_progress', conclusion: null }])
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(0)
+  })
+
+  it('a green commit that does not descend from mergeSha does not count', async () => {
+    await setProduct({ deployChecks: '' })
+    const { pr, n } = await reviewTicket('unrelated')
+    const sha = fake.merge(repo, pr.number)
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+    fake.setChecks(repo, 'other-tip', green)
+    fake.setAncestors(repo, 'other-tip', [])
+    tip('other-tip')
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(0)
+  })
 })

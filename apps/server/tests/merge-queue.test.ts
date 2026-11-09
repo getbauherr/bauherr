@@ -113,6 +113,19 @@ it('a PR dropped by the queue returns to Build with the queue-run link and count
   expect(worklog).toContain('https://github.com/acme/queue/actions?query=event%3Amerge_group')
 })
 
+it('a merge landing between the PR read and the queue check is not a drop', async () => {
+  const { id, pr } = await enqueued()
+  const isQueued = fake.forge.isQueued
+  fake.forge.isQueued = async (r, n) => (fake.advanceQueue(repo), isQueued(r, n))
+  try {
+    expect(await actions.watchQueued(payload, minutes(3))).toBe(1)
+  } finally {
+    fake.forge.isQueued = isQueued
+  }
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'merged', trainFailures: 0 })
+  expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('merged')
+})
+
 it('the 3rd drop needs a human', async () => {
   const { id, pr } = await enqueued()
   await payload.update({ collection: 'tickets', id, data: { trainFailures: 2 }, ...o })

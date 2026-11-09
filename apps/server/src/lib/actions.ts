@@ -1077,7 +1077,7 @@ export const queueRunsLink = (pr: { url: string; base: string }, repo: string): 
 
 /**
  * Per-minute pass over Tickets in `queued`: a merged MR is left to `watchRelease` (reviewState becomes `merged`); a moved head dequeues and starts a new review;
- * an open MR the forge no longer reports as queued (after a 2 minute grace) was dropped: back to Build with the queue run link, `trainFailures` + 1, the 3rd needs a human;
+ * an open MR the forge no longer reports as queued (after a 2 minute grace, and a fresh read that still finds it open) was dropped: back to Build with the queue run link, `trainFailures` + 1, the 3rd needs a human;
  * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first). An unknown queue state (the forge call failed) changes nothing.
  */
 export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
@@ -1104,6 +1104,12 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
         continue
       }
       if (at - since <= QUEUE_DROP_GRACE_MS || (await mr.backend.forge.isQueued(mr.repo, mr.pr.number))) continue
+      const now = await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)
+      if (now.state === 'merged') {
+        if (await moveReview(payload, t.id, 'merged', 'queued')) merged++
+        continue
+      }
+      if (now.state === 'closed') continue
       await returnDroppedToBuild(payload, t, mr)
     } catch (e) {
       payload.logger.error({ err: e, ticket: t.id }, 'watch-queued failed for ticket')

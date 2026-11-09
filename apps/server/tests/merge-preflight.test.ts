@@ -1,4 +1,5 @@
 import { FakeBackend } from '@bauherr/adapters'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { checkGitlabCi, checkWorkflows, detectMergeMode, preflightQueue } from '../src/lib/merge-preflight'
 
@@ -31,6 +32,15 @@ describe('checkWorkflows', () => {
       { path: '.github/workflows/release.yml', content: wf('  push:\n    tags: ["v*"]', '  release:\n    runs-on: ubuntu-latest\n    steps: []') },
     ]
     expect(checkWorkflows(files, ['ci'])).toEqual([])
+  })
+
+  it('the bauherr ci.yml fixture (a copy of .github/workflows/ci.yml) passes with merge_group and fails without', () => {
+    const ci = readFileSync(new URL('./fixtures/ci.yml', import.meta.url), 'utf8')
+    const required = ['check', 'test', 'build-image', 'e2e', 'e2e-fake', 'cli', 'gateway-validate', 'cli-smoke']
+    expect(checkWorkflows(file(ci), required)).toEqual([])
+    const problems = checkWorkflows(file(ci.replace('  merge_group:\n', '')), required)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems[0]).toContain('no merge_group trigger')
   })
 
   it('matches matrix and reusable-workflow contexts to their job, and takes a job name over its id', () => {
