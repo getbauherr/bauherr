@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { collectItem, nextVersion, renderNotes, rewrite } from '../src/lib/release-notes'
+import { collectItem, nextVersion, renderNotes, rewrite, summarizeRelease } from '../src/lib/release-notes'
 import { buildStagingSummary } from '../src/lib/summary'
 
 const summary = (plan: string) => buildStagingSummary({ ticket: { number: 7, title: 't', url: 'https://x/7' }, plan, worklog: null, mrs: [{ number: 3, url: 'https://x/pull/3', title: 'Export', body: '' }], evidence: null, stagingUrl: null, mergeSha: null })
@@ -39,4 +39,10 @@ it('keeps the rewrite only when every link survived', async () => {
   expect(await rewrite(notes, async () => '- Easier A')).toBe(notes)
   expect(await rewrite(notes, async () => '')).toBe(notes)
   expect(await rewrite(notes, async () => Promise.reject(new Error('budget')))).toBe(notes)
+})
+
+it('summarizes the notes and never blocks on a model error or empty answer', async () => {
+  expect(await summarizeRelease('- A', async () => '  Easier A.\n')).toBe('Easier A.')
+  expect(await summarizeRelease('- A', async () => { throw new Error('down') })).toBe('')
+  expect(await summarizeRelease('- A', async () => '  ')).toBe('')
 })

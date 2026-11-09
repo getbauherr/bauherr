@@ -7,6 +7,7 @@ export function Nav({ needsYou, drafts, hasKnowledge }: { needsYou: number; draf
   const items = [
     { href: '/requests', label: 'Requests', current: path.startsWith('/requests'), badge: drafts, noun: drafts === 1 ? 'draft' : 'drafts' },
     { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou, noun: 'need you' },
+    { href: '/releases', label: 'Releases', current: path.startsWith('/releases'), badge: 0, noun: '' },
     ...(hasKnowledge ? [{ href: '/knowledge', label: 'Knowledge', current: path.startsWith('/knowledge'), badge: 0, noun: '' }] : []),
   ]
   return (
