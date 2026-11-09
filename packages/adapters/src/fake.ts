@@ -25,6 +25,8 @@ interface FakeRepo {
   /** Commits a release tag contains besides its own (test helper `addRelease`). */
   contains: Map<string, string[]>;
   commits: { sha: string; message: string }[];
+  /** Ancestors of a commit (test helper `setAncestors`). */
+  ancestors: Map<string, string[]>;
 }
 
 const blobSha = (c: string): string => createHash('sha1').update(c).digest('hex');
@@ -151,6 +153,11 @@ export class FakeBackend implements Backend {
     return [...this.repo(repo).releases];
   }
 
+  /** Test helper: the commits `isAncestor` reports as ancestors of `head` (every commit is its own ancestor). */
+  setAncestors(repo: RepoRef, head: string, shas: string[]): void {
+    this.repo(repo).ancestors.set(head, shas);
+  }
+
   /** Test helper: the commits `listCommits` returns (newest first). */
   setCommits(repo: RepoRef, commits: { sha: string; message: string }[]): void {
     this.repo(repo).commits = commits;
@@ -159,7 +166,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [] };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map() };
       this.repos.set(name, r);
     }
     return r;
@@ -266,6 +273,8 @@ export class FakeBackend implements Backend {
         if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
         return this.addRelease(repo, { ...o, createdAt: this.repo(repo).commitDates.get(o.sha) });
       },
+      listReleases: async (repo) => [...this.repo(repo).releases].reverse(),
+      isAncestor: async (repo, base, head) => base === head || !!this.repo(repo).ancestors.get(head)?.includes(base),
       updateRelease: async (repo, id, o) => {
         const rel = this.repo(repo).releases.find((r) => r.id === id);
         if (!rel) throw new Error(`no release ${id}`);

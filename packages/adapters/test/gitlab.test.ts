@@ -109,6 +109,18 @@ describe('gitlab tickets', () => {
     assert.equal((await forge.latestRelease('g/p'))?.tag, 'v1.0.0');
   });
 
+  it('listReleases maps every release; isAncestor holds when the merge base is the base commit', async () => {
+    const { forge, calls } = setup((_m, path) => {
+      if (path.includes('/releases')) return [{ tag_name: 'v1.0.0', _links: { self: 'u1' }, commit: { id: 'c1' } }];
+      if (path.includes('/repository/commits/')) return { id: 'aaa' };
+      return { id: path.endsWith('&refs[]=bbb') ? 'zzz' : 'aaa' };
+    });
+    assert.deepEqual((await forge.listReleases('g/p')).map((r) => [r.tag, r.sha]), [['v1.0.0', 'c1']]);
+    assert.equal(await forge.isAncestor('g/p', 'aaa', 'hhh'), true);
+    assert.equal(await forge.isAncestor('g/p', 'aaa', 'bbb'), false);
+    assert.ok(calls.some((c) => c.path.startsWith(`${P}/repository/merge_base?`)));
+  });
+
   it('release, unassign, userExists', async () => {
     const { ts, calls } = setup((m, path) => (path.startsWith('/users') ? (path.endsWith('ghost') ? [] : fx('users')) : fx('issue')));
     await ts.release('7');

@@ -442,6 +442,17 @@ class GithubForge implements Forge {
     }
     return found;
   }
+  async listReleases(repo: RepoRef) {
+    const out: Release[] = [];
+    for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
+      const rel = await this.release(repo, r);
+      if (rel) out.push(rel);
+    }
+    return out;
+  }
+  async isAncestor(repo: RepoRef, base: string, head: string) {
+    return ['ahead', 'identical'].includes((await this.h.json('GET', `/repos/${repo}/compare/${enc(base)}...${enc(head)}?per_page=1`)).status);
+  }
   async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
     const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease });
     return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string, prerelease: !!o.prerelease, createdAt: r.created_at };
