@@ -174,10 +174,36 @@ it('bisectFirstFailure finds the first failing prefix for k = 1..5 with at most 
   }
 })
 
-it('watchQueued leaves a train Product\'s long-queued Ticket alone but still escalates one of a queue Product', async () => {
+it('watchQueued leaves a running train member alone; a queued Ticket outside it, or of a queue Product, escalates after 2 hours', async () => {
+  const late = () => Date.now() + 3 * 3_600_000
   const p = await seed('a.ts')
-  expect(await actions.watchQueued(payload, Date.now() + 3 * 3_600_000)).toBe(0)
+  await run()
+  expect((await state())!.members.map((m) => m.ticket)).toEqual([p.id])
+  expect(await actions.watchQueued(payload, late())).toBe(0)
   expect(await reload(p.id)).toMatchObject({ reviewState: 'queued' })
+  await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`UPDATE "products" SET "train_state" = NULL WHERE "id" = ${product}`)
+  await actions.watchQueued(payload, late())
+  expect(await reload(p.id)).toMatchObject({ reviewState: 'needs_human' })
+})
+
+it('a train that can never start (mergeIntoBranch always throws) does not hold queued Tickets forever', async () => {
+  const p = await seed('b.ts')
+  const orig = fake.forge.mergeIntoBranch
+  fake.forge.mergeIntoBranch = async () => {
+    throw new Error('pipelines must succeed')
+  }
+  try {
+    await run()
+    expect(await state()).toBeNull()
+    await actions.watchQueued(payload, Date.now() + 3 * 3_600_000)
+  } finally {
+    fake.forge.mergeIntoBranch = orig
+  }
+  expect(await reload(p.id)).toMatchObject({ reviewState: 'needs_human' })
+})
+
+it('watchQueued still escalates a long-queued Ticket of a queue Product', async () => {
+  const p = await seed('c.ts')
   await payload.update({ collection: 'products', id: product, data: { mergeMode: 'queue' }, ...o })
   try {
     await actions.watchQueued(payload, Date.now() + 3 * 3_600_000)

@@ -1085,7 +1085,7 @@ export const queueRunsLink = (pr: { url: string; base: string }, repo: string): 
 /**
  * Per-minute pass over Tickets in `queued`: a merged MR is left to `watchRelease` (reviewState becomes `merged`); a moved head dequeues and starts a new review;
  * an open MR the forge no longer reports as queued (after a 2 minute grace) was dropped: back to Build with the queue run link, `trainFailures` + 1, the 3rd needs a human;
- * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first; not on a `train` Product: its train has its own step timeout). An unknown queue state (the forge call failed) changes nothing.
+ * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first; not for a member of the running train of a `train` Product: the train has its own step timeout). An unknown queue state (the forge call failed) changes nothing.
  */
 export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
@@ -1104,8 +1104,10 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
         continue
       }
       const since = t.queuedAt ? Date.parse(t.queuedAt) : at
-      const onTrain = isTrain(await trainProduct(payload, t))
-      if (!onTrain && at - since > WAIT_CHECKS_MAX_MS) {
+      const product = await trainProduct(payload, t)
+      const onTrain = isTrain(product)
+      const inRunningTrain = onTrain && ((product.trainState as { members?: { ticket: number | string }[] } | null)?.members ?? []).some((m) => String(m.ticket) === String(t.id))
+      if (!inRunningTrain && at - since > WAIT_CHECKS_MAX_MS) {
         await dequeueBeforeChange(payload, t, mr)
         await escalate(payload, t, 'the MR has been in the merge queue for more than 2 hours.')
         continue
