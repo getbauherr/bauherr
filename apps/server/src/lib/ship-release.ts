@@ -38,7 +38,7 @@ const mapLimit = async <T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]
   return out
 }
 
-/** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Once the Product has a `lastReleaseAt`, Tickets whose `releaseAt` is not after it are left out: they were merged before the latest release. Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
+/** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Once the Product has a `lastReleaseAt`, Tickets whose `releaseAt` is not after it are left out: they were merged before the latest release. Tickets without `releaseAt` still count until the Releases page records them. Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
   const { lastReleaseAt } = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
   const afterLastRelease = lastReleaseAt ? [{ or: [{ releaseAt: { exists: false } }, { releaseAt: { greater_than: lastReleaseAt } }] }] : []
