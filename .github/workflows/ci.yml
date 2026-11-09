@@ -259,6 +259,10 @@ jobs:
           echo pulled=false >> "$GITHUB_OUTPUT"
       - if: steps.pull.outputs.pulled == 'true'
         run: pnpm --filter server test:gateway
+      - name: Check the Prometheus config
+        run: |
+          img=$(grep -o 'prom/prometheus:[^ "]*' compose.yaml)
+          docker run --rm -v "$PWD/deploy/prometheus:/p:ro" --entrypoint promtool "$img" check config /p/prometheus.yml
 
   cli-smoke:
     runs-on: ubuntu-latest

@@ -13,11 +13,11 @@ config:
     fields:
       add:
         user_id: apiKey.user
-  __TRACING__
 gateways:
   default:
     port: 4000
 frontendPolicies:
+  __TRACING__
   accessLog:
     database:
       llm: metadata

@@ -50,7 +50,7 @@ export const forgeOf = async (payload: Payload, product: number | string) => {
   if (!src) throw new Error('no ticket source for this Product')
   const connection = await connectionInput(payload, src.connection)
   const backend = backendFor(connection)
-  return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo) }
+  return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo), kind: connection.kind === 'gitlab' ? ('gitlab' as const) : ('github' as const) }
 }
 
 /** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. */
@@ -242,7 +242,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         }
         if (pr.state !== 'merged') continue
         const at = new Date(now).toISOString()
-        if (!(await cas(payload, t.id, sql`"stage" = 'release', "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = 'review'`))) continue
+        if (!(await cas(payload, t.id, sql`"stage" = 'release', "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = 'review'`))) continue
         Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
         await moveStage(payload, ts, t, 'release')
         await clearApprovalLabel(payload, ts, n)

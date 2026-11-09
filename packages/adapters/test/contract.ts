@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { APPROVED_PLAN, Conflict, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
+import { APPROVED_PLAN, Conflict, NotQueueableError, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
 
 export interface ContractEnv {
   backend: Backend;
@@ -8,6 +8,8 @@ export interface ContractEnv {
   user: string;
   /** Writes a file on a branch (needed so a PR has a diff). */
   commitFile(branch: string, path: string, content: string): Promise<void>;
+  /** Switches the repo's native merge queue on (fakes only); the enqueue cases run only when given. */
+  enableQueue?(): void;
   /** Runs after the suite with the created ticket ids, branches and PR numbers. */
   cleanup?(created: { tickets: string[]; branches: string[]; prs: number[]; labels: string[] }): Promise<void>;
 }
@@ -203,6 +205,30 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal(files[0]?.status, 'added');
       assert.ok(Array.isArray(await f.listChecks(repo, (await f.getPullRequest(repo, p.number)).headSha)));
       assert.equal(await f.rerunFailed(repo, []), false);
+    });
+
+    it('queue: support is a boolean and dequeuing a PR that is not queued is a no-op', async () => {
+      const f = backend.forge;
+      const branch = `bauherr-contract-queue-${Date.now()}`;
+      await f.createBranch(repo, branch);
+      made.branches.push(branch);
+      await env.commitFile(branch, 'contract/queue.txt', 'q\n');
+      const p = await f.openPullRequest(repo, { title: 'contract queue PR', head: branch, base: (await f.getRepository(repo)).defaultBranch });
+      made.prs.push(p.number);
+      assert.equal(typeof (await f.queueSupport(repo)), 'boolean');
+      assert.equal(await f.isQueued(repo, p.number), false);
+      await f.dequeuePullRequest(repo, p.number);
+      assert.equal((await f.getPullRequest(repo, p.number)).state, 'open');
+      if (!env.enableQueue) return;
+      await assert.rejects(f.enqueuePullRequest(repo, p.number, { expectSha: p.headSha }), NotQueueableError);
+      env.enableQueue();
+      assert.equal(await f.queueSupport(repo), true);
+      await assert.rejects(f.enqueuePullRequest(repo, p.number, { expectSha: 'stale' }));
+      assert.deepEqual(await f.enqueuePullRequest(repo, p.number, { expectSha: p.headSha }), { state: 'queued' });
+      assert.equal(await f.isQueued(repo, p.number), true);
+      await f.dequeuePullRequest(repo, p.number);
+      await f.dequeuePullRequest(repo, p.number);
+      assert.equal(await f.isQueued(repo, p.number), false);
     });
 
     it('files: putFile -> getFile -> listFiles, stale expectSha conflicts', async () => {
