@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
-import type { NextStep } from '../../../lib/next-step'
+import { actionFor, fallbackFor, type Action, type NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
-import { FormPending, NextStepBar, type NextStepPrimary } from './NextStepBar'
+import { FormPending, LinkedReason, NextStepBar, type NextStepPrimary } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
 
@@ -47,17 +47,16 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
     primary: { label: verb, form: fid },
     form: <form id={fid} action={action}><input type="hidden" name="ticket" value={ticket} /><FormPending /></form>,
   })
-  const step: { primary?: NextStepPrimary; form?: ReactNode } = !need ? {} : (() => {
-    switch (need) {
-      case 'Expedite?': return post(expediteAction)
-      case 'Approve plan': return post(approvePlanAction)
-      case 'Accept on staging':
-      case 'Staging not confirmed': return post(acceptStagingAction)
-      case 'Approve production':
-      case 'Production deploy failed': return post(approveProductionAction)
-      case 'Release failed': return releaseRunUrl ? { primary: { label: verb, href: releaseRunUrl, newTab: true } } : {}
-      case 'Round cap reached': return post(grantReviewRoundAction)
-      case 'Needs you': return {
+  const action = need ? actionFor(need, { run, open, product, releaseRunUrl }) : null
+  const fallback = need && !action ? fallbackFor(need, { run }) : null
+  const step: { primary?: NextStepPrimary; form?: ReactNode } = !need ? {} : fallback ? { primary: { label: fallback.label, href: fallback.href } } : (() => {
+    switch (action!.kind) {
+      case 'expedite': return post(expediteAction)
+      case 'approvePlan': return post(approvePlanAction)
+      case 'acceptStaging': return post(acceptStagingAction)
+      case 'approveProduction': return post(approveProductionAction)
+      case 'grantRound': return post(grantReviewRoundAction)
+      case 'backToBuild': return {
         primary: { label: verb, form: fid },
         form: (
           <form id={fid} action={backToBuildAction}>
@@ -67,17 +66,16 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
           </form>
         ),
       }
-      case 'Cancelled':
-      case 'Run needs you':
-      case 'Run failed': return run ? { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run)}><FormPending /></form> } : {}
-      case 'Answer decisions':
-      case 'Answer questions': return { primary: { label: `Answer ${open} question${open === 1 ? '' : 's'}`, href: '#answer' } }
-      case 'Configure production checks': return { primary: { label: verb, href: `/settings/products/${product}#production` } }
+      case 'rerun': return { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run!)}><FormPending /></form> }
+      case 'link': {
+        const l = action as Extract<Action, { kind: 'link' }>
+        return { primary: { label: l.label ?? verb, href: l.href, ...(l.newTab ? { newTab: true } : {}) } }
+      }
     }
   })()
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
-    <NextStepBar sentence={gate ? gate.sentence(ctx) : idle.href ? <a className="text-primary" href={idle.href}>{idle.reason}</a> : idle.reason} primary={step.primary ?? (need ? undefined : { label: idle.label, disabled: true, reason: idle.reason })}>
+    <NextStepBar sentence={gate ? gate.sentence(ctx) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need ? undefined : { label: idle.label, disabled: true, reason: idle.reason })}>
       {(gate || canExpedite) && (
         <>
           {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
