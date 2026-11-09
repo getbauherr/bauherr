@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -263,6 +263,36 @@ it('ship stores lastRelease*; the Releases page backfills it once and asks ances
   await ship.releaseDraft(payload, products.burst!, [wanted[0]!.id], false)
   expect(calls.n).toBeLessThanOrEqual(1)
   expect(lastDay).toBeTruthy()
+})
+
+it('a Ticket in the latest release counts as waiting until the Releases page records it, and never again after', async () => {
+  const old = await done('backfill', 'Before the feature', 'sha-bf1', 1)
+  await payload.update({ collection: 'tickets', id: old.id, data: { releaseAt: null }, ...o })
+  const fresh = await done('backfill', 'Fresh', 'sha-bf2', 2)
+  fake.setAncestors('acme/backfill', 'sha-bf3', ['sha-bf1'])
+  await fake.forge.createRelease('acme/backfill', { tag: 'v0.1.0', sha: 'sha-bf3', name: 'v0.1.0', body: 'x' })
+  expect((await ship.waitingTickets(payload, products.backfill!)).map((t) => t.id)).toEqual([old.id, fresh.id])
+  await ship.releaseDraft(payload, products.backfill!)
+  expect(await reload(old.id)).toMatchObject({ releasedIn: 'v0.1.0' })
+  for (let i = 0; i < 3; i++) expect((await ship.waitingTickets(payload, products.backfill!)).map((t) => t.id)).toEqual([fresh.id])
+  await ship.releaseDraft(payload, products.backfill!)
+  expect((await ship.waitingTickets(payload, products.backfill!)).map((t) => t.id)).toEqual([fresh.id])
+})
+
+it('the backfill and a ship store the same lastReleaseAt: the commit date of the release head', async () => {
+  const early = await done('dates', 'Contained', 'sha-dt1', 1)
+  fake.setCommitDate('acme/dates', 'sha-dt2', '2026-11-06T08:00:00Z')
+  fake.setAncestors('acme/dates', 'sha-dt2', ['sha-dt1'])
+  await fake.forge.createRelease('acme/dates', { tag: 'v0.1.0', sha: 'sha-dt2', name: 'v0.1.0', body: 'x' })
+  await ship.releaseDraft(payload, products.dates!)
+  const backfilled = (await payload.findByID({ collection: 'products', id: products.dates!, ...o })).lastReleaseAt
+  expect(backfilled).toBe('2026-11-06T08:00:00.000Z')
+  expect(await reload(early.id)).toMatchObject({ releasedIn: 'v0.1.0' })
+  fake.commit('acme/dates-ship', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  const head = await done('dates-ship', 'Head', 'sha-dt2', 6)
+  fake.setCommitDate('acme/dates-ship', 'sha-dt2', '2026-11-06T08:00:00Z')
+  await ship.shipRelease(payload, user, { product: products['dates-ship']!, tickets: [head], version: '0.1.0', notes: 'n' })
+  expect((await payload.findByID({ collection: 'products', id: products['dates-ship']!, ...o })).lastReleaseAt).toBe(backfilled)
 })
 
 it('shipRelease records the release on the Product so the Board needs no forge', async () => {
