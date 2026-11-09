@@ -37,4 +37,10 @@ Both keys carry `user = workspace-<slug>`, so outer and inner requests appear in
 
 ## Smoke result
 
-Not yet measured; added to this page with the first run of `--profile router`.
+Isolated smoke on 2026-11-09 (vllm-sr v0.4.0, Envoy v1.35.3 from `deploy/router/envoy.yaml`, a config in the shape `renderRouter` writes, and a fake OpenAI-compatible service as `gateway:4000` that logs each request):
+
+- `router-core` accepted the config, downloaded its classifier models (about 2.5 GB in the models volume, once) and was ready about 20 s after the download.
+- One `auto` request per prompt through Envoy on `:8801`, sent with a Workspace-style key, reached the gateway as `POST /v1/chat/completions` with `Authorization: Bearer <router key>`: the caller's key does not travel to the inner call.
+- Routing: a coding prompt went to the `standard` tier model, a math prompt to `strong`, a general prompt to `cheap`.
+
+Not measured yet: the real gateway's `request_logs` for one outer and one inner request, and so the double counting of decision D4. That needs a provider key and is the first check on a live `--profile router` install.
