@@ -21,6 +21,8 @@ export type RunDoc = {
   tokensOut: number | null
   tokensCache: number | null
   costUsd: number | null
+  reconcileStatus: string | null
+  gatewayTokensTotal: number | null
   costSource: string | null
   evidence: string | null
   error: string | null

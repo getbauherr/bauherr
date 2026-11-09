@@ -574,7 +574,7 @@ export const collections: CollectionConfig[] = [
     num('gatewayTokensOut'),
     num('gatewayTokensTotal'),
     select('costSource', ['sdk-estimate', 'gateway'], { defaultValue: 'sdk-estimate' }),
-    select('reconcileStatus', ['pending', 'matched', 'mismatch', 'unavailable'], { defaultValue: 'pending' }),
+    select('reconcileStatus', ['pending', 'matched', 'mismatch', 'unavailable', 'unpriced'], { defaultValue: 'pending' }),
     // The money figure the UI shows: gateway cost when reconciled, else the SDK estimate.
     {
       name: 'costUsd',

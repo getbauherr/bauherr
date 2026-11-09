@@ -1,5 +1,6 @@
 import pg from 'pg'
 import type { Payload } from 'payload'
+import { PRESETS, presetOf } from './providers'
 
 export const RECONCILE_DELAY_MS = 5 * 60_000
 export const RECONCILE_RETRY_MS = 10 * 60_000
@@ -29,8 +30,27 @@ export const queueReconcile = (payload: Payload, runId: number | string, attempt
     waitUntil: new Date(Date.now() + delayMs),
   })
 
+/** True when a requested model (`[ws-<workspace>/]<connection>/<model>`) belongs to a Connection whose preset ships no price catalog. */
+const unpriced = async (payload: Payload, workspace: number | { id: number }, models: string[]): Promise<boolean> => {
+  const conns = (
+    await payload.find({
+      collection: 'connections',
+      where: { workspace: { equals: typeof workspace === 'object' ? workspace.id : workspace }, kind: { equals: 'llm-provider' } },
+      pagination: false,
+      depth: 0,
+      overrideAccess: true,
+    })
+  ).docs
+  return models.some((m) => {
+    const slug = m.replace(/^ws-[^/]+\//, '').split('/')[0]
+    const conn = conns.find((c) => c.slug === slug)
+    return !!conn && !PRESETS[presetOf(conn.config as { provider?: string })].catalog
+  })
+}
+
 /**
  * Sums the gateway `request_logs` of a Run and writes the money fields. Gateway cost wins; a delta above 10 % of it is flagged `mismatch`.
+ * 0 USD with tokens on a `catalog:false` preset is `unpriced`: the estimate stays, `gatewayCostUsd` is not written.
  * No rows: `pending` and one retry on attempt 1, `unavailable` (cost stays `sdk-estimate`) on attempt 2.
  */
 export const reconcileRun = async (payload: Payload, runId: number | string, attempt: number): Promise<string> => {
@@ -39,7 +59,8 @@ export const reconcileRun = async (payload: Payload, runId: number | string, att
     (
       await db.query(
         `SELECT count(*)::int AS n, COALESCE(sum(cost), 0) AS cost, COALESCE(sum(input_tokens), 0) AS tin,
-                COALESCE(sum(output_tokens), 0) AS tout, COALESCE(sum(total_tokens), 0) AS ttotal
+                COALESCE(sum(output_tokens), 0) AS tout, COALESCE(sum(total_tokens), 0) AS ttotal,
+                array_remove(array_agg(DISTINCT gen_ai_request_model), NULL) AS models
          FROM request_logs WHERE attributes_json->>'run' = $1`,
         [String(runId)],
       )
@@ -55,15 +76,18 @@ export const reconcileRun = async (payload: Payload, runId: number | string, att
   }
   const run = await payload.findByID({ collection: 'runs', id: runId, ...o })
   const gateway = Number(row.cost)
+  const tokens = { gatewayTokensIn: Number(row.tin), gatewayTokensOut: Number(row.tout), gatewayTokensTotal: Number(row.ttotal) }
+  if (gateway === 0 && tokens.gatewayTokensTotal > 0 && (await unpriced(payload, run.workspace, row.models))) {
+    await payload.update({ collection: 'runs', id: runId, data: { ...tokens, costSource: 'sdk-estimate', reconcileStatus: 'unpriced' }, ...o })
+    return 'unpriced'
+  }
   const reconcileStatus = Math.abs(gateway - (run.costEstimateUsd ?? 0)) <= TOLERANCE * gateway ? 'matched' : 'mismatch'
   await payload.update({
     collection: 'runs',
     id: runId,
     data: {
       gatewayCostUsd: gateway,
-      gatewayTokensIn: Number(row.tin),
-      gatewayTokensOut: Number(row.tout),
-      gatewayTokensTotal: Number(row.ttotal),
+      ...tokens,
       costSource: 'gateway',
       reconcileStatus,
     },

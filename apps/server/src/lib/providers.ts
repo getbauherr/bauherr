@@ -114,7 +114,7 @@ export const PRESETS: Record<Preset, Def> = {
   'bedrock-iam': {
     auth: 'inline',
     required: ['awsRegion'],
-    secret: { ext: 'json', hint: 'AWS IAM key pair as JSON {"accessKeyId":"...","secretAccessKey":"...","sessionToken":"..."} (sessionToken optional); stored inline in the gateway config.yaml' },
+    secret: { ext: 'json', hint: 'AWS IAM key pair as JSON {"accessKeyId":"...","secretAccessKey":"...","sessionToken":"..."} (sessionToken optional); stored inline in the gateway config.yaml (0600, agentgateway v1.7.0 has no file reference); prefer `bedrock` (API key file)' },
     catalog: false,
     defaultModels: null,
     render: (slug, c, _f, secret) => {
@@ -127,7 +127,7 @@ export const PRESETS: Record<Preset, Def> = {
   'foundry-entra': {
     auth: 'inline',
     required: ['azureResource', 'azureTenant', 'azureClient'],
-    secret: { ext: 'key', hint: 'Entra app client secret (Anthropic models on Foundry); stored inline in the gateway config.yaml' },
+    secret: { ext: 'key', hint: 'Entra app client secret (Anthropic models on Foundry); stored inline in the gateway config.yaml (0600, agentgateway v1.7.0 has no file reference); prefer `foundry` (API key file)' },
     catalog: false,
     defaultModels: ANTHROPIC_MODELS,
     render: (slug, c, _f, secret) =>
