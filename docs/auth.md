@@ -2,6 +2,8 @@
 
 Password login (Payload, email + password) works on a fresh clone with no configuration. OIDC single sign-on is additive: set `OIDC_ISSUER` (https) and a "Sign in with …" button appears on `/login` under the password form.
 
+Password sign-ins are serialised per account: `withLoginLock` (`src/lib/login-lock.ts`) takes a Postgres advisory transaction lock on the lowercased email around `payload.login`, because Payload writes the whole `sessions` array and parallel sign-ins would drop one session. OIDC sign-in does not use Payload sessions.
+
 ## OIDC
 
 Authorization code flow with PKCE, `state` and `nonce`; endpoints come from discovery at the issuer (use an `https` issuer). The redirect URI is `${PUBLIC_URL}/auth/oidc/callback`.
