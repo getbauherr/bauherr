@@ -84,7 +84,7 @@ test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and
   await signIn(page, 'member@example.com')
   for (const path of ['audit', 'workflow', 'connections']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
   await page.goto('/settings/workspace')
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['General', 'Products', 'People', 'API key'])
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['General', 'Products', 'People', 'AI usage', 'API key'])
   await expect(page.getByText('Advanced', { exact: true })).toHaveCount(0)
   for (const text of ['Factory health', 'Gateway key', 'Model tiers', 'Run mode', 'Knowledge repo', 'read-only']) await expect(page.getByText(text)).toHaveCount(0)
   await expect(page.getByLabel('Budget per 30 days')).toBeVisible()
@@ -239,4 +239,18 @@ test('Settings > Product > Merging: Re-detect finds the queue but not the merge_
   await merging.getByLabel('Merge mode').selectOption('queue')
   await merging.getByRole('button', { name: 'Save merge mode' }).click()
   await expect(merging.getByRole('alert').first()).toContainText('Queue mode is not ready')
+})
+
+test('AI usage: an Admin sees the page and the gateway link, a non-Admin sees the page without it', async ({ page }) => {
+  for (const [who, visible] of [[email, true], ['member@example.com', false]] as const) {
+    await signIn(page, who)
+    await page.goto('/settings/usage')
+    await expect(page.getByRole('heading', { name: 'AI usage', exact: true })).toBeVisible()
+    await expect(page.getByTestId('budget-bar').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Cost per Product' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Open gateway console' })).toHaveCount(visible ? 1 : 0)
+    if (process.env.SHOTS_DIR && visible) await page.screenshot({ path: `${process.env.SHOTS_DIR}/usage-${page.viewportSize()!.width}.png`, fullPage: true })
+    expect((await page.request.get('/-/gateway/ui', { maxRedirects: 0 })).status()).toBe(visible ? 502 : 404)
+    await page.context().clearCookies()
+  }
 })
