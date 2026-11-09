@@ -20,6 +20,8 @@ export interface TicketSummary {
   assignee: string | null;
   assignees: string[];
   updatedAt: string;
+  /** Raw body; set by `list` only. */
+  body?: string;
 }
 
 export interface Ticket extends TicketSummary {

@@ -391,7 +391,7 @@ class FakeTickets implements TicketSource {
     const { state = 'open', labels = [] } = opts;
     return [...this.items.values()]
       .filter((t) => (state === 'all' || t.state === state) && labels.every((l) => t.labels.includes(l)))
-      .map((t) => this.summary(t));
+      .map((t) => ({ ...this.summary(t), body: t.body }));
   }
   async get(id: string) {
     return this.full(this.t(id));
