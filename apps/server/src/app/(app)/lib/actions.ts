@@ -8,7 +8,7 @@ import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
-import { LoginBusy, signInWithPassword } from '../../../lib/login-lock'
+import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
@@ -16,7 +16,7 @@ export async function login(form: FormData) {
   let token: string | undefined
   const email = String(form.get('email'))
   try {
-    token = await signInWithPassword(payload, email, String(form.get('password')))
+    token = (await signInWithPassword(payload, email, String(form.get('password')), clientIp(await headers()))).token
   } catch (e) {
     // A wrong password and too many sign-ins at once get the same generic error: neither says whether the account exists.
     if (!(e instanceof LoginBusy) && (e as { status?: number }).status !== 401) throw e

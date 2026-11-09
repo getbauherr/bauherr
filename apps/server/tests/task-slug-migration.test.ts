@@ -6,7 +6,7 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 let payload: Payload
 let testDb: TestDb
 beforeAll(async () => {
-  testDb = await createTestDb('task_slugs')
+  testDb = await createTestDb('task_slugs', undefined, { blank: true })
   const url = testDb.url
   process.env.DATABASE_URL = url
   process.env.PAYLOAD_SECRET ??= 'test-secret'

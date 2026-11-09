@@ -26,7 +26,32 @@ jobs:
         with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm test
+      - run: pnpm --filter server test --shard=1/3
+
+  # The server suite is CPU-bound (941 tests, one Payload per file): `check` runs shard 1, these run shards 2 and 3 (shard 3 also runs the package tests), each with its own Postgres.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [2, 3]
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}
+        ports: ["54330:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      - run: pnpm --filter server test --shard=${{ matrix.shard }}/3
+      - if: matrix.shard == 3
+        run: pnpm --filter './packages/*' test
 
   # Builds the production image once; `e2e` and `cli-smoke` load it instead of rebuilding.
   build-image:
@@ -55,6 +80,7 @@ jobs:
     needs: build-image
     env:
       E2E_EMAIL: e2e@example.com
+      LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: corepack enable
@@ -129,6 +155,7 @@ jobs:
           --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
     env:
       E2E_EMAIL: e2e@example.com
+      LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
       DATABASE_URL: postgres://bauherr:bauherr@localhost:54330/bauherr
       BAUHERR_E2E_FAKE_FORGE: "1"
       INTAKE_FAKE: "1"

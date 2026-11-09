@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { envInt } from './db-pool'
 
 /** Tail of the sign-ins queued per lowercased email. */
 const queues = new Map<string, Promise<unknown>>()
@@ -8,7 +9,38 @@ const waiting = new Map<string, number>()
 /** At most this many sign-ins of one account wait or run at once; more are refused at once (`LoginBusy`). */
 export const MAX_LOGIN_WAITERS = 5
 
-/** Too many sign-ins of one account at once; shown to the user as the generic sign-in error. */
+/** Sign-in limits from env, checked at boot (`payload.config.ts`): `LOGIN_IP_MAX_ATTEMPTS` failed sign-ins per client IP and `IP_WINDOW_MS` (default 10), `TRUSTED_PROXY_HOPS` proxies in front that append to `x-forwarded-for` (default 1; 0 = ignore the header, which turns the IP limit off). */
+export const loginLimits = (env: Record<string, string | undefined> = process.env) => ({
+  maxIpFailures: envInt(env, 'LOGIN_IP_MAX_ATTEMPTS', 10),
+  trustedProxyHops: envInt(env, 'TRUSTED_PROXY_HOPS', 1, 0),
+})
+export const IP_WINDOW_MS = 60_000
+const failures = new Map<string, { n: number; reset: number }>()
+
+/**
+ * The client IP: the `hops`-th `x-forwarded-for` entry from the right, the one the outermost trusted proxy appended (entries left of it are client-supplied).
+ * With 0 hops, or no header, undefined: the IP limit is skipped (a Next request exposes no socket address; Next fills a missing header with it, which a client can preempt).
+ */
+export const clientIp = (headers: Headers, hops = loginLimits().trustedProxyHops): string | undefined => {
+  const parts = headers.get('x-forwarded-for')?.split(',').map((p) => p.trim()).filter(Boolean)
+  if (!hops || !parts?.length) return undefined
+  return parts[Math.max(0, parts.length - hops)]
+}
+
+const ipBlocked = (ip: string): boolean => {
+  const f = failures.get(ip)
+  return !!f && f.reset > Date.now() && f.n >= loginLimits().maxIpFailures
+}
+
+const ipFailed = (ip: string) => {
+  const now = Date.now()
+  if (failures.size > 10_000) for (const [k, v] of failures) if (v.reset <= now) failures.delete(k)
+  const f = failures.get(ip)
+  if (f && f.reset > now) f.n++
+  else failures.set(ip, { n: 1, reset: now + IP_WINDOW_MS })
+}
+
+/** Too many sign-ins of one account at once, or from one IP; shown to the user as the generic sign-in error. */
 export class LoginBusy extends Error {
   constructor() {
     super('too many sign-ins of this account at once')
@@ -43,9 +75,15 @@ export const withLoginLock = async <T>(email: string, fn: () => Promise<T>): Pro
   }
 }
 
-/** The password sign-in of the login action: Payload's login inside the per-account queue. Returns the token; throws on a wrong password (status 401) or `LoginBusy`. */
-export const signInWithPassword = async (payload: Payload, email: string, password: string): Promise<string> => {
-  const { token } = await withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
-  if (!token) throw Object.assign(new Error('no token'), { status: 401 })
-  return token
+/** The password sign-in of the login action and the REST `/api/bauherren/login`: the per-IP limit, then Payload's login inside the per-account queue. Only failed sign-ins (401) count toward the IP limit. Returns Payload's login result; throws on a wrong password (status 401) or `LoginBusy`. */
+export const signInWithPassword = async (payload: Payload, email: string, password: string, ip?: string) => {
+  if (ip && ipBlocked(ip)) throw new LoginBusy()
+  try {
+    const result = await withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
+    if (!result.token) throw Object.assign(new Error('no token'), { status: 401 })
+    return { ...result, token: result.token }
+  } catch (e) {
+    if (ip && (e as { status?: number }).status === 401) ipFailed(ip)
+    throw e
+  }
 }

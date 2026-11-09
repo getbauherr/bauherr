@@ -16,7 +16,7 @@ beforeAll(async () => {
 })
 
 /** The login action's own password sign-in (`signInWithPassword`): the token, or a throw. */
-const signIn = async (email: string, password: string) => (await import('../src/lib/login-lock')).signInWithPassword(payload, email, password)
+const signIn = async (email: string, password: string) => (await import('../src/lib/login-lock')).signInWithPassword(payload, email, password).then((r) => r.token)
 
 afterAll(async () => {
   await payload?.destroy()
