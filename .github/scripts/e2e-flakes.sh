@@ -5,7 +5,7 @@
 set -uo pipefail
 shard=${1:?shard}; report=${2:?report}
 [ -s "$report" ] || { echo "::warning::no Playwright report at $report"; exit 0; }
-flakes=$(jq -c --arg shard "$shard" '[.. | objects | select(has("specs")) | .specs[] | select(any(.tests[]; .status == "flaky")) | {shard: $shard, file, title}]' "$report") || { echo "::warning::unreadable report $report"; exit 0; }
+flakes=$(jq -c --arg shard "$shard" 'def titled($chain): . as $s | (if ($s.file // "") != "" then $chain + [$s.title] else $chain end) as $c | (($s.specs // [])[] | select(any(.tests[]; .status == "flaky")) | {shard: $shard, file, title: (($c[1:]) + [.title] | join(" › "))}), (($s.suites // [])[] | titled($c)); [.suites[] | titled([])]' "$report") || { echo "::warning::unreadable report $report"; exit 0; }
 n=$(jq length <<<"$flakes")
 {
   echo "### e2e flaky tests (shard $shard): $n"

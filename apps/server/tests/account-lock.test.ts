@@ -92,6 +92,21 @@ describe('failed lock read', () => {
       spy.mockRestore()
     }
   })
+
+  it.each([
+    ['cookie', (t: string) => ({ cookie: `payload-token=${t}` })],
+    ['Authorization: JWT', (t: string) => ({ authorization: `JWT ${t}` })],
+  ])('refuses a JWT via %s', async (_, h) => {
+    const b = await bauherr(`failed-jwt-${_.length}`)
+    const token = await signIn(b)
+    const find = payload.findByID.bind(payload)
+    const spy = vi.spyOn(payload, 'findByID').mockImplementation(((a: { select?: { lockUntil?: boolean } }) => (a.select?.lockUntil ? Promise.reject(new Error('db down')) : find(a as never))) as never)
+    try {
+      expect(await authed(new Headers(h(token)))).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })
 
 describe('/mcp', () => {

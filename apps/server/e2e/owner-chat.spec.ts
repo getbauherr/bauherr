@@ -17,7 +17,6 @@ const login = async (page: Page) => {
 }
 
 // Own seeded Ticket (#21, one open decision D1): independent of every other spec, so shard order does not matter.
-// The first answer compiles the server action under next dev (CI), hence the long timeout.
 test('the owner answers the open decision with a suggestion chip and it lands in the worklog', async ({ page }) => {
   test.setTimeout(120_000)
   await login(page)

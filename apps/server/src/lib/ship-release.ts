@@ -1,13 +1,19 @@
 import type { TicketSource } from '@bauherr/adapters'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { latestWith } from '../app/(app)/lib/plan'
-import { changelogPr, forgeOf, id, releaseMarker } from './release'
+import { cas, changelogPr, forgeOf, id, releaseMarker } from './release'
 import { collectItem, renderNotes as renderItems } from './release-notes'
 import { personOf } from './person'
 import { SUMMARY_MARKER } from './summary'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
+/** Postgres unique violation (23505), also when wrapped by the ORM or reported by Payload as "Value must be unique". */
+const isDuplicate = (e: unknown): boolean => {
+  for (let c: any = e; c; c = c.cause) if (c.code === '23505' || c.errors?.some((x: { message?: string }) => x.message === 'Value must be unique')) return true
+  return false
+}
 
 /** Tickets of the Product that are done and in no release yet, oldest first. */
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> =>
@@ -40,7 +46,7 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   const forge = backend.forge
   const bad = a.tickets.find((t) => !t.mergeSha || (t.releasedIn && t.releasedIn !== tag))
   if (bad || !a.tickets.length) throw new Error(bad ? `Ticket #${bad.number} has no merge commit or is already in ${bad.releasedIn}` : 'no Tickets to ship')
-  let release = (await forge.listReleases(repo)).find((r) => r.tag === tag) ?? null
+  let release = await forge.releaseByTag(repo, tag)
   let head = release?.sha
   if (!head) {
     const dates = await Promise.all(a.tickets.map(async (t) => new Date(await forge.getCommitDate(repo, t.mergeSha)).getTime()))
@@ -49,14 +55,14 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   for (const t of a.tickets) if (!(await forge.isAncestor(repo, t.mergeSha, head))) throw new Error(`Ticket #${t.number} (${t.mergeSha}) is not an ancestor of ${head}: it is not part of this release`)
   const first = a.tickets[0]!
   const touched = (await payload.find({ collection: 'human_touches', where: { and: [{ kind: { equals: 'ship:release' } }, { status: { equals: tag } }, { repo: { equals: repo } }] }, limit: 1, ...o })).totalDocs > 0
-  if (!touched) await payload.create({ collection: 'human_touches', data: { kind: 'ship:release', ticket: first.id, workspace: id(first.workspace), actor: personOf(user), at: new Date().toISOString(), repo, status: tag }, ...o })
+  if (!touched) await payload.create({ collection: 'human_touches', data: { kind: 'ship:release', ticket: first.id, workspace: id(first.workspace), actor: personOf(user), at: new Date().toISOString(), repo, status: tag }, ...o }).catch((e: unknown) => { if (!isDuplicate(e)) throw e })
   const marker = releaseMarker(head)
   release ??= await forge.createRelease(repo, { tag, sha: head, name: tag, body: `${a.notes}\n\n${marker}`, prerelease: a.version.includes('-rc.') })
   const at = new Date().toISOString()
   for (const t of a.tickets) {
     const n = String(t.number)
     if (!latestWith(await ts.listComments(n), shippedMarker(tag))) await ts.comment(n, `${shippedMarker(tag)}\nReleased in [${tag}](${release.url})`)
-    if (!t.releasedIn) await payload.update({ collection: 'tickets', id: t.id, data: { releasedIn: tag, releasedAt: at }, ...o })
+    await cas(payload, t.id, sql`"released_in" = ${tag}, "released_at" = ${at}`, sql`"released_at" IS NULL`)
   }
   if (!a.version.includes('-rc.')) await changelogPr(forge, repo, release, marker, Date.now())
   return { tag, url: release.url }

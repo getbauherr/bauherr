@@ -1,4 +1,5 @@
 import type { FakeBackend } from '@bauherr/adapters'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
@@ -28,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['man', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -125,4 +126,36 @@ it('manual mode never tags automatically', async () => {
   expect(await release.publishRelease(payload, products.man!)).toEqual({ state: 'none' })
   expect(fake.listReleases('acme/man')).toEqual([])
   expect(await fake.forge.listTags('acme/man')).toEqual([])
+})
+
+it('a second ship from stale Ticket docs changes no releasedAt, touch, release or comment', async () => {
+  fake.commit('acme/stale', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  const a = await done('stale', 'Alpha', 'sha-s1', 1)
+  const b = await done('stale', 'Beta', 'sha-s2', 2)
+  fake.setAncestors('acme/stale', 'sha-s2', ['sha-s1'])
+  const args = { product: products.stale!, tickets: [a, b], version: '0.1.0', notes: 'n' }
+  await ship.shipRelease(payload, user, args)
+  const releasedAt = (await reload(a.id)).releasedAt
+  await new Promise((r) => setTimeout(r, 5))
+  await ship.shipRelease(payload, user, args)
+  expect(await reload(a.id)).toMatchObject({ releasedIn: 'v0.1.0', releasedAt })
+  expect(await touches('stale', 'v0.1.0')).toHaveLength(1)
+  expect(fake.listReleases('acme/stale')).toHaveLength(1)
+  expect((await fake.tickets('acme/stale').listComments(String(a.number))).filter((c) => c.body.includes('Released in'))).toHaveLength(1)
+})
+
+it('a touch a concurrent ship already wrote is not written twice', async () => {
+  const c = await done('stale', 'Gamma', 'sha-s3', 3)
+  const d = await done('stale', 'Delta', 'sha-s4', 4)
+  fake.setAncestors('acme/stale', 'sha-s4', ['sha-s3'])
+  await payload.db.drizzle.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "human_touches_ship_release_per_tag" ON "human_touches" ("repo", "status") WHERE "kind" = 'ship:release'`)
+  await payload.create({ collection: 'human_touches', data: { kind: 'ship:release', ticket: c.id, workspace: ws, actor: 'other', at: new Date().toISOString(), repo: 'acme/stale', status: 'v0.2.0' }, ...o })
+  const find = payload.find.bind(payload)
+  const spy = vi.spyOn(payload, 'find').mockImplementation((a: { collection: string }) => (a.collection === 'human_touches' ? Promise.resolve({ totalDocs: 0, docs: [] }) : find(a as never)) as never)
+  try {
+    await ship.shipRelease(payload, user, { product: products.stale!, tickets: [c, d], version: '0.2.0', notes: 'n' })
+  } finally {
+    spy.mockRestore()
+  }
+  expect(await touches('stale', 'v0.2.0')).toHaveLength(1)
 })
