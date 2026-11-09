@@ -7,6 +7,7 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { REVIEW_CAP_REASON, submitInvestigation, type InvestigationInput } from '../lib/investigation'
 import { mergeMainIntoMr } from '../lib/merge-main'
+import { distillSkill } from '../lib/skill-distill'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
@@ -699,6 +700,14 @@ export const mergeMainTask: TaskConfig<{ input: { ticketId: number; reviewedSha?
   },
 }
 
+export const distillSkillTask: TaskConfig<{ input: { ticketId: number }; output: { outcome: string } }> = {
+  slug: 'distill-skill',
+  retries: 0,
+  concurrency: { key: ({ input }) => `distill:${input.ticketId}`, exclusive: true },
+  inputSchema: [{ name: 'ticketId', type: 'number', required: true }],
+  handler: async ({ input, req }) => ({ output: { outcome: await distillSkill(req.payload, input.ticketId) } }),
+}
+
 export const reconcileCosts: TaskConfig<{ input: { runId: number; attempt?: number }; output: { status: string } }> = {
   slug: 'reconcile-costs',
   retries: 0,
@@ -731,4 +740,4 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask]

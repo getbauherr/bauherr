@@ -24,6 +24,7 @@ import { wipLimit } from './wip-limits'
 import { NoRoom, evenRanks, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
+import { queueDistill } from './skill-distill'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -976,6 +977,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `${claim === 'queued' ? 'enqueuing' : 'merging'} the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
   }
+  await queueDistill(payload, t)
   return 'merged'
 }
 

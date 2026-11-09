@@ -162,6 +162,7 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 - Code and context leave only via the gateway: [egress](../../pack/rules/egress.md), [egress-guard](../../pack/hooks/egress-guard.sh).
 - The gateway is part of the instance, and the Workspace's provider credential never reaches an agent. Operator notes: [legal](../legal.md).
 - Each Product keeps a `SECURITY-CONTEXT.md` at `products/<slug>/` in the Knowledge repo; the `scan` stage of `pack/workflow-security.yaml` reads it: [security-context](../../pack/rules/security-context.md).
+- The `distill` stage is a job-driven Run (no agent session) queued when a review merges a Ticket that went back to Build or that a later fix names. It proposes one skill as a Knowledge-repo PR on `bauherr/<run-id>`, replayed against its own eval cases (baseline without the skill must fail, with it >= 0.9, per case >= 0.8). Caps: 1 extraction call (60 KB in, 2k out), 20 eval calls per suite, $1 per distillation, 5 per Workspace per day. The factory never merges the PR; `skill_proposals` holds its status.
 
 ## 12. What the Bauherr sees
 | At | In the admin |

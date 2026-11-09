@@ -544,7 +544,7 @@ export const collections: CollectionConfig[] = [
   tickets,
   col('runs', [
     rel('ticket', 'tickets', { required: true }),
-    select('stage', ['triage', 'plan', 'build', 'review', 'scan'], { required: true }),
+    select('stage', ['triage', 'plan', 'build', 'review', 'scan', 'distill'], { required: true }),
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
@@ -620,6 +620,17 @@ export const collections: CollectionConfig[] = [
     text('baseContent'),
     text('status'),
   ], { access: { create: () => false, update: () => false, delete: () => false } }),
+  col('skill_proposals', [
+    rel('ticket', 'tickets', { required: true, unique: true }),
+    rel('run', 'runs'),
+    select('status', ['proposed', 'replayed', 'accepted', 'rejected', 'skipped'], { required: true, defaultValue: 'proposed' }),
+    num('pr'),
+    text('skillPath'),
+    num('score'),
+    num('baselineScore'),
+    json('results'),
+    text('reason'),
+  ]),
   col('check_flakes', [
     rel('ticket', 'tickets', { required: true }),
     text('checkName', { required: true }),
