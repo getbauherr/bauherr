@@ -15,11 +15,8 @@ beforeAll(async () => {
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
 })
 
-/** A password sign-in through the same lock the login action uses. */
-const signIn = async (email: string, password: string) => {
-  const { withLoginLock } = await import('../src/lib/login-lock')
-  return withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
-}
+/** The login action's own password sign-in (`signInWithPassword`): the token, or a throw. */
+const signIn = async (email: string, password: string) => (await import('../src/lib/login-lock')).signInWithPassword(payload, email, password)
 
 afterAll(async () => {
   await payload?.destroy()
@@ -27,15 +24,12 @@ afterAll(async () => {
 })
 
 it('two parallel password sign-ins keep both sessions; OIDC sign-in leaves sessions untouched', async () => {
-  const { withLoginLock } = await import('../src/lib/login-lock')
   const { oidcStrategy, SESSION_COOKIE, signSession } = await import('../src/lib/oidc-session')
   const email = 'parallel@x.io'
   const created = await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
-  const login = () => withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password: 'pw-123456' } }))
+  const tokens = await Promise.all([signIn(email, 'pw-123456'), signIn(email, 'pw-123456')])
 
-  const [first, second] = await Promise.all([login(), login()])
-
-  for (const { token } of [first, second]) {
+  for (const token of tokens) {
     const { user } = await payload.auth({ headers: new Headers({ Authorization: `JWT ${token}` }) })
     expect(user?.email).toBe(email)
   }
@@ -49,31 +43,29 @@ it('two parallel password sign-ins keep both sessions; OIDC sign-in leaves sessi
 })
 
 it('more parallel sign-ins than pool connections (different emails) do not deadlock the pool', async () => {
-  const { withLoginLock } = await import('../src/lib/login-lock')
   const emails = Array.from({ length: 15 }, (_, i) => `pool${i}@x.io`)
   for (const email of emails) await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
-  const results = await Promise.all(
-    emails.map((email) => withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password: 'pw-123456' } }))),
-  )
-  expect(results.every((r) => r.token)).toBe(true)
+  const tokens = await Promise.all(emails.map((email) => signIn(email, 'pw-123456')))
+  expect(tokens.every(Boolean)).toBe(true)
 }, 20_000)
 
 it('a wrong password rejects with 401 and releases the lock for the next sign-in', async () => {
-  const { withLoginLock } = await import('../src/lib/login-lock')
   const email = 'wrong@x.io'
   await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
-  const login = (password: string) => withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
-
-  await expect(login('nope')).rejects.toMatchObject({ status: 401 })
-  expect((await login('pw-123456')).token).toBeTruthy()
+  await expect(signIn(email, 'nope')).rejects.toMatchObject({ status: 401 })
+  expect(await signIn(email, 'pw-123456')).toBeTruthy()
 }, 20_000)
 
-it('more parallel sign-ins of one account than pool connections, the first with a wrong password, all finish', async () => {
+it('more parallel sign-ins of one account than the cap: 5 settle as before, 9 are refused at once; the cap frees up', async () => {
+  const { LoginBusy, MAX_LOGIN_WAITERS } = await import('../src/lib/login-lock')
   const email = 'crowd@x.io'
   await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
   const r = await Promise.allSettled(Array.from({ length: 14 }, (_, i) => signIn(email, i === 0 ? 'nope' : 'pw-123456')))
+  expect(MAX_LOGIN_WAITERS).toBe(5)
   expect(r[0]).toMatchObject({ status: 'rejected', reason: { status: 401 } })
-  expect(r.slice(1).every((x) => x.status === 'fulfilled' && x.value.token)).toBe(true)
+  expect(r.slice(1, 5).every((x) => x.status === 'fulfilled' && x.value)).toBe(true)
+  expect(r.slice(5).every((x) => x.status === 'rejected' && x.reason instanceof LoginBusy)).toBe(true)
+  expect(await signIn(email, 'pw-123456')).toBeTruthy()
 }, 20_000)
 
 it('more parallel wrong passwords on distinct accounts than pool connections all reject, none hangs', async () => {
