@@ -1,9 +1,10 @@
-import { APPROVED_PLAN, type TicketSource, MergePendingError, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { laneOn } from './expedite'
 import { gateOn } from './mode'
+import { dequeueBeforeChange, isQueue } from './merge-mode'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
 import { decrypt } from './secrets'
@@ -703,7 +704,7 @@ export const CHECKED_AREAS = ['correctness', 'over-engineering', 'spec-vs-plan',
 export type Finding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; msg: string; scenario: string }
 /** `problem` is set when the output cannot be trusted as a verdict (incomplete checklist, contradictory verdict): the Ticket goes to a human, never to a merge. */
 export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string; problem?: string }
-export type ReviewOutcome = 'merged' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'noop'
+export type ReviewOutcome = 'merged' | 'queued' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'noop'
 
 /** Validates a reviewer's output. The verdict is derived: `changes` iff a high or medium finding exists. */
 export const normalizeReview = (raw: any): Review => {
@@ -741,11 +742,11 @@ export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n
 
 type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
 
-/** Moves `reviewState` only out of "open" states (unset or waiting_checks); true when this call did it. The conditional UPDATE is what keeps two ticks from merging twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state. */
-const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' = 'open'): Promise<boolean> =>
+/** Moves `reviewState` only out of the `from` state: "open" (unset or waiting_checks), "merged" or "queued"; true when this call did it. The conditional UPDATE is what keeps two ticks from merging (or enqueuing) twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state; `queuedAt` is set on entering `queued` and cleared on leaving it. */
+const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' | 'queued' = 'open'): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) WHEN ${to}::text = 'ready_for_human' THEN now() WHEN ${to}::text = 'merged' THEN "review_waiting_since" END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : sql`"review_state" = 'merged'`} RETURNING "id"`,
+      sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) WHEN ${to}::text = 'ready_for_human' THEN now() WHEN ${to}::text = 'merged' THEN "review_waiting_since" END, "queued_at" = CASE WHEN ${to}::text = 'queued' THEN now() WHEN ${to}::text = 'merged' THEN "queued_at" END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : from === 'merged' ? sql`"review_state" = 'merged'` : sql`"review_state" = 'queued'`} RETURNING "id"`,
     )
   ).rows.length > 0
 
@@ -780,6 +781,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
     )
   ).rows[0]
   if (!claimed) return 'noop'
+  await dequeueBeforeChange(payload, t, mr)
   const rounds = Number(claimed.review_rounds)
   const n = String(t.number)
   if (countRound && rounds > MAX_REVIEW_ROUNDS) {
@@ -943,28 +945,36 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  if (mr.pr.mergeable === false || mr.pr.behind) return mergeMainFirst(payload, t, mr, reviewedSha)
+  // The queue tests against current main itself: a PR behind it is not merged with the base by the Runner there; a conflict still is.
+  if (mr.pr.mergeable === false || (mr.pr.behind && !isQueue(product))) return mergeMainFirst(payload, t, mr, reviewedSha)
   const checks = await checksGate(payload, t, mr, at)
   if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
   if (checks.state === 'pending') {
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  if (!(await moveReview(payload, t.id, 'merged'))) return 'waiting_checks'
+  const claim = isQueue(product) ? 'queued' : 'merged'
+  if (!(await moveReview(payload, t.id, claim))) return 'waiting_checks'
   try {
-    const merged = await mr.backend.forge.mergePullRequest(mr.repo, mr.pr.number, { method: 'squash', deleteBranch: true, expectSha: reviewedSha })
-    if (merged.branchDeleteError) payload.logger.warn({ ticket: t.id, err: merged.branchDeleteError }, 'merged, but deleting the head branch failed')
+    if (claim === 'queued') {
+      const entry = await mr.backend.forge.enqueuePullRequest(mr.repo, mr.pr.number, { expectSha: mr.pr.headSha })
+      if (entry.state === 'queued') return 'queued'
+      await moveReview(payload, t.id, 'merged', 'queued')
+    } else {
+      const merged = await mr.backend.forge.mergePullRequest(mr.repo, mr.pr.number, { method: 'squash', deleteBranch: true, expectSha: reviewedSha })
+      if (merged.branchDeleteError) payload.logger.warn({ ticket: t.id, err: merged.branchDeleteError }, 'merged, but deleting the head branch failed')
+    }
   } catch (e) {
-    await moveReview(payload, t.id, 'waiting_checks', 'merged')
+    await moveReview(payload, t.id, 'waiting_checks', claim)
     if (e instanceof MergePendingError) {
       payload.logger.info({ ticket: t.id }, 'the forge has not finished the merge yet; retrying')
       return 'waiting_checks'
     }
     const now = await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number).catch(() => null)
     if (now?.mergeable === false) return mergeMainFirst(payload, t, { ...mr, pr: now }, reviewedSha)
-    payload.logger.error({ err: e, ticket: t.id }, 'merging the MR failed')
+    payload.logger.error({ err: e, ticket: t.id }, e instanceof NotQueueableError ? 'the forge refused to enqueue the MR' : 'merging the MR failed')
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
-    return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `merging the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
+    return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `${claim === 'queued' ? 'enqueuing' : 'merging'} the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
   }
   return 'merged'
 }
@@ -1052,6 +1062,63 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
     }
   }
   return merged
+}
+
+/** A queued MR the forge does not report as queued after this long was dropped by the queue (its merge-group checks failed). */
+export const QUEUE_DROP_GRACE_MS = 2 * 60_000
+/** Times the queue drops an MR before a Ticket needs a human. */
+export const MAX_TRAIN_FAILURES = 3
+
+/** Where the failed queue run of an MR is to be found: GitHub's merge_group runs, GitLab's pipelines of the target branch. */
+export const queueRunsLink = (pr: { url: string; base: string }, repo: string): string => {
+  const origin = new URL(pr.url).origin
+  return pr.url.includes('/-/merge_requests/') ? `${origin}/${repo}/-/pipelines?ref=${encodeURIComponent(pr.base)}` : `${origin}/${repo}/actions?query=event%3Amerge_group`
+}
+
+/**
+ * Per-minute pass over Tickets in `queued`: a merged MR is left to `watchRelease` (reviewState becomes `merged`); a moved head dequeues and starts a new review;
+ * an open MR the forge no longer reports as queued (after a 2 minute grace) was dropped: back to Build with the queue run link, `trainFailures` + 1, the 3rd needs a human;
+ * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first). An unknown queue state (the forge call failed) changes nothing.
+ */
+export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  let merged = 0
+  for (const t of tickets) {
+    try {
+      const mr = await prOf(payload, t)
+      if (!mr || mr.pr.state === 'closed') continue
+      if (mr.pr.state === 'merged') {
+        if (await moveReview(payload, t.id, 'merged', 'queued')) merged++
+        continue
+      }
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      if (mr.pr.headSha !== (last?.reviewedSha ?? null)) {
+        await dequeueBeforeChange(payload, t, mr)
+        if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
+        continue
+      }
+      const since = t.queuedAt ? Date.parse(t.queuedAt) : at
+      if (at - since > WAIT_CHECKS_MAX_MS) {
+        await dequeueBeforeChange(payload, t, mr)
+        await escalate(payload, t, 'the MR has been in the merge queue for more than 2 hours.')
+        continue
+      }
+      if (at - since <= QUEUE_DROP_GRACE_MS || (await mr.backend.forge.isQueued(mr.repo, mr.pr.number))) continue
+      await returnDroppedToBuild(payload, t, mr)
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'watch-queued failed for ticket')
+    }
+  }
+  return merged
+}
+
+const returnDroppedToBuild = async (payload: Payload, t: Doc, mr: Mr): Promise<ReviewOutcome> => {
+  if (!(await moveReview(payload, t.id, 'waiting_checks', 'queued'))) return 'noop'
+  const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "train_failures" = COALESCE("train_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "train_failures"`)).rows[0]!.train_failures)
+  const link = queueRunsLink(mr.pr, mr.repo)
+  if (failures >= MAX_TRAIN_FAILURES) return escalate(payload, t, `the merge queue dropped the MR ${failures} times; see the queue runs: ${link}`)
+  const reason = `the merge queue dropped the MR (its checks failed in the queue run, see ${link})`
+  return returnToBuild(payload, t, mr, reason, [`- [high] the merge queue run failed for this MR: ${link}; fix it and push to the same branch.`], [], { countRound: false, text: `${reason}. Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
 }
 
 const RESUME_GRACE_MS = 2 * 60_000

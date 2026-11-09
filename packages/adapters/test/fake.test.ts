@@ -10,6 +10,7 @@ for (const native of [true, false]) {
     commitFile: async (branch, path, content) => {
       backend.commit('acme/app', branch, path, content);
     },
+    enableQueue: () => backend.setQueueSupport('acme/app', true),
   });
 }
 
@@ -93,5 +94,40 @@ describe('fake: reopen', () => {
     const got = await ts.get(t.id);
     assert.equal(got.state, 'open');
     assert.ok(!got.labels.some((l) => l.startsWith('bauherr:close-reason:')));
+  });
+});
+
+describe('fake: merge queue', () => {
+  const setup = async (n: number) => {
+    const b = new FakeBackend();
+    b.setQueueSupport('o/r', true);
+    const prs = [];
+    for (let i = 1; i <= n; i++) {
+      await b.forge.createBranch('o/r', `f${i}`);
+      b.commit('o/r', `f${i}`, `${i}.txt`, 'x');
+      prs.push(await b.forge.openPullRequest('o/r', { title: `t${i}`, head: `f${i}`, base: 'main' }));
+    }
+    return { b, prs };
+  };
+  it('advanceQueue merges the head entry with a merge sha, in order', async () => {
+    const { b, prs } = await setup(2);
+    for (const p of prs) await b.forge.enqueuePullRequest('o/r', p.number, { expectSha: p.headSha });
+    assert.equal(b.advanceQueue('o/r'), 1);
+    const first = await b.forge.getPullRequest('o/r', 1);
+    assert.deepEqual([first.state, first.mergeSha], ['merged', 'merge' + first.mergeSha!.slice(5)]);
+    assert.equal(await b.forge.isQueued('o/r', 2), true);
+    assert.equal(b.advanceQueue('o/r'), 2);
+    assert.equal(b.advanceQueue('o/r'), null);
+  });
+  it('a failed entry drops out and stays open', async () => {
+    const { b, prs } = await setup(1);
+    await b.forge.enqueuePullRequest('o/r', 1, { expectSha: prs[0]!.headSha });
+    b.advanceQueue('o/r', { fail: [1] });
+    assert.deepEqual([(await b.forge.getPullRequest('o/r', 1)).state, await b.forge.isQueued('o/r', 1)], ['open', false]);
+  });
+  it('enqueuing an already merged PR reports merged with its sha', async () => {
+    const { b } = await setup(1);
+    const sha = b.merge('o/r', 1);
+    assert.deepEqual(await b.forge.enqueuePullRequest('o/r', 1, { expectSha: 'x' }), { state: 'merged', mergeSha: sha });
   });
 });

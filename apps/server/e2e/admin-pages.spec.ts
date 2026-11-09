@@ -226,3 +226,17 @@ test('the Board WIP count links to the WIP limits section', async ({ page }) => 
   await expect(page).toHaveURL(/\/settings\/workflow#wip$/)
   await expect(page.getByRole('heading', { name: 'WIP limits' })).toBeVisible()
 })
+
+test('Settings > Product > Merging: Re-detect finds the queue but not the merge_group trigger, and queue mode is refused', async ({ page }) => {
+  test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (acme/merge has a queue and a workflow without merge_group)')
+  await signIn(page, email)
+  await page.goto('/settings/products')
+  await page.getByRole('link', { name: 'Acme Merge' }).click()
+  const merging = page.locator('#merging')
+  await merging.getByRole('button', { name: 'Re-detect' }).click()
+  await expect(merging.getByTestId('merge-mode')).toContainText('train')
+  await expect(merging.getByTestId('merge-problems')).toContainText('no merge_group trigger')
+  await merging.getByLabel('Merge mode').selectOption('queue')
+  await merging.getByRole('button', { name: 'Save merge mode' }).click()
+  await expect(merging.getByRole('alert').first()).toContainText('Queue mode is not ready')
+})
