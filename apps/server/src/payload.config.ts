@@ -21,7 +21,7 @@ export default buildConfig({
   // People are added, not created: Bauherr (singular) / Bauherren (plural).
   i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
   typescript: { autoGenerate: false },
-  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true, prodMigrations: migrations }),
+  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10_000 /* an exhausted pool fails the request instead of hanging the app */ }, push: true, prodMigrations: migrations }),
   collections,
   onInit: syncJobEnums,
   plugins: [
