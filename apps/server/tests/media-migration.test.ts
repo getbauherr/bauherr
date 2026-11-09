@@ -8,7 +8,7 @@ const o = { overrideAccess: true } as const
 
 let testDb: TestDb
 beforeAll(async () => {
-  testDb = await createTestDb('media_migration')
+  testDb = await createTestDb('media_migration', undefined, { blank: true })
   const url = testDb.url
   process.env.DATABASE_URL = url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
