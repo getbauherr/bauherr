@@ -3,7 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
-import { ACCOUNT_LOCKED, accountLocked, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
+import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
 
@@ -54,10 +54,10 @@ const bauherren: CollectionConfig = {
     update: ({ req }) => (req.user?.role === 'admin' ? true : { id: { equals: req.user?.id } }),
   },
   hooks: {
-    // Payload's built-in API-key strategy ignores lockUntil: refuse the lookup while the request is still unauthenticated.
+    // Payload's built-in API-key and local-JWT strategies ignore lockUntil: refuse their lookup while the request is still unauthenticated.
     afterRead: [
       async ({ doc, req }) => {
-        if (!req.user && req.headers?.get?.('authorization')?.startsWith('bauherren API-Key ') && (await accountLocked(req.payload, doc.id))) {
+        if (!req.user && carriesPayloadCredential(req.headers) && (await accountLocked(req.payload, doc.id))) {
           lockedRequests.add(req.headers)
           throw new Error(ACCOUNT_LOCKED)
         }
@@ -129,7 +129,7 @@ const workspaces = col(
       access: { update: ({ req }) => req.user?.role === 'admin' },
       admin: { description: 'Tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit.' },
     },
-    { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Workflow: off ignores the bauherr:expedite label.' } },
+    { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Board & WIP: off ignores the bauherr:expedite label.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
