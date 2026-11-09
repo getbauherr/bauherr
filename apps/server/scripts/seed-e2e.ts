@@ -126,6 +126,8 @@ await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
 // run.spec.ts re-runs this Run: it lives on Acme Checks, which no other spec counts Runs of (overview.spec.ts counts those of Acme Web and Acme Shop).
 const stalled = (await ensure('tickets', { externalId: 'e2e-checks-1' }, { title: 'Recover the stalled import', externalId: 'e2e-checks-1', number: 1, url: 'https://github.com/acme/checks/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: checksProduct, workspace, rank: '000025' })).id
 await run(stalled, 'build', 'needs_human', { startedAt: '2026-10-30T10:30:00Z' })
+// Own Ticket of the release-failed case in ticket.spec.ts (#2 on Acme Checks): release checks failed with no run link, so the next-step bar falls back to the details link.
+await ensure('tickets', { externalId: 'e2e-checks-2' }, { title: 'Release the CSV checks', externalId: 'e2e-checks-2', number: 2, url: 'https://github.com/acme/checks/issues/2', state: 'open', labels: ['bauherr:stage:release'], stage: 'release', releaseChecksState: 'failed', product: checksProduct, workspace, rank: '000026' })
 await run(t5, 'review', 'succeeded', {
   startedAt: '2026-10-30T11:00:00Z', finishedAt: '2026-10-30T11:04:00Z', verdict: 'changes',
   findings: [

@@ -5,6 +5,7 @@ import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
 import { TASKS, syncJobEnums } from './jobs'
 import { migrations } from './migrations'
+import { poolOptions } from './lib/db-pool'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
@@ -21,7 +22,7 @@ export default buildConfig({
   // People are added, not created: Bauherr (singular) / Bauherren (plural).
   i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
   typescript: { autoGenerate: false },
-  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL }, push: true, prodMigrations: migrations }),
+  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() }, push: true, prodMigrations: migrations }),
   collections,
   onInit: syncJobEnums,
   plugins: [

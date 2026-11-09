@@ -8,16 +8,15 @@ import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
+import { withLoginLock } from '../../../lib/login-lock'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
   let token: string | undefined
+  const email = String(form.get('email'))
   try {
-    ;({ token } = await payload.login({
-      collection: 'bauherren',
-      data: { email: String(form.get('email')), password: String(form.get('password')) },
-    }))
+    ;({ token } = await withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password: String(form.get('password')) } })))
   } catch (e) {
     if ((e as { status?: number }).status !== 401) throw e
   }

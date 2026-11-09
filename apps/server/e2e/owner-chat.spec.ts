@@ -18,7 +18,6 @@ const login = async (page: Page) => {
 
 // Own seeded Ticket (#21, one open decision D1): independent of every other spec, so shard order does not matter.
 test('the owner answers the open decision with a suggestion chip and it lands in the worklog', async ({ page }) => {
-  test.setTimeout(120_000)
   await login(page)
   await page.locator('.card', { hasText: 'Remember the theme choice' }).first().getByRole('link', { name: 'Remember the theme choice' }).click()
   const chat = page.getByRole('region', { name: 'Answer questions' })
@@ -39,7 +38,6 @@ test('the owner answers the open decision with a suggestion chip and it lands in
 
 // Ticket #22: D2 (critical) is asked first, then D1.
 test('a free-text answer is recorded and a reload resumes at the next question', async ({ page }) => {
-  test.setTimeout(120_000)
   await login(page)
   await page.locator('.card', { hasText: 'Pick the export columns' }).first().getByRole('link', { name: 'Pick the export columns' }).click()
   const chat = page.getByRole('region', { name: 'Answer questions' })

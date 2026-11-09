@@ -2,6 +2,8 @@
 
 Password login (Payload, email + password) works on a fresh clone with no configuration. OIDC single sign-on is additive: set `OIDC_ISSUER` (https) and a "Sign in with …" button appears on `/login` under the password form.
 
+Password sign-ins are serialised per account: `withLoginLock` (`src/lib/login-lock.ts`) queues `payload.login` per lowercased email in the server process, because Payload writes the whole `sessions` array and parallel sign-ins would drop one session. It is an in-process queue, not a database lock: a waiting sign-in holds no pooled connection (a lock held across `payload.login` deadlocked the pool, since a wrong password writes `loginAttempts` outside the transaction). It serialises within one app process, which is the current deployment; several replicas would need a shared lock that holds no connection while waiting. The Postgres pool has `connectionTimeoutMillis: 10000`, so an exhausted pool fails the request instead of hanging the app. OIDC sign-in does not use Payload sessions.
+
 ## OIDC
 
 Authorization code flow with PKCE, `state` and `nonce`; endpoints come from discovery at the issuer (use an `https` issuer). The redirect URI is `${PUBLIC_URL}/auth/oidc/callback`.
