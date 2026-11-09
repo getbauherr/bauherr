@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -46,7 +46,7 @@ const done = async (slug: string, title: string, sha: string, day: number, label
   const repo = `acme/${slug}`
   const issue = await fake.tickets(repo).create({ title, labels })
   fake.setCommitDate(repo, sha, `2026-11-0${day}T10:00:00Z`)
-  return (await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'closed', stage: 'done', mergeSha: sha, labels, product: products[slug], workspace: ws }, ...o })) as Record<string, any>
+  return (await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'closed', stage: 'done', mergeSha: sha, releaseAt: `2026-11-0${day}T10:00:00Z`, labels, product: products[slug], workspace: ws }, ...o })) as Record<string, any>
 }
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
 const touches = async (slug: string, tag: string) => (await payload.find({ collection: 'human_touches', where: { and: [{ kind: { equals: 'ship:release' } }, { status: { equals: tag } }, { repo: { equals: `acme/${slug}` } }] }, ...o })).docs
@@ -76,6 +76,7 @@ it('does not list or remind about Tickets released before the page: release reco
   const fresh = await done('old', 'Fresh', 'sha-o4', 4)
   fake.setAncestors('acme/old', 'sha-o2', ['sha-o1'])
   await fake.forge.createRelease('acme/old', { tag: 'v0.1.0-rc.1', sha: 'sha-o2', name: 'v0.1.0-rc.1', body: 'x', prerelease: true })
+  await ship.releaseDraft(payload, products.old!)
   expect((await ship.waitingTickets(payload, products.old!)).map((t) => t.id)).toEqual([fresh.id])
   await payload.update({ collection: 'tickets', id: fresh.id, data: { releasedIn: 'v0.2.0' }, ...o })
   expect((await ship.releaseReminders(payload, ws)).find((r) => r.product.id === products.old)).toBeUndefined()
@@ -211,4 +212,63 @@ it('shipSelected is admin only, stays in the Workspace and ships exactly the sel
   const draft = await ship.releaseDraft(payload, products.page!)
   expect(draft).toMatchObject({ version: '0.1.1', past: [{ tag: 'v0.1.0' }] })
   expect(draft.waiting.map((t) => t.id)).toEqual([c.id])
+})
+
+/** Counts every call into the fake forge (forge methods and ticket-source lookups). */
+const countForgeCalls = () => {
+  const calls = { n: 0 }
+  for (const k of Object.keys(fake.forge) as (keyof typeof fake.forge)[]) {
+    const f = fake.forge[k] as unknown
+    if (typeof f === 'function') (vi.spyOn(fake.forge, k as never) as any).mockImplementation(((...a: unknown[]) => { calls.n++; return (f as (...x: unknown[]) => unknown)(...a) }) as never)
+  }
+  const tickets = fake.tickets.bind(fake)
+  vi.spyOn(fake, 'tickets').mockImplementation((repo) => { calls.n++; return tickets(repo) })
+  return calls
+}
+
+it('10 Board loads with a manual Product make 0 forge calls and still remind', async () => {
+  await payload.update({ collection: 'products', id: products.board!, data: { releaseReminderDays: 1, lastReleaseAt: '2026-10-01T00:00:00Z', lastReleaseTag: 'v0.1.0' }, ...o })
+  await done('board', 'Waiting one', 'sha-b1', 1)
+  await done('board', 'Waiting two', 'sha-b2', 2)
+  const calls = countForgeCalls()
+  for (let i = 0; i < 10; i++) expect((await ship.releaseReminders(payload, ws)).find((r) => r.product.id === products.board)).toMatchObject({ count: 2 })
+  expect(calls.n).toBe(0)
+})
+
+it('a done Ticket without a merge commit is not waiting', async () => {
+  const t = await done('board', 'Closed by hand', 'sha-x', 3)
+  await payload.update({ collection: 'tickets', id: t.id, data: { mergeSha: null }, ...o })
+  expect((await ship.waitingTickets(payload, products.board!)).map((w) => w.id)).not.toContain(t.id)
+})
+
+it('ship stores lastRelease*; the Releases page backfills it once and asks ancestry at most 4 at a time', async () => {
+  const early = await done('burst', 'Early', 'sha-u0', 1)
+  fake.setAncestors('acme/burst', 'sha-u0', [])
+  await fake.forge.createRelease('acme/burst', { tag: 'v0.1.0', sha: 'sha-u0', name: 'v0.1.0', body: 'x' })
+  const wanted = []
+  for (let i = 1; i <= 10; i++) wanted.push(await done('burst', `Burst ${i}`, `sha-u${i}`, 2 + (i % 5)))
+  expect((await payload.findByID({ collection: 'products', id: products.burst!, ...o })).lastReleaseTag).toBeFalsy()
+  let active = 0
+  let max = 0
+  const ask = fake.forge.isAncestor
+  vi.spyOn(fake.forge as { isAncestor: typeof ask }, 'isAncestor').mockImplementation(async (...a: Parameters<typeof ask>) => { active++; max = Math.max(max, active); await new Promise((r) => setTimeout(r, 5)); active--; return ask(...a) })
+  const draft = await ship.releaseDraft(payload, products.burst!)
+  expect(max).toBeLessThanOrEqual(4)
+  expect(max).toBeGreaterThan(1)
+  expect(await payload.findByID({ collection: 'products', id: products.burst!, ...o })).toMatchObject({ lastReleaseTag: 'v0.1.0', lastReleaseSha: 'sha-u0' })
+  expect(draft.waiting.map((t) => t.id)).toEqual(wanted.map((t) => t.id))
+  expect(draft.waiting.map((t) => t.id)).not.toContain(early.id)
+  const lastDay = (await payload.findByID({ collection: 'products', id: products.burst!, ...o })).lastReleaseAt
+  const calls = countForgeCalls()
+  await ship.releaseDraft(payload, products.burst!, [wanted[0]!.id], false)
+  expect(calls.n).toBeLessThanOrEqual(1)
+  expect(lastDay).toBeTruthy()
+})
+
+it('shipRelease records the release on the Product so the Board needs no forge', async () => {
+  fake.commit('acme/board', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  const a = await done('board', 'Shipped', 'sha-b9', 5)
+  await ship.shipRelease(payload, user, { product: products.board!, tickets: [a], version: '0.2.0', notes: 'n' })
+  expect(await payload.findByID({ collection: 'products', id: products.board!, ...o })).toMatchObject({ lastReleaseTag: 'v0.2.0', lastReleaseSha: 'sha-b9' })
+  expect((await payload.findByID({ collection: 'products', id: products.board!, ...o })).lastReleaseAt).toContain('2026-11-05')
 })

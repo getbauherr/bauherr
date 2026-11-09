@@ -42,7 +42,6 @@ export default async function Releases({ searchParams }: { searchParams: Promise
           version={draft.version}
           versions={draft.versions}
           notes={draft.notes}
-          summary={draft.summary}
           past={draft.past.map((r) => ({ tag: r.tag, url: r.url, at: r.createdAt ?? null, html: renderMarkdown(r.body.replace(/<!--[\s\S]*?-->/g, '').trim()) }))}
         />
       ) : (

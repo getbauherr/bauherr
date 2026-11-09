@@ -1,9 +1,10 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition } from 'react'
-import { previewRelease, shipReleaseAction } from '../(shell)/releases/actions'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import { previewRelease, shipReleaseAction, summariseRelease } from '../(shell)/releases/actions'
 import { Markdown } from './Markdown'
 import { NextStepBar } from './NextStepBar'
+import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Textarea } from './ui/textarea'
@@ -13,33 +14,48 @@ type Past = { tag: string; url: string; at: string | null; html: string }
 
 const VERSION = /^\d+\.\d+\.\d+(-rc\.\d+)?$/
 
-/** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the model-written summary and the notes (both editable), the ship button in the next-step bar, and the past releases. */
-export function ReleasePanel({ product, admin, tickets, version: v0, versions, notes: n0, summary: s0, past }: { product: number; admin: boolean; tickets: Row[]; version: string; versions: string[]; notes: string; summary: string; past: Past[] }) {
+/** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the notes and an optional model-written summary (both editable; the summary only on the Summarise button), the ship button in the next-step bar, and the past releases. */
+export function ReleasePanel({ product, admin, tickets, version: v0, versions, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; version: string; versions: string[]; notes: string; past: Past[] }) {
   const router = useRouter()
   const [picked, setPicked] = useState(() => new Set(tickets.map((t) => t.id)))
   const [version, setVersion] = useState(v0)
   const [notes, setNotes] = useState(n0)
-  const [summary, setSummary] = useState(s0)
+  const [summary, setSummary] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [pending, start] = useTransition()
-  const generated = useRef({ version: v0, notes: n0, summary: s0 })
+  const generated = useRef({ version: v0, notes: n0 })
+  const latest = useRef(0)
   const n = picked.size
 
   const toggle = (id: number) => {
     const next = new Set(picked)
     next.has(id) ? next.delete(id) : next.add(id)
     setPicked(next)
-    start(async () => {
-      const r = await previewRelease({ product, ids: [...next] })
+  }
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) { first.current = false; return }
+    const call = ++latest.current
+    const timer = setTimeout(() => start(async () => {
+      const r = await previewRelease({ product, ids: [...picked] })
+      if (call !== latest.current) return
       if ('error' in r) return setError(r.error)
       setError(null)
       if (version === generated.current.version) setVersion(r.version)
       if (notes === generated.current.notes) setNotes(r.notes)
-      if (summary === generated.current.summary) setSummary(r.summary)
       generated.current = r
+    }), 500)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked])
+  const summarise = () =>
+    start(async () => {
+      const r = await summariseRelease({ product, ids: [...picked] })
+      if ('error' in r) return setError(r.error)
+      setError(null)
+      setSummary(r.summary)
     })
-  }
   const ship = () =>
     start(async () => {
       const r = await shipReleaseAction({ product, ids: [...picked], version, notes, summary })
@@ -87,6 +103,7 @@ export function ReleasePanel({ product, admin, tickets, version: v0, versions, n
           <span className="small label-strong">Summary</span>
           <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!admin} rows={3} className="max-w-[80ch]" />
         </label>
+        {admin && <div><Button type="button" variant="outline" onClick={summarise} disabled={pending || !n}>Summarise</Button></div>}
         <label className="flex flex-col gap-1">
           <span className="small label-strong">Release notes</span>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!admin} rows={12} className="mono max-w-[80ch]" />

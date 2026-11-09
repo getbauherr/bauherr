@@ -17,25 +17,35 @@ const isDuplicate = (e: unknown): boolean => {
   return false
 }
 
-/** Whether a merge commit is in a release, per (repo, merge sha, release sha): the answer never changes, so the Board's reminder does not ask the forge again on every load. */
+/** Whether a merge commit is in a release, per (repo, merge sha, release sha): the answer never changes. LRU of 500 entries. */
+const LRU = 500
 const ancestry = new Map<string, boolean>()
 const inRelease = async (repo: string, sha: string, release: string, ask: () => Promise<boolean>): Promise<boolean> => {
   const key = `${repo}:${sha}:${release}`
-  const known = ancestry.get(key)
-  if (known !== undefined) return known
-  const answer = await ask()
+  let answer = ancestry.get(key)
+  if (answer === undefined) answer = await ask()
+  ancestry.delete(key)
   ancestry.set(key, answer)
+  if (ancestry.size > LRU) ancestry.delete(ancestry.keys().next().value!)
   return answer
 }
 
-/** Tickets of the Product that are done and in no release yet, oldest first. Tickets released before this page existed (notes-only/factory release, or a merge contained in the latest release) are not waiting. */
+/** `fn` over `items` with at most 4 in flight, so the forge's secondary rate limit is not tripped. */
+const mapLimit = async <T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]> => {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]!) } }))
+  return out
+}
+
+/** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call): Tickets released by the notes-only/factory path, or merged before the Product's `lastReleaseAt`, are not waiting. */
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
-  const docs = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
-  const { backend, repo } = await forgeOf(payload, product)
-  const latest = (await backend.forge.listReleases(repo))[0]
-  if (!latest) return docs
-  const released = await Promise.all(docs.map((t) => !!t.mergeSha && inRelease(repo, t.mergeSha, latest.sha, () => backend.forge.isAncestor(repo, t.mergeSha, latest.sha))))
-  return docs.filter((_, i) => !released[i])
+  const [docs, p] = await Promise.all([
+    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }] }, sort: 'number', limit: 500, pagination: false, ...o }).then((r) => r.docs as Doc[]),
+    payload.findByID({ collection: 'products', id: product, ...o }) as Promise<Doc>,
+  ])
+  const since = p.lastReleaseAt ? Date.parse(p.lastReleaseAt) : null
+  return docs.filter((t) => !!t.mergeSha && (since === null || Date.parse(t.releaseAt ?? t.updatedAt) > since))
 }
 
 /** Versions offered for the next release: patch, minor, major from the last stable version, plus the next rc when the last release is an rc. No previous release = 0.1.0. */
@@ -79,13 +89,18 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
     const dates = await Promise.all(a.tickets.map(async (t) => new Date(await forge.getCommitDate(repo, t.mergeSha)).getTime()))
     head = a.tickets[dates.indexOf(Math.max(...dates))]!.mergeSha as string
   }
-  for (const t of a.tickets) if (!(await forge.isAncestor(repo, t.mergeSha, head))) throw new Error(`Ticket #${t.number} (${t.mergeSha}) is not an ancestor of ${head}: it is not part of this release`)
+  const contained = await mapLimit(a.tickets, (t) => forge.isAncestor(repo, t.mergeSha, head!))
+  const stray = a.tickets.find((_, i) => !contained[i])
+  if (stray) throw new Error(`Ticket #${stray.number} (${stray.mergeSha}) is not an ancestor of ${head}: it is not part of this release`)
   const first = a.tickets[0]!
   const touched = (await payload.find({ collection: 'human_touches', where: { and: [{ kind: { equals: 'ship:release' } }, { status: { equals: tag } }, { repo: { equals: repo } }] }, limit: 1, ...o })).totalDocs > 0
   if (!touched) await payload.create({ collection: 'human_touches', data: { kind: 'ship:release', ticket: first.id, workspace: id(first.workspace), actor: personOf(user), at: new Date().toISOString(), repo, status: tag }, ...o }).catch((e: unknown) => { if (!isDuplicate(e)) throw e })
   const marker = releaseMarker(head)
   release ??= await forge.createRelease(repo, { tag, sha: head, name: tag, body: `${a.notes}\n\n${marker}`, prerelease: a.version.includes('-rc.') })
   const at = new Date().toISOString()
+  const headAt = new Date(await forge.getCommitDate(repo, head)).toISOString()
+  const product = (await payload.findByID({ collection: 'products', id: a.product, ...o })) as Doc
+  if (!product.lastReleaseAt || headAt > new Date(product.lastReleaseAt).toISOString()) await payload.update({ collection: 'products', id: a.product, data: { lastReleaseTag: tag, lastReleaseSha: head, lastReleaseAt: headAt }, ...o })
   for (const t of a.tickets) {
     const n = String(t.number)
     if (!latestWith(await ts.listComments(n), shippedMarker(tag))) await ts.comment(n, `${shippedMarker(tag)}\nReleased in [${tag}](${release.url})`)
@@ -95,18 +110,34 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   return { tag, url: release.url }
 }
 
-/** The Releases page data of a Product: Tickets waiting, the `picked` ones (all, or those in `ids`), the proposed version and notes for them, and the forge's releases (newest first). */
-export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[]) => {
+/**
+ * The Releases page data of a Product: Tickets waiting, the `picked` ones (all, or those in `ids`), the proposed version and notes for them, and the forge's releases (newest first, only with `withPast`).
+ * With `withPast` (the page opened on purpose) it asks the forge for the releases, backfills `lastRelease*` once, and drops Tickets whose merge is already in the latest release (ancestry, 4 at a time). Without it nothing but the Ticket comments is read from the forge.
+ */
+export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[], withPast = true) => {
   const { backend, repo, tickets: ts } = await forgeOf(payload, product)
-  const [waiting, past] = await Promise.all([waitingTickets(payload, product), backend.forge.listReleases(repo)])
+  const past = withPast ? await backend.forge.listReleases(repo) : []
+  const latest = past[0]
+  let p = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
+  if (latest && !p.lastReleaseAt) p = await payload.update({ collection: 'products', id: product, data: { lastReleaseTag: latest.tag, lastReleaseSha: latest.sha, lastReleaseAt: new Date(latest.createdAt ?? (await backend.forge.getCommitDate(repo, latest.sha))).toISOString() }, ...o }) as Doc
+  let waiting = await waitingTickets(payload, product)
+  if (latest) {
+    const released = await mapLimit(waiting, (t) => inRelease(repo, t.mergeSha, latest.sha, () => backend.forge.isAncestor(repo, t.mergeSha, latest.sha)))
+    waiting = waiting.filter((_, i) => !released[i])
+  }
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
   const notes = picked.length ? await renderNotes(ts, picked) : ''
-  let summary = ''
-  if (process.env.GATEWAY_URL && notes) {
-    const ws = (await payload.findByID({ collection: 'workspaces', id: id((await payload.findByID({ collection: 'products', id: product, ...o })).workspace), ...o })) as Doc
-    summary = await summarizeRelease(notes, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user))
-  }
-  return { waiting, picked, version: proposeVersion(past[0]?.tag ?? null, picked), versions: versionChoices(past[0]?.tag ?? null), notes, summary, past }
+  const last = latest?.tag ?? p.lastReleaseTag ?? null
+  return { waiting, picked, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past }
+}
+
+/** The model-written summary over the notes of the Tickets `ids`, on request only (the Summarise button); empty without a gateway or on any model error. */
+export const releaseSummary = async (payload: Payload, product: number | string, ids: (number | string)[]): Promise<string> => {
+  if (!process.env.GATEWAY_URL) return ''
+  const { picked, notes } = await releaseDraft(payload, product, ids, false)
+  if (!picked.length) return ''
+  const ws = (await payload.findByID({ collection: 'workspaces', id: id((await payload.findByID({ collection: 'products', id: product, ...o })).workspace), ...o })) as Doc
+  return summarizeRelease(notes, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user))
 }
 
 const productIn = async (payload: Payload, product: number | string, workspaceId: number | string) => {
