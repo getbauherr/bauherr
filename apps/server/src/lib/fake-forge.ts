@@ -138,6 +138,10 @@ const build = (): FakeBackend => {
   const head = fake.commit(kb, 'bauherr/42', 'handbook/lessons.md', '# Lessons\n\nRetries need a stop condition.\n')
   void fake.forge.openPullRequest(kb, { title: 'Write back: lessons from #42', head: 'bauherr/42', base: 'main' })
   fake.setChecks(kb, head, [{ name: 'lint', status: 'completed', conclusion: 'failure' }])
+  // A distilled skill proposal (seed-e2e: skill_proposals row with pr 2) waiting for its owner approval.
+  void fake.forge.createBranch(kb, 'bauherr/9001')
+  fake.commit(kb, 'bauherr/9001', 'workspace/skills/tdd-first/SKILL.md', '---\nname: tdd-first\ndescription: Write the failing test first.\n---\nWrite a failing test before the fix.\n')
+  void fake.forge.openPullRequest(kb, { title: 'Skill proposal: tdd-first (from #127)', head: 'bauherr/9001', base: 'main' })
   return fake
 }
 

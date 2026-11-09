@@ -199,4 +199,44 @@ describe('distillSkill', () => {
     expect(await watchKnowledgePrs(payload)).toBe(0)
     expect((await forge().getPullRequest(REPO, pr!.number)).state).toBe('open')
   })
+
+  describe('approveSkillProposal', () => {
+    const approveSkillProposal: typeof import('../src/lib/actions').approveSkillProposal = (...a) => import('../src/lib/actions').then((m) => m.approveSkillProposal(...a))
+    const adminOf = async (ws: number) => (await payload.create({ collection: 'bauherren', data: { email: `admin${++seq}@x.io`, password: 'pw-123456', role: 'admin', tenants: [{ tenant: ws }] }, ...o } as never)) as Record<string, any>
+    const proposed = async () => {
+      const { id, ws } = await seed(1)
+      await lib.distillSkill(payload, id)
+      const [p] = await proposals(id)
+      const pr = await forge().getPullRequest(REPO, Number(p!.pr))
+      return { p: p!, pr, user: await adminOf(ws), ws }
+    }
+
+    it('refuses an agent key (the tool is human-only, nothing merges)', async () => {
+      const { p, pr, user } = await proposed()
+      const { callTool } = await import('../src/lib/mcp-tools')
+      const keys = await import('../src/lib/api-key')
+      const agent = { kind: 'agent' as const, keyId: (await keys.resolveAgentKey(payload, await keys.mintAgentKey(payload, user as never, 'laptop')))!.keyId }
+      await expect(callTool({ payload, user: user as never, actor: agent }, 'approve_skill_proposal', { proposal: p.id, expectSha: pr.headSha })).rejects.toThrow('forbidden: approve_skill_proposal needs a human')
+      expect((await forge().getPullRequest(REPO, pr.number)).state).toBe('open')
+      expect((await proposals(Number(p.ticket)))[0]!.status).toBe('replayed')
+    })
+
+    it('refuses a head that moved since it was reviewed', async () => {
+      const { p, pr, user } = await proposed()
+      backend.current.commit(REPO, pr.head, 'workspace/skills/tdd-first/extra.md', 'moved\n')
+      await expect(approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).rejects.toThrow('head moved')
+      expect((await forge().getPullRequest(REPO, pr.number)).state).toBe('open')
+      expect((await proposals(Number(p.ticket)))[0]!.status).toBe('replayed')
+    })
+
+    it('with a human Admin: merges the PR, sets accepted, and refuses a second approval and a non-admin', async () => {
+      const { p, pr, user, ws } = await proposed()
+      const member = (await payload.create({ collection: 'bauherren', data: { email: `m${++seq}@x.io`, password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o } as never)) as Record<string, any>
+      await expect(approveSkillProposal(payload, member, { proposal: p.id, expectSha: pr.headSha })).rejects.toThrow('Only an Admin')
+      expect(await approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).toEqual({ approved: 'accepted' })
+      expect((await forge().getPullRequest(REPO, pr.number)).state).toBe('merged')
+      expect((await proposals(Number(p.ticket)))[0]!.status).toBe('accepted')
+      await expect(approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).rejects.toThrow('is accepted')
+    })
+  })
 })

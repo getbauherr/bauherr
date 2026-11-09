@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
@@ -85,6 +85,12 @@ export async function approveProductionAction(form: FormData) {
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(approveProduction(payload, user, { ticket, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function approveSkillProposalAction(form: FormData) {
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(approveSkillProposal(payload, user, { proposal: Number(form.get('proposal')), expectSha: String(form.get('expectSha') ?? ''), workspaceId }))
+  revalidatePath('/knowledge')
 }
 
 export async function grantReviewRoundAction(form: FormData) {
