@@ -54,7 +54,7 @@ Each of app, worker and poller opens its own Postgres pool (`apps/server/src/lib
 | `DATABASE_POOL_MAX` | 20 | connections per container |
 | `DATABASE_POOL_TIMEOUT_MS` | 10000 | wait for a free connection, then the request fails instead of hanging |
 
-Idle connections close after 30 s. Postgres `max_connections` must exceed (app + worker + poller + replicas) × `DATABASE_POOL_MAX` plus headroom for the gateway, migrations, test databases and psql. The bundled `db` runs with `max_connections=300`, so the default 3 × 20 = 60 leaves ample room.
+The timeout applies to the whole pool: once all connections are taken, any DB call (sign-in, page load, job) fails after `DATABASE_POOL_TIMEOUT_MS` instead of waiting. Idle connections close after 30 s. Postgres `max_connections` must exceed (app + worker + poller + replicas) × `DATABASE_POOL_MAX` plus headroom for the gateway, migrations, test databases and psql. The bundled `db` runs with `max_connections=300`, so the default 3 × 20 = 60 leaves ample room.
 
 ## Open
 
