@@ -44,5 +44,6 @@ test('shipping marks the Tickets Released in the version', async ({ page }) => {
   const card = page.locator('.card', { hasText: 'Reship the export totals' }).first()
   await expect(card.getByText('Released in v0.1.0')).toBeVisible()
   await card.getByRole('link', { name: 'Reship the export totals' }).click()
-  await expect(page.getByText('Released in v0.1.0')).toBeVisible()
+  await expect(page).toHaveURL(/\/tickets\/\d+/)
+  await expect(page.getByRole('main').getByText(/Released in v0\.1\.0/)).toBeVisible()
 })
