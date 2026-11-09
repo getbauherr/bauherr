@@ -21,6 +21,9 @@ x-app: &app
     # Postgres pool per container (app, worker, poller); see docs/first-run.md "Database connections".
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
     DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}
+    # Sign-in IP limit, see docs/auth.md: failed sign-ins per IP and minute; proxies in front that append to x-forwarded-for (0 = limit off).
+    LOGIN_IP_MAX_ATTEMPTS: ${LOGIN_IP_MAX_ATTEMPTS:-}
+    TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-}
     # Optional OIDC sign-in, see docs/auth.md. Empty OIDC_ISSUER = password login only.
     OIDC_ISSUER: ${OIDC_ISSUER:-}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
