@@ -76,7 +76,7 @@ export default async function UsageSettings() {
       <Costs title="Cost per stage" head="Stage" rows={u.costs.stage} />
       {admin && (
         <div className="flex gap-3">
-          <Button asChild variant="outline"><a href="/-/gateway/ui" target="_blank" rel="noreferrer">Open gateway console</a></Button>
+          <Button asChild variant="outline"><a href="/-/gateway/config_dump" target="_blank" rel="noreferrer">Open gateway config</a></Button>
           {traces ? <Button asChild variant="outline"><a href="/-/traces" target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>}
         </div>
       )}

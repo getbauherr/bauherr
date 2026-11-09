@@ -12,7 +12,7 @@ let proxy: typeof import('../src/app/(app)/lib/admin-proxy')
 let testDb: TestDb
 const fetchMock = vi.fn()
 const target = (over: Partial<{ url: string | undefined; writes: boolean }> = {}) => ({ name: 'Gateway', url: 'http://gw.test:15000', hint: 'run <code>docker compose port gateway 15000</code>', writes: false, ...over })
-const request = (method = 'GET', init: RequestInit = {}) => new Request('http://bauherr.test/-/gateway/ui/x?a=1', { method, ...init })
+const request = (method = 'GET', init: RequestInit = {}) => new Request('http://bauherr.test/-/gateway/config_dump?a=1', { method, ...init })
 const touches = async () => (await payload.find({ collection: 'human_touches', where: { kind: { like: 'gateway:' } }, ...o })).docs as unknown as { kind: string; path: string; actor: string }[]
 
 beforeAll(async () => {
@@ -43,7 +43,7 @@ describe('proxyAdmin', () => {
   it('answers 404 to a non-admin and to nobody, without calling the target', async () => {
     for (const u of [{ role: 'bauherr', email: 'm@x.io' }, null]) {
       user = u
-      expect((await proxy.proxyAdmin(request(), target(), ['ui'])).status).toBe(404)
+      expect((await proxy.proxyAdmin(request(), target(), ['config_dump'])).status).toBe(404)
     }
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -51,12 +51,12 @@ describe('proxyAdmin', () => {
   it('forwards an admin GET without cookies or Authorization and streams the answer back', async () => {
     user = { role: 'admin', email: 'root@x.io' }
     fetchMock.mockResolvedValue(new Response('hello', { status: 200, headers: { 'content-type': 'text/plain', 'set-cookie': 'a=b', 'content-encoding': 'gzip' } }))
-    const res = await proxy.proxyAdmin(request('GET', { headers: { cookie: 'payload-token=s', authorization: 'Bearer t', 'x-bauherr-session': 'z', accept: 'text/html' } }), target(), ['ui', 'x'])
+    const res = await proxy.proxyAdmin(request('GET', { headers: { cookie: 'payload-token=s', authorization: 'Bearer t', 'x-bauherr-session': 'z', accept: 'text/html' } }), target(), ['config_dump'])
     expect(await res.text()).toBe('hello')
     expect(res.headers.get('set-cookie')).toBeNull()
     expect(res.headers.get('content-encoding')).toBeNull()
     const [url, init] = fetchMock.mock.calls[0]!
-    expect(String(url)).toBe('http://gw.test:15000/ui/x?a=1')
+    expect(String(url)).toBe('http://gw.test:15000/config_dump?a=1')
     expect([...(init.headers as unknown as Map<string, string>).keys()]).toEqual(['accept'])
   })
 
@@ -97,7 +97,7 @@ describe('proxyAdmin', () => {
   it('shows the fallback page when the target is unreachable or unset', async () => {
     fetchMock.mockRejectedValue(new Error('ECONNREFUSED'))
     for (const url of ['http://gw.test:15000', undefined]) {
-      const res = await proxy.proxyAdmin(request(), target({ url }), ['ui'])
+      const res = await proxy.proxyAdmin(request(), target({ url }), ['config_dump'])
       expect(res.status).toBe(502)
       expect(await res.text()).toContain('docker compose port gateway 15000')
     }
