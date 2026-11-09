@@ -52,7 +52,7 @@ services:
       [ -s /run/secrets/$$n ] || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /run/secrets/$$n; done;
       mkdir -p /gateway/providers /gateway/catalogs; cp /deploy/gateway/catalogs/*.json /gateway/catalogs/;
       if [ ! -s /gateway/config.yaml ]; then
-      if [ \"$$OTEL_ENABLED\" = 1 ]; then T='tracing: {otlpEndpoint: \"http://jaeger:4317\"}'; else T=''; fi;
+      if [ \"$$OTEL_ENABLED\" = 1 ]; then echo 'OTEL_ENABLED=1: start the stack with --profile observability so jaeger receives traces'; T='tracing: {host: \"jaeger:4317\", randomSampling: true}'; else T=''; fi;
       sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" -e \"s|__TRACING__|$$T|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi"
   db:
     image: postgres:17
@@ -101,6 +101,31 @@ services:
       interval: 10s
       retries: 6
     restart: unless-stopped
+  # Opt-in observability (`docker compose --profile observability up -d`, OTEL_ENABLED=1), docs/observability.md. Only the UIs publish, on loopback.
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    profiles: [observability]
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=30d]
+    ports: ["127.0.0.1:9090:9090"]
+    volumes: ["./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro", "bauherr-prometheus:/prometheus"]
+    depends_on:
+      gateway: {condition: service_started}
+    healthcheck:
+      test: [CMD, wget, -qO-, "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e
+    profiles: [observability]
+    command: [--config, /etc/jaeger/config.yaml]
+    ports: ["127.0.0.1:16686:16686"] # OTLP 4317/4318 stay internal
+    volumes: ["./deploy/jaeger/config.yaml:/etc/jaeger/config.yaml:ro"]
+    healthcheck:
+      test: [CMD, wget, -qO-, "http://127.0.0.1:13133/status"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
   app:
     <<: *app
     ports: ["${PORT:-3000}:3000"]
@@ -134,3 +159,4 @@ volumes:
   bauherr-gateway:
   bauherr-media:
   bauherr-router:
+  bauherr-prometheus:
