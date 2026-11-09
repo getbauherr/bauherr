@@ -61,7 +61,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
       - name: Trusted publishing needs npm >= 11.5.1
         run: npm install -g npm@^11.5.1 && npm --version
       - run: corepack enable
@@ -73,6 +72,8 @@ jobs:
           VERSION: ${{ needs.image.outputs.version }}
           PRERELEASE: ${{ needs.image.outputs.prerelease }}
         run: |
+          # No token env var: OIDC trusted publishing only, never a long-lived npm token.
+          unset NODE_AUTH_TOKEN
           npm version "$VERSION" --no-git-tag-version
           pnpm build
           npm stage publish . --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"
