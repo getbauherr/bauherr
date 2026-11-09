@@ -34,14 +34,15 @@ test('lists the done Tickets of a manual Product, one ship button, notes preview
   await expect(page.getByLabel('Release notes')).not.toContainText('Relist the CSV header')
 })
 
-test('shipping marks the Tickets Released in the version', async ({ page }) => {
+test('shipping marks the Tickets Released in the version', async ({ page }, testInfo) => {
   await page.goto('/releases')
   await page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Acme Reship' }).click()
   await expect(page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Acme Reship' })).toHaveAttribute('aria-current', 'page')
   const bar = page.getByTestId('action-bar')
   const shipped = page.getByText('Every done Ticket is in a release.')
-  // A retry after an attempt that already shipped finds the Tickets released: assert that state instead of shipping again.
-  if (!(await shipped.isVisible())) {
+  // Only a retry may find the Tickets shipped by an earlier attempt; a first attempt always ships and fails loudly if it cannot.
+  const alreadyShipped = testInfo.retry > 0 && (await shipped.isVisible())
+  if (!alreadyShipped) {
     await expect(page.getByLabel('Release notes')).toContainText('Reship the invoice filter')
     await confirmClick(bar.getByRole('button', { name: 'Ship v0.1.0 (2 Tickets)' }), bar.getByRole('button', { name: 'Confirm ship v0.1.0' }), (t) => expect(page.getByRole('link', { name: 'v0.1.0', exact: true })).toBeVisible({ timeout: t }))
   }

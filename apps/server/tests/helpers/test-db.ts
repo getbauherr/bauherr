@@ -32,9 +32,12 @@ const admin = async (base: string, sql: string) => {
 /** Database with the schema already pushed, built once per run by `global-setup.ts`; test databases are cloned from it and skip Payload's push. */
 export const templateDbName = (suffix = dbSuffix()) => testDbName('template', suffix)
 
+/** The template of this run: `global-setup.ts` sets `BAUHERR_TEST_TEMPLATE_DB` before the workers start; without it (a single file run) the worktree's name. */
+const runTemplateDbName = () => process.env.BAUHERR_TEST_TEMPLATE_DB ?? templateDbName()
+
 /** Builds the template database; returns the function that drops it. */
 export const buildTemplateDb = async (base = process.env.DATABASE_URL ?? DEFAULT_BASE) => {
-  const name = templateDbName()
+  const name = runTemplateDbName()
   await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
   await admin(base, `CREATE DATABASE ${name}`)
   const saved = { ...process.env }
@@ -51,7 +54,7 @@ export const buildTemplateDb = async (base = process.env.DATABASE_URL ?? DEFAULT
 /** Drops and recreates `bauherr_test_<suite>[_<suffix>]` as a clone of the template (unless `blank`, for tests that run migrations on an empty database) when `global-setup.ts` built one; `drop(payload)` silences the payload pool's errors from the forced disconnect and removes it (call after `payload.destroy()`). */
 export const createTestDb = async (suite: string, base = process.env.DATABASE_URL ?? DEFAULT_BASE, { blank = false } = {}): Promise<TestDb> => {
   const name = testDbName(suite)
-  const template = templateDbName()
+  const template = runTemplateDbName()
   const hasTemplate = !blank && (await admin(base, `SELECT 1 FROM pg_database WHERE datname = '${template}'`)).length > 0
   await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
   await admin(base, `CREATE DATABASE ${name}${hasTemplate ? ` TEMPLATE ${template}` : ''}`)

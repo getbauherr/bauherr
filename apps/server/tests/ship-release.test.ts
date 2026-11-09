@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -80,6 +80,14 @@ it('does not list or remind about Tickets released before the page: release reco
   expect((await ship.waitingTickets(payload, products.old!)).map((t) => t.id)).toEqual([fresh.id])
   await payload.update({ collection: 'tickets', id: fresh.id, data: { releasedIn: 'v0.2.0' }, ...o })
   expect((await ship.releaseReminders(payload, ws)).find((r) => r.product.id === products.old)).toBeUndefined()
+})
+
+it('leaves Tickets merged before the Product lastReleaseAt out of the Board reminder and the Releases list', async () => {
+  await payload.update({ collection: 'products', id: products.cutoff!, data: { releaseReminderDays: 1, lastReleaseAt: '2026-11-03T00:00:00Z', lastReleaseTag: 'v0.1.0' }, ...o })
+  await done('cutoff', 'Before the release', 'sha-k1', 1)
+  const newer = await done('cutoff', 'After the release', 'sha-k2', 5)
+  expect((await ship.waitingTickets(payload, products.cutoff!)).map((t) => t.id)).toEqual([newer.id])
+  expect((await ship.releaseReminders(payload, ws)).find((r) => r.product.id === products.cutoff)).toMatchObject({ count: 1 })
 })
 
 it('offers the bumps of the last release as version choices', () => {
