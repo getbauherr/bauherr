@@ -2,10 +2,10 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { decrypt } from '../lib/secrets'
-import { DEFAULT_MODEL_BY_TIER, gatewayEnabled, renderModels, writeProvider } from '../lib/gateway'
+import { gatewayEnabled, renderModels, writeProvider } from '../lib/gateway'
 import { PRESETS, presetOf } from '../lib/providers'
 
-const TIER_DEFAULTS = Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, m]) => `'${t}', s.slug || '/${m}'`).join(', ')
+const TIER_DEFAULTS = `'cheap', s.slug || '/claude-haiku-5-5', 'standard', s.slug || '/claude-sonnet-5-5', 'strong', s.slug || '/claude-opus-5-5'`
 
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
@@ -25,19 +25,26 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   WHERE s.workspace_id = w.id AND NOT (coalesce(w."model_by_tier", '{}'::jsonb) ?& ARRAY['cheap','standard','strong']);
   CREATE UNIQUE INDEX IF NOT EXISTS "workspace_slug_idx" ON "connections" ("workspace_id", "slug");`)
   if (!gatewayEnabled()) return
-  // Provider files are now per Connection (`ws-<workspace>.<connection>.<ext>`); rewrite them and the gateway entries, drop the old per-Workspace files.
+  // Provider files are now per Connection (`ws-<workspace>.<connection>.<ext>`). Frozen SQL: only columns that exist at this migration.
+  const { rows } = await db.execute(sql`SELECT c.slug, c.secret, c.config, w.slug AS ws FROM connections c JOIN workspaces w ON w.id = c.workspace_id WHERE c.kind = 'llm-provider'`)
   try {
-    const { docs } = await payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, depth: 1, pagination: false, overrideAccess: true, req })
-    for (const c of docs) {
-      const ws = (c.workspace as { slug?: string } | null)?.slug
-      const def = PRESETS[presetOf(c.config as never)]
-      if (!ws || !c.slug) continue
-      if (def.auth === 'file' && c.secret) await writeProvider(ws, c.slug as string, decrypt(c.secret as string), def.secret.ext)
-      for (const ext of ['key', 'json']) await rm(join(process.env.GATEWAY_CONFIG_DIR ?? '/gateway', 'providers', `ws-${ws}.${ext}`), { force: true })
+    for (const c of rows as { slug: string | null; secret: string | null; config: never; ws: string | null }[]) {
+      const def = PRESETS[presetOf(c.config)]
+      if (!c.ws || !c.slug) continue
+      if (def.auth === 'file' && c.secret) await writeProvider(c.ws, c.slug, decrypt(c.secret), def.secret.ext)
+      for (const ext of ['key', 'json']) await rm(join(process.env.GATEWAY_CONFIG_DIR ?? '/gateway', 'providers', `ws-${c.ws}.${ext}`), { force: true })
     }
-    await renderModels(req)
   } catch (e) {
-    payload.logger.error(`connection_slugs: gateway files not rewritten (${(e as Error).message}); save any llm-provider Connection to rewrite them`)
+    payload.logger.error(`connection_slugs: provider files not rewritten (${(e as Error).message}); save any llm-provider Connection to rewrite them`)
+  }
+  // renderModels runs today's app code, which may read later columns: a savepoint keeps its failure from aborting the schema change above.
+  await db.execute(sql`SAVEPOINT connection_slugs_render`)
+  try {
+    await renderModels(req)
+    await db.execute(sql`RELEASE SAVEPOINT connection_slugs_render`)
+  } catch (e) {
+    await db.execute(sql`ROLLBACK TO SAVEPOINT connection_slugs_render`)
+    payload.logger.error(`connection_slugs: gateway config not rendered (${(e as Error).message}); save any llm-provider Connection to render it`)
   }
 }
 

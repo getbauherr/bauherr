@@ -184,6 +184,8 @@ const workspaces = col(
     hooks: {
       beforeValidate: [
         async ({ data, operation, originalDoc, req }) => {
+          const auto = Object.entries((data?.modelByTier ?? {}) as Record<string, string>).filter(([, v]) => /(^|\/)auto$/.test(String(v)))
+          if (auto.length) throw new ValidationError({ collection: 'workspaces', errors: auto.map(([path]) => ({ path, message: '`auto` is the router tier, not a model; pick <connection>/<model>' })) })
           if (operation === 'update') {
             if (!data?.modelByTier) return
             const slugs = (await llmConnections(req, originalDoc.id)).filter((c) => !isRouter(c.config)).map((c) => c.slug as string)
@@ -357,6 +359,7 @@ const connections = col(
           if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, slug, decrypt(raw.secret), preset.secret.ext)
           await removeProvider(raw.workspace.slug, slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
           if (router) await ensureRouterKey(req, raw.workspace.id)
+          else if (isRouter(previousDoc?.config) && !conns.some((c) => isRouter(c.config))) await revokeRouterKey(req, raw.workspace.id, raw.workspace.slug)
           await renderModels(req)
           if (!process.env.GATEWAY_URL) return
           const current = (data.modelByTier ?? ws.modelByTier) as Record<string, string>

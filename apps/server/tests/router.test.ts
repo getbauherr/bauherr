@@ -93,6 +93,26 @@ it('a router Connection adds tier auto, one router key and a 0600 router config;
   expect(await tierModels(payload, await load(w))).not.toHaveProperty('auto')
 })
 
+it('changing the preset away from router revokes the router key and removes the router config', async () => {
+  const w = await ws('rt-away')
+  await conn(w, 'anthropic')
+  const router = await conn(w, 'router')
+  expect(routerKeys()).toHaveLength(1)
+  await payload.update({ collection: 'connections', id: router.id, data: { provider: 'anthropic', secret: 'dummy-key' } as never, ...o })
+  expect(routerKeys()).toHaveLength(0)
+  expect((await load(w)).routerKey).toBeFalsy()
+  expect(existsSync(cfgPath)).toBe(false)
+})
+
+it('a tier value ending in /auto is rejected, also for a router-only Workspace', async () => {
+  const w = await ws('rt-auto')
+  const router = await conn(w, 'router')
+  for (const v of ['router/auto', 'auto']) {
+    await expect(payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: v, standard: v, strong: v } }, ...o })).rejects.toThrow(/invalid: (cheap|standard|strong)/)
+  }
+  await payload.delete({ collection: 'connections', id: router.id, ...o })
+})
+
 it('a second Workspace with a router Connection is rejected', async () => {
   const a = await ws('rt-a')
   const b = await ws('rt-b')
