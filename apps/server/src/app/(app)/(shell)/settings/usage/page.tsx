@@ -5,6 +5,7 @@ import { Button } from '../../../components/ui/button'
 import { Table } from '../../../components/ui/table'
 import { currentWorkspace } from '../../../lib/session'
 import { isAdmin } from '../../../lib/settings'
+import { tracesUp } from '../../../lib/admin-proxy'
 import { loadUsage, type Bar, type CostRow } from '../../../lib/usage'
 
 export const dynamic = 'force-dynamic'
@@ -47,6 +48,8 @@ export default async function UsageSettings() {
   const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const u = await loadUsage(workspace.id)
+  const admin = isAdmin(user)
+  const traces = admin && (await tracesUp())
   const tokens = u.unit === 'tokens'
   return (
     <>
@@ -71,9 +74,10 @@ export default async function UsageSettings() {
       <Costs title="Cost per Product" head="Product" rows={u.costs.product} />
       <Costs title="Cost per Ticket (top 20)" head="Ticket" rows={u.costs.ticket} />
       <Costs title="Cost per stage" head="Stage" rows={u.costs.stage} />
-      {isAdmin(user) && (
+      {admin && (
         <div className="flex gap-3">
           <Button asChild variant="outline"><a href="/-/gateway/ui" target="_blank" rel="noreferrer">Open gateway console</a></Button>
+          {traces ? <Button asChild variant="outline"><a href="/-/traces" target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>}
         </div>
       )}
     </>

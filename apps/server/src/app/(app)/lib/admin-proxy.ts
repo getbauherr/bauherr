@@ -10,7 +10,7 @@ const HEADERS_TIMEOUT_MS = 10_000
 const fallback = (name: string, hint: string): Response =>
   new Response(`<!doctype html><meta charset="utf-8"><title>${name} not reachable</title><h1>${name} is not reachable from the server</h1><p>${hint}</p>`, { status: 502, headers: { 'content-type': 'text/html; charset=utf-8' } })
 
-type Target = { name: string; url: string | undefined; hint: string; writes: boolean }
+type Target = { name: string; url: string | undefined; hint: string; writes: boolean; /** Path the upstream serves its UI under; `/-/traces` for Jaeger. */ prefix?: string }
 
 /**
  * Admin-only reverse proxy to a native UI. Anyone but an Admin gets a plain 404 (the route's existence stays hidden).
@@ -23,7 +23,7 @@ export async function proxyAdmin(req: Request, target: Target, path: string[] = 
   if (write && !target.writes) return new Response('Read-only: set GATEWAY_ADMIN_PROXY_WRITE=1 to allow writes.', { status: 405, headers: { allow: 'GET, HEAD' } })
   if (!target.url) return fallback(target.name, target.hint)
 
-  const url = new URL(`/${path.map(encodeURIComponent).join('/')}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`, target.url)
+  const url = new URL(`${target.prefix ?? ''}/${path.map(encodeURIComponent).join('/')}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`, target.url)
   if (write) {
     const slug = (await cookies()).get(WS_COOKIE)?.value
     const payload = await payloadClient()
@@ -46,3 +46,16 @@ export async function proxyAdmin(req: Request, target: Target, path: string[] = 
     clearTimeout(timer)
   }
 }
+
+let probe: { at: number; up: boolean } | undefined
+
+/** Whether Jaeger answers (the `observability` profile is on); a HEAD probe cached for 60 s. */
+export async function tracesUp(base = process.env.JAEGER_URL ?? JAEGER_DEFAULT): Promise<boolean> {
+  if (probe && Date.now() - probe.at < 60_000) return probe.up
+  const up = await fetch(new URL(`${TRACES_PREFIX}/`, base), { method: 'HEAD', signal: AbortSignal.timeout(2000) }).then((r) => r.ok, () => false)
+  probe = { at: Date.now(), up }
+  return up
+}
+
+export const JAEGER_DEFAULT = 'http://jaeger:16686'
+export const TRACES_PREFIX = '/-/traces'

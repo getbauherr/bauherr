@@ -249,8 +249,10 @@ test('AI usage: an Admin sees the page and the gateway link, a non-Admin sees th
     await expect(page.getByTestId('budget-bar').first()).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Cost per Product' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Open gateway console' })).toHaveCount(visible ? 1 : 0)
+    await expect(page.getByText('Open traces')).toHaveCount(visible ? 1 : 0)
     if (process.env.SHOTS_DIR && visible) await page.screenshot({ path: `${process.env.SHOTS_DIR}/usage-${page.viewportSize()!.width}.png`, fullPage: true })
     expect((await page.request.get('/-/gateway/ui', { maxRedirects: 0 })).status()).toBe(visible ? 502 : 404)
+    expect((await page.request.get('/-/traces', { maxRedirects: 0 })).status()).toBe(visible ? 502 : 404)
     await page.context().clearCookies()
   }
 })

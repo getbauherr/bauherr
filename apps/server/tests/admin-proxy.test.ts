@@ -75,6 +75,25 @@ describe('proxyAdmin', () => {
     expect(await touches()).toMatchObject([{ kind: 'gateway:POST', path: '/api/keys', actor: 'root@x.io' }])
   })
 
+  it('proxies traces under the Jaeger prefix, read-only, and 404s a non-admin', async () => {
+    fetchMock.mockResolvedValue(new Response('ui', { status: 200 }))
+    const jaeger = { ...target({ url: 'http://jaeger.test:16686' }), name: 'Traces', prefix: '/-/traces' }
+    expect(await (await proxy.proxyAdmin(request(), jaeger, ['search'])).text()).toBe('ui')
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('http://jaeger.test:16686/-/traces/search?a=1')
+    expect((await proxy.proxyAdmin(request('POST'), jaeger, ['search'])).status).toBe(405)
+    user = { role: 'bauherr', email: 'm@x.io' }
+    expect((await proxy.proxyAdmin(request(), jaeger, ['search'])).status).toBe(404)
+  })
+
+  it('probes Jaeger with HEAD and caches the answer for 60 s', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
+    expect(await proxy.tracesUp('http://jaeger.test:16686')).toBe(true)
+    expect(await proxy.tracesUp('http://jaeger.test:16686')).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]![1].method).toBe('HEAD')
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('http://jaeger.test:16686/-/traces/')
+  })
+
   it('shows the fallback page when the target is unreachable or unset', async () => {
     fetchMock.mockRejectedValue(new Error('ECONNREFUSED'))
     for (const url of ['http://gw.test:15000', undefined]) {
