@@ -34,7 +34,7 @@ function Costs({ title, rows, head }: { title: string; rows: CostRow[]; head: st
             {rows.map((r) => (
               <tr key={`${r.id ?? ''}${r.label}`}>
                 <td>{r.id != null ? <Link href={`/tickets/${r.id}`}>#{r.number} {r.label}</Link> : r.label}</td>
-                <td className="text-right">${r.costUsd.toFixed(2)}{r.estimate && <> <Badge variant="muted">estimate</Badge></>}</td>
+                <td className="text-right">${r.costUsd.toFixed(2)}{r.estimate && <> <Badge variant="muted">estimate</Badge></>}{r.unpriced > 0 && <> <Badge variant="muted">{r.unpriced} unpriced</Badge></>}</td>
               </tr>
             ))}
           </tbody>
