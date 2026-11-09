@@ -15,6 +15,8 @@ test('renderCompose pins the image and drops build, container names and host por
   const out = renderCompose(template, '1.2.3')
   assert.match(out, /image: ghcr\.io\/getbauherr\/bauherr:1\.2\.3/)
   assert.doesNotMatch(out, /build: \.|container_name|"127\.0\.0\.1:(?!9090:|16686:)\d+:|_FILE: \/run\/secrets|\$\{BAUHERR_VERSION/)
+  // the app's whole build block (context and the BAUHERR_REVISION arg) is gone, not only a one-line `build: .`
+  assert.doesNotMatch(out, /^\s+build:|^\s+context: \.|BAUHERR_REVISION/m)
   assert.match(out, /agentgateway:v1\.7\.0@sha256:/)
   assert.match(out, /PAYLOAD_SECRET: \$\{PAYLOAD_SECRET:\?/)
   assert.match(out, /ENCRYPTION_KEY: \$\{ENCRYPTION_KEY:\?/)
