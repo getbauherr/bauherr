@@ -258,15 +258,19 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
     collection: 'connections',
     where: { kind: { equals: 'llm-provider' } },
-    depth: 1,
+    select: { slug: true, config: true, secret: true, workspace: true },
+    depth: 0,
     pagination: false,
     overrideAccess: true,
     req,
   })
+  const slugs = new Map(
+    (await req.payload.find({ collection: 'workspaces', select: { slug: true }, depth: 0, pagination: false, overrideAccess: true, req })).docs.map((w) => [w.id, w.slug as string] as const),
+  )
   const models = conns.docs
     .flatMap((c) => {
       try {
-        const slug = (c.workspace as unknown as Ws | undefined)?.slug
+        const slug = slugs.get(c.workspace as number)
         const conn = c.slug as string | null | undefined
         const cfg = c.config as Record<string, string> | null
         const def = PRESETS[presetOf(cfg)]

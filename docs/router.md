@@ -26,7 +26,9 @@ First start downloads the router's classifier models into the volume `bauherr-ro
 
 ## Spend attribution and double counting
 
-Both keys carry `user = workspace-<slug>`, so outer and inner requests appear in `request_logs` under that user. The outer `auto` request has no price (no catalog entry); the cost of the model call is on the inner request (router key). Token counts of one call show up on both rows: sum only the inner rows for spend. If the smoke shows the router key's own budget doubling the Workspace budget, switch it to `Audit` (decision D4).
+Both keys carry `user = workspace-<slug>`, so outer and inner requests appear in `request_logs` under that user. The outer `auto` request has no price (no catalog entry); the cost of the model call is on the inner request (router key). Token counts of one call show up on both rows: sum only the inner rows for spend.
+
+**Budget bound: a routed Workspace can spend up to 2x its budget.** The Workspace key and the router key each carry their own `Block` budget, so `auto` traffic is capped by the router key's budget on top of the Workspace key's. Putting the router key on `Audit` would leave `auto` unbounded. A shared budget is not possible in agentgateway v1.6.0 (the version pinned in `compose.yaml`): a budget belongs to one API key, its counter id is `api-key:<key hash>:<budget name>` ([`budget_id`](https://github.com/agentgateway/agentgateway/blob/v1.6.0/crates/agentgateway/src/http/budget/mod.rs), [`LocalAPIKey::into_parts`](https://github.com/agentgateway/agentgateway/blob/v1.6.0/crates/agentgateway/src/http/apikey.rs)), and there is no user-level budget (`metadata.user` is only a label). Lowering the router key's budget by the Workspace key's spend at render time does not bound the total either: both counters keep rolling after the render.
 
 ## Limits
 

@@ -1,13 +1,8 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import { decrypt } from '../lib/secrets'
-import { DEFAULT_MODEL_BY_TIER, gatewayEnabled, renderModels, writeProvider } from '../lib/gateway'
-import { PRESETS, presetOf } from '../lib/providers'
 
-const TIER_DEFAULTS = Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, m]) => `'${t}', s.slug || '/${m}'`).join(', ')
+const TIER_DEFAULTS = `'cheap', s.slug || '/claude-haiku-5-5', 'standard', s.slug || '/claude-sonnet-5-5', 'strong', s.slug || '/claude-opus-5-5'`
 
-export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
+export async function up({ db, payload }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    ALTER TABLE "connections" ADD COLUMN IF NOT EXISTS "slug" varchar;
   UPDATE "connections" c SET "slug" = r.slug FROM (
@@ -24,21 +19,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   FROM (SELECT workspace_id, min(slug) AS slug FROM "connections" WHERE kind = 'llm-provider' GROUP BY workspace_id HAVING count(*) = 1) s
   WHERE s.workspace_id = w.id AND NOT (coalesce(w."model_by_tier", '{}'::jsonb) ?& ARRAY['cheap','standard','strong']);
   CREATE UNIQUE INDEX IF NOT EXISTS "workspace_slug_idx" ON "connections" ("workspace_id", "slug");`)
-  if (!gatewayEnabled()) return
-  // Provider files are now per Connection (`ws-<workspace>.<connection>.<ext>`); rewrite them and the gateway entries, drop the old per-Workspace files.
-  try {
-    const { docs } = await payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, depth: 1, pagination: false, overrideAccess: true, req })
-    for (const c of docs) {
-      const ws = (c.workspace as { slug?: string } | null)?.slug
-      const def = PRESETS[presetOf(c.config as never)]
-      if (!ws || !c.slug) continue
-      if (def.auth === 'file' && c.secret) await writeProvider(ws, c.slug as string, decrypt(c.secret as string), def.secret.ext)
-      for (const ext of ['key', 'json']) await rm(join(process.env.GATEWAY_CONFIG_DIR ?? '/gateway', 'providers', `ws-${ws}.${ext}`), { force: true })
-    }
-    await renderModels(req)
-  } catch (e) {
-    payload.logger.error(`connection_slugs: gateway files not rewritten (${(e as Error).message}); save any llm-provider Connection to rewrite them`)
-  }
+  if (process.env.GATEWAY_ADMIN_URL) payload.logger.warn('connection_slugs: gateway files are not rewritten here; save any llm-provider Connection to rewrite them')
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {
