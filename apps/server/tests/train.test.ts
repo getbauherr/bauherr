@@ -90,6 +90,8 @@ it('3 green PRs are tested together and merge in order, each pinned to its head'
     await run()
     expect(merges).toEqual(s.map((x) => [x.pr.number, x.pr.headSha]))
     expect(await state()).toBeNull()
+    // a train merge queues the skill distillation of each member, before the watcher sees the merge (#465)
+    for (const x of s) expect(await payload.count({ collection: 'payload-jobs' as never, where: { concurrencyKey: { equals: `distill:${x.id}` } } as never, overrideAccess: true })).toMatchObject({ totalDocs: 1 })
     expect(await actions.watchQueued(payload)).toBe(3)
     for (const x of s) expect(await reload(x.id)).toMatchObject({ reviewState: 'merged' })
   } finally {
