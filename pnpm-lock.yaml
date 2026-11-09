@@ -129,6 +129,25 @@ importers:
 
   packages/cli:
     devDependencies:
+      '@bauherr/eval':
+        specifier: workspace:*
+        version: link:../eval
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/eval:
+    dependencies:
+      '@bauherr/runner':
+        specifier: workspace:*
+        version: link:../runner
+      yaml:
+        specifier: ^2.8.0
+        version: 2.9.1
+    devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2

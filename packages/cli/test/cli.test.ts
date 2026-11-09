@@ -76,3 +76,40 @@ test('portFree detects a listener', async () => {
   await new Promise((r) => s.close(r))
   assert.equal(await portFree(port), true)
 })
+
+test('eval runs pack skill evals through the gateway, writes eval-results.json and exits 1 on a failing suite', async () => {
+  const { createServer } = await import('node:http')
+  const { spawn } = await import('node:child_process')
+  const { mkdirSync } = await import('node:fs')
+  const server = createServer(async (req, res) => {
+    let raw = ''
+    for await (const c of req) raw += c
+    const b = JSON.parse(raw)
+    const text = b.tools ? undefined : String(b.system).includes('GOOD SKILL') ? 'failing test first' : 'nothing'
+    const content = text === undefined ? [{ type: 'tool_use', name: 'verdict', input: { criteria: [{ id: 'a', pass: true, reason: 'ok' }] } }] : [{ type: 'text', text }]
+    res.setHeader('content-type', 'application/json').end(JSON.stringify({ content, usage: { input_tokens: 10, output_tokens: 10 } }))
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  const url = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`
+  const root = tmp()
+  for (const [name, text] of [['good', 'GOOD SKILL'], ['bad', 'BAD SKILL']] as const) {
+    mkdirSync(join(root, 'pack/skills', name, 'evals'), { recursive: true })
+    writeFileSync(join(root, 'pack/skills', name, 'SKILL.md'), text)
+    writeFileSync(join(root, 'pack/skills', name, 'evals/c.yaml'), 'id: c\ninput: plan\nchecks: {must_match: ["(?i)failing test"]}\nrubric:\n  - {id: a, text: A}\n')
+  }
+  const run = (args: string[]) => new Promise<{ code: number | null; out: string }>((resolve) => {
+    const p = spawn(process.execPath, [new URL('../src/cli.js', import.meta.url).pathname, 'eval', '--skills', join(root, 'pack/skills'), ...args], { env: { ...process.env, BAUHERR_GATEWAY_URL: url, BAUHERR_GATEWAY_KEY: 'k' } })
+    let out = ''
+    p.stdout.on('data', (d) => (out += d))
+    p.stderr.on('data', (d) => (out += d))
+    p.on('close', (code) => resolve({ code, out }))
+  })
+  const good = await run(['--skill', 'good', '--out', join(root, 'good.json')])
+  assert.equal(good.code, 0, good.out)
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'good.json'), 'utf8')).map((r: { id: string; pass: boolean }) => [r.id, r.pass]), [['good/c', true]])
+  const all = await run(['--out', join(root, 'all.json')])
+  server.close()
+  assert.equal(all.code, 1)
+  assert.match(all.out, /bad: pass rate 0\.00 FAILED/)
+  assert.equal(JSON.parse(readFileSync(join(root, 'all.json'), 'utf8')).length, 2)
+})

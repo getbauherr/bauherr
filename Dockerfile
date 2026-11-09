@@ -6,6 +6,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY packages/adapters/package.json packages/adapters/
 COPY packages/cli/package.json packages/cli/
+COPY packages/eval/package.json packages/eval/
 COPY packages/runner/package.json packages/runner/
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store pnpm install
 COPY . .
