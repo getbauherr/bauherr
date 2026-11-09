@@ -74,6 +74,10 @@ const build = (): FakeBackend => {
   const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
   fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])
   fake.setChecks('acme/checks', checks, [{ name: 'deploy-production', status: 'completed', conclusion: 'success' }, { name: 'lint', status: 'completed', conclusion: 'success' }])
+  // acme/merge: a merge queue is on, but the only workflow has no merge_group trigger; the merge-mode spec re-detects it.
+  fake.commit('acme/merge', 'main', '.github/workflows/ci.yml', 'name: ci\non:\n  pull_request:\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps: []\n')
+  fake.setQueueSupport('acme/merge', true)
+  fake.setRequiredChecks('acme/merge', ['ci'])
   // #15 sits at the review round cap with its escalation Comment.
   void ts.create({ title: 'Harden the retry loop', labels: ['bauherr:stage:review'] })
   void ts.comment('15', 'Bauherr needs a human: the review found 1 blocking issue(s), after 2 review rounds.\n\n- [medium] src/retry.ts:12 The loop never stops on a permanent error. Scenario: when the gateway answers 402, then the call is retried forever.')

@@ -83,6 +83,7 @@ export const CAUSE_LABEL: Record<string, string> = { 'review-stalled': 'Waiting 
 export const reviewWord = (reviewState?: string | null): string =>
   ({
     waiting_checks: 'Review clean, waiting for checks to finish',
+    queued: 'In the merge queue',
     merged: 'Merged by the factory',
     ready_for_human: 'Review clean, ready for a human to merge',
     needs_human: 'Needs a human, see the latest Comment',

@@ -201,6 +201,16 @@ export interface Forge {
   retargetPullRequest(repo: RepoRef, number: number, base: string): Promise<void>;
   /** Squash-merges an open PR (only while its head is still `expectSha`, when given) and optionally deletes its head branch (same-repo heads only; a failed delete is reported, not thrown). Before the delete, every open PR stacked on that branch (its base) is retargeted to this PR's base, so the delete cannot close it; a failed retarget keeps the branch and is reported as `branchDeleteError`; returns the merge commit sha. */
   mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
+  /** Whether the default branch has a native merge queue (GitHub merge-queue ruleset, GitLab merge trains with merged-results pipelines). */
+  queueSupport(repo: RepoRef): Promise<boolean>;
+  /** Check names the branch requires before a merge (GitHub: `required_status_checks` rules of the active rulesets; GitLab has no equivalent and returns none). */
+  requiredChecks(repo: RepoRef, branch: string): Promise<string[]>;
+  /** Puts an open PR into the forge's queue, pinned to `expectSha` (the reviewed head); `merged` when it was already merged. Throws `NotQueueableError` when the forge refuses (400/405). */
+  enqueuePullRequest(repo: RepoRef, number: number, o: { expectSha: string }): Promise<{ state: 'queued' | 'merged'; mergeSha?: string }>;
+  /** Takes a PR out of the queue; idempotent (a PR that is not queued is left alone). */
+  dequeuePullRequest(repo: RepoRef, number: number): Promise<void>;
+  /** Whether an open PR is still in the forge's queue or train. Separate from `getPullRequest` so the polling reads stay one request. */
+  isQueued(repo: RepoRef, number: number): Promise<boolean>;
   /** Blob paths of `ref` (default branch when omitted) and the commit sha they belong to. */
   listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[]; truncated?: boolean }>;
   /** `sha` is the blob sha, to be passed back as `putFile`'s `expectSha`. */
@@ -226,6 +236,9 @@ export interface Forge {
   listCommits(repo: RepoRef, o: { from?: string; to: string }): Promise<{ sha: string; message: string }[]>;
   webhooks?: Webhooks;
 }
+
+/** The forge refused to enqueue the PR (not mergeable, no queue on the branch); the message is the forge's. */
+export class NotQueueableError extends Error {}
 
 /** The forge accepted the merge but has not finished it; retry later without counting a failure. */
 export class MergePendingError extends Error {}

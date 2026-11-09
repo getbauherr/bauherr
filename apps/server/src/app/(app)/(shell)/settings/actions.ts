@@ -10,6 +10,8 @@ import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
+import { MERGE_MODES } from '../../../../lib/merge-mode'
+import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
@@ -136,6 +138,27 @@ export const saveDeploy = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, ...who, reviewChecks }, ...c.w } as never)
 })
 
+/** Merge mode of a Product. Switching to `queue` re-runs the repo preflight and refuses while it has problems. */
+export const saveMergeMode = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  const mode = s(fd, 'mergeMode')
+  if (!(MERGE_MODES as readonly string[]).includes(mode)) throw fieldError('mergeMode', 'Choose direct, queue or train.')
+  const current = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { mergeMode: true }, depth: 0, overrideAccess: true })) as { mergeMode?: string }
+  if (mode === 'queue' && current.mergeMode !== 'queue') {
+    const preflight = await runPreflight(c.payload, id(fd))
+    if (!preflight.ok) throw fieldError('mergeMode', `Queue mode is not ready: ${preflight.problems.join(' ')}`)
+  }
+  await c.payload.update({ collection: 'products', id: id(fd), data: { mergeMode: mode }, ...c.w } as never)
+})
+
+/** "Re-detect": asks the forge again and stores the detected mode with its preflight. */
+export const redetectMerge = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await redetectMergeMode(c.payload, id(fd))
+})
+
 /** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */
 const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: number, fd: FormData) => {
   const connection = Number(s(fd, 'connection')) || undefined
@@ -182,6 +205,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
     await c.payload.delete({ collection: 'products', id: product, ...c.w } as never)
     throw e
   }
+  await redetectMergeMode(c.payload, product)
   if (fd.get('open') === '1') redirect(`/settings/products/${product}#staging`)
 })
 

@@ -4,7 +4,7 @@ import type {
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
 import { createHash } from 'node:crypto';
-import { Conflict } from './contracts.js';
+import { Conflict, NotQueueableError } from './contracts.js';
 import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
@@ -27,6 +27,10 @@ interface FakeRepo {
   commits: { sha: string; message: string }[];
   /** Ancestors of a commit (test helper `setAncestors`). */
   ancestors: Map<string, string[]>;
+  queueSupport: boolean;
+  requiredChecks: string[];
+  /** PR numbers in the merge queue, head entry first. */
+  queue: number[];
 }
 
 const blobSha = (c: string): string => createHash('sha1').update(c).digest('hex');
@@ -163,10 +167,29 @@ export class FakeBackend implements Backend {
     this.repo(repo).commits = commits;
   }
 
+  /** Test helper: whether the repo reports a native merge queue (default off). */
+  setQueueSupport(repo: RepoRef, value: boolean): void {
+    this.repo(repo).queueSupport = value;
+  }
+
+  /** Test helper: the check names the default branch requires. */
+  setRequiredChecks(repo: RepoRef, names: string[]): void {
+    this.repo(repo).requiredChecks = names;
+  }
+
+  /** Test helper: the forge works off the head queue entry: merges it (`merge<N>` sha) or, when its number is in `fail`, drops it unmerged. Returns the PR number, or null on an empty queue. */
+  advanceQueue(repo: RepoRef, o: { fail?: number[] } = {}): number | null {
+    const r = this.repo(repo);
+    const n = r.queue.shift();
+    if (n === undefined) return null;
+    if (!o.fail?.includes(n)) this.merge(repo, n);
+    return n;
+  }
+
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [] };
       this.repos.set(name, r);
     }
     return r;
@@ -291,6 +314,24 @@ export class FakeBackend implements Backend {
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
         pr.base = base;
       },
+      queueSupport: async (repo) => this.repo(repo).queueSupport,
+      requiredChecks: async (repo) => this.repo(repo).requiredChecks,
+      enqueuePullRequest: async (repo, n, o) => {
+        const r = this.repo(repo);
+        const pr = find(repo, n);
+        if (pr.state === 'merged') return { state: 'merged', mergeSha: pr.mergeSha };
+        if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
+        if (!r.queueSupport) throw new NotQueueableError('the base branch has no merge queue');
+        if (pr.mergeable === false) throw new NotQueueableError('the pull request is not mergeable');
+        if (o.expectSha !== sha(r, pr.head)) throw new Error(`PR ${n} head moved`);
+        if (!r.queue.includes(n)) r.queue.push(n);
+        return { state: 'queued' };
+      },
+      dequeuePullRequest: async (repo, n) => {
+        const r = this.repo(repo);
+        r.queue = r.queue.filter((x) => x !== n);
+      },
+      isQueued: async (repo, n) => this.repo(repo).queue.includes(n) && find(repo, n).state === 'open',
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);

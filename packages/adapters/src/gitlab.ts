@@ -2,7 +2,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
-import { Conflict, MergePendingError } from './contracts.js';
+import { Conflict, MergePendingError, NotQueueableError } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
 import { timedFetch } from './http.js';
@@ -430,6 +430,39 @@ class GitlabForge implements Forge {
   }
   async retargetPullRequest(repo: RepoRef, n: number, base: string) {
     await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}`, { target_branch: base });
+  }
+  async queueSupport(repo: RepoRef) {
+    const p = await this.h.json('GET', `/projects/${enc(repo)}`);
+    return !!(p.merge_trains_enabled && p.merge_pipelines_enabled);
+  }
+  async requiredChecks() {
+    return [];
+  }
+  async enqueuePullRequest(repo: RepoRef, n: number, o: { expectSha: string }) {
+    const before = await this.getPullRequest(repo, n);
+    if (before.state === 'merged') return { state: 'merged' as const, ...(before.mergeSha ? { mergeSha: before.mergeSha } : {}) };
+    try {
+      await this.h.json('POST', `/projects/${enc(repo)}/merge_trains/merge_requests/${n}`, { sha: o.expectSha, auto_merge: true, squash: true });
+    } catch (e) {
+      if (e instanceof GitlabError && [400, 405].includes(e.status)) throw new NotQueueableError(e.message);
+      throw e;
+    }
+    return { state: 'queued' as const };
+  }
+  async isQueued(repo: RepoRef, n: number) {
+    try {
+      return ['idle', 'fresh', 'stale'].includes((await this.h.json('GET', `/projects/${enc(repo)}/merge_trains/merge_requests/${n}`)).status);
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return false;
+      throw e;
+    }
+  }
+  async dequeuePullRequest(repo: RepoRef, n: number) {
+    try {
+      await this.h.json('POST', `/projects/${enc(repo)}/merge_requests/${n}/cancel_merge_when_pipeline_succeeds`);
+    } catch (e) {
+      if (!(e instanceof GitlabError && [404, 405, 406].includes(e.status))) throw e; // nothing set to cancel
+    }
   }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const before = await this.getPullRequest(repo, n);

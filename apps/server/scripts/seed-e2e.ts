@@ -80,6 +80,9 @@ await ensure('tickets', { externalId: 'e2e-gated-1' }, { title: 'Ship the gated 
 const checksProduct = (await ensure('products', { slug: 'acme-checks' }, { name: 'Acme Checks', slug: 'acme-checks', workspace })).id
 await ensure('repositories', { fullName: 'acme/checks' }, { fullName: 'acme/checks', product: checksProduct, workspace })
 await ensure('ticket_sources', { repo: 'acme/checks' }, { repo: 'acme/checks', product: checksProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+const mergeProduct = (await ensure('products', { slug: 'acme-merge' }, { name: 'Acme Merge', slug: 'acme-merge', workspace })).id
+await ensure('repositories', { fullName: 'acme/merge' }, { fullName: 'acme/merge', product: mergeProduct, workspace })
+await ensure('ticket_sources', { repo: 'acme/merge' }, { repo: 'acme/merge', product: mergeProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 await ticket(15, 'Harden the retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
 await ticket(16, 'Ship the export header', 'release', product, rel)
 const t17 = await ticket(19, 'Tidy the settings copy', 'plan', product)

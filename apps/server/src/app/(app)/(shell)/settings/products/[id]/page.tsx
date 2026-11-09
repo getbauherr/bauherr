@@ -6,7 +6,7 @@ import { DeploySections, RepositoryFields } from '../../../../components/Product
 import { RadioCards, SettingsSection, SetupChecklist } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct, recentChecks } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
-import { addRepository, mintEmbedToken, removeDoc, revokeEmbedToken, saveDeploy } from '../../actions'
+import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,6 +96,24 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       </SettingsSection>
 
       {admin ? <SettingsForm action={saveDeploy} submit="Save changes" primary bar><input type="hidden" name="id" value={p.id} />{settings}</SettingsForm> : <fieldset disabled className="stack">{settings}</fieldset>}
+
+      <SettingsSection id="merging" title="Merging" purpose="How a clean change gets onto the main branch.">
+        <p className="small muted" data-testid="merge-mode">Detected mode: <span className="mono">{p.merge.mode}</span>{p.merge.preflight && <> · checked <span className="mono">{when(p.merge.preflight.at)}</span></>}</p>
+        {p.merge.preflight && !p.merge.preflight.ok && (
+          <ul className="small" data-testid="merge-problems">{p.merge.preflight.problems.map((x) => <li key={x}>{x}</li>)}</ul>
+        )}
+        {admin && (
+          <>
+            <SettingsForm action={saveMergeMode} submit="Save merge mode">
+              <input type="hidden" name="id" value={p.id} />
+              <Field name="mergeMode" label="Merge mode" hint="direct: Bauherr squash-merges the change itself. queue: Bauherr hands the reviewed commit to the forge's merge queue and waits. train: Bauherr's own train is not built yet; it merges like direct." defaultValue={p.merge.mode} options={['direct', 'queue', 'train']} />
+            </SettingsForm>
+            <SettingsForm action={redetectMerge} submit="Re-detect" inline>
+              <input type="hidden" name="id" value={p.id} />
+            </SettingsForm>
+          </>
+        )}
+      </SettingsSection>
 
       <SettingsSection id="widget" n={7} title="Website widget" purpose="Lets your users send requests from your own site." advanced={revoked.length > 0 && (
         <div className="scroll">
