@@ -1,0 +1,5 @@
+{"suites":[{"title":"tickets.spec.ts","file":"tickets.spec.ts","specs":[],"suites":[{"title":"tickets","file":"tickets.spec.ts","specs":[
+{"title":"opens a | ticket","file":"tickets.spec.ts","tests":[{"status":"flaky","results":[{"status":"failed"},{"status":"passed"}]}]},
+{"title":"lists tickets","file":"tickets.spec.ts","tests":[{"status":"expected","results":[{"status":"passed"}]}]},
+{"title":"closes a ticket","file":"tickets.spec.ts","tests":[{"status":"unexpected","results":[{"status":"failed"},{"status":"failed"}]}]}
+]}]}]}

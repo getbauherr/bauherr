@@ -139,6 +139,8 @@ export interface Check {
   url?: string;
   /** Workflow run (GitHub Actions) or pipeline (GitLab) the check belongs to; `rerunFailed` re-runs it. */
   runId?: number;
+  /** Check run output text (GitHub `output.text`); GitLab has no equivalent. */
+  output?: string;
 }
 export interface NewPullRequest {
   title: string;
