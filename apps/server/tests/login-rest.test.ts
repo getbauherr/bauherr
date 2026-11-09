@@ -1,5 +1,5 @@
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -24,8 +24,11 @@ afterAll(async () => {
 })
 
 const account = (email: string) => payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
-const login = (email: string, password = 'pw-123456', ip?: string) =>
-  POST(new Request('http://localhost/api/bauherren/login', { method: 'POST', headers: { 'content-type': 'application/json', ...(ip && { 'x-forwarded-for': `203.0.113.9, ${ip}` }) }, body: JSON.stringify({ email, password }) }), { params: Promise.resolve({ slug: ['bauherren', 'login'] }) })
+/** `ip` arrives as the last hop behind a spoofed first one; `xff` sets the raw header instead (null = none). */
+const login = (email: string, password = 'pw-123456', ip?: string, xff?: string | null) => {
+  const header = xff !== undefined ? xff : ip && `203.0.113.9, ${ip}`
+  return POST(new Request('http://localhost/api/bauherren/login', { method: 'POST', headers: { 'content-type': 'application/json', ...(header && { 'x-forwarded-for': header }) }, body: JSON.stringify({ email, password }) }), { params: Promise.resolve({ slug: ['bauherren', 'login'] }) })
+}
 
 it('REST sign-in answers like Payload and 2 parallel sign-ins keep both sessions', async () => {
   const email = 'rest-two@x.io'
@@ -84,3 +87,23 @@ it('GraphQL is off: /api/graphql serves no login mutation', async () => {
   expect(res.status).toBe(404)
   expect(await res.text()).not.toContain('token')
 })
+
+it('requests that skip the proxy chain share one bucket: omitting or forging x-forwarded-for gives no fresh budget', async () => {
+  const { loginLimits } = await import('../src/lib/login-lock')
+  const email = 'rest-unverified@x.io'
+  await account(email)
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  process.env.TRUSTED_PROXY_HOPS = '2'
+  try {
+    // Earlier tests without a header already drew from the same bucket: at most maxIpFailures failures with varying, forged or absent headers reach the limit.
+    let failed = 0
+    while (failed <= loginLimits().maxIpFailures && (await login(`ghost-${failed}@x.io`, 'nope', undefined, failed % 2 ? `198.51.100.${failed}` : null)).status === 401) failed++
+    expect(failed).toBeLessThanOrEqual(loginLimits().maxIpFailures)
+    expect((await login(email, 'pw-123456', undefined, '198.51.100.99')).status).toBe(429)
+    expect((await login(email, 'pw-123456', undefined, null)).status).toBe(429)
+    expect((await login(email, 'pw-123456', undefined, '203.0.113.30, 10.0.0.2')).status).toBe(200)
+  } finally {
+    delete process.env.TRUSTED_PROXY_HOPS
+    warn.mockRestore()
+  }
+}, 20_000)
