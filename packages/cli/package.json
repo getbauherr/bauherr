@@ -13,7 +13,6 @@
     "typecheck": "pnpm build && tsc -p tsconfig.test.json --noEmit",
     "test": "pnpm build && tsc -p tsconfig.test.json && cp -r package.json templates .test-dist/ && node --test .test-dist/test/*.test.js"
   },
-  "dependencies": { "@bauherr/eval": "workspace:*" },
-  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" },
+  "devDependencies": { "@bauherr/eval": "workspace:*", "@types/node": "^24.0.0", "typescript": "^5.9.0" },
   "engines": { "node": ">=22.14" }
 }

@@ -128,11 +128,10 @@ importers:
         version: 5.9.3
 
   packages/cli:
-    dependencies:
+    devDependencies:
       '@bauherr/eval':
         specifier: workspace:*
         version: link:../eval
-    devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2

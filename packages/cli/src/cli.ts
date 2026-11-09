@@ -4,7 +4,6 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } 
 import { dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
-import type { EvalRow } from '@bauherr/eval'
 import { CliError, preflight } from './preflight.js'
 import { cliVersion, readEnv, writeProject } from './render.js'
 
@@ -24,6 +23,22 @@ Options: --dir <path> (default ./bauherr)  --port <n>  --url <public url>  --yes
 eval:    --skills <dir> (default pack/skills)  --skill <name> (repeatable)  --changed-vs <git ref>  --model <subject>  --judge-model <judge>
          --baseline <eval-results.json>  --out <file>  --summary <file>  --case-threshold 0.8  --suite-threshold 0.9  --max-cases 40  --max-usd 2`
 
+type EvalRow = { id: string; pass: boolean; score: number; costUsd: number }
+type EvalModule = {
+  runEval: (o: Record<string, unknown>) => Promise<{ rows: EvalRow[]; passRate: number; ok: boolean; regressions: string[]; costUsd: number; aborted: boolean }>
+  loadCases: (dir: string) => unknown[]
+}
+
+/** The runner is a private workspace package, resolved at run time so the published CLI does not depend on it. */
+const evalSpecifier = '@bauherr/eval'
+const loadEval = async (): Promise<EvalModule> => {
+  try {
+    return (await import(evalSpecifier)) as EvalModule
+  } catch {
+    throw new CliError('The eval runner is not part of this build of bauherr yet. Run it from a repo checkout (pnpm build:packages).')
+  }
+}
+
 type EvalFlags = Record<'skills' | 'model' | 'judge-model', string> & Partial<Record<'changed-vs' | 'baseline' | 'out' | 'summary' | 'case-threshold' | 'suite-threshold' | 'max-cases' | 'max-usd', string>> & { skill?: string[] | undefined }
 
 const num = (f: EvalFlags, name: keyof EvalFlags): number | undefined => {
@@ -34,7 +49,7 @@ const num = (f: EvalFlags, name: keyof EvalFlags): number | undefined => {
 }
 
 const evalSkills = async (f: EvalFlags) => {
-  const { runEval, loadCases } = await import('@bauherr/eval')
+  const { runEval, loadCases } = await loadEval()
   const root = resolve(f.skills)
   let names = f.skill ?? readdirSync(root).sort()
   if (f['changed-vs']) {
