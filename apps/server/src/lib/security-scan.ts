@@ -42,10 +42,11 @@ const sevLabel = (s: Severity) => `security:${s}`
 
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
-/** Parses `.bauherr/findings.json`; throws on any shape error so nothing is filed from a bad file. */
+/** Parses `.bauherr/findings.json` (`{findings: [...]}` as the skill writes it, or a bare array); throws on any shape error so nothing is filed from a bad file. */
 export const parseFindings = (raw: unknown): Finding[] => {
-  if (!Array.isArray(raw)) throw new Error('findings.json must be an array')
-  return raw.map((f, i) => {
+  const list = Array.isArray(raw) ? raw : (raw as { findings?: unknown } | null)?.findings
+  if (!Array.isArray(list)) throw new Error('findings.json must be {"findings": [...]}')
+  return list.map((f, i) => {
     const ok = f && isText(f.rootCause) && isText(f.title) && SEVERITIES.includes(f.severity) && Array.isArray(f.files) && f.files.every(isText) && typeof f.evidence === 'string' && typeof f.fix === 'string'
     if (!ok) throw new Error(`findings.json entry ${i} needs rootCause, title, severity (critical|high|medium|low), files[], evidence and fix`)
     return f as Finding
@@ -124,7 +125,7 @@ export const fileFindings = async (payload: Payload, run: Doc): Promise<{ create
       `## Evidence\n${scrub(f.evidence)}`,
       `## Fix\n${scrub(f.fix)}`,
     ].join('\n\n')
-    await tickets.create({ title: f.title, body, labels: [SECURITY_LABEL, sevLabel(f.severity), ...(rank(f.severity) >= rank('high') ? [stageLabel('triage')] : [])] })
+    await tickets.create({ title: scrub(f.title), body, labels: [SECURITY_LABEL, sevLabel(f.severity), ...(rank(f.severity) >= rank('high') ? [stageLabel('triage')] : [])] })
     created++
   }
   if (overflow.length) await tickets.comment(String(ticket.number), `Scan Run #${run.id} found more than ${FINDING_CAP} new findings; not filed this time:\n${overflow.join('\n')}`)

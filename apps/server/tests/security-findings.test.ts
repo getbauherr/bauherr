@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
@@ -141,4 +142,15 @@ it('a partial budget_exhausted Run still files its findings', async () => {
   const r = await scan([finding(200, 'medium')], 'budget_exhausted')
   expect(r.result.created).toBe(1)
   expect((await findingTickets()).some((x) => x.title === 'Finding 200')).toBe(true)
+})
+
+it('accepts the {"findings": [...]} file exactly as pack/skills/security-scan/SKILL.md specifies, and scrubs token-like titles', async () => {
+  const skill = readFileSync(new URL('../../../pack/skills/security-scan/SKILL.md', import.meta.url), 'utf8')
+  expect(skill).toContain('{"findings":[{"rootCause","title","severity","files":["path"],"evidence","fix"}]}')
+  const file = { findings: [{ rootCause: 'Missing check on export routes', title: `Export leaks ghp_${'b'.repeat(30)}`, severity: 'high', files: ['src/export.ts'], evidence: 'The route reads without a check.', fix: 'Add the check.' }] }
+  const r = await scan(file)
+  expect(r.result.created).toBe(1)
+  const filed = (await findingTickets()).find((x) => x.title.startsWith('Export leaks'))!
+  expect(filed.title).toBe('Export leaks [redacted]')
+  expect((await scan({ findings: [] })).result).toEqual({ created: 0, seen: 0 })
 })
