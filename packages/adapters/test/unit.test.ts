@@ -241,6 +241,30 @@ describe('github listReleases', () => {
   });
 });
 
+describe('github releaseByTag', () => {
+  it('one request for the tag and one for its commit; a 404 or a draft gives null', async () => {
+    const paths: string[] = [];
+    const release = { id: 1, tag_name: 'v1', draft: false, name: 'v1', body: '', html_url: 'u1', prerelease: false, created_at: 'c1' };
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u) => {
+        const path = new URL(String(u)).pathname;
+        paths.push(path);
+        if (path === '/repos/o/r/releases/tags/v1') return json(release);
+        if (path === '/repos/o/r/releases/tags/v2') return json({ ...release, tag_name: 'v2', draft: true });
+        if (path === '/repos/o/r/commits/v1') return json({ sha: 'a1' });
+        return new Response('gone', { status: 404 });
+      },
+    });
+    assert.equal((await b.forge.releaseByTag('o/r', 'v1'))?.sha, 'a1');
+    assert.deepEqual(paths, ['/repos/o/r/releases/tags/v1', '/repos/o/r/commits/v1']);
+    paths.length = 0;
+    assert.equal(await b.forge.releaseByTag('o/r', 'v9'), null);
+    assert.equal(await b.forge.releaseByTag('o/r', 'v2'), null);
+    assert.deepEqual(paths, ['/repos/o/r/releases/tags/v9', '/repos/o/r/releases/tags/v2']);
+  });
+});
+
 describe('github pull request mergeable', () => {
   const get = async (extra: object) => {
     const b = new GithubBackend({
@@ -278,6 +302,13 @@ describe('github listChecks', () => {
       { name: 'ci/b', status: 'in_progress', conclusion: null, startedAt: 'T3' },
       { name: 'ci/c', status: 'completed', conclusion: 'success', startedAt: 'T4' },
     ]);
+  });
+  it('takes the check output from output.text', async () => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [] } : { check_runs: [{ id: 1, name: 'e2e-flaky (shard 1)', status: 'completed', conclusion: 'neutral', output: { title: 'x', summary: 'not this', text: '[{"file":"a.spec.ts"}]' } }] }),
+    });
+    assert.equal((await b.forge.listChecks('o/r', 'h'))[0]?.output, '[{"file":"a.spec.ts"}]');
   });
 });
 

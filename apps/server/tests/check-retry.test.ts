@@ -171,3 +171,10 @@ it('an e2e-flaky check run records one flake row per listed test, once', async (
   expect(r.map((x) => x.checkName).sort()).toEqual(['e2e: a.spec.ts › one', 'e2e: b.spec.ts › two'])
   expect(r.every((x) => x.outcome === 'flake')).toBe(true)
 })
+
+it('same-titled e2e tests with different describe paths record separate flake rows', async () => {
+  const output = JSON.stringify([{ shard: '1', file: 'c.spec.ts', title: 'create › works' }, { shard: '1', file: 'c.spec.ts', title: 'close › works' }])
+  const { id, pr } = await seed([check(1, 'success'), { id: 11, name: 'e2e-flaky (shard 1)', status: 'completed', conclusion: 'neutral', url: 'https://fake/run/11', output }])
+  await gate(id, pr.headSha)
+  expect((await rows(id)).map((x) => x.checkName).filter((n) => n.startsWith('e2e: c.spec.ts')).sort()).toEqual(['e2e: c.spec.ts › close › works', 'e2e: c.spec.ts › create › works'])
+})

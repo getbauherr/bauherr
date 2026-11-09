@@ -442,6 +442,16 @@ class GithubForge implements Forge {
     }
     return found;
   }
+  /** Published release of `tag` (one request for it, one for its commit), or null when there is none. */
+  async releaseByTag(repo: RepoRef, tag: string) {
+    try {
+      const r = await this.h.json('GET', `/repos/${repo}/releases/tags/${enc(tag)}`);
+      return r.draft ? null : this.release(repo, r);
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
+  }
   async listReleases(repo: RepoRef) {
     const out: Release[] = [];
     for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
