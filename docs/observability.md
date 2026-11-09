@@ -19,9 +19,9 @@ OTEL_ENABLED=1 docker compose --profile observability up -d
 
 ## In the app (Admins)
 
-Settings → AI usage shows the budget, providers, tiers and costs per Product, Ticket and stage (from `runs`, last 30 days) to every member of the Workspace. Admins also get two links, served by Admin-only route handlers that answer 404 to everyone else and never forward cookies or `Authorization`:
+Settings → AI usage shows the budget, providers, tiers and costs per Product, Ticket and stage (from `runs`, last 30 days) to every member of the Workspace. Admins also get two links, the gateway one served by an Admin-only route handler that answers 404 to everyone else, never forwards cookies or `Authorization`, and sends every answer with `Content-Security-Policy: sandbox allow-scripts allow-forms` and `nosniff`, so an upstream page runs as an opaque origin and cannot act with the Admin's session:
 
-- **Open traces** → `/-/traces/` proxies Jaeger (`JAEGER_URL`, default `http://jaeger:16686`), read-only; greyed out while the `observability` profile is off (HEAD probe, cached 60 s).
+- **Open traces** → Jaeger on its own loopback origin, `JAEGER_PUBLIC_URL` (default `http://127.0.0.1:16686/-/traces/`); greyed out while the `observability` profile is off (server-side HEAD probe of `JAEGER_URL`, default `http://jaeger:16686`, cached 60 s). It is not proxied: under the sandbox below the Jaeger UI cannot load its assets (checked live, #469).
 - **Open gateway config** → `/-/gateway/config_dump` proxies the gateway admin API (`GATEWAY_ADMIN_URL`) for raw read-only endpoints; only GET/HEAD pass unless `GATEWAY_ADMIN_PROXY_WRITE=1`, and every passed write is recorded in `human_touches`. The agentgateway console (`/ui`) does not work behind this prefix: it loads `/ui/assets/…` and calls `/api/…` from the site root, which hit Bauherr's own `/api`. The admin port 15000 is not published on the host.
 
 Grafana and Loki (AGPL) are not included; they may come later as a separate optional profile.
