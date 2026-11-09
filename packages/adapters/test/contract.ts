@@ -203,6 +203,8 @@ export function contractSuite(name: string, env: ContractEnv): void {
       const files = await f.listPullRequestFiles(repo, p.number);
       assert.deepEqual(files.map((x) => x.filename), ['contract/hello.txt']);
       assert.equal(files[0]?.status, 'added');
+      const diff = await f.compare(repo, b.sha, (await f.getPullRequest(repo, p.number)).headSha);
+      assert.ok(diff.includes('contract/hello.txt') && diff.includes('+hello'));
       assert.ok(Array.isArray(await f.listChecks(repo, (await f.getPullRequest(repo, p.number)).headSha)));
       assert.equal(await f.rerunFailed(repo, []), false);
     });

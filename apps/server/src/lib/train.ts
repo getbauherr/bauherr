@@ -4,6 +4,7 @@ import type { Payload } from 'payload'
 import { CHECKS_WAIT_MS, MAX_MERGE_FAILURES, escalate, moveReview, returnConflictToBuild, returnDroppedToBuild, reviewedShaOf } from './actions'
 import { executionOrder, type FrontierTicket } from './frontier'
 import { TRAIN_BRANCH, trainConcurrency } from './merge-mode'
+import { queueDistill } from './skill-distill'
 import { failedCheck, forgeOf, id, latestChecks, prOf } from './release'
 
 type Doc = Record<string, any>
@@ -70,6 +71,7 @@ const mergeMembers = async (payload: Payload, c: Ctx, members: TrainMember[]): P
   for (const m of members) {
     try {
       await c.backend.forge.mergePullRequest(c.repo, m.pr, { method: 'squash', deleteBranch: true, expectSha: m.headSha })
+      await queueDistill(payload, { id: m.ticket })
     } catch (e) {
       if (e instanceof MergePendingError) return
       payload.logger.error({ err: e, ticket: m.ticket }, 'merging a train member failed')

@@ -86,7 +86,7 @@ export class Http {
     this.maxRetries = o.maxRetries ?? 3;
   }
 
-  async raw(method: string, path: string, body?: unknown): Promise<Response> {
+  async raw(method: string, path: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
       const res = await timedFetch(this.doFetch, url, {
@@ -94,7 +94,7 @@ export class Http {
         method,
         headers: {
           authorization: `Bearer ${await this.o.auth.token()}`,
-          accept: 'application/vnd.github+json',
+          accept,
           'x-github-api-version': '2022-11-28',
           'user-agent': 'bauherr',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
@@ -371,6 +371,9 @@ class GithubForge implements Forge {
     return (await this.h.paginate(`/repos/${repo}/pulls/${n}/files?per_page=100`)).map((f) => ({
       filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions,
     }));
+  }
+  async compare(repo: RepoRef, base: string, head: string) {
+    return (await this.h.raw('GET', `/repos/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`, undefined, 'application/vnd.github.diff')).text();
   }
   async retargetPullRequest(repo: RepoRef, n: number, base: string) {
     await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { base });

@@ -267,6 +267,12 @@ describe('gitlab forge', () => {
     ]);
   });
 
+  it('compare joins the diffs of the compared range', async () => {
+    const { forge, calls } = setup(() => ({ diffs: [{ old_path: 'a.ts', new_path: 'b.ts', diff: '@@ -1 +1 @@\n-x\n+y\n' }] }));
+    assert.equal(await forge.compare('g/p', 'abc', 'def'), '--- a/a.ts\n+++ b/b.ts\n@@ -1 +1 @@\n-x\n+y\n');
+    assert.equal(calls[0]!.path, `${P}/repository/compare?from=abc&to=def`);
+  });
+
   it('listChecks maps the latest pipeline jobs; no pipeline gives []', async () => {
     const { forge, calls } = setup((_m, path) => (path.includes('/jobs') ? fx('jobs') : path.includes('/bridges') ? [] : fx('pipelines')));
     const checks = await forge.listChecks('g/p', 'abc123');

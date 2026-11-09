@@ -98,6 +98,8 @@ it('a merge by the queue moves the Ticket to release with the merge sha of the P
   expect(fake.advanceQueue(repo)).toBe(pr.number)
   expect(await actions.watchQueued(payload)).toBe(1)
   expect((await reload(id)).reviewState).toBe('merged')
+  // a queue merge queues the skill distillation like the direct gate's merge (#41)
+  expect(await payload.count({ collection: 'payload-jobs' as never, where: { concurrencyKey: { equals: `distill:${id}` } } as never, overrideAccess: true })).toMatchObject({ totalDocs: 1 })
   expect(await release.watchRelease(payload)).toMatchObject({ released: 1 })
   expect(await reload(id)).toMatchObject({ stage: 'release', mergeSha: (await fake.forge.getPullRequest(repo, pr.number)).mergeSha })
 })

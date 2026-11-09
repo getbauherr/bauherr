@@ -24,6 +24,7 @@ import { wipLimit } from './wip-limits'
 import { NoRoom, evenRanks, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
+import { queueDistill } from './skill-distill'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -977,6 +978,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "merge_failures" = COALESCE("merge_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "merge_failures"`)).rows[0]!.merge_failures)
     return failures >= MAX_MERGE_FAILURES ? escalate(payload, t, `${claim === 'queued' ? 'enqueuing' : 'merging'} the MR failed ${failures} times in a row: ${e instanceof Error ? e.message : String(e)}`) : 'waiting_checks'
   }
+  await queueDistill(payload, t)
   return 'merged'
 }
 
@@ -1095,7 +1097,11 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
       const mr = await prOf(payload, t)
       if (!mr || mr.pr.state === 'closed') continue
       if (mr.pr.state === 'merged') {
-        if (await moveReview(payload, t.id, 'merged', 'queued')) merged++
+        // A queue merge is a merge like the direct gate's: it may distill a skill too (#41).
+        if (await moveReview(payload, t.id, 'merged', 'queued')) {
+          merged++
+          await queueDistill(payload, t)
+        }
         continue
       }
       if (mr.pr.headSha !== (await reviewedShaOf(payload, t))) {
