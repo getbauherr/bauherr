@@ -17,13 +17,24 @@ const isDuplicate = (e: unknown): boolean => {
   return false
 }
 
+/** Whether a merge commit is in a release, per (repo, merge sha, release sha): the answer never changes, so the Board's reminder does not ask the forge again on every load. */
+const ancestry = new Map<string, boolean>()
+const inRelease = async (repo: string, sha: string, release: string, ask: () => Promise<boolean>): Promise<boolean> => {
+  const key = `${repo}:${sha}:${release}`
+  const known = ancestry.get(key)
+  if (known !== undefined) return known
+  const answer = await ask()
+  ancestry.set(key, answer)
+  return answer
+}
+
 /** Tickets of the Product that are done and in no release yet, oldest first. Tickets released before this page existed (notes-only/factory release, or a merge contained in the latest release) are not waiting. */
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
   const docs = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
   const { backend, repo } = await forgeOf(payload, product)
   const latest = (await backend.forge.listReleases(repo))[0]
   if (!latest) return docs
-  const released = await Promise.all(docs.map((t) => !!t.mergeSha && backend.forge.isAncestor(repo, t.mergeSha, latest.sha)))
+  const released = await Promise.all(docs.map((t) => !!t.mergeSha && inRelease(repo, t.mergeSha, latest.sha, () => backend.forge.isAncestor(repo, t.mergeSha, latest.sha))))
   return docs.filter((_, i) => !released[i])
 }
 
