@@ -165,6 +165,7 @@ const workspaces = col(
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
+    { name: 'routerBudgetShare', type: 'number', defaultValue: 20, min: 1, max: 99, admin: { description: 'Percent of the budget for `auto` traffic while a router Connection exists.' } },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
     select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
@@ -212,7 +213,7 @@ const workspaces = col(
           if (!gatewayEnabled()) return
           if (
             operation === 'create' ||
-            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d'] as const).some((k) => doc[k] !== previousDoc?.[k])
+            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d', 'routerBudgetShare'] as const).some((k) => doc[k] !== previousDoc?.[k])
           )
             await ensureKey(req, doc.id)
           else if (!isDeepStrictEqual(doc.modelByTier, previousDoc?.modelByTier)) await syncRouterKey(req, doc.id)
@@ -361,7 +362,10 @@ const connections = col(
           if (!gatewayEnabled()) return
           if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, slug, decrypt(raw.secret), preset.secret.ext)
           await removeProvider(raw.workspace.slug, slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
-          if (router) await ensureRouterKey(req, raw.workspace.id)
+          if (router) {
+            await ensureRouterKey(req, raw.workspace.id)
+            await ensureKey(req, raw.workspace.id)
+          }
           else if (isRouter(previousDoc?.config) && !conns.some((c) => isRouter(c.config))) await revokeRouterKey(req, raw.workspace.id, raw.workspace.slug)
           await renderModels(req)
           if (!process.env.GATEWAY_URL) return
