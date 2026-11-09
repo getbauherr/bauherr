@@ -1,5 +1,8 @@
 import { postgresAdapter, sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
@@ -13,6 +16,7 @@ beforeAll(async () => {
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.GATEWAY_ADMIN_URL = 'http://127.0.0.1:1'
+  process.env.GATEWAY_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'bauherr-gw-'))
   const { getPayload } = await import('payload')
   const config = await (await import('../src/payload.config')).default
   payload = await getPayload({ config: { ...config, db: postgresAdapter({ pool: { connectionString: testDb.url }, push: false }) as never } })
@@ -20,6 +24,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   delete process.env.GATEWAY_ADMIN_URL
+  delete process.env.GATEWAY_CONFIG_DIR
   await payload?.destroy()
   await testDb?.drop(payload)
 })
