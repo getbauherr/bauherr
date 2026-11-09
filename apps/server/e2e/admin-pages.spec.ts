@@ -135,7 +135,7 @@ test('the Ticket page Runs table shows Run and Duration to an Admin only and nev
   }
 })
 
-test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiting card says why', async ({ page }) => {
+test('WIP limits: set in Settings > Board & WIP, shown in the Board header, a waiting card says why', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
   await page.getByLabel(/^Build/).fill('1')
@@ -157,7 +157,7 @@ test('WIP limits: set in Settings > Workflow, shown in the Board header, a waiti
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })
 
-test('Paths that never hold a Build: saved per Product in Settings > Workflow', async ({ page }) => {
+test('Paths that never hold a Build: saved per Product in Settings > Board & WIP', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
   await expect(page.getByRole('heading', { name: 'Paths that never hold a Build' })).toBeVisible()

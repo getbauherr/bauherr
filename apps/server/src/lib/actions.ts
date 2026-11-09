@@ -359,7 +359,7 @@ export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketI
   if (user.role !== 'admin') throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.state === 'closed' || ['release', 'done', PARENT].includes(t.stage)) throw new Error('the Ticket is past the stages the Expedite lane serves')
-  if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Workflow')
+  if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Board & WIP')
   const { ts, n } = await sourceOf(payload, t)
   await touch(payload, user, t, 'expedite') // before the label: a poll in between must find the touch that vouches for it
   await ts.addLabels(n, [EXPEDITE_LABEL])
