@@ -17,14 +17,24 @@ export const loginLimits = (env: Record<string, string | undefined> = process.en
 export const IP_WINDOW_MS = 60_000
 const failures = new Map<string, { n: number; reset: number }>()
 
+/** The shared IP key of requests that did not pass the configured proxy chain: omitting or forging `x-forwarded-for` gives no fresh budget. */
+export const UNVERIFIED_IP = 'ip:unverified'
+const WARN_EVERY_MS = 10 * 60_000
+let warnedAt = -Infinity
+
 /**
  * The client IP: the `hops`-th `x-forwarded-for` entry from the right, the one the outermost trusted proxy appended (entries left of it are client-supplied).
- * With 0 hops, or no header, undefined: the IP limit is skipped (a Next request exposes no socket address; Next fills a missing header with it, which a client can preempt).
+ * Fewer entries than `hops` (or no header): `UNVERIFIED_IP`, with a warning at most every 10 min. 0 hops: undefined, the IP limit is off (a Next request exposes no socket address).
  */
 export const clientIp = (headers: Headers, hops = loginLimits().trustedProxyHops): string | undefined => {
-  const parts = headers.get('x-forwarded-for')?.split(',').map((p) => p.trim()).filter(Boolean)
-  if (!hops || !parts?.length) return undefined
-  return parts[Math.max(0, parts.length - hops)]
+  if (!hops) return undefined
+  const parts = headers.get('x-forwarded-for')?.split(',').map((p) => p.trim()).filter(Boolean) ?? []
+  if (parts.length >= hops) return parts[parts.length - hops]
+  if (Date.now() - warnedAt >= WARN_EVERY_MS) {
+    warnedAt = Date.now()
+    console.warn(`login IP key: request had ${parts.length} x-forwarded-for entries, TRUSTED_PROXY_HOPS=${hops}; check the proxy chain`)
+  }
+  return UNVERIFIED_IP
 }
 
 const ipBlocked = (ip: string): boolean => {
