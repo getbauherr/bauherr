@@ -1,9 +1,10 @@
 import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
-import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
+import { addDataAndFileToRequest, APIError, generatePayloadCookie, headersWithCors, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
+import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
 
@@ -46,6 +47,26 @@ const bauherren: CollectionConfig = {
   labels: { singular: 'Bauherr', plural: 'Bauherren' },
   auth: { useAPIKey: true, strategies: [oidcStrategy], tokenExpiration: SESSION_TTL_S },
   admin: { useAsTitle: 'email' },
+  // Replaces Payload's built-in login (custom endpoints are matched before the built-in ones) so REST and the Admin UI sign in through the same queue and IP limit as the login page.
+  endpoints: [
+    {
+      path: '/login',
+      method: 'post',
+      handler: async (req) => {
+        await addDataAndFileToRequest(req)
+        const { email, password } = (req.data ?? {}) as { email?: unknown; password?: unknown }
+        let result
+        try {
+          result = await signInWithPassword(req.payload, typeof email === 'string' ? email : '', typeof password === 'string' ? password : '', clientIp(req.headers))
+        } catch (e) {
+          if (e instanceof LoginBusy) return Response.json({ errors: [{ message: req.t('error:emailOrPasswordIncorrect') }] }, { status: 429 })
+          throw e
+        }
+        const cookie = generatePayloadCookie({ collectionAuthConfig: req.payload.collections.bauherren.config.auth, cookiePrefix: req.payload.config.cookiePrefix, token: result.token })
+        return Response.json({ message: req.t('authentication:passed'), ...result }, { headers: headersWithCors({ headers: new Headers({ 'Set-Cookie': cookie }), req }) })
+      },
+    },
+  ],
   access: {
     admin: isAdmin,
     create: isAdmin,

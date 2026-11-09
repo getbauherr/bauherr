@@ -55,6 +55,7 @@ jobs:
     needs: build-image
     env:
       E2E_EMAIL: e2e@example.com
+      LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: corepack enable
@@ -129,6 +130,7 @@ jobs:
           --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
     env:
       E2E_EMAIL: e2e@example.com
+      LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
       DATABASE_URL: postgres://bauherr:bauherr@localhost:54330/bauherr
       BAUHERR_E2E_FAKE_FORGE: "1"
       INTAKE_FAKE: "1"

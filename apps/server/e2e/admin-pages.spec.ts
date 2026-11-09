@@ -121,6 +121,16 @@ test('with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does 
   await expect(page.getByText('Unauthorized')).toBeVisible()
 })
 
+test('with BAUHERR_ENABLE_ADMIN=1 the /admin sign-in form (REST login) reaches the dashboard', async ({ page }) => {
+  test.skip(process.env.E2E_ADMIN_ENABLED !== '1', 'needs a server with BAUHERR_ENABLE_ADMIN=1')
+  await page.goto('/admin/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Login' }).click()
+  await expect(page).toHaveURL(/\/admin\/?$/)
+  await expect(page.getByRole('heading', { name: 'Collections' })).toBeVisible()
+})
+
 test('the Ticket page Runs table shows Run and Duration to an Admin only and never Mode or Cost', async ({ page }) => {
   for (const [who, visible] of [['member@example.com', false], [email, true]] as const) {
     await signIn(page, who)

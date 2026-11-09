@@ -21,6 +21,8 @@ export default buildConfig({
   admin: { user: 'bauherren' },
   // People are added, not created: Bauherr (singular) / Bauherren (plural).
   i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
+  // GraphQL would be a second, unqueued login path (`loginBauherren`); nothing uses it.
+  graphQL: { disable: true },
   typescript: { autoGenerate: false },
   db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() }, push: true, prodMigrations: migrations }),
   collections,

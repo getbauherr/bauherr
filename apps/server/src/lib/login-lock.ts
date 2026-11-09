@@ -8,7 +8,27 @@ const waiting = new Map<string, number>()
 /** At most this many sign-ins of one account wait or run at once; more are refused at once (`LoginBusy`). */
 export const MAX_LOGIN_WAITERS = 5
 
-/** Too many sign-ins of one account at once; shown to the user as the generic sign-in error. */
+/** Sign-in attempts per client IP and window (env `LOGIN_IP_MAX_ATTEMPTS`); more are refused at once (`LoginBusy`) before they take a queue slot. */
+export const MAX_IP_ATTEMPTS = 10
+const maxIpAttempts = () => Number(process.env.LOGIN_IP_MAX_ATTEMPTS) || MAX_IP_ATTEMPTS
+export const IP_WINDOW_MS = 60_000
+const attempts = new Map<string, { n: number; reset: number }>()
+
+/** First hop of `x-forwarded-for`; undefined without the header, which skips the IP limit (Next fills it with the socket address when no proxy sets it). */
+export const clientIp = (headers: Headers): string | undefined => headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined
+
+const ipLimited = (ip: string): boolean => {
+  const now = Date.now()
+  if (attempts.size > 10_000) for (const [k, v] of attempts) if (v.reset <= now) attempts.delete(k)
+  const a = attempts.get(ip)
+  if (!a || a.reset <= now) {
+    attempts.set(ip, { n: 1, reset: now + IP_WINDOW_MS })
+    return false
+  }
+  return ++a.n > maxIpAttempts()
+}
+
+/** Too many sign-ins of one account at once, or from one IP; shown to the user as the generic sign-in error. */
 export class LoginBusy extends Error {
   constructor() {
     super('too many sign-ins of this account at once')
@@ -43,9 +63,10 @@ export const withLoginLock = async <T>(email: string, fn: () => Promise<T>): Pro
   }
 }
 
-/** The password sign-in of the login action: Payload's login inside the per-account queue. Returns the token; throws on a wrong password (status 401) or `LoginBusy`. */
-export const signInWithPassword = async (payload: Payload, email: string, password: string): Promise<string> => {
-  const { token } = await withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
-  if (!token) throw Object.assign(new Error('no token'), { status: 401 })
-  return token
+/** The password sign-in of the login action and the REST `/api/bauherren/login`: the per-IP limit, then Payload's login inside the per-account queue. Returns Payload's login result; throws on a wrong password (status 401) or `LoginBusy`. */
+export const signInWithPassword = async (payload: Payload, email: string, password: string, ip?: string) => {
+  if (ip && ipLimited(ip)) throw new LoginBusy()
+  const result = await withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
+  if (!result.token) throw Object.assign(new Error('no token'), { status: 401 })
+  return { ...result, token: result.token }
 }
