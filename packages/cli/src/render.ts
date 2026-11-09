@@ -12,8 +12,9 @@ export const cliVersion = (): string =>
 export const renderCompose = (template: string, version: string): string =>
   template
     .replace('${BAUHERR_VERSION:-dev}', version)
+    .replace(/^  build:\n(?:    .*\n)+/m, '')
     .split('\n')
-    .filter((l) => !/^\s+build: \.$/.test(l) && !/container_name:/.test(l) && !/ports: \["127\.0\.0\.1:(54330|4000):/.test(l))
+    .filter((l) => !/container_name:/.test(l) && !/ports: \["127\.0\.0\.1:(54330|4000):/.test(l))
     .join('\n')
     .replace('PAYLOAD_SECRET_FILE: /run/secrets/payload_secret', 'PAYLOAD_SECRET: ${PAYLOAD_SECRET:?run bauherr init}')
     .replace('ENCRYPTION_KEY_FILE: /run/secrets/encryption_key', 'ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run bauherr init}')

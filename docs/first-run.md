@@ -29,6 +29,7 @@ Total gateway cost 0.1135 USD.
 
 ```bash
 npx bauherr init   # or from a checkout: docker compose build && docker compose up -d
+BAUHERR_REVISION=$(git rev-parse --short HEAD) docker compose build app   # local image shows dev+<sha>; rebuild after each change
 export GITHUB_TOKEN="$(gh auth token)" BAUHERR_ADMIN_EMAIL=<email>
 npx bauherr seed --anthropic-key-file ~/.config/bauherr/anthropic-key --admin-password-file ~/.config/bauherr/admin-password
 # checkout equivalent of the seed line:
