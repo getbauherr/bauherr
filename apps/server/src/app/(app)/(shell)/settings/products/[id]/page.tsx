@@ -37,10 +37,14 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       <DeploySections data={data} checks={checks} admin={admin} numbered />
 
       <SettingsSection id="release" n={5} title="Release notes" purpose="Release notes are written when you approve production.">
+        <div className="flex flex-col gap-4 [&:not(:has(input[value=manual]:checked))_.reminder]:hidden">
         <RadioCards name="releaseMode" legend="Who makes the release?" value={d.releaseMode} options={[
           { value: 'notes-only', title: 'My tooling makes releases', text: 'Bauherr adds plain-language notes to the release your tooling creates.' },
           { value: 'factory', title: 'Bauherr makes the release', text: 'Bauherr tags the version, publishes the release and opens a CHANGELOG change for you to merge.' },
+          { value: 'manual', title: 'I ship releases myself', text: 'Nothing is released automatically: you pick the done Tickets and ship them from the Releases page, and Bauherr reminds you when they wait too long.' },
         ]} />
+        <div className="reminder"><Field name="releaseReminderDays" label="Remind me after (days)" hint="Only for I ship releases myself: the Board reminds you when done Tickets wait longer than this for a release." type="number" min={1} step={1} defaultValue={d.releaseReminderDays} /></div>
+        </div>
       </SettingsSection>
 
       <SettingsSection id="pre-review" n={6} title="Pre-review checks" purpose="Checks on the changed file paths that a change must pass before it goes to review. Empty: off.">

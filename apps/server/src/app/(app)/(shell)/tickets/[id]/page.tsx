@@ -95,7 +95,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
   const idle = nextStep({ ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
   const decisionsOpen = decisions.length - answered > 0 && !approved
-  const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production'].filter(Boolean).join(' · ')
+  const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   const reached = reachedStages({ state: ticket.state, stage: stageOf(ticket) }, runs as { stage: string }[])
   const selected = reached.find((s) => s === stageParam)
   let mr: { url: string; headSha: string | null; checks: ReturnType<typeof checkLines> } | null = null

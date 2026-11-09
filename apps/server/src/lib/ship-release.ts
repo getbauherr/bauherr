@@ -2,6 +2,7 @@ import type { TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { latestWith } from '../app/(app)/lib/plan'
+import { NotAdmin, NotInWorkspace } from './actions'
 import { cas, changelogPr, forgeOf, id, releaseMarker } from './release'
 import { collectItem, renderNotes as renderItems } from './release-notes'
 import { personOf } from './person'
@@ -66,4 +67,45 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   }
   if (!a.version.includes('-rc.')) await changelogPr(forge, repo, release, marker, Date.now())
   return { tag, url: release.url }
+}
+
+/** The Releases page data of a Product: Tickets waiting, the `picked` ones (all, or those in `ids`), the proposed version and notes for them, and the forge's releases (newest first). */
+export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[]) => {
+  const { backend, repo, tickets: ts } = await forgeOf(payload, product)
+  const [waiting, past] = await Promise.all([waitingTickets(payload, product), backend.forge.listReleases(repo)])
+  const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
+  return { waiting, picked, version: proposeVersion(past[0]?.tag ?? null, picked), notes: picked.length ? await renderNotes(ts, picked) : '', past }
+}
+
+const productIn = async (payload: Payload, product: number | string, workspaceId: number | string) => {
+  if (!(await payload.find({ collection: 'products', where: { and: [{ id: { equals: product } }, { workspace: { equals: workspaceId } }] }, limit: 1, ...o })).totalDocs) throw new NotInWorkspace()
+}
+
+/** Admin-only: ships the Tickets `ids` (each must be waiting for a release) of a Product of the Workspace as `version`. */
+export const shipSelected = async (payload: Payload, user: Doc, a: { workspaceId: number | string; product: number | string; ids: (number | string)[]; version: string; notes: string }): Promise<{ tag: string; url: string }> => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  await productIn(payload, a.product, a.workspaceId)
+  if (!/^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(a.version)) throw new Error('The version must look like 0.2.0 or 0.2.0-rc.1')
+  const ids = a.ids.map(String)
+  const tickets = (await waitingTickets(payload, a.product)).filter((t) => ids.includes(String(t.id)))
+  if (tickets.length !== new Set(ids).size) throw new Error('A selected Ticket is no longer waiting for a release; reload the page')
+  return shipRelease(payload, user, { product: a.product, tickets, version: a.version, notes: a.notes })
+}
+
+/** The owner's reminder (manual Product only): done Tickets have waited longer than `releaseReminderDays` (default 7) for a release. Null when nothing is due. Computed on every Board load, so it needs no stored state and posts no Comment. */
+export const releaseReminder = (product: { releaseMode?: string | null; releaseReminderDays?: number | null }, waiting: { productionRequestedAt?: string | null; releaseAt?: string | null; updatedAt: string }[], now = Date.now()): { count: number; days: number } | null => {
+  if (product.releaseMode !== 'manual' || !waiting.length) return null
+  const since = Math.min(...waiting.map((t) => Date.parse(t.productionRequestedAt ?? t.releaseAt ?? t.updatedAt)))
+  const days = Math.floor((now - since) / 86_400_000)
+  return days > (product.releaseReminderDays ?? 7) ? { count: waiting.length, days } : null
+}
+
+/** Reminders for the Workspace's manual Products, for the Board. */
+export const releaseReminders = async (payload: Payload, workspaceId: number | string): Promise<{ product: { id: number; name: string }; count: number; days: number }[]> => {
+  const products = (await payload.find({ collection: 'products', where: { and: [{ workspace: { equals: workspaceId } }, { releaseMode: { equals: 'manual' } }] }, pagination: false, ...o })).docs as Doc[]
+  const out = await Promise.all(products.map(async (p) => {
+    const r = releaseReminder(p, (await waitingTickets(payload, p.id)) as { updatedAt: string }[])
+    return r && { product: { id: p.id as number, name: p.name as string }, ...r }
+  }))
+  return out.filter((r) => r !== null)
 }

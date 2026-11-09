@@ -116,8 +116,9 @@ export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
   const checkRetries = Number(s(fd, 'checkRetries') || 1)
-  const data = { checkRetries, stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode') }
+  const data = { checkRetries, stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode'), releaseReminderDays: Number(s(fd, 'releaseReminderDays') || 7) }
   const errors = Object.entries(deployErrors(data)).map(([path, message]) => ({ path, message }))
+  if (!Number.isInteger(data.releaseReminderDays) || data.releaseReminderDays < 1) errors.push({ path: 'releaseReminderDays', message: 'Enter a whole number of days, 1 or more.' })
   if (!Number.isInteger(checkRetries) || checkRetries < 0 || checkRetries > 1) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
   const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
   if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })

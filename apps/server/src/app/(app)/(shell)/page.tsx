@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AutoRefresh } from '../components/AutoRefresh'
 import { EmptyState } from '../components/EmptyState'
@@ -8,7 +9,8 @@ import { BoardView } from '../components/OverviewViews'
 import { epicNamed, epicRestoreUrl, epicsToShow, inEpic } from '../lib/epics'
 import { loadOverview } from '../lib/overview'
 import { isAdmin } from '../lib/settings'
-import { currentWorkspace, rememberEpic, requireBauherr } from '../lib/session'
+import { currentWorkspace, payloadClient, rememberEpic, requireBauherr } from '../lib/session'
+import { releaseReminders } from '../../../lib/ship-release'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,11 +33,17 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const epicIds = new Set(data.epics.map((e) => e.id))
   const inProduct = inEpic(data.tickets.filter((t) => !epicIds.has(t.id) && (!product || t.product?.id === product)), Number(sp.epic) || null)
   const epics = epicsToShow(data.epics, sp.done === '1', product)
+  const reminders = workspace && !graph && !list ? await releaseReminders(await payloadClient(), workspace.id) : []
   const shown = sp.state === 'all' && !graph ? inProduct : inProduct.filter((t) => t.open)
   return (
     <>
       <AutoRefresh ms={10000} />
       <h1 className="title">Tickets</h1>
+      {reminders.map((r) => (
+        <p key={r.product.id} role="status" data-testid="release-reminder" className="small text-warn">
+          {r.product.name}: {r.count} done {r.count === 1 ? 'Ticket has' : 'Tickets have'} waited {r.days} days for a release. <Link className="text-primary" href={`/releases?product=${r.product.id}`}>Open Releases</Link>
+        </p>
+      ))}
       <TicketControls products={data.products} epics={data.epics} />
       {list ? (
         epics.length ? <EpicsView epics={epics} /> : <EmptyState text="No open epics." />

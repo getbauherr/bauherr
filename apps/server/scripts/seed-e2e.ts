@@ -133,6 +133,16 @@ await run(t5, 'review', 'succeeded', {
     { severity: 'low', file: 'src/payment.ts', line: 7, msg: 'Unused import.', scenario: 'lint noise only.' },
   ],
 })
+// releases.spec.ts: two manual Products of their own, each with done Tickets waiting for a release. Acme Relist is only listed (its releaseAt is old, so the Board reminds), Acme Reship is shipped. Twins in `src/lib/fake-forge.ts` carry these numbers.
+for (const [slug, name, repo, titles, releaseAt] of [
+  ['acme-relist', 'Acme Relist', 'acme/relist', ['Relist the export totals', 'Relist the invoice filter', 'Relist the CSV header'], '2026-10-01T09:00:00Z'],
+  ['acme-reship', 'Acme Reship', 'acme/reship', ['Reship the export totals', 'Reship the invoice filter'], undefined],
+] as const) {
+  const p = (await ensure('products', { slug }, { name, slug, workspace, releaseMode: 'manual', releaseReminderDays: 7 })).id
+  await ensure('repositories', { fullName: repo }, { fullName: repo, product: p, workspace })
+  await ensure('ticket_sources', { repo }, { repo, product: p, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+  for (const [i, title] of titles.entries()) await ensure('tickets', { externalId: `e2e-${slug}-${i + 1}` }, { title, externalId: `e2e-${slug}-${i + 1}`, number: i + 1, url: `https://github.com/${repo}/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `${slug}-sha-${i + 1}`, releaseAt, product: p, workspace, rank: String(200 + i).padStart(6, '0') })
+}
 const request = async (key: string, status: string, extra: Record<string, unknown>) =>
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
 await request('Export totals drift', 'open', { user: draftOwner })

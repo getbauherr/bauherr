@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -158,4 +158,37 @@ it('a touch a concurrent ship already wrote is not written twice', async () => {
     spy.mockRestore()
   }
   expect(await touches('stale', 'v0.2.0')).toHaveLength(1)
+})
+
+it('reminds only a manual Product whose oldest waiting Ticket is older than releaseReminderDays', () => {
+  const day = 86_400_000
+  const now = Date.parse('2026-11-20T00:00:00Z')
+  const waiting = [{ releaseAt: '2026-11-10T00:00:00Z', updatedAt: '2026-11-19T00:00:00Z' }, { updatedAt: '2026-11-18T00:00:00Z' }]
+  expect(ship.releaseReminder({ releaseMode: 'manual', releaseReminderDays: 7 }, waiting, now)).toEqual({ count: 2, days: 10 })
+  expect(ship.releaseReminder({ releaseMode: 'manual' }, waiting, now)).toMatchObject({ days: 10 })
+  expect(ship.releaseReminder({ releaseMode: 'manual', releaseReminderDays: 10 }, waiting, now)).toBeNull()
+  expect(ship.releaseReminder({ releaseMode: 'factory', releaseReminderDays: 1 }, waiting, now)).toBeNull()
+  expect(ship.releaseReminder({ releaseMode: 'manual' }, [], now + 30 * day)).toBeNull()
+})
+
+it('shipSelected is admin only, stays in the Workspace and ships exactly the selected Tickets', async () => {
+  fake.commit('acme/page', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  const a = await done('page', 'First', 'sha-p1', 1)
+  const b = await done('page', 'Second', 'sha-p2', 2)
+  const c = await done('page', 'Third', 'sha-p3', 3)
+  fake.setAncestors('acme/page', 'sha-p2', ['sha-p1'])
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr' }, ...o })
+  const other = (await payload.create({ collection: 'workspaces', data: { name: 'other', slug: 'other' }, ...o })).id as number
+  const args = { workspaceId: ws, product: products.page!, ids: [a.id, b.id], version: '0.1.0', notes: 'n' }
+  await expect(ship.shipSelected(payload, member, args)).rejects.toThrow('Only an Admin')
+  await expect(ship.shipSelected(payload, user, { ...args, workspaceId: other })).rejects.toThrow()
+  await expect(ship.shipSelected(payload, user, { ...args, version: 'soon' })).rejects.toThrow('The version must look like')
+  expect(fake.listReleases('acme/page')).toEqual([])
+  await ship.shipSelected(payload, user, args)
+  expect(fake.listReleases('acme/page')).toMatchObject([{ tag: 'v0.1.0', sha: 'sha-p2' }])
+  expect((await reload(c.id)).releasedIn).toBeFalsy()
+  await expect(ship.shipSelected(payload, user, { ...args, version: '0.1.1' })).rejects.toThrow('no longer waiting')
+  const draft = await ship.releaseDraft(payload, products.page!)
+  expect(draft).toMatchObject({ version: '0.1.1', past: [{ tag: 'v0.1.0' }] })
+  expect(draft.waiting.map((t) => t.id)).toEqual([c.id])
 })
