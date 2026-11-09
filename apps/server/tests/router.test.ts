@@ -99,3 +99,9 @@ it('a second Workspace with a router Connection is rejected', async () => {
   await conn(a, 'router')
   await expect(conn(b, 'router')).rejects.toThrow(/invalid: provider/)
 })
+
+it('the gateway code never compares against the router enum value in SQL: older migrations render the gateway before that value exists', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/lib/gateway.ts', import.meta.url), 'utf8')
+  expect(src).not.toMatch(/provider:\s*\{\s*(equals|not_equals|in|not_in):\s*\[?\s*'router'/)
+})
