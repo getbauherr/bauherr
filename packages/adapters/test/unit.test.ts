@@ -446,4 +446,20 @@ describe('github merge queue', () => {
     assert.match(queued.calls.at(-1)!.body.query, /dequeuePullRequest/);
     assert.deepEqual(queued.calls.at(-1)!.body.variables, { id: 'PR_1' });
   });
+  it('resetBranch force-patches the ref and creates it when the ref does not exist', async () => {
+    const patched = await run(() => json({}), (f) => f.resetBranch('o/r', 'bauherr/train', 's1'));
+    assert.deepEqual(patched.calls, [{ method: 'PATCH', path: '/repos/o/r/git/refs/heads/bauherr/train', body: { sha: 's1', force: true } }]);
+    const created = await run((m) => (m === 'PATCH' ? new Response('nf', { status: 422 }) : json({})), (f) => f.resetBranch('o/r', 'bauherr/train', 's1'));
+    assert.deepEqual(created.calls.at(-1), { method: 'POST', path: '/repos/o/r/git/refs', body: { ref: 'refs/heads/bauherr/train', sha: 's1' } });
+    await assert.rejects(run(() => new Response('boom', { status: 500 }), (f) => f.resetBranch('o/r', 'bauherr/train', 's1')), /500/);
+  });
+  it('mergeIntoBranch POSTs /merges with the head sha; 201 gives the merge sha, 204 the branch tip, 409 a conflict', async () => {
+    const ok = await run(() => json({ sha: 'm1' }, { status: 201 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'));
+    assert.deepEqual(ok.res, { sha: 'm1' });
+    assert.deepEqual(ok.calls[0], { method: 'POST', path: '/repos/o/r/merges', body: { base: 'bauherr/train', head: 'h1', commit_message: 'bauherr train: merge h1' } });
+    const same = await run((m) => (m === 'POST' ? new Response(null, { status: 204 }) : json({ object: { sha: 'tip' } })), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'));
+    assert.deepEqual(same.res, { sha: 'tip' });
+    assert.deepEqual((await run(() => new Response('conflict', { status: 409 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'))).res, { conflict: true });
+    await assert.rejects(run(() => new Response('boom', { status: 500 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1')), /500/);
+  });
 });

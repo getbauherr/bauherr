@@ -38,9 +38,10 @@ const seedRun = async (slug: string, costEstimateUsd: number) => {
   return payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'plan', workspace, costEstimateUsd }, ...o })
 }
 
-const logCall = (run: number | string, cost: number) =>
-  gw.query(`INSERT INTO request_logs (cost, input_tokens, output_tokens, total_tokens, attributes_json) VALUES ($1, 10, 5, 15, $2)`, [
+const logCall = (run: number | string, cost: number, model: string | null = null) =>
+  gw.query(`INSERT INTO request_logs (cost, input_tokens, output_tokens, total_tokens, gen_ai_request_model, attributes_json) VALUES ($1, 10, 5, 15, $2, $3)`, [
     cost,
+    model,
     JSON.stringify({ run: String(run) }),
   ])
 
@@ -85,6 +86,28 @@ it('no rows: attempt 1 queues a retry 10 min out, attempt 2 settles on unavailab
 
   expect(await reconcileRun(payload, run.id, 2)).toBe('unavailable')
   expect(await reload(run.id)).toMatchObject({ reconcileStatus: 'unavailable', costSource: 'sdk-estimate', costUsd: 0.02 })
+})
+
+it('0 USD with tokens on a catalog:false preset is unpriced: estimate kept, no gateway cost written', async () => {
+  const { reconcileRun } = await import('../src/lib/reconcile')
+  const run = await seedRun('up', 0.03)
+  const ws = (await reload(run.id)).workspace as number
+  await payload.create({ collection: 'connections', data: { name: 'bedrock', slug: 'bedrock', kind: 'llm-provider', workspace: ws, config: { provider: 'bedrock', awsRegion: 'us-east-1' }, secret: 'k' } as never, ...o })
+  await logCall(run.id, 0, 'ws-up/bedrock/us.anthropic.claude-sonnet-5-5-v1:0')
+  expect(await reconcileRun(payload, run.id, 1)).toBe('unpriced')
+  const doc = await reload(run.id)
+  expect(doc).toMatchObject({ reconcileStatus: 'unpriced', costSource: 'sdk-estimate', gatewayTokensTotal: 15, costUsd: 0.03 })
+  expect(doc.gatewayCostUsd).toBeNull()
+})
+
+it('0 USD on a priced preset keeps the old behaviour (gateway cost 0 is written, mismatch)', async () => {
+  const { reconcileRun } = await import('../src/lib/reconcile')
+  const run = await seedRun('pr', 0.03)
+  const ws = (await reload(run.id)).workspace as number
+  await payload.create({ collection: 'connections', data: { name: 'anthropic', slug: 'anthropic', kind: 'llm-provider', workspace: ws, config: { provider: 'anthropic' }, secret: 'k' } as never, ...o })
+  await logCall(run.id, 0, 'ws-pr/anthropic/claude-sonnet-5-5')
+  expect(await reconcileRun(payload, run.id, 1)).toBe('mismatch')
+  expect(await reload(run.id)).toMatchObject({ gatewayCostUsd: 0, costSource: 'gateway', reconcileStatus: 'mismatch' })
 })
 
 it('prune-request-logs deletes only rows older than the retention window', async () => {

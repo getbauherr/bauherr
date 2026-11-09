@@ -60,6 +60,20 @@ describe('proxyAdmin', () => {
     expect([...(init.headers as unknown as Map<string, string>).keys()]).toEqual(['accept'])
   })
 
+  it('sandboxes every proxied answer (upstream and fallback) and never passes cookies either way', async () => {
+    user = { role: 'admin', email: 'root@x.io' }
+    fetchMock.mockResolvedValue(new Response('<script>document.cookie</script>', { status: 200, headers: { 'content-type': 'text/html', 'content-security-policy': "default-src 'self'", 'set-cookie': 'payload-token=evil' } }))
+    const res = await proxy.proxyAdmin(request('GET', { headers: { cookie: 'payload-token=s' } }), target(), ['config_dump'])
+    expect(res.headers.get('content-security-policy')).toBe(`default-src 'self', ${proxy.SANDBOX}`)
+    expect(res.headers.get('content-security-policy')).not.toMatch(/allow-same-origin/)
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect((fetchMock.mock.calls[0]![1].headers as Headers).has('cookie')).toBe(false)
+    fetchMock.mockRejectedValue(new Error('down'))
+    const down = await proxy.proxyAdmin(request(), target(), ['config_dump'])
+    expect([down.status, down.headers.get('content-security-policy'), down.headers.get('x-content-type-options')]).toEqual([502, proxy.SANDBOX, 'nosniff'])
+  })
+
   it('refuses a POST without the write flag and audits nothing', async () => {
     const res = await proxy.proxyAdmin(request('POST', { body: '{}' }), target(), ['api'])
     expect(res.status).toBe(405)
@@ -73,16 +87,6 @@ describe('proxyAdmin', () => {
     expect(res.status).toBe(200)
     expect(fetchMock.mock.calls[0]![1].method).toBe('POST')
     expect(await touches()).toMatchObject([{ kind: 'gateway:POST', path: '/api/keys', actor: 'root@x.io' }])
-  })
-
-  it('proxies traces under the Jaeger prefix, read-only, and 404s a non-admin', async () => {
-    fetchMock.mockResolvedValue(new Response('ui', { status: 200 }))
-    const jaeger = { ...target({ url: 'http://jaeger.test:16686' }), name: 'Traces', prefix: '/-/traces' }
-    expect(await (await proxy.proxyAdmin(request(), jaeger, ['search'])).text()).toBe('ui')
-    expect(String(fetchMock.mock.calls[0]![0])).toBe('http://jaeger.test:16686/-/traces/search?a=1')
-    expect((await proxy.proxyAdmin(request('POST'), jaeger, ['search'])).status).toBe(405)
-    user = { role: 'bauherr', email: 'm@x.io' }
-    expect((await proxy.proxyAdmin(request(), jaeger, ['search'])).status).toBe(404)
   })
 
   it('probes Jaeger with HEAD and caches the answer for 60 s', async () => {

@@ -6,11 +6,18 @@ import { cookies } from 'next/headers'
 const FORWARD = ['accept', 'accept-language', 'content-type', 'range', 'if-none-match', 'if-modified-since']
 const DROP_RESPONSE = ['set-cookie', 'content-encoding', 'content-length', 'transfer-encoding', 'connection']
 const HEADERS_TIMEOUT_MS = 10_000
+/** Proxied pages run as an opaque origin (no `allow-same-origin`): a script injected upstream cannot read Bauherr cookies or call Bauherr's API as the Admin (#469). Appended, so an upstream CSP still applies too. */
+export const SANDBOX = 'sandbox allow-scripts allow-forms'
+const isolate = (h: Headers): Headers => {
+  h.append('content-security-policy', SANDBOX)
+  h.set('x-content-type-options', 'nosniff')
+  return h
+}
 
 const fallback = (name: string, hint: string): Response =>
-  new Response(`<!doctype html><meta charset="utf-8"><title>${name} not reachable</title><h1>${name} is not reachable from the server</h1><p>${hint}</p>`, { status: 502, headers: { 'content-type': 'text/html; charset=utf-8' } })
+  new Response(`<!doctype html><meta charset="utf-8"><title>${name} not reachable</title><h1>${name} is not reachable from the server</h1><p>${hint}</p>`, { status: 502, headers: isolate(new Headers({ 'content-type': 'text/html; charset=utf-8' })) })
 
-type Target = { name: string; url: string | undefined; hint: string; writes: boolean; /** Path the upstream serves its UI under; `/-/traces` for Jaeger. */ prefix?: string }
+type Target = { name: string; url: string | undefined; hint: string; writes: boolean }
 
 /**
  * Admin-only reverse proxy to a native UI. Anyone but an Admin gets a plain 404 (the route's existence stays hidden).
@@ -23,7 +30,7 @@ export async function proxyAdmin(req: Request, target: Target, path: string[] = 
   if (write && !target.writes) return new Response('Read-only: set GATEWAY_ADMIN_PROXY_WRITE=1 to allow writes.', { status: 405, headers: { allow: 'GET, HEAD' } })
   if (!target.url) return fallback(target.name, target.hint)
 
-  const url = new URL(`${target.prefix ?? ''}/${path.map(encodeURIComponent).join('/')}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`, target.url)
+  const url = new URL(`/${path.map(encodeURIComponent).join('/')}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`, target.url)
   if (write) {
     const slug = (await cookies()).get(WS_COOKIE)?.value
     const payload = await payloadClient()
@@ -39,7 +46,7 @@ export async function proxyAdmin(req: Request, target: Target, path: string[] = 
     const res = await fetch(url, { method: req.method, headers, body: write ? req.body : undefined, redirect: 'manual', signal: abort.signal, ...(write && { duplex: 'half' }) } as RequestInit)
     const out = new Headers(res.headers)
     for (const h of DROP_RESPONSE) out.delete(h)
-    return new Response(req.method === 'HEAD' ? null : res.body, { status: res.status, headers: out })
+    return new Response(req.method === 'HEAD' ? null : res.body, { status: res.status, headers: isolate(out) })
   } catch {
     return fallback(target.name, target.hint)
   } finally {
@@ -59,3 +66,5 @@ export async function tracesUp(base = process.env.JAEGER_URL ?? JAEGER_DEFAULT):
 
 export const JAEGER_DEFAULT = 'http://jaeger:16686'
 export const TRACES_PREFIX = '/-/traces'
+/** Jaeger's own loopback origin: its UI cannot run inside the sandboxed proxy (assets load cross-origin from `null`), so the link opens it there (#469). */
+export const tracesUrl = (): string => process.env.JAEGER_PUBLIC_URL || `http://127.0.0.1:16686${TRACES_PREFIX}/`

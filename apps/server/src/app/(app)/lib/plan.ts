@@ -3,6 +3,7 @@ export const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 export const TRIAGE_MARKER = '<!-- bauherr:triage -->'
 export const ESCALATION_MARKER = '<!-- bauherr:escalation -->'
 export const INVESTIGATION_MARKER = '<!-- bauherr:investigation -->'
+export const SECURITY_FINDING_MARKER = (key: string) => `<!-- bauherr:security-finding:${key} -->`
 export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
 export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[] }

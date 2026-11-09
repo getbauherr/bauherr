@@ -115,7 +115,11 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     mkdirSync(join(clone.home, 'agent'), { recursive: true });
     await runAgent(agentCtx, buildOptions(agentCtx, { cwd: clone.dir, home: join(clone.home, 'agent'), proxyUrl: proxy.url, agentsMd }, state), state);
 
-    if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
+    if (state.budgetExhausted) {
+      // A partial scan still hands over the findings written so far.
+      if (ctx.run.stage === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
+      return finish('budget_exhausted', 'gateway budget exceeded');
+    }
     const r = state.result;
     if (!r) return finish('failed', 'agent ended without a result');
     if (r.subtype !== 'success') return finish('failed', r.subtype);

@@ -178,7 +178,7 @@ it('Re-detect stores the detected mode and its preflight; a failing forge keeps 
   await payload.update({ collection: 'products', id: queueProduct, data: { mergeMode: 'direct' }, ...o })
   await redetectMergeMode(payload, queueProduct)
   expect(await product()).toMatchObject({ mergeMode: 'queue', mergePreflight: { ok: true, problems: [] } })
-  fake.commit(repo, 'main', '.github/workflows/ci.yml', 'on:\n  pull_request:\njobs:\n  ci:\n    steps: []\n')
+  fake.commit(repo, 'main', '.github/workflows/ci.yml', 'on:\n  pull_request:\n  push:\njobs:\n  ci:\n    steps: []\n')
   fake.setRequiredChecks(repo, ['ci'])
   await redetectMergeMode(payload, queueProduct)
   expect(await product()).toMatchObject({ mergeMode: 'train', mergePreflight: { ok: false, problems: [expect.stringContaining('merge_group')] } })

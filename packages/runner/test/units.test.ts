@@ -65,6 +65,31 @@ test('agent env carries no gateway key and no process env', () => {
   delete process.env.SOME_SECRET_FOR_TEST;
 });
 
+const PRESET_KEYS = [...readFileSync(join(import.meta.dirname, '../../../../apps/server/src/lib/providers.ts'), 'utf8').match(/^export type Preset = (.+)$/m)![1]!.matchAll(/'([\w-]+)'/g)].map((m) => m[1]!);
+const CLOUD_ENV = /^(AWS_|GOOGLE_|AZURE_|ARM_|ANTHROPIC_(BEDROCK|VERTEX|FOUNDRY)_|CLAUDE_CODE_USE_|CLAUDE_CODE_SKIP_)/;
+
+test('PRESETS keys are read from providers.ts', () => {
+  assert.ok(PRESET_KEYS.length >= 13 && PRESET_KEYS.includes('bedrock-iam') && PRESET_KEYS.includes('foundry-entra'));
+});
+
+for (const preset of PRESET_KEYS) {
+  test(`no cloud credentials reach the agent env: ${preset}`, () => {
+    const fake = { AWS_SECRET_ACCESS_KEY: 'fake-aws', GOOGLE_APPLICATION_CREDENTIALS: '/fake/gcp.json', ANTHROPIC_FOUNDRY_API_KEY: 'fake-foundry' };
+    Object.assign(process.env, fake);
+    try {
+      const ctx = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'file:///x', stage: 'build' });
+      ctx.connection.modelByTier = { cheap: `${preset}/some-model`, standard: `${preset}/some-model`, strong: `${preset}/some-model` };
+      const state = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
+      const env = buildOptions(ctx, { cwd: tmpdir(), home: tmpdir(), proxyUrl: 'http://127.0.0.1:1', agentsMd: '' }, state).env as Record<string, string>;
+      assert.deepEqual(Object.keys(env).sort(), ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'HOME', 'PATH']);
+      assert.deepEqual(Object.keys(env).filter((k) => CLOUD_ENV.test(k)), []);
+      for (const v of Object.values(fake)) assert.ok(!JSON.stringify(env).includes(v));
+    } finally {
+      for (const k of Object.keys(fake)) delete process.env[k];
+    }
+  });
+}
+
 test('materialise: skills, AGENTS.md, goal.json, worklog, git-excluded', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'mat-'));
   execFileSync('git', ['init', '-q'], { cwd });

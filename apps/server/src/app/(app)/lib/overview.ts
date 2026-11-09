@@ -22,6 +22,8 @@ export type RunRow = {
   startedAt: string | null
   finishedAt: string | null
   costUsd: number | null
+  reconcileStatus?: string | null
+  gatewayTokensTotal?: number | null
   createdAt: string
   /** Set on an investigation Plan Run. */
   investigation?: unknown
@@ -66,7 +68,7 @@ export const RUNS_LIMIT = 100
 export const DECISIONS_LOOKUPS = 20
 const CLOSED_LIMIT = 200
 export const FORGE_TIMEOUT_MS = 3000
-const RUN_FIELDS = { ticket: true, stage: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, createdAt: true, escalation: true, investigation: true, reasonKind: true } as const
+const RUN_FIELDS = { ticket: true, stage: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, reconcileStatus: true, gatewayTokensTotal: true, createdAt: true, escalation: true, investigation: true, reasonKind: true } as const
 
 export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])

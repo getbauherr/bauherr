@@ -5,7 +5,7 @@ import { Button } from '../../../components/ui/button'
 import { Table } from '../../../components/ui/table'
 import { currentWorkspace } from '../../../lib/session'
 import { isAdmin } from '../../../lib/settings'
-import { tracesUp } from '../../../lib/admin-proxy'
+import { tracesUp, tracesUrl } from '../../../lib/admin-proxy'
 import { loadUsage, type Bar, type CostRow } from '../../../lib/usage'
 
 export const dynamic = 'force-dynamic'
@@ -34,7 +34,7 @@ function Costs({ title, rows, head }: { title: string; rows: CostRow[]; head: st
             {rows.map((r) => (
               <tr key={`${r.id ?? ''}${r.label}`}>
                 <td>{r.id != null ? <Link href={`/tickets/${r.id}`}>#{r.number} {r.label}</Link> : r.label}</td>
-                <td className="text-right">${r.costUsd.toFixed(2)}{r.estimate && <> <Badge variant="muted">estimate</Badge></>}</td>
+                <td className="text-right">${r.costUsd.toFixed(2)}{r.estimate && <> <Badge variant="muted">estimate</Badge></>}{r.unpriced > 0 && <> <Badge variant="muted">{r.unpriced} unpriced</Badge></>}</td>
               </tr>
             ))}
           </tbody>
@@ -77,7 +77,7 @@ export default async function UsageSettings() {
       {admin && (
         <div className="flex gap-3">
           <Button asChild variant="outline"><a href="/-/gateway/config_dump" target="_blank" rel="noreferrer">Open gateway config</a></Button>
-          {traces ? <Button asChild variant="outline"><a href="/-/traces" target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>}
+          {traces ? <Button asChild variant="outline"><a href={tracesUrl()} target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>}
         </div>
       )}
     </>

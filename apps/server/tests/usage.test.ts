@@ -47,7 +47,7 @@ beforeAll(async () => {
     ['Beta', [{ stage: 'build', cost: 3, reconcile: 'pending' }]],
     ['Old', [{ stage: 'build', gateway: 50, ago: 40 }]],
   ])
-  await seed(plain, 'app', [['Gamma', [{ stage: 'review', gateway: 1.5 }]]])
+  await seed(plain, 'app', [['Gamma', [{ stage: 'review', gateway: 1.5 }, { stage: 'review', cost: 9, reconcile: 'unpriced' }]]])
   await seed(routed, 'other', [['Other', [{ stage: 'plan', gateway: 99 }]]])
   await seed(tokenWs, 'tok', [['T', [{ stage: 'plan', gateway: 1, tokens: 300 }]]])
 })
@@ -60,8 +60,8 @@ afterAll(async () => {
 describe('loadUsage costs', () => {
   it('aggregates 30 days per Product, Ticket and stage, gateway cost first, estimates labelled', async () => {
     const { costs } = await usage.loadUsage(plain)
-    expect(costs.product).toEqual([{ label: 'web', costUsd: 10, estimate: true }, { label: 'app', costUsd: 1.5, estimate: false }])
-    expect(costs.stage).toEqual([{ label: 'build', costUsd: 8, estimate: true }, { label: 'plan', costUsd: 2, estimate: false }, { label: 'review', costUsd: 1.5, estimate: false }].sort((a, b) => b.costUsd - a.costUsd))
+    expect(costs.product).toEqual([{ label: 'web', costUsd: 10, estimate: true, unpriced: 0 }, { label: 'app', costUsd: 1.5, estimate: false, unpriced: 1 }])
+    expect(costs.stage).toEqual([{ label: 'build', costUsd: 8, estimate: true, unpriced: 0 }, { label: 'plan', costUsd: 2, estimate: false, unpriced: 0 }, { label: 'review', costUsd: 1.5, estimate: false, unpriced: 1 }].sort((a, b) => b.costUsd - a.costUsd))
     expect(costs.ticket.map((t) => [t.label, t.costUsd, t.estimate])).toEqual([['Alpha', 7, false], ['Beta', 3, true], ['Gamma', 1.5, false]])
     expect(costs.ticket[0]).toMatchObject({ number: 1 })
   })
