@@ -6,6 +6,7 @@ import { collections, isAdmin } from './collections'
 import { TASKS, syncJobEnums } from './jobs'
 import { migrations } from './migrations'
 import { poolOptions } from './lib/db-pool'
+import { loginLimits } from './lib/login-lock'
 import { secret } from './lib/secrets'
 
 const tenantCollections = Object.fromEntries(
@@ -13,6 +14,8 @@ const tenantCollections = Object.fromEntries(
 )
 
 const mediaBucket = process.env.MEDIA_S3_BUCKET
+// Fails at boot on a bad LOGIN_IP_MAX_ATTEMPTS / TRUSTED_PROXY_HOPS, like DATABASE_POOL_*.
+if (!loginLimits().trustedProxyHops) console.warn('TRUSTED_PROXY_HOPS=0: x-forwarded-for is ignored, so the per-IP sign-in limit is off (the per-account cap still applies)')
 
 export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),

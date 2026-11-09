@@ -60,15 +60,23 @@ it('a wrong password is 401 with Payload\'s message', async () => {
   expect((await res.json()).errors[0].message).toBe(generic)
 })
 
-it('an IP over the limit is refused at once while another IP signs in to the same account', async () => {
-  const { MAX_IP_ATTEMPTS } = await import('../src/lib/login-lock')
+it('an IP over the limit of failed sign-ins is refused at once while another IP signs in to the same account', async () => {
+  const { loginLimits } = await import('../src/lib/login-lock')
   const email = 'rest-ip@x.io'
   await account(email)
-  for (let i = 0; i < MAX_IP_ATTEMPTS; i++) expect((await login(email, 'pw-123456', '203.0.113.7')).status).toBe(200)
+  // Failures spread over unknown accounts, like credential stuffing (one account would hit Payload's own lockout first).
+  for (let i = 0; i < loginLimits().maxIpFailures; i++) expect((await login(`nobody-${i}@x.io`, 'nope', '203.0.113.7')).status).toBe(401)
   const refused = await login(email, 'pw-123456', '203.0.113.7')
   expect(refused.status).toBe(429)
   expect((await refused.json()).errors[0].message).toBe(generic)
   expect((await login(email, 'pw-123456', '203.0.113.8')).status).toBe(200)
+}, 20_000)
+
+it('successful sign-ins do not count toward the IP limit (an office behind one NAT)', async () => {
+  const { loginLimits } = await import('../src/lib/login-lock')
+  const email = 'rest-nat@x.io'
+  await account(email)
+  for (let i = 0; i < loginLimits().maxIpFailures + 2; i++) expect((await login(email, 'pw-123456', '203.0.113.20')).status).toBe(200)
 }, 20_000)
 
 it('GraphQL is off: /api/graphql serves no login mutation', async () => {
