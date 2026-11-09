@@ -29,7 +29,7 @@ export type RunCtx = {
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
-    tier: 'cheap' | 'standard' | 'strong';
+    tier: 'cheap' | 'standard' | 'strong' | 'auto';
   };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
   product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null };

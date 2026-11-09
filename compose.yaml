@@ -75,6 +75,32 @@ services:
       db: {condition: service_healthy}
       init: {condition: service_completed_successfully}
     restart: unless-stopped
+  # Opt-in vLLM Semantic Router (`docker compose --profile router up`), docs/router.md. Not published: reachable as http://router:8801.
+  # router-core = ExtProc (downloads its classifier models into bauherr-router on first start); router = its Envoy front.
+  router-core:
+    image: ghcr.io/vllm-project/semantic-router/vllm-sr:v0.4.0
+    profiles: [router]
+    command: [/gateway/router/config.yaml] # rendered by Bauherr with the first `router` Connection; restarts until it exists
+    volumes: ["bauherr-gateway:/gateway:ro", "bauherr-router:/app/models"]
+    depends_on:
+      gateway: {condition: service_started}
+    healthcheck:
+      test: [CMD, curl, -fsS, "http://127.0.0.1:8080/ready"]
+      interval: 10s
+      retries: 30
+      start_period: 120s
+    restart: unless-stopped
+  router:
+    image: envoyproxy/envoy:v1.35.3
+    profiles: [router]
+    volumes: ["./deploy/router/envoy.yaml:/etc/envoy/envoy.yaml:ro"]
+    depends_on:
+      router-core: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8801'"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
   app:
     <<: *app
     ports: ["${PORT:-3000}:3000"]
@@ -107,3 +133,4 @@ volumes:
   bauherr-secrets:
   bauherr-gateway:
   bauherr-media:
+  bauherr-router:
