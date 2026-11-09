@@ -106,7 +106,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <>
             <SettingsForm action={saveMergeMode} submit="Save merge mode">
               <input type="hidden" name="id" value={p.id} />
-              <Field name="mergeMode" label="Merge mode" hint="direct: Bauherr squash-merges the change itself. queue: Bauherr hands the reviewed commit to the forge's merge queue and waits. train: Bauherr's own train is not built yet; it merges like direct." defaultValue={p.merge.mode} options={['direct', 'queue', 'train']} />
+              <Field name="mergeMode" label="Merge mode" hint="direct: Bauherr squash-merges the change itself. queue: Bauherr hands the reviewed commit to the forge's merge queue and waits. train: for forges without a merge queue, Bauherr tests the queued changes together on its own bauherr/train branch (CI must run on it) and merges them in order." defaultValue={p.merge.mode} options={['direct', 'queue', 'train']} />
             </SettingsForm>
             <SettingsForm action={redetectMerge} submit="Re-detect" inline>
               <input type="hidden" name="id" value={p.id} />

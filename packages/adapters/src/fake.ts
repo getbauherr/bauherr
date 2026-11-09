@@ -31,6 +31,8 @@ interface FakeRepo {
   requiredChecks: string[];
   /** PR numbers in the merge queue, head entry first. */
   queue: number[];
+  /** Files at every commit sha a branch ever had, so a branch can be reset to a sha and a head merged by sha. */
+  snapshots: Map<string, Map<string, string>>;
 }
 
 const blobSha = (c: string): string => createHash('sha1').update(c).digest('hex');
@@ -71,6 +73,7 @@ export class FakeBackend implements Backend {
     if (!b) throw new Error(`no branch ${branch}`);
     b.files.set(path, content);
     b.sha = `sha${++this.seq}`;
+    this.repo(repo).snapshots.set(b.sha, new Map(b.files));
     for (const p of this.repo(repo).prs) if (p.head === branch) (delete p.mergeable, delete p.behind);
     return b.sha;
   }
@@ -189,7 +192,8 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [] };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
+      r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
     return r;
@@ -313,6 +317,24 @@ export class FakeBackend implements Backend {
         const pr = find(repo, n);
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
         pr.base = base;
+      },
+      resetBranch: async (repo, branch, at) => {
+        const r = this.repo(repo);
+        const files = r.snapshots.get(at);
+        if (!files) throw new Error(`no commit ${at}`);
+        r.branches.set(branch, { sha: at, files: new Map(files) });
+      },
+      mergeIntoBranch: async (repo, branch, headSha) => {
+        const r = this.repo(repo);
+        const target = r.branches.get(branch);
+        const head = r.snapshots.get(headSha);
+        if (!target || !head) throw new Error(`no branch ${branch} or commit ${headSha}`);
+        if (r.prs.some((p) => p.headSha === headSha && p.mergeable === false) || [...head].some(([path, c]) => target.files.has(path) && target.files.get(path) !== c)) return { conflict: true };
+        if ([...head].every(([path, c]) => target.files.get(path) === c)) return { sha: target.sha };
+        for (const [path, c] of head) target.files.set(path, c);
+        target.sha = `sha${++this.seq}`;
+        r.snapshots.set(target.sha, new Map(target.files));
+        return { sha: target.sha };
       },
       queueSupport: async (repo) => this.repo(repo).queueSupport,
       requiredChecks: async (repo) => this.repo(repo).requiredChecks,

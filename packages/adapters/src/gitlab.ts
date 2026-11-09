@@ -464,6 +464,41 @@ class GitlabForge implements Forge {
       if (!(e instanceof GitlabError && [404, 405, 406].includes(e.status))) throw e; // nothing set to cancel
     }
   }
+  async resetBranch(repo: RepoRef, branch: string, sha: string) {
+    await this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(branch)}`).catch((e) => {
+      if (!(e instanceof GitlabError && e.status === 404)) throw e;
+    });
+    await this.h.json('POST', `/projects/${enc(repo)}/repository/branches?branch=${enc(branch)}&ref=${enc(sha)}`);
+  }
+  async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
+    const tip = (await this.getBranch(repo, branch))?.sha;
+    if (!tip) throw new Error(`no branch ${branch}`);
+    if (await this.isAncestor(repo, headSha, tip)) return { sha: tip };
+    const temp = `${branch}-merge-${headSha.slice(0, 12)}`;
+    const drop = () => this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(temp)}`).catch((e) => {
+      if (!(e instanceof GitlabError && e.status === 404)) throw e;
+    });
+    await drop();
+    await this.h.json('POST', `/projects/${enc(repo)}/repository/branches?branch=${enc(temp)}&ref=${enc(headSha)}`);
+    const mr = await this.openPullRequest(repo, { title: `bauherr train: merge ${headSha.slice(0, 7)} into ${branch}`, head: temp, base: branch });
+    try {
+      await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${mr.number}/merge`, { squash: false, should_remove_source_branch: true, sha: headSha });
+    } catch (e) {
+      await this.closePullRequest(repo, mr.number).catch(() => undefined);
+      await drop();
+      if (e instanceof GitlabError && [405, 406].includes(e.status)) return { conflict: true as const };
+      throw e;
+    }
+    let after = await this.getPullRequest(repo, mr.number);
+    for (const ms of MERGE_POLL_MS) {
+      if (after.state !== 'open') break;
+      await this.sleep(ms);
+      after = await this.getPullRequest(repo, mr.number);
+    }
+    if (after.state !== 'merged' || !after.mergeSha) throw new MergePendingError(`GitLab accepted the train merge of !${mr.number} but it is not merged yet`);
+    await drop();
+    return { sha: after.mergeSha };
+  }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const before = await this.getPullRequest(repo, n);
     let after = before;

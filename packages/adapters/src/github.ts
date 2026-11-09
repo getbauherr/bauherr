@@ -425,6 +425,24 @@ class GithubForge implements Forge {
     if (!(await this.isQueued(repo, n))) return;
     await this.graphql('mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}', { id: (await this.h.json('GET', `/repos/${repo}/pulls/${n}`)).node_id });
   }
+  async resetBranch(repo: RepoRef, branch: string, sha: string) {
+    const ref = branch.split('/').map(enc).join('/');
+    try {
+      await this.h.json('PATCH', `/repos/${repo}/git/refs/heads/${ref}`, { sha, force: true });
+    } catch (e) {
+      if (!(e instanceof GithubError && [404, 422].includes(e.status))) throw e; // no such ref yet
+      await this.h.json('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
+    }
+  }
+  async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
+    try {
+      const m = await this.h.json('POST', `/repos/${repo}/merges`, { base: branch, head: headSha, commit_message: `bauherr train: merge ${headSha.slice(0, 7)}` });
+      return { sha: m ? (m.sha as string) : (await this.h.json('GET', `/repos/${repo}/git/ref/heads/${branch.split('/').map(enc).join('/')}`)).object.sha as string }; // 204: already contained
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 409) return { conflict: true as const };
+      throw e;
+    }
+  }
   async listFiles(repo: RepoRef, ref?: string) {
     const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
     const tree = await this.h.json('GET', `/repos/${repo}/git/trees/${c.commit.tree.sha}?recursive=1`);

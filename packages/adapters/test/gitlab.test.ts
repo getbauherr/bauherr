@@ -422,3 +422,40 @@ describe('gitlab merge trains', () => {
     await setup(() => new Response('', { status: 405 })).forge.dequeuePullRequest('g/p', 196);
   });
 });
+
+describe('gitlab train branch', () => {
+  const mr = { ...fx('mr'), iid: 300, state: 'opened', draft: false, source_branch: 'bauherr/train-merge-abcdef123456', target_branch: 'bauherr/train' };
+  it('resetBranch deletes the branch (a missing one is fine) and creates it at the sha', async () => {
+    const { forge, calls } = setup((m) => (m === 'DELETE' ? new Response('', { status: 404 }) : {}));
+    await forge.resetBranch('g/p', 'bauherr/train', 's1');
+    assert.deepEqual(calls.map((c) => [c.method, c.path]), [['DELETE', `${P}/repository/branches/bauherr%2Ftrain`], ['POST', `${P}/repository/branches?branch=bauherr%2Ftrain&ref=s1`]]);
+  });
+  it('mergeIntoBranch merges a temporary MR without squash and returns its merge sha', async () => {
+    const { forge, calls } = setup((m, path) => {
+      if (path.endsWith('/repository/branches/bauherr%2Ftrain') && m === 'GET') return { name: 'bauherr/train', commit: { id: 'tip' } };
+      if (path.includes('/repository/commits/')) return { id: 'abcdef1234567890' };
+      if (path.includes('/repository/merge_base')) return { id: 'older' };
+      if (m === 'POST' && path.endsWith('/merge_requests')) return mr;
+      if (m === 'GET' && path.endsWith('/merge_requests/300')) return { ...mr, state: 'merged', merge_commit_sha: 'm1' };
+      return {};
+    });
+    assert.deepEqual(await forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), { sha: 'm1' });
+    const merge = calls.find((c) => c.method === 'PUT' && c.path.endsWith('/merge'))!;
+    assert.deepEqual(merge.body, { squash: false, should_remove_source_branch: true, sha: 'abcdef1234567890' });
+    assert.equal(calls.find((c) => c.method === 'POST' && c.path.endsWith('/merge_requests'))!.body.target_branch, 'bauherr/train');
+  });
+  it('a 405 on the temporary MR merge is a conflict; the MR is closed and the temp branch deleted', async () => {
+    const { forge, calls } = setup((m, path) => {
+      if (path.endsWith('/repository/branches/bauherr%2Ftrain') && m === 'GET') return { name: 'bauherr/train', commit: { id: 'tip' } };
+      if (path.includes('/repository/commits/')) return { id: 'abcdef1234567890' };
+      if (path.includes('/repository/merge_base')) return { id: 'older' };
+      if (m === 'POST' && path.endsWith('/merge_requests')) return mr;
+      if (m === 'PUT' && path.endsWith('/merge')) return new Response('conflicts', { status: 405 });
+      return mr;
+    });
+    assert.deepEqual(await forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), { conflict: true });
+    assert.ok(calls.some((c) => c.method === 'PUT' && c.path === `${P}/merge_requests/300` && c.body.state_event === 'close'));
+    assert.ok(calls.filter((c) => c.method === 'DELETE').length >= 2);
+  });
+});
+
