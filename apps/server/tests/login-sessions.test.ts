@@ -25,7 +25,7 @@ it('two parallel password sign-ins keep both sessions; OIDC sign-in leaves sessi
   const { oidcStrategy, SESSION_COOKIE, signSession } = await import('../src/lib/oidc-session')
   const email = 'parallel@x.io'
   const created = await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
-  const login = () => withLoginLock(payload, email, () => payload.login({ collection: 'bauherren', data: { email, password: 'pw-123456' } }))
+  const login = () => withLoginLock(payload, email, (req) => payload.login({ collection: 'bauherren', data: { email, password: 'pw-123456' }, req }))
 
   const [first, second] = await Promise.all([login(), login()])
 
@@ -41,3 +41,23 @@ it('two parallel password sign-ins keep both sessions; OIDC sign-in leaves sessi
   expect(oidc.user).toMatchObject({ id: created.id })
   expect(await sessionsOf()).toEqual(before)
 })
+
+it('more parallel sign-ins than pool connections (different emails) do not deadlock the pool', async () => {
+  const { withLoginLock } = await import('../src/lib/login-lock')
+  const emails = Array.from({ length: 15 }, (_, i) => `pool${i}@x.io`)
+  for (const email of emails) await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
+  const results = await Promise.all(
+    emails.map((email) => withLoginLock(payload, email, (req) => payload.login({ collection: 'bauherren', data: { email, password: 'pw-123456' }, req }))),
+  )
+  expect(results.every((r) => r.token)).toBe(true)
+}, 20_000)
+
+it('a wrong password rejects with 401 and releases the lock for the next sign-in', async () => {
+  const { withLoginLock } = await import('../src/lib/login-lock')
+  const email = 'wrong@x.io'
+  await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
+  const login = (password: string) => withLoginLock(payload, email, (req) => payload.login({ collection: 'bauherren', data: { email, password }, req }))
+
+  await expect(login('nope')).rejects.toMatchObject({ status: 401 })
+  expect((await login('pw-123456')).token).toBeTruthy()
+}, 20_000)

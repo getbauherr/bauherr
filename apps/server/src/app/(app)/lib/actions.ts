@@ -16,7 +16,7 @@ export async function login(form: FormData) {
   let token: string | undefined
   const email = String(form.get('email'))
   try {
-    ;({ token } = await withLoginLock(payload, email, () => payload.login({ collection: 'bauherren', data: { email, password: String(form.get('password')) } })))
+    ;({ token } = await withLoginLock(payload, email, (req) => payload.login({ collection: 'bauherren', data: { email, password: String(form.get('password')) }, req })))
   } catch (e) {
     if ((e as { status?: number }).status !== 401) throw e
   }
