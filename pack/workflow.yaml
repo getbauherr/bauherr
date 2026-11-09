@@ -7,7 +7,7 @@
 stages:
   # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
   - name: triage
-    exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research]
+    exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
     steps: [{kind: agent-run, skill: triage}]
   - name: plan
     steps: [{kind: agent-run, skill: run-contract}]

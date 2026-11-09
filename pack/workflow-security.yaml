@@ -1,0 +1,5 @@
+# Security workflow type (#42). One stage, not a Board column: a scan Run is anchored on one long-lived Ticket per Product
+# (label `bauherr:security-scan`, excluded from Triage). Read-only: no push, no MR. Read by `packed()` in apps/server/src/lib/mode.ts.
+stages:
+  - name: scan
+    steps: [{kind: agent-run, skill: security-scan}]

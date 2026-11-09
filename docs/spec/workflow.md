@@ -161,7 +161,7 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 ## 11. Egress and security context
 - Code and context leave only via the gateway: [egress](../../pack/rules/egress.md), [egress-guard](../../pack/hooks/egress-guard.sh).
 - The gateway is part of the instance, and the Workspace's provider credential never reaches an agent. Operator notes: [legal](../legal.md).
-- Each Product keeps a `SECURITY-CONTEXT.md` at the root of its main Repository; a copy under `products/<slug>/` in the Knowledge repo takes precedence: [security-context](../../pack/rules/security-context.md).
+- Each Product keeps a `SECURITY-CONTEXT.md` at `products/<slug>/` in the Knowledge repo; the `scan` stage of `pack/workflow-security.yaml` reads it: [security-context](../../pack/rules/security-context.md).
 
 ## 12. What the Bauherr sees
 | At | In the admin |

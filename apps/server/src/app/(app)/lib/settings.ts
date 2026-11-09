@@ -99,6 +99,7 @@ export async function loadProducts(workspace: number) {
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number },
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
+          securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
             .filter((e) => (e.product?.id ?? e.product) === p.id)

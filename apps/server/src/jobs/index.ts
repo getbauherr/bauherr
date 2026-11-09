@@ -30,7 +30,7 @@ export const SESSION_TIMEOUT_MS = 30 * 60_000
 export { stageOf }
 
 /** Decision D2. Fallback only: pack/workflow.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
-const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']
+const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
 export const excludedLabels = (stages: { name: string; exclude_labels?: string[] }[] = packed()): string[] => {
   const list = stages.find((s) => s.name === 'triage')?.exclude_labels
   return list?.length ? list : D2_EXCLUDED

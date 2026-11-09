@@ -22,7 +22,7 @@ export type Next = 'retry-strong' | 'investigate' | 'owner'
  * A `decision`/`access` reason goes straight to the owner; a Run that was already strong (escalated, or the second failure in a row) goes to an investigation (Build only), then to the owner.
  */
 export const nextStep = (run: Doc, prevFailed: boolean): Next => {
-  if (run.reasonKind === 'decision' || run.reasonKind === 'access') return 'owner'
+  if (run.reasonKind === 'decision' || run.reasonKind === 'access' || run.stage === 'scan') return 'owner'
   if (run.investigation) return prevFailed ? 'owner' : 'retry-strong'
   return prevFailed || run.escalation ? (run.stage === 'build' ? 'investigate' : 'owner') : 'retry-strong'
 }
