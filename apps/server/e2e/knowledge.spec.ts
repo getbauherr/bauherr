@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { confirmClick } from './confirm'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -83,4 +84,30 @@ test('Knowledge: a member sees titles only, no Built-in documents, no Write-back
       }
     }
   }
+})
+
+test('Knowledge: an Admin sees a skill proposal with its scores and approves it', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.locator('header.topbar')).toBeVisible()
+  await page.goto('/knowledge')
+  const region = page.getByRole('region', { name: 'Skill proposals' })
+  const row = region.getByRole('row', { name: /tdd-first/ })
+  await expect(row).toContainText('Replayed')
+  await expect(row).toContainText('100% vs 50%')
+  await expect(row.getByRole('link', { name: '#2' })).toBeVisible()
+  const shots = process.env.SHOTS_DIR
+  if (shots) {
+    for (const [w, h] of [[1280, 800], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h })
+      for (const scheme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: scheme })
+        await page.screenshot({ path: `${shots}/skill-proposals-${scheme}-${w}x${h}.png`, fullPage: true })
+      }
+    }
+  }
+  await confirmClick(row.getByRole('button', { name: 'Approve' }), row.getByRole('button', { name: /Confirm: merge/ }), (timeout) => expect(row).toContainText('Accepted', { timeout }))
+  await expect(row.getByRole('button')).toHaveCount(0)
 })

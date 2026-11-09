@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { FILE_PATTERN, acceptStaging, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, acceptStaging, approveSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -639,6 +639,15 @@ export const tools: Tool[] = [
       const t = await getTicket(c, a.ticket)
       if ((await c.payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, overrideAccess: true })).totalDocs) throw new Error('a session Run holds this Ticket: production approval is for the owner, not an agent')
       return approveProduction(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'approve_skill_proposal',
+    access: 'human',
+    description: 'Human only: approve a distilled skill proposal. Merges its Knowledge PR only if the PR head is still expectSha, then marks the proposal accepted. Only proposed or replayed proposals; refused for agent keys.',
+    inputSchema: obj({ proposal: { type: ['number', 'string'], description: 'Skill proposal id' }, expectSha: str('Head sha of the PR as reviewed') }, ['proposal', 'expectSha']),
+    async run(a, c) {
+      return approveSkillProposal(c.payload, c.user, { proposal: a.proposal, expectSha: a.expectSha })
     },
   },
   {

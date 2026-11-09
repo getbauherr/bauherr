@@ -25,6 +25,8 @@ import { NoRoom, evenRanks, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary } from './release'
 import { queueDistill } from './skill-distill'
+import { backendFor } from './adapters'
+import { connectionInput } from './connection'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -639,6 +641,25 @@ export const approveProduction = async (payload: Payload, user: Doc, a: { ticket
   await beginProduction(payload, t, user)
   await payload.jobs.queue({ task: 'publish-release', queue: 'poll', input: {} }).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not queue publish-release, the scheduled run picks it up'))
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
+}
+
+/**
+ * Human gate of the distill stage: merges the proposal's Knowledge PR only while its head is still `expectSha`, then marks it `accepted`.
+ * Admin-only; the MCP tool is `access: 'human'`, so an agent key never reaches this. Only a `proposed` or `replayed` proposal can be approved.
+ */
+export const approveSkillProposal = async (payload: Payload, user: Doc, a: { proposal: TicketId; expectSha: string; workspaceId?: TicketId }) => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  if (typeof a.expectSha !== 'string' || !a.expectSha) throw new Error('expectSha required')
+  const p = (await payload.findByID({ collection: 'skill_proposals', id: a.proposal, ...scoped(user) }).catch(() => null)) as Doc | null
+  if (!p || (a.workspaceId !== undefined && String(id(p.workspace)) !== String(a.workspaceId))) throw new NotInWorkspace()
+  if (!['proposed', 'replayed'].includes(p.status) || p.pr == null) throw new Error(`proposal is ${p.status}; only a proposed or replayed proposal with a pull request can be approved`)
+  const ws = (await payload.findByID({ collection: 'workspaces', id: id(p.workspace), depth: 0, overrideAccess: true })) as Doc
+  if (!ws.knowledgeRepo || !ws.knowledgeConnection) throw new Error('the Workspace has no Knowledge repo')
+  const forge = backendFor(await connectionInput(payload, ws.knowledgeConnection)).forge
+  await forge.mergePullRequest(ws.knowledgeRepo, Number(p.pr), { method: 'squash', deleteBranch: true, expectSha: a.expectSha })
+  await payload.update({ collection: 'skill_proposals', id: p.id, data: { status: 'accepted' }, overrideAccess: true })
+  await touch(payload, user, { id: id(p.ticket), workspace: p.workspace }, 'approve:skill')
+  return { approved: 'accepted' as const }
 }
 
 /** Writes `text` as the body of the worklog section headed `heading` (appended when missing). */

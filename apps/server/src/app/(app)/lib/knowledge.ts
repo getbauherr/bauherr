@@ -8,12 +8,14 @@ import { payloadClient } from './session'
 
 export type KnowledgeDoc = { source: string; path: string; title: string }
 export type WriteBack = { number: number; title: string; url: string; head: string; checks: 'green' | 'pending' | 'red'; failed: string[] }
+export type SkillProposalRow = { id: number; ticket: string; status: string; skill: string; score: number | null; baseline: number | null; prUrl: string | null; prNumber: number | null; headSha: string | null }
 export type KnowledgePage = {
   sources: { name: string; label: string; docs: KnowledgeDoc[] }[]
   repo: string | null
   hits: Citation[] | null
   doc: (KnowledgeDoc & { html: string }) | null
   writeBacks: WriteBack[] | null
+  proposals: SkillProposalRow[]
 }
 
 const FORGE_TIMEOUT_MS = 3000
@@ -51,6 +53,28 @@ const loadWriteBacks = async (payload: Awaited<ReturnType<typeof payloadClient>>
   }
 }
 
+/** Distilled skill proposals of the Workspace, newest first; the head of an open PR is read from the forge (null when it does not answer) so the approval can name the head it saw. */
+const loadProposals = async (payload: Awaited<ReturnType<typeof payloadClient>>, workspace: number, connection: unknown, repo: string): Promise<SkillProposalRow[]> => {
+  const docs = (await payload.find({ collection: 'skill_proposals', where: { and: [{ workspace: { equals: workspace } }, { status: { in: ['proposed', 'replayed', 'accepted', 'rejected'] } }] }, sort: '-createdAt', limit: 20, depth: 1, overrideAccess: true })).docs as Record<string, any>[]
+  const forge = backendFor(await connectionInput(payload, connection)).forge
+  return Promise.all(
+    docs.map(async (d) => {
+      const pr = d.pr != null && ['proposed', 'replayed'].includes(d.status) ? await within(forge.getPullRequest(repo, Number(d.pr)), FORGE_TIMEOUT_MS).catch(() => null) : null
+      return {
+        id: d.id,
+        ticket: `#${d.ticket?.number ?? ''} ${d.ticket?.title ?? ''}`.trim(),
+        status: d.status,
+        skill: String(d.skillPath ?? '').replace(/^workspace\/skills\/|\/SKILL\.md$/g, ''),
+        score: d.score ?? null,
+        baseline: d.baselineScore ?? null,
+        prUrl: pr?.state === 'open' ? pr.url : null,
+        prNumber: d.pr ?? null,
+        headSha: pr?.state === 'open' ? pr.headSha : null,
+      }
+    }),
+  )
+}
+
 /** Everything the Knowledge page shows for a Workspace: sources and documents, search hits for `q`, the rendered `doc`, and the open write-back PRs. */
 export const loadKnowledge = async (workspace: number, q: string | undefined, docParam: string | undefined, { admin }: { admin: boolean }): Promise<KnowledgePage> => {
   const payload = await payloadClient()
@@ -70,5 +94,6 @@ export const loadKnowledge = async (workspace: number, q: string | undefined, do
   const text = found ? await readDocument(payload, workspace, found.source, found.path) : null
   const doc = found && text !== null ? { source: found.source, path: found.path, title: title(found.path, found.heading), html: renderMarkdown(text) } : null
   const writeBacks = admin && repo ? await loadWriteBacks(payload, ws.knowledgeConnection, repo) : admin ? [] : null
-  return { sources, repo, hits, doc, writeBacks }
+  const proposals = admin && repo ? await loadProposals(payload, workspace, ws.knowledgeConnection, repo).catch(() => []) : []
+  return { sources, repo, hits, doc, writeBacks, proposals }
 }

@@ -105,6 +105,8 @@ await ticket(125, 'Hotfix: checkout crash', 'build', product, { expedite: true, 
 await ticket(126, 'Hotfix: login loop', 'done', product, { state: 'closed', expedite: true, expediteAt: '2026-11-05T08:00:00Z', releaseAt: '2026-11-05T08:12:00Z' })
 await ticket(124, 'Waiting for a Build slot', 'plan', product, { waitingFor: 'build', rank: '000000' })
 const live = await ticket(123, 'Live build in progress', 'build', product, { rank: '900000' })
+const distilled = await ticket(127, 'Fix the flaky export test', 'done', product, { state: 'closed' })
+await ensure('skill_proposals', { ticket: distilled }, { ticket: distilled, workspace, status: 'replayed', pr: 2, skillPath: 'workspace/skills/tdd-first/SKILL.md', score: 1, baselineScore: 0.5 })
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'plan', 'succeeded', { startedAt: '2026-10-30T12:05:00Z', finishedAt: '2026-10-30T12:06:00Z' })
