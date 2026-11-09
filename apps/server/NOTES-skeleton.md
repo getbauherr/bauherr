@@ -16,7 +16,7 @@ Local temp stubs of `@bauherr/{adapters,runner}` were used for verification and 
 
 Seed env: BAUHERR_ADMIN_EMAIL, BAUHERR_ADMIN_PASSWORD, GITHUB_TOKEN, ANTHROPIC_API_KEY (-> `llm-provider` Connection, `config.provider: anthropic`).
 
-## Gateway (agentgateway v1.6.0 sidecar)
+## Gateway (agentgateway v1.7.0 sidecar)
 
 - Compose: `gateway` (`:4000` on 127.0.0.1 only; admin API `:15000` unauthenticated, Docker-internal, never publish), volume `bauherr-gateway` (`config.yaml`, `catalog.json`, `providers/ws-<slug>.key`; app/worker rw, gateway ro), database `gateway` (`deploy/db-init.sql`, first DB init only). `init` renders `/gateway/config.yaml` from `deploy/gateway/config.yaml.tmpl` if missing; delete it from the volume to re-render. `OTEL_ENABLED=1` renders `tracing.otlpEndpoint: http://jaeger:4317`.
 - Control plane `src/lib/gateway.ts`: keys via admin API (`PUT /api/config/resources/llm.apiKey` with `{"resources":[{"value":{...}}]}` creates, `PUT .../{id}` with `{"value":{...}}` updates, `DELETE .../{id}`; POST is 405); models via the rendered `llm.models` block (`ws-<slug>/*`, key file, `stripPrefix`), hot-reloaded. Hooks are no-ops when `GATEWAY_ADMIN_URL` is unset.
