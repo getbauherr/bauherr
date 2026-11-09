@@ -371,6 +371,14 @@ class GitlabForge implements Forge {
   async listReleases(repo: RepoRef) {
     return (await this.h.json('GET', `/projects/${enc(repo)}/releases?per_page=30`)).map((r: any) => this.release(r));
   }
+  async releaseByTag(repo: RepoRef, tag: string) {
+    try {
+      return this.release(await this.h.json('GET', `/projects/${enc(repo)}/releases/${enc(tag)}`));
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return null;
+      throw e;
+    }
+  }
   async isAncestor(repo: RepoRef, base: string, head: string) {
     const baseSha = (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(base)}`)).id as string;
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/merge_base?refs[]=${enc(base)}&refs[]=${enc(head)}`)).id === baseSha;

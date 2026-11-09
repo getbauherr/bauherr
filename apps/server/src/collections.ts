@@ -55,6 +55,7 @@ const bauherren: CollectionConfig = {
   },
   hooks: {
     // Payload's built-in API-key and local-JWT strategies ignore lockUntil: refuse their lookup while the request is still unauthenticated.
+    // The throw hits any locked Bauherr read in an unauthenticated request that carries a credential; today only the strategies' own user lookups run there.
     afterRead: [
       async ({ doc, req }) => {
         if (!req.user && carriesPayloadCredential(req.headers) && (await accountLocked(req.payload, doc.id))) {
