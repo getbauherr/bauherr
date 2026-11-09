@@ -1,6 +1,6 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -311,4 +311,92 @@ it('a failed label add during the merge pass keeps the DB stage; the next poll r
   await (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
   expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
   expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
+})
+
+describe('staging on a descendant SHA', () => {
+  const pending = [{ name: 'ci', status: 'in_progress', conclusion: null }]
+  const red = [{ name: 'ci', status: 'completed', conclusion: 'failure' }]
+  const calls: string[] = []
+  const methods = ['listChecks', 'getBranch', 'getRepository', 'isAncestor', 'listCommits'] as const
+  let originals: any[] = []
+  beforeEach(async () => {
+    await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`UPDATE "tickets" SET "stage" = 'build'`)
+    originals = methods.map((m) => (fake.forge as any)[m])
+    calls.length = 0
+    methods.forEach((m, i) => ((fake.forge as any)[m] = (...a: unknown[]) => (calls.push(m === 'listChecks' ? `${m}:${a[1]}` : m), originals[i](...a))))
+  })
+  afterEach(() => methods.forEach((m, i) => ((fake.forge as any)[m] = originals[i])))
+  const tipSha = async () => (await originals[1](repo, 'main')).sha as string
+  const merged = async (title: string) => {
+    const t = await reviewTicket(title)
+    return { ...t, sha: fake.merge(repo, t.pr.number) }
+  }
+
+  it('a pending mergeSha costs one listChecks and nothing else', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('pending')
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, pending)
+    calls.length = 0
+    await release.watchRelease(payload)
+    expect(calls.filter((c) => !c.startsWith('listChecks:'))).toEqual([])
+    expect(await summaries(n)).toHaveLength(0)
+  })
+
+  it('a red mergeSha with a green descendant tip confirms, within 4 calls', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('batch a')
+    const tip = { sha: await tipSha() }
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, red)
+    fake.setChecks(repo, tip.sha, green)
+    fake.setAncestors(repo, tip.sha, [sha])
+    calls.length = 0
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(1)
+    expect(calls).not.toContain('listCommits')
+    expect(calls.filter((c) => c === 'getRepository' || c === 'getBranch')).toHaveLength(2)
+    expect(calls.filter((c) => c === `listChecks:${tip.sha}`)).toHaveLength(1)
+  })
+
+  it('two waiting Tickets in one tick share one tip lookup', async () => {
+    await setProduct({ deployChecks: '' })
+    const a = await merged('share a')
+    const b = await merged('share b')
+    await release.watchRelease(payload)
+    const tip = await tipSha()
+    fake.setChecks(repo, a.sha, red)
+    fake.setChecks(repo, b.sha, red)
+    fake.setChecks(repo, tip, red)
+    calls.length = 0
+    await release.watchRelease(payload)
+    expect(calls.filter((x) => x === 'getBranch')).toHaveLength(1)
+    expect(calls.filter((x) => x === `listChecks:${tip}`)).toHaveLength(1)
+  })
+
+  it('a red or pending tip does not confirm', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('late red')
+    const tip = { sha: await tipSha() }
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, red)
+    fake.setAncestors(repo, tip.sha, [sha])
+    fake.setChecks(repo, tip.sha, red)
+    await release.watchRelease(payload)
+    fake.setChecks(repo, tip.sha, pending)
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(0)
+  })
+
+  it('a green tip that does not descend from mergeSha does not count', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('unrelated')
+    const tip = { sha: await tipSha() }
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, red)
+    fake.setChecks(repo, tip.sha, green)
+    fake.setAncestors(repo, tip.sha, [])
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(0)
+  })
 })

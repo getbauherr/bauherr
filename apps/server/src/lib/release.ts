@@ -98,6 +98,22 @@ const checksGreen = (checks: Check[], names: string[]): boolean => {
   return picked.length > 0 && picked.every(passed)
 }
 
+/** The default branch tip and its checks, looked up once per repo and tick and shared by every waiting Ticket. */
+type Tip = { sha: string; checks: Check[] } | null
+const tipOf = async (forge: Forge, repo: string): Promise<Tip> => {
+  const tip = await forge.getBranch(repo, (await forge.getRepository(repo)).defaultBranch)
+  return tip ? { sha: tip.sha, checks: await forge.listChecks(repo, tip.sha) } : null
+}
+
+/** Staging runs the newest default-branch commit, so a Ticket is confirmed when its merge commit, or the branch tip descending from it (a batch tip, a queue group), is green. Polled every minute: mergeSha's pending checks cost no further call, the tip is looked up only once they have completed without going green. */
+const stagingConfirmed = async (forge: Forge, repo: string, mergeSha: string, mergeChecksList: Check[], names: string[], tips: Map<string, Promise<Tip>>): Promise<boolean> => {
+  if (checksGreen(mergeChecksList, names)) return true
+  if (latestChecks(mergeChecksList).some((c) => c.status !== 'completed')) return false
+  if (!tips.has(repo)) tips.set(repo, tipOf(forge, repo))
+  const tip = await tips.get(repo)!
+  return !!tip && tip.sha !== mergeSha && checksGreen(tip.checks, names) && (await forge.isAncestor(repo, mergeSha, tip.sha))
+}
+
 /** CI gets this long after the head commit to register its first check before "no checks" counts as green. */
 export const CHECKS_GRACE_MS = 10 * 60_000
 
@@ -212,6 +228,7 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
 /** Review Tickets whose MR merged move to `release`; release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
+  const tips = new Map<string, Promise<Tip>>()
   const auto = !gateOn('release')
   const waiting: Where = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [{ and: [{ releaseState: { equals: 'on_staging' } }, { expedite: { equals: true } }] }])] }
   const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: ['review', 'release'] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
@@ -255,7 +272,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
           if (t.mergeSha) {
             const list = await backend.forge.listChecks(repo, t.mergeSha)
             await settleRetries(payload, t, t.mergeSha, list)
-            onStaging = checksGreen(list, names)
+            onStaging = await stagingConfirmed(backend.forge, repo, t.mergeSha, list, names, tips)
             const failed = latestChecks(list).filter((c) => (!names.length || names.includes(c.name)) && failedCheck(c))
             if (!onStaging && failed.length) await retryRed(payload, t, product, { backend, repo, tickets: ts }, t.mergeSha, failed, latestChecks(list))
           }
