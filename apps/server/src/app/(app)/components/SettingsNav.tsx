@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 type Entry = [label: string, href: string]
-const owner: Entry[] = [['General', '/settings/workspace'], ['Products', '/settings/products'], ['People', '/settings/bauherren']]
+const owner: Entry[] = [['General', '/settings/workspace'], ['Products', '/settings/products'], ['People', '/settings/bauherren'], ['AI usage', '/settings/usage']]
 const advanced: Entry[] = [['Board & WIP', '/settings/workflow'], ['Connections', '/settings/connections'], ['Agent keys', '/settings/api-key'], ['Audit', '/settings/audit'], ['Runs', '/runs']]
 
 const linkClass = 'block border-l border-l-border px-3 py-2 text-muted-foreground transition-colors duration-(--duration-state) ease-(--ease-out) hover:text-foreground aria-[current]:border-l-primary aria-[current]:text-foreground max-sm:-mb-px max-sm:whitespace-nowrap max-sm:border-l-0 max-sm:border-b max-sm:border-b-transparent max-sm:aria-[current]:border-b-primary'
