@@ -259,3 +259,13 @@ test('a passed stage opens its history without moving the Ticket; an unreached o
   await page.goto(page.url().replace('stage=plan', 'stage=review'))
   await expect(page.getByTestId('stage-history')).toHaveCount(0)
 })
+
+// Own seeded Ticket (#2 on Acme Checks): failed release checks with no run link leave one details button in the bar.
+test('a failed release with no run link offers one details button', async ({ page }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Release the CSV checks' }).first().getByRole('link', { name: 'Release the CSV checks' }).click()
+  const bar = page.getByTestId('action-bar')
+  await expect(bar.locator('[data-slot=button]')).toHaveCount(1)
+  await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText('Release failed: see details')
+  await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveAttribute('href', '#details')
+})
