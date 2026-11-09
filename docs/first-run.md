@@ -45,6 +45,17 @@ BAUHERR_VERSION=edge docker compose pull app && docker compose up -d   # follow 
 
 `seed` no longer creates a personal MCP key. With `BAUHERR_MCP_KEY_FILE` it mints an agent key (cannot approve gates) into that file; otherwise create one on `/settings/api-key`. Existing personal keys are disabled by migration `20261102_150166_agent_keys`.
 
+## Database connections
+
+Each of app, worker and poller opens its own Postgres pool (`apps/server/src/lib/db-pool.ts`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATABASE_POOL_MAX` | 20 | connections per container |
+| `DATABASE_POOL_TIMEOUT_MS` | 10000 | wait for a free connection, then the request fails instead of hanging |
+
+Idle connections close after 30 s. Postgres `max_connections` must exceed (app + worker + poller + replicas) × `DATABASE_POOL_MAX` plus headroom for the gateway, migrations, test databases and psql. The bundled `db` runs with `max_connections=300`, so the default 3 × 20 = 60 leaves ample room.
+
 ## Open
 
 - `runs.cost_estimate_usd` is about 10x below gateway cost; `reconcile-costs` (5 min after a Run, retry at +10 min) now fills `gateway_cost_usd`; UI reads virtual `costUsd` = gateway else estimate.
