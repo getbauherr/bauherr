@@ -1,6 +1,6 @@
 import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError, stageLabel, stageOf } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { laneOn } from './expedite'
 import { gateOn } from './mode'
@@ -384,10 +384,10 @@ const isUniqueViolation = (e: unknown): boolean => {
  * Creates the Ticket row for `(product, externalId)`, or applies `update` (null: leave it) to the existing one.
  * Losing a create race against the unique index re-reads the winner's row and merges `update` into it.
  */
-export const upsertTicket = async (payload: Payload, create: Record<string, any>, update: Record<string, unknown> | null): Promise<Doc & { id: number | string }> => {
-  const find = async () => (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: create.product } }, { externalId: { equals: create.externalId } }] }, limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+export const upsertTicket = async (payload: Payload, create: Record<string, any>, update: Record<string, unknown> | null, req?: Partial<PayloadRequest>): Promise<Doc & { id: number | string }> => {
+  const find = async () => (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: create.product } }, { externalId: { equals: create.externalId } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0] as Doc | undefined
   const save = async (doc?: Doc): Promise<Doc & { id: number | string }> =>
-    (doc ? (update ? await payload.update({ collection: 'tickets', id: doc.id, data: update, overrideAccess: true }) : doc) : await payload.create({ collection: 'tickets', data: create as any, overrideAccess: true })) as Doc & { id: number | string }
+    (doc ? (update ? await payload.update({ collection: 'tickets', id: doc.id, data: update, overrideAccess: true, req }) : doc) : await payload.create({ collection: 'tickets', data: create as any, overrideAccess: true, req })) as Doc & { id: number | string }
   try {
     return await save(await find())
   } catch (e) {

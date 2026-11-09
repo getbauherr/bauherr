@@ -21,6 +21,7 @@ beforeAll(async () => {
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
+  process.env.DATABASE_POOL_MAX = '5'
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   ;(await import('../src/lib/fake-forge')).fakeForge()
@@ -104,3 +105,23 @@ it('scheduledSlugs includes the task', async () => {
   const { scheduledSlugs, securityScanTick } = await import('../src/jobs')
   expect(scheduledSlugs()).toContain(securityScanTick.slug)
 })
+
+const anchors = async (id: number) => (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security-scan' } }] }, pagination: false, depth: 0, ...o })).docs
+
+it('a tick racing a manual start creates one anchor Ticket and one Run', async () => {
+  const { securityScanSweep } = await import('../src/jobs')
+  const { startSecurityScan } = await import('../src/lib/security-scan')
+  const id = await product({ enabled: true, cron: EVERY_MINUTE, lastScanAt: ago(30) })
+  await Promise.all([securityScanSweep(payload), startSecurityScan(payload, id)])
+  expect(await anchors(id)).toHaveLength(1)
+  expect(await scans()).toHaveLength(1)
+})
+
+it('more parallel starts than the pool holds finish without hanging', async () => {
+  const { startSecurityScan } = await import('../src/lib/security-scan')
+  const id = await product({ enabled: true, cron: EVERY_MINUTE, lastScanAt: ago(30) })
+  const results = await Promise.all(Array.from({ length: 15 }, () => startSecurityScan(payload, id)))
+  expect(results.filter((r) => r.created)).toHaveLength(1)
+  expect(await anchors(id)).toHaveLength(1)
+  expect(await scans()).toHaveLength(1)
+}, 30_000)

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import { parse } from 'yaml'
 
 export type Mode = 'session' | 'autonomous'
@@ -65,5 +65,5 @@ export const resolveMode = (ws: WorkspaceModes, stage: string): Mode =>
  * Mode a Run of `stage` starts in. Precedence: Workspace.modeByStage[stage], Workspace.defaultMode,
  * env BAUHERR_DEFAULT_MODE, `mode` of the stage in pack/workflow.yaml, else autonomous.
  */
-export const modeFor = async (payload: Payload, workspace: number | string, stage: string): Promise<Mode> =>
-  resolveMode((await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true })) as WorkspaceModes, stage)
+export const modeFor = async (payload: Payload, workspace: number | string, stage: string, req?: Partial<PayloadRequest>): Promise<Mode> =>
+  resolveMode((await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true, req })) as WorkspaceModes, stage)

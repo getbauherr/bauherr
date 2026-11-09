@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { Cron } from 'croner'
-import type { Payload, TaskConfig } from 'payload'
+import type { Payload, PayloadRequest, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage, stageLabel, stageOf, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
@@ -57,25 +57,26 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
   ).docs[0]
 
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
-export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}) => {
+export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}, req?: Partial<PayloadRequest>) => {
   const findActive = async () =>
-    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
   const existing = await findActive()
   if (existing) return { run: existing, created: false }
   const workspace = id(ticket.workspace)
-  const mode = await modeFor(payload, workspace, stage)
+  const mode = await modeFor(payload, workspace, stage, req)
   let run
   try {
     run = await payload.create({
       collection: 'runs',
       data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace, ...extra },
+      req,
     })
   } catch (e) {
     const winner = (e as { name?: string }).name === 'ValidationError' && (await findActive())
     if (!winner) throw e
     return { run: winner, created: false }
   }
-  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
+  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id }, req })
   return { run, created: true }
 }
 
@@ -736,7 +737,6 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
 
 /** Products scanned per tick; the rest wait for the next hour. */
 export const SCANS_PER_TICK = 5
-const SCAN_LOCK = 464
 
 /** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning. Returns the Runs created. */
 export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
@@ -760,11 +760,7 @@ export const securityScanSweep = async (payload: Payload, now = new Date()): Pro
       payload.logger.warn({ product: p.id }, 'security scan skipped: budget spent')
       continue
     }
-    // Under a per-Product lock, so two ticks cannot both create the anchor Ticket (and its forge issue).
-    const created = await payload.db.drizzle.transaction(async (tx: any) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${SCAN_LOCK}::int, ${Number(id(p.id))}::int)`)
-      return (await startSecurityScan(payload, p.id)).created
-    })
+    const created = (await startSecurityScan(payload, p.id)).created
     if (created) started++
   }
   return started

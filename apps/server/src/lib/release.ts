@@ -1,6 +1,6 @@
 import { type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload, Where } from 'payload'
+import type { Payload, PayloadRequest, Where } from 'payload'
 import { PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith } from '../app/(app)/lib/plan'
 import { backendFor } from './adapters'
 import { retryRed, settleRetries } from './check-retry'
@@ -45,10 +45,10 @@ export const assertOpenFactoryMr = async (payload: Payload, ticket: Doc, prUrl: 
 }
 
 /** Ticket source of a Product, authenticated with the Workspace's forge Connection; `web` is that forge's origin. */
-export const forgeOf = async (payload: Payload, product: number | string) => {
-  const src = (await payload.find({ collection: 'ticket_sources', where: { product: { equals: product } }, limit: 1, ...o })).docs[0]
+export const forgeOf = async (payload: Payload, product: number | string, req?: Partial<PayloadRequest>) => {
+  const src = (await payload.find({ collection: 'ticket_sources', where: { product: { equals: product } }, limit: 1, ...o, req })).docs[0]
   if (!src) throw new Error('no ticket source for this Product')
-  const connection = await connectionInput(payload, src.connection)
+  const connection = await connectionInput(payload, src.connection, req)
   const backend = backendFor(connection)
   return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo), kind: connection.kind === 'gitlab' ? ('gitlab' as const) : ('github' as const) }
 }
