@@ -475,7 +475,7 @@ class GithubForge implements Forge {
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
     const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => {
       const runId = Number(/\/actions\/runs\/(\d+)/.exec(c.html_url ?? '')?.[1]);
-      return { id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined, url: c.html_url ?? undefined, ...(runId && { runId }) };
+      return { id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined, url: c.html_url ?? undefined, ...(runId && { runId }), ...(c.output?.text && { output: c.output.text }) };
     });
     const statuses = (await this.h.json('GET', `/repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
     return [...runs, ...statuses.map((s: any): Check => (s.state === 'pending'

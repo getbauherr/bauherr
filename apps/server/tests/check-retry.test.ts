@@ -161,3 +161,13 @@ it('Factory health reports the dead-Ticket scan as unavailable when it times out
     scan.hang = false
   }
 })
+
+it('an e2e-flaky check run records one flake row per listed test, once', async () => {
+  const output = JSON.stringify([{ shard: '1', file: 'a.spec.ts', title: 'one' }, { shard: '1', file: 'b.spec.ts', title: 'two' }])
+  const { id, pr } = await seed([check(1, 'success'), { id: 9, name: 'e2e-flaky (shard 1)', status: 'completed', conclusion: 'neutral', url: 'https://fake/run/9', output }])
+  await gate(id, pr.headSha)
+  await gate(id, pr.headSha)
+  const r = await rows(id)
+  expect(r.map((x) => x.checkName).sort()).toEqual(['e2e: a.spec.ts › one', 'e2e: b.spec.ts › two'])
+  expect(r.every((x) => x.outcome === 'flake')).toBe(true)
+})
