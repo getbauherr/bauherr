@@ -129,6 +129,8 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const run = await getRun(c, runId)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
   if (run.mode !== 'session') throw new Error(notClaimable)
+  // A session already holds it: the loser of a claim race gets the same message whether it read before or after the winner committed.
+  if (run.status === 'running') throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
   if (ticket.stage === 'parent') throw new Error('parents are not claimable')

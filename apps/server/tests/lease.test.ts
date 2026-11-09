@@ -72,6 +72,12 @@ it('a claim race has one winner', async () => {
   expect(r.find((x) => x.status === 'rejected')).toMatchObject({ reason: { message: expect.stringContaining('claimed by someone else') } })
 })
 
+it('the loser of a claim race that reads after the winner committed gets the same message', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  await expect(call(member, 'claim_run', { runId: run.id })).rejects.toThrow(`run ${run.id} was claimed by someone else`)
+})
+
 it('update_worklog needs the token of the live lease', async () => {
   const { ticket, run } = await seed()
   await expect(call(member, 'update_worklog', { ticket: ticket.id, markdown: 'free' })).resolves.toBeDefined()
