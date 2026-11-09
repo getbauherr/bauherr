@@ -13,7 +13,7 @@ const IGNORED = '<!-- bauherr:expedite-ignored -->'
 const QUEUED = '<!-- bauherr:expedite-queued -->'
 const HAS_PLAN = /^##\s+(Plan|Steps)\b/im
 
-/** Settings > Workflow "Expedite lane" (default on). */
+/** Settings > Board & WIP "Expedite lane" (default on). */
 export const laneOn = async (payload: Payload, workspace: number | string): Promise<boolean> =>
   ((await payload.findByID({ collection: 'workspaces', id: workspace, select: { expediteLane: true }, ...o })) as Doc).expediteLane !== false
 
@@ -45,7 +45,7 @@ export const commentOnce = async (payload: Payload, ts: TicketSource, number: nu
 
 /** The Comment for a label the Workspace ignores. */
 export const noteIgnored = (payload: Payload, ts: TicketSource, number: number | string) =>
-  commentOnce(payload, ts, number, IGNORED, 'Bauherr: the Expedite lane is off in Settings > Workflow, so the `bauherr:expedite` label is ignored.')
+  commentOnce(payload, ts, number, IGNORED, 'Bauherr: the Expedite lane is off in Settings > Board & WIP, so the `bauherr:expedite` label is ignored.')
 
 /**
  * Sends each waiting expedite Ticket without a stage straight past Triage: to `plan`, or to `build` when its body has a `## Plan` or `## Steps` section.
