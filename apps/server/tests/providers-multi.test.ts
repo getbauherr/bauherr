@@ -7,6 +7,12 @@ import { tierModels } from '../src/lib/run-ctx'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
+const renderFail = vi.hoisted(() => ({ on: false }))
+vi.mock('../src/lib/gateway', async (orig) => {
+  const actual = await orig<typeof import('../src/lib/gateway')>()
+  return { ...actual, renderModels: (...a: Parameters<typeof actual.renderModels>) => (renderFail.on ? Promise.reject(new Error('boom')) : actual.renderModels(...a)) }
+})
+
 let payload: Payload
 const o = { overrideAccess: true } as const
 const dir = mkdtempSync(join(tmpdir(), 'gw-'))
@@ -151,4 +157,35 @@ it('the migration fills missing tiers for a Workspace with exactly one Connectio
   const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
   await up({ db, payload, req: {} } as never)
   expect((await reload(w)).modelByTier).toEqual({ cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' })
+})
+
+it('a render failure inside the migration rolls back to the savepoint: schema committed, config untouched, error logged', async () => {
+  const w = await ws('mig-rollback')
+  await conn(w, 'anthropic')
+  const q = (s: ReturnType<typeof sql>) => (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<{ rows: Record<string, unknown>[] }> } }).drizzle.execute(s)
+  await q(sql`DROP INDEX IF EXISTS "workspace_slug_idx"`)
+  await q(sql`ALTER TABLE connections DROP COLUMN slug`)
+  const cfgPath = join(dir, 'config.yaml')
+  const before = readFileSync(cfgPath)
+  const error = vi.spyOn(payload.logger, 'error').mockImplementation(() => undefined)
+  vi.stubGlobal('fetch', async () => ({ ok: true, json: async () => ({ resources: [] }) }))
+  process.env.GATEWAY_ADMIN_URL = 'http://gw.invalid'
+  renderFail.on = true
+  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
+  const txId = (await payload.db.beginTransaction()) as string
+  try {
+    const db = (payload.db as unknown as { sessions: Record<string, { db: never }> }).sessions[txId].db
+    await up({ db, payload, req: { payload, transactionID: txId } } as never)
+    await payload.db.commitTransaction(txId)
+  } finally {
+    renderFail.on = false
+    delete process.env.GATEWAY_ADMIN_URL
+    vi.unstubAllGlobals()
+  }
+  const col = await q(sql`SELECT 1 AS ok FROM information_schema.columns WHERE table_name = 'connections' AND column_name = 'slug'`)
+  expect(col.rows).toHaveLength(1)
+  expect((await q(sql`SELECT slug FROM connections WHERE workspace_id = ${w}`)).rows).toEqual([{ slug: 'anthropic' }])
+  expect(readFileSync(cfgPath).equals(before)).toBe(true)
+  expect(error).toHaveBeenCalledWith(expect.stringContaining('connection_slugs: gateway config not rendered'))
+  error.mockRestore()
 })

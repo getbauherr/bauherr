@@ -184,7 +184,10 @@ const workspaces = col(
     hooks: {
       beforeValidate: [
         async ({ data, operation, originalDoc, req }) => {
-          const auto = Object.entries((data?.modelByTier ?? {}) as Record<string, string>).filter(([, v]) => /(^|\/)auto$/.test(String(v)))
+          const tiers = Object.entries((data?.modelByTier ?? {}) as Record<string, string>)
+          const slash = tiers.some(([, v]) => String(v).endsWith('/auto'))
+          const routerSlug = slash && originalDoc?.id ? (await llmConnections(req, originalDoc.id)).find((c) => isRouter(c.config))?.slug : undefined
+          const auto = tiers.filter(([, v]) => v === 'auto' || (routerSlug && v === `${routerSlug}/auto`))
           if (auto.length) throw new ValidationError({ collection: 'workspaces', errors: auto.map(([path]) => ({ path, message: '`auto` is the router tier, not a model; pick <connection>/<model>' })) })
           if (operation === 'update') {
             if (!data?.modelByTier) return
