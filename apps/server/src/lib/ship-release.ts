@@ -38,9 +38,12 @@ const mapLimit = async <T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]
   return out
 }
 
-/** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
-export const waitingTickets = (payload: Payload, product: number | string): Promise<Doc[]> =>
-  payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }] }, sort: 'number', limit: 500, pagination: false, ...o }).then((r) => r.docs as Doc[])
+/** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Once the Product has a `lastReleaseAt`, Tickets whose `releaseAt` is not after it are left out: they were merged before the latest release. Tickets without `releaseAt` still count until the Releases page records them. Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
+export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
+  const { lastReleaseAt } = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
+  const afterLastRelease = lastReleaseAt ? [{ or: [{ releaseAt: { exists: false } }, { releaseAt: { greater_than: lastReleaseAt } }] }] : []
+  return (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }, ...afterLastRelease] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
+}
 
 /** Records a Ticket found in the latest release as released in it. Conditional, so a value a ship wrote first stays; no comment, no touch, no `updatedAt`. */
 const recordOldRelease = (payload: Payload, ticket: number | string, tag: string) =>
@@ -97,13 +100,14 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   release ??= await forge.createRelease(repo, { tag, sha: head, name: tag, body: `${a.notes}\n\n${marker}`, prerelease: a.version.includes('-rc.') })
   const at = new Date().toISOString()
   const headAt = new Date(await forge.getCommitDate(repo, head)).toISOString()
-  const product = (await payload.findByID({ collection: 'products', id: a.product, ...o })) as Doc
-  if (!product.lastReleaseAt || headAt > new Date(product.lastReleaseAt).toISOString()) await payload.update({ collection: 'products', id: a.product, data: { lastReleaseTag: tag, lastReleaseSha: head, lastReleaseAt: headAt }, ...o })
   for (const t of a.tickets) {
     const n = String(t.number)
     if (!latestWith(await ts.listComments(n), shippedMarker(tag))) await ts.comment(n, `${shippedMarker(tag)}\nReleased in [${tag}](${release.url})`)
     await cas(payload, t.id, sql`"released_in" = ${tag}, "released_at" = ${at}`, sql`"released_at" IS NULL`)
   }
+  // After the loop: a retry after a failed Ticket still finds the unreleased ones waiting (see waitingTickets).
+  const product = (await payload.findByID({ collection: 'products', id: a.product, ...o })) as Doc
+  if (!product.lastReleaseAt || headAt > new Date(product.lastReleaseAt).toISOString()) await payload.update({ collection: 'products', id: a.product, data: { lastReleaseTag: tag, lastReleaseSha: head, lastReleaseAt: headAt }, ...o })
   if (!a.version.includes('-rc.')) await changelogPr(forge, repo, release, marker, Date.now())
   return { tag, url: release.url }
 }
@@ -117,13 +121,13 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   const past = withPast ? await backend.forge.listReleases(repo) : []
   const latest = past[0]
   let p = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
-  if (latest && !p.lastReleaseAt) p = await payload.update({ collection: 'products', id: product, data: { lastReleaseTag: latest.tag, lastReleaseSha: latest.sha, lastReleaseAt: new Date(await backend.forge.getCommitDate(repo, latest.sha)).toISOString() }, ...o }) as Doc
   let waiting = await waitingTickets(payload, product)
   if (latest) {
     const released = await mapLimit(waiting, (t) => inRelease(repo, t.mergeSha, latest.sha, () => backend.forge.isAncestor(repo, t.mergeSha, latest.sha)))
     for (const [i, t] of waiting.entries()) if (released[i]) await recordOldRelease(payload, t.id, latest.tag)
     waiting = waiting.filter((_, i) => !released[i])
   }
+  if (latest && !p.lastReleaseAt) p = await payload.update({ collection: 'products', id: product, data: { lastReleaseTag: latest.tag, lastReleaseSha: latest.sha, lastReleaseAt: new Date(await backend.forge.getCommitDate(repo, latest.sha)).toISOString() }, ...o }) as Doc
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
   const notes = picked.length ? await renderNotes(ts, picked) : ''
   const last = latest?.tag ?? p.lastReleaseTag ?? null

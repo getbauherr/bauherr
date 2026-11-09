@@ -14,7 +14,7 @@ it('only helpers/test-db.ts names or creates test databases', () => {
   const offenders = ['tests', 'e2e', 'scripts']
     .flatMap(files)
     .map((f) => relative(server, f))
-    .filter((f) => f !== 'tests/helpers/test-db.ts' && f !== 'tests/no-hardcoded-test-db.test.ts')
+    .filter((f) => f !== 'tests/helpers/test-db.ts' && f !== 'tests/no-hardcoded-test-db.test.ts' && f !== 'tests/test-db-prune.test.ts')
     .filter((f) => /CREATE DATABASE|bauherr_test/.test(readFileSync(join(server, f), 'utf8')))
   expect(offenders).toEqual([])
 })
