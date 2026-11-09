@@ -113,6 +113,19 @@ it('a tier value ending in /auto is rejected, also for a router-only Workspace',
   await payload.delete({ collection: 'connections', id: router.id, ...o })
 })
 
+it('a tier value ending in /auto is accepted unless it is the router tier', async () => {
+  const w = await ws('rt-auto-ok')
+  const router = await conn(w, 'router')
+  const llm = await conn(w, 'anthropic')
+  for (const v of [`${llm.slug}/openrouter/auto`, `${llm.slug}/auto`]) {
+    await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: v, standard: v, strong: v } }, ...o })
+  }
+  for (const v of [`${router.slug}/auto`, 'auto']) {
+    await expect(payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: v, standard: v, strong: v } }, ...o })).rejects.toThrow(/invalid: (cheap|standard|strong)/)
+  }
+  await payload.delete({ collection: 'connections', id: router.id, ...o })
+})
+
 it('a second Workspace with a router Connection is rejected', async () => {
   const a = await ws('rt-a')
   const b = await ws('rt-b')
