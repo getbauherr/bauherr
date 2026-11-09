@@ -27,7 +27,7 @@ export default buildConfig({
   // GraphQL would be a second, unqueued login path (`loginBauherren`); nothing uses it.
   graphQL: { disable: true },
   typescript: { autoGenerate: false },
-  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() }, push: true, prodMigrations: migrations }),
+  db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() }, push: !process.env.BAUHERR_TEST_SCHEMA_READY, prodMigrations: migrations }),
   collections,
   onInit: syncJobEnums,
   plugins: [
