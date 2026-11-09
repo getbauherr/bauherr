@@ -512,7 +512,7 @@ export const collections: CollectionConfig[] = [
     {
       name: 'securityScan',
       type: 'group',
-      admin: { description: 'Read-only security scan Runs (stage scan). Start one by hand from the Product page; the weekly schedule comes later.' },
+      admin: { description: 'Read-only security scan Runs (stage scan). Start one by hand from the Product page or let the hourly tick start one when the cron is due.' },
       fields: [
         { name: 'enabled', type: 'checkbox', defaultValue: false, admin: { description: 'Scan this Product on the schedule.' } },
         text('cron', { defaultValue: '0 0 4 * * 1', admin: { description: 'When the scheduled scan runs, 6-field cron (seconds first). Default: Mondays 04:00.' } }),

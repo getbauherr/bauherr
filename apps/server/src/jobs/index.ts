@@ -1,4 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
+import { Cron } from 'croner'
 import type { Payload, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage, stageLabel, stageOf, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
@@ -23,6 +24,8 @@ import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
 import { scheduled } from '../lib/schedule'
+import { startSecurityScan } from '../lib/security-scan'
+import { budgetOut } from '../lib/escalation'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -731,4 +734,47 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask]
+/** Products scanned per tick; the rest wait for the next hour. */
+export const SCANS_PER_TICK = 5
+const SCAN_LOCK = 464
+
+/** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning. Returns the Runs created. */
+export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
+  const products = (await payload.find({ collection: 'products', where: { 'securityScan.enabled': { equals: true } }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
+  const since = (p: Record<string, any>) => new Date(p.securityScan?.lastScanAt ?? p.createdAt)
+  const due = products
+    .filter((p) => {
+      try {
+        const next = new Cron(p.securityScan.cron || '0 0 4 * * 1').nextRun(since(p))
+        return !!next && next <= now
+      } catch (e) {
+        payload.logger.warn({ err: e, product: p.id }, 'security scan: invalid cron')
+        return false
+      }
+    })
+    .sort((a, b) => since(a).getTime() - since(b).getTime())
+    .slice(0, SCANS_PER_TICK)
+  let started = 0
+  for (const p of due) {
+    if (await budgetOut(payload, id(p.workspace))) {
+      payload.logger.warn({ product: p.id }, 'security scan skipped: budget spent')
+      continue
+    }
+    // Under a per-Product lock, so two ticks cannot both create the anchor Ticket (and its forge issue).
+    const created = await payload.db.drizzle.transaction(async (tx: any) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${SCAN_LOCK}::int, ${Number(id(p.id))}::int)`)
+      return (await startSecurityScan(payload, p.id)).created
+    })
+    if (created) started++
+  }
+  return started
+}
+
+export const securityScanTick: TaskConfig<{ input: Record<string, never>; output: { started: number } }> = {
+  slug: 'security-scan-tick',
+  schedule: scheduled('0 0 * * * *'),
+  retries: 0,
+  handler: async ({ req }) => ({ output: { started: await securityScanSweep(req.payload) } }),
+}
+
+export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
