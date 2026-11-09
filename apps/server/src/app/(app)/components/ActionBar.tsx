@@ -48,7 +48,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
     form: <form id={fid} action={action}><input type="hidden" name="ticket" value={ticket} /><FormPending /></form>,
   })
   const action = need ? actionFor(need, { run, open, product, releaseRunUrl }) : null
-  const fallback = need && !action ? fallbackFor(need, { run }) : null
+  const fallback = need && !action ? fallbackFor(need) : null
   const step: { primary?: NextStepPrimary; form?: ReactNode } = !need ? {} : fallback ? { primary: { label: fallback.label, href: fallback.href } } : (() => {
     switch (action!.kind) {
       case 'expedite': return post(expediteAction)

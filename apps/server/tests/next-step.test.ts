@@ -55,9 +55,10 @@ describe('every need has exactly one button', () => {
       for (const present of [true, false]) {
         it(`${need}, run ${run ?? 'absent'}, inputs ${present ? 'present' : 'missing'}`, () => {
           const ctx = { run, open: 2, product: 3, releaseRunUrl: present ? 'https://example.com/run/1' : null }
-          const button = actionFor(need, ctx) ?? fallbackFor(need, ctx)
-          expect(button).toBeTruthy()
-          if (!actionFor(need, ctx)) expect(button).toMatchObject(run ? { label: 'Open Run 7', href: '/runs/7' } : { label: `${need}: see details`, href: '#details' })
+          if (actionFor(need, ctx)) return
+          const fallback = fallbackFor(need)
+          expect(fallback).toEqual({ label: `${need}: see details`, href: '#details' })
+          expect(fallback.label).not.toMatch(/Run \d/)
         })
       }
     }

@@ -59,6 +59,5 @@ export const actionFor = (need: Need, { run, open, product, releaseRunUrl }: Act
   }
 }
 
-/** The button when `actionFor` has none, so the bar never shows zero buttons: the latest Run if there is one, else the details section. */
-export const fallbackFor = (need: Need, { run }: Pick<ActionCtx, 'run'>): { label: string; href: string } =>
-  run ? { label: `Open Run ${run}`, href: `/runs/${run}` } : { label: `${need}: see details`, href: '#details' }
+/** The button when `actionFor` has none, so the bar never shows zero buttons: the details section. No Run here, the newest Run is not necessarily the one the need is about. */
+export const fallbackFor = (need: Need): { label: string; href: string } => ({ label: `${need}: see details`, href: '#details' })
