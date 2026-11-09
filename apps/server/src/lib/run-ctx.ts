@@ -5,6 +5,7 @@ import { moveStage } from './stage-move'
 import { enterStage } from './wip'
 import { backendFor } from './adapters'
 import { prOf } from './release'
+import { dequeueBeforeChange } from './merge-mode'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild } from './investigation'
 import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
 import { webOrigin, type ConnectionInput } from './connection'
@@ -79,6 +80,8 @@ export const buildRunCtx = async (
   const modelByTier = await tierModels(payload, ws)
   const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
+  // A Build Run pushes to this MR: a queued entry must be taken out first, a push would invalidate it.
+  if (run.stage === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
   const base = baseCaps(run.stage)
   const escalated = await isEscalated(payload, run)

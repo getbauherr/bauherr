@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { Conflict, GitlabBackend, GitlabError, MergePendingError, gitlabPat } from '../src/index.js';
+import { Conflict, GitlabBackend, GitlabError, MergePendingError, NotQueueableError, gitlabPat } from '../src/index.js';
 
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../../test/fixtures/gitlab/${name}.json`, import.meta.url), 'utf8'));
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
@@ -387,5 +387,38 @@ describe('gitlab forge', () => {
     const { forge } = setup(() => [{ ...fx('mr_fork'), source_project_id: null }]);
     const [pr] = await forge.listPullRequests('g/p', 'all');
     assert.equal(pr!.headRepo, '');
+  });
+});
+
+describe('gitlab merge trains', () => {
+  it('queueSupport needs merge trains and merged-results pipelines', async () => {
+    for (const [p, want] of [[{ merge_trains_enabled: true, merge_pipelines_enabled: true }, true], [{ merge_trains_enabled: true, merge_pipelines_enabled: false }, false], [{}, false]] as const) {
+      assert.equal(await setup(() => p).forge.queueSupport('g/p'), want);
+    }
+  });
+  it('enqueue POSTs the train entry pinned to the reviewed head; 400 and 405 are NotQueueableError, 409 stays an error', async () => {
+    const { forge, calls } = setup((m) => (m === 'POST' ? fx('merge_train') : fx('mr')));
+    assert.deepEqual(await forge.enqueuePullRequest('g/p', 196, { expectSha: 'abc123' }), { state: 'queued' });
+    assert.deepEqual(calls.at(-1), { method: 'POST', path: `${P}/merge_trains/merge_requests/196`, body: { sha: 'abc123', auto_merge: true, squash: true }, token: 'tok' });
+    for (const status of [400, 405]) {
+      await assert.rejects(setup((m) => (m === 'POST' ? new Response('not mergeable', { status }) : fx('mr'))).forge.enqueuePullRequest('g/p', 196, { expectSha: 'abc123' }), NotQueueableError);
+    }
+    await assert.rejects(setup((m) => (m === 'POST' ? new Response('sha', { status: 409 }) : fx('mr'))).forge.enqueuePullRequest('g/p', 196, { expectSha: 'old' }), (e) => e instanceof GitlabError && e.status === 409);
+  });
+  it('enqueue of a merged MR reports merged with its sha and sends nothing', async () => {
+    const { forge, calls } = setup(() => fx('mr_merged'));
+    assert.deepEqual(await forge.enqueuePullRequest('g/p', 196, { expectSha: 'abc123' }), { state: 'merged', mergeSha: 'def456' });
+    assert.ok(!calls.some((c) => c.method === 'POST'));
+  });
+  it('isQueued is true for a train car, false for 404 and merged cars', async () => {
+    assert.equal(await setup(() => fx('merge_train')).forge.isQueued('g/p', 196), true);
+    assert.equal(await setup(() => ({ ...fx('merge_train'), status: 'merged' })).forge.isQueued('g/p', 196), false);
+    assert.equal(await setup(() => new Response('{}', { status: 404 })).forge.isQueued('g/p', 196), false);
+  });
+  it('dequeue cancels the auto-merge and ignores an MR with nothing to cancel', async () => {
+    const { forge, calls } = setup(() => fx('mr'));
+    await forge.dequeuePullRequest('g/p', 196);
+    assert.equal(calls[0]!.path, `${P}/merge_requests/196/cancel_merge_when_pipeline_succeeds`);
+    await setup(() => new Response('', { status: 405 })).forge.dequeuePullRequest('g/p', 196);
   });
 });
