@@ -76,6 +76,9 @@ export const releaseWord = (t: { stage?: string | null; state?: string | null; l
   return t.releaseState === 'on_staging' ? 'on staging' : t.releaseState === 'timed_out' ? 'timed out' : 'waiting'
 }
 
+/** Factory health text of liveness causes that are not self-explanatory. */
+export const CAUSE_LABEL: Record<string, string> = { 'review-stalled': 'Waiting for a human merge for over 30 min' }
+
 /** Where a Ticket in `review` stands: the factory's review and merge gate. */
 export const reviewWord = (reviewState?: string | null): string =>
   ({

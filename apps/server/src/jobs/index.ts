@@ -10,7 +10,7 @@ import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
@@ -334,7 +334,10 @@ export const watchReviewsTask = watcher('watch-reviews', async (p) => {
   await watchChecks(p)
 })
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
-export const resumeReviewsTask = watcher('resume-reviews', (p) => resumeReviews(p))
+export const resumeReviewsTask = watcher('resume-reviews', async (p) => {
+  await resumeReviews(p)
+  await restartParkedReviews(p)
+})
 export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
 
 /** Every 5 minutes: repairs Tickets that have no live Run, no wait and no need for the owner (see `lib/liveness.ts`). */
