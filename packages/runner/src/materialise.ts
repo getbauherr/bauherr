@@ -22,6 +22,14 @@ const untrusted = (ctx: RunCtx, text: string) => (fenced(ctx) ? untrustedBlock(t
 
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n/, '');
 
+/** The pack's rule files, frontmatter stripped, in name order. */
+export function readRules(packDir: string): string[] {
+  const rulesDir = join(packDir, 'rules');
+  return existsSync(rulesDir)
+    ? readdirSync(rulesDir).filter((f) => f.endsWith('.md')).sort().map((f) => stripFrontmatter(readFileSync(join(rulesDir, f), 'utf8')).trim())
+    : [];
+}
+
 /** Writes the pack, AGENTS.md and .bauherr/* into cwd, git-excluded. Returns the AGENTS.md text. */
 export function materialise(cwd: string, ctx: RunCtx): string {
   const { packDir } = ctx;
@@ -29,10 +37,7 @@ export function materialise(cwd: string, ctx: RunCtx): string {
   const skills = join(packDir, 'skills');
   if (existsSync(skills)) cpSync(skills, join(cwd, '.claude/skills'), { recursive: true, force: false }); // repo's own config wins
 
-  const rulesDir = join(packDir, 'rules');
-  const rules = existsSync(rulesDir)
-    ? readdirSync(rulesDir).filter((f) => f.endsWith('.md')).sort().map((f) => stripFrontmatter(readFileSync(join(rulesDir, f), 'utf8')).trim())
-    : [];
+  const rules = readRules(packDir);
 
   mkdirSync(join(cwd, '.bauherr'), { recursive: true });
   const goal: GoalStatement[] = ctx.run.goal.statements.map((text) => ({ text, status: 'unverified' }));
