@@ -3,10 +3,10 @@ import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../../components/EmptyState'
 import { Field, SettingsForm } from '../../../../components/SettingsForm'
 import { DeploySections, RepositoryFields } from '../../../../components/ProductForms'
-import { RadioCards, SettingsSection, SetupChecklist } from '../../../../components/SettingsParts'
+import { RadioCards, SettingsSection, SetupChecklist, ToggleRow } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct, recentChecks } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
-import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode } from '../../actions'
+import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode, saveSecurityScan, startScan } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,6 +109,24 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
               <Field name="mergeMode" label="Merge mode" hint="direct: Bauherr squash-merges the change itself. queue: Bauherr hands the reviewed commit to the forge's merge queue and waits. train: for forges without a merge queue, Bauherr tests the queued changes together on its own bauherr/train branch (CI must run on it) and merges them in order." defaultValue={p.merge.mode} options={['direct', 'queue', 'train']} />
             </SettingsForm>
             <SettingsForm action={redetectMerge} submit="Re-detect" inline>
+              <input type="hidden" name="id" value={p.id} />
+            </SettingsForm>
+          </>
+        )}
+      </SettingsSection>
+
+      <SettingsSection id="security" title="Security scan" purpose="A read-only Run that reviews the repository against the Product's SECURITY-CONTEXT.md in the Knowledge repo. It writes no code and opens no MR.">
+        <p className="small muted">Last scan <span className="mono">{p.securityScan.lastScanAt ? when(p.securityScan.lastScanAt) : 'never'}</span></p>
+        {admin && (
+          <>
+            <SettingsForm action={saveSecurityScan} submit="Save scan settings">
+              <input type="hidden" name="id" value={p.id} />
+              <ToggleRow name="enabled" label="Scan on a schedule" help="The weekly schedule is not active yet; this only records the choice." defaultChecked={p.securityScan.enabled} />
+              <Field name="cron" label="Schedule" hint="6-field cron, seconds first. Default: Mondays 04:00." defaultValue={p.securityScan.cron} />
+              <Field name="maxBudgetUsd" label="Budget per scan (USD)" hint="Empty: 2. Never above 10." type="number" step="any" defaultValue={p.securityScan.maxBudgetUsd} />
+              <Field name="maxTurns" label="Turns per scan" hint="Empty: 30." type="number" defaultValue={p.securityScan.maxTurns} />
+            </SettingsForm>
+            <SettingsForm action={startScan} submit="Scan now" inline>
               <input type="hidden" name="id" value={p.id} />
             </SettingsForm>
           </>

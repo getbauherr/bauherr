@@ -6,7 +6,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build:packages": "pnpm --filter @bauherr/adapters --filter @bauherr/runner build",
+    "build:packages": "pnpm --filter @bauherr/adapters --filter @bauherr/runner --filter @bauherr/eval build",
     "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "test": "pnpm build:packages && pnpm -r test"
   },

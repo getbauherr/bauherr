@@ -4,7 +4,7 @@ import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } fr
 import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, GOAL_FILE, INVESTIGATION_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, planStepCount, preReviewChecks } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
@@ -12,7 +12,7 @@ import type { RunCtx, RunResult } from './types.js';
 export type * from './types.js';
 export { startProxy } from './proxy.js';
 export { checkGoal } from './goal.js';
-export { materialise, untrustedBlock } from './materialise.js';
+export { materialise, readRules, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
 export { SELF_REVIEW_MIN_LINES, changedLines, formatReviewChecks, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from './pre-review.js';
@@ -30,6 +30,7 @@ const PLAN_GOAL = [`\`${PLAN_FILE}\` exists with the sections \`## Goal\` and \`
 const INVESTIGATION_GOAL = [`\`${INVESTIGATION_FILE}\` exists with the cause and one decision (revise, fix-ticket or needs-human)`];
 
 /** Agent-verifiable Goal of a Triage Run. */
+const SCAN_GOAL = [`\`${FINDINGS_FILE}\` exists with the findings of the scan, one per root cause`];
 const TRIAGE_GOAL = [`\`${TRIAGE_FILE}\` exists with an outcome (plan, refine or skip) and a reason`];
 
 /** Agent-verifiable Goal of a Review Run. */
@@ -98,7 +99,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       artifacts.mergeConflict = true;
     }
-    const fixedGoal = ctx.run.stage === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : null;
+    const fixedGoal = ctx.run.stage === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : ctx.run.stage === 'scan' ? SCAN_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.stage === 'review') {
@@ -128,6 +129,16 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
         artifacts.review = JSON.parse(readFileSync(file, 'utf8'));
       } catch {
         return finish('failed', `${REVIEW_FILE} is not valid JSON`);
+      }
+      return finish('succeeded');
+    }
+    if (ctx.run.stage === 'scan') {
+      const file = join(clone.dir, FINDINGS_FILE);
+      if (!existsSync(file)) return finish('failed', `scan run wrote no ${FINDINGS_FILE}`);
+      try {
+        artifacts.scan = JSON.parse(readFileSync(file, 'utf8'));
+      } catch {
+        return finish('failed', `${FINDINGS_FILE} is not valid JSON`);
       }
       return finish('succeeded');
     }

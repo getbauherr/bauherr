@@ -1,0 +1,16 @@
+{
+  "name": "@bauherr/eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./dist/index.js" },
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json --outDir .test-dist && node --test '.test-dist/test/*.test.js'"
+  },
+  "dependencies": { "@bauherr/runner": "workspace:*", "yaml": "^2.8.0" },
+  "devDependencies": { "typescript": "^5.9.0", "@types/node": "^24.0.0" },
+  "engines": { "node": ">=24" }
+}

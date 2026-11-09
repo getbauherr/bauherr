@@ -10,6 +10,8 @@ import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { rotateKey } from '../../../../lib/gateway'
+import { SCAN_MAX_BUDGET_USD } from '../../../../lib/investigation'
+import { startSecurityScan } from '../../../../lib/security-scan'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
 import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
 import { PRESET_FIELDS } from '../../../../lib/providers'
@@ -153,6 +155,24 @@ export const saveMergeMode = act({}, async (c, fd) => {
 })
 
 /** "Re-detect": asks the forge again and stores the detected mode with its preflight. */
+export const saveSecurityScan = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  const budget = s(fd, 'maxBudgetUsd')
+  const turns = s(fd, 'maxTurns')
+  const cron = s(fd, 'cron')
+  if (budget && !(Number(budget) > 0 && Number(budget) <= SCAN_MAX_BUDGET_USD)) throw fieldError('maxBudgetUsd', `Enter an amount above 0 and up to ${SCAN_MAX_BUDGET_USD}.`)
+  if (turns && !(Number.isInteger(Number(turns)) && Number(turns) >= 1)) throw fieldError('maxTurns', 'Enter a whole number, 1 or more.')
+  if (cron.split(/\s+/).length !== 6) throw fieldError('cron', 'Use 6 fields: seconds minutes hours day month weekday.')
+  await c.payload.update({ collection: 'products', id: id(fd), data: { securityScan: { enabled: fd.get('enabled') === 'on', cron, maxBudgetUsd: budget ? Number(budget) : null, maxTurns: turns ? Number(turns) : null } }, ...c.w } as never)
+})
+
+export const startScan = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await startSecurityScan(c.payload, id(fd))
+})
+
 export const redetectMerge = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))

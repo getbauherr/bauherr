@@ -12,6 +12,7 @@ service:
 
 extensions:
   jaeger_query:
+    base_path: /-/traces # the Bauherr Admin proxy serves Jaeger under this prefix
     storage:
       traces: memory_store
   jaeger_storage:

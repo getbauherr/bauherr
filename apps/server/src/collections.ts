@@ -509,6 +509,18 @@ export const collections: CollectionConfig[] = [
     text('releaseChecks', { admin: { description: 'Comma-separated check names on the release commit (for example image, npm); the Ticket shows "Released in" only when they pass. Empty: do not wait.' } }),
     { name: 'checkRetries', type: 'number', defaultValue: 1, min: 0, max: 1, admin: { description: 'Re-run a failed check once before it counts (1 = on, 0 = off).' } },
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
+    {
+      name: 'securityScan',
+      type: 'group',
+      admin: { description: 'Read-only security scan Runs (stage scan). Start one by hand from the Product page; the weekly schedule comes later.' },
+      fields: [
+        { name: 'enabled', type: 'checkbox', defaultValue: false, admin: { description: 'Scan this Product on the schedule.' } },
+        text('cron', { defaultValue: '0 0 4 * * 1', admin: { description: 'When the scheduled scan runs, 6-field cron (seconds first). Default: Mondays 04:00.' } }),
+        { name: 'maxBudgetUsd', type: 'number', min: 0, admin: { description: 'Budget of one scan Run in USD. Empty: 2. Never above 10.' } },
+        { name: 'maxTurns', type: 'number', min: 1, admin: { description: 'Turns of one scan Run. Empty: 30.' } },
+        date('lastScanAt'),
+      ],
+    },
     { name: 'reviewChecks', type: 'json', admin: { description: 'Path-based checks a Build must pass before it requests review: {tests: [{src: [globs], tests: [globs]}], schema: [{schema: [globs], migration: [globs]}], evidence: true}. Empty: all off.' } },
     {
       name: 'overlapIgnore',
@@ -532,7 +544,7 @@ export const collections: CollectionConfig[] = [
   tickets,
   col('runs', [
     rel('ticket', 'tickets', { required: true }),
-    select('stage', ['triage', 'plan', 'build', 'review'], { required: true }),
+    select('stage', ['triage', 'plan', 'build', 'review', 'scan'], { required: true }),
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
