@@ -977,3 +977,84 @@ it('F33: a merge that pushes (main moved) resets the no-op counter', async () =>
   expect(realHead(s.branch)).not.toBe(s.before)
   expect(await reload(s.id)).toMatchObject({ mainMergeSha: null, mainMergeNoops: 0 })
 })
+
+/** A parked Ticket whose last review Run reviewed the MR head, then the head moves. */
+const parked = async (reviewState: string, rounds = 0) => {
+  const s = await seed({ checks: green })
+  await crashed(s.id, s.pr)
+  await payload.update({ collection: 'tickets', id: s.id, data: { reviewState, reviewRounds: rounds }, ...o })
+  return s
+}
+const moveHead = async (s: { pr: { number: number; head?: string }; branch: string }) => {
+  fake.commit(repo, s.branch, 'b.ts', 'y')
+  const pr = await fake.forge.getPullRequest(repo, s.pr.number)
+  fake.setChecks(repo, pr.headSha, green)
+  return pr
+}
+
+it('restart-parked: a new head on a ready_for_human Ticket starts exactly one review, once', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  expect(await actions.restartParkedReviews(payload)).toBe(1)
+  expect((await reload(s.id)).reviewState ?? null).toBeNull()
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect((await comments(s.n)).filter((c) => c.includes(`New head ${pr.headSha.slice(0, 7)}; review restarted (was ready_for_human)`))).toHaveLength(1)
+  expect(await actions.restartParkedReviews(payload)).toBe(0)
+  expect(await reviewRuns(s.id)).toBe(2)
+})
+
+it('restart-parked: needs_human restarts below the round cap and stays at the cap', async () => {
+  const below = await parked('needs_human', 1)
+  const atCap = await parked('needs_human', actions.MAX_REVIEW_ROUNDS + 1)
+  await moveHead(below)
+  await moveHead(atCap)
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(below.id)).toBe(2)
+  expect((await reload(atCap.id)).reviewState).toBe('needs_human')
+  expect(await reviewRuns(atCap.id)).toBe(1)
+})
+
+it('restart-parked: a review that asked the owner (decision, access) waits for the answer; a stuck one restarts', async () => {
+  const asked = []
+  for (const reasonKind of ['decision', 'access', 'stuck']) {
+    const s = await parked('needs_human', 1)
+    await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'review', status: 'needs_human', reasonKind, mode: 'autonomous', workspace: ws }, ...o })
+    await moveHead(s)
+    asked.push(s)
+  }
+  expect(await actions.restartParkedReviews(payload)).toBe(1)
+  const [decision, access, stuck] = asked
+  for (const s of [decision!, access!]) {
+    expect((await reload(s.id)).reviewState).toBe('needs_human')
+    expect(await reviewRuns(s.id)).toBe(2)
+    expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+  }
+  expect(await reviewRuns(stuck!.id)).toBe(3)
+})
+
+it('restart-parked: no "review restarted" Comment when no Review Run started', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+})
+
+it('restart-parked: an unchanged head is left alone', async () => {
+  const s = await parked('ready_for_human')
+  expect(await actions.restartParkedReviews(payload)).toBe(0)
+  expect((await reload(s.id)).reviewState).toBe('ready_for_human')
+})
+
+it('restart-parked: a same-diff main merge is rebound, no new review Run', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  const [run] = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: s.id } }, { stage: { equals: 'review' } }] }, limit: 1, ...o })).docs
+  await payload.update({ collection: 'runs', id: run!.id, data: { reviewedPatchId: 'p1' }, ...o })
+  const [build] = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: s.id } }, { stage: { equals: 'build' } }] }, limit: 1, ...o })).docs
+  await payload.update({ collection: 'runs', id: build!.id, data: { artifacts: { ...build!.artifacts, patchId: 'p1', pushedSha: pr.headSha } }, ...o })
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+})

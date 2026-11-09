@@ -11,7 +11,7 @@ type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
 /** Why an open Ticket in a factory stage has no live Run. */
-export const CAUSES = ['triage-expired', 'mr-missing', 'checks-red', 'run-failed', 'run-cancelled', 'run-abandoned', 'run-stuck', 'review-escalated', 'review-invalid', 'unknown'] as const
+export const CAUSES = ['triage-expired', 'mr-missing', 'checks-red', 'run-failed', 'run-cancelled', 'run-abandoned', 'run-stuck', 'review-escalated', 'review-invalid', 'review-stalled', 'unknown'] as const
 export type Cause = (typeof CAUSES)[number]
 /** Causes the factory repairs itself; the others are shown to the owner as a need (`Cancelled`, `Needs you`). */
 export const REPAIRED: readonly Cause[] = ['triage-expired', 'mr-missing', 'checks-red', 'run-failed', 'run-abandoned', 'run-stuck', 'review-escalated', 'review-invalid']
@@ -19,6 +19,9 @@ export const REPAIRED: readonly Cause[] = ['triage-expired', 'mr-missing', 'chec
 export const AGENT_REPAIRED: readonly Cause[] = ['mr-missing', 'checks-red']
 
 export type Dead = { ticket: Doc; cause: Cause; run: Doc | null; need: Need | null }
+
+/** A clean review waiting this long for a human merge, without a human touch, is stalled. */
+const REVIEW_STALLED_MS = 30 * 60_000
 
 const STAGES = ['plan', 'build', 'review']
 
@@ -37,7 +40,12 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
   if (t.stage === 'review') {
     if (t.reviewState === 'merged') return null
     // Parked for a human because the review output was invalid (#376, #393): the successor review runs strong, once.
-    if (t.reviewState === 'ready_for_human') return latest?.stage === 'review' && latest.status === 'succeeded' && latest.artifacts?.review?.problem && !latest.escalation ? 'review-invalid' : null
+    if (t.reviewState === 'ready_for_human') {
+      if (latest?.stage === 'review' && latest.status === 'succeeded' && latest.artifacts?.review?.problem) return !latest.escalation ? 'review-invalid' : null
+      if (!t.reviewWaitingSince || Date.now() - Date.parse(t.reviewWaitingSince) <= REVIEW_STALLED_MS) return null
+      const touches = (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { at: { greater_than: t.reviewWaitingSince } }] }, pagination: false, ...o })).docs as Doc[]
+      return touches.some((h) => h.actor !== 'factory') ? null : 'review-stalled'
+    }
     try {
       const mr = await prOf(payload, t, { fallback: false })
       if (!mr || mr.pr.state === 'closed') return 'mr-missing'
