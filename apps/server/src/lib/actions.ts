@@ -1090,7 +1090,11 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
       const mr = await prOf(payload, t)
       if (!mr || mr.pr.state === 'closed') continue
       if (mr.pr.state === 'merged') {
-        if (await moveReview(payload, t.id, 'merged', 'queued')) merged++
+        // A queue merge is a merge like the direct gate's: it may distill a skill too (#41).
+        if (await moveReview(payload, t.id, 'merged', 'queued')) {
+          merged++
+          await queueDistill(payload, t)
+        }
         continue
       }
       const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
