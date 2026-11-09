@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
 import { APIError, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
-import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
+import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, ensureRouterKey, gatewayEnabled, newKey, removeProvider, revokeRouterKey, syncRouterKey, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
@@ -19,11 +19,14 @@ const lockAmbient = async (req: PayloadRequest): Promise<void> => {
 }
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
+const isRouter = (config: { provider?: string } | null | undefined) => presetOf(config) === 'router'
+/** Ambient presets that share the gateway's own cloud identity; `router` is ambient (no user secret) but shares nothing. */
+const sharedIdentity = (p: Preset) => PRESETS[p].auth === 'ambient' && p !== 'router'
 const llmConnections = async (req: PayloadRequest, workspace: number | string) =>
   (await req.payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs
 
-/** USD only while every Connection ships a price catalog; an unpriced call would count 0 and never trip the budget. */
-const unitOf = (conns: Record<string, any>[]) => (conns.every((c) => PRESETS[presetOf(c.config)].catalog) ? 'usd' : 'tokens')
+/** USD only while every Connection ships a price catalog; an unpriced call would count 0 and never trip the budget. The router prices nothing itself. */
+const unitOf = (conns: Record<string, any>[]) => (conns.filter((c) => !isRouter(c.config)).every((c) => PRESETS[presetOf(c.config)].catalog) ? 'usd' : 'tokens')
 
 const rel = (name: string, to: string, extra: Partial<Field> = {}): Field =>
   ({ name, type: 'relationship', relationTo: to, ...extra }) as Field
@@ -123,6 +126,13 @@ const workspaces = col(
       },
     },
     {
+      name: 'routerKey',
+      type: 'text',
+      admin: { description: 'Write-only. Consumer key of the vLLM Semantic Router for this Workspace; created with the first `router` Connection, encrypted at rest.' },
+      access: { read: () => false, update: () => false },
+      hooks: { beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)] },
+    },
+    {
       name: 'wipLimits',
       type: 'json',
       defaultValue: DEFAULT_WIP_LIMITS,
@@ -155,7 +165,7 @@ const workspaces = col(
         async ({ data, operation, originalDoc, req }) => {
           if (operation === 'update') {
             if (!data?.modelByTier) return
-            const slugs = (await llmConnections(req, originalDoc.id)).map((c) => c.slug as string)
+            const slugs = (await llmConnections(req, originalDoc.id)).filter((c) => !isRouter(c.config)).map((c) => c.slug as string)
             const bad = Object.entries(data.modelByTier as Record<string, string>).filter(([, v]) => !slugs.some((s) => String(v).startsWith(`${s}/`) && String(v).length > s.length + 1))
             if (slugs.length && bad.length) {
               throw new ValidationError({ collection: 'workspaces', errors: bad.map(([path]) => ({ path, message: `must be <connection>/<model>, connection one of: ${slugs.join(', ')}` })) })
@@ -164,7 +174,7 @@ const workspaces = col(
           }
           if (operation !== 'create') return
           await lockAmbient(req)
-          const ambient = Object.keys(PRESETS).filter((k) => PRESETS[k as Preset].auth === 'ambient')
+          const ambient = Object.keys(PRESETS).filter((k) => sharedIdentity(k as Preset))
           const found = await req.payload.count({ collection: 'connections', where: { kind: { equals: 'llm-provider' }, provider: { in: ambient } }, overrideAccess: true, req })
           if (found.totalDocs) {
             throw new ValidationError({ collection: 'workspaces', errors: [{ path: 'name', message: 'a Connection uses the gateway ambient identity, shared by the whole gateway: no second Workspace allowed' }] })
@@ -179,6 +189,7 @@ const workspaces = col(
             (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d'] as const).some((k) => doc[k] !== previousDoc?.[k])
           )
             await ensureKey(req, doc.id)
+          else if (!isDeepStrictEqual(doc.modelByTier, previousDoc?.modelByTier)) await syncRouterKey(req, doc.id)
         },
       ],
       afterDelete: [
@@ -273,8 +284,15 @@ const connections = col(
           if (missing.length) {
             throw new ValidationError({ collection: 'connections', errors: missing.map((path) => ({ path, message: `required for ${presetOf(config)}` })) })
           }
-          if (def.auth === 'ambient') await lockAmbient(req)
-          if (def.auth === 'ambient' && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
+          if (isRouter(config)) {
+            await lockAmbient(req)
+            const wsId = typeof workspace === 'object' ? workspace.id : workspace
+            if ((await req.payload.count({ collection: 'connections', where: { kind: { equals: 'llm-provider' }, provider: { equals: 'router' }, workspace: { not_equals: wsId } }, overrideAccess: true, req })).totalDocs) {
+              throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'the router serves one Workspace: another Workspace already has a router Connection' }] })
+            }
+          }
+          if (sharedIdentity(presetOf(config))) await lockAmbient(req)
+          if (sharedIdentity(presetOf(config)) && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
             throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'ambient identity is shared by the whole gateway: allowed only while the instance has exactly one Workspace' }] })
           }
           const mirrored = Object.fromEntries(['provider', ...PRESET_FIELDS].filter((k) => config[k] !== undefined).map((k) => [k, config[k]]))
@@ -291,6 +309,7 @@ const connections = col(
           }
           const slug = doc.slug as string
           const preset = PRESETS[presetOf(doc.config)]
+          const router = isRouter(doc.config)
           const o = { overrideAccess: true, req } as const
           const ws = (await req.payload.findByID({ collection: 'workspaces', id: raw.workspace.id, depth: 0, ...o })) as unknown as {
             gatewayKey: string
@@ -310,16 +329,17 @@ const connections = col(
           )
           const changed = operation === 'create' || presetOf(previousDoc?.config) !== presetOf(doc.config)
           const data: Record<string, unknown> = {}
-          if (changed && ws.budgetUnit !== unitOf(conns)) data.budgetUnit = unitOf(conns)
-          if (changed && !isDeepStrictEqual(ws.modelByTier, tiers)) data.modelByTier = tiers
+          if (!router && changed && ws.budgetUnit !== unitOf(conns)) data.budgetUnit = unitOf(conns)
+          if (!router && changed && !isDeepStrictEqual(ws.modelByTier, tiers)) data.modelByTier = tiers
           if (Object.keys(data).length) await req.payload.update({ collection: 'workspaces', id: raw.workspace.id, data, ...o })
           if (!gatewayEnabled()) return
           if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, slug, decrypt(raw.secret), preset.secret.ext)
           await removeProvider(raw.workspace.slug, slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
+          if (router) await ensureRouterKey(req, raw.workspace.id)
           await renderModels(req)
           if (!process.env.GATEWAY_URL) return
           const current = (data.modelByTier ?? ws.modelByTier) as Record<string, string>
-          const cheapest = TIERS.map((t) => current[t]).find(own) ?? `${slug}/${preset.defaultModels?.cheap ?? DEFAULT_MODEL_BY_TIER.cheap}`
+          const cheapest = router ? current.cheap : TIERS.map((t) => current[t]).find(own) ?? `${slug}/${preset.defaultModels?.cheap ?? DEFAULT_MODEL_BY_TIER.cheap}`
           const result = await verifyProvider(raw.workspace.slug, decrypt(ws.gatewayKey), cheapest)
           req.context.skipVerify = true
           await req.payload.update({
@@ -339,6 +359,7 @@ const connections = col(
           if (conns.length && ws.budgetUnit !== unitOf(conns)) await req.payload.update({ collection: 'workspaces', id: wsId, data: { budgetUnit: unitOf(conns) }, overrideAccess: true, req })
           if (!gatewayEnabled()) return
           await removeProvider(ws.slug, doc.slug)
+          if (isRouter(doc.config) && !conns.some((c) => isRouter(c.config))) await revokeRouterKey(req, wsId, ws.slug)
           await renderModels(req)
         },
       ],

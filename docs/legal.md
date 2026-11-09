@@ -46,7 +46,7 @@ The gateway's `sub/*` model family forwards the caller's own `Authorization` hea
 
 ## Egress policy
 
-The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent.
+The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent. With the optional [router profile](router.md) the router container calls only the gateway, with its own key.
 
 ## Optional dashboards profile
 

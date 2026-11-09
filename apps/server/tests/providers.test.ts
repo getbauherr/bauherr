@@ -29,6 +29,7 @@ const EXPECTED: Record<Preset, object> = {
   'bedrock-ambient': { provider: 'bedrock', params: { awsRegion: 'us-east-1' } },
   'vertex-ambient': { provider: 'vertex', params: { vertexProject: 'p', vertexRegion: 'europe-west1' } },
   'foundry-ambient': { provider: 'anthropic', params: { baseUrl: 'https://res.services.ai.azure.com/anthropic' } },
+  router: { provider: { custom: { formats: [{ type: 'completions' }] } }, params: { baseUrl: 'http://router:8801/v1' } },
   'anthropic-compatible': { provider: { custom: { formats: [{ type: 'messages' }] } }, params: { apiKey: { file: FILE }, baseUrl: 'https://up.example/v1' } },
   'openai-compatible': { provider: { custom: { formats: [{ type: 'completions' }] } }, params: { apiKey: { file: FILE }, baseUrl: 'https://up.example/v1' } },
 }

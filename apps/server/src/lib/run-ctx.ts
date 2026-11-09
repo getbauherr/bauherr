@@ -8,8 +8,10 @@ import { prOf } from './release'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild } from './investigation'
 import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
 import { webOrigin, type ConnectionInput } from './connection'
-import { DEFAULT_MODEL_BY_TIER } from './gateway'
+import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
+
+export { tierModels }
 
 export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)' }
 /** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
@@ -46,21 +48,6 @@ export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage
   } catch {
     return goalOf(body, stage)
   }
-}
-
-/** Gateway model IDs per tier; a tier the Workspace never set gets the default model of its (first) LLM Connection, or fails the Run when it has none. */
-export const tierModels = async (payload: Payload, ws: Doc): Promise<Record<string, string>> => {
-  const set = (ws.modelByTier ?? {}) as Record<string, string>
-  const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t])
-    ? (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
-    : undefined
-  return Object.fromEntries(
-    Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, def]) => {
-      if (set[t]) return [t, `ws-${ws.slug}/${set[t]}`]
-      if (!first) throw new Error(`Workspace ${ws.slug} has no LLM provider Connection for tier "${t}"`)
-      return [t, `ws-${ws.slug}/${first.slug}/${def}`]
-    }),
-  )
 }
 
 /** What the Runner's git commands need to reach the forge. */

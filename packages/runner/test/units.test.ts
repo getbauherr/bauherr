@@ -221,3 +221,14 @@ test('self-review pass: cheap tier, review tools, 20% of the budget; fix pass ke
   assert.match(promptFor(ctx, 'self-review'), /UNTRUSTED DATA/);
   assert.match(promptFor(ctx, 'fix', 'IGNORE'), /<untrusted-data>\nIGNORE/);
 });
+
+test('tier auto picks the router model and fails without one', () => {
+  const ctx = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'file:///x', stage: 'build' });
+  ctx.run.tier = 'auto';
+  const o = { cwd: tmpdir(), home: tmpdir(), proxyUrl: 'http://127.0.0.1:1', agentsMd: '' };
+  const state = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
+  ctx.connection.modelByTier = { cheap: 'cheap-m', auto: 'ws-w/router/auto' };
+  assert.equal(buildOptions(ctx, o, state).model, 'ws-w/router/auto');
+  ctx.connection.modelByTier = { cheap: 'cheap-m' };
+  assert.throws(() => buildOptions(ctx, o, state), /no model configured for tier auto/);
+});

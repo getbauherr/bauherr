@@ -137,7 +137,7 @@ One agent per Run by default. Patterns only via stage config with a declared pro
 Enforcement: [write-scope-guard](../../pack/hooks/write-scope-guard.ts).
 
 ## 9. Model and effort policy
-Tiers, resolved to model names from the Workspace's tiers. How to apply: [effort-policy](../../pack/skills/effort-policy/SKILL.md).
+Tiers, resolved to model names from the Workspace's tiers. A fourth tier `auto` exists only while the Workspace has a `router` Connection: it names the vLLM Semantic Router, which picks one of the three per request ([router](../router.md)). How to apply: [effort-policy](../../pack/skills/effort-policy/SKILL.md).
 
 | Stage / step | Tier | Effort |
 |---|---|---|
