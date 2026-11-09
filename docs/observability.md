@@ -6,7 +6,7 @@ Opt-in compose profile `observability`: Prometheus scrapes the gateway's metrics
 OTEL_ENABLED=1 docker compose --profile observability up -d
 ```
 
-`OTEL_ENABLED=1` makes `init` render the gateway's `tracing.otlpEndpoint` (`http://jaeger:4317`) the first time it writes `/gateway/config.yaml`; set it before the first start, or delete that file's volume. Without `--profile observability` nothing receives the traces, and `init` prints a reminder.
+`OTEL_ENABLED=1` makes `init` render the gateway's `frontendPolicies.tracing` (`host: jaeger:4317`, `randomSampling: true`: agentgateway v1.7.0 samples a request without an incoming trace context only when this is set, so without it Jaeger stays empty) the first time it writes `/gateway/config.yaml`; set it before the first start, or delete that file's volume. Without `--profile observability` nothing receives the traces, and `init` prints a reminder.
 
 | What | Where |
 |---|---|

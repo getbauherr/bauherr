@@ -27,6 +27,14 @@ it('the template with one entry per preset and both budget units is a structural
   for (const f of text.match(/\/cfg\/[\w.-]+/g) ?? []) expect(existsSync(join(dir, f.slice(5))), f).toBe(true)
 })
 
+it('with OTEL_ENABLED=1 init renders frontendPolicies.tracing with sampling on (v1.7.0 samples nothing by default), not the deprecated config.tracing', () => {
+  const cfg = buildConfig(mkdtempSync(join(tmpdir(), 'agw-')), { tracing: true })
+  expect(cfg.config.tracing).toBeUndefined()
+  expect(cfg.frontendPolicies.tracing).toEqual({ host: 'jaeger:4317', randomSampling: true })
+  expect(cfg.frontendPolicies.accessLog).toBeDefined()
+  expect(buildConfig(mkdtempSync(join(tmpdir(), 'agw-'))).frontendPolicies.tracing).toBeUndefined()
+})
+
 it('a gateway admin call that never answers fails within the timeout', async () => {
   const { createServer } = await import('node:http')
   const srv = createServer(() => {}).listen(0)

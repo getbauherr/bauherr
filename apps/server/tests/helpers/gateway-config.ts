@@ -12,11 +12,14 @@ const IAM = JSON.stringify({ accessKeyId: 'AKIAXXXXXXXXXXXXXXXX', secretAccessKe
 const root = join(__dirname, '../../../..')
 const tmpl = readFileSync(join(root, 'deploy/gateway/config.yaml.tmpl'), 'utf8')
 
+/** The tracing line `init` renders with OTEL_ENABLED=1 (compose.yaml), so tests check exactly what ships. */
+export const TRACING_LINE = readFileSync(join(root, 'compose.yaml'), 'utf8').match(/T='(tracing: \{[^']+\})'/)![1]!.replaceAll('\\"', '"')
+
 export const AGW_IMAGE = readFileSync(join(root, 'compose.yaml'), 'utf8').match(/cr\.agentgateway\.dev\/[^\s"]+/)![0]
 
 /** Template with one entry per preset and both budget units; secret files are written into `dir` and referenced as `/cfg/<file>`. */
-export function buildConfig(dir: string): Record<string, any> {
-  const cfg = parse(tmpl.replace('__GATEWAY_DATABASE_URL__', 'postgres://u:p@db:5432/gw').replace('__TRACING__', ''))
+export function buildConfig(dir: string, { tracing = false } = {}): Record<string, any> {
+  const cfg = parse(tmpl.replace('__GATEWAY_DATABASE_URL__', 'postgres://u:p@db:5432/gw').replace('__TRACING__', tracing ? TRACING_LINE : ''))
   cfg.config.modelCatalog = []
   for (const p of Object.keys(PRESETS) as Preset[]) {
     const file = `${p}.${PRESETS[p].secret.ext}`
