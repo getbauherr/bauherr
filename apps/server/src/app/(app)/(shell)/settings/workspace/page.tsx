@@ -5,6 +5,7 @@ import { Table } from '../../../components/ui/table'
 import { isAdmin, listRepos, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { ago } from '../../../lib/format'
+import { CAUSE_LABEL } from '../../../lib/needs-you'
 import { KnowledgeRepo } from '../../../components/KnowledgeRepo'
 import { createWorkspace, rotateWorkspaceKey, saveWorkspace } from '../actions'
 
@@ -103,7 +104,7 @@ export default async function WorkspaceSettings() {
               <tbody>
                 <tr><th>Jobs, last 24 h (instance-wide)</th><td>{health.queued} queued · {health.running} running · <span className={health.failed ? 'text-destructive' : ''}>{health.failed} failed{health.failed ? ' (needs attention)' : ''}</span></td></tr>
                 <tr><th>Oldest queued job (instance-wide)</th><td>{health.oldestQueued ? ago(health.oldestQueued) : 'none waiting'}</td></tr>
-                <tr><th>Dead tickets</th><td>{!health.dead ? <span className="text-muted-foreground">Could not be checked right now.</span> : <span className={health.dead.length ? 'text-destructive' : ''}>{health.dead.length}</span>}{health.dead?.map((d) => <span key={d.id}> · <Link href={`/tickets/${d.id}`}>#{d.number}</Link> ({d.cause})</span>)}</td></tr>
+                <tr><th>Dead tickets</th><td>{!health.dead ? <span className="text-muted-foreground">Could not be checked right now.</span> : <span className={health.dead.length ? 'text-destructive' : ''}>{health.dead.length}</span>}{health.dead?.map((d) => <span key={d.id}> · <Link href={`/tickets/${d.id}`}>#{d.number}</Link> ({CAUSE_LABEL[d.cause] ?? d.cause})</span>)}</td></tr>
                 {health.sources.map((s) => (
                   <tr key={s.repo}>
                     <th>Last poll, {s.repo}</th>

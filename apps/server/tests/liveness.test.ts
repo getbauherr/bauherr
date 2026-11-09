@@ -239,3 +239,17 @@ it('after one pass no repairable Ticket stays dead without a need', async () => 
   await liveness.sweepLiveness(payload)
   expect(await liveness.invisibleDead(payload, ws)).toEqual([])
 })
+
+it('review-stalled: a ready_for_human review waiting over 30 minutes without a human touch', async () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
+  const at = async (m: number) => {
+    const { id } = await seed('review', { reviewState: 'ready_for_human', mr: 'open', runs: [{ stage: 'review', status: 'succeeded', verdict: 'clean', artifacts: { review: { markdown: 'm' } } }] })
+    await payload.update({ collection: 'tickets', id, data: { reviewWaitingSince: minutesAgo(m) }, ...o })
+    return id
+  }
+  const [late, soon, touched] = [await at(31), await at(29), await at(31)]
+  await payload.create({ collection: 'human_touches', data: { kind: 'repair:relink-mr', ticket: touched, workspace: ws, actor: 'a@x.io', at: minutesAgo(5) }, ...o })
+  expect(await causeOf(late)).toBe('review-stalled')
+  expect(await causeOf(soon)).toBeUndefined()
+  expect(await causeOf(touched)).toBeUndefined()
+})
