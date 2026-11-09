@@ -118,6 +118,7 @@ To work on tickets from your own Claude Code session instead, create an API key 
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
 | Stages, steps, gates | [`pack/workflow.yaml`](pack/workflow.yaml), [docs/spec/workflow.md](docs/spec/workflow.md) |
+| Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
 | Budgets, model Tiers, Connections | Settings in the UI |
 | Provider credentials and data flows | [docs/legal.md](docs/legal.md) |
