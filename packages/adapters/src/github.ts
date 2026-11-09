@@ -177,7 +177,7 @@ class GithubTickets implements TicketSource {
   async list(opts: ListOptions = {}) {
     const q = new URLSearchParams({ state: opts.state ?? 'open', per_page: '100' });
     if (opts.labels?.length) q.set('labels', opts.labels.join(','));
-    return (await this.h.paginate(`${this.p}/issues?${q}`)).filter(isIssue).map(summary);
+    return (await this.h.paginate(`${this.p}/issues?${q}`)).filter(isIssue).map((i) => ({ ...summary(i), body: i.body ?? '' }));
   }
   async get(id: string): Promise<Ticket> {
     const [i, blockers] = await Promise.all([this.issue(id), this.blockers(id)]);
