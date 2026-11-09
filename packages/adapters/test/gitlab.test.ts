@@ -444,18 +444,50 @@ describe('gitlab train branch', () => {
     assert.deepEqual(merge.body, { squash: false, should_remove_source_branch: true, sha: 'abcdef1234567890' });
     assert.equal(calls.find((c) => c.method === 'POST' && c.path.endsWith('/merge_requests'))!.body.target_branch, 'bauherr/train');
   });
-  it('a 405 on the temporary MR merge is a conflict; the MR is closed and the temp branch deleted', async () => {
-    const { forge, calls } = setup((m, path) => {
+  const train = (statuses: object[], mergeResponse: () => Response | object = () => ({})) => {
+    let polls = 0;
+    const sleeps: number[] = [];
+    const r = setup((m, path) => {
       if (path.endsWith('/repository/branches/bauherr%2Ftrain') && m === 'GET') return { name: 'bauherr/train', commit: { id: 'tip' } };
       if (path.includes('/repository/commits/')) return { id: 'abcdef1234567890' };
       if (path.includes('/repository/merge_base')) return { id: 'older' };
       if (m === 'POST' && path.endsWith('/merge_requests')) return mr;
-      if (m === 'PUT' && path.endsWith('/merge')) return new Response('conflicts', { status: 405 });
+      if (m === 'PUT' && path.endsWith('/merge')) return mergeResponse();
+      if (m === 'GET' && path.endsWith('/merge_requests/300')) {
+        const st = statuses[Math.min(polls++, statuses.length - 1)]!;
+        return { ...mr, ...st };
+      }
       return mr;
-    });
-    assert.deepEqual(await forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), { conflict: true });
+    }, sleeps);
+    return { ...r, sleeps };
+  };
+  const cleaned = (calls: Call[]) => {
     assert.ok(calls.some((c) => c.method === 'PUT' && c.path === `${P}/merge_requests/300` && c.body.state_event === 'close'));
     assert.ok(calls.filter((c) => c.method === 'DELETE').length >= 2);
+  };
+  it('waits while merge_status is checking, then merges the temporary MR', async () => {
+    const { forge, calls, sleeps } = train([{ detailed_merge_status: 'checking' }, { detailed_merge_status: 'mergeable' }, { state: 'merged', detailed_merge_status: 'not_open', merge_commit_sha: 'm1' }]);
+    assert.deepEqual(await forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), { sha: 'm1' });
+    assert.deepEqual(sleeps, [500]);
+    assert.ok(calls.some((c) => c.method === 'PUT' && c.path.endsWith('/merge')));
+  });
+  it('real conflicts (has_conflicts, conflict) are reported as a conflict without merging; the temp MR and branch are cleaned up', async () => {
+    for (const st of [{ has_conflicts: true, merge_status: 'cannot_be_merged' }, { detailed_merge_status: 'conflict' }]) {
+      const { forge, calls } = train([st]);
+      assert.deepEqual(await forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), { conflict: true });
+      assert.ok(!calls.some((c) => c.method === 'PUT' && c.path.endsWith('/merge')));
+      cleaned(calls);
+    }
+  });
+  it('a 405 without a conflict (pipelines must succeed) is an error naming the setting, not a conflict; cleaned up', async () => {
+    const { forge, calls } = train([{ detailed_merge_status: 'ci_must_pass' }], () => new Response('pipeline must succeed', { status: 405 }));
+    await assert.rejects(forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), (e) => e instanceof GitlabError && e.status === 405 && /ci_must_pass/.test(e.message) && /merge settings/.test(e.message));
+    cleaned(calls);
+  });
+  it('a merge status that never settles is a retryable error, not a conflict; cleaned up', async () => {
+    const { forge, calls } = train([{ detailed_merge_status: 'checking' }]);
+    await assert.rejects(forge.mergeIntoBranch('g/p', 'bauherr/train', 'abcdef1234567890'), MergePendingError);
+    cleaned(calls);
   });
 });
 

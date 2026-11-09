@@ -173,3 +173,16 @@ it('bisectFirstFailure finds the first failing prefix for k = 1..5 with at most 
     }
   }
 })
+
+it('watchQueued leaves a train Product\'s long-queued Ticket alone but still escalates one of a queue Product', async () => {
+  const p = await seed('a.ts')
+  expect(await actions.watchQueued(payload, Date.now() + 3 * 3_600_000)).toBe(0)
+  expect(await reload(p.id)).toMatchObject({ reviewState: 'queued' })
+  await payload.update({ collection: 'products', id: product, data: { mergeMode: 'queue' }, ...o })
+  try {
+    await actions.watchQueued(payload, Date.now() + 3 * 3_600_000)
+  } finally {
+    await payload.update({ collection: 'products', id: product, data: { mergeMode: 'train' }, ...o })
+  }
+  expect(await reload(p.id)).toMatchObject({ reviewState: 'needs_human' })
+})

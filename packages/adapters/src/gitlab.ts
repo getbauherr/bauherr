@@ -245,6 +245,8 @@ class GitlabTickets implements TicketSource {
 }
 
 /** Waits between polls for an asynchronous merge (~30 s in total). */
+/** Waits for GitLab's mergeability check of the temporary train MR. */
+const TRAIN_STATUS_POLL_MS = [500, 1000, 2000, 4000];
 const MERGE_POLL_MS = [500, 1000, 2000, 4000, 8000, 15000];
 const PIPELINE_PENDING = ['created', 'waiting_for_resource', 'preparing', 'pending', 'running', 'scheduled'];
 
@@ -480,13 +482,36 @@ class GitlabForge implements Forge {
     });
     await drop();
     await this.h.json('POST', `/projects/${enc(repo)}/repository/branches?branch=${enc(temp)}&ref=${enc(headSha)}`);
-    const mr = await this.openPullRequest(repo, { title: `bauherr train: merge ${headSha.slice(0, 7)} into ${branch}`, head: temp, base: branch });
-    try {
-      await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${mr.number}/merge`, { squash: false, should_remove_source_branch: true, sha: headSha });
-    } catch (e) {
-      await this.closePullRequest(repo, mr.number).catch(() => undefined);
+    let mrNumber = 0;
+    const cleanup = async () => {
+      if (mrNumber) await this.closePullRequest(repo, mrNumber).catch(() => undefined);
       await drop();
-      if (e instanceof GitlabError && [405, 406].includes(e.status)) return { conflict: true as const };
+    };
+    const mr = await this.openPullRequest(repo, { title: `bauherr train: merge ${headSha.slice(0, 7)} into ${branch}`, head: temp, base: branch });
+    mrNumber = mr.number;
+    const mrPath = `/projects/${enc(repo)}/merge_requests/${mr.number}`;
+    try {
+      // https://docs.gitlab.com/api/merge_requests/#merge-a-merge-request: 405 = cannot merge (conflict, merge_status still checking, pipeline must succeed, ...), so read the status first.
+      let status: { merge_status?: string; detailed_merge_status?: string; has_conflicts?: boolean } = {};
+      for (const ms of [0, ...TRAIN_STATUS_POLL_MS]) {
+        if (ms) await this.sleep(ms);
+        status = await this.h.json('GET', mrPath);
+        if (!['checking', 'unchecked', 'preparing'].includes(status.detailed_merge_status ?? status.merge_status ?? '')) break;
+      }
+      const detailed = status.detailed_merge_status ?? status.merge_status ?? '';
+      if (['checking', 'unchecked', 'preparing'].includes(detailed)) throw new MergePendingError(`GitLab has not finished checking whether !${mr.number} merges into ${branch}`);
+      if (status.has_conflicts === true || ['conflict', 'broken_status', 'cannot_be_merged'].includes(detailed)) {
+        await cleanup();
+        return { conflict: true as const };
+      }
+      try {
+        await this.h.json('PUT', `${mrPath}/merge`, { squash: false, should_remove_source_branch: true, sha: headSha });
+      } catch (e) {
+        if (e instanceof GitlabError && [405, 406, 422].includes(e.status)) throw new GitlabError(e.status, 'PUT', `merge_requests/${mr.number}/merge`, `GitLab refuses to merge the temporary train MR !${mr.number} although it has no conflicts (merge status "${detailed}"): ${e.message}. Check the project's merge settings (pipelines must succeed, approvals, protected ${branch}); the train branch must accept merges from the bot.`);
+        throw e;
+      }
+    } catch (e) {
+      await cleanup();
       throw e;
     }
     let after = await this.getPullRequest(repo, mr.number);
