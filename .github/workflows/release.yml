@@ -44,10 +44,15 @@ jobs:
           cache-from: type=gha
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            BAUHERR_VERSION=${{ steps.v.outputs.version }}
+            BAUHERR_REVISION=${{ github.sha }}
           tags: |
             ghcr.io/getbauherr/bauherr:${{ steps.v.outputs.version }}
             ${{ steps.v.outputs.prerelease == 'false' && 'ghcr.io/getbauherr/bauherr:latest' || '' }}
-          labels: org.opencontainers.image.source=https://github.com/getbauherr/bauherr
+          labels: |
+            org.opencontainers.image.source=https://github.com/getbauherr/bauherr
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
 
   npm:
     needs: image
