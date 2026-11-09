@@ -10,6 +10,7 @@ import { mergeMainIntoMr } from '../lib/merge-main'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
+import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
@@ -333,6 +334,7 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
 export const watchReviewsTask = watcher('watch-reviews', async (p) => {
   await watchReviews(p)
   await watchQueued(p)
+  await runTrains(p)
   await watchChecks(p)
 })
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))

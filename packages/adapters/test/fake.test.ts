@@ -131,3 +131,24 @@ describe('fake: merge queue', () => {
     assert.deepEqual(await b.forge.enqueuePullRequest('o/r', 1, { expectSha: 'x' }), { state: 'merged', mergeSha: sha });
   });
 });
+
+describe('fake: train branch', () => {
+  it('resetBranch sets a branch to a commit; mergeIntoBranch merges heads, reports a contained head and conflicts', async () => {
+    const b = new FakeBackend();
+    const main = (await b.forge.getBranch('o/r', 'main'))!.sha;
+    const heads: string[] = [];
+    for (const [i, file, content] of [[1, 'a.txt', 'x'], [2, 'b.txt', 'y'], [3, 'a.txt', 'z']] as const) {
+      await b.forge.createBranch('o/r', `f${i}`);
+      heads.push(b.commit('o/r', `f${i}`, file, content));
+    }
+    await b.forge.resetBranch('o/r', 'train', main);
+    assert.equal((await b.forge.getBranch('o/r', 'train'))!.sha, main);
+    const m1 = await b.forge.mergeIntoBranch('o/r', 'train', heads[0]!);
+    assert.ok('sha' in m1 && m1.sha !== main);
+    assert.deepEqual(await b.forge.mergeIntoBranch('o/r', 'train', heads[0]!), m1);
+    assert.ok('sha' in (await b.forge.mergeIntoBranch('o/r', 'train', heads[1]!)));
+    assert.deepEqual(await b.forge.mergeIntoBranch('o/r', 'train', heads[2]!), { conflict: true });
+    await b.forge.resetBranch('o/r', 'train', main);
+    assert.deepEqual((await b.forge.listFiles('o/r', 'train')).paths, []);
+  });
+});
