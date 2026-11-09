@@ -9,6 +9,14 @@ import { Button } from './ui/button'
  */
 export type NextStepPrimary = { label: string; disabled?: boolean; reason?: string; onClick?: () => void; href?: string; newTab?: boolean; form?: string; confirm?: string }
 
+/** `reason` with each `#N` / `Run N` token that has an entry in `links` rendered as that link; other tokens stay text. */
+export function LinkedReason({ reason, links }: { reason: string; links: { text: string; href: string }[] }) {
+  return reason.split(/(#\d+|Run \d+)/).map((part, i) => {
+    const link = links.find((l) => l.text === part)
+    return link ? <a key={i} className="text-primary" href={link.href}>{part}</a> : part
+  })
+}
+
 /** Put inside a form that a primary submits with `form`: tells the bar while the server action runs, so the button is disabled at once. */
 export function FormPending() {
   const { pending } = useFormStatus()
