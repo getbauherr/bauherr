@@ -1,5 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload, TaskConfig } from 'payload'
+import { Cron } from 'croner'
+import type { Payload, PayloadRequest, TaskConfig } from 'payload'
 import { APPROVED_PLAN, setStage, stageLabel, stageOf, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
@@ -26,6 +27,8 @@ import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
 import { scheduled } from '../lib/schedule'
+import { startSecurityScan } from '../lib/security-scan'
+import { budgetOut } from '../lib/escalation'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -57,25 +60,26 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
   ).docs[0]
 
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
-export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}) => {
+export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}, req?: Partial<PayloadRequest>) => {
   const findActive = async () =>
-    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
   const existing = await findActive()
   if (existing) return { run: existing, created: false }
   const workspace = id(ticket.workspace)
-  const mode = await modeFor(payload, workspace, stage)
+  const mode = await modeFor(payload, workspace, stage, req)
   let run
   try {
     run = await payload.create({
       collection: 'runs',
       data: { ticket: ticket.id, stage, mode, status: mode === 'session' ? 'awaiting_session' : 'queued', workspace, ...extra },
+      req,
     })
   } catch (e) {
     const winner = (e as { name?: string }).name === 'ValidationError' && (await findActive())
     if (!winner) throw e
     return { run: winner, created: false }
   }
-  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
+  if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id }, req: req as PayloadRequest | undefined })
   return { run, created: true }
 }
 
@@ -744,4 +748,47 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask]
+/** Products scanned per tick; the rest wait for the next hour. */
+export const SCANS_PER_TICK = 5
+
+/** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning, and one whose start throws is logged and backed off (`lastScanAt` set). Returns the Runs created. */
+export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
+  const products = (await payload.find({ collection: 'products', where: { 'securityScan.enabled': { equals: true } }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
+  const since = (p: Record<string, any>) => new Date(p.securityScan?.lastScanAt ?? p.createdAt)
+  const due = products
+    .filter((p) => {
+      try {
+        const next = new Cron(p.securityScan.cron || '0 0 4 * * 1').nextRun(since(p))
+        return !!next && next <= now
+      } catch (e) {
+        payload.logger.warn({ err: e, product: p.id }, 'security scan: invalid cron')
+        return false
+      }
+    })
+    .sort((a, b) => since(a).getTime() - since(b).getTime())
+    .slice(0, SCANS_PER_TICK)
+  let started = 0
+  for (const p of due) {
+    try {
+      if (await budgetOut(payload, id(p.workspace))) {
+        payload.logger.warn({ product: p.id }, 'security scan skipped: budget spent')
+        continue
+      }
+      if ((await startSecurityScan(payload, p.id)).created) started++
+    } catch (e) {
+      // Back off: a Product that cannot start counts as scanned now, so it neither starves the others nor retries every hour.
+      payload.logger.error({ err: e, product: p.id }, 'security scan start failed')
+      await payload.update({ collection: 'products', id: p.id, data: { securityScan: { ...p.securityScan, lastScanAt: now.toISOString() } }, overrideAccess: true }).catch((err) => payload.logger.error({ err, product: p.id }, 'security scan back-off failed'))
+    }
+  }
+  return started
+}
+
+export const securityScanTick: TaskConfig<{ input: Record<string, never>; output: { started: number } }> = {
+  slug: 'security-scan-tick',
+  schedule: scheduled('0 0 * * * *'),
+  retries: 0,
+  handler: async ({ req }) => ({ output: { started: await securityScanSweep(req.payload) } }),
+}
+
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]

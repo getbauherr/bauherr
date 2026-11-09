@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 import { decrypt } from './secrets'
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
@@ -13,8 +13,8 @@ export interface ConnectionInput {
 }
 
 /** Loads a Connection with its secret decrypted; the plaintext lives only in memory. */
-export const connectionInput = async (payload: Payload, ref: unknown): Promise<ConnectionInput> => {
-  const c = await payload.findByID({ collection: 'connections', id: id(ref), overrideAccess: true, showHiddenFields: true })
+export const connectionInput = async (payload: Payload, ref: unknown, req?: Partial<PayloadRequest>): Promise<ConnectionInput> => {
+  const c = await payload.findByID({ collection: 'connections', id: id(ref), overrideAccess: true, showHiddenFields: true, req })
   const raw = (c as { secret?: string }).secret
   return {
     id: c.id,
