@@ -1014,6 +1014,33 @@ it('restart-parked: needs_human restarts below the round cap and stays at the ca
   expect(await reviewRuns(atCap.id)).toBe(1)
 })
 
+it('restart-parked: a review that asked the owner (decision, access) waits for the answer; a stuck one restarts', async () => {
+  const asked = []
+  for (const reasonKind of ['decision', 'access', 'stuck']) {
+    const s = await parked('needs_human', 1)
+    await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'review', status: 'needs_human', reasonKind, mode: 'autonomous', workspace: ws }, ...o })
+    await moveHead(s)
+    asked.push(s)
+  }
+  expect(await actions.restartParkedReviews(payload)).toBe(1)
+  const [decision, access, stuck] = asked
+  for (const s of [decision!, access!]) {
+    expect((await reload(s.id)).reviewState).toBe('needs_human')
+    expect(await reviewRuns(s.id)).toBe(2)
+    expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+  }
+  expect(await reviewRuns(stuck!.id)).toBe(3)
+})
+
+it('restart-parked: no "review restarted" Comment when no Review Run started', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+})
+
 it('restart-parked: an unchanged head is left alone', async () => {
   const s = await parked('ready_for_human')
   expect(await actions.restartParkedReviews(payload)).toBe(0)

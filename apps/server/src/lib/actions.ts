@@ -1083,6 +1083,9 @@ export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<
   return resumed
 }
 
+/** `needs_human` reason kinds that are the owner's (#378); `stuck` is the factory's. */
+const OWNER_REASONS = ['decision', 'access']
+
 /** Per-minute pass: a Ticket parked at `ready_for_human`, or at `needs_human` below the round cap, whose MR head moved since the last review restarts the review (a same-diff main merge is rebound instead). The cap is the owner's decision. */
 export const restartParkedReviews = async (payload: Payload): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { in: ['ready_for_human', 'needs_human'] } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
@@ -1090,6 +1093,9 @@ export const restartParkedReviews = async (payload: Payload): Promise<number> =>
   for (const t of tickets) {
     try {
       if (t.reviewState === 'needs_human' && (t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) continue
+      // A review that asked the owner (a product decision, an access problem) waits for the answer: a new head must not merge past it.
+      const newest = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      if (newest?.status === 'needs_human' && OWNER_REASONS.includes(newest.reasonKind)) continue
       const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (!last?.reviewedSha) continue
       const mr = await prOf(payload, t)
@@ -1098,8 +1104,8 @@ export const restartParkedReviews = async (payload: Payload): Promise<number> =>
       if (!cleared.rows.length) continue
       const fresh = { ...t, reviewState: null }
       if (await rebindReview(payload, fresh)) continue
+      if (!(await startReviewIfReady(payload, fresh))) continue
       await mr.tickets.comment(String(t.number), `New head ${mr.pr.headSha.slice(0, 7)}; review restarted (was ${t.reviewState}).`)
-      await startReviewIfReady(payload, fresh)
       restarted++
     } catch (e) {
       payload.logger.error({ err: e, ticket: t.id }, 'restart-parked-reviews failed for ticket')
