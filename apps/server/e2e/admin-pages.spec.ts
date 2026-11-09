@@ -251,9 +251,10 @@ test('AI usage: an Admin sees the page and the gateway link, a non-Admin sees th
     await expect(page.getByRole('link', { name: 'Open gateway console' })).toHaveCount(visible ? 1 : 0)
     await expect(page.getByText('Open traces')).toHaveCount(visible ? 1 : 0)
     if (process.env.SHOTS_DIR && visible) await page.screenshot({ path: `${process.env.SHOTS_DIR}/usage-${page.viewportSize()!.width}.png`, fullPage: true })
-    const gw = await page.request.get('/-/gateway/ui', { maxRedirects: 0 }) // a configured upstream may answer 404 itself; the hidden route answers exactly 'Not found'
-    expect((await gw.text()) === 'Not found').toBe(!visible)
-    expect((await page.request.get('/-/traces', { maxRedirects: 0 })).status()).toBe(visible ? 502 : 404)
+    // In-page fetch: Payload accepts the session cookie only for same-origin requests. A configured gateway upstream may answer 404 itself; the hidden route answers exactly 'Not found'.
+    const [gw, traces] = await page.evaluate(async () => Promise.all(['/-/gateway/ui', '/-/traces'].map(async (u) => { const r = await fetch(u, { redirect: 'manual' }); return [r.status, await r.text()] as const })))
+    expect(gw[1] === 'Not found').toBe(!visible)
+    expect(traces[0]).toBe(visible ? 502 : 404)
     await page.context().clearCookies()
   }
 })
