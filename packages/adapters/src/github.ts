@@ -86,7 +86,7 @@ export class Http {
     this.maxRetries = o.maxRetries ?? 3;
   }
 
-  async raw(method: string, path: string, body?: unknown): Promise<Response> {
+  async raw(method: string, path: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
       const res = await timedFetch(this.doFetch, url, {
@@ -94,7 +94,7 @@ export class Http {
         method,
         headers: {
           authorization: `Bearer ${await this.o.auth.token()}`,
-          accept: 'application/vnd.github+json',
+          accept,
           'x-github-api-version': '2022-11-28',
           'user-agent': 'bauherr',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
@@ -177,7 +177,7 @@ class GithubTickets implements TicketSource {
   async list(opts: ListOptions = {}) {
     const q = new URLSearchParams({ state: opts.state ?? 'open', per_page: '100' });
     if (opts.labels?.length) q.set('labels', opts.labels.join(','));
-    return (await this.h.paginate(`${this.p}/issues?${q}`)).filter(isIssue).map(summary);
+    return (await this.h.paginate(`${this.p}/issues?${q}`)).filter(isIssue).map((i) => ({ ...summary(i), body: i.body ?? '' }));
   }
   async get(id: string): Promise<Ticket> {
     const [i, blockers] = await Promise.all([this.issue(id), this.blockers(id)]);
@@ -372,6 +372,9 @@ class GithubForge implements Forge {
       filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions,
     }));
   }
+  async compare(repo: RepoRef, base: string, head: string) {
+    return (await this.h.raw('GET', `/repos/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`, undefined, 'application/vnd.github.diff')).text();
+  }
   async retargetPullRequest(repo: RepoRef, n: number, base: string) {
     await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { base });
   }
@@ -424,6 +427,24 @@ class GithubForge implements Forge {
   async dequeuePullRequest(repo: RepoRef, n: number) {
     if (!(await this.isQueued(repo, n))) return;
     await this.graphql('mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}', { id: (await this.h.json('GET', `/repos/${repo}/pulls/${n}`)).node_id });
+  }
+  async resetBranch(repo: RepoRef, branch: string, sha: string) {
+    const ref = branch.split('/').map(enc).join('/');
+    try {
+      await this.h.json('PATCH', `/repos/${repo}/git/refs/heads/${ref}`, { sha, force: true });
+    } catch (e) {
+      if (!(e instanceof GithubError && [404, 422].includes(e.status))) throw e; // no such ref yet
+      await this.h.json('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
+    }
+  }
+  async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
+    try {
+      const m = await this.h.json('POST', `/repos/${repo}/merges`, { base: branch, head: headSha, commit_message: `bauherr train: merge ${headSha.slice(0, 7)}` });
+      return { sha: m ? (m.sha as string) : (await this.h.json('GET', `/repos/${repo}/git/ref/heads/${branch.split('/').map(enc).join('/')}`)).object.sha as string }; // 204: already contained
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 409) return { conflict: true as const };
+      throw e;
+    }
   }
   async listFiles(repo: RepoRef, ref?: string) {
     const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);

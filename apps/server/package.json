@@ -30,6 +30,7 @@
   "dependencies": {
     "@assistant-ui/react": "0.15.32",
     "@bauherr/adapters": "workspace:*",
+    "@bauherr/eval": "workspace:*",
     "@bauherr/runner": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@payloadcms/db-postgres": "3.92.1",

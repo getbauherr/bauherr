@@ -20,6 +20,9 @@ importers:
       '@bauherr/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
+      '@bauherr/eval':
+        specifier: workspace:*
+        version: link:../../packages/eval
       '@bauherr/runner':
         specifier: workspace:*
         version: link:../../packages/runner

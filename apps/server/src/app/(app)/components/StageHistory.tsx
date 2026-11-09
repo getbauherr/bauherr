@@ -32,7 +32,7 @@ export function StageHistory({ data, admin }: { data: StageHistoryData; admin: b
                 {admin && <><td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td><td>{r.mode}</td></>}
                 <td><StatusChip status={r.status} reason={r.reason} /></td>
                 <td className="text-muted-foreground">{ago(r.createdAt)}</td>
-                {admin && <><td className="mono">{r.duration ?? '—'}</td><td className="mono">{r.costUsd == null ? '—' : `$${r.costUsd.toFixed(2)}`}</td></>}
+                {admin && <><td className="mono">{r.duration ?? '—'}</td><td className="mono">{r.unpricedTokens != null ? `${r.unpricedTokens} tokens, unpriced` : r.costUsd == null ? '—' : `$${r.costUsd.toFixed(2)}`}</td></>}
                 <td className="small max-w-[40ch] truncate text-muted-foreground" title={r.reason ?? r.evidence}>{r.reason ?? (r.evidence || '—')}</td>
               </tr>
             ))}

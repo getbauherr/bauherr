@@ -140,16 +140,16 @@ export const saveDeploy = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, ...who, reviewChecks }, ...c.w } as never)
 })
 
-/** Merge mode of a Product. Switching to `queue` re-runs the repo preflight and refuses while it has problems. */
+/** Merge mode of a Product. Switching to `queue` or `train` re-runs the repo preflight and refuses while it has problems. */
 export const saveMergeMode = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
   const mode = s(fd, 'mergeMode')
   if (!(MERGE_MODES as readonly string[]).includes(mode)) throw fieldError('mergeMode', 'Choose direct, queue or train.')
   const current = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { mergeMode: true }, depth: 0, overrideAccess: true })) as { mergeMode?: string }
-  if (mode === 'queue' && current.mergeMode !== 'queue') {
-    const preflight = await runPreflight(c.payload, id(fd))
-    if (!preflight.ok) throw fieldError('mergeMode', `Queue mode is not ready: ${preflight.problems.join(' ')}`)
+  if ((mode === 'queue' || mode === 'train') && current.mergeMode !== mode) {
+    const preflight = await runPreflight(c.payload, id(fd), mode)
+    if (!preflight.ok) throw fieldError('mergeMode', `${mode === 'queue' ? 'Queue' : 'Train'} mode is not ready: ${preflight.problems.join(' ')}`)
   }
   await c.payload.update({ collection: 'products', id: id(fd), data: { mergeMode: mode }, ...c.w } as never)
 })

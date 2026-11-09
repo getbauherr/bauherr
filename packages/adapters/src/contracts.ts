@@ -20,6 +20,8 @@ export interface TicketSummary {
   assignee: string | null;
   assignees: string[];
   updatedAt: string;
+  /** Raw body; set by `list` only. */
+  body?: string;
 }
 
 export interface Ticket extends TicketSummary {
@@ -191,6 +193,8 @@ export interface Forge {
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
   listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
+  /** Unified diff text from `base` to `head` (shas or refs). */
+  compare(repo: RepoRef, base: string, head: string): Promise<string>;
   /** Check runs plus legacy commit statuses (a status is a check named after its context). */
   listChecks(repo: RepoRef, sha: string): Promise<Check[]>;
   /** Re-runs the failed jobs of the runs these checks belong to; false when nothing could be re-run (commit status, bridge, no `runId`). */
@@ -211,6 +215,10 @@ export interface Forge {
   dequeuePullRequest(repo: RepoRef, number: number): Promise<void>;
   /** Whether an open PR is still in the forge's queue or train. Separate from `getPullRequest` so the polling reads stay one request. */
   isQueued(repo: RepoRef, number: number): Promise<boolean>;
+  /** Creates `branch` at `sha` or force-sets it there (the factory train branch; never a branch a human works on). */
+  resetBranch(repo: RepoRef, branch: string, sha: string): Promise<void>;
+  /** Merges commit `headSha` into `branch` with a merge commit; `{ conflict: true }` (branch untouched) when it does not merge cleanly. A head already contained in the branch returns the branch's sha. */
+  mergeIntoBranch(repo: RepoRef, branch: string, headSha: string): Promise<{ sha: string } | { conflict: true }>;
   /** Blob paths of `ref` (default branch when omitted) and the commit sha they belong to. */
   listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[]; truncated?: boolean }>;
   /** `sha` is the blob sha, to be passed back as `putFile`'s `expectSha`. */

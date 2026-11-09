@@ -8,9 +8,11 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx } from '../lib/run-ctx'
 import { REVIEW_CAP_REASON, submitInvestigation, type InvestigationInput } from '../lib/investigation'
 import { mergeMainIntoMr } from '../lib/merge-main'
+import { distillSkill } from '../lib/skill-distill'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
+import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
@@ -20,6 +22,7 @@ import { holdOverlap } from '../lib/overlap'
 import { enterStage, pullWaiting } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
+import { fileFindings } from '../lib/security-scan'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
@@ -336,6 +339,7 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
 export const watchReviewsTask = watcher('watch-reviews', async (p) => {
   await watchReviews(p)
   await watchQueued(p)
+  await runTrains(p)
   await watchChecks(p)
 })
 export const watchProductionTask = watcher('watch-production', (p) => watchProduction(p))
@@ -649,6 +653,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       })
       if (untriageAfter) await untriageLogged(payload, ticket.id)
       await queueReconcile(payload, run.id)
+      if (run.stage === 'scan' && (r.status === 'succeeded' || r.status === 'budget_exhausted') && r.artifacts.scan) await fileFindings(payload, { ...run, artifacts: r.artifacts })
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
       if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
@@ -701,6 +706,14 @@ export const mergeMainTask: TaskConfig<{ input: { ticketId: number; reviewedSha?
     await mergeMainIntoMr(req.payload, input.ticketId, input.reviewedSha ?? null)
     return { output: {} }
   },
+}
+
+export const distillSkillTask: TaskConfig<{ input: { ticketId: number }; output: { outcome: string } }> = {
+  slug: 'distill-skill',
+  retries: 0,
+  concurrency: { key: ({ input }) => `distill:${input.ticketId}`, exclusive: true },
+  inputSchema: [{ name: 'ticketId', type: 'number', required: true }],
+  handler: async ({ input, req }) => ({ output: { outcome: await distillSkill(req.payload, input.ticketId) } }),
 }
 
 export const reconcileCosts: TaskConfig<{ input: { runId: number; attempt?: number }; output: { status: string } }> = {
@@ -773,4 +786,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   handler: async ({ req }) => ({ output: { started: await securityScanSweep(req.payload) } }),
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
