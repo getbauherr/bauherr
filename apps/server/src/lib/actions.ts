@@ -4,7 +4,7 @@ import type { Payload } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { laneOn } from './expedite'
 import { gateOn } from './mode'
-import { dequeueBeforeChange, isQueue } from './merge-mode'
+import { dequeueBeforeChange, isQueue, isTrain } from './merge-mode'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins } from './gates'
 import { decrypt } from './secrets'
@@ -744,7 +744,7 @@ export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n
 type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
 
 /** Moves `reviewState` only out of the `from` state: "open" (unset or waiting_checks), "merged" or "queued"; true when this call did it. The conditional UPDATE is what keeps two ticks from merging (or enqueuing) twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state; `queuedAt` is set on entering `queued` and cleared on leaving it. */
-const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' | 'queued' = 'open'): Promise<boolean> =>
+export const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' | 'queued' = 'open'): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
       sql`UPDATE "tickets" SET "review_state" = ${to}::"enum_tickets_review_state", "review_waiting_since" = CASE WHEN ${to}::text = 'waiting_checks' THEN COALESCE("review_waiting_since", now()) WHEN ${to}::text = 'ready_for_human' THEN now() WHEN ${to}::text = 'merged' THEN "review_waiting_since" END, "queued_at" = CASE WHEN ${to}::text = 'queued' THEN now() WHEN ${to}::text = 'merged' THEN "queued_at" END, "updated_at" = now() WHERE "id" = ${ticket} AND ${from === 'open' ? sql`("review_state" IS NULL OR "review_state" = 'waiting_checks')` : from === 'merged' ? sql`"review_state" = 'merged'` : sql`"review_state" = 'queued'`} RETURNING "id"`,
@@ -946,18 +946,19 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  // The queue tests against current main itself: a PR behind it is not merged with the base by the Runner there; a conflict still is.
-  if (mr.pr.mergeable === false || (mr.pr.behind && !isQueue(product))) return mergeMainFirst(payload, t, mr, reviewedSha)
+  // The queue and the train test against current main themselves: a PR behind it is not merged with the base by the Runner there; a conflict still is.
+  if (mr.pr.mergeable === false || (mr.pr.behind && !isQueue(product) && !isTrain(product))) return mergeMainFirst(payload, t, mr, reviewedSha)
   const checks = await checksGate(payload, t, mr, at)
   if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
   if (checks.state === 'pending') {
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  const claim = isQueue(product) ? 'queued' : 'merged'
+  const claim = isQueue(product) || isTrain(product) ? 'queued' : 'merged'
   if (!(await moveReview(payload, t.id, claim))) return 'waiting_checks'
   try {
     if (claim === 'queued') {
+      if (isTrain(product)) return 'queued'
       const entry = await mr.backend.forge.enqueuePullRequest(mr.repo, mr.pr.number, { expectSha: mr.pr.headSha })
       if (entry.state === 'queued') return 'queued'
       await moveReview(payload, t.id, 'merged', 'queued')
@@ -1066,6 +1067,12 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
   return merged
 }
 
+/** Head the Ticket's latest succeeded review Run reviewed; null when there is none. */
+export const reviewedShaOf = async (payload: Payload, t: Doc): Promise<string | null> => {
+  const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  return last?.reviewedSha ?? null
+}
+
 /** A queued MR the forge does not report as queued after this long was dropped by the queue (its merge-group checks failed). */
 export const QUEUE_DROP_GRACE_MS = 2 * 60_000
 /** Times the queue drops an MR before a Ticket needs a human. */
@@ -1080,7 +1087,7 @@ export const queueRunsLink = (pr: { url: string; base: string }, repo: string): 
 /**
  * Per-minute pass over Tickets in `queued`: a merged MR is left to `watchRelease` (reviewState becomes `merged`); a moved head dequeues and starts a new review;
  * an open MR the forge no longer reports as queued (after a 2 minute grace) was dropped: back to Build with the queue run link, `trainFailures` + 1, the 3rd needs a human;
- * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first). An unknown queue state (the forge call failed) changes nothing.
+ * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first; not for a member of the running train of a `train` Product: the train has its own step timeout). An unknown queue state (the forge call failed) changes nothing.
  */
 export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
@@ -1097,19 +1104,21 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
         }
         continue
       }
-      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
-      if (mr.pr.headSha !== (last?.reviewedSha ?? null)) {
+      if (mr.pr.headSha !== (await reviewedShaOf(payload, t))) {
         await dequeueBeforeChange(payload, t, mr)
         if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
         continue
       }
       const since = t.queuedAt ? Date.parse(t.queuedAt) : at
-      if (at - since > WAIT_CHECKS_MAX_MS) {
+      const product = await trainProduct(payload, t)
+      const onTrain = isTrain(product)
+      const inRunningTrain = onTrain && ((product.trainState as { members?: { ticket: number | string }[] } | null)?.members ?? []).some((m) => String(m.ticket) === String(t.id))
+      if (!inRunningTrain && at - since > WAIT_CHECKS_MAX_MS) {
         await dequeueBeforeChange(payload, t, mr)
         await escalate(payload, t, 'the MR has been in the merge queue for more than 2 hours.')
         continue
       }
-      if (at - since <= QUEUE_DROP_GRACE_MS || (await mr.backend.forge.isQueued(mr.repo, mr.pr.number))) continue
+      if (at - since <= QUEUE_DROP_GRACE_MS || onTrain || (await mr.backend.forge.isQueued(mr.repo, mr.pr.number))) continue
       await returnDroppedToBuild(payload, t, mr)
     } catch (e) {
       payload.logger.error({ err: e, ticket: t.id }, 'watch-queued failed for ticket')
@@ -1118,13 +1127,15 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
   return merged
 }
 
-const returnDroppedToBuild = async (payload: Payload, t: Doc, mr: Mr): Promise<ReviewOutcome> => {
+const trainProduct = (payload: Payload, t: Doc): Promise<Doc> => payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })
+
+/** A queued MR whose checks failed in the forge queue or the factory train: back to Build with the run `link`, `trainFailures` + 1, the 3rd needs a human. `by` names who dropped it. */
+export const returnDroppedToBuild = async (payload: Payload, t: Doc, mr: Mr, link = queueRunsLink(mr.pr, mr.repo), by = 'merge queue'): Promise<ReviewOutcome> => {
   if (!(await moveReview(payload, t.id, 'waiting_checks', 'queued'))) return 'noop'
   const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "train_failures" = COALESCE("train_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "train_failures"`)).rows[0]!.train_failures)
-  const link = queueRunsLink(mr.pr, mr.repo)
-  if (failures >= MAX_TRAIN_FAILURES) return escalate(payload, t, `the merge queue dropped the MR ${failures} times; see the queue runs: ${link}`)
-  const reason = `the merge queue dropped the MR (its checks failed in the queue run, see ${link})`
-  return returnToBuild(payload, t, mr, reason, [`- [high] the merge queue run failed for this MR: ${link}; fix it and push to the same branch.`], [], { countRound: false, text: `${reason}. Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
+  if (failures >= MAX_TRAIN_FAILURES) return escalate(payload, t, `the ${by} dropped the MR ${failures} times; see the failed run: ${link}`)
+  const reason = `the ${by} dropped the MR (its checks failed in the ${by} run, see ${link})`
+  return returnToBuild(payload, t, mr, reason, [`- [high] the ${by} run failed for this MR: ${link}; fix it and push to the same branch.`], [], { countRound: false, text: `${reason}. Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
 }
 
 const RESUME_GRACE_MS = 2 * 60_000

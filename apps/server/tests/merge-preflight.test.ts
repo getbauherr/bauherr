@@ -1,6 +1,6 @@
 import { FakeBackend } from '@bauherr/adapters'
 import { describe, expect, it } from 'vitest'
-import { checkGitlabCi, checkWorkflows, detectMergeMode, preflightQueue } from '../src/lib/merge-preflight'
+import { checkGitlabCi, checkGitlabTrain, checkTrainTrigger, checkWorkflows, detectMergeMode, preflightQueue, preflightTrain } from '../src/lib/merge-preflight'
 
 const wf = (on: string, jobs: string) => `name: ci\non:\n${on}\njobs:\n${jobs}\n`
 const CI = '  ci:\n    runs-on: ubuntu-latest\n    steps: []'
@@ -52,6 +52,30 @@ describe('checkGitlabCi', () => {
   })
 })
 
+describe('train preflight', () => {
+  const ci = (on: string) => file(wf(on, CI))
+  it('GitHub: a pull_request workflow needs a push trigger that covers bauherr/train, and the problem names the line to add', () => {
+    for (const on of ['  pull_request:', '  pull_request:\n  push:\n    branches: [main]', '  pull_request:\n  push:\n    tags: [v*]', '  pull_request:\n  push:\n    branches-ignore: [bauherr/**]']) {
+      expect(checkTrainTrigger(ci(on)), on).toEqual([expect.stringContaining('branches: [bauherr/train]')])
+    }
+    for (const on of ['  pull_request:\n  push:', '  pull_request:\n  push:\n    branches: [main, bauherr/*]', '  pull_request:\n  push:\n    branches: ["**"]', '  push:\n    branches: [main]']) {
+      expect(checkTrainTrigger(ci(on)), on).toEqual([])
+    }
+  })
+  it('GitLab: rules must reach the train branch', () => {
+    expect(checkGitlabTrain('test:\n  script: [x]\n')).toEqual([])
+    expect(checkGitlabTrain('test:\n  script: [x]\n  rules:\n    - if: $CI_COMMIT_BRANCH == "bauherr/train"\n')).toEqual([])
+    expect(checkGitlabTrain('test:\n  script: [x]\n  rules:\n    - if: $CI_PIPELINE_SOURCE == "merge_request_event"\n')).toEqual([expect.stringContaining('bauherr/train')])
+  })
+  it('preflightTrain reads the workflows of the repo', async () => {
+    const fake = new FakeBackend()
+    fake.commit('acme/app', 'main', '.github/workflows/ci.yml', wf('  pull_request:', CI))
+    expect(await preflightTrain(fake.forge, 'acme/app', 'github')).toMatchObject({ ok: false, problems: [expect.stringContaining('bauherr/train')] })
+    fake.commit('acme/app', 'main', '.github/workflows/ci.yml', wf('  pull_request:\n  push:', CI))
+    expect(await preflightTrain(fake.forge, 'acme/app', 'github')).toMatchObject({ ok: true, problems: [] })
+  })
+})
+
 describe('preflightQueue and detectMergeMode (fake forge)', () => {
   const repo = 'acme/app'
   const setup = (workflow?: string, queue = true) => {
@@ -64,13 +88,13 @@ describe('preflightQueue and detectMergeMode (fake forge)', () => {
   }
 
   it('without a native queue the mode is train and the problem says why', async () => {
-    const { mode, preflight } = await detectMergeMode(setup(wf('  pull_request:\n  merge_group:', CI), false), repo, 'github')
+    const { mode, preflight } = await detectMergeMode(setup(wf('  pull_request:\n  push:\n  merge_group:', CI), false), repo, 'github')
     expect(mode).toBe('train')
     expect(preflight.problems).toEqual([expect.stringContaining('no merge queue')])
   })
 
   it('a queue with a workflow lacking merge_group falls back to train and lists the problem', async () => {
-    const { mode, preflight } = await detectMergeMode(setup(wf('  pull_request:', CI)), repo, 'github')
+    const { mode, preflight } = await detectMergeMode(setup(wf('  pull_request:\n  push:', CI)), repo, 'github')
     expect(mode).toBe('train')
     expect(preflight).toMatchObject({ ok: false, problems: [expect.stringContaining('no merge_group trigger')] })
   })

@@ -1,7 +1,7 @@
 import type { Forge } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { parse } from 'yaml'
-import { type MergeMode } from './merge-mode'
+import { TRAIN_BRANCH, type MergeMode } from './merge-mode'
 import { forgeOf } from './release'
 
 export type Preflight = { ok: boolean; problems: string[]; at: string }
@@ -46,6 +46,48 @@ export const checkWorkflows = (files: { path: string; content: string }[], requi
 export const checkGitlabCi = (content: string | null): string[] =>
   content === null ? ['no .gitlab-ci.yml on the default branch.'] : content.includes('merge_request_event') ? [] : ['.gitlab-ci.yml has no merge_request_event rules; add them so pipelines run for merged results and merge trains.']
 
+const globToRegExp = (glob: string): RegExp => new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\0').replace(/\*/g, '[^/]*').replace(/\0/g, '.*')}$`)
+const patterns = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'string' ? [v] : []).map(String)
+
+/** GitHub: every workflow with a `pull_request` trigger must also run on `push` to the train branch (no `branches` filter, or one matching it); pure. */
+export const checkTrainTrigger = (files: { path: string; content: string }[], branch = TRAIN_BRANCH): string[] => {
+  const problems: string[] = []
+  for (const { path, content } of files) {
+    let doc: Doc
+    try {
+      doc = (parse(content) as Doc) ?? {}
+    } catch {
+      continue // `checkWorkflows` reports invalid YAML
+    }
+    const on = doc.on
+    const has = (t: string) => (typeof on === 'string' ? on === t : Array.isArray(on) ? on.includes(t) : !!on && typeof on === 'object' && t in on)
+    if (!has('pull_request')) continue
+    const push = on && typeof on === 'object' && !Array.isArray(on) ? (on.push as Doc | null | undefined) : undefined
+    const include = patterns(push?.branches)
+    const covered = has('push') && (include.length ? include.some((g) => globToRegExp(g).test(branch)) : !push?.tags && !patterns(push?.['branches-ignore']).some((g) => globToRegExp(g).test(branch)))
+    if (!covered) problems.push(`${path}: no push trigger covers ${branch}, so the factory train gets no checks; add "push:" with "branches: [${branch}]" under "on:".`)
+  }
+  return problems
+}
+
+/** GitLab: a pipeline must run for the train branch: no rules at all, or a rule on the branch name or on push pipelines; pure. */
+export const checkGitlabTrain = (content: string | null, branch = TRAIN_BRANCH): string[] =>
+  content === null || !/\b(rules|only|except|workflow):/.test(content) || content.includes(branch) || /\$CI_COMMIT_BRANCH|CI_PIPELINE_SOURCE\s*==\s*["']push["']/.test(content)
+    ? []
+    : [`.gitlab-ci.yml has rules but none runs a pipeline for ${branch}; add a rule such as "- if: $CI_COMMIT_BRANCH == \"${branch}\"" to the jobs (or to workflow:rules).`]
+
+/** Whether the repo can run in `train` mode: CI runs on the train branch. */
+export const preflightTrain = async (forge: Forge, repo: string, kind: Kind, at = new Date().toISOString()): Promise<Preflight> => {
+  const problems = await trainProblems(forge, repo, kind)
+  return { ok: problems.length === 0, problems, at }
+}
+
+const trainProblems = async (forge: Forge, repo: string, kind: Kind): Promise<string[]> => {
+  if (kind === 'gitlab') return checkGitlabTrain(await forge.getFile(repo, '.gitlab-ci.yml').then((f) => f.content, () => null))
+  const paths = (await forge.listFiles(repo)).paths.filter((p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p))
+  return checkTrainTrigger(await Promise.all(paths.map(async (path) => ({ path, content: (await forge.getFile(repo, path)).content }))))
+}
+
 /** Whether the repo can run in `queue` mode: the forge has a native queue and its CI is set up for it. A failed read of the repo is thrown, not reported as a problem. */
 export const preflightQueue = async (forge: Forge, repo: string, kind: Kind, at = new Date().toISOString()): Promise<Preflight> => {
   if (!(await forge.queueSupport(repo))) {
@@ -62,17 +104,18 @@ export const preflightQueue = async (forge: Forge, repo: string, kind: Kind, at 
   return { ok: problems.length === 0, problems, at }
 }
 
-/** `queue` when the forge has a native queue and the preflight passes, else `train`. */
+/** `queue` when the forge has a native queue and the preflight passes, else `train`; then the problems are why not `queue` plus what `train` still needs. */
 export const detectMergeMode = async (forge: Forge, repo: string, kind: Kind): Promise<{ mode: MergeMode; preflight: Preflight }> => {
   const preflight = await preflightQueue(forge, repo, kind)
-  return { mode: preflight.ok ? 'queue' : 'train', preflight }
+  if (preflight.ok) return { mode: 'queue', preflight }
+  return { mode: 'train', preflight: { ...preflight, problems: [...preflight.problems, ...(await trainProblems(forge, repo, kind))] } }
 }
 
 const failure = (e: unknown): Preflight => ({ ok: false, at: new Date().toISOString(), problems: [`Could not check the repository: ${e instanceof Error ? e.message : String(e)}`] })
 
-/** Preflight of the Product's repo, stored on the Product; a forge failure is stored as the problem. */
-export const runPreflight = async (payload: Payload, product: number | string): Promise<Preflight> => {
-  const preflight = await forgeOf(payload, product).then(({ backend, repo, kind }) => preflightQueue(backend.forge, repo, kind)).catch(failure)
+/** Preflight of the Product's repo for `mode`, stored on the Product; a forge failure is stored as the problem. */
+export const runPreflight = async (payload: Payload, product: number | string, mode: 'queue' | 'train' = 'queue'): Promise<Preflight> => {
+  const preflight = await forgeOf(payload, product).then(({ backend, repo, kind }) => (mode === 'train' ? preflightTrain : preflightQueue)(backend.forge, repo, kind)).catch(failure)
   await payload.update({ collection: 'products', id: product, data: { mergePreflight: preflight }, overrideAccess: true })
   return preflight
 }

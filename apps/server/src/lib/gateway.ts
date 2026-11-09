@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import pg from 'pg'
 import type { Payload, PayloadRequest } from 'payload'
 import { parse, stringify } from 'yaml'
+import { envInt } from './db-pool'
 import { PRESETS, presetOf } from './providers'
 import { decrypt, encrypt } from './secrets'
 
@@ -59,15 +60,15 @@ export const DEFAULT_ROUTER_SHARE = 20
 const routerShare = (ws: Ws): number => ws.routerBudgetShare ?? DEFAULT_ROUTER_SHARE
 
 /**
- * Workspace key: Block. Owner-session key: Audit — subscription traffic costs the Workspace nothing, the gateway only prices it.
+ * Workspace key: Block. The owner-session key has its own USD budget (`SESSION_BUDGET_USD`, default 100), Audit only: subscription traffic costs the Workspace nothing, the gateway only prices it.
  * `share` is the percent of the budget this key gets; tokens and USD cents round down, so the parts of a split never sum to more than the budget.
  */
 export const shareOf = (base: number, tokens: boolean, share: number): number => (share === 100 ? base : tokens ? Math.floor((base * share) / 100) : Math.floor(base * share) / 100)
 
-const budget = (ws: Ws, onBudgetExceeded: 'Block' | 'Audit' = 'Block', share = 100) => {
+const budget = (ws: Ws, share = 100) => {
   const tokens = ws.budgetUnit === 'tokens'
   const base = tokens ? ws.budgetTokens30d ?? 20_000_000 : ws.budgetUsd30d ?? 50
-  return [{ name: 'monthly', limit: { unit: tokens ? 'Tokens' : 'USD', amount: shareOf(base, tokens, share) }, window: { rolling: '30d' }, onBudgetExceeded }]
+  return [{ name: 'monthly', limit: { unit: tokens ? 'Tokens' : 'USD', amount: shareOf(base, tokens, share) }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }]
 }
 
 /** Writes a secret file (0600, owned by the directory's owner so a root container leaves it readable on the host). Never logs the value. */
@@ -91,7 +92,7 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
     key: decrypt(ws.gatewayKey),
     metadata: { name: keyName(ws.slug), user: keyName(ws.slug) },
     allowedModels: [`ws-${ws.slug}/*`],
-    budgets: budget(ws, 'Block', ws.routerKey ? 100 - routerShare(ws) : 100),
+    budgets: budget(ws, ws.routerKey ? 100 - routerShare(ws) : 100),
   }
   const existing = await keyOf(ws.slug)
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
@@ -110,7 +111,7 @@ export const ensureSessionKey = async (ws: Ws): Promise<void> => {
     key: existing?.value.key ?? newKey(),
     metadata: { name: sessionKeyName(ws.slug), user: keyName(ws.slug), kind: 'owner-session' },
     allowedModels: ['sub/*', `ws-${ws.slug}/*`],
-    budgets: budget(ws, 'Audit'),
+    budgets: [{ name: 'monthly', limit: { unit: 'USD', amount: envInt(process.env, 'SESSION_BUDGET_USD', 100) }, window: { rolling: '30d' }, onBudgetExceeded: 'Audit' }],
   }
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
   else await call('PUT', KEYS, { resources: [{ value }] })
@@ -146,7 +147,7 @@ export const ensureRouterKey = async (req: PayloadRequest, id: number | string):
     key: decrypt(ws.routerKey!),
     metadata: { name: routerKeyName(ws.slug), user: keyName(ws.slug), kind: 'router' },
     allowedModels: [...new Set(Object.values(tiers))],
-    budgets: budget(ws, 'Block', routerShare(ws)),
+    budgets: budget(ws, routerShare(ws)),
   }
   const existing = await keyNamed(routerKeyName(ws.slug))
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })

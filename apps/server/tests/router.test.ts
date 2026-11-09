@@ -153,7 +153,7 @@ it('splits the budget between the Workspace key and the router key; without a ro
   expect(limit('sp')).toBe(10)
   const router = await conn(w, 'router')
   expect([limit('sp'), limit('sp', '-router')]).toEqual([8, 2])
-  expect(limit('sp', '-session')).toBe(10)
+  expect(limit('sp', '-session')).toBe(100)
   await set(w, { routerBudgetShare: 50 })
   expect([limit('sp'), limit('sp', '-router')]).toEqual([5, 5])
   await payload.delete({ collection: 'connections', id: router.id, ...o })

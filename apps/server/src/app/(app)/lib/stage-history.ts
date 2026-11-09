@@ -1,7 +1,7 @@
 import { STAGES, type Stage } from './needs-you'
 
 type Doc = Record<string, any>
-export type RunLine = { id: number; status: string; mode: string; reason: string | null; duration: string | null; costUsd: number | null; createdAt: string; evidence: string }
+export type RunLine = { id: number; status: string; mode: string; reason: string | null; duration: string | null; costUsd: number | null; unpricedTokens: number | null; createdAt: string; evidence: string }
 export type CheckLine = { name: string; state: 'passed' | 'failed' | 'pending' }
 export type StageHistoryData = {
   stage: Stage
@@ -41,7 +41,7 @@ export const stageHistory = (stage: Stage, i: StageHistoryInput): StageHistoryDa
   const runs = i.runs.filter((r) => r.stage === stage)
   const out: StageHistoryData = {
     stage,
-    runs: runs.map((r) => ({ id: r.id, status: r.status, mode: r.mode, reason: r.error ?? null, duration: formatDuration(seconds(r)), costUsd: r.costUsd ?? null, createdAt: r.createdAt, evidence: firstLine(r.evidence) })),
+    runs: runs.map((r) => ({ id: r.id, status: r.status, mode: r.mode, reason: r.error ?? null, duration: formatDuration(seconds(r)), costUsd: r.costUsd ?? null, unpricedTokens: r.reconcileStatus === 'unpriced' ? r.gatewayTokensTotal ?? 0 : null, createdAt: r.createdAt, evidence: firstLine(r.evidence) })),
   }
   if (stage === 'plan') out.plan = { markdown: i.plan, decisions: i.decisions.map((d) => ({ id: d.id, title: d.title, answer: i.answers[d.id] ?? null })) }
   if (stage === 'build' && i.mr) out.mr = i.mr

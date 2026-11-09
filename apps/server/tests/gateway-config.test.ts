@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parse, stringify } from 'yaml'
-import { PRESETS } from '../src/lib/providers'
+import { PRESETS, type Preset } from '../src/lib/providers'
 import { buildConfig } from './helpers/gateway-config'
 
 it('the template with one entry per preset and both budget units is a structurally valid gateway config', () => {
@@ -25,6 +25,23 @@ it('the template with one entry per preset and both budget units is a structural
     }
   }
   for (const f of text.match(/\/cfg\/[\w.-]+/g) ?? []) expect(existsSync(join(dir, f.slice(5))), f).toBe(true)
+})
+
+it.each(Object.keys(PRESETS) as Preset[])('%s: the secret lands in config.yaml only for inline auth, never in the rendered entry otherwise', (p) => {
+  const def = PRESETS[p]
+  const secret = p === 'bedrock-iam' ? JSON.stringify({ accessKeyId: 'AKIA-SECRET-MARK', secretAccessKey: 'SECRET-MARK' }) : 'SECRET-MARK'
+  const entry = JSON.stringify(def.render(p, { baseUrl: 'https://up.example/v1', awsRegion: 'us-east-1', vertexProject: 'p', vertexRegion: 'r', azureResource: 'res', azureTenant: 'tn', azureClient: 'cl' }, `/cfg/${p}.${def.secret.ext}`, def.auth === 'inline' ? secret : undefined))
+  if (def.auth === 'inline') expect(entry).toContain('SECRET-MARK')
+  else expect(entry).not.toContain('SECRET-MARK')
+  if (def.auth === 'file') expect(entry).toContain(`/cfg/${p}.${def.secret.ext}`)
+  if (def.auth === 'ambient') expect(entry).not.toContain('/cfg/')
+})
+
+it('inline secrets are written into config.yaml, never into a provider file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agw-'))
+  buildConfig(dir)
+  expect(readFileSync(join(dir, 'config.yaml'), 'utf8')).toContain('AKIAXXXXXXXXXXXXXXXX')
+  for (const f of readdirSync(dir).filter((x) => x !== 'config.yaml')) expect(readFileSync(join(dir, f), 'utf8'), f).not.toContain('AKIAXXXXXXXXXXXXXXXX')
 })
 
 it('with OTEL_ENABLED=1 init renders frontendPolicies.tracing with sampling on (v1.7.0 samples nothing by default), not the deprecated config.tracing', () => {
