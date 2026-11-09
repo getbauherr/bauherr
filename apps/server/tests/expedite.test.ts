@@ -163,7 +163,7 @@ describe('one at a time', () => {
     expect(await runs(b.id, 'plan')).toHaveLength(1)
   })
 
-  it('Settings > Workflow off: the label is ignored with a Comment and Triage runs', async () => {
+  it('Settings > Board & WIP off: the label is ignored with a Comment and Triage runs', async () => {
     await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: false }, ...o })
     const i = await issue('prod down')
     await poll()

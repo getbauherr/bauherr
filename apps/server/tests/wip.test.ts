@@ -194,7 +194,7 @@ describe('counting and workspaces', () => {
     expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
   })
 
-  it('counts the Release column too (Settings > Workflow shows it)', async () => {
+  it('counts the Release column too (Settings > Board & WIP shows it)', async () => {
     await ticket('rel', 'release')
     expect(await wip.wipCount(payload, ws, 'release')).toBe(1)
   })
