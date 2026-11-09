@@ -21,8 +21,10 @@ export const anchorTicket = async (payload: Payload, product: Doc): Promise<Doc 
   return upsertTicket(payload, { workspace: id(product.workspace), product: product.id, externalId: issue.id, number: issue.number, url: issue.url, title: issue.title, state: 'open', labels: issue.labels }, null)
 }
 
-/** Starts a scan Run on the Product's anchor Ticket unless one is active; `created` says whether it is new. */
+/** Starts a scan Run (always autonomous) on the Product's anchor Ticket unless one is active and records `lastScanAt` for a new one. */
 export const startSecurityScan = async (payload: Payload, productId: number | string): Promise<{ run: Doc; created: boolean }> => {
   const product = (await payload.findByID({ collection: 'products', id: productId, ...o })) as Doc
-  return startRunIfNeeded(payload, await anchorTicket(payload, product), 'scan')
+  const started = await startRunIfNeeded(payload, await anchorTicket(payload, product), 'scan')
+  if (started.created) await payload.update({ collection: 'products', id: product.id, data: { securityScan: { ...product.securityScan, lastScanAt: new Date().toISOString() } }, ...o })
+  return started
 }

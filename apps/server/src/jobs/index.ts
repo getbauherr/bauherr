@@ -178,7 +178,7 @@ export const abandonRun = async (
   const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
   // The successor is the strong retry (ladder step 2); an investigation Run stays one.
-  const escalation = run.escalation ?? (run.investigation || run.stage === 'triage' ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
+  const escalation = run.escalation ?? (run.investigation || run.stage === 'triage' || run.stage === 'scan' ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
@@ -290,7 +290,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   for (const run of stale.docs) {
     try {
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
-      if (await abandonRun(payload, run, { reason, escalate: run.stage !== 'triage', staleBefore: before })) handled++
+      if (await abandonRun(payload, run, { reason, escalate: run.stage !== 'triage' && run.stage !== 'scan', staleBefore: before })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }

@@ -65,3 +65,44 @@ it('pack/workflow-security.yaml loads: packed() has the scan stage with the secu
   expect(packed().map((s) => s.name)).toEqual(['triage', 'plan', 'build', 'review', 'release', 'done', 'scan'])
   expect((await import('../src/jobs')).excludedLabels()).toContain('bauherr:security-scan')
 })
+
+it('in a session-mode Workspace a scan Run is autonomous, records lastScanAt, and no session can claim it', async () => {
+  const { startSecurityScan, anchorTicket } = await import('../src/lib/security-scan')
+  const { callTool } = await import('../src/lib/mcp-tools')
+  const ws = (await payload.find({ collection: 'workspaces', limit: 1, ...o })).docs[0]!
+  const p = (await payload.create({ collection: 'products', data: { name: 'api', slug: 'api', workspace: ws.id as number, securityScan: { cron: '0 0 5 * * 1' } }, ...o })).id as number
+  const connection = (await payload.create({ collection: 'connections', data: { name: 'gh2', kind: 'github', workspace: ws.id as number }, ...o })).id as number
+  await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/api', product: p, connection, workspace: ws.id as number }, ...o })
+  const user = await payload.create({ collection: 'bauherren', data: { email: 'scan@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws.id as number }] }, ...o })
+  const call = (name: string, input: unknown) => callTool({ payload, user, actor: { kind: 'human' } } as never, name, input)
+
+  const { run, created } = await startSecurityScan(payload, p)
+  expect(created).toBe(true)
+  expect(run).toMatchObject({ mode: 'autonomous', status: 'queued' })
+  const after = (await payload.findByID({ collection: 'products', id: p, depth: 0, ...o })) as Record<string, any>
+  expect(after.securityScan.lastScanAt).toBeTruthy()
+  expect(after.securityScan.cron).toBe('0 0 5 * * 1')
+  await expect(call('claim_run', { runId: run.id })).rejects.toThrow(/not awaiting_session/)
+
+  const anchor = await anchorTicket(payload, after)
+  const legacy = await payload.create({ collection: 'runs', data: { ticket: anchor.id, stage: 'scan', mode: 'session', status: 'awaiting_session', workspace: ws.id as number }, ...o })
+  await expect(call('claim_run', { runId: legacy.id })).rejects.toThrow(/not awaiting_session/)
+  expect((await payload.findByID({ collection: 'runs', id: legacy.id, depth: 0, ...o })).status).toBe('awaiting_session')
+  const next: any = await call('claim_next', {}).catch(() => null)
+  expect(next?.run?.id).not.toBe(legacy.id)
+})
+
+it('an expired session scan lease is abandoned without a strong successor', async () => {
+  const jobs = await import('../src/jobs')
+  const { anchorTicket } = await import('../src/lib/security-scan')
+  const prod = (await payload.find({ collection: 'products', where: { slug: { equals: 'api' } }, limit: 1, ...o })).docs[0] as Record<string, any>
+  const anchor = await anchorTicket(payload, prod)
+  await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: anchor.id } }, { status: { in: ['awaiting_session', 'queued'] } }] }, data: { status: 'cancelled' }, ...o })
+  const r = await payload.create({ collection: 'runs', data: { ticket: anchor.id, stage: 'scan', mode: 'session', status: 'running', heartbeatAt: new Date(0).toISOString(), workspace: id(prod.workspace) }, ...o })
+  expect(await jobs.expireStaleSessions(payload)).toBeGreaterThan(0)
+  const scans = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: anchor.id } }, { stage: { equals: 'scan' } }, { escalation: { exists: true } }] }, ...o })).docs
+  expect(scans).toHaveLength(0)
+  expect((await payload.findByID({ collection: 'runs', id: r.id, depth: 0, ...o })).status).toBe('abandoned')
+})
+
+const id = (v: unknown) => (typeof v === 'object' && v ? (v as { id: number }).id : (v as number))
