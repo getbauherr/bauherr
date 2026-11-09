@@ -263,6 +263,12 @@ export class FakeBackend implements Backend {
         }
         return out;
       },
+      compare: async (repo, base, head) => {
+        const r = this.repo(repo);
+        const files = (ref: string) => (r.branches.get(ref) ?? [...r.branches.values()].find((b) => b.sha === ref))?.files ?? new Map<string, string>();
+        const [a, b] = [files(base), files(head)];
+        return [...b].filter(([name, content]) => a.get(name) !== content).map(([name, content]) => `--- a/${name}\n+++ b/${name}\n${content.split('\n').map((l) => `+${l}`).join('\n')}`).join('\n');
+      },
       listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
       rerunFailed: async (repo, checks) => {
         const r = this.repo(repo);

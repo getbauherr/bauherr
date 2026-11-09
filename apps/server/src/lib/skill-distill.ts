@@ -89,8 +89,14 @@ const extractionInput = async (payload: Payload, t: Doc): Promise<string> => {
   const rounds = runs
     .filter((r) => r.stage === 'review' && r.verdict === 'changes' && Array.isArray(r.findings))
     .map((r, i) => `Round ${i + 1}:\n${(r.findings as Doc[]).map((f) => `- [${f.severity}] ${f.file}:${f.line} ${f.msg} (${f.scenario})`).join('\n')}`)
-  const files = await prOf(payload, t, { fallback: false }).then((m) => (m ? m.backend.forge.listPullRequestFiles(m.repo, m.pr.number) : [])).catch(() => [])
-  const text = [`Ticket: ${t.title}`, `Goal:\n${(goal ?? []).map((g) => `- ${g}`).join('\n') || '(none recorded)'}`, `Review findings per round:\n${rounds.join('\n\n') || '(a later fix names this Ticket)'}`, `Changed files:\n${files.map((f) => `${f.status} ${f.filename} +${f.additions} -${f.deletions}`).join('\n')}`].join('\n\n')
+  const m = await prOf(payload, t, { fallback: false }).catch(() => null)
+  const base = runs.find((r) => r.stage === 'review' && r.reviewedSha)?.reviewedSha as string | undefined
+  const diff = m && base ? await m.backend.forge.compare(m.repo, base, m.pr.headSha).catch(() => '') : ''
+  const files = m && !diff ? await m.backend.forge.listPullRequestFiles(m.repo, m.pr.number).catch(() => []) : []
+  const head = [`Ticket: ${t.title}`, `Goal:\n${(goal ?? []).map((g) => `- ${g}`).join('\n') || '(none recorded)'}`, `Review findings per round:\n${rounds.join('\n\n') || '(a later fix names this Ticket)'}`].join('\n\n')
+  const tail = diff ? 'Diff from the first reviewed head to the merged head:\n' : `Changed files:\n${files.map((f) => `${f.status} ${f.filename} +${f.additions} -${f.deletions}`).join('\n')}`
+  const room = Math.max(0, MAX_INPUT_BYTES - Buffer.byteLength(`${head}\n\n${tail}`))
+  const text = `${head}\n\n${tail}${diff ? Buffer.from(diff).subarray(0, room).toString() : ''}`
   return untrustedBlock(Buffer.from(text).subarray(0, MAX_INPUT_BYTES).toString())
 }
 

@@ -191,6 +191,8 @@ export interface Forge {
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
   listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
+  /** Unified diff text from `base` to `head` (shas or refs). */
+  compare(repo: RepoRef, base: string, head: string): Promise<string>;
   /** Check runs plus legacy commit statuses (a status is a check named after its context). */
   listChecks(repo: RepoRef, sha: string): Promise<Check[]>;
   /** Re-runs the failed jobs of the runs these checks belong to; false when nothing could be re-run (commit status, bridge, no `runId`). */

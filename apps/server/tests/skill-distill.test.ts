@@ -22,6 +22,7 @@ let lib: typeof import('../src/lib/skill-distill')
 let gateway: Server
 let testDb: TestDb
 let seq = 0
+const extractBodies: string[] = []
 const calls: { kind: 'extract' | 'subject' | 'judge'; skilled: boolean }[] = []
 const stub = { propose: PROPOSE as Record<string, unknown>, skilledOutput: 'I write a failing test first.', usage: { input_tokens: 100, output_tokens: 50 } }
 const count = (kind: string) => calls.filter((c) => c.kind === kind).length
@@ -40,6 +41,7 @@ beforeAll(async () => {
     let content: unknown[]
     if (names.includes('propose')) {
       calls.push({ kind: 'extract', skilled: false })
+      extractBodies.push(raw)
       content = [{ type: 'tool_use', id: 'u1', name: 'propose', input: stub.propose }]
     } else if (names.includes('verdict')) {
       calls.push({ kind: 'judge', skilled: false })
@@ -68,6 +70,7 @@ beforeEach(() => {
   backend.current = new FakeBackend()
   backend.current.commit(REPO, 'main', 'README.md', '# Knowledge\n')
   calls.length = 0
+  extractBodies.length = 0
   stub.propose = PROPOSE
   stub.skilledOutput = 'I write a failing test first.'
   stub.usage = { input_tokens: 100, output_tokens: 50 }
@@ -90,7 +93,36 @@ const seed = async (rounds: number, ws?: number) => {
 const proposals = async (ticket: number) => (await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: ticket } }, depth: 0, ...o })).docs as Record<string, any>[]
 const knowledgePrs = async () => forge().listPullRequests(REPO, 'all')
 
+/** A Ticket whose review ran at `base` and whose factory PR fixes it in `a.ts`. */
+const seedWithPr = async (fixLine: string) => {
+  const { id, ws } = await seed(1)
+  const t = (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
+  const product = Number(t.product)
+  const conn = await payload.create({ collection: 'connections', data: { name: 'src', kind: 'github', workspace: ws }, ...o } as never)
+  await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/web', product, connection: conn.id, workspace: ws }, ...o } as never)
+  const branch = `bauherr/${t.number}-fix`
+  const reviewed = await backend.current.forge.createBranch('acme/web', branch)
+  backend.current.commit('acme/web', branch, 'a.ts', `${fixLine}\n`)
+  const pr = await backend.current.forge.openPullRequest('acme/web', { title: 'fix', body: 'b', head: branch, base: 'main' })
+  await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'succeeded', mode: 'session', workspace: ws, artifacts: { prUrl: pr.url } }, ...o } as never)
+  const review = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }] }, ...o })).docs[0]!
+  await payload.update({ collection: 'runs', id: review.id, data: { reviewedSha: reviewed.sha }, ...o } as never)
+  return id
+}
+
 describe('distillSkill', () => {
+  it('extraction input carries the diff from the first reviewed head, capped at MAX_INPUT_BYTES with the findings kept', async () => {
+    const id = await seedWithPr('FIXLINE '.repeat(20_000))
+    await lib.distillSkill(payload, id)
+    const sent = extractBodies[0]!
+    expect(sent).toContain('Diff from the first reviewed head to the merged head')
+    expect(sent).toContain('+FIXLINE')
+    expect(sent).toContain('no test')
+    expect(sent).not.toContain('Changed files:')
+    expect(Buffer.byteLength(JSON.parse(sent).messages[0].content)).toBeLessThan(lib.MAX_INPUT_BYTES + 2000)
+  })
+
+
   it('reviewRounds=0 and no later fix: no row and no model call', async () => {
     const { id } = await seed(0)
     expect(await lib.distillSkill(payload, id)).toBe('ineligible')

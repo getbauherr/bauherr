@@ -340,6 +340,10 @@ class GitlabForge implements Forge {
       };
     });
   }
+  async compare(repo: RepoRef, base: string, head: string) {
+    const r = await this.h.json('GET', `/projects/${enc(repo)}/repository/compare?from=${enc(base)}&to=${enc(head)}`);
+    return (r.diffs as any[]).map((d) => `--- a/${d.old_path}\n+++ b/${d.new_path}\n${d.diff}`).join('\n');
+  }
   async rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean> {
     const runs = [...new Set(checks.map((c) => c.runId).filter((r): r is number => !!r))];
     await Promise.all(runs.map((r) => this.h.json('POST', `/projects/${enc(repo)}/pipelines/${r}/retry`)));
