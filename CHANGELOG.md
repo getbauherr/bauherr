@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. Format: [Keep a
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-09
+
+### Features
+- Upgrade agentgateway v1.6.0 → v1.7.0 ([#444](https://github.com/getbauherr/bauherr/issues/444), [#447 chore(deps): agentgateway v1.7.0 (Refs #444)](https://github.com/getbauherr/bauherr/pull/447))
+
+
 ## 0.1.0 - 2026-11-09
 
 ### Features
