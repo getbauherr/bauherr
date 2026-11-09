@@ -45,11 +45,12 @@ const inWorkspace = (c: { workspace: { id: number } | null }) => {
   return c.workspace.id
 }
 
-export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount' }, async ({ user, workspace, payload, w }, fd) => {
+export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount', routerBudgetShare: 'routerBudgetShare' }, async ({ user, workspace, payload, w }, fd) => {
   const wsId = inWorkspace({ workspace })
   const unit = s(fd, 'budgetUnit') === 'tokens' ? 'tokens' : 'usd'
   const amount = s(fd, 'budgetAmount')
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount) }
+  if (s(fd, 'routerBudgetShare')) data.routerBudgetShare = Number(s(fd, 'routerBudgetShare'))
   if (isAdmin(user)) {
     const { defaultModels: defaults, slugs } = await presetFor(wsId)
     const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)

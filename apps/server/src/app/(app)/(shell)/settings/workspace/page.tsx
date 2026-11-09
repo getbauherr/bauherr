@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { EmptyState } from '../../../components/EmptyState'
 import { Field, PickField, SettingsForm } from '../../../components/SettingsForm'
 import { Table } from '../../../components/ui/table'
+import { shareOf } from '../../../../../lib/gateway'
 import { isAdmin, listRepos, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { ago } from '../../../lib/format'
@@ -10,6 +11,13 @@ import { KnowledgeRepo } from '../../../components/KnowledgeRepo'
 import { createWorkspace, rotateWorkspaceKey, saveWorkspace } from '../actions'
 
 export const dynamic = 'force-dynamic'
+
+const split = (w: { budgetUnit: string; budgetUsd30d: number | null; budgetTokens30d: number | null; routerBudgetShare: number }) => {
+  const tokens = w.budgetUnit === 'tokens'
+  const base = (tokens ? w.budgetTokens30d : w.budgetUsd30d) ?? 0
+  const fmt = (n: number) => (tokens ? `${n.toLocaleString('en')} tokens` : `$${n.toFixed(2)}`)
+  return `${fmt(shareOf(base, tokens, 100 - w.routerBudgetShare))} direct / ${fmt(shareOf(base, tokens, w.routerBudgetShare))} auto`
+}
 
 const SECTION = 'flex flex-col gap-4'
 const PAIR = 'grid grid-cols-2 gap-4 max-sm:grid-cols-1'
@@ -56,6 +64,12 @@ export default async function WorkspaceSettings() {
           <Field name="budgetUnit" label="Budget unit" options={admin ? [['usd', 'USD'], ['tokens', 'Tokens']] : [['usd', 'USD']]} defaultValue={usd ? 'usd' : w.budgetUnit} />
           <Field name="budgetAmount" label="Budget per 30 days" type="number" min={0} step="any" defaultValue={usd ? w.budgetUsd30d ?? '' : w.budgetTokens30d ?? ''} />
         </div>
+        {w.hasRouter && (
+          <>
+            <Field name="routerBudgetShare" label="Budget share for auto (%)" type="number" min={1} max={99} step={1} defaultValue={w.routerBudgetShare} />
+            <p className="small text-muted-foreground">{split(w)}</p>
+          </>
+        )}
         {admin && <p className="small text-muted-foreground">{w.gatewayOn ? (w.spend ? `Spent in the last 30 days: $${w.spend.spentUsd.toFixed(2)}` : 'Spend unavailable.') : 'Gateway off: spend is not tracked.'}</p>}
         {admin && (
           <>

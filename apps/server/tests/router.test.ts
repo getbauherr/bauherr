@@ -14,11 +14,13 @@ const o = { overrideAccess: true } as const
 const dir = mkdtempSync(join(tmpdir(), 'router-'))
 const cfgPath = join(dir, 'router', 'config.yaml')
 
-type Res = { id: string; value: { key: string; allowedModels: string[]; metadata: { name: string } } }
+type Res = { id: string; value: { key: string; allowedModels: string[]; metadata: { name: string }; budgets: { limit: { amount: number }; onBudgetExceeded: string }[] } }
 let store: Res[] = []
+let puts: string[] = []
 const fakeGateway = async (url: string, init?: { method?: string; body?: string }) => {
   const id = url.split('/').pop()!
   const body = init?.body ? JSON.parse(init.body) : undefined
+  if (init?.method === 'PUT') puts.push(body.value?.metadata.name ?? body.resources[0].value.metadata.name)
   if (init?.method === 'PUT' && body.resources) store.push(...body.resources.map((r: { value: Res['value'] }) => ({ id: `k${store.length + 1}`, value: r.value })))
   else if (init?.method === 'PUT') store = store.map((r) => (r.id === id ? { id, value: body.value } : r))
   else if (init?.method === 'DELETE') store = store.filter((r) => r.id !== id)
@@ -116,12 +118,66 @@ it('a tier value ending in /auto is rejected, also for a router-only Workspace',
 it('a second Workspace with a router Connection is rejected', async () => {
   const a = await ws('rt-a')
   const b = await ws('rt-b')
-  await conn(a, 'router')
+  const first = await conn(a, 'router')
   await expect(conn(b, 'router')).rejects.toThrow(/invalid: provider/)
+  await payload.delete({ collection: 'connections', id: first.id, ...o })
 })
 
 it('the gateway code never compares against the router enum value in SQL: older migrations render the gateway before that value exists', async () => {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(new URL('../src/lib/gateway.ts', import.meta.url), 'utf8')
   expect(src).not.toMatch(/provider:\s*\{\s*(equals|not_equals|in|not_in):\s*\[?\s*'router'/)
+})
+
+const limit = (slug: string, suffix = '') => store.find((r) => r.value.metadata.name === `workspace-${slug}${suffix}`)?.value.budgets[0]?.limit.amount
+const blockSum = (slug: string) => store.filter((r) => r.value.metadata.name.startsWith(`workspace-${slug}`) && r.value.budgets[0]?.onBudgetExceeded === 'Block').reduce((n, r) => n + r.value.budgets[0]!.limit.amount, 0)
+const set = (id: number, data: Record<string, unknown>) => payload.update({ collection: 'workspaces', id, data: data as never, ...o })
+
+it('splits the budget between the Workspace key and the router key; without a router the Workspace key has all of it', async () => {
+  const w = await ws('sp')
+  await conn(w, 'anthropic')
+  await set(w, { budgetUsd30d: 10 })
+  expect(limit('sp')).toBe(10)
+  const router = await conn(w, 'router')
+  expect([limit('sp'), limit('sp', '-router')]).toEqual([8, 2])
+  expect(limit('sp', '-session')).toBe(10)
+  await set(w, { routerBudgetShare: 50 })
+  expect([limit('sp'), limit('sp', '-router')]).toEqual([5, 5])
+  await payload.delete({ collection: 'connections', id: router.id, ...o })
+  expect(limit('sp')).toBe(10)
+  expect(limit('sp', '-router')).toBeUndefined()
+})
+
+it('token budgets round down so the parts never exceed the budget', async () => {
+  const w = await ws('tk')
+  await conn(w, 'anthropic')
+  await set(w, { budgetUnit: 'tokens', budgetTokens30d: 20_000_000 })
+  const router = await conn(w, 'router')
+  expect([limit('tk'), limit('tk', '-router')]).toEqual([16_000_000, 4_000_000])
+  await set(w, { budgetTokens30d: 7, routerBudgetShare: 33 })
+  expect(limit('tk')! + limit('tk', '-router')!).toBeLessThanOrEqual(7)
+  await payload.delete({ collection: 'connections', id: router.id, ...o })
+})
+
+it('changing routerBudgetShare re-renders both keys once each', async () => {
+  const w = await ws('rs')
+  await conn(w, 'anthropic')
+  const router = await conn(w, 'router')
+  puts = []
+  await set(w, { routerBudgetShare: 40 })
+  const count = (n: string) => puts.filter((p) => p === n).length
+  expect([count('workspace-rs'), count('workspace-rs-router')]).toEqual([1, 1])
+  await payload.delete({ collection: 'connections', id: router.id, ...o })
+})
+
+it('Block limits of a Workspace never sum to more than the budget over shares 1-99', async () => {
+  const w = await ws('pr')
+  await conn(w, 'anthropic')
+  await set(w, { budgetUsd30d: 10 })
+  const router = await conn(w, 'router')
+  for (let share = 1; share <= 99; share++) {
+    await set(w, { routerBudgetShare: share })
+    expect(blockSum('pr')).toBeLessThanOrEqual(10)
+  }
+  await payload.delete({ collection: 'connections', id: router.id, ...o })
 })

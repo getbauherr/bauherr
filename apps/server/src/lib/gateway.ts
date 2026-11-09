@@ -9,7 +9,7 @@ import { decrypt, encrypt } from './secrets'
 
 export const DEFAULT_MODEL_BY_TIER = { cheap: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' }
 
-type Ws = { id: number | string; slug: string; gatewayKey?: string | null; routerKey?: string | null; budgetUsd30d?: number | null; budgetUnit?: string | null; budgetTokens30d?: number | null }
+type Ws = { id: number | string; slug: string; gatewayKey?: string | null; routerKey?: string | null; budgetUsd30d?: number | null; budgetUnit?: string | null; budgetTokens30d?: number | null; routerBudgetShare?: number | null }
 type Resource = { id: string; value: { key: string; metadata?: { name?: string; kind?: string } } }
 
 /** Hooks no-op without a gateway (tests, seed outside compose). */
@@ -53,10 +53,22 @@ const keyNamed = async (name: string): Promise<Resource | undefined> =>
   (await call<{ resources: Resource[] }>('GET', KEYS)).resources.find((r) => r.value.metadata?.name === name)
 const keyOf = (slug: string) => keyNamed(keyName(slug))
 
-/** Workspace key: Block. Owner-session key: Audit — subscription traffic costs the Workspace nothing, the gateway only prices it. */
-const budget = (ws: Ws, onBudgetExceeded: 'Block' | 'Audit' = 'Block') => [
-  { name: 'monthly', limit: ws.budgetUnit === 'tokens' ? { unit: 'Tokens', amount: ws.budgetTokens30d ?? 20_000_000 } : { unit: 'USD', amount: ws.budgetUsd30d ?? 50 }, window: { rolling: '30d' }, onBudgetExceeded },
-]
+export const DEFAULT_ROUTER_SHARE = 20
+
+/** Percent of the budget for the router key (1-99). */
+const routerShare = (ws: Ws): number => ws.routerBudgetShare ?? DEFAULT_ROUTER_SHARE
+
+/**
+ * Workspace key: Block. Owner-session key: Audit — subscription traffic costs the Workspace nothing, the gateway only prices it.
+ * `share` is the percent of the budget this key gets; tokens and USD cents round down, so the parts of a split never sum to more than the budget.
+ */
+export const shareOf = (base: number, tokens: boolean, share: number): number => (share === 100 ? base : tokens ? Math.floor((base * share) / 100) : Math.floor(base * share) / 100)
+
+const budget = (ws: Ws, onBudgetExceeded: 'Block' | 'Audit' = 'Block', share = 100) => {
+  const tokens = ws.budgetUnit === 'tokens'
+  const base = tokens ? ws.budgetTokens30d ?? 20_000_000 : ws.budgetUsd30d ?? 50
+  return [{ name: 'monthly', limit: { unit: tokens ? 'Tokens' : 'USD', amount: shareOf(base, tokens, share) }, window: { rolling: '30d' }, onBudgetExceeded }]
+}
 
 /** Writes a secret file (0600, owned by the directory's owner so a root container leaves it readable on the host). Never logs the value. */
 export const writeSecretFile = async (path: string, value: string): Promise<void> => {
@@ -79,7 +91,7 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
     key: decrypt(ws.gatewayKey),
     metadata: { name: keyName(ws.slug), user: keyName(ws.slug) },
     allowedModels: [`ws-${ws.slug}/*`],
-    budgets: budget(ws),
+    budgets: budget(ws, 'Block', ws.routerKey ? 100 - routerShare(ws) : 100),
   }
   const existing = await keyOf(ws.slug)
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
@@ -134,7 +146,7 @@ export const ensureRouterKey = async (req: PayloadRequest, id: number | string):
     key: decrypt(ws.routerKey!),
     metadata: { name: routerKeyName(ws.slug), user: keyName(ws.slug), kind: 'router' },
     allowedModels: [...new Set(Object.values(tiers))],
-    budgets: budget(ws),
+    budgets: budget(ws, 'Block', routerShare(ws)),
   }
   const existing = await keyNamed(routerKeyName(ws.slug))
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
@@ -146,11 +158,12 @@ export const syncRouterKey = async (req: PayloadRequest, id: number | string): P
   if ((await loadWs(req, id)).routerKey) await ensureRouterKey(req, id)
 }
 
-/** Revokes the router key and forgets it; the next `router` Connection mints a new one. */
+/** Revokes the router key and forgets it (the next `router` Connection mints a new one), then gives the Workspace key the whole budget again. */
 export const revokeRouterKey = async (req: PayloadRequest, id: number | string, slug: string): Promise<void> => {
   const existing = await keyNamed(routerKeyName(slug))
   if (existing) await call('DELETE', `${KEYS}/${existing.id}`)
   await req.payload.update({ collection: 'workspaces', id, data: { routerKey: null }, overrideAccess: true, req })
+  await ensureKey(req, id)
 }
 
 /** Replaces the Workspace key; the old key stops working. */
