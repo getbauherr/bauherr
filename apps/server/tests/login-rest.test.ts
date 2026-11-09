@@ -25,7 +25,7 @@ afterAll(async () => {
 
 const account = (email: string) => payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
 const login = (email: string, password = 'pw-123456', ip?: string) =>
-  POST(new Request('http://localhost/api/bauherren/login', { method: 'POST', headers: { 'content-type': 'application/json', ...(ip && { 'x-forwarded-for': `${ip}, 10.0.0.1` }) }, body: JSON.stringify({ email, password }) }), { params: Promise.resolve({ slug: ['bauherren', 'login'] }) })
+  POST(new Request('http://localhost/api/bauherren/login', { method: 'POST', headers: { 'content-type': 'application/json', ...(ip && { 'x-forwarded-for': `203.0.113.9, ${ip}` }) }, body: JSON.stringify({ email, password }) }), { params: Promise.resolve({ slug: ['bauherren', 'login'] }) })
 
 it('REST sign-in answers like Payload and 2 parallel sign-ins keep both sessions', async () => {
   const email = 'rest-two@x.io'

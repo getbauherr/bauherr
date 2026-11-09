@@ -14,8 +14,8 @@ const maxIpAttempts = () => Number(process.env.LOGIN_IP_MAX_ATTEMPTS) || MAX_IP_
 export const IP_WINDOW_MS = 60_000
 const attempts = new Map<string, { n: number; reset: number }>()
 
-/** First hop of `x-forwarded-for`; undefined without the header, which skips the IP limit (Next fills it with the socket address when no proxy sets it). */
-export const clientIp = (headers: Headers): string | undefined => headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined
+/** Last hop of `x-forwarded-for` (the address the nearest proxy saw; earlier hops are client-supplied); undefined without the header, which skips the IP limit (Next fills it with the socket address when no proxy sets it). */
+export const clientIp = (headers: Headers): string | undefined => headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() || undefined
 
 const ipLimited = (ip: string): boolean => {
   const now = Date.now()
