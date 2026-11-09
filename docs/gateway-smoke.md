@@ -64,9 +64,15 @@ A Workspace can hold several `llm-provider` Connections. Each has a `slug` (`[a-
 
 Upgrade: migration `20261102_150144_connection_slugs` gives existing Connections a slug (the preset name), prefixes the stored tiers with it and, when the gateway env is set, rewrites the provider files and `config.yaml` (best effort; saving any Connection redoes it). The Runner then sends `ws-<workspace>/<connection>/<model>`.
 
+### Upgrading agentgateway to v1.7.0
+
+- MCP session key: with `config.session.key` unset, v1.7.0 generates a key and, in `storage.mode: hybrid` (ours), stores it in the gateway database (`config_store.rs` `session_key`, `config.rs` `ensure_session_key`). It survives restarts and `renderModels` rewrites of `config.yaml`; nothing to configure. MCP sessions opened before the upgrade are rejected once, clients reconnect. Do not drop the gateway database without expecting that.
+- Dynamic backends (`Backend::Dynamic`) may not reach loopback or link-local addresses (`config.backend.allowDynamicLoopback`). Bauherr configures none: provider `baseUrl` hosts are static backends and unaffected.
+- `request.headers["x"]` returns a list when a header is repeated. Our CEL reads single-valued headers only.
+
 ### Credentials in config.yaml
 
-agentgateway v1.6 reads AWS IAM pairs and Entra client secrets only inline, so `bedrock-iam` and `foundry-entra` write the secret in plain text into `config.yaml` (rewritten 0600 by `renderModels`; anyone who can read that file or the gateway admin API `GET /api/config` can read the credential, not checked here). The other presets keep the secret in a file and stay file-only. Never use a key with more rights than model invocation. `config.yaml` and the provider files are 0600 and written by the app (root in `compose.yaml`); the gateway container must run as the same uid (`user: "0"` in `compose.yaml`) or it cannot read them.
+agentgateway v1.7 reads AWS IAM pairs and Entra client secrets only inline, so `bedrock-iam` and `foundry-entra` write the secret in plain text into `config.yaml` (rewritten 0600 by `renderModels`; anyone who can read that file or the gateway admin API `GET /api/config` can read the credential, not checked here). The other presets keep the secret in a file and stay file-only. Never use a key with more rights than model invocation. `config.yaml` and the provider files are 0600 and written by the app (root in `compose.yaml`); the gateway container must run as the same uid (`user: "0"` in `compose.yaml`) or it cannot read them.
 
 Ambient presets (`*-ambient`) use the identity of the gateway process, which every Workspace would share. They are only accepted while the instance has exactly one Workspace, and a second Workspace is refused while one exists.
 
