@@ -56,10 +56,10 @@ let n_ = 0
 const order = async () => (await call('list_frontier', {})).map((t: any) => t.number)
 
 /** An open Ticket in `stage` on the fake forge and locally; `builtBy` adds a succeeded Build Run with that label, `awaiting` an awaiting_session Run of `stage`. */
-const ticket = async (title: string, stage: 'build' | 'review', opts: { builtBy?: string; awaiting?: boolean } = { awaiting: true }) => {
+const ticket = async (title: string, stage: 'build' | 'review', opts: { builtBy?: string; awaiting?: boolean; expedite?: boolean } = { awaiting: true }) => {
   const labels = [`bauherr:stage:${stage}`]
   const issue = await fake.tickets(repo).create({ title, labels })
-  const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, labels, product, workspace: ws, rank: title }, ...o })
+  const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, labels, product, workspace: ws, rank: title, expedite: !!opts.expedite }, ...o })
   if (opts.builtBy) await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', status: 'succeeded', mode: 'session', sessionLabel: opts.builtBy, workspace: ws }, ...o })
   const run = opts.awaiting ? await payload.create({ collection: 'runs', data: { ticket: t.id, stage, status: 'awaiting_session', mode: 'session', workspace: ws }, ...o }) : null
   return { id: t.id as number, number: issue.number, n: String(issue.number), run }
@@ -97,6 +97,18 @@ describe('stages argument (#416)', () => {
     const r = await call('claim_next', { stages: ['review'], session: 'x' })
     expect(r).toBeNull()
     expect((await call('claim_next', { stages: ['review'], session: 'y' })).run.id).toBe(review.run!.id)
+  })
+
+  it('an expedite Ticket in Build is claimed before a normal Build', async () => {
+    await ticket('a', 'build')
+    const expedite = await ticket('b', 'build', { awaiting: true, expedite: true })
+    expect((await call('claim_next', { stages: ['build'] })).run.id).toBe(expedite.run!.id)
+  })
+
+  it('an expedite Ticket in Review is not returned for stages build', async () => {
+    await ticket('a', 'review', { awaiting: true, expedite: true })
+    const build = await ticket('b', 'build')
+    expect((await call('claim_next', { stages: ['build'] })).run.id).toBe(build.run!.id)
   })
 
   it('an unknown stage is an error', async () => {
