@@ -5,6 +5,8 @@ import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
+const fake = !!process.env.E2E_FAKE_FORGE // the fake forge lists repositories; the real one fails with the dummy token (the fallback)
+
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 test('Admin edits budget, adds a Connection with a missing field and a Bauherr', async ({ page }) => {
@@ -95,4 +97,40 @@ test('at 390 px the Next step bar does not cover the last field of the Workspace
   const field = page.locator('main input:visible, main select:visible, main textarea:visible').last()
   const box = (await field.boundingBox())!
   expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
+})
+
+// Lives in this file (not selects.spec.ts): it saves the whole Workspace form, so it must not run in parallel with the budget test above.
+test('Workspace: model tiers are selects with Other..., the Knowledge repo is a select or, with a failing forge, text', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('banner')).toBeVisible()
+  await page.goto('/settings/workspace')
+  const tier = page.getByLabel('Standard', { exact: true })
+  await expect(tier).toHaveRole('combobox')
+  await tier.click()
+  await expect(page.getByRole('option')).toHaveText(['Preset default (claude-sonnet-5-5)', 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'Other...'])
+  await page.getByRole('option', { name: 'Other...' }).click()
+  await expect(page.getByLabel('Standard, other')).toBeVisible()
+  await page.reload()
+
+  const repo = page.getByLabel('Repository', { exact: true })
+  if (fake) {
+    await expect(repo).toHaveRole('combobox')
+    await expect(repo).toHaveText('acme/knowledge')
+    await repo.click()
+    await page.getByRole('option', { name: 'Other...' }).click()
+    await page.getByLabel('Repository, other').fill('acme/knowledge') // the typed value must post under the field name
+  } else {
+    await expect(page.getByText('Could not list repositories; type owner/name.')).toBeVisible()
+    await expect(repo).toHaveJSProperty('tagName', 'INPUT')
+    await expect(repo).toHaveValue('acme/knowledge')
+  }
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.reload()
+  const saved = page.getByLabel('Repository', { exact: true })
+  if (fake) await expect(saved).toHaveText('acme/knowledge')
+  else await expect(saved).toHaveValue('acme/knowledge')
 })
