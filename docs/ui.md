@@ -136,6 +136,10 @@ Routes `/settings/workspace`, `/products` (list: Product, Repository, Setup word
 - Fonts are vendored (`(app)/fonts/`: Archivo variable and IBM Plex Mono 400, Latin subset, SIL OFL, licences next to them) and loaded with `next/font/local` (`display: swap`); the build needs no network. `app.css` puts the loaded families first in `--font-sans`/`--font-mono`.
 - Budget, `e2e/perf.spec.ts` (plain `e2e` job, production server): timestamps come from a MutationObserver in the page, not Playwright polling. After a click on each main nav target, settings page, a Ticket and a Run, something pending (link pending state or progress bar) or the content is visible within 100 ms and the content within 400 ms; one `PERF <route> pending=<ms> content=<ms>` line per route.
 
+## Chat
+
+One assistant chat is docked on every page. The server side (threads, page context, tools, confirmation cards, feedback, the NDJSON stream) is specified in [chat.md](chat.md); the UI is assistant-ui (`useRemoteThreadListRuntime` + `useLocalRuntime` with an adapter that consumes that stream) and picks tool widgets by the tool's `kind`, never by name.
+
 ## Theming
 
 `pnpm --filter server tokens` generates `(app)/tokens.css` from `docs/design/tokens.json` (also run by `predev`/`prebuild`; commit the result). Light and dark follow `prefers-color-scheme`; the avatar-menu Theme row (System / Light / Dark, menu stays open) sets `data-theme` and stores it in `localStorage` (`bauherr-theme`). Pages use Tailwind utilities and shadcn components; `app.css` keeps only the legacy rules still in use: the Requests page, the Intake chat, the Products pages with the form primitives (`SettingsForm.tsx`, `SettingsParts.tsx`) and a few shared helpers (`.muted`, `.small`, `.stack`, `.err`); it shrinks as they move.
