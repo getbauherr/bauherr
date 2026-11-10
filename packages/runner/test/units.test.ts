@@ -175,7 +175,7 @@ test('scan run: read-only tools, writes only .bauherr/, egress gateway-only, con
 test('conflictBase scopes the review prompt, not the triage prompt', () => {
   const base = { gatewayUrl: 'http://x', gitBaseUrl: 'http://y' };
   const review = makeCtx(base);
-  review.run.stage = 'review';
+  review.run.stage = review.run.kind = 'review';
   const triage = makeCtx({ ...base, stage: 'triage' });
   review.conflictBase = triage.conflictBase = 'abc123';
   assert.match(promptFor(review), /earlier review of abc123 was clean/);

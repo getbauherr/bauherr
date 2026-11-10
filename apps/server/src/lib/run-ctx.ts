@@ -12,6 +12,8 @@ import { webOrigin, type ConnectionInput } from './connection'
 import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
 import { read as readKnowledge } from './knowledge'
+import { kindOfRun } from './stage-text'
+import { byKind, DEFAULT, is } from './workflow'
 
 export { tierModels }
 
@@ -64,12 +66,14 @@ export const buildRunCtx = async (
   d: { run: Doc; ticket: Doc; repo: string; github: ConnectionInput; gatewayKey: string; defaultBranch?: string },
 ): Promise<RunCtx> => {
   const { run, ticket, repo } = d
+  const wf = DEFAULT()
+  const kind = kindOfRun(wf, run)
   const opts = { overrideAccess: true } as const
   const workspace = typeof run.workspace === 'object' ? run.workspace.id : run.workspace
   const backend = backendFor(d.github)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
-  const goal = await goalFor(payload, ticket, issue.body, run.stage)
+  const goal = await goalFor(payload, ticket, issue.body, kind as GoalStage)
   const statements = goal.length === 1 && goal[0] === DEFAULT_GOAL.build ? [AUTONOMOUS_BUILD_GOAL] : goal
   const comments = await tickets.listComments(String(ticket.number))
   const lastWith = (marker: string) => comments.findLast((c) => c.body.startsWith(marker))
@@ -79,29 +83,30 @@ export const buildRunCtx = async (
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
   const modelByTier = await tierModels(payload, ws)
-  const mr = run.stage === 'plan' || run.stage === 'triage' || run.stage === 'scan' ? null : await prOf(payload, ticket)
+  const mr = kind === 'plan' || kind === 'triage' || kind === 'scan' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   // A Build Run pushes to this MR: a queued entry must be taken out first, a push would invalidate it.
-  if (run.stage === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
-  if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
+  if (kind === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
+  if (kind === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
   const productDoc = (await payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, ...opts })) as Doc
-  const base = run.stage === 'scan' ? scanCaps(productDoc) : baseCaps(run.stage)
+  const base = kind === 'scan' ? scanCaps(productDoc) : baseCaps(kind)
   const escalated = await isEscalated(payload, run)
-  const caps = escalated ? escalatedCaps(run.stage, base) : base
-  if (escalated && run.stage === 'build') await noteEscalatedBuild(payload, run, caps)
+  const caps = escalated ? escalatedCaps(kind, base) : base
+  if (escalated && kind === 'build') await noteEscalatedBuild(payload, run, caps)
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...caps, tier: escalated ? 'strong' : run.stage === 'review' || run.stage === 'scan' ? 'standard' : 'cheap' },
+    stageNames: { review: byKind(wf, 'review')?.name },
+    run: { id: String(run.id), stage: run.stage, kind: kind as RunCtx['run']['kind'], goal: { statements }, ...caps, tier: escalated ? 'strong' : kind === 'review' || kind === 'scan' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
-      ...((run.stage !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
+      ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
       ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
-    ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
-    ...(run.stage === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
+    ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
+    ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
     product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
-      ...(run.stage === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
+      ...(kind === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
     connection: {
       gatewayUrl,
       gatewayKey: d.gatewayKey,
@@ -117,8 +122,8 @@ export const buildRunCtx = async (
       },
       setStage: async (number, stage) => {
         const move = () => moveStage(payload, tickets, { product: ticket.product, number }, stage)
-        if (stage !== 'review') return move()
-        await enterStage(payload, ticket, 'review', async () => {
+        if (!is(wf, stage, 'review')) return move()
+        await enterStage(payload, ticket, stage, async () => {
           await move()
           await payload.update({ collection: 'tickets', id: ticket.id, data: { stage }, overrideAccess: true })
         })

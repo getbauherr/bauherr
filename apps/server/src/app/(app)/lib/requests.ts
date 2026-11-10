@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { DEFAULT, kindOf } from '../../../lib/workflow'
 import { needsYou, type Need } from './needs-you'
 import { payloadClient } from './session'
 
@@ -82,8 +83,8 @@ export async function openSessions(userId: number, workspaceId: number | undefin
 }
 
 /** Plain-language stage of a Ticket; the Board's stage names stay out of the Request page. */
-const LIFECYCLE: Record<string, string> = { triage: 'Being looked at', plan: 'Being planned', build: 'Being built', review: 'Being reviewed', release: 'On staging', parent: 'Split into smaller tickets', done: 'Done' }
-export const lifecycleOf = (t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[t.stage ?? 'triage'] ?? LIFECYCLE.triage!)
+const LIFECYCLE: Record<string, string> = { triage: 'Being looked at', plan: 'Being planned', build: 'Being built', review: 'Being reviewed', release: 'On staging', container: 'Split into smaller tickets', done: 'Done' }
+export const lifecycleOf = (t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[(t.stage && kindOf(DEFAULT(), t.stage)) || 'triage'] ?? LIFECYCLE.triage!)
 
 export type RequestTicket = { id: number; number: number; title: string; status: string; need: Need | null }
 export type RequestPage = {
@@ -106,7 +107,7 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
   if (!s) return null
   const numbers = s.ticketNumbers?.length ? s.ticketNumbers : s.ticketNumber != null ? [s.ticketNumber] : []
   const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }[] : []
-  const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, status: true, reasonKind: true }, ...o })).docs as unknown as { ticket: number; stage: string; status: string; reasonKind?: string | null }[] : []
+  const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, kind: true, status: true, reasonKind: true }, ...o })).docs as unknown as { ticket: number; stage: string; kind?: string | null; status: string; reasonKind?: string | null }[] : []
   return {
     id: s.id,
     product: (typeof s.product === 'object' && s.product.name) || '—',

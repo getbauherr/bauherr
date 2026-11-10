@@ -1,4 +1,5 @@
 import { executionOrder } from '../../../lib/frontier'
+import { DEFAULT, is } from '../../../lib/workflow'
 
 export type GraphTicket = { id: number; number: number; rank: string | null; run: { status: string } | null; stage: string; blockedBy: { id: number }[]; overlaps?: number | null }
 export type GraphNode = { id: number; col: number; row: number; ready: boolean; critical: boolean; isolated: boolean }
@@ -55,12 +56,13 @@ export function layoutGraph(tickets: GraphTicket[]): { nodes: GraphNode[]; edges
     at = c ? blockers.get(at)!.filter((b) => col.get(b) === c - 1).sort((x, y) => num(x) - num(y))[0] : undefined
   }
 
+  const wf = DEFAULT()
   const rows = new Map<number, number>()
   const nodes = [...tickets].sort(executionOrder).map((t): GraphNode => {
     const isolated = !linked.has(t.id)
     const c = col.get(t.id)!
     const row = isolated ? 0 : (rows.set(c, (rows.get(c) ?? -1) + 1), rows.get(c)!)
-    return { id: t.id, col: c, row, isolated, critical: critical.has(t.id), ready: t.blockedBy.length === 0 && t.stage !== 'done' && !LEASED.includes(t.run?.status ?? '') }
+    return { id: t.id, col: c, row, isolated, critical: critical.has(t.id), ready: t.blockedBy.length === 0 && !is(wf, t.stage, 'done') && !LEASED.includes(t.run?.status ?? '') }
   })
   const edges = [...blockers].flatMap(([to, bs]) => bs.map((from): GraphEdge => (holds.has(`${from}>${to}`) ? { from, to, critical: false, implicit: true } : { from, to, critical: critical.has(from) && critical.has(to) && col.get(to) === col.get(from)! + 1 })))
   return { nodes, edges, cycle: back.size > 0 }

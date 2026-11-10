@@ -74,7 +74,7 @@ export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl
   const stages: string[] = [];
   const prs: { head: string; body: string }[] = [];
   return {
-    run: { id: 'r1', stage: over.stage ?? 'plan', goal: { statements: ['plan posted'] }, maxTurns: 5, maxBudgetUsd: 1, tier: 'cheap' },
+    run: { id: 'r1', stage: over.stage ?? 'plan', kind: over.stage ?? 'plan', goal: { statements: ['plan posted'] }, maxTurns: 5, maxBudgetUsd: 1, tier: 'cheap' },
     ticket: { number: 7, url: 'https://example.invalid/7', title: 'T', body: 'body' },
     product: { repo: 'o/n', defaultBranch: 'main' },
     connection: { gatewayUrl: over.gatewayUrl, gatewayKey: 'REAL-GATEWAY-KEY', gitToken: 'GIT-TOKEN', modelByTier: { cheap: 'stub-model' }, gitBaseUrl: over.gitBaseUrl },
@@ -86,6 +86,7 @@ export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl
     },
     recorder: { async step() {}, async toolCall() {}, log: (m) => logs.push(m) },
     packDir: PACK_DIR,
+    stageNames: { review: 'review' },
     logs, comments, worklogs, stages, prs,
   };
 }

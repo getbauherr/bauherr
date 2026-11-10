@@ -29,6 +29,8 @@ import { decrypt } from '../lib/secrets'
 import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { budgetOut } from '../lib/escalation'
+import { kindOfRun } from '../lib/stage-text'
+import { byKind, DEFAULT, is, nameOf, type Kind } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -37,8 +39,8 @@ export { stageOf }
 
 /** Decision D2. Fallback only: pack/factory.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
 const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
-export const excludedLabels = (stages: { name: string; exclude_labels?: string[] }[] = packed()): string[] => {
-  const list = stages.find((s) => s.name === 'triage')?.exclude_labels
+export const excludedLabels = (stages: { name?: string; kind?: string; exclude_labels?: string[] }[] = packed()): string[] => {
+  const list = stages.find((s) => s.kind === 'triage')?.exclude_labels
   return list?.length ? list : D2_EXCLUDED
 }
 
@@ -120,6 +122,7 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
  */
 /** Returns how many Tickets it acted on (Runs started plus Tickets given up on). */
 export const triageSweep = async (payload: Payload): Promise<number> => {
+  const wf = DEFAULT()
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
@@ -136,7 +139,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
       started++
       continue
     }
-    const { created } = await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'triage')
+    const { created } = await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, nameOf(wf, 'triage'))
     await payload.update({
       collection: 'tickets',
       id: t.id,
@@ -150,11 +153,12 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
 
 /** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
 export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
-  if (t.stage !== 'review' || t.state !== 'open' || t.reviewState || t.waitingFor) return null
+  const wf = DEFAULT()
+  if (!is(wf, t.stage, 'review') || t.state !== 'open' || t.reviewState || t.waitingFor) return null
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open') return null
   // Review only green heads, whichever path moved the Ticket here (session, autonomous Runner, poller, pull from a full column). A review already under way is left alone.
-  const live = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { in: ACTIVE } }] }, overrideAccess: true })
+  const live = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { in: ACTIVE } }] }, overrideAccess: true })
   if (!live.totalDocs) {
     const gate = await checksGate(payload, t, mr)
     if (gate.state !== 'green') {
@@ -163,8 +167,8 @@ export const startReviewIfReady = async (payload: Payload, t: Record<string, any
     }
   }
   // A fix round granted at the review round cap is reviewed on the strong tier too.
-  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
-  return startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, 'review', build?.escalation?.reason === REVIEW_CAP_REASON ? { escalation: build.escalation } : {})
+  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  return startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, nameOf(wf, 'review'), build?.escalation?.reason === REVIEW_CAP_REASON ? { escalation: build.escalation } : {})
 }
 
 /** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
@@ -185,7 +189,7 @@ export const abandonRun = async (
   const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
   // The successor is the strong retry (ladder step 2); an investigation Run stays one.
-  const escalation = run.escalation ?? (run.investigation || run.stage === 'triage' || run.stage === 'scan' ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
+  const escalation = run.escalation ?? (run.investigation || ['triage', 'scan'].includes(kindOfRun(DEFAULT(), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
@@ -195,7 +199,7 @@ export const abandonRun = async (
     // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
       await tx.execute(
-        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "escalation", "investigation") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb)`,
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${kindOfRun(DEFAULT(), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb)`,
       )
     }
     return true
@@ -259,7 +263,7 @@ const renewOnPushes = async (payload: Payload, now: number): Promise<number> => 
   const checkBefore = new Date(now - PUSH_CHECK_AFTER_MS).toISOString()
   const due = await payload.find({
     collection: 'runs',
-    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { stage: { equals: 'build' } }, { heartbeatAt: { less_than: checkBefore } }, { heartbeatAt: { greater_than_equal: expired } }] },
+    where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { kind: { equals: 'build' } }, { heartbeatAt: { less_than: checkBefore } }, { heartbeatAt: { greater_than_equal: expired } }] },
     pagination: false,
     depth: 0,
     overrideAccess: true,
@@ -293,11 +297,12 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
+  const wf = DEFAULT()
   let handled = 0
   for (const run of stale.docs) {
     try {
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
-      if (await abandonRun(payload, run, { reason, escalate: run.stage !== 'triage' && run.stage !== 'scan', staleBefore: before })) handled++
+      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
@@ -402,7 +407,9 @@ const MAX_GATE_ATTEMPTS = 30
 
 /** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'plan' } }, { state: { equals: 'open' } }, ...(gateOn('plan') ? [{ expedite: { equals: true } }] : [])] }, pagination: false, depth: 0, overrideAccess: true })
+  const plan = byKind(DEFAULT(), 'plan')?.name
+  if (!plan) return
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: plan } }, { state: { equals: 'open' } }, ...(gateOn('plan') ? [{ expedite: { equals: true } }] : [])] }, pagination: false, depth: 0, overrideAccess: true })
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
@@ -411,13 +418,17 @@ const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { s
 
 /** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: ['plan', 'build'] } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
+  const wf = DEFAULT()
+  const plan = byKind(wf, 'plan')?.name ?? ''
+  const build = byKind(wf, 'build')?.name ?? ''
+  const startable = [plan, build]
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: startable } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
   for (const t of tickets.docs) {
     try {
       if (t.waitingFor || hasOpenBlocker(t)) continue
       if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
       if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
-      if (t.stage === 'build' && (await holdOverlap(payload, t))) continue
+      if (is(wf, t.stage, 'build') && (await holdOverlap(payload, t))) continue
       await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
       payload.logger.info({ ticket: t.id, stage: t.stage }, 'run started for a Ticket without one')
     } catch (e) {
@@ -452,6 +463,9 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
   retries: 0,
   handler: async ({ req }) => {
     const { payload } = req
+    const wf = DEFAULT()
+    const triage = nameOf(wf, 'triage')
+    const at = (n: string | null | undefined, ...k: Kind[]) => !!n && is(wf, n, ...k)
     const sources = await payload.find({ collection: 'ticket_sources', limit: 1000, pagination: false, depth: 0, overrideAccess: true })
     for (const src of sources.docs) {
       try {
@@ -514,16 +528,16 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           }
           if (base.expedite && !prev?.expediteAt) base.expediteAt = new Date().toISOString()
           let stage = stageOf(labels)
-          if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== 'triage' || (prev.stage === 'release' && prev.mergeSha && stage === 'review'))) {
+          if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== triage || (at(prev.stage, 'release') && prev.mergeSha && at(stage, 'review')))) {
             stage = prev.stage
             payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
             try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
           }
           // Stage guard (#196): a forward move the factory did not record is reverted to the DB stage; backward moves and first sight are accepted.
           let clearFactoryStage = false
-          if (prev && stage && stage !== (prev.stage ?? 'triage')) {
+          if (prev && stage && stage !== (prev.stage ?? triage)) {
             clearFactoryStage = true
-            if (stage !== prev.factoryStage && isForward(prev.stage ?? 'triage', stage)) {
+            if (stage !== prev.factoryStage && isForward(prev.stage ?? triage, stage)) {
               const from = prev.stage
               const back = from ? `to \`${from}\`` : 'to untriaged'
               const marker = `<!-- bauherr:stage-rejected:${stage}:${t.updatedAt} -->`
@@ -545,15 +559,16 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             }
           }
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
-          if (stage === 'plan' && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(backendFor(conn).tickets(src.repo), String(t.number)))) {
+          if (at(stage, 'plan') && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(backendFor(conn).tickets(src.repo), String(t.number)))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
-            if (await spawnSubTickets(payload, prev)) stage = 'parent'
+            if (await spawnSubTickets(payload, prev)) stage = nameOf(wf, 'container')
             else {
-              const entered = await enterStage(payload, prev, 'build', async () => {
-                await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, 'build')
-                await payload.update({ collection: 'tickets', id: prev!.id, data: { stage: 'build' }, depth: 0, overrideAccess: true })
+              const build = nameOf(wf, 'build')
+              const entered = await enterStage(payload, prev, build, async () => {
+                await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, build)
+                await payload.update({ collection: 'tickets', id: prev!.id, data: { stage: build }, depth: 0, overrideAccess: true })
               })
-              if (entered === 'moved') stage = 'build'
+              if (entered === 'moved') stage = build
             }
           }
           // Guard: unchanged pointers are not rewritten.
@@ -563,8 +578,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             ...base,
             ...(await forgeBlockers(payload, backendFor(conn).tickets(src.repo), id(src.product), t.number)),
             stage,
-            ...(prev?.stage === 'release' && stage !== 'release' && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
-            ...(stage === 'release' && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
+            ...(at(prev?.stage, 'release') && !at(stage, 'release') && prev.productionState && prev.productionState !== 'deployed' && NO_PRODUCTION),
+            ...(at(stage, 'release') && !prev?.releaseState && { releaseAt: new Date().toISOString(), releaseState: 'waiting' }),
           }
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
@@ -572,10 +587,10 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 1, overrideAccess: true }) : null
-          if (entered && (stage === 'plan' || stage === 'build') && t.state === 'open' && !current?.waitingFor && !hasOpenBlocker(current ?? {}) && t.assignees.every((a) => logins(current?.gateAssignees).includes(a)) && !(stage === 'build' && current && (await holdOverlap(payload, current)))) {
-            await startRunIfNeeded(payload, ticket, stage)
+          if (entered && at(stage, 'plan', 'build') && t.state === 'open' && !current?.waitingFor && !hasOpenBlocker(current ?? {}) && t.assignees.every((a) => logins(current?.gateAssignees).includes(a)) && !(at(stage, 'build') && current && (await holdOverlap(payload, current)))) {
+            await startRunIfNeeded(payload, ticket, stage!)
           }
-          if (entered && stage === 'review') await startReviewIfReady(payload, ticket)
+          if (entered && at(stage, 'review')) await startReviewIfReady(payload, ticket)
         }
         await payload.update({ collection: 'ticket_sources', id: src.id, data: { ...(next !== (src.cursor ?? null) && !revertFailed && { cursor: next }), lastPolledAt: new Date().toISOString(), lastError: null }, overrideAccess: true })
       } catch (e) {
@@ -602,8 +617,10 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
   inputSchema: [{ name: 'runId', type: 'number', required: true }],
   handler: async ({ input, req }) => {
     const { payload } = req
+    const wf = DEFAULT()
     const opts = { overrideAccess: true, depth: 0 } as const
     const run = await payload.findByID({ collection: 'runs', id: input.runId, ...opts })
+    const kind = kindOfRun(wf, run)
     if (run.status !== 'queued') return { output: { status: run.status } }
     const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...opts })
     const product = await payload.findByID({ collection: 'products', id: id(ticket.product), ...opts })
@@ -620,15 +637,15 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const r = await exec(ctx)
-      const review = run.stage === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
+      const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
       let triage = null
       // The Ticket is untriaged only after the Run's terminal update, so the next poll cannot start a Triage Run while this one is still active.
-      let untriageAfter = run.stage === 'triage' && r.status === 'failed' && !!r.reason?.includes('triage.json')
-      if (run.stage === 'triage' && r.status === 'succeeded') {
+      let untriageAfter = kind === 'triage' && r.status === 'failed' && !!r.reason?.includes('triage.json')
+      if (kind === 'triage' && r.status === 'succeeded') {
         triage = normalizeTriage(r.artifacts.triage)
       }
       // A stopped Triage Run posts no Ticket Comment (it would bump the Ticket and reset the attempt count): the sweep retries it up to MAX_TRIAGE_ATTEMPTS.
-      if (run.stage === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) untriageAfter = true
+      if (kind === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) untriageAfter = true
       else if (r.status === 'needs_human') {
         await backendFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
       } else if (r.status === 'budget_exhausted') {
@@ -657,7 +674,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
       if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
-      if (run.stage === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
+      if (kind === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
           const reviewing = await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts })
@@ -674,7 +691,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         data: { status: 'failed', error: e instanceof Error ? e.message : String(e), finishedAt: new Date().toISOString() },
         ...opts,
       })
-      if (run.stage === 'triage') await untriageLogged(payload, ticket.id)
+      if (kind === 'triage') await untriageLogged(payload, ticket.id)
       await queueReconcile(payload, run.id)
       throw e
     }

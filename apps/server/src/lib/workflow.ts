@@ -160,6 +160,12 @@ export const stage = (wf: Workflow, name: string): StageDef | undefined => {
   return wf.stages.find((s) => s.name === n)
 }
 export const byKind = (wf: Workflow, kind: Kind): StageDef | undefined => wf.stages.find((s) => s.kind === kind)
+/** The name of the stage of a built-in kind; throws when the workflow has none. */
+export const nameOf = (wf: Workflow, kind: Kind): string => {
+  const s = byKind(wf, kind)
+  if (!s) throw new Error(`the workflow has no ${kind} stage`)
+  return s.name
+}
 export const kindOf = (wf: Workflow, name: string): Kind | undefined => stage(wf, name)?.kind
 export const is = (wf: Workflow, name: string, ...kinds: Kind[]): boolean => kinds.includes(kindOf(wf, name) as Kind)
 export const title = (wf: Workflow, name: string): string => stage(wf, name)?.title ?? name
@@ -178,6 +184,8 @@ export const pullRank = (wf: Workflow): string[] => board(wf).filter((n) => kind
 export const wipStages = (wf: Workflow): string[] => named(wf, ...WIP)
 export const defaultWip = (wf: Workflow): Record<string, number> => Object.fromEntries(wf.stages.filter((s) => s.wip).map((s) => [s.name, s.wip as number]))
 export const heldStages = (wf: Workflow): string[] => wf.stages.filter((s) => WIP.includes(s.kind) && s.kind !== 'release').map((s) => s.name).reverse()
+/** Stages whose Run mode a Workspace overrides (Settings > Run mode). */
+export const modeStages = (wf: Workflow): string[] => named(wf, 'plan', 'build')
 export const liveStages = (wf: Workflow): string[] => named(wf, ...LIVE)
 export const inFlight = (wf: Workflow): string[] => named(wf, ...IN_FLIGHT)
 export const repairable = (wf: Workflow): string[] => wf.stages.filter((s) => s.kind !== 'container' && s.kind !== 'done').map((s) => s.name)

@@ -12,3 +12,6 @@ export const waitingForError = (wf: Workflow, v: unknown): true | string =>
 
 /** The stage kind of a Run's stage; the system Run stages are their own kind. */
 export const runKind = (wf: Workflow, v: string): string | undefined => (SYSTEM_RUN_STAGES.includes(v) ? v : kindOf(wf, v))
+
+/** The kind of a Run: its recorded kind, or the stage's kind for Runs created before `kind` existed. */
+export const kindOfRun = (wf: Workflow, run: Record<string, any>): string | undefined => (run.kind as string | null | undefined) ?? runKind(wf, String(run.stage))
