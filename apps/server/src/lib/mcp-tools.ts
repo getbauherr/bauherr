@@ -433,13 +433,13 @@ export const tools: Tool[] = [
   {
     name: 'submit_plan',
     access: 'agent',
-    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only.',
+    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only. The plan must start with a ## TL;DR section (lines Decision:, Recommendation:, Why: 1-3 bullets, Risk:); a hotfix plan is exempt.',
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
       if (kindOfRun(DEFAULT(), run) !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
-      return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })), leaseExpiresAt }
+      return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown, requireSummary: true })), leaseExpiresAt }
     },
   },
   {

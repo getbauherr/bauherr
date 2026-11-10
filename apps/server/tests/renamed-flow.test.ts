@@ -113,7 +113,7 @@ it('one Ticket goes through the whole renamed flow', async () => {
 
   // design -> code
   const plan = await claim(id, 'design')
-  await call(member, 'submit_plan', { ...plan, markdown: '## Goal\nrename everything' })
+  await call(member, 'submit_plan', { ...plan, markdown: '## TL;DR\nDecision: d\nRecommendation: r\nWhy:\n- w\nRisk: none\n\n## Goal\nrename everything' })
   await call(member, 'finish_run', { ...plan, status: 'succeeded' })
   await poll()
   expect(await reload(id)).toMatchObject({ stage: 'code' })

@@ -4,6 +4,14 @@ import { FakeBackend } from '@bauherr/adapters'
 const PLAN = `<!-- bauherr:plan -->
 # Plan: dark theme for the dashboard
 
+## TL;DR
+Decision: Approve the dark theme plan
+Recommendation: Approve; it only adds colour tokens and a toggle.
+Why:
+- Two small steps
+- No data is touched
+Risk: none
+
 ## Steps
 1. Add colour tokens for the dark palette
 2. Wire the theme toggle into the top bar
@@ -121,6 +129,15 @@ const build = (): FakeBackend => {
     void ts.comment(String(n), PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
     void ts.comment(String(n), WORKLOG)
   }
+  // #30-#32 are inbox.spec.ts's own Tickets: a plan to approve, a review at its round cap, a change on staging.
+  void ts.create({ title: 'Rename the sign-in button', labels: ['bauherr:stage:plan'] })
+  void ts.comment('30', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
+  void ts.comment('30', WORKLOG)
+  void ts.create({ title: 'Stop the export retry loop', labels: ['bauherr:stage:review'] })
+  void ts.comment('31', WORKLOG)
+  void ts.create({ title: 'Check the new header on staging', labels: ['bauherr:stage:release'] })
+  void ts.comment('32', WORKLOG)
+  void ts.comment('32', summary(32))
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))

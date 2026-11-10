@@ -3,6 +3,8 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { laneOn } from './expedite'
+import { storePlanTldr } from './decision'
+import { tldrError } from './tldr'
 import { gateOn } from './mode'
 import { dequeueBeforeChange, isQueue, isTrain } from './merge-mode'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
@@ -200,12 +202,16 @@ export const updateWorklog = async (payload: Payload, user: Doc, a: { ticket: Ti
 }
 
 /** Posts or updates the Ticket's single plan Comment (`<!-- bauherr:plan -->`). */
-export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; markdown: string }) => {
+export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; markdown: string; /** An agent's submission must carry the TL;DR; plans already posted are never re-checked. */ requireSummary?: boolean }) => {
   const t = await loadTicket(payload, user, a.ticket)
+  // A hotfix plan is audited, not decided on by a person: it needs no summary.
+  const missing = a.requireSummary && !t.expedite ? tldrError(a.markdown) : null
+  if (missing) throw new Error(missing)
   const { ts, n } = await sourceOf(payload, t)
   const body = `${PLAN_MARKER}\n${a.markdown.replace(PLAN_MARKER, '').trim()}`
   const existing = latestWith(await ts.listComments(n), PLAN_MARKER)
   const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
+  await storePlanTldr(payload, t.id, body)
   await storeOpenCritical(payload, t.id, await ts.listComments(n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
   return { commentId: saved.id, created: !existing }
 }

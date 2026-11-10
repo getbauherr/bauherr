@@ -11,7 +11,8 @@ import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { CommentComposer } from '../../../components/CommentComposer'
 import { OwnerChat } from '../../../components/OwnerChat'
-import { Gate, ReleaseGate } from '../../../components/Gate'
+import { DecisionCard } from '../../../components/DecisionCard'
+import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { TicketSteps } from '../../../components/workflow/TicketSteps'
 import { WorkflowGraph } from '../../../components/workflow/WorkflowGraph'
@@ -20,6 +21,7 @@ import { TicketDetails } from '../../../components/TicketDetails'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
+import { cardOf } from '../../../lib/inbox'
 import { forgeKinds, loadEpic, within } from '../../../lib/overview'
 import { buildSteps } from '../../../lib/steps'
 import { timeline } from '../../../../../lib/history'
@@ -100,7 +102,7 @@ type Derived = Awaited<ReturnType<typeof derive>>
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -110,7 +112,6 @@ async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
     <>
       {x.history && <p className="small text-muted-foreground">{x.history}</p>}
       {x.forgeError && <p className="small text-muted-foreground">The forge could not be reached; plan and worklog are unavailable.</p>}
-      {x.gate?.kind === 'plan' && <Gate plan={x.summary ?? null} />}
       {x.gate?.kind === 'release' && <ReleaseGate ticket={ticket.id} timedOut={x.todo === 'Staging not confirmed'} summaryHtml={x.stagingSummary ? renderMarkdown(strip(x.stagingSummary, SUMMARY_MARKER)) : null} />}
       {x.decisionsShown && <OwnerChat ticket={ticket.id} open={x.decisions.length - x.answered} />}
     </>
@@ -173,6 +174,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const forge = forges.get(ticket.product)
   const steps = buildSteps(wf, spans, runs, touches, { current: stageOf(ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
   const d = derive(payload, P)
+  const card = cardOf(ticket, product as never)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
 
   return (
@@ -193,6 +195,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <WorkflowGraph wf={wf} variant="path" path={steps.path} />
         </section>
       )}
+      {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
       <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
 
       {!epic && <Section id="steps" title="Steps"><TicketSteps steps={steps} /></Section>}

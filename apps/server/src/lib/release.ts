@@ -14,6 +14,7 @@ import { record } from './history'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
+import { stagingTldrOf, storeStagingTldr } from './decision'
 import { DEFAULT, byKind, is, nameOf } from './workflow'
 
 type Doc = Record<string, any>
@@ -67,9 +68,7 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
     const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).filter((x): x is number => x !== null))]
     const mrs = await Promise.all(numbers.map((num) => backend.forge.getPullRequest(repo, num)))
     const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
-    await ts.comment(
-      n,
-      buildStagingSummary({
+    const summary = buildStagingSummary({
         ticket: { number: t.number, title: t.title, url: t.url },
         plan: latestWith(comments, PLAN_MARKER)?.body ?? null,
         worklog: firstWith(comments, WORKLOG_MARKER)?.body ?? null,
@@ -77,8 +76,9 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
         evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
         stagingUrl: product.stagingUrl || null,
         mergeSha,
-      }),
-    )
+      })
+    await ts.comment(n, summary)
+    await storeStagingTldr(payload, t.id, stagingTldrOf(summary))
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: 'on_staging' }, overrideAccess: true })
   await record(payload, t.id, { cause: 'release:on_staging' })

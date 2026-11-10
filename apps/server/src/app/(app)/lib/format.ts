@@ -17,3 +17,6 @@ export const duration = (sec: number): string => {
   const s = Math.max(0, sec)
   return s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${(s / 86400).toFixed(1)} d`
 }
+
+/** "waiting 5 min", "waiting 3 h", "waiting 2 d" since `iso`. */
+export const waited = (iso: string): string => ago(iso).replace(/ ago$/, '').replace('just now', 'a moment').replace(/^/, 'waiting ')

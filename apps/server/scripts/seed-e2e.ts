@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import { hasProductionChecks } from '../src/lib/mode'
+import { prepareDecision } from '../src/lib/decision'
 import { needsOf } from '../src/lib/needs-you'
 import { DEFAULT, kindOf } from '../src/lib/workflow'
 import config from '../src/payload.config'
@@ -107,6 +108,12 @@ await run(t26, 'plan', 'succeeded', { startedAt: '2026-10-30T09:40:00Z', finishe
 // chat-dock.spec.ts: two plans of its own awaiting approval (#28 is approved in the chat, #29 declined; twins in `src/lib/fake-forge.ts`) and a second member who must not see the first one's threads.
 for (const [n, title] of [[28, 'Chat: cache the export totals'], [29, 'Chat: rename the export columns']] as const) await run(await ticket(n, title, 'plan', product), 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
 await ensure('bauherren', { email: 'chat-other@example.com' }, { email: 'chat-other@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })
+// Own Tickets of inbox.spec.ts: #30 a plan to approve, #31 a review at its round cap, #32 a change on staging. Twins in `src/lib/fake-forge.ts` carry these numbers.
+const t30 = await ticket(30, 'Rename the sign-in button', 'plan', product)
+const t31 = await ticket(31, 'Stop the export retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
+await ticket(32, 'Check the new header on staging', 'release', product, { ...rel, stagingTldr: { whatYouGet: '- The header shows the new logo\n- The checks are green', found: '- Nothing recorded.' } })
+await run(t30, 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
+await run(t31, 'review', 'succeeded', { startedAt: '2026-10-30T09:55:00Z', finishedAt: '2026-10-30T09:58:00Z', verdict: 'changes', findings: [{ severity: 'medium', file: 'src/export.ts', line: 21, msg: 'The retry loop never stops on a permanent error.', scenario: 'when the export answers 402, then it is retried forever.' }] })
 await ensure('runs', { ticket: t27, stage: 'review', status: 'running' }, { ticket: t27, stage: 'review', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 // Hotfix (#373): a card in the Hotfix lane of Build, and a merged one 12 minutes after its flag for the lead time in Factory health.
 await ticket(125, 'Hotfix: checkout crash', 'build', product, { expedite: true, expediteAt: '2026-11-05T08:00:00Z', rank: '999999' })
@@ -194,7 +201,11 @@ for (const t of (await payload.find({ collection: 'tickets', pagination: false, 
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>
   const need = needsOf(t, latest ?? null, !hasProductionChecks(productDoc))
-  if (need !== (t.needsYou ?? null)) await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need }, ...o })
+  // Plans awaiting approval carry the TL;DR their Plan Run would have posted; every need gets the Decision the sweep would prepare.
+  const planTldr = need === 'Approve plan' || need === 'Answer decisions' ? { decision: `Approve the plan for ${t.title}`, recommendation: 'Approve; the change is small and has a test.', why: ['Two small steps', 'No data is touched', 'A regression test is added'], risk: 'none', options: [] } : t.planTldr
+  const row = { ...t, planTldr }
+  const decision = need ? await prepareDecision(payload, row, need, latest ?? null) : null
+  await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need, decision, planTldr: planTldr ?? null }, ...o })
 }
 console.log('seeded')
 process.exit(0)

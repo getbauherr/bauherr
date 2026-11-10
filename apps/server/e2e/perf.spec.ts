@@ -32,6 +32,7 @@ const h2 = (text: string): Content => ({ sel: 'h2.heading', text: `^${text}$` })
 /** Clicks run from `from`, so each one is a client-side navigation like a user's. */
 const targets: Target[] = [
   { route: '/requests', from: '/', click: (p) => main(p).getByRole('link', { name: /^Requests/ }).click(), content: h1('Requests') },
+  { route: '/inbox', from: '/', click: (p) => main(p).getByRole('link', { name: /^Inbox/ }).click(), content: h1('Inbox') },
   { route: '/', from: '/requests', click: (p) => main(p).getByRole('link', { name: /^Workflow/ }).click(), content: h1('Workflow') },
   { route: '/releases', from: '/', click: (p) => main(p).getByRole('link', { name: 'Releases' }).click(), content: h1('Releases') },
   { route: '/knowledge', from: '/', click: (p) => main(p).getByRole('link', { name: 'Knowledge' }).click(), content: h1('Knowledge') },

@@ -21,7 +21,7 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: /^Workflow/ })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: /^Requests/ })).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(6) // Workflow, Requests, Releases, Knowledge, Runs (Admin), Insights
+  await expect(nav.getByRole('link')).toHaveCount(7) // Inbox, Workflow, Requests, Releases, Knowledge, Runs (Admin), Insights
   await expect(nav.getByRole('link', { name: 'Knowledge' })).toBeVisible()
   await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Workflow')
   await expect(bar.getByRole('link', { name: 'New request' })).toBeVisible()

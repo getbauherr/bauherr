@@ -42,14 +42,25 @@ Re-run the check after the last edit; evidence from before the last edit is stal
 ## Exit rule
 | Run | May end only with |
 |---|---|
-| Plan | `.bauherr/plan.md` (the Runner posts the plan Comment and the worklog), or a blocker |
+| Plan | `.bauherr/plan.md` with a leading `## TL;DR` (the Runner posts the plan Comment and the worklog), or a blocker |
 | Build | MR Linked on the Ticket, or a blocker |
 | Review | `submit_review` (session) or `.bauherr/review.json` (autonomous), or a blocker |
 
 The Stop hook (`hooks/stop-goal-check.ts`) refuses to end the turn while a statement is unverified and undeclared. It re-prompts once with the unmet list; a second miss ends the Run `needs_human`.
 
 ## What the Runner does for you in Plan
-For a Ticket labelled `bauherr:expedite` write the short plan of [hotfix](../plan/hotfix.md) instead. Your Goal in a Plan Run is only: write `.bauherr/plan.md` with the sections `## Goal`, `## Steps` and `## Files`, covering every acceptance criterion. `## Files` lists every path the plan changes, one path glob per line (`- apps/server/src/lib/*.ts`), and nothing else; the factory holds a Build while an earlier Ticket changes the same paths. For work too large for one MR, add a final `## Sub-tickets` section with one item per child, `- **Title** — one-line body` (acceptance criteria may continue on indented lines; an indented line `after: <exact title of another item>` makes it wait for that item, otherwise items are independent); on approval each item becomes its own pre-approved Ticket and this Ticket only tracks them. Items added to the Ticket after approval are not pre-approved. A Plan Run on a Ticket whose Build failed twice (the `<!-- bauherr:investigation -->` Comment exists) is an investigation: follow [investigation](../plan/investigation.md) instead. You have no tool to post Comments. After you exit, the Runner posts the file as the plan Comment (first line `<!-- bauherr:plan -->`), writes the Ticket's Goal statements into the worklog Comment (`<!-- bauherr:worklog -->`) and ends the Run `succeeded`. Build Runs: the Runner commits, pushes, opens the MR with the `## Evidence` section, Links it on the Ticket and sets the stage to review.
+For a Ticket labelled `bauherr:expedite` write the short plan of [hotfix](../plan/hotfix.md) instead. Your Goal in a Plan Run is only: write `.bauherr/plan.md` with the sections `## TL;DR`, `## Goal`, `## Steps` and `## Files`, covering every acceptance criterion. `## TL;DR` comes first and is what the owner reads to decide in half a minute: exactly these labelled lines, plain words, no factory jargon:
+```markdown
+## TL;DR
+Decision: <one sentence: what the owner approves>
+Recommendation: <what you recommend and the one reason>
+Why:
+- <1 to 3 short facts: what changes, what you checked, what is at risk>
+Risk: <one line, or "none">
+Options:
+- <alternative the owner could pick, optional>
+```
+`submit_plan` refuses a plan without the first four labels (it lists the missing ones); an autonomous plan without them is posted anyway and the owner is told to read it in full. `## Files` lists every path the plan changes, one path glob per line (`- apps/server/src/lib/*.ts`), and nothing else; the factory holds a Build while an earlier Ticket changes the same paths. For work too large for one MR, add a final `## Sub-tickets` section with one item per child, `- **Title** — one-line body` (acceptance criteria may continue on indented lines; an indented line `after: <exact title of another item>` makes it wait for that item, otherwise items are independent); on approval each item becomes its own pre-approved Ticket and this Ticket only tracks them. Items added to the Ticket after approval are not pre-approved. A Plan Run on a Ticket whose Build failed twice (the `<!-- bauherr:investigation -->` Comment exists) is an investigation: follow [investigation](../plan/investigation.md) instead. You have no tool to post Comments. After you exit, the Runner posts the file as the plan Comment (first line `<!-- bauherr:plan -->`), writes the Ticket's Goal statements into the worklog Comment (`<!-- bauherr:worklog -->`) and ends the Run `succeeded`. Build Runs: the Runner commits, pushes, opens the MR with the `## Evidence` section, Links it on the Ticket and sets the stage to review.
 
 ## Declare a blocker
 Use only when you cannot proceed without a person or a missing input. A blocker is specific and actionable:

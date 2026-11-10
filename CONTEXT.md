@@ -83,6 +83,12 @@ A member of the factory's team (`team.roles` in `factory.yaml`): a title, a mode
 **Checkpoint**:
 A point where the workflow waits for a human (Triage's questions, a `gate: human`, the production gate, a `human` Stage).
 
+**Decision**:
+What one Checkpoint asks of a person, prepared the same way every time (ask, recommendation, at most three facts, options, what happens next) and stored on the Ticket; the Inbox lists exactly the Tickets that have one.
+
+**TL;DR**:
+The leading section of a plan (`Decision:`, `Recommendation:`, `Why:`, `Risk:`) the plan Checkpoint's Decision is made from.
+
 ### Tickets
 
 **Ticket**:

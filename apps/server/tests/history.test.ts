@@ -112,7 +112,7 @@ it('a Ticket from triage to done leaves contiguous spans, and flow() sums them',
   await call(member, 'submit_triage', { ...triage, outcome: 'plan', reason: 'clear' })
   await poll()
   const plan = await claim(id, 'plan')
-  await call(member, 'submit_plan', { ...plan, markdown: '## Goal\nhistory' })
+  await call(member, 'submit_plan', { ...plan, markdown: '## TL;DR\nDecision: d\nRecommendation: r\nWhy:\n- w\nRisk: none\n\n## Goal\nhistory' })
   await call(member, 'finish_run', { ...plan, status: 'succeeded' })
   await poll()
   expect(await reload(id)).toMatchObject({ stage: 'build' })

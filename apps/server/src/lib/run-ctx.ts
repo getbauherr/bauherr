@@ -13,6 +13,7 @@ import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
 import { webOrigin, type ConnectionInput } from './connection'
 import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
+import { storePlanTldr } from './decision'
 import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
 import { byKind, DEFAULT, is } from './workflow'
@@ -126,7 +127,10 @@ export const buildRunCtx = async (
     },
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),
-      comment: async (number, body) => void (await tickets.comment(String(number), body)),
+      comment: async (number, body) => {
+        await tickets.comment(String(number), body)
+        if (body.startsWith(PLAN_MARKER)) await storePlanTldr(payload, ticket.id, body)
+      },
       upsertWorklog: async (number, body) => {
         const existing = lastWith(WORKLOG_MARKER)
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))

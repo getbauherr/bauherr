@@ -6,6 +6,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { usePageTitle } from './PageTitle'
 
 const sections: Record<string, { label: string; one: string }> = {
+  inbox: { label: 'Inbox', one: 'Inbox' },
   requests: { label: 'Requests', one: 'Request' },
   releases: { label: 'Releases', one: 'Release' },
   knowledge: { label: 'Knowledge', one: 'Document' },

@@ -14,7 +14,7 @@ export function AppSidebar({ email, admin, version, workspaces, current, needsYo
   const path = usePathname()
   const { setOpenMobile } = useSidebar()
   useEffect(() => setOpenMobile(false), [path, setOpenMobile])
-  const badge = (href: string) => (href === '/' ? { n: needsYou, noun: 'need you' } : href === '/requests' ? { n: drafts, noun: drafts === 1 ? 'draft' : 'drafts' } : { n: 0, noun: '' })
+  const badge = (href: string) => (href === '/inbox' ? { n: needsYou, noun: 'need you' } : href === '/requests' ? { n: drafts, noun: drafts === 1 ? 'draft' : 'drafts' } : { n: 0, noun: '' })
   const item = ({ href, label, Icon, match }: NavItem) => {
     const { n, noun } = badge(href)
     return (
