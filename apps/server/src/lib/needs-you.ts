@@ -84,3 +84,11 @@ export const reviewWord = (reviewState?: string | null): string =>
     ready_for_human: 'Review clean, ready for a human to merge',
     needs_human: 'Needs a human, see the latest Comment',
   })[reviewState ?? ''] ?? 'Factory reviewing'
+
+type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }
+
+/** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. Closed Tickets only while a release check failed. */
+export const needsOf = (t: Row, run: { stage: string; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean): Need | null =>
+  t.state !== 'closed' || t.releaseChecksState === 'failed'
+    ? needsYou({ stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run)
+    : null

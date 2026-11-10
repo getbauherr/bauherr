@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
+import { hasProductionChecks } from '../src/lib/mode'
+import { needsOf } from '../src/lib/needs-you'
 import config from '../src/payload.config'
 
 /** Seeds what the Playwright smoke needs on an empty DB: one admin, one Workspace, one Product, one Ticket. Idempotent. */
@@ -159,5 +161,12 @@ const request = async (key: string, status: string, extra: Record<string, unknow
 await request('Export totals drift', 'open', { user: draftOwner })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
 await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, ticketNumbers: [6, 7] })
+// No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
+for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
+  const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
+  const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>
+  const need = needsOf(t, latest ?? null, !hasProductionChecks(productDoc))
+  if (need !== (t.needsYou ?? null)) await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need }, ...o })
+}
 console.log('seeded')
 process.exit(0)

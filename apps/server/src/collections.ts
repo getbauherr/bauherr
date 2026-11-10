@@ -417,6 +417,7 @@ const tickets = col('tickets', [
   { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
+  text('needsYou', { index: true, admin: { readOnly: true, description: 'What the Ticket needs from the owner (needsOf), written by the gate sweep; the top bar counts it. Null = nothing.' } }),
   text('waitingFor', { validate: (v: unknown) => waitingForError(DEFAULT(), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
   date('expediteAt'),
   text('gateNoticeClaim'),
@@ -465,7 +466,7 @@ const tickets = col('tickets', [
   { name: 'openCriticalDecisions', type: 'number', admin: { readOnly: true, description: 'Unanswered critical decisions of the plan or triage sheet, as last read from the forge comments (plan submit, answers, the gate sweep). Pages read this instead of the forge; null = never read.' } },
   { name: 'liveness', type: 'json', admin: { readOnly: true, description: 'Last `watch-liveness` finding for a Ticket with no live Run: {cause, need, at}. null = not dead at the last sweep.' } },
 ], {
-  indexes: [{ fields: ['product', 'externalId'], unique: true }],
+  indexes: [{ fields: ['product', 'externalId'], unique: true }, { fields: ['workspace', 'state'] }],
   hooks: {
     /** The one write guard for "waitingFor is never the Ticket's own stage" (except an overlap hold, which carries a `waitingReason`): covers the poller, `completeMove` and hand edits. */
     beforeChange: [
@@ -551,7 +552,7 @@ export const collections: CollectionConfig[] = [
     rel('ticket', 'tickets', { required: true }),
     text('stage', { required: true, index: true, validate: (v: unknown) => runStageError(DEFAULT(), v) }),
     text('kind', { index: true, admin: { description: 'The stage kind the Run ran for (or scan / distill); filled from `stage` on create.' } }),
-    select('status', runStatuses, { required: true, defaultValue: 'queued' }),
+    select('status', runStatuses, { required: true, defaultValue: 'queued', index: true }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
     rel('agentKey', 'agent_keys'),
@@ -593,6 +594,7 @@ export const collections: CollectionConfig[] = [
     text('error'),
     json('artifacts'),
   ], {
+    indexes: [{ fields: ['mode', 'status', 'heartbeatAt'] }],
     hooks: {
       beforeValidate: [
         ({ data, operation }) => {
@@ -634,7 +636,7 @@ export const collections: CollectionConfig[] = [
     text('headSha'),
     text('baseContent'),
     text('status'),
-  ], { access: { create: () => false, update: () => false, delete: () => false } }),
+  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['kind', 'at'] }] }),
   col('skill_proposals', [
     rel('ticket', 'tickets', { required: true, unique: true }),
     rel('run', 'runs'),
