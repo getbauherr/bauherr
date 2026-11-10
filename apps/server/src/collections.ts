@@ -465,6 +465,7 @@ const tickets = col('tickets', [
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
   { name: 'openCriticalDecisions', type: 'number', admin: { readOnly: true, description: 'Unanswered critical decisions of the plan or triage sheet, as last read from the forge comments (plan submit, answers, the gate sweep). Pages read this instead of the forge; null = never read.' } },
   { name: 'liveness', type: 'json', admin: { readOnly: true, description: 'Last `watch-liveness` finding for a Ticket with no live Run: {cause, need, at}. null = not dead at the last sweep.' } },
+  text('historyKey', { admin: { readOnly: true, description: 'The `stage|phase` of the newest ticket_events row; `record` writes an event only when it changes.' } }),
 ], {
   indexes: [{ fields: ['product', 'externalId'], unique: true }, { fields: ['workspace', 'state'] }],
   hooks: {
@@ -593,6 +594,12 @@ export const collections: CollectionConfig[] = [
     date('finishedAt'),
     text('error'),
     json('artifacts'),
+    text('executor', { admin: { description: 'Who ran it: session (an agent session) or runner (the autonomous Runner).' } }),
+    text('role'),
+    text('clientName', { admin: { description: 'The session client (claude-code, ...), from the claim or the MCP User-Agent.' } }),
+    text('clientVersion'),
+    text('provider', { admin: { description: 'The provider preset behind the model.' } }),
+    text('outcome'),
   ], {
     indexes: [{ fields: ['mode', 'status', 'heartbeatAt'] }],
     hooks: {
@@ -613,6 +620,7 @@ export const collections: CollectionConfig[] = [
     num('costEstimateUsd'),
     date('startedAt'),
     text('summary'),
+    date('finishedAt'),
   ]),
   col('tool_calls', [
     text('toolUseId'),
@@ -702,4 +710,20 @@ export const collections: CollectionConfig[] = [
     rel('product', 'products', { required: true }),
     json('compiled'),
   ]),
+  col('ticket_events', [
+    // Not `required`: a NOT NULL column with ON DELETE SET NULL would make deleting a Ticket fail; `record` always sets it.
+    rel('ticket', 'tickets'),
+    { name: 'at', type: 'date', required: true },
+    text('stage', { admin: { description: 'The stage the Ticket is in from this moment.' } }),
+    text('stageKind'),
+    select('phase', ['working', 'queued', 'human', 'ci', 'closed'], { required: true }),
+    text('fromStage'),
+    text('outcome'),
+    rel('run', 'runs'),
+    select('executor', ['session', 'runner', 'ci', 'human', 'factory']),
+    text('actor'),
+    text('cause', { admin: { description: 'Short machine reason, e.g. moveStage:request_review, run:claimed, gate:approve:plan, sweep.' } }),
+    num('workflowVersion'),
+    { name: 'backfilled', type: 'checkbox', defaultValue: false },
+  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['ticket', 'at'] }, { fields: ['workspace', 'at'] }] }),
 ]

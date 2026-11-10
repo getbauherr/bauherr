@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
 import type { TicketSource } from '@bauherr/adapters'
+import { record } from './history'
 import { hasProductionChecks } from './mode'
 import { type Need, needsOf } from './needs-you'
 import { publicUrl } from './oidc'
@@ -69,6 +70,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const candidate = needsOf(t, run, productionChecksMissing)
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
+  await record(payload, t.id, { cause: 'sweep' }, { ticket: t, run })
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
