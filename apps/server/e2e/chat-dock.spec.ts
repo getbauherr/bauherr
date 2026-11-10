@@ -45,6 +45,28 @@ test('the dock opens with the button and with Ctrl+J, and pushes the page', asyn
   await expect(dock(page)).toBeVisible()
 })
 
+test('the palette opens the dock with the composer focused and starts a new chat; the dock sits in the header row', async ({ page }) => {
+  await signIn(page)
+  await expect(page.getByRole('banner').getByTestId('chat-open')).toBeVisible()
+  await page.keyboard.press('Control+k')
+  await page.getByRole('option', { name: 'Ask the factory' }).click()
+  await expect(dock(page)).toBeVisible()
+  await expect(input(page)).toBeFocused({ timeout: 30_000 })
+  await send(page, 'before new')
+  await expect(lastAnswer(page)).toContainText('[fake] you said: before new', { timeout: 30_000 })
+  await page.keyboard.press('Control+k')
+  await page.getByRole('option', { name: 'New chat' }).click()
+  await expect(dock(page).getByTestId('welcome')).toBeVisible()
+})
+
+test('a Ticket number shared by Products opens a chooser, a unique one the Ticket', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/tickets/n/1')
+  await expect(page.getByTestId('ticket-chooser').getByRole('link')).not.toHaveCount(1)
+  await page.goto('/tickets/n/27')
+  await expect(page).toHaveURL(/\/tickets\/\d+$/)
+})
+
 test('a message gets a streamed reply with a usage footer, and a status question a read receipt', async ({ page }) => {
   await signIn(page)
   await open(page)

@@ -16,7 +16,7 @@ const sections: Record<string, { label: string; one: string }> = {
   setup: { label: 'Set up', one: 'Set up' },
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const settingsPage: Record<string, string> = { workspace: 'General', products: 'Products', bauherren: 'People', usage: 'AI usage', workflow: 'Board & WIP', connections: 'Connections', 'api-key': 'API key', audit: 'Audit' }
+const settingsPage: Record<string, string> = { workspace: 'General', products: 'Products', bauherren: 'People', usage: 'AI usage', workflow: 'Board & WIP', connections: 'Connections', 'api-key': 'API key', audit: 'Audit', 'chat-feedback': 'Chat feedback' }
 
 type Crumb = { label: string; href?: string }
 

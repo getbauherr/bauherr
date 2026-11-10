@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type FC } from 'react'
 import { X as Close } from '@/components/icons'
 import { api, remember, type Meta } from './api'
+import { onRequest, takeRequest } from './dock-state'
 import { DockThread, kindOf, type Command } from './dock-thread'
 import { ContextChip, usePageContext, WasAbout, type PageContext } from './page-context'
 import { useChatRuntime } from './runtime'
@@ -16,6 +17,15 @@ const Body: FC<{ info: PageContext | null; was: { id: string | undefined; contex
   const aui = useAui()
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const [note, setNote] = useState<string | null>(null)
+  useEffect(() => {
+    const handle = () => {
+      const r = takeRequest()
+      if (r === 'new') void aui.threads().switchToNewThread()
+      if (r) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#chat-dock textarea')?.focus())
+    }
+    handle()
+    return onRequest(handle)
+  }, [aui])
   const commands = useMemo<Command[]>(
     () => [
       { name: 'context', help: 'Show what the assistant sees on this page', run: () => setNote(info ? `${info.label}\n\n${info.markdown}` : 'No page context yet.') },

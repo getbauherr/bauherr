@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import type { ReactNode } from 'react'
 import { AppShell } from '../components/AppShell'
+import { ChatDock } from '../components/chat/ChatDock'
 import { SIDEBAR_COOKIE } from '../components/ui/sidebar-cookie'
 import { logout, selectWorkspace } from '../lib/actions'
 import { countOwnDrafts } from '../lib/requests'
@@ -25,6 +26,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
       needsYou={needsYou}
       drafts={drafts}
       hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)}
+      dock={<ChatDock userId={user.id} />}
       logout={logout}
       selectWorkspace={selectWorkspace}
     >

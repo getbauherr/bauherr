@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Breadcrumbs } from './Breadcrumbs'
+import { ChatButton } from './chat/ChatButton'
 import { CommandMenu } from './CommandMenu'
 import { Plus } from './icons'
 import { LinkPending } from './LinkPending'
@@ -29,6 +30,7 @@ export function ShellHeader({ items, admin, logout }: { items: Pick<NavItem, 'hr
           </Button>
         )}
         <CommandMenu items={items} admin={admin} logout={logout} />
+        <ChatButton />
       </div>
     </header>
   )

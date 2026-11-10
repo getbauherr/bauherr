@@ -28,7 +28,7 @@ export default async function ChatFeedback({ searchParams }: { searchParams: Pro
       {!rows.length ? (
         <EmptyState text="No rated answers yet." />
       ) : (
-        <Table className="min-w-[1100px]">
+        <Table className="min-w-[960px]">
           <thead><tr className="label"><th>When</th><th>Who</th><th>Rating</th><th>Reasons</th><th>Note</th><th>Question</th><th>Answer</th><th>Tools</th><th>Model</th></tr></thead>
           <tbody>
             {rows.map((r) => (

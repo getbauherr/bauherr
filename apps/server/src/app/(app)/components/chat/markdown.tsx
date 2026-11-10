@@ -1,18 +1,20 @@
 'use client'
 import { MarkdownTextPrimitive, type CodeHeaderProps, type SyntaxHighlighterProps } from '@assistant-ui/react-markdown'
 import Link from 'next/link'
-import { useShikiHighlighter } from 'react-shiki'
 import remarkGfm from 'remark-gfm'
-import { useState, type ComponentProps, type FC } from 'react'
+import { lazy, Suspense, useState, type ComponentProps, type FC } from 'react'
 import { Check, Copy } from './icons'
 
-const themes = { light: 'github-light', dark: 'github-dark' }
-const options = { defaultColor: false, engine: 'javascript' } as const
+/** The highlighter (shiki) is its own chunk, fetched when the first fenced code block is shown. */
+const Highlight = lazy(() => import('./highlight'))
 
-const Code: FC<SyntaxHighlighterProps> = ({ language, code }) => {
-  const highlighted = useShikiHighlighter(code, language || 'text', themes, options)
-  return <div className="aui-shiki overflow-x-auto rounded-b-md border border-t-0 bg-secondary p-3 font-mono text-[13px] leading-5 [&_pre]:m-0 [&_pre]:bg-transparent!">{highlighted ?? <pre>{code}</pre>}</div>
-}
+const Code: FC<SyntaxHighlighterProps> = ({ language, code }) => (
+  <div className="aui-shiki overflow-x-auto rounded-b-md border border-t-0 bg-secondary p-3 font-mono text-[13px] leading-5 [&_pre]:m-0 [&_pre]:bg-transparent!">
+    <Suspense fallback={<pre>{code}</pre>}>
+      <Highlight code={code} language={language} />
+    </Suspense>
+  </div>
+)
 
 const Header: FC<CodeHeaderProps> = ({ language, code }) => {
   const [copied, setCopied] = useState(false)

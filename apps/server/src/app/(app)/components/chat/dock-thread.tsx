@@ -39,7 +39,7 @@ const Thumb: FC<{ removable?: boolean }> = ({ removable }) => {
         <>
           <button type="button" aria-label={`Enlarge ${a.name}`} className="size-full" onClick={() => setOpen(true)}><img src={src} alt={a.name} className="size-full object-cover" /></button>
           <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent className="max-w-3xl items-center">
+            <DialogContent className="sm:max-w-3xl">
               <DialogTitle className="sr-only">{a.name}</DialogTitle>
               <img src={src} alt={a.name} className="max-h-[80dvh] max-w-full object-contain" />
             </DialogContent>
