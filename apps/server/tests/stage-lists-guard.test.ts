@@ -9,7 +9,6 @@ const roots = [join(root, 'apps/server/src'), ...readdirSync(join(root, 'package
 const ALLOWED: Record<string, string> = {
   'apps/server/src/lib/workflow.ts': 'the one module that derives every stage list',
   'apps/server/src/lib/actions.ts': 'ad-hoc subsets (stages past the Expedite lane, latest build/review Run lookups); move to kinds with the outcome step',
-  'apps/server/src/jobs/index.ts': 'ad-hoc subset (plan/build tickets swept for plan approval); move to kinds with the outcome step',
   'apps/server/src/app/(app)/(shell)/settings/actions.ts': 'Workspace mode form offers plan and build only; moves with per-Workspace config',
   'apps/server/src/app/(app)/(shell)/settings/workspace/page.tsx': 'Workspace mode form offers plan and build only; moves with per-Workspace config',
 }

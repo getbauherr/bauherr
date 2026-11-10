@@ -34,7 +34,7 @@ const replacementMr = async (payload: Payload, t: Doc) => {
 
 const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Cause | null> => {
   const wf = DEFAULT()
-  const latestIs = (kind: string) => !!latest && kindOfRun(wf, latest as { stage: string; kind?: string | null }) === kind
+  const latestIs = (kind: string) => !!latest && kindOfRun(wf, latest) === kind
   if (!t.stage) {
     // Untriaged and marked covered, but the only Triage Run ended unclaimed: nothing will ever look at it again.
     const covered = t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()

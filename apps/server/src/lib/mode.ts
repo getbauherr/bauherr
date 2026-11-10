@@ -9,7 +9,7 @@ const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
 
 const packDir = () => process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 
-export type PackStage = { name: string; mode?: unknown; gate?: string; production_gate?: string; exclude_labels?: string[]; steps?: { kind: string; skill?: string }[] }
+export type PackStage = { name: string; kind?: string; mode?: unknown; gate?: string; production_gate?: string; exclude_labels?: string[]; steps?: { kind: string; skill?: string }[] }
 let packStages: { path: string; stages: PackStage[] } | undefined
 
 /** Non-container stages of pack/factory.yaml, then those of the optional pack/workflow-security.yaml (not Board columns), read once per path; a bad security file adds nothing. */
@@ -25,7 +25,7 @@ export const packed = (): PackStage[] => {
     })()
     const core = DEFAULT()
       .stages.filter((s) => s.kind !== 'container')
-      .map(({ name, mode, gate, production_gate, exclude_labels, skill }) => ({ name, mode, gate, production_gate, exclude_labels, ...(skill && { steps: [{ kind: 'agent-run', skill }] }) }))
+      .map(({ name, kind, mode, gate, production_gate, exclude_labels, skill }) => ({ name, kind, mode, gate, production_gate, exclude_labels, ...(skill && { steps: [{ kind: 'agent-run', skill }] }) }))
     packStages = { path, stages: [...core, ...security] }
   }
   return packStages.stages

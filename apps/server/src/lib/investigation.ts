@@ -5,6 +5,8 @@ import { ticketsOf, upsertTicket } from './actions'
 import { APPROVED_PLAN } from './needs-you'
 import { id } from './release'
 import { moveStage } from './stage-move'
+import { kindOfRun } from './stage-text'
+import { DEFAULT, nameOf } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
@@ -18,10 +20,10 @@ export type Decision = (typeof DECISIONS)[number]
 export type InvestigationInput = { cause: string; decision: Decision; fix?: { title: string; body?: string }; question?: string; model?: string }
 
 /** Owner addition (2026-11-05): investigation Plan Runs get 60 turns and $2; the fresh Build Run after one gets double its normal caps. All run on the `strong` tier. */
-export const escalatedCaps = (stage: string, base: { maxTurns: number; maxBudgetUsd: number }) => (stage === 'plan' ? { maxTurns: 60, maxBudgetUsd: 2 } : { maxTurns: base.maxTurns * 2, maxBudgetUsd: base.maxBudgetUsd * 2 })
+export const escalatedCaps = (kind: string | undefined, base: { maxTurns: number; maxBudgetUsd: number }) => (kind === 'plan' ? { maxTurns: 60, maxBudgetUsd: 2 } : { maxTurns: base.maxTurns * 2, maxBudgetUsd: base.maxBudgetUsd * 2 })
 
-/** Normal caps of a stage's Run, before `escalatedCaps` doubles them. */
-export const baseCaps = (stage: string) => (stage === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : stage === 'scan' ? { maxTurns: 30, maxBudgetUsd: 2 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
+/** Normal caps of a Run of stage kind `kind` (or `scan`), before `escalatedCaps` doubles them. */
+export const baseCaps = (kind: string | undefined) => (kind === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : kind === 'scan' ? { maxTurns: 30, maxBudgetUsd: 2 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
 
 /** Hard ceiling of one scan Run's USD budget, whatever the Product asks for. */
 export const SCAN_MAX_BUDGET_USD = 10
@@ -34,16 +36,17 @@ export const scanCaps = (product: { securityScan?: { maxTurns?: number | null; m
 }
 
 const investigationRuns = async (payload: Payload, ticket: number | string): Promise<Doc[]> =>
-  ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket } }, { stage: { equals: 'plan' } }] }, sort: 'id', pagination: false, ...o })).docs as Doc[]).filter((r) => r.investigation)
+  ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket } }, { kind: { equals: 'plan' } }] }, sort: 'id', pagination: false, ...o })).docs as Doc[]).filter((r) => r.investigation)
 
 /** Whether the Run is an escalated one: it carries `escalation`, is an investigation Plan Run, or is the first Build Run started after the Ticket's latest investigation. */
 export const isEscalated = async (payload: Payload, run: Doc): Promise<boolean> => {
   if (run.escalation) return true
-  if (run.stage === 'plan') return !!run.investigation
-  if (run.stage !== 'build') return false
+  const kind = kindOfRun(DEFAULT(), run)
+  if (kind === 'plan') return !!run.investigation
+  if (kind !== 'build') return false
   const last = (await investigationRuns(payload, id(run.ticket))).filter((r) => r.id < run.id).pop()
   if (!last) return false
-  const between = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id(run.ticket) } }, { stage: { equals: 'build' } }, { id: { greater_than: last.id } }, { id: { less_than: run.id } }] }, overrideAccess: true })
+  const between = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id(run.ticket) } }, { kind: { equals: 'build' } }, { id: { greater_than: last.id } }, { id: { less_than: run.id } }] }, overrideAccess: true })
   return between.totalDocs === 0
 }
 
@@ -76,12 +79,13 @@ const describeFailure = async (payload: Payload, r: Doc): Promise<string> => {
 const completeInvestigation = async (payload: Payload, t: Doc, run: Doc): Promise<boolean> => {
   const ts = await ticketsOf(payload, id(t.product))
   const fresh = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc
-  if (fresh.stage !== 'plan' && fresh.stage !== run.investigation.stage) return false
+  const plan = nameOf(DEFAULT(), 'plan')
+  if (fresh.stage !== plan && fresh.stage !== run.investigation.stage) return false
   let did = false
-  if (fresh.stage !== 'plan') {
+  if (fresh.stage !== plan) {
     did = true
-    await moveStage(payload, ts, fresh, 'plan')
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'plan', waitingFor: null, waitingReason: REASON }, overrideAccess: true })
+    await moveStage(payload, ts, fresh, plan)
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: plan, waitingFor: null, waitingReason: REASON }, overrideAccess: true })
   }
   const line = `Investigation Run #${run.id}`
   if (latestWith(await ts.listComments(String(t.number)), INVESTIGATION_MARKER)?.body.includes(line)) return did
@@ -98,7 +102,7 @@ const completeInvestigation = async (payload: Payload, t: Doc, run: Doc): Promis
  */
 export const startInvestigation = async (payload: Payload, t: Doc, failed: Doc[]): Promise<boolean> => {
   if ((await investigationRuns(payload, t.id)).length >= MAX_INVESTIGATIONS) return false
-  const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'plan', { investigation: { failedRuns: failed.map((r) => r.id), stage: failed[0]!.stage } })
+  const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, nameOf(DEFAULT(), 'plan'), { investigation: { failedRuns: failed.map((r) => r.id), stage: failed[0]!.stage } })
   if (!run.investigation) return false
   await completeInvestigation(payload, t, run)
   return created
@@ -106,7 +110,7 @@ export const startInvestigation = async (payload: Payload, t: Doc, failed: Doc[]
 
 /** Finishes investigations a forge error interrupted: a live investigation Run whose Ticket is not yet in Plan or whose Comment section is missing. Returns how many it finished. */
 export const resumeInvestigations = async (payload: Payload): Promise<number> => {
-  const live = (await payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'plan' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
+  const live = (await payload.find({ collection: 'runs', where: { and: [{ kind: { equals: 'plan' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
   let n = 0
   for (const run of live.filter((r) => r.investigation)) {
     try {
@@ -139,7 +143,7 @@ export const submitInvestigation = async (payload: Payload, run: Doc, a: Investi
     const fix = await ts.create({ title: a.fix!.title.trim(), body: `${a.fix!.body?.trim() ?? ''}\n\nFound while investigating #${n}.`.trim(), labels: ['type:bug'] })
     await ts.addBlockedBy(n, fix.id)
     const local = await upsertTicket(payload, { workspace: id(t.workspace), product: id(t.product), externalId: fix.id, number: fix.number, url: fix.url, title: fix.title, state: 'open', labels: fix.labels }, null)
-    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: 'build', waitingReason: `waiting for #${fix.number}`, blockedBy: [...new Set([...((t.blockedBy as (number | string)[]) ?? []).map(id), local.id])] }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: nameOf(DEFAULT(), 'build'), waitingReason: `waiting for #${fix.number}`, blockedBy: [...new Set([...((t.blockedBy as (number | string)[]) ?? []).map(id), local.id])] }, overrideAccess: true })
     fixed = { number: fix.number, url: fix.url }
     lines.push(`Decision: fix first. Filed ${fix.url} (#${fix.number}) as blocked-by; Build starts again once it is closed.`)
   } else if (a.decision === 'revise') {

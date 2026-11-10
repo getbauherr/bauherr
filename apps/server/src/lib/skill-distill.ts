@@ -90,10 +90,10 @@ const extractionInput = async (payload: Payload, t: Doc): Promise<string> => {
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: 'createdAt', limit: 100, pagination: false, ...o })).docs as Doc[]
   const goal = runs.map((r) => r.goal?.statements).find((s) => Array.isArray(s)) as string[] | undefined
   const rounds = runs
-    .filter((r) => kindOfRun(wf, r as { stage: string }) === 'review' && r.verdict === 'changes' && Array.isArray(r.findings))
+    .filter((r) => kindOfRun(wf, r) === 'review' && r.verdict === 'changes' && Array.isArray(r.findings))
     .map((r, i) => `Round ${i + 1}:\n${(r.findings as Doc[]).map((f) => `- [${f.severity}] ${f.file}:${f.line} ${f.msg} (${f.scenario})`).join('\n')}`)
   const m = await prOf(payload, t, { fallback: false }).catch(() => null)
-  const base = runs.find((r) => kindOfRun(wf, r as { stage: string }) === 'review' && r.reviewedSha)?.reviewedSha as string | undefined
+  const base = runs.find((r) => kindOfRun(wf, r) === 'review' && r.reviewedSha)?.reviewedSha as string | undefined
   const diff = m && base ? await m.backend.forge.compare(m.repo, base, m.pr.headSha).catch(() => '') : ''
   const files = m && !diff ? await m.backend.forge.listPullRequestFiles(m.repo, m.pr.number).catch(() => []) : []
   const head = [`Ticket: ${t.title}`, `Goal:\n${(goal ?? []).map((g) => `- ${g}`).join('\n') || '(none recorded)'}`, `Review findings per round:\n${rounds.join('\n\n') || '(a later fix names this Ticket)'}`].join('\n\n')
