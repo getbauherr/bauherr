@@ -13,6 +13,8 @@ import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
 import { renderMarkdown } from '../../../lib/markdown'
 import { currentWorkspace } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
+import { kindOfRun } from '../../../../../lib/stage-text'
+import { DEFAULT } from '../../../../../lib/workflow'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,7 +102,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
             <Link className="text-primary" href={`/tickets/${ticket.id}`}>Ticket #{ticket.number}</Link>
             {isWebUrl(prUrl) && <a className="text-primary" href={prUrl}>Merge request</a>}
           </p>
-          {admin && run.stage === 'build' && <RelinkMr run={run.id} />}
+          {admin && kindOfRun(DEFAULT(), run) === 'build' && <RelinkMr run={run.id} />}
         </aside>
         </Card>
       </div>

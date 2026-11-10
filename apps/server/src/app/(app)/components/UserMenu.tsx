@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { LogOut, Settings } from './icons'
+import { LinkPending } from './LinkPending'
 import { ThemeRow } from './ThemeToggle'
 import { Button } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -35,7 +36,7 @@ export function UserMenu({ email, admin, workspaces, current, logout, selectWork
         <ThemeRow />
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href={admin ? '/settings' : '/settings/api-key'}><Settings />Settings</Link>
+          <Link href={admin ? '/settings/workspace' : '/settings/api-key'}><Settings />Settings<LinkPending /></Link>
         </DropdownMenuItem>
         <form action={logout}>
           <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>

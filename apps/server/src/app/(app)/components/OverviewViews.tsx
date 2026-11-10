@@ -8,6 +8,7 @@ import type { Need } from '../lib/needs-you'
 import { board, DEFAULT, title as stageTitle } from '../../../lib/workflow'
 import type { RunRow, TicketRow } from '../lib/overview'
 import { executionOrder } from '../../../lib/frontier'
+import { LinkPending } from './LinkPending'
 import { SortableCards } from './SortableCards'
 import { StatusChip } from './StatusChip'
 import { Badge } from './ui/badge'
@@ -32,7 +33,7 @@ const EpicTag = ({ t }: { t: TicketRow }) =>
     <Link className="epic-tag small inline-block max-w-full truncate rounded-sm border border-(--tint)/40 bg-[color-mix(in_oklch,var(--tint)_14%,var(--card))] px-2 text-[color-mix(in_oklch,var(--tint)_65%,var(--foreground))] hover:underline" style={{ '--tint': `oklch(60% .16 ${epicHue(t.parent.id)})` } as CSSProperties} href={`/tickets/${t.parent.id}`} title={`Epic #${t.parent.number} ${t.parent.title}`}>{epicShortTitle(t.parent.title)}</Link>
   ) : null
 
-const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="ticket-title flex-1 hover:underline">{t.title}</Link>
+const title = (t: TicketRow) => <Link href={`/tickets/${t.id}`} className="ticket-title flex-1 hover:underline">{t.title}<LinkPending /></Link>
 
 export function BoardView({ tickets, showProduct, admin, wip }: { tickets: TicketRow[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }> }) {
   return (
@@ -91,7 +92,7 @@ export function RunsTable({ runs, tickets }: { runs: RunRow[]; tickets: Map<numb
           const t = tickets.get(r.ticket)
           return (
             <tr key={r.id}>
-              <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}</Link> <span className="mono text-muted-foreground">#{t.number}</span></> : <Link className="text-primary" href={`/runs/${r.id}`}>Run</Link>}</td>
+              <td>{t ? <><Link href={`/runs/${r.id}`}>{t.title}<LinkPending /></Link> <span className="mono text-muted-foreground">#{t.number}</span></> : <Link className="text-primary" href={`/runs/${r.id}`}>Run</Link>}</td>
               <td>{r.stage}</td>
               <td><StatusChip status={r.status} /></td>
               <td title={r.createdAt}>{ago(r.createdAt)}</td>

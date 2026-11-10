@@ -9,13 +9,13 @@ import { holdOverlap } from './overlap'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
 import { waitingText, wipLimit } from './wip-limits'
-import { DEFAULT, heldStages, wipStages } from './workflow'
+import { DEFAULT, heldStages, is, wipStages } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
 /** The query behind the count of `stage`: open Tickets in it, all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). Release is never waited for (`waitingFor` cannot hold it). */
-export const wipWhere = (workspace: number | string, stage: string): Where => ({ and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { expedite: { not_equals: true } }, ...(stage === 'release' ? [] : [{ waitingFor: { not_equals: stage } }])] })
+export const wipWhere = (workspace: number | string, stage: string): Where => ({ and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { expedite: { not_equals: true } }, ...(is(DEFAULT(), stage, 'release') ? [] : [{ waitingFor: { not_equals: stage } }])] })
 
 /** The number of Tickets taking a slot in `stage`. This is the only definition of the count; the Board header uses `wipCounts`. */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
@@ -30,7 +30,7 @@ export const wipCounts = async (payload: Payload, workspace: number | string): P
  * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage, nor is an expedite Ticket (it takes an extra slot and is not counted). A Build entry is also held (`'held'`, waiting with a reason, no limit involved) while an earlier Ticket overlaps its paths.
  */
 export const enterStage = async (payload: Payload, t: Doc, stage: string, move: () => Promise<void>): Promise<'moved' | 'waiting' | 'held'> => {
-  if (stage === 'build' && (await holdOverlap(payload, t))) return 'held'
+  if (is(DEFAULT(), stage, 'build') && (await holdOverlap(payload, t))) return 'held'
   const ws = Number(id(t.workspace))
   const limit = wipLimit(await payload.findByID({ collection: 'workspaces', id: ws, select: { wipLimits: true }, ...o }), stage)
   const enter = async () => {
@@ -51,7 +51,7 @@ export const enterStage = async (payload: Payload, t: Doc, stage: string, move: 
 const completeMove = async (payload: Payload, t: Doc, stage: string): Promise<void> => {
   if (t.stage !== stage) {
     const { tickets: ts } = await forgeOf(payload, id(t.product))
-    if (stage === 'plan' && (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) await ts.removeLabels(String(t.number), [NEEDS_REFINEMENT])
+    if (is(DEFAULT(), stage, 'plan') && (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) await ts.removeLabels(String(t.number), [NEEDS_REFINEMENT])
     await moveStage(payload, ts, t, stage)
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   }
@@ -60,7 +60,7 @@ const completeMove = async (payload: Payload, t: Doc, stage: string): Promise<vo
 /** Starts the Run the pulled Ticket's new column calls for (a Ticket with an unreviewed assignee waits for its gate). */
 const startAfterPull = async (payload: Payload, t: Doc, stage: string): Promise<void> => {
   const fresh = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc
-  if (stage === 'review') await startReviewIfReady(payload, fresh)
+  if (is(DEFAULT(), stage, 'review')) await startReviewIfReady(payload, fresh)
   else if (logins(fresh.assignees).every((a) => logins(fresh.gateAssignees).includes(a))) await startRunIfNeeded(payload, fresh as { id: number; workspace?: unknown }, stage)
 }
 

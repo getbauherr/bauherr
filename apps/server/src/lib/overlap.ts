@@ -4,6 +4,7 @@ import { PLAN_MARKER, latestWith, planFiles } from '../app/(app)/lib/plan'
 import { executionOrder } from './frontier'
 import { isExpediting } from './expedite'
 import { forgeOf, id, prOf } from './release'
+import { DEFAULT, nameOf } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -59,8 +60,11 @@ export const overlappingTicket = async (payload: Payload, t: Doc): Promise<Doc |
   const ignore = (product.overlapIgnore ?? []) as string[]
   const mine = await ticketPaths(payload, t, ignore)
   if (!mine.length) return null
-  const me = { id: t.id, number: t.number, rank: t.rank, stage: 'build' }
-  const earlier = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(t.product) } }, { state: { equals: 'open' } }, { stage: { in: ['build', 'review'] } }, { id: { not_equals: t.id } }] }, pagination: false, ...o })).docs as Doc[])
+  const wf = DEFAULT()
+  const build = nameOf(wf, 'build')
+  const holdsDiff = [build, nameOf(wf, 'review')]
+  const me = { id: t.id, number: t.number, rank: t.rank, stage: build }
+  const earlier = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(t.product) } }, { state: { equals: 'open' } }, { stage: { in: holdsDiff } }, { id: { not_equals: t.id } }] }, pagination: false, ...o })).docs as Doc[])
     .filter((e) => e.expedite || executionOrder(e as never, me) < 0 || (!isBug(t) && isBug(e)))
     .sort((a, b) => executionOrder(a as never, b as never))
   for (const e of earlier) {
@@ -78,7 +82,8 @@ export const holdOverlap = async (payload: Payload, t: Doc): Promise<boolean> =>
   const other = await overlappingTicket(payload, t)
   if (!other) return false
   const waitingReason = `overlaps #${other.number}`
-  if (t.waitingFor !== 'build' || t.waitingReason !== waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: 'build', waitingReason }, ...o })
+  const build = nameOf(DEFAULT(), 'build')
+  if (t.waitingFor !== build || t.waitingReason !== waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: build, waitingReason }, ...o })
   return true
 }
 

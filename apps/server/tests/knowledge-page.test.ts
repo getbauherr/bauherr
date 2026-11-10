@@ -77,16 +77,16 @@ describe('loadKnowledge', () => {
   })
 
   it('lists only open bauherr/* PRs with their merge-gate checks; none without a Knowledge repo', async () => {
-    expect((await page.loadKnowledge(withRepo, undefined, undefined, admin)).writeBacks).toEqual([
+    expect(await (await page.loadKnowledge(withRepo, undefined, undefined, admin)).writeBacks).toEqual([
       expect.objectContaining({ title: 'Write back', head: 'bauherr/7', checks: 'red', failed: ['lint'] }),
     ])
-    expect((await page.loadKnowledge(withoutRepo, undefined, undefined, admin)).writeBacks).toEqual([])
+    expect(await (await page.loadKnowledge(withoutRepo, undefined, undefined, admin)).writeBacks).toEqual([])
   })
 
   it('degrades to null when the forge fails', async () => {
     const prs = backend.current.forge.listPullRequests
     backend.current.forge.listPullRequests = async () => { throw new Error('down') }
-    expect((await page.loadKnowledge(withRepo, undefined, undefined, admin)).writeBacks).toBeNull()
+    expect(await (await page.loadKnowledge(withRepo, undefined, undefined, admin)).writeBacks).toBeNull()
     backend.current.forge.listPullRequests = prs
   })
 })
@@ -98,7 +98,7 @@ describe('loadKnowledge for a member', () => {
     expect(k.sources.map((s) => s.name)).toEqual([REPO])
     expect(k.hits).toEqual([])
     expect(k.doc).toBeNull()
-    expect(k.writeBacks).toBeNull()
+    expect(await k.writeBacks).toBeNull()
     expect(listPullRequests).not.toHaveBeenCalled()
     listPullRequests.mockRestore()
   })

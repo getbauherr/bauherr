@@ -3,7 +3,7 @@ import type { Payload, Where } from 'payload'
 import { NEEDS_REFINEMENT } from './needs-you'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
-import { DEFAULT, inFlight as inFlightStages } from './workflow'
+import { DEFAULT, inFlight as inFlightStages, nameOf } from './workflow'
 import { enterStage } from './wip'
 
 type Doc = Record<string, any>
@@ -54,18 +54,19 @@ export const noteIgnored = (payload: Payload, ts: TicketSource, number: number |
  */
 export const startExpedites = async (payload: Payload): Promise<number> => {
   // A Workspace that turned the lane off drops the flag of every open Ticket (not only the waiting ones): the flag must never outlive the setting.
+  const wf = DEFAULT()
   const off = (await payload.find({ collection: 'workspaces', where: { expediteLane: { equals: false } }, select: {}, pagination: false, ...o })).docs.map((w) => w.id)
   if (off.length) {
     const flagged = await payload.find({ collection: 'tickets', where: { and: [{ workspace: { in: off } }, { expedite: { equals: true } }] }, select: {}, pagination: false, ...o })
     for (const t of flagged.docs) await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })
   }
-  const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ expedite: { equals: true } }, { state: { equals: 'open' } }, { or: [{ stage: { exists: false } }, { stage: { equals: 'triage' } }] }] }, sort: 'createdAt', pagination: false, ...o })).docs as Doc[]
+  const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ expedite: { equals: true } }, { state: { equals: 'open' } }, { or: [{ stage: { exists: false } }, { stage: { equals: nameOf(wf, 'triage') } }] }] }, sort: 'createdAt', pagination: false, ...o })).docs as Doc[]
   let started = 0
   for (const t of waiting) {
     try {
       if (t.mergeSha || t.waitingFor || (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) continue
       // A Triage Run being worked on finishes first (its outcome then meets the flag); one nobody has claimed is cancelled: the lane skips the Triage queue.
-      const triage = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'triage' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
+      const triage = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'triage' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
       if (triage.some((r) => r.status === 'running')) continue
       for (const r of triage) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'expedite: the lane skips Triage', finishedAt: new Date().toISOString() }, ...o })
       const { tickets: ts } = await forgeOf(payload, id(t.product))
@@ -78,7 +79,7 @@ export const startExpedites = async (payload: Payload): Promise<number> => {
         await commentOnce(payload, ts, t.number, QUEUED, 'Bauherr: another expedite Ticket is in flight. This one is next and enters the lane when it is released.')
         continue
       }
-      const stage = HAS_PLAN.test((await ts.get(String(t.number))).body ?? '') ? 'build' : 'plan'
+      const stage = HAS_PLAN.test((await ts.get(String(t.number))).body ?? '') ? nameOf(wf, 'build') : nameOf(wf, 'plan')
       const entered = await enterStage(payload, t, stage, async () => {
         await moveStage(payload, ts, t, stage)
         await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })

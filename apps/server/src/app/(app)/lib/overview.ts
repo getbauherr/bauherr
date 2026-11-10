@@ -4,16 +4,17 @@ import type { Payload } from 'payload'
 import { hasProductionChecks } from '../../../lib/mode'
 import { nextStep } from '../../../lib/next-step'
 import { payloadClient } from './session'
-import { type Stage, needsYou, stageOf } from './needs-you'
+import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere, plainStatus } from './epics'
 import { wipCounts } from '../../../lib/wip'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
-import { DEFAULT, wipStages } from '../../../lib/workflow'
+import { byKind, DEFAULT, is, wipStages } from '../../../lib/workflow'
 
 export type RunRow = {
   id: number
   ticket: number
   stage: string
+  kind?: string | null
   status: string
   /** Why the Run ended (failed, cancelled, needs_human). */
   error?: string | null
@@ -67,7 +68,7 @@ const LIVE = ['running', 'awaiting_session']
 export const RUNS_LIMIT = 100
 const CLOSED_LIMIT = 200
 export const FORGE_TIMEOUT_MS = 3000
-const RUN_FIELDS = { ticket: true, stage: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, reconcileStatus: true, gatewayTokensTotal: true, createdAt: true, escalation: true, investigation: true, reasonKind: true } as const
+const RUN_FIELDS = { ticket: true, stage: true, kind: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, reconcileStatus: true, gatewayTokensTotal: true, createdAt: true, escalation: true, investigation: true, reasonKind: true } as const
 
 export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
@@ -88,6 +89,7 @@ const latestRuns = async (payload: Payload, tickets: number[]): Promise<Map<numb
 /** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
 const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null }[], wip: Base['wip']): Promise<TicketRow[]> => {
   const ws = { workspace: { equals: workspace } }
+  const buildStage = byKind(DEFAULT(), 'build')?.name
   const blockerIds = [...new Set(ticketDocs.flatMap((t) => (t.blockedBy ?? []) as number[]))]
   const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
   const tickets = (ids: number[]) => (ids.length ? docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: ids } }] } }) : [])
@@ -107,7 +109,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
     const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
-    const need = isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null
+    const need = needsOf(t, run, !hasProductionChecks(byId.get(t.product) ?? {}))
     return {
       id: t.id,
       number: t.number,
@@ -122,10 +124,9 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      // The stored count of unanswered critical decisions (kept by plan submit, answers and the gate sweep) turns "Approve plan" into "Answer decisions" without a forge call.
-      needsYou: need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need,
+      needsYou: need,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ ticket: t, need: null, run: null, waiting: waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
-      overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
+      overlaps: isOpen && t.waitingFor === buildStage ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
       gateUnreachable: isOpen && !t.gateNotifiedAt ? (t.gateUnreachable ?? null) : null,
@@ -177,7 +178,7 @@ export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | n
     payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
     wipCounts(payload, workspace),
   ])
-  if (!subs.length && ticket.stage !== 'parent') return null
+  if (!subs.length && !is(DEFAULT(), ticket.stage, 'container')) return null
   const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }])))
   return epicOf(ticket, subs, new Map(rows.map((r) => [r.id, r])))
 }

@@ -41,6 +41,7 @@ test('a draft saved before logout is reopened from Requests, finished, sent and 
   await say(title, 'Who is affected, and since when?')
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
+  await page.waitForURL('**/login') // the sign-out action must land before the next page load, which would cancel it
   await signIn()
 
   await page.goto('/requests')

@@ -3,12 +3,13 @@ import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
 import type { TicketSource } from '@bauherr/adapters'
 import { hasProductionChecks } from './mode'
-import { type Need, needsYou } from './needs-you'
+import { type Need, needsOf } from './needs-you'
 import { publicUrl } from './oidc'
 import { startRunIfNeeded } from '../jobs'
 import { holdOverlap } from './overlap'
 import { cas, forgeOf, id } from './release'
 import { sql } from '@payloadcms/db-postgres'
+import { DEFAULT, is } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -62,9 +63,12 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * A gate whose owners are all rejected for good is not notified and is flagged `gateUnreachable`; it is retried each sweep.
  * Returns whether the Ticket row changed.
  */
-export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
-  const productionChecksMissing = t.stage === 'release' && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
-  const candidate = t.state === 'closed' && t.releaseChecksState !== 'failed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run)
+export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
+  const wf = DEFAULT()
+  const productionChecksMissing = is(wf, t.stage, 'release') && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
+  const candidate = needsOf(t, run, productionChecksMissing)
+  // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
+  if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
@@ -129,9 +133,9 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   })
   // Closes the claim/poll race: the poll may have seen the new assignee before it was recorded and skipped the Run start on stage entry.
   const factory = [...mine, ...added]
-  if ((t.stage === 'plan' || t.stage === 'build') && t.state === 'open' && !t.waitingFor && logins(t.assignees).every((a) => factory.includes(a))) {
+  if (is(wf, t.stage, 'plan', 'build') && t.state === 'open' && !t.waitingFor && logins(t.assignees).every((a) => factory.includes(a))) {
     const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, ...o })
-    if (!runs.totalDocs && !(t.stage === 'build' && (await holdOverlap(payload, t)))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
+    if (!runs.totalDocs && !(is(wf, t.stage, 'build') && (await holdOverlap(payload, t)))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
   }
   return true
 }

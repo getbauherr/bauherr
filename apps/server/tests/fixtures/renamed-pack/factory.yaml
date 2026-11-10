@@ -1,0 +1,28 @@
+# Default factory with every stage renamed (same kinds, order, outcomes); no production gate. Used by tests/renamed-flow.test.ts.
+# Optional per stage: `mode: session|autonomous` (default autonomous). Workspace.modeByStage / defaultMode and
+# env BAUHERR_DEFAULT_MODE override it (apps/server/src/lib/mode.ts).
+# Human gates: refine (Triage questions) is always on; production is on by default (`production_gate: human` on `release`;
+# a Product without productionChecks shows the "Configure production checks" gate until they are set).
+# Optional, off by default: `gate: human` on `plan` (Approve plan) or on `release` (Accept on staging).
+version: 1
+team:
+  roles:
+    orchestrator: {title: Orchestrator, tier: cheap, profile_file: roles/orchestrator.md}
+    engineer:     {title: Software engineer, tier: cheap, profile_file: roles/engineer.md}
+    reviewer:     {title: Reviewer, tier: standard, profile_file: roles/reviewer.md}
+workflow:
+  stages:
+    # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
+    - name: intake
+      title: Intake
+      kind: triage
+      role: orchestrator
+      skill: triage
+      exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
+      outcomes: {plan: design, refine: intake, skip: backlog}
+    - {name: design, title: Design, kind: plan, role: engineer, skill: run-contract, wip: 3, outcomes: {done: code, split: epic, decisions: intake}}
+    - {name: epic, kind: container, title: Epic, outcomes: {children_done: shipped}}
+    - {name: code, title: Code, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: check, stuck: escalate, replan: design}}
+    - {name: check, title: Check, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: ship, changes: code, stop: intake}}
+    - {name: ship, title: Ship, kind: release, wip: 5, outcomes: {accepted: shipped, changes: code}}
+    - {name: shipped, title: Shipped, kind: done}

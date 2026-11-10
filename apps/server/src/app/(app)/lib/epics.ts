@@ -1,7 +1,7 @@
 import type { Where } from 'payload'
 import { statusOf } from './card-status'
 import type { Stage } from './needs-you'
-import { board, DEFAULT } from '../../../lib/workflow'
+import { board, byKind, DEFAULT } from '../../../lib/workflow'
 
 export type EpicChild = { id: number; number: number; title: string; stage: Stage; open: boolean; status: string }
 export type Epic = { id: number; number: number; title: string; open: boolean; rank: string | null; product: number | null; children: EpicChild[] }
@@ -29,7 +29,7 @@ export const epicsToShow = (epics: Epic[], showDone: boolean, product: number | 
     .sort((a, b) => Number((a.rank ?? '') > (b.rank ?? '')) - Number((a.rank ?? '') < (b.rank ?? '')) || a.number - b.number)
 
 /** Epics are structural: stage `parent` (just split) or any Ticket with sub-tickets, so a done epic (stage `done`, closed) stays one. */
-export const epicWhere = (parentIds: number[]): Where => ({ or: [{ stage: { equals: 'parent' } }, ...(parentIds.length ? [{ id: { in: parentIds } }] : [])] })
+export const epicWhere = (parentIds: number[]): Where => ({ or: [{ stage: { equals: byKind(DEFAULT(), 'container')?.name ?? '' } }, ...(parentIds.length ? [{ id: { in: parentIds } }] : [])] })
 
 /** Where to send a Board/Runs request that names no epic when one is remembered and still open; null otherwise (stale and finished epics restore to All). */
 export const epicRestoreUrl = (path: string, sp: Record<string, string | undefined>, stored: unknown, epics: { id: number; open: boolean }[]): string | null =>

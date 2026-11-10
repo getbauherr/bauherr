@@ -18,7 +18,8 @@ import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
 import { moveStage, stageOf } from './stage-move'
-import { DEFAULT, liveStages, repairable } from './workflow'
+import { kindOfRun } from './stage-text'
+import { byKind, DEFAULT, is, liveStages, nameOf, repairable } from './workflow'
 import { preReviewFailures } from './pre-review'
 import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
@@ -145,10 +146,11 @@ export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: Tic
 
 /** Admin-only: points a Build Run at the replacement MR (same check as the agent's `relink_mr`, without the lease). */
 export const relinkRunMr = async (payload: Payload, user: Doc, a: { runId: TicketId; workspaceId: TicketId; prUrl: string }) => {
+  const wf = DEFAULT()
   if (user.role !== 'admin') throw new NotAdmin()
   const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
   if (!run || String(id(run.workspace)) !== String(a.workspaceId)) throw new NotInWorkspace()
-  if (run.stage !== 'build') throw new Error('only a Build Run has an MR')
+  if (kindOfRun(wf, run) !== 'build') throw new Error('only a Build Run has an MR')
   const t = await loadIn(payload, user, id(run.ticket), a.workspaceId)
   await assertOpenFactoryMr(payload, t, a.prUrl)
   await payload.update({ collection: 'runs', id: run.id, data: { artifacts: { ...(run.artifacts ?? {}), prUrl: a.prUrl } }, overrideAccess: true })
@@ -260,14 +262,15 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
 
 /** The move into review (WIP rule included) and the Review Run; shared by `request_review` and the checks watcher. */
 const enterReview = async (payload: Payload, t: Doc) => {
+  const review = nameOf(DEFAULT(), 'review')
   const { ts } = await sourceOf(payload, t)
-  const entered = await enterStage(payload, t, 'review', async () => {
-    await moveStage(payload, ts, t, 'review')
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'review', reviewWaitingSince: null }, overrideAccess: true })
+  const entered = await enterStage(payload, t, review, async () => {
+    await moveStage(payload, ts, t, review)
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: review, reviewWaitingSince: null }, overrideAccess: true })
   })
-  if (entered === 'waiting') return { stage: t.stage as string, waiting: 'review' }
+  if (entered === 'waiting') return { stage: t.stage as string, waiting: review }
   await startReviewIfReady(payload, (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as Doc)
-  return { stage: 'review' }
+  return { stage: review }
 }
 
 /**
@@ -275,7 +278,8 @@ const enterReview = async (payload: Payload, t: Doc) => {
  * Never touches a Ticket outside review.
  */
 export const parkForChecks = async (payload: Payload, t: Doc, mr: Mr, gate: { state: string; failed: string[] }): Promise<void> => {
-  if (t.stage !== 'review' || gate.state === 'green') return
+  const wf = DEFAULT()
+  if (!is(wf, t.stage, 'review') || gate.state === 'green') return
   const src = { ts: mr.tickets, n: String(t.number) }
   if (gate.state === 'red') {
     const text = `Checks failed on MR #${mr.pr.number} (${mr.pr.headSha.slice(0, 7)}): ${gate.failed.join(', ')}. Fix them on the same MR (branch \`${mr.pr.head}\`); push to that branch, run the Product's required checks locally, then request review again.`
@@ -283,8 +287,8 @@ export const parkForChecks = async (payload: Payload, t: Doc, mr: Mr, gate: { st
     await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
     return
   }
-  await moveStage(payload, mr.tickets, t, 'build')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null, waitingFor: 'checks', waitingReason: null, reviewWaitingSince: now() }, overrideAccess: true })
+  await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'))
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null, waitingFor: 'checks', waitingReason: null, reviewWaitingSince: now() }, overrideAccess: true })
 }
 
 /** A pending head that no check settled after this long needs a human. */
@@ -309,7 +313,8 @@ export const checksGate = async (payload: Payload, t: Doc, mr: Mr, at = Date.now
  * Pending past CHECKS_WAIT_MS: the latest Build Run goes `needs_human` (shown as "Run needs you" with the reason). Returns how many Tickets moved.
  */
 export const watchChecks = async (payload: Payload, at = Date.now()): Promise<number> => {
-  const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'build' } }, { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const wf = DEFAULT()
+  const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: nameOf(wf, 'build') } }, { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let moved = 0
   for (const t of waiting) {
     try {
@@ -328,7 +333,7 @@ export const watchChecks = async (payload: Payload, at = Date.now()): Promise<nu
         await handBackToBuild(payload, t, { ts: mr.tickets, n: String(t.number) }, text, gate.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
         moved++
       } else if (t.reviewWaitingSince && at - new Date(t.reviewWaitingSince).getTime() > CHECKS_WAIT_MS) {
-        const run = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+        const run = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
         if (run) await payload.update({ collection: 'runs', id: run.id, data: { status: 'needs_human', error: `the required checks on ${mr.pr.headSha.slice(0, 7)} were still pending after 2 hours` }, overrideAccess: true })
         await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
       }
@@ -364,7 +369,7 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
 export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   if (user.role !== 'admin') throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.state === 'closed' || ['release', 'done', PARENT].includes(t.stage)) throw new Error('the Ticket is past the stages the Expedite lane serves')
+  if (t.state === 'closed' || is(DEFAULT(), t.stage, 'release', 'done', 'container')) throw new Error('the Ticket is past the stages the Expedite lane serves')
   if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Board & WIP')
   const { ts, n } = await sourceOf(payload, t)
   await touch(payload, user, t, 'expedite') // before the label: a poll in between must find the touch that vouches for it
@@ -401,7 +406,6 @@ export const upsertTicket = async (payload: Payload, create: Record<string, any>
   }
 }
 
-const PARENT = 'parent'
 const ro = { depth: 0, overrideAccess: true } as const
 /** Forge time after our own Comment as `triagedAt`; `sourceUpdatedAt` stays with the poller, so it still syncs the labels we just changed. */
 const covered = async (ts: TicketSource, n: string) => {
@@ -413,10 +417,11 @@ const covered = async (ts: TicketSource, n: string) => {
  * Plan gate off: moves a Ticket in `plan` whose latest Run is a succeeded plan Run on, without a label or human touch. Idempotent; a no-op while the gate is on.
  * An unanswered critical decision puts the Ticket back on the refine hold instead (answering re-plans); otherwise it goes to `build` (or `parent`, its Sub-tickets going straight to Build).
  */
-export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | 'parent' | 'refine' | null> => {
-  if ((gateOn('plan') && !t.expedite) || t.stage !== 'plan' || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
+export const advancePlan = async (payload: Payload, t: Doc): Promise<string | null> => {
+  const wf = DEFAULT()
+  if ((gateOn('plan') && !t.expedite) || !is(wf, t.stage, 'plan') || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
   const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
-  if (run?.stage !== 'plan' || run.status !== 'succeeded') return null
+  if (!run || kindOfRun(wf, run) !== 'plan' || run.status !== 'succeeded') return null
   const { ts, n } = await sourceOf(payload, t)
   const comments = await ts.listComments(n)
   const plan = latestWith(comments, PLAN_MARKER)
@@ -428,21 +433,22 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
     const marker = `<!-- bauherr:plan-refine:${plan.id} -->`
     if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
     await ts.addLabels(n, [NEEDS_REFINEMENT])
-    await ts.removeLabels(n, [stageLabel('plan')])
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage', ...(await covered(ts, n)) }, ...ro })
+    await ts.removeLabels(n, [stageLabel(nameOf(wf, 'plan'))])
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'triage'), ...(await covered(ts, n)) }, ...ro })
     return 'refine'
   }
   const parent = await spawnSubTickets(payload, t)
+  const build = nameOf(wf, 'build')
   if (!parent) {
-    const entered = await enterStage(payload, t, 'build', async () => {
-      await moveStage(payload, ts, t, 'build')
-      await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...ro })
+    const entered = await enterStage(payload, t, build, async () => {
+      await moveStage(payload, ts, t, build)
+      await payload.update({ collection: 'tickets', id: t.id, data: { stage: build }, ...ro })
     })
     if (entered !== 'moved') return null
-    if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, 'build')
+    if (logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, build)
   }
   await ts.comment(n, gateOn('plan') ? 'Plan accepted automatically (expedite).' : 'Plan accepted automatically (plan gate off).')
-  return parent ? 'parent' : 'build'
+  return parent ? nameOf(wf, 'container') : build
 }
 
 /**
@@ -452,9 +458,12 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<'build' | '
  */
 export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean> =>
   exclusive(`spawn:${id(parent.product)}:${parent.number}`, async () => {
+    const wf = DEFAULT()
+    const container = byKind(wf, 'container')?.name
+    if (!container) return false
     const ts = await ticketsOf(payload, id(parent.product))
     const n = String(parent.number)
-    if (stageOf((await ts.get(n)).labels) === PARENT) return true
+    if (stageOf((await ts.get(n)).labels) === container) return true
     const plan = latestWith(await ts.listComments(n), PLAN_MARKER)
     const items = plan ? subTickets(plan.body) : []
     if (!items.length) return false
@@ -466,14 +475,16 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       prev = await lastRankAfter(payload, id(parent.workspace))
       await payload.update({ collection: 'tickets', id: parent.id, data: { rank: prev }, ...ro })
     }
-    const column = gateOn('plan') ? 'plan' : 'build'
+    const planStage = nameOf(wf, 'plan')
+    const build = nameOf(wf, 'build')
+    const column = gateOn('plan') ? planStage : build
     const limit = wipLimit(await payload.findByID({ collection: 'workspaces', id: id(parent.workspace), select: { wipLimits: true }, ...ro }), column)
     let room = limit == null ? Infinity : limit - (await wipCount(payload, id(parent.workspace), column))
     for (const item of items) {
       const found = existing.find((c) => c.title === item.title)
       const orphan = found ? undefined : local.get(item.title)
-      const held = !found && !orphan && column === 'build' && room-- <= 0
-      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel(held ? 'plan' : column)] }))
+      const held = !found && !orphan && column === build && room-- <= 0
+      const child = found ?? (orphan ? await ts.get(String(orphan.number)) : await ts.create({ title: item.title, body: `${item.body}\n\nParent: #${n}`.trim(), labels: [stageLabel(held ? planStage : column)] }))
       const link: Record<string, unknown> = { parent: parent.id, ...(!found && { inheritedApprovalFrom: parent.id }) }
       const doc = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(parent.product) } }, { externalId: { equals: child.id } }] }, limit: 1, ...ro })).docs[0]
       if (doc?.rank) prev = doc.rank as string
@@ -489,7 +500,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       }
       const row = await upsertTicket(
         payload,
-        { ...link, ...(held && { waitingFor: 'build' }), workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? 'plan' },
+        { ...link, ...(held && { waitingFor: build }), workspace: id(parent.workspace), product: id(parent.product), externalId: child.id, number: child.number, url: child.url, title: child.title, state: 'open', labels: child.labels, stage: stageOf(child.labels) ?? planStage },
         link,
       )
       spawned.set(item.title, { id: child.id, docId: row.id })
@@ -511,14 +522,18 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       if (!(await ts.get(me.id)).blockedBy.includes(after.id)) await ts.addBlockedBy(me.id, after.id)
       await payload.update({ collection: 'tickets', id: me.docId, data: { blockedBy: [after.docId] }, ...ro })
     }
-    await moveStage(payload, ts, parent, PARENT)
-    await payload.update({ collection: 'tickets', id: parent.id, data: { stage: PARENT }, ...ro })
+    await moveStage(payload, ts, parent, container)
+    await payload.update({ collection: 'tickets', id: parent.id, data: { stage: container }, ...ro })
     return true
   })
 
 /** Finishes every parent (stage `parent`) whose sub-tickets are all closed, with a Comment listing them. Returns how many were closed. */
 export const closeFinishedParents = async (payload: Payload): Promise<number> => {
-  const parents = (await payload.find({ collection: 'tickets', where: { stage: { equals: PARENT } }, pagination: false, ...ro })).docs as Doc[]
+  const wf = DEFAULT()
+  const container = byKind(wf, 'container')?.name
+  if (!container) return 0
+  const parents = (await payload.find({ collection: 'tickets', where: { stage: { equals: container } }, pagination: false, ...ro })).docs as Doc[]
+  const done = nameOf(wf, 'done')
   let closed = 0
   for (const p of parents) {
     try {
@@ -527,8 +542,8 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
       const kids = await ts.listSubTickets(n)
       if (!kids.length || kids.some((k) => k.state !== 'closed')) continue
       if ((await ts.get(n)).state !== 'closed') await ts.close(n, 'completed')
-      await moveStage(payload, ts, p, 'done')
-      await payload.update({ collection: 'tickets', id: p.id, data: { stage: 'done', state: 'closed' }, ...ro })
+      await moveStage(payload, ts, p, done)
+      await payload.update({ collection: 'tickets', id: p.id, data: { stage: done, state: 'closed' }, ...ro })
       await ts.comment(n, `All sub-tickets are closed:\n${kids.map((k) => `- #${k.number} ${k.title}`).join('\n')}`)
       closed++
     } catch (e) {
@@ -616,31 +631,35 @@ export const postDecisions = async (
 
 /** A Ticket held by Triage (`needs-refinement`) whose critical questions are all answered leaves the hold and enters `plan`; the poller starts the Plan Run. */
 const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc) => {
+  const wf = DEFAULT()
   const { labels } = await ts.get(n)
   if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await ts.listComments(n)).length) return
-  await enterStage(payload, t, 'plan', async () => {
+  await enterStage(payload, t, nameOf(wf, 'plan'), async () => {
     await ts.removeLabels(n, [NEEDS_REFINEMENT])
-    await moveStage(payload, ts, t, 'plan')
+    await moveStage(payload, ts, t, nameOf(wf, 'plan'))
   })
 }
 
 export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.stage !== 'release') throw new Error('the Ticket is not in release')
+  if (!is(wf, t.stage, 'release')) throw new Error('the Ticket is not in release')
   return publishStagingSummary(payload, t)
 }
 
 /** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless a production gate is on. */
 export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.stage !== 'release') throw new Error('the Ticket is not in release')
+  if (!is(wf, t.stage, 'release')) throw new Error('the Ticket is not in release')
   return passStaging(payload, t, () => touch(payload, user, t, 'accept:staging'))
 }
 
 /** Production gate: a Workspace member approves the deploy; the Product's own pipeline deploys, `watchProduction` observes. Also the retry after a failed or timed out deploy. */
 export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.stage !== 'release' || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
+  if (!is(wf, t.stage, 'release') || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
   await beginProduction(payload, t, user)
   await payload.jobs.queue({ task: 'publish-release', queue: 'poll', input: {} }).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not queue publish-release, the scheduled run picks it up'))
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
@@ -689,22 +708,23 @@ const setInstructions = (worklog: string, text: string): string => setSection(wo
 
 /** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
 export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const rawNote = a.note?.trim()
   if (!rawNote) throw new Error('a note is required')
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  const active = t.stage === 'build' && (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { in: ACTIVE } }] }, overrideAccess: true })).totalDocs
-  if (t.stage !== 'release' && !(t.stage === 'build' && !active)) throw new Error('the Ticket is not in release')
+  const active = is(wf, t.stage, 'build') && (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { in: ACTIVE } }] }, overrideAccess: true })).totalDocs
+  if (!is(wf, t.stage, 'release') && !(is(wf, t.stage, 'build') && !active)) throw new Error('the Ticket is not in release')
   const src = await sourceOf(payload, t)
   const note = rawNote.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment(src)
   if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
   else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
-  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
-  await moveStage(payload, src.ts, t, 'build')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
+  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
+  await moveStage(payload, src.ts, t, nameOf(wf, 'build'))
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
   await clearApprovalLabel(payload, src.ts, src.n)
   await touch(payload, user, t, 'request-changes:staging')
-  return { stage: 'build', run: run.id as TicketId }
+  return { stage: nameOf(wf, 'build'), run: run.id as TicketId }
 }
 
 export const REVIEW_MARKER = '<!-- bauherr:review -->'
@@ -777,7 +797,7 @@ export const moveReview = async (payload: Payload, ticket: TicketId, to: string 
 
 /** Cancels the Ticket's active review Runs. */
 const cancelReviewRuns = async (payload: Payload, ticket: TicketId): Promise<void> => {
-  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "updated_at" = now() WHERE "ticket_id" = ${ticket} AND "stage" = 'review' AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
+  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "updated_at" = now() WHERE "ticket_id" = ${ticket} AND "kind" = 'review' AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
 }
 
 /** Parks the Ticket on a human with a Ticket comment (never overwrites a completed merge). */
@@ -798,11 +818,12 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
  * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
  */
 const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string; conflictBase?: string | null; escalation?: Escalation } = {}): Promise<ReviewOutcome> => {
+  const wf = DEFAULT()
   const countRound = opts.countRound ?? true
   if ((await mr.backend.forge.getPullRequest(mr.repo, mr.pr.number)).state !== 'open') return 'noop'
   const claimed = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, ${opts.conflictBase === undefined ? sql`` : sql`"conflict_return_base" = ${opts.conflictBase}, `}"merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
+      sql`UPDATE "tickets" SET "review_rounds" = COALESCE("review_rounds", 0) + ${countRound ? 1 : 0}, ${opts.conflictBase === undefined ? sql`` : sql`"conflict_return_base" = ${opts.conflictBase}, `}"merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND ("review_state" IS NULL OR "review_state" = 'waiting_checks') RETURNING "review_rounds"`,
     )
   ).rows[0]
   if (!claimed) return 'noop'
@@ -812,7 +833,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   if (countRound && rounds > MAX_REVIEW_ROUNDS) {
     const used = await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { in: ['review-cap:auto-grant', 'review-cap:grant'] } }] }, overrideAccess: true })
     if (used.totalDocs) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
-    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_rounds" = "review_rounds" - 1 WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_rounds" > ${MAX_REVIEW_ROUNDS}`)
+    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_rounds" = "review_rounds" - 1 WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_rounds" > ${MAX_REVIEW_ROUNDS}`)
     await factoryTouch(payload, t, 'review-cap:auto-grant')
     await mr.tickets.comment(n, `Review round cap reached after ${MAX_REVIEW_ROUNDS} rounds; the factory granted one more round.`)
   }
@@ -823,6 +844,7 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
 
 /** Ticket back to Build: `text` becomes the worklog's Current instructions, `lines` go under Unfinished work and `low` under Open; active review Runs are cancelled and a Build Run is queued. */
 const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: string, lines: string[] = [], low: string[] = [], escalation?: Escalation): Promise<void> => {
+  const wf = DEFAULT()
   const { ts, n } = src
   const log = await worklogComment(src)
   let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')), '**Unfinished work**', lines)
@@ -830,9 +852,9 @@ const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: stri
   if (log) await ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
-  await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build', escalation ? { escalation } : {})
-  await moveStage(payload, ts, t, 'build')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build', reviewState: null }, overrideAccess: true })
+  await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'), escalation ? { escalation } : {})
+  await moveStage(payload, ts, t, nameOf(wf, 'build'))
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null }, overrideAccess: true })
 }
 
 /**
@@ -866,8 +888,9 @@ const CAP_MARKER = 'Bauherr needs a human:'
 
 /** The Ticket's round-cap gate: a review `needs_human` past the cap with its factory MR still open. Throws otherwise. */
 const loadAtCap = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.state === 'closed' || t.stage !== 'review' || t.reviewState !== 'needs_human' || (t.reviewRounds ?? 0) <= MAX_REVIEW_ROUNDS) throw new Error('the Ticket is not at the review round cap')
+  if (t.state === 'closed' || !is(wf, t.stage, 'review') || t.reviewState !== 'needs_human' || (t.reviewRounds ?? 0) <= MAX_REVIEW_ROUNDS) throw new Error('the Ticket is not at the review round cap')
   const mr = await prOf(payload, t)
   if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
   return { t, mr, n: String(t.number) }
@@ -875,9 +898,10 @@ const loadAtCap = async (payload: Payload, user: Doc, a: { ticket: TicketId; wor
 
 /** Owner grant at the round cap: lowers `reviewRounds` by 1 (exactly one more round), hands the escalation findings to Build on the same MR. Owner-only; MCP callers are checked in the tool. */
 export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const { t, mr, n } = await loadAtCap(payload, user, a)
   const claimed = await payload.db.drizzle.execute(
-    sql`UPDATE "tickets" SET "review_state" = NULL, "review_rounds" = "review_rounds" - 1, "merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
+    sql`UPDATE "tickets" SET "review_state" = NULL, "review_rounds" = "review_rounds" - 1, "merge_failures" = 0, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
   const found = latestWith(await mr.tickets.listComments(n), CAP_MARKER)?.body
@@ -887,26 +911,27 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   if (log) await mr.tickets.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
-  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'build')
-  await moveStage(payload, mr.tickets, t, 'build')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, overrideAccess: true })
+  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
+  await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'))
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build') }, overrideAccess: true })
   await touch(payload, user, t, 'review-cap:grant')
-  return { stage: 'build', run: run.id as TicketId }
+  return { stage: nameOf(wf, 'build'), run: run.id as TicketId }
 }
 
 /** Owner stop at the round cap: the MR stays open, the Ticket goes to triage with a Comment. `reviewRounds` is kept so a restart never gets free rounds. */
 export const stopReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; note?: string; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const { t, mr, n } = await loadAtCap(payload, user, a)
   const claimed = await payload.db.drizzle.execute(
-    sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
+    sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
-  await moveStage(payload, mr.tickets, t, 'triage')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'triage' }, overrideAccess: true })
+  await moveStage(payload, mr.tickets, t, nameOf(wf, 'triage'))
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'triage') }, overrideAccess: true })
   const note = a.note?.trim()
   await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}`)
   await touch(payload, user, t, 'review-cap:stop')
-  return { stage: 'triage' }
+  return { stage: nameOf(wf, 'triage') }
 }
 
 /**
@@ -914,11 +939,12 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
  * Neither counts a review round. Returns `noop` when the Ticket is no longer in review.
  */
 export const sendBackToBuild = async (payload: Payload, t: Doc, note: string, escalation?: Escalation): Promise<ReviewOutcome> => {
+  const wf = DEFAULT()
   const fresh = await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })
-  if (fresh.state === 'closed' || fresh.stage !== 'review' || fresh.reviewState === 'merged') return 'noop'
+  if (fresh.state === 'closed' || !is(wf, fresh.stage, 'review') || fresh.reviewState === 'merged') return 'noop'
   const mr = await prOf(payload, fresh)
   if (mr?.pr.state === 'open') {
-    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human'`)
+    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = 'needs_human'`)
     return returnToBuild(payload, fresh, mr, note, [], [], { countRound: false, escalation, text: `${note} Fix it on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.` })
   }
   await handBackToBuild(payload, fresh, await sourceOf(payload, fresh), `${note} Open a new MR on a \`bauherr/${fresh.number}-*\` branch.`, [], [], escalation)
@@ -927,8 +953,9 @@ export const sendBackToBuild = async (payload: Payload, t: Doc, note: string, es
 
 /** Owner action on a stuck review (the "Needs you" need): back to Build, with an optional note for the next Run. */
 export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: TicketId; note?: string; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.state === 'closed' || t.stage !== 'review' || t.reviewState !== 'needs_human') throw new Error('the Ticket is not waiting on you in review')
+  if (t.state === 'closed' || !is(wf, t.stage, 'review') || t.reviewState !== 'needs_human') throw new Error('the Ticket is not waiting on you in review')
   const note = a.note?.trim()
   const outcome = await sendBackToBuild(payload, t, `Sent back to Build by ${user.email}${note ? `: ${note}` : '.'}`)
   if (outcome === 'build') await touch(payload, user, t, 'back-to-build')
@@ -937,6 +964,7 @@ export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: Tick
 
 /** Owner action on a cancelled Ticket (the "Cancelled" need): the Ticket goes to Triage and is planned again; its Runs stay as they are. */
 export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const wf = DEFAULT()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.state === 'closed' || !liveStages(DEFAULT()).includes(t.stage)) throw new Error('the Ticket is not in a factory stage')
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
@@ -949,7 +977,7 @@ export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: null, reviewState: null, triagedAt: null, triageAttempts: 0, labels: ((t.labels ?? []) as string[]).filter((l) => stageOf([l]) === null) }, overrideAccess: true })
   await ts.comment(n, `Sent back to the backlog by ${user.email}.`)
   await touch(payload, user, t, 'back-to-backlog')
-  return { stage: 'triage' }
+  return { stage: nameOf(wf, 'triage') }
 }
 
 /**
@@ -957,10 +985,11 @@ export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: Ti
  * auto-merge on, `## Evidence` present, not a draft, checks and statuses green (none = green once the head is 10 minutes old). Pending waits, red returns to Build.
  */
 export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null, at = Date.now()): Promise<ReviewOutcome> => {
+  const wf = DEFAULT()
   if (!isFactoryPr(mr.pr, mr.repo, t.number) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
   // Any head move starts a new review, except a Runner main-merge with an unchanged Ticket diff (`rebindReview` moves the verdict to the new head before this runs).
   if (mr.pr.headSha !== reviewedSha) {
-    if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
+    if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'review'))
     return 'review_restarted'
   }
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
@@ -1035,7 +1064,8 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
  * go back to `waiting_checks` only when the MR conflicts; every inspected row gets `conflict_returns` = 0, so each is checked once and a genuine merge error stays with the human.
  */
 const recoverMergeFailures = async (payload: Payload): Promise<void> => {
-  const rows = (await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "stage" = 'review' AND "state" = 'open' AND "review_state" = 'needs_human' AND "merge_failures" >= ${MAX_MERGE_FAILURES} AND "conflict_returns" IS NULL`)).rows
+  const wf = DEFAULT()
+  const rows = (await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "stage" = ${nameOf(wf, 'review')} AND "state" = 'open' AND "review_state" = 'needs_human' AND "merge_failures" >= ${MAX_MERGE_FAILURES} AND "conflict_returns" IS NULL`)).rows
   for (const { id: ticket } of rows as { id: TicketId }[]) {
     try {
       const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
@@ -1055,10 +1085,12 @@ const recoverMergeFailures = async (payload: Payload): Promise<void> => {
  * the verdict moves to the new head and goes through the merge gate again (checks still decide); no Review Run starts. Returns false when a new review is needed.
  */
 export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: string; pushedSha: string; reviewedPatchId?: string }): Promise<boolean> => {
-  if (t.stage !== 'review' || t.state !== 'open' || (t.reviewState && t.reviewState !== 'waiting_checks')) return false
-  const latest = async (stage: string, status: string) =>
-    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: stage } }, { status: { equals: status } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
-  const [review, build] = [await latest('review', 'succeeded'), await latest('build', 'succeeded')]
+  const wf = DEFAULT()
+  if (!is(wf, t.stage, 'review') || t.state !== 'open' || (t.reviewState && t.reviewState !== 'waiting_checks')) return false
+  const latest = async (kind: string, status: string) =>
+    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: kind } }, { status: { equals: status } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  const review = await latest('review', 'succeeded')
+  const build = await latest('build', 'succeeded')
   const stored = review?.artifacts?.review
   const reviewed = review?.reviewedPatchId ?? from?.reviewedPatchId
   if (review?.verdict !== 'clean' || !reviewed || reviewed !== (from?.patchId ?? build?.artifacts?.patchId) || typeof stored?.markdown !== 'string') return false
@@ -1071,8 +1103,9 @@ export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: s
 
 /** Per-minute pass: Tickets waiting on checks re-run the merge gate against the latest reviewed SHA; waiting longer than 2 hours needs a human. */
 export const watchReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
+  const wf = DEFAULT()
   await recoverMergeFailures(payload)
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: nameOf(wf, 'review') } }, { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let merged = 0
   for (const t of tickets) {
     try {
@@ -1082,7 +1115,7 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
       }
       const mr = await prOf(payload, t)
       if (mr?.pr.state !== 'open') continue
-      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if ((await mergeGate(payload, t, mr, last?.reviewedSha ?? null, at)) === 'merged') merged++
     } catch (e) {
       payload.logger.error({ err: e, ticket: t.id }, 'watch-reviews failed for ticket')
@@ -1093,7 +1126,7 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
 
 /** Head the Ticket's latest succeeded review Run reviewed; null when there is none. */
 export const reviewedShaOf = async (payload: Payload, t: Doc): Promise<string | null> => {
-  const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
   return last?.reviewedSha ?? null
 }
 
@@ -1114,7 +1147,8 @@ export const queueRunsLink = (pr: { url: string; base: string }, repo: string): 
  * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first; not for a member of the running train of a `train` Product: the train has its own step timeout). An unknown queue state (the forge call failed) changes nothing.
  */
 export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const wf = DEFAULT()
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: nameOf(wf, 'review') } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let merged = 0
   for (const t of tickets) {
     try {
@@ -1130,7 +1164,7 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
       }
       if (mr.pr.headSha !== (await reviewedShaOf(payload, t))) {
         await dequeueBeforeChange(payload, t, mr)
-        if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, 'review')
+        if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'review'))
         continue
       }
       const since = t.queuedAt ? Date.parse(t.queuedAt) : at
@@ -1172,13 +1206,14 @@ const RESUME_GRACE_MS = 2 * 60_000
 
 /** Per-minute pass: a review Run of the current review (reviewed the MR head, finished after the last Build Run) holds its verdict but the Ticket never left review (crash between the Run write and the stage move); the verdict is applied again. A stale Run is not applied; a fresh review starts. A crash after the round claim in `returnToBuild` counts that round twice on resume (accepted, D3). */
 export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const wf = DEFAULT()
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: nameOf(wf, 'review') } }, { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let resumed = 0
   for (const t of tickets) {
     try {
-      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (last?.status !== 'succeeded' || !last.verdict || !last.finishedAt || at - Date.parse(last.finishedAt) < RESUME_GRACE_MS) continue
-      const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }, { finishedAt: { exists: true } }] }, sort: '-finishedAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }, { finishedAt: { exists: true } }] }, sort: '-finishedAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       const mr = await prOf(payload, t)
       if (mr?.pr.state !== 'open') continue
       if (mr.pr.headSha !== last.reviewedSha || (build && Date.parse(last.finishedAt) < Date.parse(build.finishedAt))) {
@@ -1202,19 +1237,20 @@ const OWNER_REASONS = ['decision', 'access']
 
 /** Per-minute pass: a Ticket parked at `ready_for_human`, or at `needs_human` below the round cap, whose MR head moved since the last review restarts the review (a same-diff main merge is rebound instead). The cap is the owner's decision. */
 export const restartParkedReviews = async (payload: Payload): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { in: ['ready_for_human', 'needs_human'] } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const wf = DEFAULT()
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { equals: nameOf(wf, 'review') } }, { reviewState: { in: ['ready_for_human', 'needs_human'] } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let restarted = 0
   for (const t of tickets) {
     try {
       if (t.reviewState === 'needs_human' && (t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) continue
       // A review that asked the owner (a product decision, an access problem) waits for the answer: a new head must not merge past it.
-      const newest = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const newest = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (newest?.status === 'needs_human' && OWNER_REASONS.includes(newest.reasonKind)) continue
-      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (!last?.reviewedSha) continue
       const mr = await prOf(payload, t)
       if (mr?.pr.state !== 'open' || mr.pr.headSha === last.reviewedSha) continue
-      const cleared = await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = ${t.reviewState}::"enum_tickets_review_state" RETURNING "id"`)
+      const cleared = await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = ${t.reviewState}::"enum_tickets_review_state" RETURNING "id"`)
       if (!cleared.rows.length) continue
       const fresh = { ...t, reviewState: null }
       if (await rebindReview(payload, fresh)) continue
@@ -1259,14 +1295,15 @@ export const triageSheet = (t: Triage): string =>
  * A Ticket that gained a stage label meanwhile is left alone.
  */
 export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage): Promise<{ outcome: Triage['outcome'] | 'noop' }> => {
+  const wf = DEFAULT()
   const doc = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
   const { ts, n } = await sourceOf(payload, doc)
   const current = (await ts.get(n)).labels
   if (stageOf(current)) return { outcome: 'noop' }
   if (t.expedite && !current.includes(EXPEDITE_LABEL) && (await laneOn(payload, id(doc.workspace)))) await ts.addLabels(n, [EXPEDITE_PROPOSED])
   if (t.outcome === 'plan') {
-    const entered = await enterStage(payload, doc, 'plan', async () => {
-      await moveStage(payload, ts, doc, 'plan')
+    const entered = await enterStage(payload, doc, nameOf(wf, 'plan'), async () => {
+      await moveStage(payload, ts, doc, nameOf(wf, 'plan'))
     })
     if (entered === 'waiting') await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   } else {
@@ -1399,6 +1436,7 @@ export const startOwnerIntake = async (payload: Payload, user: Doc, a: { ticket:
 /** Records the owner's answer for one row as a Decision (same path as the MCP tool), verbatim and on one line, and returns the next question, or the summary when none is left. */
 export const answerOwnerIntake = async (payload: Payload, user: Doc, a: { session: TicketId; decision: string; answer: string; workspaceId?: TicketId }): Promise<OwnerQuestion | OwnerDone> =>
   exclusive(`intake:${a.session}`, async () => {
+  const wf = DEFAULT()
     const s = await ownerSession(payload, user, a.session)
     const ticket = s.draft.ticket as number
     const queue = await openQueue(payload, user, ticket, a.workspaceId)
@@ -1410,7 +1448,7 @@ export const answerOwnerIntake = async (payload: Payload, user: Doc, a: { sessio
     await postDecisions(payload, user, { ticket, workspaceId: a.workspaceId, answers: [{ id: d.id, title: d.title, answer }] })
     const next = ownerQuestion(queue.filter((x) => x !== d))
     const lastRun = next ? null : ((await payload.find({ collection: 'runs', where: { ticket: { equals: ticket } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined)
-    const done: OwnerDone | null = next ? null : { done: true, summary: ownerSummary(parseAnswers(answersOf(await ts.listComments(n))?.body ?? ''), lastRun?.stage === 'plan' && lastRun.status === 'succeeded') }
+    const done: OwnerDone | null = next ? null : { done: true, summary: ownerSummary(parseAnswers(answersOf(await ts.listComments(n))?.body ?? ''), !!lastRun && kindOfRun(wf, lastRun) === 'plan' && lastRun.status === 'succeeded') }
     const messages = [...(s.messages ?? []), { role: 'user', content: `${d.id}: ${answer}` }, { role: 'assistant', content: next?.question ?? done!.summary }]
     await payload.update({ collection: 'intake_sessions', id: s.id, data: { messages, ...(!next && { status: 'submitted' }) }, overrideAccess: true })
     return next ?? done!

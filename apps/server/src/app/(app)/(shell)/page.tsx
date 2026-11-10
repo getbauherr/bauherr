@@ -37,7 +37,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const shown = sp.state === 'all' && !graph ? inProduct : inProduct.filter((t) => t.open)
   return (
     <>
-      <AutoRefresh ms={10000} />
+      <AutoRefresh />
       <h1 className="title">Tickets</h1>
       {reminders.map((r) => (
         <p key={r.product.id} role="status" data-testid="release-reminder" className="small text-warn">

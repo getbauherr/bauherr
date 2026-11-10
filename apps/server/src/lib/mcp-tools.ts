@@ -12,9 +12,10 @@ import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvesti
 import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
-import { DEFAULT, pullRank } from './workflow'
+import { kindOfRun } from './stage-text'
+import { DEFAULT, is, pullRank } from './workflow'
 import { untrustedBlock } from '@bauherr/runner'
-import { goalFor } from './run-ctx'
+import { goalFor, type GoalStage } from './run-ctx'
 import * as knowledge from './knowledge'
 
 type Doc = Record<string, any>
@@ -138,17 +139,19 @@ const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as stri
 
 /** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string, label: string | null = null, stages: string[] | null = null) => {
+  const wf = DEFAULT()
   const run = await getRun(c, runId)
+  const kind = kindOfRun(wf, run)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
   if (run.mode !== 'session' || run.stage === 'scan') throw new Error(notClaimable)
   // A session already holds it: the loser of a claim race gets the same message whether it read before or after the winner committed.
   if (run.status === 'running') throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
-  if (ticket.stage === 'parent') throw new Error('parents are not claimable')
+  if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
-  const statements = await goalFor(c.payload, ticket, body, run.stage)
+  const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
@@ -166,12 +169,12 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
     }
   }
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
-  const fence = run.stage === 'triage' || run.stage === 'review'
+  const fence = kind === 'triage' || kind === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label, stages)
   const escalated = await isEscalated(c.payload, won)
-  if (escalated && run.stage === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
-  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: run.stage === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  if (escalated && kind === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
@@ -189,7 +192,8 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
     depth: 1,
   })
-  const all = tickets.docs.filter((t: Doc) => t.stage !== 'parent')
+  const wf = DEFAULT()
+  const all = tickets.docs.filter((t: Doc) => !is(wf, t.stage, 'container'))
   for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
@@ -203,7 +207,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
   const builders = new Map<unknown, string | null>()
   for (const r of runs.docs as Doc[]) {
     if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
-    if (r.stage === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
+    if (kindOfRun(wf, r) === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
   }
   const inStages = (t: Doc) => !stages || stages.includes((latest.get(t.id)?.stage ?? t.stage) as string)
   return { open: frontierOrder(unblocked.filter(inStages) as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all: all.filter(inStages), builders }
@@ -220,7 +224,7 @@ const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unkno
 }
 
 /** A Review Run on a Ticket whose latest Build Run came from the caller's own (non-empty) session label. */
-const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && f.latest.get(t.id)?.stage === 'review' && f.builders.get(t.id) === label
+const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && (f.latest.has(t.id) && kindOfRun(DEFAULT(), f.latest.get(t.id)!)) === 'review' && f.builders.get(t.id) === label
 
 /** Why `t` cannot be claimed right now, or null when it can. */
 const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: string | null): string | null => {
@@ -293,7 +297,7 @@ export const tools: Tool[] = [
       const live = await ts.get(n)
       const mr = await prOf(c.payload, t)
       const pr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head } : null
-      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, t.stage === 'build' ? 'build' : 'plan'), pr }
+      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, is(DEFAULT(), t.stage, 'build') ? 'build' : 'plan'), pr }
     },
   },
   {
@@ -309,7 +313,7 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId)
       if (isClaimable(run)) {
         const ticket = await getTicket(c, id(run.ticket))
-        if (ticket.stage === 'parent') throw new Error('parents are not claimable')
+        if (is(DEFAULT(), ticket.stage, 'container')) throw new Error('parents are not claimable')
         if (stages && !stages.includes(run.stage as string)) throw new Error(`Run ${run.id} is a ${run.stage} Run, not in stages ${stages.join(', ')}`)
         const f = (await frontier(c, undefined, stages))!
         if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
@@ -420,7 +424,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (run.stage !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
+      if (kindOfRun(DEFAULT(), run) !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })), leaseExpiresAt }
     },
@@ -491,7 +495,7 @@ export const tools: Tool[] = [
         await ts.addLink(n, a.prUrl)
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
-      if (a.status === 'succeeded' && a.prUrl && run.stage === 'build') {
+      if (a.status === 'succeeded' && a.prUrl && kindOfRun(DEFAULT(), run) === 'build') {
         const asked = await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
         if ('refused' in asked) throw new Error(`${asked.refused}: fix them on the MR, push, run the required checks, then finish again`)
       }
@@ -501,7 +505,7 @@ export const tools: Tool[] = [
         a.leaseToken,
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
-      if (run.stage === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
+      if (kindOfRun(DEFAULT(), run) === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       return { status: a.status, ...(defaulted && { note: 'reasonKind was missing: treated as decision, so the owner gets this. Pass stuck when a stronger model could solve it.' }) }
     },
   },
@@ -512,7 +516,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, prUrl: str('URL of the open replacement MR') }, ['runId', 'leaseToken', 'prUrl']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (run.stage !== 'build') throw new Error('relink_mr is for Build Runs')
+      if (kindOfRun(DEFAULT(), run) !== 'build') throw new Error('relink_mr is for Build Runs')
       const ticket = await getTicket(c, id(run.ticket))
       await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
       const leaseExpiresAt = await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
@@ -540,7 +544,7 @@ export const tools: Tool[] = [
     ),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (run.stage !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
+      if (kindOfRun(DEFAULT(), run) !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
       const review = normalizeReview(a)
       const reviewedSha = (await prOf(c.payload, await getTicket(c, id(run.ticket))))?.pr.headSha ?? null
       await ownerWrite(
@@ -569,7 +573,7 @@ export const tools: Tool[] = [
     ),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (run.stage !== 'triage') throw new Error(`run ${run.id} is a ${run.stage} Run, not a triage Run`)
+      if (kindOfRun(DEFAULT(), run) !== 'triage') throw new Error(`run ${run.id} is a ${run.stage} Run, not a triage Run`)
       const triage = normalizeTriage(a)
       await ownerWrite(
         c,

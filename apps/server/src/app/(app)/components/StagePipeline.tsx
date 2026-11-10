@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import type { Stage } from '../lib/needs-you'
-import { board, DEFAULT, title } from '../../../lib/workflow'
+import { board, DEFAULT, is, nameOf, title } from '../../../lib/workflow'
 import { cn } from '@/lib/utils'
 
 export function StagePipeline({ current, reached, selected }: { current: Stage; reached: Stage[]; selected?: Stage }) {
-  const stages = board(DEFAULT())
-  const at = stages.indexOf(current === 'parent' ? 'plan' : current)
+  const wf = DEFAULT()
+  const stages = board(wf)
+  const at = stages.indexOf(is(wf, current, 'container') ? nameOf(wf, 'plan') : current)
   return (
     <ol className="label m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Stage">
       {stages.map((s, i) => {

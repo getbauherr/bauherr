@@ -13,6 +13,7 @@ import { gateOn, productionGateOn } from './mode'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
+import { DEFAULT, byKind, is, nameOf } from './workflow'
 
 type Doc = Record<string, any>
 export const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
@@ -61,7 +62,7 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
   const comments = await ts.listComments(n)
   const posted = !latestWith(comments, SUMMARY_MARKER)?.body.includes(mergeSha ? `\`${mergeSha}\`` : SUMMARY_MARKER)
   if (posted) {
-    const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
+    const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
     const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).filter((x): x is number => x !== null))]
     const mrs = await Promise.all(numbers.map((num) => backend.forge.getPullRequest(repo, num)))
     const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
@@ -132,12 +133,12 @@ export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'gr
  */
 export const prOf = async (payload: Payload, t: Doc, o2: { fallback?: boolean } = {}) => {
   const { backend, repo, web, tickets } = await forgeOf(payload, id(t.product))
-  const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
+  const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
   const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).find((x) => x !== null)
   if (num != null) {
     const pr = await backend.forge.getPullRequest(repo, num)
     if (isFactoryPr(pr, repo, t.number) && pr.state !== 'closed') return { backend, repo, tickets, pr }
-  } else if (!['review', 'release'].includes(t.stage)) return null
+  } else if (!is(DEFAULT(), t.stage, 'review', 'release')) return null
   if (o2.fallback === false) return null
   const open = (await backend.forge.listPullRequests(repo, 'open')).filter((p) => p.state === 'open' && isFactoryPr(p, repo, t.number)).sort((a, b) => b.number - a.number)[0]
   return open ? { backend, repo, tickets, pr: open } : null
@@ -188,8 +189,9 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
     return syncOpen()
   }
   if (!accepted) await note(DROPPED_MARKER, 'Bauherr: this Ticket was closed by a human, not by acceptance; it is left closed and set to done.')
-  await moveStage(payload, ts, t, 'done')
-  await cas(payload, t.id, sql`"stage" = 'done'`, sql`"state" = 'closed'`)
+  const done = nameOf(DEFAULT(), 'done')
+  await moveStage(payload, ts, t, done)
+  await cas(payload, t.id, sql`"stage" = ${done}`, sql`"state" = 'closed'`)
   Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
   return 'dropped'
 }
@@ -198,7 +200,8 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
  * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (workflow `production_gate` or `Product.productionGate`), then it waits for production approval; without `productionChecks` the Ticket shows the "Configure production checks" gate instead (see `needsYou`).
  * `touch` records the human acceptance; the automatic path (release gate off) records an `auto:staging` touch of the factory, which is also what makes its label verifiable.
  */
-export const passStaging = async (payload: Payload, t: Doc, human?: () => Promise<unknown>, skip?: Doc): Promise<{ approved: string; stage: 'release' | 'done' }> => {
+export const passStaging = async (payload: Payload, t: Doc, human?: () => Promise<unknown>, skip?: Doc): Promise<{ approved: string; stage: string }> => {
+  const wf = DEFAULT()
   const { tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
   const touch = human ?? (() => payload.create({ collection: 'human_touches', data: { kind: skip ? EXPEDITE_SKIP_TOUCH : 'auto:staging', ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: new Date().toISOString(), ...(skip && { status: `Product setting expediteSkipStaging, enabled by ${skip.expediteSkipStagingBy ?? 'unknown'} at ${skip.expediteSkipStagingAt ?? 'unknown'}` }) }, ...o }))
@@ -209,16 +212,17 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
     await ts.addLabels(n, [APPROVED_STAGING])
   }
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
-  const stage = productionGateOn(product) ? 'release' : 'done'
-  if (stage === 'done') {
-    await moveStage(payload, ts, t, 'done')
+  const stage = nameOf(wf, productionGateOn(product) ? 'release' : 'done')
+  const closes = is(wf, stage, 'done')
+  if (closes) {
+    await moveStage(payload, ts, t, stage)
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
     await label()
     return { approved: APPROVED_STAGING, stage }
   }
   await label()
-  if (stage === 'done') {
+  if (closes) {
     await ts.close(n, 'completed')
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
   }
@@ -228,10 +232,14 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
 /** Review Tickets whose MR merged move to `release`; release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
+  const wf = DEFAULT()
+  const review = byKind(wf, 'review')?.name
+  const release = byKind(wf, 'release')?.name
+  if (!review || !release) return out
   const tips = new Map<string, Promise<Tip>>()
   const auto = !gateOn('release')
   const waiting: Where = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [{ and: [{ releaseState: { equals: 'on_staging' } }, { expedite: { equals: true } }] }])] }
-  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: 'review' } }, { and: [{ stage: { equals: 'release' } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: ['review', 'release'] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: review } }, { and: [{ stage: { equals: release } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: [review, release] } }] }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
       const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
@@ -239,12 +247,12 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const n = String(t.number)
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
       // Product `expediteSkipStaging` is the human decision to skip the staging gate for a Hotfix; passStaging still records the staging touch.
-      if (t.stage === 'release' && (auto || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
+      if (t.stage === release && (auto || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
         if (!t.productionState) await passStaging(payload, t, undefined, auto ? undefined : product)
         continue
       }
-      if (t.stage === 'release' && t.releaseState && t.releaseState !== 'waiting') continue
-      if (t.stage === 'review') {
+      if (t.stage === release && t.releaseState && t.releaseState !== 'waiting') continue
+      if (t.stage === review) {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
         const urls = runs.map((r) => r.artifacts?.prUrl).filter(Boolean)
         const num = urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null)
@@ -259,9 +267,9 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         }
         if (pr.state !== 'merged') continue
         const at = new Date(now).toISOString()
-        if (!(await cas(payload, t.id, sql`"stage" = 'release', "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = 'review'`))) continue
+        if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = ${review}`))) continue
         Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
-        await moveStage(payload, ts, t, 'release')
+        await moveStage(payload, ts, t, release)
         await clearApprovalLabel(payload, ts, n)
         out.released++
       }
@@ -359,9 +367,10 @@ const postProduction = async (payload: Payload, t: Doc, ts: TicketSource, result
 const finishDeployed = async (payload: Payload, t: Doc, ts: TicketSource, names: string[]) => {
   const n = String(t.number)
   await postProduction(payload, t, ts, 'succeeded', names)
-  await moveStage(payload, ts, t, 'done')
+  const done = nameOf(DEFAULT(), 'done')
+  await moveStage(payload, ts, t, done)
   await ts.close(n, 'completed')
-  Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'done', state: 'closed' }, ...o }))
+  Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: done, state: 'closed' }, ...o }))
 }
 
 /**
@@ -369,7 +378,7 @@ const finishDeployed = async (payload: Payload, t: Doc, ts: TicketSource, names:
  */
 export const watchProduction = async (payload: Payload, now = Date.now()): Promise<{ released: Doc[] }> => {
   const released: Doc[] = []
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: 'release' } }, { productionState: { in: ['deploying', 'deployed'] } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: nameOf(DEFAULT(), 'release') } }, { productionState: { in: ['deploying', 'deployed'] } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
       const { backend, repo, tickets: ts } = await forgeOf(payload, id(t.product))

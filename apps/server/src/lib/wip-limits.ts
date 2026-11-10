@@ -1,4 +1,4 @@
-import { DEFAULT, wipStages } from './workflow'
+import { DEFAULT, title, wipStages } from './workflow'
 
 export type WipLimits = Partial<Record<string, number>>
 
@@ -21,4 +21,4 @@ export const wipLimit = (ws: { wipLimits?: unknown } | null | undefined, stage: 
 const label = (s: string) => s[0].toUpperCase() + s.slice(1)
 
 /** "Waiting: Build is full (2/2)", or "Waiting: overlaps #12" when the Ticket carries a reason. */
-export const waitingText = (stage: string, count: number, limit: number | null, reason?: string | null): string => (stage === 'checks' ? 'Waiting for checks' : reason ? `Waiting: ${reason}` : `Waiting: ${label(stage)} is full (${count}/${limit ?? count})`)
+export const waitingText = (stage: string, count: number, limit: number | null, reason?: string | null): string => (stage === 'checks' ? 'Waiting for checks' : reason ? `Waiting: ${reason}` : `Waiting: ${label(title(DEFAULT(), stage))} is full (${count}/${limit ?? count})`)

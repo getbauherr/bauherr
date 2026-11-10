@@ -24,6 +24,7 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
+import { DEFAULT, is, nameOf } from '../../../../../lib/workflow'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { checkLines, reachedStages, stageHistory } from '../../../lib/stage-history'
@@ -56,6 +57,7 @@ type Page = { ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; 
 /** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
   const { ticket, product, runs, blockers, admin, selected } = P
+  const wf = DEFAULT()
   const live = await within(
     (async () => {
       const { ts, n } = await sourceOf(payload, ticket)
@@ -91,7 +93,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   let mr: { url: string; headSha: string | null; checks: ReturnType<typeof checkLines> } | null = null
-  if (selected === 'build') {
+  if (selected && is(wf, selected, 'build')) {
     try {
       const found = await within(prOf(payload, ticket), LIVE_MS)
       if (found) mr = { url: found.pr.url, headSha: found.pr.headSha, checks: checkLines(latestChecks(await within(found.backend.forge.listChecks(found.repo, found.pr.headSha), LIVE_MS))) }
@@ -156,6 +158,7 @@ async function Composer({ ticket, d }: { ticket: number; d: Promise<Derived> }) 
 }
 
 export default async function TicketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ stage?: string }> }) {
+  const wf = DEFAULT()
   const { id } = await params
   const { stage: stageParam } = await searchParams
   const { user, workspace } = await currentWorkspace()
@@ -168,7 +171,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const [product, ws, runs, blockers, blocks, shots, epic] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
-    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, status: true, startedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true } }), ...q }).then((r) => r.docs as Doc[]),
+    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, kind: true, status: true, startedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true } }), ...q }).then((r) => r.docs as Doc[]),
     ticket.blockedBy?.length ? payload.find({ collection: 'tickets', where: { and: [{ id: { in: ticket.blockedBy } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]) : [],
     payload.find({ collection: 'tickets', where: { and: [{ blockedBy: { equals: ticket.id } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
@@ -246,7 +249,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
             <p className="text-muted-foreground">No Runs yet.</p>
           )}
         </section>
-        {admin && <FixState ticket={ticket.id} stage={ticket.stage ?? 'triage'} />}
+        {admin && <FixState ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} />}
       </TicketDetails>
 
       <Suspense fallback={null}><Composer ticket={ticket.id} d={d} /></Suspense>
