@@ -1,14 +1,23 @@
 'use client'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import type { InboxGroup } from '../lib/inbox'
 import { DecisionCard } from './DecisionCard'
 
 /** The Inbox cards by checkpoint. A decided card leaves at once (the server refresh follows); `j`/`k` or the arrows move between cards, Enter opens the Ticket. */
-export function InboxList({ groups, admin }: { groups: InboxGroup[]; admin: boolean }) {
+export function InboxList({ groups, admin, workflowHref }: { groups: InboxGroup[]; admin: boolean; workflowHref: Record<string, string> }) {
   const router = useRouter()
   const root = useRef<HTMLDivElement>(null)
   const [gone, setGone] = useState<number[]>([])
+  useEffect(() => {
+    // `/inbox#t<id>` (from the Workflow view and the Ticket's steps): the card scrolls into view and is focused.
+    const card = location.hash ? document.getElementById(location.hash.slice(1)) : null
+    if (card?.matches('article[data-decision]')) {
+      card.scrollIntoView({ block: 'center' })
+      card.focus({ preventScroll: true })
+    }
+  }, [])
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -30,7 +39,7 @@ export function InboxList({ groups, admin }: { groups: InboxGroup[]; admin: bool
         const left = g.items.filter((i) => !gone.includes(i.id)).length
         return (
           <section key={g.checkpoint} aria-label={g.checkpoint} hidden={!left} className="flex flex-col gap-3">
-            <h2 className="label m-0 text-muted-foreground">{g.checkpoint} <span className="font-normal">· {left}</span></h2>
+            <h2 className="label m-0 flex flex-wrap items-baseline gap-x-3 text-muted-foreground">{g.checkpoint} <span className="font-normal">· {left}</span>{workflowHref[g.checkpoint] && <Link href={workflowHref[g.checkpoint]!} className="small font-normal normal-case text-primary">Show in workflow</Link>}</h2>
             {g.items.map((i) => (
               <DecisionCard key={i.id} item={{ ...i, product: multi ? i.product.name : undefined }} admin={admin} onDecided={(id) => setGone((x) => [...x, id])} onFailed={(id) => setGone((x) => x.filter((y) => y !== id))} />
             ))}

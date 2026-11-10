@@ -1,3 +1,4 @@
+import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 /** "5 min ago", "3 h ago", "2 d ago". */
 export const ago = (iso: string): string => {
   const m = Math.max(0, Math.round((Date.now() - +new Date(iso)) / 6e4))
@@ -18,5 +19,5 @@ export const duration = (sec: number): string => {
   return s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${(s / 86400).toFixed(1)} d`
 }
 
-/** "waiting 5 min", "waiting 3 h", "waiting 2 d" since `iso`. */
-export const waited = (iso: string): string => ago(iso).replace(/ ago$/, '').replace('just now', 'a moment').replace(/^/, 'waiting ')
+/** "Waiting for you · 5 min": the status label of the Workflow view and how long the decision has been open. */
+export const waited = (iso: string): string => `${WAITING_FOR_YOU} · ${ago(iso).replace(/ ago$/, '').replace('just now', 'a moment')}`

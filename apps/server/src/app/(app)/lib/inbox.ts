@@ -20,11 +20,11 @@ export const cardOf = (t: Doc, product: { id: number; name: string; stagingUrl?:
  * The Inbox of a Workspace: every open Ticket with `needsYou` set (the source of the top bar's count), as cards grouped by checkpoint in workflow order, oldest first.
  * Database only. A person sees the cards they may decide; `product` narrows to one Product.
  */
-export const loadInbox = async (workspace: number, user: { role?: string | null }, product?: number): Promise<{ groups: InboxGroup[]; products: { id: number; name: string }[]; working: number }> => {
+export const loadInbox = async (workspace: number, user: { role?: string | null }, opts: { product?: number; checkpoint?: string } = {}): Promise<{ groups: InboxGroup[]; products: { id: number; name: string }[]; working: number }> => {
   const payload = await payloadClient()
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const [rows, products, working] = await Promise.all([
-    payload.find({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: true }, ...(product ? { product: { equals: product } } : {}) }, select: { number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
+    payload.find({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: true }, ...(opts.product ? { product: { equals: opts.product } } : {}) }, select: { number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
     payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, select: { name: true, stagingUrl: true }, sort: 'name', ...o }),
     payload.count({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: false } }, overrideAccess: true }),
   ])
@@ -32,7 +32,7 @@ export const loadInbox = async (workspace: number, user: { role?: string | null 
   const items = (rows.docs as Doc[]).flatMap((t) => {
     const p = byId.get(t.product)
     const card = p && cardOf(t, p as never)
-    return card && canDecide(user, card.decision.need) ? [card] : []
+    return card && canDecide(user, card.decision.need) && (!opts.checkpoint || card.decision.checkpoint === opts.checkpoint) ? [card] : []
   })
   const groups = CHECKPOINTS.map((checkpoint) => ({ checkpoint, items: items.filter((i) => i.decision.checkpoint === checkpoint).sort((a, b) => a.decision.openSince.localeCompare(b.decision.openSince) || a.number - b.number) })).filter((g) => g.items.length)
   return { groups, products: (products.docs as Doc[]).map((p) => ({ id: p.id, name: p.name })), working: working.totalDocs }

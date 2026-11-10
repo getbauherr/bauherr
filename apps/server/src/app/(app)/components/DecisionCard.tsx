@@ -50,7 +50,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
   const evidence = d.evidence.filter((e) => admin || !e.url.startsWith('/runs/'))
   return (
     <Card asChild className={`gap-3 p-5 max-sm:p-4${gone ? ' hidden' : ''}`}>
-      <article tabIndex={0} data-decision={item.id} aria-labelledby={`ask-${item.id}`} className="outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <article id={`t${item.id}`} tabIndex={0} data-decision={item.id} aria-labelledby={`ask-${item.id}`} className="scroll-mt-20 outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {!compact && (
           <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Badge variant="accent">{d.checkpoint}</Badge>

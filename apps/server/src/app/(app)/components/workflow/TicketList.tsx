@@ -60,7 +60,7 @@ export function TicketList({ groups, showProduct, admin, wip, now, collapsed, ex
                     </span>,
                     <span key="p" className="small text-muted-foreground">{t.product?.name ?? '—'}</span>,
                     <span key="s" className="flex flex-col gap-0.5" data-gate={t.gate ? '' : undefined}>
-                      <TicketStatus s={s} who="narrow" title={t.needsYou ? gateTip(t) : undefined} />
+                      <TicketStatus s={s} who="narrow" title={t.needsYou ? gateTip(t) : undefined} href={s.phase === 'human' && t.open ? `/inbox#t${t.id}` : undefined} />
                       {t.releasedIn && <span className="label text-muted-foreground" data-released>Released in {t.releasedIn}</span>}
                     </span>,
                     <span key="w" className="small text-muted-foreground" data-testid="row-who">{s.who ?? '—'}</span>,

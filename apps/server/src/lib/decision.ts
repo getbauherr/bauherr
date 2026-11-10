@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { type Need, NEEDS } from './needs-you'
+import { GRAPH_CHECKPOINT, checkpointOfNeed } from './checkpoints'
 import { productionGateOn } from './mode'
 import { cas, id } from './release'
 import { bullets, section } from './summary'
@@ -25,15 +26,9 @@ export type Decision = {
   openSince: string
 }
 
-/** The human checkpoints in workflow order. */
-export const CHECKPOINTS = ['Triage', 'Refine', 'Plan', 'Review', 'Staging', 'Production', 'Stuck'] as const
+/** The checkpoints in workflow order: the Workflow graph's checkpoint titles (`checkpoints.ts`) and the groups of the needs that are no graph node. */
+export const CHECKPOINTS = ['Triage', GRAPH_CHECKPOINT.refine, GRAPH_CHECKPOINT.plan, 'Review', GRAPH_CHECKPOINT.staging, GRAPH_CHECKPOINT.production, 'Stuck'] as const
 export type Checkpoint = (typeof CHECKPOINTS)[number]
-
-const CHECKPOINT: Record<Need, Checkpoint> = {
-  'Expedite?': 'Triage', 'Answer questions': 'Refine', 'Answer decisions': 'Refine', 'Approve plan': 'Plan', 'Round cap reached': 'Review', 'Needs you': 'Review',
-  'Accept on staging': 'Staging', 'Staging not confirmed': 'Staging', 'Configure production checks': 'Production', 'Approve production': 'Production', 'Production deploy failed': 'Production', 'Release failed': 'Production',
-  'Run needs you': 'Stuck', 'Run failed': 'Stuck', Cancelled: 'Stuck',
-}
 
 /** What the sweep (or the Inbox, for a Ticket the sweep has not reached yet) knows without reading the forge. */
 export type DecisionFacts = {
@@ -209,7 +204,7 @@ export const buildDecision = (need: Need, f: DecisionFacts): Decision => {
   })()
   return {
     need,
-    checkpoint: CHECKPOINT[need],
+    checkpoint: checkpointOfNeed(need) as Checkpoint,
     title: t.title,
     ...x,
     evidence,

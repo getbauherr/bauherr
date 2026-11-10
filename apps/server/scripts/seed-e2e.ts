@@ -108,12 +108,14 @@ await run(t26, 'plan', 'succeeded', { startedAt: '2026-10-30T09:40:00Z', finishe
 // chat-dock.spec.ts: two plans of its own awaiting approval (#28 is approved in the chat, #29 declined; twins in `src/lib/fake-forge.ts`) and a second member who must not see the first one's threads.
 for (const [n, title] of [[28, 'Chat: cache the export totals'], [29, 'Chat: rename the export columns']] as const) await run(await ticket(n, title, 'plan', product), 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
 await ensure('bauherren', { email: 'chat-other@example.com' }, { email: 'chat-other@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })
-// Own Tickets of inbox.spec.ts: #30 a plan to approve, #31 a review at its round cap, #32 a change on staging. Twins in `src/lib/fake-forge.ts` carry these numbers.
-const t30 = await ticket(30, 'Rename the sign-in button', 'plan', product)
-const t31 = await ticket(31, 'Stop the export retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
-await ticket(32, 'Check the new header on staging', 'release', product, { ...rel, stagingTldr: { whatYouGet: '- The header shows the new logo\n- The checks are green', found: '- Nothing recorded.' } })
-await run(t30, 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
-await run(t31, 'review', 'succeeded', { startedAt: '2026-10-30T09:55:00Z', finishedAt: '2026-10-30T09:58:00Z', verdict: 'changes', findings: [{ severity: 'medium', file: 'src/export.ts', line: 21, msg: 'The retry loop never stops on a permanent error.', scenario: 'when the export answers 402, then it is retried forever.' }] })
+// Own Tickets of inbox.spec.ts: #37 a plan to approve, #38 a review at its round cap, #39 a change on staging. Twins in `src/lib/fake-forge.ts` carry these numbers.
+const t37 = await ticket(37, 'Rename the sign-in button', 'plan', product)
+const t38 = await ticket(38, 'Stop the export retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
+await ticket(39, 'Check the new header on staging', 'release', product, { ...rel, stagingTldr: { whatYouGet: '- The header shows the new logo\n- The checks are green', found: '- Nothing recorded.' } })
+await run(t37, 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
+const t40 = await ticket(40, 'Hand over the export notes', 'plan', product)
+await run(t40, 'plan', 'succeeded', { startedAt: '2026-10-30T09:53:00Z', finishedAt: '2026-10-30T09:54:00Z' })
+await run(t38, 'review', 'succeeded', { startedAt: '2026-10-30T09:55:00Z', finishedAt: '2026-10-30T09:58:00Z', verdict: 'changes', findings: [{ severity: 'medium', file: 'src/export.ts', line: 21, msg: 'The retry loop never stops on a permanent error.', scenario: 'when the export answers 402, then it is retried forever.' }] })
 await ensure('runs', { ticket: t27, stage: 'review', status: 'running' }, { ticket: t27, stage: 'review', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 // Hotfix (#373): a card in the Hotfix lane of Build, and a merged one 12 minutes after its flag for the lead time in Factory health.
 await ticket(125, 'Hotfix: checkout crash', 'build', product, { expedite: true, expediteAt: '2026-11-05T08:00:00Z', rank: '999999' })

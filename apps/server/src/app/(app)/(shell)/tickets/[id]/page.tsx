@@ -198,7 +198,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
       <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
 
-      {!epic && <Section id="steps" title="Steps"><TicketSteps steps={steps} /></Section>}
+      {!epic && <Section id="steps" title="Steps"><TicketSteps steps={steps} decision={card ? { ticket: ticket.id, ask: card.decision.ask } : null} /></Section>}
 
       <TicketDetails key={ticket.id}>
         <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">

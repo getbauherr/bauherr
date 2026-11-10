@@ -129,15 +129,21 @@ const build = (): FakeBackend => {
     void ts.comment(String(n), PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
     void ts.comment(String(n), WORKLOG)
   }
-  // #30-#32 are inbox.spec.ts's own Tickets: a plan to approve, a review at its round cap, a change on staging.
+  // #30-#36 are placeholders (the DB-only Tickets of the seed carry these numbers).
+  for (const n of [30, 31, 32, 33, 34, 35, 36]) void placeholder(n)
+  // #37-#39 are inbox.spec.ts's own Tickets: a plan to approve, a review at its round cap, a change on staging.
   void ts.create({ title: 'Rename the sign-in button', labels: ['bauherr:stage:plan'] })
-  void ts.comment('30', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
-  void ts.comment('30', WORKLOG)
+  void ts.comment('37', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
+  void ts.comment('37', WORKLOG)
   void ts.create({ title: 'Stop the export retry loop', labels: ['bauherr:stage:review'] })
-  void ts.comment('31', WORKLOG)
+  void ts.comment('38', WORKLOG)
   void ts.create({ title: 'Check the new header on staging', labels: ['bauherr:stage:release'] })
-  void ts.comment('32', WORKLOG)
-  void ts.comment('32', summary(32))
+  void ts.comment('39', WORKLOG)
+  void ts.comment('39', summary(39))
+  // #40 is the plan inbox.spec.ts approves from the chat.
+  void ts.create({ title: 'Hand over the export notes', labels: ['bauherr:stage:plan'] })
+  void ts.comment('40', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
+  void ts.comment('40', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))

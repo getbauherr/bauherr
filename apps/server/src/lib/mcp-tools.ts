@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import { settleDecision } from './decision'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
 import { FILE_PATTERN, acceptStaging, approveSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
@@ -757,6 +758,9 @@ export const tools: Tool[] = [
   },
 ]
 
+/** Tools of a human decision on one Ticket. */
+const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'grant_review_round', 'stop_review', 'request_changes'])
+
 /** Input digest: argument names plus a hash; raw payloads are never stored. */
 export const digest = (input: unknown): string =>
   `${Object.keys((input as object) ?? {}).join(',')} sha256:${createHash('sha256').update(JSON.stringify(input ?? {})).digest('hex').slice(0, 16)}`
@@ -772,6 +776,9 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
     if (tool.access !== 'agent' && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
     const out = await tool.run(input ?? {}, c)
     ok = true
+    // A decision taken here (chat, MCP) closes the Ticket's Inbox card at once, as in the UI.
+    const ticket = (input as { ticket?: number | string } | null)?.ticket
+    if (DECIDES.has(name) && ticket !== undefined) await settleDecision(c.payload, ticket)
     return out
   } finally {
     const workspace = c.workspace ?? tenantsOf(c.user)[0]

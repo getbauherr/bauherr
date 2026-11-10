@@ -1,7 +1,10 @@
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { CHECKPOINTS, type DecisionAction, buildDecision, canDecide, justDecided, sameDecision } from '../src/lib/decision'
 import { NEEDS, type Need } from '../src/lib/needs-you'
 import { GATES } from '../src/app/(app)/lib/gates'
+import { byKind, DEFAULT, graph } from '../src/lib/workflow'
+import { NEED_NODE } from '../src/lib/checkpoints'
 import { parseTldr, tldrError } from '../src/lib/tldr'
 
 const ACTIONS: DecisionAction[] = ['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open']
@@ -118,5 +121,20 @@ describe('plan TL;DR', () => {
   })
   it('tolerates a title line and bold labels', () => {
     expect(tldrError('# Plan: x\n\n## TL;DR\n**Decision:** a\n**Recommendation:** b\n**Why:**\n- c\n**Risk:** none\n\n## Goal\n- z')).toBeNull()
+  })
+})
+
+describe('checkpoint names', () => {
+  it('a need that waits at a graph node carries exactly that node\'s title', () => {
+    process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url)) // the pack with the plan, staging and production gates on
+    const wf = DEFAULT()
+    let compared = 0
+    const titles = new Map(graph(wf).nodes.map((n) => [n.id, n.title]))
+    for (const [need, [kind, suffix]] of Object.entries(NEED_NODE) as [Need, [Parameters<typeof byKind>[1], string]][]) {
+      const title = titles.get(`${byKind(wf, kind)!.name}:${suffix}`)
+      if (title) compared++
+      if (title) expect(title, need).toBe(buildDecision(need, facts).checkpoint)
+    }
+    expect(compared).toBeGreaterThanOrEqual(5)
   })
 })
