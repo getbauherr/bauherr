@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. Format: [Keep a
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-10
+
+### Features
+- Skill distillation from merged work ([#41](https://github.com/getbauherr/bauherr/issues/41), [#459 feat(eval): bauherr eval runner as a shared package (Refs #41, part A)](https://github.com/getbauherr/bauherr/pull/459))
+- Security workflow type ([#42](https://github.com/getbauherr/bauherr/issues/42), [#460 feat(security): Scan stage, security-scan skill and context file location (Refs #42, part 1)](https://github.com/getbauherr/bauherr/pull/460))
+- AI usage view and Admin-only proxies to native UIs ([#55](https://github.com/getbauherr/bauherr/issues/55), [#461 feat(admin): AI usage view and Admin-only gateway and traces proxies (Refs #55)](https://github.com/getbauherr/bauherr/pull/461))
+- Agent seam: second agent backend ([#59](https://github.com/getbauherr/bauherr/issues/59), [#462 docs(research): Bedrock, Vertex and Foundry behind runStage (Refs #59)](https://github.com/getbauherr/bauherr/pull/462))
+- App header shows a stale version: release never sets the image's version ([#451](https://github.com/getbauherr/bauherr/issues/451), [#455 fix(release): The image reports its release version; dev builds show dev+<sha> (Refs #451)](https://github.com/getbauherr/bauherr/pull/455))
+- Factory train where the forge has no merge queue (#280 part 2) ([#452](https://github.com/getbauherr/bauherr/issues/452), [#467 feat(merge): Factory train with prefix bisect for forges without a merge queue (Refs #452)](https://github.com/getbauherr/bauherr/pull/467))
+- Staging on a descendant SHA, run bauherr in queue mode (#280 part 3) ([#453](https://github.com/getbauherr/bauherr/issues/453), [#476 feat(release): Staging confirms on a descendant SHA; CI runs on merge_group (Refs #453)](https://github.com/getbauherr/bauherr/pull/476))
+- Owner-session key gets its own budget (default 100 USD / 30d) ([#456](https://github.com/getbauherr/bauherr/issues/456), [#468 fix(gateway): Give the owner-session key its own budget (Refs #456)](https://github.com/getbauherr/bauherr/pull/468))
+- Security scan: file deduplicated findings as Tickets (#42 part 2) ([#463](https://github.com/getbauherr/bauherr/issues/463), [#472 feat(security): File deduplicated scan findings as Tickets (Refs #463)](https://github.com/getbauherr/bauherr/pull/472))
+- Security scan: weekly schedule per Product (#42 part 3) ([#464](https://github.com/getbauherr/bauherr/issues/464), [#473 feat(security): Weekly scan schedule per Product (Refs #464)](https://github.com/getbauherr/bauherr/pull/473))
+- Skill distillation: proposals, distill stage and merge trigger (#41 part B) ([#465](https://github.com/getbauherr/bauherr/issues/465), [#474 feat(skills): Distill a skill proposal from merged fix rounds (Refs #465)](https://github.com/getbauherr/bauherr/pull/474))
+- Skill distillation: owner approval gate and Knowledge page (#41 part C) ([#466](https://github.com/getbauherr/bauherr/issues/466), [#478 feat(skills): Owner approval gate for skill proposals and Knowledge page row (Refs #466)](https://github.com/getbauherr/bauherr/pull/478))
+- Admin proxies serve upstream content on the Bauherr origin (XSS acts as the Admin) ([#469](https://github.com/getbauherr/bauherr/issues/469), [#475 fix(admin): Sandbox proxied answers, open Jaeger on its own origin (Refs #469)](https://github.com/getbauherr/bauherr/pull/475))
+- 3P presets: truthful 'unpriced' cost state and a no-cloud-credentials-in-agentEnv test ([#470](https://github.com/getbauherr/bauherr/issues/470), [#477 fix(cost): Unpriced state for 3P Runs; no cloud credentials in agentEnv (Refs #470)](https://github.com/getbauherr/bauherr/pull/477))
+
+
 ## 0.2.0 - 2026-11-09
 
 ### Features
