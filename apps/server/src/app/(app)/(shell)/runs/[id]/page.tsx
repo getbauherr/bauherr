@@ -38,7 +38,10 @@ export default async function RunPage({ params, searchParams }: { params: Promis
     ['Ended', run.finishedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Duration', fmtDuration(durationMs(run.startedAt, run.finishedAt))],
     ['Status', <StatusChip key="s" status={run.status} />],
+    ['Executor', run.executor ?? '—'],
+    ['Client', [run.clientName, run.clientVersion].filter(Boolean).join(' ') || '—'],
     ['Model', run.model ?? '—'],
+    ['Provider', run.provider ?? '—'],
     ['Tokens in/out/cache', `${run.tokensIn ?? 0} / ${run.tokensOut ?? 0} / ${run.tokensCache ?? 0}`],
     ['Cost', run.reconcileStatus === 'unpriced' ? `${run.gatewayTokensTotal ?? 0} tokens, unpriced` : run.costUsd != null ? `$${run.costUsd.toFixed(4)} (${run.costSource ?? 'sdk-estimate'})` : '—'],
   ]

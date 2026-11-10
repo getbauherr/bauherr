@@ -8,6 +8,7 @@ import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
 import { logins, ownsGate } from './gates'
+import { record } from './history'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
 import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
@@ -27,6 +28,8 @@ export interface Ctx {
   /** Set by handlers once a Run or Ticket is loaded; used for the tool_calls row. */
   workspace?: number | string
   run?: number | string
+  /** The caller's `User-Agent` (MCP is stateless: the only client identity a session sends without being asked). */
+  userAgent?: string
   /** Name of the tool being called; recorded as the Run's `last_lease_call`. */
   tool?: string
 }
@@ -115,6 +118,15 @@ const sessionArg = { session: str('Stable name of this session (max 64 chars). P
 const stagesArg = () => ({ stages: { type: 'array', items: { enum: pullRank(DEFAULT()) }, description: 'Only these stages; the pull order applies within them. Omit for all.' } })
 const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id (Bauherr database id)' } }
 
+const clientArgs = { client: str('What you are: client name/version, e.g. claude-code/2.1'), model: str('What you are: model id'), provider: str('What you are: provider') }
+
+/** Who claims: client name and version from `client` (else the `User-Agent`), model and provider as told. */
+const clientOf = (a: { client?: unknown; model?: unknown; provider?: unknown }, c: Ctx) => {
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 100) : null)
+  const [, name = null, version = null] = /^([^\s/]+)(?:[/\s]+(\S+))?/.exec(text(a.client) ?? text(c.userAgent) ?? '') ?? []
+  return { name, version, model: text(a.model), provider: text(a.provider) }
+}
+
 class ClaimLost extends Error {}
 
 /** The caller's session label, or null when it sent none (such a session is never skipped). */
@@ -138,7 +150,7 @@ const stagesOf = (a: { stages?: unknown }): string[] | null => {
 const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
 
 /** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
-const claimRun = async (c: Ctx, runId: number | string, label: string | null = null, stages: string[] | null = null) => {
+const claimRun = async (c: Ctx, runId: number | string, label: string | null = null, stages: string[] | null = null, who: ReturnType<typeof clientOf> = clientOf({}, c)) => {
   const wf = DEFAULT()
   const run = await getRun(c, runId)
   const kind = kindOfRun(wf, run)
@@ -155,7 +167,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "executor" = 'session', "client_name" = ${who.name}, "client_version" = ${who.version}, "model" = COALESCE(${who.model}, "model"), "provider" = COALESCE(${who.provider}, "provider"), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -168,6 +180,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
       throw e
     }
   }
+  await record(c.payload, id(run.ticket), { run: run.id, actor: label ?? c.user.email, cause: 'run:claimed' })
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = kind === 'triage' || kind === 'review'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
@@ -305,7 +318,7 @@ export const tools: Tool[] = [
     access: 'agent',
     description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return is accepted (a Run whose claim failed in the last 5 minutes does not count); any other is refused with "take Run N (#T, column) first", a blocked, leased or superseded one with "not claimable now". The check is workspace-wide, while claim_next {product} is product-scoped. Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
     get inputSchema() {
-      return obj({ ...runId, ...sessionArg, ...stagesArg() }, ['runId'])
+      return obj({ ...runId, ...sessionArg, ...stagesArg(), ...clientArgs }, ['runId'])
     },
     async run(a, c) {
       const label = labelOf(a)
@@ -321,7 +334,7 @@ export const tools: Tool[] = [
         if (isOwnBuild(ticket, f, label) && !top) throw new Error(`Run ${run.id} is your own build: another session reviews it`)
         if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => f.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
       }
-      return claimRun(c, a.runId, label, stages)
+      return claimRun(c, a.runId, label, stages, clientOf(a, c))
     },
   },
   {
@@ -329,7 +342,7 @@ export const tools: Tool[] = [
     access: 'agent',
     description: 'Claim the top claimable Run in frontier order (Tickets of the expedite lane first, then right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
     get inputSchema() {
-      return obj({ product: str('Product slug'), ...sessionArg, ...stagesArg() })
+      return obj({ product: str('Product slug'), ...sessionArg, ...stagesArg(), ...clientArgs })
     },
     async run(a, c) {
       const label = labelOf(a)
@@ -340,7 +353,7 @@ export const tools: Tool[] = [
         const r = f!.latest.get(t.id)
         if (!isClaimable(r) || isOwnBuild(t, f!, label)) continue
         try {
-          const claimed = await claimRun(c, r!.id, label, stages)
+          const claimed = await claimRun(c, r!.id, label, stages, clientOf(a, c))
           return { ...claimed, skipped: [...claimed.skipped, ...failed] }
         } catch (e) {
           if (e instanceof ClaimLost) continue
@@ -505,6 +518,7 @@ export const tools: Tool[] = [
         a.leaseToken,
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
+      await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
       if (kindOfRun(DEFAULT(), run) === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       return { status: a.status, ...(defaulted && { note: 'reasonKind was missing: treated as decision, so the owner gets this. Pass stuck when a stronger model could solve it.' }) }
     },
@@ -607,6 +621,7 @@ export const tools: Tool[] = [
         if (!r.rows.length) throw new Error(`run ${run.id} is not releasable`)
       }
       if (auto) await c.payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id } })
+      await record(c.payload, id(run.ticket), { run: run.id, cause: 'run:released' })
       return { status: auto ? 'queued' : 'awaiting_session' }
     },
   },

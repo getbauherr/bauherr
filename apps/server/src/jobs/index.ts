@@ -5,7 +5,7 @@ import { APPROVED_PLAN, setStage, stageLabel, type TicketSource } from '@bauherr
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
-import { buildRunCtx } from '../lib/run-ctx'
+import { buildRunCtx, providerOf } from '../lib/run-ctx'
 import { REVIEW_CAP_REASON, submitInvestigation, type InvestigationInput } from '../lib/investigation'
 import { mergeMainIntoMr } from '../lib/merge-main'
 import { distillSkill } from '../lib/skill-distill'
@@ -17,6 +17,7 @@ import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRan
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
+import { record } from '../lib/history'
 import { isForward, moveStage, stageOf } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
 import { enterStage, pullWaiting } from '../lib/wip'
@@ -82,6 +83,7 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
     return { run: winner, created: false }
   }
   if (mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: run.id }, req: req as PayloadRequest | undefined })
+  await record(payload, ticket.id, { stage, phase: 'queued', run: run.id, cause: 'run:queued' })
   return { run, created: true }
 }
 
@@ -205,6 +207,7 @@ export const abandonRun = async (
     return true
   })
   if (!ended) return null
+  await record(payload, id(run.ticket), { run: run.id, outcome: status, cause: 'run:abandoned' })
   if (status === 'abandoned' && escalation?.step === 2) {
     try {
       const { noteRetry } = await import('../lib/escalation')
@@ -565,7 +568,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             else {
               const build = nameOf(wf, 'build')
               const entered = await enterStage(payload, prev, build, async () => {
-                await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, build)
+                await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, build, 'plan_approved')
                 await payload.update({ collection: 'tickets', id: prev!.id, data: { stage: build }, depth: 0, overrideAccess: true })
               })
               if (entered === 'moved') stage = build
@@ -584,6 +587,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           const ticket = prev
             ? await payload.update({ collection: 'tickets', id: prev.id, data, overrideAccess: true })
             : await upsertTicket(payload, { ...data, rank: await lastRankAfter(payload, id(src.workspace)) }, data)
+          await record(payload, ticket.id, { cause: 'poll' })
           if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 1, overrideAccess: true }) : null
@@ -630,13 +634,17 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
     const github = await connectionInput(payload, src.connection)
     const claimed = await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'running', "started_at" = now() WHERE "id" = ${run.id} AND "status" = 'queued' RETURNING "id"`)
     if (!claimed.rows.length) return { output: { status: 'running' } }
+    await record(payload, ticket.id, { run: run.id, executor: 'runner', cause: 'run:started' })
 
     try {
       if (!(await findLlmProvider(payload, run.workspace))) throw new Error('no LLM provider connected')
       const ws = (await payload.findByID({ collection: 'workspaces', id: id(run.workspace), ...opts, showHiddenFields: true })) as { gatewayKey?: string }
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
+      const model = ctx.connection.modelByTier[ctx.run.tier]
+      await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
       const r = await exec(ctx)
+      await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
       let triage = null
       // The Ticket is untriaged only after the Run's terminal update, so the next poll cannot start a Triage Run while this one is still active.
@@ -669,6 +677,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         ...opts,
       })
       if (untriageAfter) await untriageLogged(payload, ticket.id)
+      await record(payload, ticket.id, { run: run.id, outcome: r.status, cause: 'run:finished' })
       await queueReconcile(payload, run.id)
       if (run.stage === 'scan' && (r.status === 'succeeded' || r.status === 'budget_exhausted') && r.artifacts.scan) await fileFindings(payload, { ...run, artifacts: r.artifacts })
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
@@ -692,6 +701,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         ...opts,
       })
       if (kind === 'triage') await untriageLogged(payload, ticket.id)
+      await record(payload, ticket.id, { run: run.id, outcome: 'failed', cause: 'run:finished' })
       await queueReconcile(payload, run.id)
       throw e
     }

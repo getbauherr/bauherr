@@ -1,6 +1,7 @@
 import { setStage, stageOf as labelStage, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import { record } from './history'
 import { board, DEFAULT, isForward as forward } from './workflow'
 
 const idOf = (v: unknown) => (typeof v === 'object' && v ? (v as { id: number }).id : (v as number))
@@ -11,8 +12,9 @@ export const isForward = (from: string, to: string) => forward(DEFAULT(), from, 
 /** The stage label's name among `labels`, ordered by the workflow's Board. */
 export const stageOf = (labels: string[]) => labelStage(labels, board(DEFAULT()))
 
-/** The factory's own stage move: records it on the Ticket row first, so the poller can tell it from a hand-set forge label (#196), then sets the label. */
-export const moveStage = async (payload: Payload, ts: TicketSource, t: Record<string, any>, name: string): Promise<void> => {
-  await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = ${name} WHERE "product_id" = ${idOf(t.product)} AND "number" = ${t.number}`)
+/** The factory's own stage move: records it on the Ticket row first, so the poller can tell it from a hand-set forge label (#196), then sets the label and records the move in the Ticket's history (`why`: the machine reason). */
+export const moveStage = async (payload: Payload, ts: TicketSource, t: Record<string, any>, name: string, why = ''): Promise<void> => {
+  const row = (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = ${name} WHERE "product_id" = ${idOf(t.product)} AND "number" = ${t.number} RETURNING "id"`)).rows[0] as { id: number } | undefined
   await setStage(ts, String(t.number), name)
+  if (row) await record(payload, row.id, { stage: name, cause: why ? `moveStage:${why}` : 'moveStage' })
 }

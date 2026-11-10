@@ -10,6 +10,7 @@ import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gat
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
 import { gateOn, productionGateOn } from './mode'
+import { record } from './history'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
@@ -80,6 +81,7 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
     )
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: 'on_staging' }, overrideAccess: true })
+  await record(payload, t.id, { cause: 'release:on_staging' })
   return { posted }
 }
 
@@ -190,7 +192,7 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   }
   if (!accepted) await note(DROPPED_MARKER, 'Bauherr: this Ticket was closed by a human, not by acceptance; it is left closed and set to done.')
   const done = nameOf(DEFAULT(), 'done')
-  await moveStage(payload, ts, t, done)
+  await moveStage(payload, ts, t, done, 'closed_by_human')
   await cas(payload, t.id, sql`"stage" = ${done}`, sql`"state" = 'closed'`)
   Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
   return 'dropped'
@@ -215,13 +217,14 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
   const stage = nameOf(wf, productionGateOn(product) ? 'release' : 'done')
   const closes = is(wf, stage, 'done')
   if (closes) {
-    await moveStage(payload, ts, t, stage)
+    await moveStage(payload, ts, t, stage, 'accept_staging')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   } else if (!(await cas(payload, t.id, sql`"production_state" = 'awaiting_approval'`, sql`"production_state" IS NULL`))) {
     await label()
     return { approved: APPROVED_STAGING, stage }
   }
   await label()
+  await record(payload, t.id, { cause: 'staging:accepted' })
   if (closes) {
     await ts.close(n, 'completed')
     await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
@@ -269,7 +272,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         const at = new Date(now).toISOString()
         if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = ${review}`))) continue
         Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
-        await moveStage(payload, ts, t, release)
+        await moveStage(payload, ts, t, release, 'merged')
         await clearApprovalLabel(payload, ts, n)
         out.released++
       }
@@ -302,6 +305,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         out.confirmed++
       } else if (now - new Date(t.releaseAt).getTime() > STAGING_TIMEOUT_MS && (await cas(payload, t.id, sql`"release_state" = 'timed_out'`, sql`("release_state" = 'waiting' OR "release_state" IS NULL)`))) {
         await ts.comment(n, 'Bauherr needs a human: staging not confirmed')
+        await record(payload, t.id, { cause: 'release:timed_out' })
         out.timedOut++
       }
     } catch (e) {
@@ -343,6 +347,7 @@ export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now =
     await payload.delete({ collection: 'human_touches', id: touch.id, ...o })
     throw new Error('the Ticket is not waiting for production approval')
   }
+  await record(payload, t.id, { cause: 'gate:approve:production', executor: 'human', actor: personOf(user) })
   const { tickets: ts } = await forgeOf(payload, id(t.product))
   await deliverLabel(payload, ts, t.id, t.number).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not set the production label, retrying'))
 }
@@ -351,6 +356,7 @@ export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now =
 const moveProduction = async (payload: Payload, t: Doc, ts: TicketSource, to: 'deployed' | 'failed' | 'timed_out'): Promise<boolean> => {
   const won = await cas(payload, t.id, to === 'deployed' ? sql`"production_state" = ${to}` : sql`"production_state" = ${to}, "production_approved_sha" = NULL`, sql`"production_state" = 'deploying'`)
   if (won && to !== 'deployed') await clearApprovalLabel(payload, ts, String(t.number))
+  if (won) await record(payload, t.id, { cause: `production:${to}` })
   return won
 }
 
@@ -368,7 +374,7 @@ const finishDeployed = async (payload: Payload, t: Doc, ts: TicketSource, names:
   const n = String(t.number)
   await postProduction(payload, t, ts, 'succeeded', names)
   const done = nameOf(DEFAULT(), 'done')
-  await moveStage(payload, ts, t, done)
+  await moveStage(payload, ts, t, done, 'production_deployed')
   await ts.close(n, 'completed')
   Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: done, state: 'closed' }, ...o }))
 }

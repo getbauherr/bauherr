@@ -81,7 +81,7 @@ export const startExpedites = async (payload: Payload): Promise<number> => {
       }
       const stage = HAS_PLAN.test((await ts.get(String(t.number))).body ?? '') ? nameOf(wf, 'build') : nameOf(wf, 'plan')
       const entered = await enterStage(payload, t, stage, async () => {
-        await moveStage(payload, ts, t, stage)
+        await moveStage(payload, ts, t, stage, 'expedite')
         await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
       })
       if (entered !== 'moved') continue

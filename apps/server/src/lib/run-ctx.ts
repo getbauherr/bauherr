@@ -1,6 +1,8 @@
 import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
+import { sql } from '@payloadcms/db-postgres'
+import { presetOf } from './providers'
 import { moveStage } from './stage-move'
 import { enterStage } from './wip'
 import { backendFor } from './adapters'
@@ -60,6 +62,14 @@ export const gitAccess = (github: ConnectionInput) => {
   return { gitToken: github.secret!, ...(gitBaseUrl && { gitBaseUrl }), ...(github.kind === 'gitlab' && { gitUser: 'oauth2' }) }
 }
 
+/** The provider preset behind a gateway model id (`ws-<workspace>/<connection>/<model>`); null when no Connection of the Workspace has that slug. */
+export const providerOf = async (payload: Payload, workspace: number | string, model: string | undefined): Promise<string | null> => {
+  const slug = model?.split('/')[1]
+  if (!slug) return null
+  const conn = (await payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' }, slug: { equals: slug } }, limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  return conn ? presetOf(conn.config) : null
+}
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -79,6 +89,7 @@ export const buildRunCtx = async (
   const lastWith = (marker: string) => comments.findLast((c) => c.body.startsWith(marker))
   let seq = 0
   let lastStep: number | string | undefined
+  let lastModel = ''
   const gatewayUrl = process.env.GATEWAY_URL
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
@@ -121,7 +132,7 @@ export const buildRunCtx = async (
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
       setStage: async (number, stage) => {
-        const move = () => moveStage(payload, tickets, { product: ticket.product, number }, stage)
+        const move = () => moveStage(payload, tickets, { product: ticket.product, number }, stage, 'runner')
         if (!is(wf, stage, 'review')) return move()
         await enterStage(payload, ticket, stage, async () => {
           await move()
@@ -131,12 +142,15 @@ export const buildRunCtx = async (
     },
     recorder: {
       step: async (s) => {
+        if (lastStep !== undefined) await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "id" = ${lastStep}`)
         const row = await payload.create({
           collection: 'steps',
           data: { run: run.id, workspace, messageId: s.messageId, tokensIn: s.inputTokens, tokensOut: s.outputTokens, seq: ++seq },
           ...opts,
         })
         lastStep = row.id
+        // The model the Run actually used: the last non-empty one the agent reported.
+        if (s.model && s.model !== lastModel) await payload.update({ collection: 'runs', id: run.id, data: { model: (lastModel = s.model) }, ...opts })
       },
       toolCall: async (t) => {
         const step = lastStep

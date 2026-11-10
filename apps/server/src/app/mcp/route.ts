@@ -39,7 +39,7 @@ const handle = async (req: Request): Promise<Response> => {
   }))
   server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     try {
-      const out = await callTool({ payload, user: user as never, actor }, params.name, params.arguments)
+      const out = await callTool({ payload, user: user as never, actor, userAgent: req.headers.get('user-agent') ?? undefined }, params.name, params.arguments)
       return { content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out) }] }
     } catch (e) {
       return { isError: true, content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }] }
