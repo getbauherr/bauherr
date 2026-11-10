@@ -3,3 +3,5 @@ export * from './stage.js';
 export * from './body-convention.js';
 export * from './fake.js';
 export * from './github.js';
+export * from './gitlab.js';
+export * from './http.js';

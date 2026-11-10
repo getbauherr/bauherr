@@ -1,7 +1,12 @@
-import pg from 'pg'
-import type { FakeBackend } from '@bauherr/adapters'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { MergePendingError, type FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { claimOnly } from './helpers/claim'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
@@ -10,6 +15,7 @@ let product: number
 let ws: number
 let call: (user: Record<string, any>, name: string, input: unknown) => Promise<any>
 let jobs: typeof import('../src/jobs')
+let mergeMain: typeof import('../src/lib/merge-main')
 let actions: typeof import('../src/lib/actions')
 let release: typeof import('../src/lib/release')
 const o = { overrideAccess: true } as const
@@ -17,14 +23,34 @@ const repo = 'acme/web'
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 const EVIDENCE = 'Closes it\n\n## Evidence\n| Goal | verified |\n'
 
+let testDb: TestDb
+let root: string
+let bare: string
+const work = () => join(root, 'work')
+/** MR branches living in the local bare repo, with the head the forge fake last judged them at. */
+const gitBranches = new Map<string, string>()
+let edits = 0
+const git = (cwd: string, ...a: string[]) =>
+  execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 'dev', GIT_AUTHOR_EMAIL: 'd@x', GIT_COMMITTER_NAME: 'dev', GIT_COMMITTER_EMAIL: 'd@x' } }).toString().trim()
+/** Puts the MR branch into the local bare repo (branched from main, one commit on `mr`), then moves main with one commit on `main`; the forge fake reports the real head from then on. */
+const gitMr = (branch: string, mr: [string, string], main: [string, string]) => {
+  const edit = ([file, text]: [string, string], msg: string) => {
+    execFileSync('sh', ['-c', `printf '%s\\n' "$1" > "$2"`, 'sh', `${text}${++edits}`, join(work(), file)])
+    git(work(), 'add', '-A')
+    git(work(), 'commit', '-m', msg)
+  }
+  git(work(), 'checkout', '-B', branch, 'main')
+  edit(mr, 'mr')
+  git(work(), 'push', '-f', 'origin', branch)
+  git(work(), 'checkout', 'main')
+  edit(main, 'main')
+  git(work(), 'push', 'origin', 'main')
+  gitBranches.set(branch, realHead(branch))
+}
+const realHead = (branch: string) => git(bare, 'rev-parse', `refs/heads/${branch}`)
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_review WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_review')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_review')
+  testDb = await createTestDb('review')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -34,9 +60,31 @@ beforeAll(async () => {
   jobs = await import('../src/jobs')
   actions = await import('../src/lib/actions')
   release = await import('../src/lib/release')
+  mergeMain = await import('../src/lib/merge-main')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
+  root = mkdtempSync(join(tmpdir(), 'bauherr-review-'))
+  bare = join(root, 'acme/web.git')
+  process.env.BAUHERR_GIT_BASE_URL = `file://${root}`
+  git(root, 'init', '--bare', '-b', 'main', bare)
+  git(root, 'clone', bare, work())
+  git(work(), 'checkout', '-B', 'main')
+  git(work(), 'commit', '--allow-empty', '-m', 'init')
+  git(work(), 'push', 'origin', 'main')
+  const { getPullRequest, mergePullRequest } = fake.forge
+  fake.forge.getPullRequest = async (r, n) => {
+    const pr = await getPullRequest(r, n)
+    if (!gitBranches.has(pr.head)) return pr
+    const headSha = realHead(pr.head)
+    if (gitBranches.get(pr.head) !== headSha) {
+      gitBranches.set(pr.head, headSha)
+      fake.setPullRequest(r, n, { mergeable: undefined, behind: undefined })
+      return { ...pr, headSha, mergeable: undefined, behind: undefined }
+    }
+    return { ...pr, headSha }
+  }
+  fake.forge.mergePullRequest = async (r, n, opts) => mergePullRequest(r, n, gitBranches.has((await getPullRequest(r, n)).head) ? { ...opts, expectSha: undefined } : opts)
   const { callTool } = await import('../src/lib/mcp-tools')
-  call = (user, name, input) => callTool({ payload, user }, name, input)
+  call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
@@ -46,6 +94,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** A review Ticket with an open factory MR and a claimed session Review Run. */
@@ -61,10 +110,10 @@ const seed = async (o2: { body?: string; checks?: any[] } = {}) => {
   if (o2.checks) fake.setChecks(repo, pr.headSha, o2.checks)
   return { t, pr, n: String(issue.number), branch, id: t.id as number }
 }
-/** Starts and claims the Review Run. */
+/** Starts and claims the Review Run. Starts it directly: these tests exercise the merge gate on heads whose checks changed after the review began; the entry gate (green heads only) is covered in `green-heads.test.ts`. */
 const review = async (id: number) => {
-  const started = await jobs.startReviewIfReady(payload, (await reload(id)) as any)
-  const { leaseToken } = await call(member, 'claim_run', { runId: started!.run.id })
+  const started = await jobs.startRunIfNeeded(payload, (await reload(id)) as any, 'review')
+  const { leaseToken } = await claimOnly(payload, call, member, ws, started!.run.id)
   return { runId: started!.run.id as number, leaseToken: leaseToken as string }
 }
 const checked = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'].map((area) => ({ area, note: `checked ${area}` }))
@@ -125,13 +174,38 @@ it('a medium finding goes back to Build on the same MR branch with the findings 
   expect((await fake.forge.listPullRequests(repo)).filter((p) => p.head === branch)).toHaveLength(1)
 })
 
-it('the 3rd return to Build needs a human', async () => {
+it('a review round only touches Current instructions, Unfinished work and Open; findings appear once', async () => {
+  const { id, n } = await seed({ checks: green })
+  const kept = '**Goal**\n- [ ] g1\n\n'
+  const rest = '**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n'
+  const tail = '**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked'
+  await fake.tickets(repo).comment(n, `<!-- bauherr:worklog -->\n## Worklog\n${kept}**Current instructions**\nold\n\n${rest}**Unfinished work**\n- item\n\n**Open**\n-\n\n${tail}`)
+  const low = { severity: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }
+  for (const round of [1, 2]) {
+    expect(await submit(await review(id), [medium, low])).toMatchObject({ outcome: 'build' })
+    await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+    const w = await actions.readWorklog(payload, member, { ticket: id })
+    expect(w).toContain('**Goal**\n- [ ] g1')
+    expect(w).toContain('**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n**Unfinished work**')
+    expect(w).toContain('**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked')
+    expect(w).toContain(`Review round ${round}:`)
+    expect(w.match(/\[medium\] a\.ts:3/g)).toHaveLength(1)
+    expect(w.match(/\[low\] b\.ts:1/g)).toHaveLength(1)
+    expect(w).toMatch(/\*\*Unfinished work\*\*\n- item\n- \[medium\][^\n]*\n\n\*\*Open\*\*/)
+    expect(w).toMatch(/\*\*Open\*\*\n- \[low\][^\n]*\n\n\*\*Decisions/)
+    expect(w.match(/Review round/g)).toHaveLength(1)
+  }
+})
+
+it('the 3rd return is granted by the factory, the 4th needs a human', async () => {
   const { id, n } = await seed({ checks: green })
   for (const round of [1, 2]) {
     expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'build' })
     expect((await reload(id)).reviewRounds).toBe(round)
     await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
   }
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'build' })
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
   expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'needs_human' })
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
   expect((await fake.tickets(repo).listComments(n)).some((c) => c.body.startsWith('Bauherr needs a human: the review found 1 blocking'))).toBe(true)
@@ -183,7 +257,7 @@ const blocker = (n: number) => ({ severity: 'high', file: 'a.ts', line: n, msg: 
 const buildRun = async () => {
   const { t } = await seed()
   const started = await jobs.startRunIfNeeded(payload, t as any, 'build')
-  const { leaseToken } = await call(member, 'claim_run', { runId: started.run.id })
+  const { leaseToken } = await claimOnly(payload, call, member, ws, started.run.id)
   return { runId: started.run.id as number, leaseToken: leaseToken as string, ticket: t }
 }
 
@@ -234,7 +308,7 @@ it('F2: the verdict is bound to the reviewed SHA; a moved head restarts the revi
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: null, reviewRounds: 0 })
   const active = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }, { status: { in: jobs.ACTIVE } }] }, ...o })).docs
   expect(active).toHaveLength(1)
-  const again = await call(member, 'claim_run', { runId: active[0]!.id })
+  const again = await claimOnly(payload, call, member, ws, active[0]!.id)
   expect(await submit({ runId: active[0]!.id as number, leaseToken: again.leaseToken })).toMatchObject({ outcome: 'merged' })
 })
 
@@ -272,6 +346,15 @@ it('F3: a review without the full checked list goes to a human, not to a merge',
   expect(await prState(pr.number)).toBe('open')
   expect((await reload(id)).reviewState).toBe('ready_for_human')
   expect((await comments(n)).some((c) => c.includes('did not account for: evidence'))).toBe(true)
+})
+
+it('a checked note over 1000 characters or empty is refused with its area and length, a valid one is accepted', () => {
+  const base = { verdict: 'clean', findings: [], markdown: 'm' }
+  const with_ = (note: string) => ({ ...base, checked: checked.map((c, i) => (i === 0 ? { ...c, note } : c)) })
+  const area = checked[0]!.area
+  expect(() => actions.normalizeReview(with_('x'.repeat(1001)))).toThrow(`checked.${area}: note is 1001 characters, max 1000`)
+  expect(() => actions.normalizeReview(with_('  '))).toThrow(`checked.${area}: note is empty`)
+  expect(actions.normalizeReview(with_('x'.repeat(1000))).problem).toBeUndefined()
 })
 
 it('F6/F7: review output is bounded and findings are one line', () => {
@@ -412,4 +495,566 @@ it('F15: ## Evidence needs the exact heading and content after it', () => {
   expect(actions.hasEvidence('### Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('see ## Evidence\nfoo')).toBe(false)
   expect(actions.hasEvidence('## Evidences\nfoo')).toBe(false)
+})
+
+it('a pending (asynchronous) merge waits without counting a failure', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    for (let i = 0; i < 4; i++) {
+      await actions.watchReviews(payload)
+      expect((await reload(a.id)).reviewState).toBe('waiting_checks')
+    }
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+  expect(Number((await reload(a.id)).mergeFailures ?? 0)).toBe(0)
+  await actions.watchReviews(payload)
+  expect(await prState(a.pr.number)).toBe('merged')
+})
+
+it('a perpetually pending merge keeps its wait clock and escalates after 2 hours', async () => {
+  const a = await seed({ checks: green })
+  const r = await review(a.id)
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    throw new MergePendingError('not merged yet')
+  }
+  try {
+    expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+    const since = (await reload(a.id)).reviewWaitingSince
+    expect(since).toBeTruthy()
+    await actions.watchReviews(payload, Date.now() + 1.9 * 3_600_000)
+    expect((await reload(a.id)).reviewWaitingSince).toEqual(since)
+    await actions.watchReviews(payload, Date.now() + 2.1 * 3_600_000)
+    expect((await reload(a.id)).reviewState).toBe('needs_human')
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+})
+
+/** The crash window: the review Run holds its verdict, the Ticket never moved. */
+const crashed = async (id: number, pr: { headSha: string }, findings: any[] = [], problem?: string) => {
+  const r = await review(id)
+  const verdict = findings.some((f) => f.severity !== 'low') ? 'changes' : 'clean'
+  await payload.update({ collection: 'runs', id: r.runId, data: { status: 'succeeded', verdict, findings, reviewedSha: pr.headSha, finishedAt: new Date(Date.now() - 5 * 60_000).toISOString(), artifacts: { review: { markdown: 'm', ...(problem && { problem }) } } }, ...o })
+  return r
+}
+const countComments = () => {
+  const spy = fake.forge.commentOnPullRequest
+  const calls: string[] = []
+  fake.forge.commentOnPullRequest = async (...a: Parameters<typeof spy>) => (calls.push(a[2]), spy(...a))
+  return { calls, restore: () => void (fake.forge.commentOnPullRequest = spy) }
+}
+
+it('resume: a recorded changes verdict ends in a Build Run without a second MR comment', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  await fake.forge.commentOnPullRequest(repo, pr.number, `${actions.REVIEW_MARKER}\nm`)
+  const c = countComments()
+  try {
+    expect(await actions.resumeReviews(payload)).toBe(1)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toHaveLength(0)
+  expect((await reload(id)).stage).toBe('build')
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('resume: the MR comment is posted when the crash happened before it, once', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr)
+  const c = countComments()
+  try {
+    await actions.resumeReviews(payload)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toEqual([`${actions.REVIEW_MARKER}\nm`])
+})
+
+it('resume: a Run of an earlier round is not applied; a fresh review starts', async () => {
+  const { id, pr, n } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'succeeded', mode: 'session', workspace: ws, finishedAt: new Date(Date.now() - 60_000).toISOString() }, ...o })
+  const c = countComments()
+  try {
+    expect(await actions.resumeReviews(payload)).toBe(0)
+  } finally {
+    c.restore()
+  }
+  expect(c.calls).toHaveLength(0)
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewRounds: 0 })
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+  expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { in: ['awaiting_session', 'running'] } }] }, ...o })).toMatchObject({ totalDocs: 0 })
+  expect(n).toBeTruthy()
+})
+
+it('resume: a Run that reviewed an older head is not applied', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  fake.commit(repo, pr.head, 'b.ts', 'y')
+  expect(await actions.resumeReviews(payload)).toBe(0)
+  expect((await reload(id)).reviewRounds).toBe(0)
+})
+
+it('resume: a recorded clean verdict merges', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr)
+  expect(await actions.resumeReviews(payload)).toBe(1)
+  expect(await prState(pr.number)).toBe('merged')
+})
+
+it('resume: a stored problem goes to a human, never to merge or Build', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [], 'the review did not account for: evidence')
+  await actions.resumeReviews(payload)
+  expect((await reload(id)).reviewState).toBe('ready_for_human')
+  expect(await prState(pr.number)).toBe('open')
+})
+
+it('resume: nothing is retried inside the grace, while a review Run is active, or in a parked state', async () => {
+  const fresh = await seed({ checks: green })
+  const r = await crashed(fresh.id, fresh.pr)
+  await payload.update({ collection: 'runs', id: r.runId, data: { finishedAt: new Date().toISOString() }, ...o })
+  const active = await seed({ checks: green })
+  await review(active.id)
+  const parked = []
+  for (const reviewState of ['waiting_checks', 'needs_human', 'ready_for_human', 'merged']) {
+    const s = await seed({ checks: green })
+    await crashed(s.id, s.pr)
+    await payload.update({ collection: 'tickets', id: s.id, data: { reviewState }, ...o })
+    parked.push(s)
+  }
+  await actions.resumeReviews(payload)
+  for (const s of [fresh, active]) {
+    expect((await reload(s.id)).stage).toBe('review')
+    expect((await reload(s.id)).reviewState ?? null).toBeNull()
+    expect(await prState(s.pr.number)).toBe('open')
+  }
+  for (const s of parked) expect(await prState(s.pr.number)).toBe('open')
+})
+
+const touches = async (id: number, kind: string) => (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: kind } }] }, ...o })).docs
+const hitCap = async (id: number) => {
+  for (const round of [1, 2]) {
+    await submit(await review(id), [medium])
+    await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  }
+}
+
+/** A review Ticket parked at the round cap (factory's grant already used), the escalation Comment posted. */
+const atCap = async () => {
+  const s = await seed({ checks: green })
+  await hitCap(s.id)
+  expect(await submit(await review(s.id), [medium])).toMatchObject({ outcome: 'build' })
+  await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(s.id), [medium])).toMatchObject({ outcome: 'needs_human' })
+  return s
+}
+
+it('first cap hit is granted by the factory: Build on the same MR, factory touch, one Comment, no needs_human', async () => {
+  const { id, n, pr } = await seed({ checks: green })
+  await hitCap(id)
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'build' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, reviewRounds: 2 })
+  const t = await touches(id, 'review-cap:auto-grant')
+  expect(t).toHaveLength(1)
+  expect(t[0]).toMatchObject({ actor: 'factory' })
+  expect((await comments(n)).filter((b) => b.includes('the factory granted one more round'))).toHaveLength(1)
+  const build = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })
+  expect(build.totalDocs).toBe(1)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'merged' })
+  expect(await prState(pr.number)).toBe('merged')
+})
+
+it('second cap hit after the factory grant shows the owner Gate', async () => {
+  const { id } = await atCap()
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+  expect(await touches(id, 'review-cap:auto-grant')).toHaveLength(1)
+})
+
+it('an earlier owner grant uses up the factory grant', async () => {
+  const { id } = await atCap()
+  await actions.grantReviewRound(payload, member, { ticket: id })
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'needs_human' })
+  expect(await touches(id, 'review-cap:auto-grant')).toHaveLength(1)
+})
+
+it('grant at the round cap: exactly one more round on the same MR, then a clean review merges', async () => {
+  const { id, pr } = await atCap()
+  expect(await actions.grantReviewRound(payload, member, { ticket: id })).toMatchObject({ stage: 'build' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, reviewRounds: 2 })
+  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).docs
+  expect(build).toHaveLength(1)
+  expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('[medium] a.ts:3 off by one')
+  expect(await touches(id, 'review-cap:grant')).toHaveLength(1)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'merged' })
+  expect(await prState(pr.number)).toBe('merged')
+})
+
+it('after a grant a second cap hit shows the gate again', async () => {
+  const { id } = await atCap()
+  await actions.grantReviewRound(payload, member, { ticket: id })
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await submit(await review(id), [medium])).toMatchObject({ outcome: 'needs_human' })
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+})
+
+it('grant and stop refuse a Ticket that is not at the cap, and a double grant', async () => {
+  const a = await seed({ checks: green })
+  await payload.update({ collection: 'tickets', id: a.id, data: { reviewState: 'needs_human' }, ...o })
+  await expect(actions.grantReviewRound(payload, member, { ticket: a.id })).rejects.toThrow('not at the review round cap')
+  await expect(actions.stopReview(payload, member, { ticket: a.id })).rejects.toThrow('not at the review round cap')
+  expect(await reload(a.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 0 })
+  const { id } = await atCap()
+  await actions.grantReviewRound(payload, member, { ticket: id })
+  await expect(actions.grantReviewRound(payload, member, { ticket: id })).rejects.toThrow('not at the review round cap')
+  expect(await reload(id)).toMatchObject({ reviewRounds: 2 })
+})
+
+it('stop at the cap moves to triage with a note, the MR stays open', async () => {
+  const { id, n, pr } = await atCap()
+  await actions.stopReview(payload, member, { ticket: id, note: 'needs a redesign' })
+  expect(await reload(id)).toMatchObject({ stage: 'triage', reviewState: null, reviewRounds: 3 })
+  expect(await prState(pr.number)).toBe('open')
+  expect((await comments(n)).some((b) => b.startsWith('Stopped at the review round cap') && b.includes('needs a redesign'))).toBe(true)
+  expect(await touches(id, 'review-cap:stop')).toHaveLength(1)
+})
+
+it('grant_review_round and stop_review over MCP: an agent key is refused, a human works', async () => {
+  const { id } = await atCap()
+  const { callTool } = await import('../src/lib/mcp-tools')
+  const { mintAgentKey, resolveAgentKey } = await import('../src/lib/api-key')
+  const agent = { kind: 'agent', keyId: (await resolveAgentKey(payload, await mintAgentKey(payload, member as { id: number }, 'r')))!.keyId } as const
+  for (const name of ['grant_review_round', 'stop_review']) {
+    await expect(callTool({ payload, user: member, actor: agent }, name, { ticket: id })).rejects.toThrow('needs a human')
+  }
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', reviewRounds: 3 })
+  expect(await call(member, 'grant_review_round', { ticket: id })).toMatchObject({ stage: 'build' })
+  const capped = await atCap()
+  expect(await call(member, 'stop_review', { ticket: capped.id, note: 'redesign' })).toBeTruthy()
+  expect(await reload(capped.id)).toMatchObject({ stage: 'triage' })
+})
+
+const buildRuns = async (id: number, status?: string) =>
+  (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, ...(status ? [{ status: { equals: status } }] : [])] }, ...o })).totalDocs
+const mergeJobs = async () => (await payload.count({ collection: 'payload-jobs' as never, where: { taskSlug: { equals: 'merge-main' } } as never, ...o })).totalDocs
+/** The factory merged main itself: no Build Run, the Ticket waits in review for the `merge-main` job. */
+const waitsForMergeJob = async (id: number) => {
+  expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks', mergeFailures: 0, conflictReturns: 0 })
+  expect(await buildRuns(id, 'awaiting_session')).toBe(0)
+}
+
+it('F21: a clean review of a conflicting MR queues the merge-main job: no Build Run, no round', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const before = await mergeJobs()
+  fake.setMergeable(repo, pr.number, false)
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
+  expect(await mergeJobs()).toBe(before + 1)
+  expect(await prState(pr.number)).toBe('open')
+  expect((await reload(id)).reviewRounds).toBe(0)
+  await waitsForMergeJob(id)
+})
+
+it('F22: a waiting_checks Ticket whose MR turned unmergeable queues the merge-main job on the next watch pass', async () => {
+  const { id, pr } = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
+  expect(await submit(await review(id))).toMatchObject({ outcome: 'waiting_checks' })
+  const before = await mergeJobs()
+  fake.setMergeable(repo, pr.number, false)
+  await actions.watchReviews(payload)
+  expect(await mergeJobs()).toBe(before + 1)
+  await actions.watchReviews(payload)
+  await actions.watchReviews(payload)
+  expect(await mergeJobs()).toBe(before + 1)
+  await waitsForMergeJob(id)
+})
+
+it('F23: a merge that fails while the MR reads as conflicting takes the merge-main route', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const spy = fake.forge.mergePullRequest
+  fake.forge.mergePullRequest = async () => {
+    fake.setMergeable(repo, pr.number, false)
+    throw new Error('merge commit cannot be cleanly created')
+  }
+  try {
+    expect(await submit(await review(id))).toMatchObject({ outcome: 'waiting_checks' })
+  } finally {
+    fake.forge.mergePullRequest = spy
+  }
+  await waitsForMergeJob(id)
+})
+
+/** A clean review of an MR that main moved away from; the two tuples are the file edits of the MR side and the main side. */
+const diverged = async (mr: [string, string], main: [string, string], more: { reviewedPatchId?: string; ticket?: Record<string, unknown> } = {}) => {
+  const s = await seed({ checks: green })
+  gitMr(s.branch, mr, main)
+  const r = await review(s.id)
+  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId: more.reviewedPatchId }, ...o })
+  if (more.ticket) await payload.update({ collection: 'tickets', id: s.id, data: more.ticket, ...o })
+  return { ...s, r, before: realHead(s.branch) }
+}
+const mergeMainJob = async (s: { id: number; before: string }) => mergeMain.mergeMainIntoMr(payload, s.id, s.before)
+
+it.each([
+  ['dirty', (n: number) => fake.setMergeable(repo, n, false)],
+  ['behind', (n: number) => fake.setBehind(repo, n, true)],
+])('F24: an MR %s but textually clean, reviewed in a session (no reviewedPatchId): the job merges main as the bot, the verdict follows the unchanged diff, no Build Run, no new Review Run', async (_, flag) => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
+  flag(s.pr.number)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(git(bare, 'log', '-1', '--format=%an,%cn', `refs/heads/${s.branch}`)).toBe('Bauherr,Bauherr')
+  expect(git(bare, 'log', '-1', '--format=%P', `refs/heads/${s.branch}`).split(' ')).toContain(s.before)
+  expect(await payload.findByID({ collection: 'runs', id: s.r.runId, ...o })).toMatchObject({ reviewedSha: realHead(s.branch) })
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect(await prState(s.pr.number)).toBe('merged')
+})
+
+it('F24: a changed Ticket diff after the merge starts a Review Run, no merge', async () => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'], { reviewedPatchId: 'patch-other' })
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect(await prState(s.pr.number)).toBe('open')
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
+})
+
+it('F24: a session review of another head does not lend its verdict to the cloned head', async () => {
+  const s = await diverged(['mr.ts', 'x'], ['main.ts', 'y'])
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMain.mergeMainIntoMr(payload, s.id, 'f'.repeat(40))
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect(await prState(s.pr.number)).toBe('open')
+})
+
+it('F25: a real conflict pushes nothing and creates exactly one Build Run, counted, even at the round cap; the next review gets the reviewed SHA', async () => {
+  const s = await diverged(['c.ts', 'mine'], ['c.ts', 'theirs'], { ticket: { reviewRounds: 2 } })
+  fake.setMergeable(repo, s.pr.number, false)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(realHead(s.branch)).toBe(s.before)
+  expect(await reload(s.id)).toMatchObject({ stage: 'build', reviewState: null, mergeFailures: 0, reviewRounds: 2, conflictReturns: 1, conflictReturnBase: s.before })
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(1)
+  expect(await actions.readWorklog(payload, member, { ticket: s.id })).toContain('found real conflicts')
+})
+
+it('F27: a 4th conflict return needs a human instead of looping', async () => {
+  const s = await diverged(['c.ts', 'mine'], ['c.ts', 'theirs'], { ticket: { conflictReturns: 3 } })
+  fake.setMergeable(repo, s.pr.number, false)
+  expect(await submit(s.r)).toMatchObject({ outcome: 'waiting_checks' })
+  await mergeMainJob(s)
+  expect(await reload(s.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 3 })
+  expect(await buildRuns(s.id, 'awaiting_session')).toBe(0)
+})
+
+it('F28: recovery: Tickets parked on 3 failed merges go back to the merge gate when the MR conflicts; others stay with the human and are checked once', async () => {
+  const parked = async (conflicting: boolean) => {
+    const s = await seed({ checks: [{ name: 'ci', status: 'in_progress', conclusion: null }] })
+    await submit(await review(s.id))
+    await payload.update({ collection: 'tickets', id: s.id, data: { reviewState: 'needs_human', mergeFailures: 3, conflictReturns: null }, ...o })
+    fake.setChecks(repo, s.pr.headSha, green)
+    if (conflicting) fake.setMergeable(repo, s.pr.number, false)
+    return s
+  }
+  const ok = await parked(false)
+  const bad = await parked(true)
+  await actions.watchReviews(payload)
+  expect(await prState(ok.pr.number)).toBe('open')
+  await waitsForMergeJob(bad.id)
+  expect(await reload(ok.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
+})
+
+/** A clean review of `seed()`'s MR with a stored patch-id, still waiting for checks, then a Runner main-merge Build Run (`patchId`) that moved the head and put the Ticket back in review. */
+const mergedByRunner = async (reviewedPatchId: string, patchId: string, pushed: 'head' | 'stale' = 'head', more: Record<string, unknown> = {}) => {
+  const s = await seed({ checks: green })
+  const r = await review(s.id)
+  await payload.update({ collection: 'runs', id: r.runId, data: { reviewedPatchId }, ...o })
+  fake.setChecks(repo, s.pr.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  expect(await submit(r)).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
+  fake.commit(repo, s.branch, 'main.ts', 'merged main')
+  const pushedSha = pushed === 'head' ? (await fake.forge.getPullRequest(repo, s.pr.number)).headSha : 'stale-sha'
+  await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace: ws, artifacts: { patchId, pushedSha, ...more } }, ...o })
+  const t = await payload.update({ collection: 'tickets', id: s.id, data: { stage: 'review', reviewState: null }, ...o })
+  return { ...s, r, t }
+}
+const reviewRuns = async (id: number) => (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'review' } }] }, ...o })).totalDocs
+
+it('F29: a Runner main-merge with an unchanged Ticket diff re-binds the verdict to the new head: no new Review Run, the merge gate decides', async () => {
+  const { id, pr, r, t } = await mergedByRunner('patch-x', 'patch-x')
+  expect(await actions.rebindReview(payload, t)).toBe(true)
+  const head = (await fake.forge.getPullRequest(repo, pr.number)).headSha
+  expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: head, reviewedPatchId: 'patch-x' })
+  expect(await reviewRuns(id)).toBe(1)
+  expect(await prState(pr.number)).toBe('merged')
+  expect((await reload(id)).conflictReturnBase).toBeNull()
+})
+
+it('F29: a re-bound verdict still waits for the checks on the new head', async () => {
+  const { id, pr, t } = await mergedByRunner('patch-x', 'patch-x')
+  fake.setChecks(repo, (await fake.forge.getPullRequest(repo, pr.number)).headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  expect(await actions.rebindReview(payload, t)).toBe(true)
+  expect(await prState(pr.number)).toBe('open')
+  expect((await reload(id)).reviewState).toBe('waiting_checks')
+  expect(await reviewRuns(id)).toBe(1)
+})
+
+it('F30: a different patch-id does not re-bind: a new Review Run starts on the new head', async () => {
+  const { id, pr, t } = await mergedByRunner('patch-x', 'patch-y')
+  expect(await actions.rebindReview(payload, t)).toBe(false)
+  expect(await jobs.startReviewIfReady(payload, t as any)).toBeTruthy()
+  expect(await reviewRuns(id)).toBe(2)
+  expect(await prState(pr.number)).toBe('open')
+})
+
+it('F31: a clean review of an MR behind main (auto-merge on) queues the merge-main job, without a Build Run or a conflict return', async () => {
+  const { id, pr } = await seed({ checks: green })
+  fake.setBehind(repo, pr.number, true)
+  expect(await submit(await review(id))).toMatchObject({ verdict: 'clean', outcome: 'waiting_checks' })
+  await waitsForMergeJob(id)
+  expect(await prState(pr.number)).toBe('open')
+})
+
+it('F32: a head pushed by someone else after the Runner merge is not re-bound: the Runner pushed another SHA, so a new review is needed', async () => {
+  const { id, pr, r, t } = await mergedByRunner('patch-x', 'patch-x', 'stale')
+  expect(await actions.rebindReview(payload, t)).toBe(false)
+  expect(await payload.findByID({ collection: 'runs', id: r.runId, ...o })).toMatchObject({ reviewedSha: expect.not.stringMatching(/^$/) })
+  expect((await payload.findByID({ collection: 'runs', id: r.runId, ...o })).reviewedSha).not.toBe((await fake.forge.getPullRequest(repo, pr.number)).headSha)
+  expect(await prState(pr.number)).toBe('open')
+  expect(await jobs.startReviewIfReady(payload, t as any)).toBeTruthy()
+  expect(await reviewRuns(id)).toBe(2)
+})
+
+/** A reviewed MR whose branch already contains main while the forge keeps reporting it behind (a lagging `mergeable_state`). */
+const lagging = async () => {
+  const s = await seed({ checks: green })
+  gitMr(s.branch, ['mr.ts', 'x'], ['main.ts', 'y'])
+  git(work(), 'checkout', s.branch)
+  git(work(), 'merge', '--no-edit', 'main')
+  git(work(), 'push', 'origin', s.branch)
+  git(work(), 'checkout', 'main')
+  gitBranches.set(s.branch, realHead(s.branch))
+  const r = await review(s.id)
+  fake.setBehind(repo, s.pr.number, true)
+  expect(await submit(r)).toMatchObject({ outcome: 'waiting_checks' })
+  return { ...s, before: realHead(s.branch) }
+}
+
+it('F33: the forge keeps reporting behind for a head that already contains main: two no-op merges wait, the third needs a human', async () => {
+  const s = await lagging()
+  const queued = await mergeJobs() // a newer pending job supersedes the older one
+  for (const noops of [1, 2]) {
+    await mergeMainJob(s)
+    expect(await reload(s.id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks', mainMergeSha: s.before, mainMergeNoops: noops })
+  }
+  expect(await mergeJobs()).toBe(queued)
+  await mergeMainJob(s)
+  expect(await reload(s.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', mainMergeSha: s.before, mainMergeNoops: 3 })
+  expect(await mergeJobs()).toBe(queued)
+  expect(await prState(s.pr.number)).toBe('open')
+})
+
+it('F33: a merge that pushes (main moved) resets the no-op counter', async () => {
+  const s = await lagging()
+  await mergeMainJob(s)
+  await mergeMainJob(s)
+  expect(await reload(s.id)).toMatchObject({ mainMergeNoops: 2 })
+  git(work(), 'commit', '--allow-empty', '-m', 'main moves')
+  git(work(), 'push', 'origin', 'main')
+  await mergeMainJob(s)
+  expect(realHead(s.branch)).not.toBe(s.before)
+  expect(await reload(s.id)).toMatchObject({ mainMergeSha: null, mainMergeNoops: 0 })
+})
+
+/** A parked Ticket whose last review Run reviewed the MR head, then the head moves. */
+const parked = async (reviewState: string, rounds = 0) => {
+  const s = await seed({ checks: green })
+  await crashed(s.id, s.pr)
+  await payload.update({ collection: 'tickets', id: s.id, data: { reviewState, reviewRounds: rounds }, ...o })
+  return s
+}
+const moveHead = async (s: { pr: { number: number; head?: string }; branch: string }) => {
+  fake.commit(repo, s.branch, 'b.ts', 'y')
+  const pr = await fake.forge.getPullRequest(repo, s.pr.number)
+  fake.setChecks(repo, pr.headSha, green)
+  return pr
+}
+
+it('restart-parked: a new head on a ready_for_human Ticket starts exactly one review, once', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  expect(await actions.restartParkedReviews(payload)).toBe(1)
+  expect((await reload(s.id)).reviewState ?? null).toBeNull()
+  expect(await reviewRuns(s.id)).toBe(2)
+  expect((await comments(s.n)).filter((c) => c.includes(`New head ${pr.headSha.slice(0, 7)}; review restarted (was ready_for_human)`))).toHaveLength(1)
+  expect(await actions.restartParkedReviews(payload)).toBe(0)
+  expect(await reviewRuns(s.id)).toBe(2)
+})
+
+it('restart-parked: needs_human restarts below the round cap and stays at the cap', async () => {
+  const below = await parked('needs_human', 1)
+  const atCap = await parked('needs_human', actions.MAX_REVIEW_ROUNDS + 1)
+  await moveHead(below)
+  await moveHead(atCap)
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(below.id)).toBe(2)
+  expect((await reload(atCap.id)).reviewState).toBe('needs_human')
+  expect(await reviewRuns(atCap.id)).toBe(1)
+})
+
+it('restart-parked: a review that asked the owner (decision, access) waits for the answer; a stuck one restarts', async () => {
+  const asked = []
+  for (const reasonKind of ['decision', 'access', 'stuck']) {
+    const s = await parked('needs_human', 1)
+    await payload.create({ collection: 'runs', data: { ticket: s.id, stage: 'review', status: 'needs_human', reasonKind, mode: 'autonomous', workspace: ws }, ...o })
+    await moveHead(s)
+    asked.push(s)
+  }
+  expect(await actions.restartParkedReviews(payload)).toBe(1)
+  const [decision, access, stuck] = asked
+  for (const s of [decision!, access!]) {
+    expect((await reload(s.id)).reviewState).toBe('needs_human')
+    expect(await reviewRuns(s.id)).toBe(2)
+    expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+  }
+  expect(await reviewRuns(stuck!.id)).toBe(3)
+})
+
+it('restart-parked: no "review restarted" Comment when no Review Run started', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+})
+
+it('restart-parked: an unchanged head is left alone', async () => {
+  const s = await parked('ready_for_human')
+  expect(await actions.restartParkedReviews(payload)).toBe(0)
+  expect((await reload(s.id)).reviewState).toBe('ready_for_human')
+})
+
+it('restart-parked: a same-diff main merge is rebound, no new review Run', async () => {
+  const s = await parked('ready_for_human')
+  const pr = await moveHead(s)
+  const [run] = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: s.id } }, { stage: { equals: 'review' } }] }, limit: 1, ...o })).docs
+  await payload.update({ collection: 'runs', id: run!.id, data: { reviewedPatchId: 'p1' }, ...o })
+  const [build] = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: s.id } }, { stage: { equals: 'build' } }] }, limit: 1, ...o })).docs
+  await payload.update({ collection: 'runs', id: build!.id, data: { artifacts: { ...build!.artifacts, patchId: 'p1', pushedSha: pr.headSha } }, ...o })
+  await actions.restartParkedReviews(payload)
+  expect(await reviewRuns(s.id)).toBe(1)
+  expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
 })

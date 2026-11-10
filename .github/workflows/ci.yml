@@ -1,12 +1,13 @@
 name: ci
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -21,25 +22,82 @@ jobs:
           --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm test
+      - run: pnpm --filter server test --shard=1/3
 
-  e2e:
+  # The server suite is CPU-bound (941 tests, one Payload per file): `check` runs shard 1, these run shards 2 and 3 (shard 3 also runs the package tests), each with its own Postgres.
+  test:
     runs-on: ubuntu-latest
-    env:
-      E2E_EMAIL: e2e@example.com
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [2, 3]
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}
+        ports: ["54330:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
-      - name: Start the production stack
-        run: docker compose up -d --build --wait app
+      - run: pnpm build:packages
+      - run: pnpm --filter server test --shard=${{ matrix.shard }}/3
+      - if: matrix.shard == 3
+        run: pnpm --filter './packages/*' test
+
+  # Builds the production image once; `e2e` and `cli-smoke` load it instead of rebuilding.
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        id: buildx
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
+          tags: ghcr.io/getbauherr/bauherr:dev
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 1
+          compression-level: 0
+
+  # Production-image run without the fake forge (the image refuses it); see e2e-fake for the fake-forge specs.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build-image
+    env:
+      E2E_EMAIL: e2e@example.com
+      LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
+      - run: pnpm install --frozen-lockfile
+      - name: Pre-pull the Playwright image while the rest runs
+        run: nohup docker pull -q mcr.microsoft.com/playwright:v1.64.1-noble > /dev/null 2>&1 &
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - name: Start the production stack (the image built by build-image)
+        run: |
+          docker load -i "$RUNNER_TEMP/image.tar"
+          docker compose up -d --no-build --wait app
       - name: Seed
         run: |
           echo "E2E_PASSWORD_FILE=$RUNNER_TEMP/e2e-password" >> "$GITHUB_ENV"
@@ -47,6 +105,21 @@ jobs:
           (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$E2E_PASSWORD_FILE")
           docker compose cp "$E2E_PASSWORD_FILE" app:/tmp/e2e-password
           docker compose exec -T -e E2E_EMAIL -e E2E_PASSWORD_FILE=/tmp/e2e-password app pnpm seed:e2e
+      - name: Image refuses the fake forge, even with the marker set at runtime
+        run: |
+          docker compose run -d --no-deps --name fakecheck -e BAUHERR_E2E_FAKE_FORGE=1 -e BAUHERR_TEST_BUILD=1 -p 3011:3000 app
+          for _ in $(seq 30); do
+            curl --silent -o /dev/null http://localhost:3011/login || true
+            docker logs fakecheck 2>&1 | grep -q 'must not be set in production' && break
+            sleep 2
+          done
+          docker logs fakecheck
+          status=$(curl --silent -o /dev/null -w '%{http_code}' http://localhost:3011/login || true)
+          echo "status $status"
+          docker logs fakecheck 2>&1 | grep -q 'must not be set in production'
+          [ "${status:0:1}" != 2 ]
+      - if: always()
+        run: docker rm -f fakecheck
       - name: Playwright
         run: >
           docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
@@ -65,32 +138,164 @@ jobs:
             apps/server/e2e/app.log
           if-no-files-found: ignore
 
+  e2e-fake:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write # the e2e-flaky check run (.github/scripts/e2e-flakes.sh)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}
+        ports: ["54330:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
+    env:
+      E2E_EMAIL: e2e@example.com
+      LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
+      DATABASE_URL: postgres://bauherr:bauherr@localhost:54330/bauherr
+      BAUHERR_E2E_FAKE_FORGE: "1"
+      INTAKE_FAKE: "1"
+      E2E_FAKE_FORGE: "1"
+      OTEL_ENABLED: "0"
+      BAUHERR_PACK_DIR: ${{ github.workspace }}/apps/server/tests/fixtures/gated-pack
+      E2E_GATED_PACK: "1"
+      MEDIA_DIR: /tmp/bauherr-e2e-media
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+      - name: Changed e2e specs (burn-in list)
+        if: github.event_name == 'pull_request' && matrix.shard == 1
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          specs=$(git diff --name-only --diff-filter=AMR "origin/$BASE_REF...HEAD" -- 'apps/server/e2e/*.spec.ts' | sed 's#^apps/server/##' | tr '\n' ' ')
+          specs=$(printf '%s\n' $specs | sort -u | tr '\n' ' ')
+          echo "CHANGED_SPECS=${specs% }" >> "$GITHUB_ENV"
+      - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
+      - name: Pre-pull the Playwright image while the rest runs
+        run: nohup docker pull -q mcr.microsoft.com/playwright:v1.64.1-noble > /dev/null 2>&1 &
+      - run: pnpm install --frozen-lockfile
+      - name: Seed
+        run: |
+          PAYLOAD_SECRET=$(openssl rand -hex 24); ENCRYPTION_KEY=$(openssl rand -hex 32)
+          echo "::add-mask::$PAYLOAD_SECRET"; echo "::add-mask::$ENCRYPTION_KEY"
+          echo "PAYLOAD_SECRET=$PAYLOAD_SECRET" >> "$GITHUB_ENV"
+          echo "ENCRYPTION_KEY=$ENCRYPTION_KEY" >> "$GITHUB_ENV"
+          echo "E2E_PASSWORD_FILE=$RUNNER_TEMP/e2e-password" >> "$GITHUB_ENV"
+          (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$RUNNER_TEMP/e2e-password")
+      - run: pnpm build:packages
+      - run: pnpm --filter server gen:migrations
+      - name: Build the server (BAUHERR_TEST_BUILD=1 is inlined, so the fake forge is allowed in this build only)
+        run: BAUHERR_TEST_BUILD=1 pnpm --filter server build
+      - name: Start the server (it migrates on boot, so seed after it is up)
+        run: |
+          pnpm --filter server start > apps/server/e2e/app.log 2>&1 &
+          curl --fail --silent --retry 60 --retry-delay 2 --retry-connrefused -o /dev/null http://localhost:3000/login
+      - run: pnpm --filter server seed:e2e
+      - name: Playwright
+        run: >
+          docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
+          -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server
+          -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e E2E_GATED_PACK -e HOME=/tmp -e E2E_WORKERS=3 -e E2E_RETRIES=1
+          -e PLAYWRIGHT_JSON_OUTPUT_NAME=e2e/results/report-${{ matrix.shard }}.json
+          mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --reporter=line,html,json --shard=${{ matrix.shard }}/2
+      - name: Flaky tests (passed only on retry)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/scripts/e2e-flakes.sh ${{ matrix.shard }} apps/server/e2e/results/report-${{ matrix.shard }}.json
+      - name: Burn in the e2e specs this PR adds or changes (3 passes, each on a fresh DB, once, in shard 1)
+        if: github.event_name == 'pull_request' && matrix.shard == 1 && env.CHANGED_SPECS != ''
+        run: apps/server/scripts/e2e-burnin.sh $CHANGED_SPECS
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          retention-days: 3
+          name: playwright-report-fake-${{ matrix.shard }}
+          path: |
+            apps/server/playwright-report
+            apps/server/e2e/results
+            apps/server/e2e/app.log
+          if-no-files-found: ignore
+
   cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
       - run: pnpm --filter bauherr test
       - run: pnpm --filter bauherr exec npm pack --dry-run
 
-  cli-smoke:
+  # Needs the real agentgateway binary; a registry outage is a warning, a validation failure is red.
+  gateway-validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: {node-version: 24}
       - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
-      - name: Pack the CLI and build the image it pins
+      - name: Pull the gateway image
+        id: pull
+        run: |
+          img=$(grep -o 'cr.agentgateway.dev/[^ "]*' compose.yaml)
+          for i in 1 2 3; do
+            docker pull "$img" && { echo pulled=true >> "$GITHUB_OUTPUT"; exit 0; }
+            sleep 10
+          done
+          echo "::warning::registry unavailable, skipping gateway validation"
+          echo pulled=false >> "$GITHUB_OUTPUT"
+      - if: steps.pull.outputs.pulled == 'true'
+        run: pnpm --filter server test:gateway
+      - name: Check the Prometheus config
+        run: |
+          img=$(grep -o 'prom/prometheus:[^ "]*' compose.yaml)
+          docker run --rm -v "$PWD/deploy/prometheus:/p:ro" --entrypoint promtool "$img" check config /p/prometheus.yml
+
+  cli-smoke:
+    runs-on: ubuntu-latest
+    needs: build-image
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      # Pulled by the exact digest-pinned ref from compose.yaml, so `compose up` finds it locally. A saved tar cannot stand in: `docker save` by tag@digest writes no tag and `docker load` does not restore the digest, so the pinned ref would not match.
+      - name: Pre-pull the gateway image (retries ride out a registry blip)
+        run: |
+          img=$(grep -o 'cr.agentgateway.dev/[^ "]*' compose.yaml)
+          for i in 1 2 3 4 5; do
+            docker pull "$img" && exit 0
+            sleep $((i * 15))
+          done
+          exit 1
+      - name: Pack the CLI and tag the image it pins (built once by build-image)
         run: |
           pnpm --filter bauherr build
           version=$(node -p "require('./packages/cli/package.json').version")
           (cd packages/cli && npm pack --pack-destination "$RUNNER_TEMP")
           echo "TGZ=$RUNNER_TEMP/bauherr-$version.tgz" >> "$GITHUB_ENV"
-          docker build -t "ghcr.io/getbauherr/bauherr:$version" .
+          docker load -i "$RUNNER_TEMP/image.tar"
+          docker tag ghcr.io/getbauherr/bauherr:dev "ghcr.io/getbauherr/bauherr:$version"
       - name: npx init, health, down
         run: |
           dir=$RUNNER_TEMP/smoke

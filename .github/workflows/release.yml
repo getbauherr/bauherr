@@ -41,12 +41,18 @@ jobs:
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          cache-from: type=gha
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            BAUHERR_VERSION=${{ steps.v.outputs.version }}
+            BAUHERR_REVISION=${{ github.sha }}
           tags: |
             ghcr.io/getbauherr/bauherr:${{ steps.v.outputs.version }}
             ${{ steps.v.outputs.prerelease == 'false' && 'ghcr.io/getbauherr/bauherr:latest' || '' }}
-          labels: org.opencontainers.image.source=https://github.com/getbauherr/bauherr
+          labels: |
+            org.opencontainers.image.source=https://github.com/getbauherr/bauherr
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
 
   npm:
     needs: image
@@ -60,7 +66,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
       - name: Trusted publishing needs npm >= 11.5.1
         run: npm install -g npm@^11.5.1 && npm --version
       - run: corepack enable
@@ -72,6 +77,8 @@ jobs:
           VERSION: ${{ needs.image.outputs.version }}
           PRERELEASE: ${{ needs.image.outputs.prerelease }}
         run: |
+          # No token env var: OIDC trusted publishing only, never a long-lived npm token.
+          unset NODE_AUTH_TOKEN
           npm version "$VERSION" --no-git-tag-version
           pnpm build
-          npm publish --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"
+          npm stage publish . --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"

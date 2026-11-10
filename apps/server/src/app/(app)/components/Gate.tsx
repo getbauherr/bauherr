@@ -1,100 +1,44 @@
-import { acceptStagingAction, approvePlanAction, rerunStage, requestChangesAction } from '../lib/actions'
-import { isWebUrl } from '../lib/url'
+import { requestChangesAction } from '../lib/actions'
+import { Markdown } from './Markdown'
 import { SubmitButton } from './SubmitButton'
+import { Card } from './ui/card'
 
-type GateProps = {
-  ticket: number
-  number: number
-  plan: { title: string; steps: number } | null
-  budget: string
-  model: string
-  sheet: string
-  blocked: string | null
-}
-
-export function Gate({ ticket, number, plan, budget, model, sheet, blocked }: GateProps) {
+export function Gate({ plan }: { plan: { title: string; steps: number } | null }) {
   return (
-    <section className="gate" aria-labelledby="gate">
-      <div>
-        <h2 className="heading" id="gate">Approve plan</h2>
-        <p className="small muted">#{number} · plan</p>
-      </div>
-      <dl className="body">
-        <dt>Approves</dt><dd>{plan ? `${plan.title} · ${plan.steps} ${plan.steps === 1 ? 'step' : 'steps'}` : 'Plan comment not readable, open it on the forge.'}</dd>
-        <dt>Budget</dt><dd className="mono">{budget}</dd>
-        <dt>Model</dt><dd className="mono">{model}</dd>
-        <dt>Decisions</dt><dd>{sheet}</dd>
-      </dl>
-      <form action={approvePlanAction}>
-        <input type="hidden" name="ticket" value={ticket} />
-        <SubmitButton className="btn primary" disabled={!!blocked}>Approve plan</SubmitButton>
-        {blocked && <span className="small muted">{blocked}</span>}
-      </form>
-    </section>
+    <Card asChild className="max-w-[640px] gap-4 p-6">
+      <section aria-label="Approve plan">
+        <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
+          <dt>Approves</dt><dd>{plan ? `${plan.title} · ${plan.steps} ${plan.steps === 1 ? 'step' : 'steps'}` : 'Plan comment not readable, open it on the forge.'}</dd>
+        </dl>
+      </section>
+    </Card>
   )
 }
 
-/** Triage holds the Ticket: the decision sheet below is the action; the last answer moves the Ticket to plan. */
-export function QuestionsGate({ number, answered, total }: { number: number; answered: number; total: number }) {
+type ReleaseGateProps = { ticket: number; timedOut: boolean; summaryHtml: string | null }
+
+/** The staging summary, and the Request-changes form, which the bar's `#changes` link reveals through `:target`. */
+export function ReleaseGate({ ticket, timedOut, summaryHtml }: ReleaseGateProps) {
   return (
-    <section className="gate" aria-labelledby="gate">
-      <div>
-        <h2 className="heading" id="gate">Answer questions</h2>
-        <p className="small muted">#{number} · triage</p>
-      </div>
-      <p className="body">Triage needs your answers before this Ticket can be planned. {answered} of {total} answered; saving the last critical answer moves the Ticket to plan.</p>
-      <p><a className="btn primary" href="#decisions">Answer below</a></p>
-    </section>
+    <>
+      {(timedOut || summaryHtml) && (
+        <Card asChild className="max-w-[640px] gap-4 p-6">
+          <section aria-label="Staging">
+            {timedOut && <p className="body">The deploy was not observed on staging within 60 minutes. Check staging yourself; you can still accept.</p>}
+            {summaryHtml && <Markdown html={summaryHtml} />}
+          </section>
+        </Card>
+      )}
+      <Card asChild className="hidden max-w-[640px] scroll-mt-[calc(72px+var(--space-4))] items-start gap-4 p-6 target:flex">
+        <form action={requestChangesAction} id="changes">
+          <input type="hidden" name="ticket" value={ticket} />
+          <label className="flex flex-col gap-1 self-stretch">
+            <span className="label text-muted-foreground">What needs to change</span>
+            <textarea className="rounded-md border border-border bg-secondary px-3 py-2 text-[15px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" name="note" required rows={3} />
+          </label>
+          <SubmitButton>Request changes</SubmitButton>
+        </form>
+      </Card>
+    </>
   )
 }
-
-type ReleaseGateProps = { ticket: number; number: number; title: string; timedOut: boolean; summaryHtml: string | null; stagingUrl: string | null }
-
-export function ReleaseGate({ ticket, number, title, timedOut, summaryHtml, stagingUrl }: ReleaseGateProps) {
-  return (
-    <section className="gate" aria-labelledby="gate">
-      <div>
-        <h2 className="heading" id="gate">{title}</h2>
-        <p className="small muted">#{number} · Staging</p>
-      </div>
-      {timedOut && <p className="body">The deploy was not observed on staging within 60 minutes. Check staging yourself; you can still accept.</p>}
-      {summaryHtml && <div className="md" dangerouslySetInnerHTML={{ __html: summaryHtml }} />}
-      {isWebUrl(stagingUrl) && <p><a className="btn" href={stagingUrl}>Open staging</a></p>}
-      <form action={acceptStagingAction}>
-        <input type="hidden" name="ticket" value={ticket} />
-        <SubmitButton className="btn primary">Accept</SubmitButton>
-      </form>
-      <form action={requestChangesAction} className="changes">
-        <input type="hidden" name="ticket" value={ticket} />
-        <label className="field">
-          <span className="label muted">What needs to change</span>
-          <textarea name="note" required rows={3} />
-        </label>
-        <SubmitButton className="btn">Request changes</SubmitButton>
-      </form>
-    </section>
-  )
-}
-
-export function RerunGate({ run, number, title, stage }: { run: number; number: number; title: string; stage: string }) {
-  return (
-    <section className="gate" aria-labelledby="gate">
-      <div>
-        <h2 className="heading" id="gate">{title}</h2>
-        <p className="small muted">#{number} · {stage} · <a className="link" href={`/runs/${run}`}>Run {run}</a></p>
-      </div>
-      <form action={rerunStage.bind(null, run)}>
-        <SubmitButton className="btn primary">{`Re-run ${stage}`}</SubmitButton>
-      </form>
-    </section>
-  )
-}
-
-export function Approved({ number, label = 'Plan approved' }: { number: number; label?: string }) {
-  return (
-    <section className="gate" aria-label={label}>
-      <p className="body"><span className="chip label succeeded">✓ {label}</span> <span className="small muted">#{number}</span></p>
-    </section>
-  )
-}
-

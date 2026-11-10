@@ -15,7 +15,7 @@ export interface SummaryInput {
 }
 
 /** Body of a `## Name` heading or a `**Name**` line, up to the next one. */
-const section = (md: string, name: string): string => {
+export const section = (md: string, name: string): string => {
   const rows = md.split('\n')
   const head = (l: string) => /^##\s+(.+?)\s*$/.exec(l)?.[1] ?? /^\*\*(.+)\*\*\s*$/.exec(l.trim())?.[1]
   const start = rows.findIndex((l) => head(l)?.toLowerCase() === name.toLowerCase())
@@ -27,7 +27,7 @@ const section = (md: string, name: string): string => {
 /** Bullets of a section, or its prose as one item when it has none. */
 const items = (md: string): string[] => (bullets(md).length ? bullets(md) : md ? [md.replace(/\s*\n\s*/g, ' ')] : [])
 
-const bullets = (md: string): string[] =>
+export const bullets = (md: string): string[] =>
   md.split('\n').map((l) => /^\s*(?:[-*]|\d+\.)\s+(.*\S)/.exec(l)?.[1]).filter((x): x is string => !!x && x !== '-')
 
 const list = (items: string[], empty: string): string => (items.length ? items.map((i) => `- ${i}`).join('\n') : empty)
@@ -37,7 +37,7 @@ export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stag
   const outcomes = bullets(section(plan ?? '', 'Goal'))
   const goals = bullets(section(worklog ?? '', 'Goal')).map((g) => g.replace(/^\[( |x)\]\s*/i, (_, m) => (m === ' ' ? '(open) ' : '(done) ')).trim())
   const decisions = bullets(section(worklog ?? '', 'Decisions'))
-  const open = bullets(section(worklog ?? '', 'Unfinished work')).filter((x) => !/^none\.?$/i.test(x))
+  const open = [...bullets(section(worklog ?? '', 'Unfinished work')), ...bullets(section(worklog ?? '', 'Open'))].filter((x) => !/^none\.?$/i.test(x))
   const findings = mrs.flatMap((m) => items(section(m.body, 'Review')).map((f) => `${f} (MR #${m.number})`))
   const proof = evidence ?? mrs.map((m) => section(m.body, 'Evidence')).find(Boolean) ?? ''
   return [

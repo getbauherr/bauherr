@@ -1,12 +1,23 @@
+import { fileURLToPath } from 'node:url'
 import { GATES } from '../src/app/(app)/lib/gates'
 import { describe, expect, it } from 'vitest'
-import { heartbeatAge } from '../src/app/(app)/lib/format'
+import { activity, heartbeatAge } from '../src/app/(app)/lib/format'
 import { NEEDS, needsYou, releaseWord, stageOf } from '../src/app/(app)/lib/needs-you'
+
+process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
 
 const t = (stage: string | null, labels: string[] = []) => ({ stage, labels })
 const r = (stage: string, status: string) => ({ stage, status })
 
 describe('needsYou', () => {
+  it('asks for the round cap only past the cap; a review the factory could not conclude below it reads Needs you', () => {
+    const rev = (reviewState: string, reviewRounds: number) => ({ ...t('review'), reviewState, reviewRounds })
+    expect(needsYou(rev('needs_human', 3), r('review', 'succeeded'))).toBe('Round cap reached')
+    expect(needsYou(rev('needs_human', 2), r('review', 'succeeded'))).toBe('Needs you')
+    expect(needsYou(rev('needs_human', 0), r('review', 'succeeded'))).toBe('Needs you')
+    expect(needsYou(rev('waiting_checks', 3), r('review', 'succeeded'))).toBeNull()
+  })
+
   it('asks for plan approval once a plan Run succeeded and no approval label exists', () => {
     expect(needsYou(t('plan'), r('plan', 'succeeded'))).toBe('Approve plan')
     expect(needsYou(t('plan', ['bauherr:approved:plan']), r('plan', 'succeeded'))).toBeNull()
@@ -24,7 +35,13 @@ describe('needsYou', () => {
     expect(needsYou(t('build'), r('build', 'needs_human'))).toBe('Run needs you')
     expect(needsYou(t('review'), r('build', 'succeeded'))).toBeNull()
     expect(needsYou(t('review'), r('build', 'needs_human'))).toBe('Run needs you')
-    expect(needsYou(t('build'), r('build', 'failed'))).toBe('Run failed')
+    expect(needsYou(t('build'), { ...r('build', 'failed'), reasonKind: 'decision' })).toBe('Run failed')
+  })
+  it('hides a failed Run until the escalation ladder ended, and a stuck needs_human Run always', () => {
+    expect(needsYou(t('build'), r('build', 'failed'))).toBeNull()
+    expect(needsYou(t('build'), { ...r('build', 'failed'), reasonKind: 'stuck' })).toBeNull()
+    expect(needsYou(t('build'), { ...r('build', 'needs_human'), reasonKind: 'stuck' })).toBeNull()
+    expect(needsYou(t('build'), { ...r('build', 'needs_human'), reasonKind: 'access' })).toBe('Run needs you')
   })
   it('asks to accept on staging once the deploy is observed, and flags a timeout', () => {
     const rel = (releaseState: string | null, labels: string[] = []) => ({ stage: 'release', labels, releaseState })
@@ -33,8 +50,31 @@ describe('needsYou', () => {
     expect(needsYou(rel('waiting'), r('build', 'succeeded'))).toBeNull()
     expect(needsYou(rel('on_staging', ['bauherr:approved:staging']), r('build', 'succeeded'))).toBeNull()
   })
+  it('asks to approve production after staging acceptance and flags a failed deploy', () => {
+    const rel = (productionState: string, labels: string[] = ['bauherr:approved:staging']) => ({ stage: 'release', labels, productionState })
+    const run = r('build', 'succeeded')
+    expect(needsYou(rel('awaiting_approval'), run)).toBe('Approve production')
+    expect(needsYou(rel('deploying'), run)).toBeNull()
+    expect(needsYou(rel('failed', ['bauherr:approved:staging', 'bauherr:approved:production']), run)).toBe('Production deploy failed')
+    expect(needsYou(rel('timed_out'), run)).toBe('Production deploy failed')
+    expect(needsYou(rel('deployed'), run)).toBeNull()
+  })
   it('gives every needs-you value a Gate with an action', () => {
-    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|rerun)$/), title: expect.any(String) })
+    for (const need of NEEDS) expect(GATES[need], need).toMatchObject({ kind: expect.stringMatching(/^(plan|questions|release|production|production-checks|release-failed|review-cap|rerun|back-to-build|cancelled|expedite)$/), title: expect.any(String) })
+  })
+  it('gives every needs-you value a sentence and a verb for the action bar', () => {
+    const ctx = { stage: 'build', missing: ['D2'], open: 1 }
+    for (const need of NEEDS) {
+      expect(GATES[need].sentence(ctx), need).toMatch(/\S/)
+      expect(GATES[need].verb(ctx), need).toMatch(/\S/)
+    }
+    expect(GATES['Run failed'].verb(ctx)).toBe('Re-run build')
+    expect(GATES['Answer decisions'].sentence(ctx)).toContain('D2')
+  })
+  it('words the production states', () => {
+    expect(releaseWord({ stage: 'release', productionState: 'awaiting_approval', labels: ['bauherr:approved:staging'] })).toBe('awaiting production approval')
+    expect(releaseWord({ stage: 'release', productionState: 'deploying' })).toBe('deploying')
+    expect(releaseWord({ stage: 'done', state: 'closed', productionState: 'deployed' })).toBe('deployed')
   })
   it('words the release stage', () => {
     expect(releaseWord({ stage: 'release', releaseState: null })).toBe('waiting')
@@ -65,5 +105,15 @@ describe('parent stage', () => {
     expect(stageOf({ stage: 'parent' })).toBe('parent')
     expect(stageOf({ stage: 'parent', state: 'closed' })).toBe('done')
     expect(needsYou(t('parent', ['bauherr:approved:plan']), null)).toBeNull()
+  })
+})
+
+describe('activity', () => {
+  it('names what a running Run is doing and is null otherwise', () => {
+    expect(activity({ run: r('build', 'running') })).toBe('building')
+    expect(activity({ run: r('release', 'running') })).toBe('deploying')
+    expect(activity({ run: r('build', 'awaiting_session') })).toBeNull()
+    expect(activity({ run: r('build', 'succeeded') })).toBeNull()
+    expect(activity({ run: null })).toBeNull()
   })
 })

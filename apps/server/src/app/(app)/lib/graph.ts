@@ -1,19 +1,30 @@
-export type GraphTicket = { id: number; number: number; run: { status: string } | null; stage: string; blockedBy: { id: number }[] }
+import { executionOrder } from '../../../lib/frontier'
+
+export type GraphTicket = { id: number; number: number; rank: string | null; run: { status: string } | null; stage: string; blockedBy: { id: number }[]; overlaps?: number | null }
 export type GraphNode = { id: number; col: number; row: number; ready: boolean; critical: boolean; isolated: boolean }
-export type GraphEdge = { from: number; to: number; critical: boolean }
+export type GraphEdge = { from: number; to: number; critical: boolean; implicit?: true }
 
 const LEASED = ['running', 'awaiting_session']
 
 /**
  * Left-to-right layout of open Tickets: column = length of the longest blocker chain leading to the Ticket,
- * row = rank by Ticket number inside the column among connected Tickets. Edges run blocker -> blocked.
+ * row = execution order (stage, rank, number) inside the column among connected Tickets. Edges run blocker -> blocked.
  * The critical path is the longest chain (lowest numbers win ties). Back edges of a cycle are ignored and `cycle` is set.
+ * A Build held for overlapping paths (`overlaps` = the holder's number) lays out like a blocked Ticket and gets an `implicit` edge from the holder (never critical).
  * Isolated Tickets (no edge between shown Tickets) get `isolated` and no row.
  */
 export function layoutGraph(tickets: GraphTicket[]): { nodes: GraphNode[]; edges: GraphEdge[]; cycle: boolean } {
   const byId = new Map(tickets.map((t) => [t.id, t]))
   const blockers = new Map<number, number[]>()
   for (const t of tickets) blockers.set(t.id, t.blockedBy.map((b) => b.id).filter((b) => byId.has(b) && b !== t.id))
+  const holds = new Set<string>()
+  for (const t of tickets) {
+    const holder = t.overlaps == null ? undefined : tickets.find((x) => x.number === t.overlaps)
+    if (holder && holder.id !== t.id && !blockers.get(t.id)!.includes(holder.id)) {
+      blockers.get(t.id)!.push(holder.id)
+      holds.add(`${holder.id}>${t.id}`)
+    }
+  }
   const state = new Map<number, 1 | 2>()
   const back = new Set<string>()
   const visit = (id: number) => {
@@ -45,12 +56,12 @@ export function layoutGraph(tickets: GraphTicket[]): { nodes: GraphNode[]; edges
   }
 
   const rows = new Map<number, number>()
-  const nodes = [...tickets].sort((a, b) => a.number - b.number).map((t): GraphNode => {
+  const nodes = [...tickets].sort(executionOrder).map((t): GraphNode => {
     const isolated = !linked.has(t.id)
     const c = col.get(t.id)!
     const row = isolated ? 0 : (rows.set(c, (rows.get(c) ?? -1) + 1), rows.get(c)!)
     return { id: t.id, col: c, row, isolated, critical: critical.has(t.id), ready: t.blockedBy.length === 0 && t.stage !== 'done' && !LEASED.includes(t.run?.status ?? '') }
   })
-  const edges = [...blockers].flatMap(([to, bs]) => bs.map((from) => ({ from, to, critical: critical.has(from) && critical.has(to) && col.get(to) === col.get(from)! + 1 })))
+  const edges = [...blockers].flatMap(([to, bs]) => bs.map((from): GraphEdge => (holds.has(`${from}>${to}`) ? { from, to, critical: false, implicit: true } : { from, to, critical: critical.has(from) && critical.has(to) && col.get(to) === col.get(from)! + 1 })))
   return { nodes, edges, cycle: back.size > 0 }
 }

@@ -12,7 +12,7 @@ docker compose run --rm --no-deps -T \
   -e BAUHERR_ADMIN_EMAIL -e BAUHERR_ADMIN_PASSWORD -e GITHUB_TOKEN app sh -c 'cd /repo/apps/server && pnpm seed'
 ```
 
-Seeding on the network fires the gateway hooks (key, provider file, `llm.models`). Budget was set to 2 USD right after.
+With `BAUHERR_MCP_KEY_FILE` set the seed also writes a freshly minted agent key (not a personal key) there. Seeding on the network fires the gateway hooks (key, provider file, `llm.models`). Budget was set to 2 USD right after.
 
 ## Results
 
@@ -41,7 +41,7 @@ Seeding on the network fires the gateway hooks (key, provider file, `llm.models`
 
 ## Providers
 
-A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`). The secret is written to `/gateway/providers/ws-<slug>.<ext>` (0600) and referenced by path; saving the Connection verifies it with a 1-token call and stores `capabilities.verifiedAt` or `lastError`.
+A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`). The secret is written to `/gateway/providers/ws-<workspace>.<connection>.<ext>` (0600) and referenced by path; saving the Connection verifies it with a 1-token call and stores `capabilities.verifiedAt` or `lastError`.
 
 | Preset | Fields | Secret to paste | Model IDs / default tiers | Budget |
 |---|---|---|---|---|
@@ -50,10 +50,35 @@ A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`).
 | `bedrock` | `awsRegion` | Bedrock API key | e.g. `us.anthropic.claude-sonnet-5-5-v1:0`; set `modelByTier` | tokens |
 | `vertex` | `vertexProject`, `vertexRegion` | service-account JSON | e.g. `claude-sonnet-5-5@20260101`; set `modelByTier` | tokens |
 | `foundry` | `azureResource` | Foundry API key | Anthropic IDs | tokens |
+| `bedrock-iam` | `awsRegion` | JSON `{"accessKeyId","secretAccessKey","sessionToken"?}` (inline) | e.g. `us.anthropic.claude-sonnet-5-5-v1:0`; set `modelByTier` | tokens |
+| `foundry-entra` | `azureResource`, `azureTenant`, `azureClient` | Entra client secret (inline) | Anthropic IDs | tokens |
+| `bedrock-ambient` | `awsRegion` | none (gateway instance role) | as `bedrock` | tokens |
+| `vertex-ambient` | `vertexProject`, `vertexRegion` | none (gateway ADC) | as `vertex` | tokens |
+| `foundry-ambient` | `azureResource` | none (gateway managed identity) | Anthropic IDs | tokens |
 | `anthropic-compatible` | `baseUrl` | key of the Messages endpoint (e.g. upstream agentgateway) | upstream names; set `modelByTier` | tokens |
 | `openai-compatible` | `baseUrl` | key of the Chat Completions endpoint | upstream names; set `modelByTier` | tokens |
 
-Presets without a USD catalog flip the Workspace to `budgetUnit: tokens` (`budgetTokens30d`, default 20M); otherwise calls are priced at 0 and the budget never trips. To add prices, drop a catalog file into `deploy/gateway/catalogs/` (compose `init` copies every `*.json`; `renderModels` lists them all in `modelCatalog`) and set `catalog: true` on the preset.
+### Several providers per Workspace
+
+A Workspace can hold several `llm-provider` Connections. Each has a `slug` (`[a-z0-9-]`, default the preset name, `-2` on a clash, fixed after create) and is addressed as `ws-<workspace>/<connection>/<model>` (gateway entry `ws-<workspace>/<connection>/*`). `modelByTier` values are `<connection>/<model>` (e.g. `greenpt/glm-5.3-flash`), so each tier can use a different Connection; saving a tier with an unknown Connection is refused. The settings form qualifies a bare model id with the first Connection. The budget is in tokens as soon as one Connection has no USD catalog, USD otherwise.
+
+Upgrade: migration `20261102_150144_connection_slugs` gives existing Connections a slug (the preset name), prefixes the stored tiers with it and, when the gateway env is set, rewrites the provider files and `config.yaml` (best effort; saving any Connection redoes it). The Runner then sends `ws-<workspace>/<connection>/<model>`.
+
+### Upgrading agentgateway to v1.7.0
+
+- MCP session key: with `config.session.key` unset, v1.7.0 generates a key and, in `storage.mode: hybrid` (ours), stores it in the gateway database (`config_store.rs` `session_key`, `config.rs` `ensure_session_key`). It survives restarts and `renderModels` rewrites of `config.yaml`; nothing to configure. MCP sessions opened before the upgrade are rejected once, clients reconnect. Do not drop the gateway database without expecting that.
+- Dynamic backends (`Backend::Dynamic`) may not reach loopback or link-local addresses (`config.backend.allowDynamicLoopback`). Bauherr configures none: provider `baseUrl` hosts are static backends and unaffected.
+- `request.headers["x"]` returns a list when a header is repeated. Our CEL reads single-valued headers only.
+
+### Credentials in config.yaml
+
+agentgateway v1.7 reads AWS IAM pairs and Entra client secrets only inline, so `bedrock-iam` and `foundry-entra` write the secret in plain text into `config.yaml` (rewritten 0600 by `renderModels`; anyone who can read that file or the gateway admin API `GET /api/config` can read the credential, not checked here). The other presets keep the secret in a file and stay file-only. Prefer `bedrock` (API key file) over `bedrock-iam`, and `foundry` over `foundry-entra`, until a gateway release reads these from a file. Never use a key with more rights than model invocation. `config.yaml` and the provider files are 0600 and written by the app (root in `compose.yaml`); the gateway container must run as the same uid (`user: "0"` in `compose.yaml`) or it cannot read them.
+
+Ambient presets (`*-ambient`) use the identity of the gateway process, which every Workspace would share. They are only accepted while the instance has exactly one Workspace, and a second Workspace is refused while one exists.
+
+Presets without a USD catalog flip the Workspace to `budgetUnit: tokens` (`budgetTokens30d`, default 20M); otherwise calls are priced at 0 and the budget never trips. To add prices, drop a catalog file into `deploy/gateway/catalogs/` (compose `init` copies every `*.json`; `renderModels` lists them all in `modelCatalog`) and set `catalog: true` on the preset. A Run whose gateway cost is 0 with tokens above 0 on such a preset reconciles as `unpriced`: it keeps the SDK estimate, shows its tokens plus "unpriced" in the UI and is left out of USD sums.
+
+The generated config is checked structurally in `pnpm test` (no Docker). The real `agentgateway --validate-only` run is `pnpm --filter server test:gateway` and the CI job `gateway-validate`; the image is pinned by digest in `compose.yaml`.
 
 ## Open
 

@@ -21,7 +21,7 @@ Total gateway cost 0.1135 USD.
 - Plan: the Runner rewrites the Goal to `.bauherr/plan.md` statements, posts the file as the plan Comment, writes the Ticket's Goal into the worklog Comment, returns `succeeded`. `run-contract` skill updated.
 - Build: Goal = acceptance criteria (default per stage when absent); Runner commits, pushes with the PAT, opens the MR with `## Evidence`, posts `Link:`, updates the worklog, sets stage `review`. Build Runs get the worklog and plan Comment as context.
 - `RunCtx.forge` gained `upsertWorklog` and `setStage`.
-- Poll: no in-app `autoRun`; compose service `poller` runs `jobs:poll` (`jobs:run --queue poll --handle-schedules`, 5 s tick, schedules fire per minute). Separate from `worker` because `payload jobs:run --cron` uses `protect: true`: one process running an agent Run would skip poll ticks.
+- Poll: no in-app `autoRun`; compose service `poller` runs `jobs:poll` (`jobs:run --queue poll --handle-schedules`, 5 s tick, schedules fire per minute). At start it reclaims scheduled jobs a previous poller left `processing` (`scripts/reclaim-orphans.ts`), so run it as a singleton. Separate from `worker`, whose long agent Runs would otherwise delay polls. `worker` runs `scripts/jobs-runs.ts`: every 5 s tick starts one `run-stage` job per free slot (at most `BAUHERR_MAX_RUNS`, default 4, per process) without waiting for running ones, so a long Run delays no other; replicas (`--scale worker=2`) are safe, a job is claimed atomically and `run:<id>` is its concurrency key.
 - Admin login: cause was a stale password. The seed never updated an existing user and the password file was regenerated after the first seed. Seed now resets password and role on every run and accepts `BAUHERR_ADMIN_PASSWORD_FILE` (trimmed). `POST /api/bauherren/login` returns 200.
 - Migration: one squashed initial migration incl. session-mode schema (`runs.mode`, `heartbeat_at`, Workspace mode fields). A fresh `bauherr` DB on the production image starts with no 42P01. An existing DB with the old migration must be recreated.
 
@@ -29,6 +29,7 @@ Total gateway cost 0.1135 USD.
 
 ```bash
 npx bauherr init   # or from a checkout: docker compose build && docker compose up -d
+BAUHERR_REVISION=$(git rev-parse --short HEAD) docker compose build app   # local image shows dev+<sha>; rebuild after each change
 export GITHUB_TOKEN="$(gh auth token)" BAUHERR_ADMIN_EMAIL=<email>
 npx bauherr seed --anthropic-key-file ~/.config/bauherr/anthropic-key --admin-password-file ~/.config/bauherr/admin-password
 # checkout equivalent of the seed line:
@@ -38,7 +39,23 @@ docker compose run --rm --no-deps -T \
   -e BAUHERR_ADMIN_EMAIL -e GITHUB_TOKEN app sh -c 'cd /repo/apps/server && pnpm seed'
 gh issue create -R getbauherr/bauherr --title "Add CHANGELOG.md" --label bauherr:stage:plan --body "<body>"
 gh api -X POST repos/getbauherr/bauherr/issues/70/labels --raw-field 'labels[]=bauherr:approved:plan'
+BAUHERR_VERSION=edge docker compose pull app && docker compose up -d   # follow the production image (ghcr.io/getbauherr/bauherr:edge)
 ```
+
+## Agent key
+
+`seed` no longer creates a personal MCP key. With `BAUHERR_MCP_KEY_FILE` it mints an agent key (cannot approve gates) into that file; otherwise create one on `/settings/api-key`. Existing personal keys are disabled by migration `20261102_150166_agent_keys`.
+
+## Database connections
+
+Each of app, worker and poller opens its own Postgres pool (`apps/server/src/lib/db-pool.ts`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATABASE_POOL_MAX` | 20 | connections per container |
+| `DATABASE_POOL_TIMEOUT_MS` | 10000 | wait for a free connection, then the request fails instead of hanging |
+
+The timeout applies to the whole pool: once all connections are taken, any DB call (sign-in, page load, job) fails after `DATABASE_POOL_TIMEOUT_MS` instead of waiting. Idle connections close after 30 s. Postgres `max_connections` must exceed (app + worker + poller + replicas) × `DATABASE_POOL_MAX` plus the gateway's own Postgres pool, migrations, test databases and psql. The gateway's pool size is not set in `deploy/gateway/config.yaml.tmpl` (it is the agentgateway default; an idle local gateway held 4 connections in `pg_stat_activity`), so reserve about 10 for it. The `init` container is alpine and only renders config, it opens no connection. The bundled `db` runs with `max_connections=300`, so the default 3 × 20 + ~10 (gateway) = 70 leaves ample room.
 
 ## Open
 

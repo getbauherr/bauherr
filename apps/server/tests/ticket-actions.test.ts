@@ -1,6 +1,7 @@
-import pg from 'pg'
+import { fileURLToPath } from 'node:url'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let user: Record<string, any>
@@ -10,17 +11,14 @@ let ticket: number
 let actions: typeof import('../src/lib/actions')
 const o = { overrideAccess: true } as const
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_ticket_actions WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_ticket_actions')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_ticket_actions')
+  testDb = await createTestDb('ticket_actions')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
   delete process.env.GATEWAY_ADMIN_URL
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
@@ -39,6 +37,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 const decisionComments = async () => {
@@ -97,9 +96,28 @@ it('acceptStaging labels, records a human touch, moves to done and closes the Ti
 it('acceptStaging holds in release when the Product has a production gate', async () => {
   await releaseTicket()
   const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
-  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true }, ...o })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: true, productionChecks: 'deploy-prod' }, ...o })
   await expect(actions.acceptStaging(payload, user, { ticket })).resolves.toMatchObject({ stage: 'release' })
-  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false }, ...o })
+  expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionGate: false, productionChecks: '' }, ...o })
+})
+
+it('approveProduction refuses a Ticket not awaiting approval, a non-member, another Workspace and a Product without productionChecks', async () => {
+  const t = await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })
+  const outsider = await payload.create({ collection: 'bauherren', data: { email: 'out2@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: other }] }, ...o })
+  await payload.update({ collection: 'tickets', id: ticket, data: { stage: 'release', productionState: null, mergeSha: 'sha-1' }, ...o })
+  await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('not waiting for production approval')
+  await payload.update({ collection: 'tickets', id: ticket, data: { productionState: 'awaiting_approval' }, ...o })
+  await expect(actions.approveProduction(payload, user, { ticket, workspaceId: other })).rejects.toBeInstanceOf(actions.NotInWorkspace)
+  await expect(actions.approveProduction(payload, outsider, { ticket })).rejects.toThrow()
+  await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('configure productionChecks')
+  expect(await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, ...o })).toMatchObject({ productionState: 'awaiting_approval' })
+  expect(await payload.count({ collection: 'human_touches', where: { kind: { equals: 'approve:production' } }, ...o })).toMatchObject({ totalDocs: 0 })
+  await payload.update({ collection: 'products', id: t.product as number, data: { productionChecks: 'deploy-prod' }, ...o })
+  await expect(actions.approveProduction(payload, user, { ticket })).resolves.toEqual({ approved: 'bauherr:approved:production', productionState: 'deploying' })
+  expect(await labels()).toContain('bauherr:approved:production')
+  expect(await payload.count({ collection: 'human_touches', where: { kind: { equals: 'approve:production' } }, ...o })).toMatchObject({ totalDocs: 1 })
+  await expect(actions.approveProduction(payload, user, { ticket })).rejects.toThrow('not waiting for production approval')
 })
 
 it('acceptStaging and requestChanges refuse a non-member and a Ticket of another Workspace', async () => {
@@ -114,7 +132,7 @@ it('acceptStaging and requestChanges refuse a non-member and a Ticket of another
   await expect(actions.acceptStaging(payload, outsider, { ticket })).rejects.toThrow()
   await expect(actions.requestChanges(payload, outsider, { ticket, note: 'n' })).rejects.toThrow()
   const { tools } = await import('../src/lib/mcp-tools')
-  await expect(tools.find((t) => t.name === 'accept_staging')!.run({ ticket }, { payload, user: outsider })).rejects.toThrow()
+  await expect(tools.find((t) => t.name === 'accept_staging')!.run({ ticket }, { payload, user: outsider, actor: { kind: 'human' } })).rejects.toThrow()
   expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('release')
 })
 

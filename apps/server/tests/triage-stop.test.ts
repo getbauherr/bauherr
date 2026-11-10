@@ -1,7 +1,7 @@
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 const exec = vi.hoisted(() => vi.fn())
 vi.mock('@bauherr/runner', async (orig) => ({ ...(await orig<typeof import('@bauherr/runner')>()), runStage: exec }))
@@ -14,14 +14,10 @@ const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 const usage = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, costEstimateUsd: 0 }
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_triage_stop WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_triage_stop')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_triage_stop')
+  testDb = await createTestDb('triage_stop')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -46,6 +42,7 @@ beforeEach(() => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
@@ -107,4 +104,46 @@ it('a non-triage Run still posts its Comment', async () => {
   exec.mockResolvedValue({ status: 'needs_human', reason: 'unmet Goal', artifacts: {}, usage })
   await runLatest(u.id, 'plan')
   expect(await comments(u.n)).toEqual(['Bauherr needs a human: unmet Goal'])
+})
+
+/** Runs the latest triage Run while observing the Run's status each time the Ticket is untriaged; `fail` makes the untriage throw. */
+const untriageObserved = async (ticket: number, fail = false) => {
+  const orig = payload.update.bind(payload) as (a: any) => Promise<unknown>
+  const statuses: string[] = []
+  const update = vi.spyOn(payload, 'update').mockImplementation((async (a: any) => {
+    if (a.collection === 'tickets' && a.data?.triagedAt === null) {
+      statuses.push(((await runs(ticket, 'triage')).at(-1) as Record<string, any>).status)
+      if (fail) throw new Error('untriage down')
+    }
+    return orig(a)
+  }) as any)
+  const queue = vi.spyOn(payload.jobs, 'queue')
+  try {
+    await runLatest(ticket, 'triage')
+  } catch (e) {
+    return { statuses, error: e as Error, reconciled: queue.mock.calls.some(([q]) => (q as any).task === 'reconcile-costs') }
+  } finally {
+    update.mockRestore()
+    queue.mockRestore()
+  }
+  return { statuses, error: null, reconciled: true }
+}
+
+it('untriages only after the triage Run is terminal', async () => {
+  const t = await create('untriage order')
+  exec.mockResolvedValue({ status: 'needs_human', reason: 'stopped', artifacts: {}, usage })
+  expect((await untriageObserved(t.id)).statuses).toEqual(['needs_human'])
+  const u = await create('untriage order failed')
+  exec.mockImplementation(async () => { throw new Error('boom') })
+  const r = await untriageObserved(u.id)
+  expect(r.statuses).toEqual(['failed'])
+  expect(r.error?.message).toBe('boom')
+})
+
+it('a failing untriage is logged, keeps the original error and still queues the reconcile', async () => {
+  const t = await create('untriage down')
+  exec.mockImplementation(async () => { throw new Error('boom') })
+  const r = await untriageObserved(t.id, true)
+  expect(r.error?.message).toBe('boom')
+  expect(r.reconciled).toBe(true)
 })

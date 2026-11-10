@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NoRoom, frontierOrder, rankBetween } from '../src/lib/frontier'
+import { NoRoom, executionOrder, frontierOrder, rankBetween, stageGroup } from '../src/lib/frontier'
 
 describe('rankBetween', () => {
   it('starts in the middle and appends after the last key', () => {
@@ -75,18 +75,27 @@ describe('frontierOrder', () => {
   it('sorts uppercase before lowercase (byte order, not locale)', () => {
     expect(ids(frontierOrder([t(1, 'a'), t(2, 'B')], new Map()))).toEqual([2, 1])
   })
-  it('puts in-flight work (review, release, needs_human, sent back by review) before ranked work', () => {
-    const latest = new Map([
-      [2, run('needs_human')],
-    ])
-    const out = frontierOrder([t(1, 'a'), t(2, 'z'), t(3, 'y', { reviewRounds: 1 }), t(4, 'b', { stage: 'review' }), t(5, 'c', { stage: 'release' })], latest)
-    expect(ids(out)).toEqual([4, 5, 3, 2, 1])
+  it('orders right to left: release, review, build, plan, then rank', () => {
+    const out = frontierOrder([t(1, 'a', { stage: 'plan' }), t(2, 'z'), t(3, 'y', { stage: 'triage' }), t(4, 'b', { stage: 'review' }), t(5, 'c', { stage: 'release' }), t(6, 'a')], new Map())
+    expect(ids(out)).toEqual([5, 4, 6, 2, 1, 3])
   })
-  it('does not count reviewRounds outside the build stage', () => {
-    expect(ids(frontierOrder([t(1, 'a'), t(2, 'b', { stage: 'plan', reviewRounds: 2 })], new Map()))).toEqual([1, 2])
+  it('does not rank a Ticket sent back by review or needing a human ahead of a later stage', () => {
+    const out = frontierOrder([t(1, 'a'), t(2, 'b', { stage: 'review' }), t(3, 'c', { reviewRounds: 1 })], new Map([[1, run('needs_human')]]))
+    expect(ids(out)).toEqual([2, 1, 3])
   })
   it('puts blocked and leased Tickets last', () => {
     const latest = new Map([[2, run('running', { mode: 'session' })]])
     expect(ids(frontierOrder([t(1, 'a', { blocked: true }), t(2, 'b'), t(3, 'c')], latest))).toEqual([3, 1, 2])
+  })
+})
+
+describe('executionOrder', () => {
+  it('groups release, review, build, plan, triage, then the rest', () => {
+    expect(['release', 'review', 'build', 'plan', 'triage', 'done', null, 'parent'].map(stageGroup)).toEqual([0, 1, 2, 3, 4, 5, 5, 5])
+  })
+  it('sorts by stage group, then rank, then number; a missing rank is last', () => {
+    const t = (number: number, stage: string | null, rank: string | null = null) => ({ id: number, number, stage, rank })
+    const sorted = [t(1, 'plan', 'a'), t(2, 'build', 'b'), t(3, 'build', 'a'), t(4, 'build'), t(5, 'build'), t(6, 'release', 'z'), t(7, null)].sort(executionOrder)
+    expect(sorted.map((x) => x.number)).toEqual([6, 3, 2, 4, 5, 1, 7])
   })
 })

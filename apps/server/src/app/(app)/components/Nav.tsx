@@ -1,21 +1,23 @@
 'use client'
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Tab, Tabs } from './ui/tabs'
 
-export function Nav({ needsYou }: { needsYou: number }) {
+export function Nav({ needsYou, drafts, hasKnowledge }: { needsYou: number; drafts: number; hasKnowledge: boolean }) {
   const path = usePathname()
   const items = [
-    { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou },
-    { href: '/runs', label: 'Runs', current: path.startsWith('/runs'), badge: 0 },
+    { href: '/requests', label: 'Requests', current: path.startsWith('/requests'), badge: drafts, noun: drafts === 1 ? 'draft' : 'drafts' },
+    { href: '/', label: 'Tickets', current: path === '/' || path.startsWith('/tickets'), badge: needsYou, noun: 'need you' },
+    { href: '/releases', label: 'Releases', current: path.startsWith('/releases'), badge: 0, noun: '' },
+    ...(hasKnowledge ? [{ href: '/knowledge', label: 'Knowledge', current: path.startsWith('/knowledge'), badge: 0, noun: '' }] : []),
   ]
   return (
-    <nav className="nav" aria-label="Main">
-      {items.map(({ href, label, current, badge }) => (
-        <Link key={href} href={href} aria-current={current ? 'page' : undefined}>
+    <Tabs aria-label="Main" className="max-sm:order-3 max-sm:basis-full">
+      {items.map(({ href, label, current, badge, noun }) => (
+        <Tab key={href} href={href} aria-current={current ? 'page' : undefined} className="h-14 max-sm:h-10">
           {label}
-          {badge > 0 && <span className="badge" aria-label={`${badge} need you`}>{badge}</span>}
-        </Link>
+          {badge > 0 && <span className="ml-2 font-mono text-xs/4 font-medium text-muted-foreground" aria-label={`${badge} ${noun}`}>{badge}</span>}
+        </Tab>
       ))}
-    </nav>
+    </Tabs>
   )
 }

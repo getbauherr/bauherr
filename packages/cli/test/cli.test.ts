@@ -14,10 +14,27 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'bauherr-cli-'))
 test('renderCompose pins the image and drops build, container names and host ports', () => {
   const out = renderCompose(template, '1.2.3')
   assert.match(out, /image: ghcr\.io\/getbauherr\/bauherr:1\.2\.3/)
-  assert.doesNotMatch(out, /build: \.|container_name|"127\.0\.0\.1:\d+:|_FILE: \/run\/secrets|\$\{BAUHERR_VERSION/)
+  assert.doesNotMatch(out, /build: \.|container_name|"127\.0\.0\.1:(?!9090:|16686:)\d+:|_FILE: \/run\/secrets|\$\{BAUHERR_VERSION/)
+  // the app's whole build block (context and the BAUHERR_REVISION arg) is gone, not only a one-line `build: .`
+  assert.doesNotMatch(out, /^\s+build:|^\s+context: \.|BAUHERR_REVISION/m)
+  assert.match(out, /agentgateway:v1\.7\.0@sha256:/)
   assert.match(out, /PAYLOAD_SECRET: \$\{PAYLOAD_SECRET:\?/)
   assert.match(out, /ENCRYPTION_KEY: \$\{ENCRYPTION_KEY:\?/)
   assert.match(out, /ports: \["\$\{PORT:-3000\}:3000"\]/)
+})
+
+test('observability services run only under their profile, publish only loopback UIs and keep OTLP internal', () => {
+  const block = (name: string) => template.match(new RegExp(`^  ${name}:\\n((?:    .*\\n|\\s*\\n)+)`, 'm'))?.[1] ?? ''
+  for (const [name, ui] of [['prometheus', '9090'], ['jaeger', '16686']] as const) {
+    const b = block(name)
+    assert.match(b, /profiles: \[observability\]/, name)
+    assert.deepEqual([...b.matchAll(/"([^"]*:\d+:\d+)"/g)].map((m) => m[1]).filter((p) => /^\d|^\[|^127/.test(p!)).sort(), [`127.0.0.1:${ui}:${ui}`], name)
+    assert.doesNotMatch(b, /"[^"]*(4317|4318)[^"]*"\s*[,\]]/, name)
+  }
+  assert.doesNotMatch(template.replace(/^  (prometheus|jaeger):\n(?:    .*\n)+/gm, ''), /profiles: \[observability\]/)
+  const out = renderCompose(template, '1.2.3')
+  assert.match(out, /"127\.0\.0\.1:9090:9090"/)
+  assert.match(out, /"127\.0\.0\.1:16686:16686"/)
 })
 
 test('writeProject creates secrets with mode 600 and keeps them on re-run', () => {
@@ -60,4 +77,41 @@ test('portFree detects a listener', async () => {
   assert.equal(await portFree(port), false)
   await new Promise((r) => s.close(r))
   assert.equal(await portFree(port), true)
+})
+
+test('eval runs pack skill evals through the gateway, writes eval-results.json and exits 1 on a failing suite', async () => {
+  const { createServer } = await import('node:http')
+  const { spawn } = await import('node:child_process')
+  const { mkdirSync } = await import('node:fs')
+  const server = createServer(async (req, res) => {
+    let raw = ''
+    for await (const c of req) raw += c
+    const b = JSON.parse(raw)
+    const text = b.tools ? undefined : String(b.system).includes('GOOD SKILL') ? 'failing test first' : 'nothing'
+    const content = text === undefined ? [{ type: 'tool_use', name: 'verdict', input: { criteria: [{ id: 'a', pass: true, reason: 'ok' }] } }] : [{ type: 'text', text }]
+    res.setHeader('content-type', 'application/json').end(JSON.stringify({ content, usage: { input_tokens: 10, output_tokens: 10 } }))
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  const url = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`
+  const root = tmp()
+  for (const [name, text] of [['good', 'GOOD SKILL'], ['bad', 'BAD SKILL']] as const) {
+    mkdirSync(join(root, 'pack/skills', name, 'evals'), { recursive: true })
+    writeFileSync(join(root, 'pack/skills', name, 'SKILL.md'), text)
+    writeFileSync(join(root, 'pack/skills', name, 'evals/c.yaml'), 'id: c\ninput: plan\nchecks: {must_match: ["(?i)failing test"]}\nrubric:\n  - {id: a, text: A}\n')
+  }
+  const run = (args: string[]) => new Promise<{ code: number | null; out: string }>((resolve) => {
+    const p = spawn(process.execPath, [new URL('../src/cli.js', import.meta.url).pathname, 'eval', '--skills', join(root, 'pack/skills'), ...args], { env: { ...process.env, BAUHERR_GATEWAY_URL: url, BAUHERR_GATEWAY_KEY: 'k' } })
+    let out = ''
+    p.stdout.on('data', (d) => (out += d))
+    p.stderr.on('data', (d) => (out += d))
+    p.on('close', (code) => resolve({ code, out }))
+  })
+  const good = await run(['--skill', 'good', '--out', join(root, 'good.json')])
+  assert.equal(good.code, 0, good.out)
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'good.json'), 'utf8')).map((r: { id: string; pass: boolean }) => [r.id, r.pass]), [['good/c', true]])
+  const all = await run(['--out', join(root, 'all.json')])
+  server.close()
+  assert.equal(all.code, 1)
+  assert.match(all.out, /bad: pass rate 0\.00 FAILED/)
+  assert.equal(JSON.parse(readFileSync(join(root, 'all.json'), 'utf8')).length, 2)
 })

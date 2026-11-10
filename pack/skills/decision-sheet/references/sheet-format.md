@@ -1,5 +1,14 @@
 # Sheet format
 
+Canonical (one bullet per decision, id alone in bold, question first, flag last):
+```markdown
+## Decisions
+
+- **D1** Keep the public endpoint name? Alternatives: rename. Default: keep. Why: renaming breaks clients. critical: true.
+- **D2** Pagination size? Alternatives: 50. Default: 25. Why: matches the existing lists. critical: false.
+```
+
+Also accepted (compact form):
 ```markdown
 ## Decisions needed (<Ticket>, <stage>)
 

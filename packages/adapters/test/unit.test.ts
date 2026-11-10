@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, createVerify, generateKeyPairSync } from 'node:crypto';
 import { describe, it } from 'node:test';
 import {
-  appAuth, closeReasonLabel, GithubBackend, githubWebhooks, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
+  appAuth, closeReasonLabel, Conflict, FakeBackend, GithubBackend, githubWebhooks, NotQueueableError, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
 } from '../src/index.js';
 
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
@@ -27,6 +27,20 @@ describe('stage helpers', () => {
     assert.equal(closeReasonLabel('duplicate'), 'bauherr:close-reason:duplicate');
     assert.equal(stageOf(['x', 'bauherr:stage:build']), 'build');
     assert.equal(stageOf(['x']), null);
+  });
+  it('the later stage wins when a Ticket carries two stage labels', () => {
+    assert.equal(stageOf(['bauherr:stage:release', 'bauherr:stage:review']), 'release');
+    assert.equal(stageOf(['bauherr:stage:review', 'bauherr:stage:release']), 'release');
+  });
+  it('setStage adds before it removes: a failed add keeps the old label', async () => {
+    const b = new FakeBackend();
+    const ts = b.tickets('a/b');
+    const { number } = await ts.create({ title: 't', labels: ['bauherr:stage:review'] });
+    b.failNext('addLabels');
+    await assert.rejects(setStage(ts, String(number), 'release'));
+    assert.deepEqual((await ts.get(String(number))).labels, ['bauherr:stage:review']);
+    await setStage(ts, String(number), 'release');
+    assert.deepEqual((await ts.get(String(number))).labels, ['bauherr:stage:release']);
   });
 });
 
@@ -139,7 +153,7 @@ describe('appAuth (fake key, fake GitHub)', () => {
 });
 
 describe('github mergePullRequest', () => {
-  const run = async (headRepo: string, del: Response = new Response(null, { status: 204 })) => {
+  const run = async (headRepo: string, del: Response = new Response(null, { status: 204 }), stacked: number[] = [], patch: Response | null = null) => {
     const calls: { method: string; url: string; body: any }[] = [];
     const b = new GithubBackend({
       auth: patAuth('t'),
@@ -148,6 +162,8 @@ describe('github mergePullRequest', () => {
         calls.push({ method, url: new URL(String(u)).pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined });
         if (method === 'PUT') return json({ sha: 'm1', merged: true });
         if (method === 'DELETE') return del;
+        if (method === 'PATCH') return patch ?? json({});
+        if (method === 'GET' && new URL(String(u)).pathname === '/repos/o/r/pulls') return json(stacked.map((number) => ({ number })));
         return json({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'bauherr/7', sha: 'h', repo: { full_name: headRepo } }, base: { ref: 'main', repo: { full_name: 'o/r' } } });
       },
     });
@@ -157,8 +173,20 @@ describe('github mergePullRequest', () => {
   it('PUTs a squash merge pinned to the head sha, then deletes a same-repo branch', async () => {
     const { calls, res } = await run('o/r');
     assert.deepEqual(res, { mergeSha: 'm1' });
-    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['GET /repos/o/r/pulls/7', 'PUT /repos/o/r/pulls/7/merge', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), ['GET /repos/o/r/pulls/7', 'PUT /repos/o/r/pulls/7/merge', 'GET /repos/o/r/pulls', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
     assert.deepEqual(calls[1]!.body, { merge_method: 'squash', sha: 'h' });
+  });
+  it('retargets the PRs stacked on the head branch to the merged PR base before it deletes the branch', async () => {
+    const { calls, res } = await run('o/r', undefined, [8, 9]);
+    assert.deepEqual(res, { mergeSha: 'm1' });
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`).slice(2), ['GET /repos/o/r/pulls', 'PATCH /repos/o/r/pulls/8', 'PATCH /repos/o/r/pulls/9', 'DELETE /repos/o/r/git/refs/heads/bauherr/7']);
+    assert.deepEqual(calls.find((c) => c.method === 'PATCH')!.body, { base: 'main' });
+  });
+  it('keeps the branch and reports it when a stacked PR cannot be retargeted', async () => {
+    const { calls, res } = await run('o/r', undefined, [8], new Response('no', { status: 422 }));
+    assert.equal(res.mergeSha, 'm1');
+    assert.match(res.branchDeleteError ?? '', /kept bauherr\/7.*retargeting/);
+    assert.ok(!calls.some((c) => c.method === 'DELETE'));
   });
   it('never deletes a fork head branch', async () => {
     const { calls } = await run('evil/r');
@@ -167,6 +195,89 @@ describe('github mergePullRequest', () => {
   it('reports a failed delete without failing the merge, and ignores 404', async () => {
     assert.match((await run('o/r', new Response('boom', { status: 500 }))).res.branchDeleteError ?? '', /500/);
     assert.equal((await run('o/r', new Response('gone', { status: 404 }))).res.branchDeleteError, undefined);
+  });
+});
+
+describe('github isAncestor', () => {
+  const compare = async (status: string) => {
+    const paths: string[] = [];
+    const b = new GithubBackend({ auth: patAuth('t'), fetch: async (u) => (paths.push(new URL(String(u)).pathname), json({ status })) });
+    return { result: await b.forge.isAncestor('o/r', 'base1', 'head1'), paths };
+  };
+  it('is true when head is ahead of or identical to base', async () => {
+    assert.equal((await compare('ahead')).result, true);
+    assert.equal((await compare('identical')).result, true);
+  });
+  it('is false when head is behind or diverged from base', async () => {
+    assert.equal((await compare('behind')).result, false);
+    assert.equal((await compare('diverged')).result, false);
+  });
+  it('compares base...head', async () => {
+    assert.deepEqual((await compare('ahead')).paths, ['/repos/o/r/compare/base1...head1']);
+  });
+});
+
+describe('github listReleases', () => {
+  it('drops drafts and releases whose tag returns 404', async () => {
+    const paths: string[] = [];
+    const releases = [
+      { id: 1, tag_name: 'v1', draft: false, name: 'v1', body: '', html_url: 'u1', prerelease: false, created_at: 'c1' },
+      { id: 2, tag_name: 'v2', draft: true, name: 'v2', body: '', html_url: 'u2', prerelease: false, created_at: 'c2' },
+      { id: 3, tag_name: 'v3', draft: false, name: 'v3', body: '', html_url: 'u3', prerelease: false, created_at: 'c3' },
+    ];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u) => {
+        const path = new URL(String(u)).pathname;
+        paths.push(path);
+        if (path === '/repos/o/r/releases') return json(releases);
+        if (path === '/repos/o/r/commits/v1') return json({ sha: 'a1' });
+        return new Response('gone', { status: 404 });
+      },
+    });
+    const listed = await b.forge.listReleases('o/r');
+    assert.deepEqual(listed.map((r) => [r.tag, r.sha]), [['v1', 'a1']]);
+    assert.ok(!paths.includes('/repos/o/r/commits/v2'));
+  });
+});
+
+describe('github releaseByTag', () => {
+  it('one request for the tag and one for its commit; a 404 or a draft gives null', async () => {
+    const paths: string[] = [];
+    const release = { id: 1, tag_name: 'v1', draft: false, name: 'v1', body: '', html_url: 'u1', prerelease: false, created_at: 'c1' };
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u) => {
+        const path = new URL(String(u)).pathname;
+        paths.push(path);
+        if (path === '/repos/o/r/releases/tags/v1') return json(release);
+        if (path === '/repos/o/r/releases/tags/v2') return json({ ...release, tag_name: 'v2', draft: true });
+        if (path === '/repos/o/r/commits/v1') return json({ sha: 'a1' });
+        return new Response('gone', { status: 404 });
+      },
+    });
+    assert.equal((await b.forge.releaseByTag('o/r', 'v1'))?.sha, 'a1');
+    assert.deepEqual(paths, ['/repos/o/r/releases/tags/v1', '/repos/o/r/commits/v1']);
+    paths.length = 0;
+    assert.equal(await b.forge.releaseByTag('o/r', 'v9'), null);
+    assert.equal(await b.forge.releaseByTag('o/r', 'v2'), null);
+    assert.deepEqual(paths, ['/repos/o/r/releases/tags/v9', '/repos/o/r/releases/tags/v2']);
+  });
+});
+
+describe('github pull request mergeable', () => {
+  const get = async (extra: object) => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async () => json({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'f', sha: 'h', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } }, ...extra }),
+    });
+    return (await b.forge.getPullRequest('o/r', 7)).mergeable;
+  };
+  it('maps mergeable false, mergeable_state dirty, true and null', async () => {
+    assert.equal(await get({ mergeable: false }), false);
+    assert.equal(await get({ mergeable: null, mergeable_state: 'dirty' }), false);
+    assert.equal(await get({ mergeable: true, mergeable_state: 'clean' }), true);
+    assert.equal(await get({ mergeable: null }), undefined);
   });
 });
 
@@ -183,13 +294,172 @@ describe('github listChecks', () => {
   it('maps commit statuses to checks next to the check runs', async () => {
     const b = new GithubBackend({
       auth: patAuth('t'),
-      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure' }, { context: 'ci/b', state: 'pending' }, { context: 'ci/c', state: 'success' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] }),
+      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [{ context: 'ci/a', state: 'failure', created_at: 'T2' }, { context: 'ci/b', state: 'pending', created_at: 'T3' }, { context: 'ci/c', state: 'success', created_at: 'T4' }] } : { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success', started_at: 'T1', html_url: 'https://gh/run/1' }] }),
     });
     assert.deepEqual(await b.forge.listChecks('o/r', 'h'), [
-      { id: 1, name: 'build', status: 'completed', conclusion: 'success' },
-      { name: 'ci/a', status: 'completed', conclusion: 'failure' },
-      { name: 'ci/b', status: 'in_progress', conclusion: null },
-      { name: 'ci/c', status: 'completed', conclusion: 'success' },
+      { id: 1, name: 'build', status: 'completed', conclusion: 'success', startedAt: 'T1', url: 'https://gh/run/1' },
+      { name: 'ci/a', status: 'completed', conclusion: 'failure', startedAt: 'T2' },
+      { name: 'ci/b', status: 'in_progress', conclusion: null, startedAt: 'T3' },
+      { name: 'ci/c', status: 'completed', conclusion: 'success', startedAt: 'T4' },
     ]);
+  });
+  it('takes the check output from output.text', async () => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u) => json(String(u).includes('/status') ? { statuses: [] } : { check_runs: [{ id: 1, name: 'e2e-flaky (shard 1)', status: 'completed', conclusion: 'neutral', output: { title: 'x', summary: 'not this', text: '[{"file":"a.spec.ts"}]' } }] }),
+    });
+    assert.equal((await b.forge.listChecks('o/r', 'h'))[0]?.output, '[{"file":"a.spec.ts"}]');
+  });
+});
+
+describe('github rerunFailed', () => {
+  it('re-runs the failed jobs of each Actions run once; checks without a run id re-run nothing', async () => {
+    const calls: string[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => json(init?.method === 'POST' ? (calls.push(new URL(String(u)).pathname), {}) : String(u).includes('/status') ? { statuses: [] } : { check_runs: [{ id: 1, name: 'a', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/o/r/actions/runs/77/job/1' }, { id: 2, name: 'b', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/o/r/actions/runs/77/job/2' }] }),
+    });
+    const checks = await b.forge.listChecks('o/r', 'h');
+    assert.deepEqual(checks.map((c) => c.runId), [77, 77]);
+    assert.equal(await b.forge.rerunFailed('o/r', checks), true);
+    assert.deepEqual(calls, ['/repos/o/r/actions/runs/77/rerun-failed-jobs']);
+    assert.equal(await b.forge.rerunFailed('o/r', [{ name: 'ci/a', status: 'completed', conclusion: 'failure' }]), false);
+    assert.equal(calls.length, 1);
+  });
+});
+
+describe('github file requests', () => {
+  type Call = { method: string; url: string; body: any };
+  const setup = (reply: (c: Call) => Response) => {
+    const calls: Call[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        const url = new URL(String(u));
+        const c = { method: String(init?.method), url: url.pathname + url.search, body: init?.body ? JSON.parse(String(init.body)) : undefined };
+        calls.push(c);
+        return reply(c);
+      },
+    });
+    return { calls, f: b.forge };
+  };
+  const b64 = (s: string) => Buffer.from(s).toString('base64');
+
+  it('listFiles resolves the commit, requests the recursive tree, keeps blobs and reports truncation', async () => {
+    const { calls, f } = setup((c) =>
+      c.url.includes('/commits/') ? json({ sha: 'c1', commit: { tree: { sha: 't1' } } }) : json({ truncated: true, tree: [{ type: 'blob', path: 'a b/x.md' }, { type: 'tree', path: 'a b' }] }));
+    assert.deepEqual(await f.listFiles('o/r', 'feat/x'), { commit: 'c1', paths: ['a b/x.md'], truncated: true });
+    assert.deepEqual(calls.map((c) => c.url), ['/repos/o/r/commits/feat%2Fx', '/repos/o/r/git/trees/t1?recursive=1']);
+  });
+
+  it('getFile encodes each path segment, pins the ref and decodes base64', async () => {
+    const { calls, f } = setup(() => json({ encoding: 'base64', content: b64('héllo'), sha: 's1' }));
+    assert.deepEqual(await f.getFile('o/r', 'dir x/a#b.md', 'c1'), { content: 'héllo', sha: 's1' });
+    assert.equal(calls[0]!.url, '/repos/o/r/contents/dir%20x/a%23b.md?ref=c1');
+  });
+
+  it('getFile falls back to the blob API for files over 1 MB', async () => {
+    const { calls, f } = setup((c) => (c.url.includes('/git/blobs/') ? json({ content: b64('big') }) : json({ encoding: 'none', content: '', sha: 's2' })));
+    assert.equal((await f.getFile('o/r', 'big.md')).content, 'big');
+    assert.equal(calls[1]!.url, '/repos/o/r/git/blobs/s2');
+  });
+
+  it('putFile PUTs base64 content with branch and sha', async () => {
+    const { calls, f } = setup(() => json({ content: { sha: 'n1' } }));
+    assert.deepEqual(await f.putFile('o/r', { branch: 'b', path: 'd e/f.md', content: 'héllo', message: 'm', expectSha: 'old' }), { sha: 'n1' });
+    assert.deepEqual(calls[0], { method: 'PUT', url: '/repos/o/r/contents/d%20e/f.md', body: { message: 'm', content: b64('héllo'), branch: 'b', sha: 'old' } });
+  });
+
+  it('putFile maps 409 and 422 to Conflict, other errors pass through', async () => {
+    for (const status of [409, 422]) {
+      await assert.rejects(setup(() => new Response('x', { status })).f.putFile('o/r', { branch: 'b', path: 'p', content: 'c', message: 'm' }), Conflict);
+    }
+    await assert.rejects(setup(() => new Response('x', { status: 500 })).f.putFile('o/r', { branch: 'b', path: 'p', content: 'c', message: 'm' }), /500/);
+  });
+
+  it("expectSha '' pre-checks existence: exists is a Conflict, 404 proceeds, no sha is sent", async () => {
+    const exists = setup(() => json({}));
+    await assert.rejects(exists.f.putFile('o/r', { branch: 'b', path: 'p', content: 'c', message: 'm', expectSha: '' }), Conflict);
+    assert.deepEqual(exists.calls.map((c) => c.method), ['GET']);
+    assert.equal(exists.calls[0]!.url, '/repos/o/r/contents/p?ref=b');
+    const fresh = setup((c) => (c.method === 'GET' ? new Response('nf', { status: 404 }) : json({ content: { sha: 'n' } })));
+    await fresh.f.putFile('o/r', { branch: 'b', path: 'p', content: 'c', message: 'm', expectSha: '' });
+    assert.deepEqual(fresh.calls.map((c) => c.method), ['GET', 'PUT']);
+    assert.equal('sha' in fresh.calls[1]!.body, false);
+  });
+});
+
+describe('github merge queue', () => {
+  const run = <T>(handler: (method: string, path: string, body: any) => Response, call: (f: GithubBackend['forge']) => Promise<T>) => {
+    const calls: { method: string; path: string; body: any }[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        const call = { method: String(init?.method), path: new URL(String(u)).pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined };
+        calls.push(call);
+        return handler(call.method, call.path, call.body);
+      },
+    });
+    return call(b.forge).then((res) => ({ res, calls }));
+  };
+  const pull = (state: Record<string, unknown> = {}) => ({ number: 7, html_url: 'u', title: 't', body: '', state: 'open', head: { ref: 'bauherr/7', sha: 'h', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } }, node_id: 'PR_1', ...state });
+  const gql = (data: unknown) => json({ data });
+
+  it('queueSupport is true when the default branch has a merge queue', async () => {
+    for (const [mergeQueue, want] of [[{ id: 'MQ' }, true], [null, false]] as const) {
+      const { res, calls } = await run((_m, path) => (path === '/graphql' ? gql({ repository: { mergeQueue } }) : json({ full_name: 'o/r', default_branch: 'trunk' })), (f) => f.queueSupport('o/r'));
+      assert.equal(res, want);
+      assert.deepEqual(calls[1]!.body.variables, { o: 'o', n: 'r', b: 'trunk' });
+    }
+  });
+  it('queueSupport surfaces GraphQL errors instead of reporting no queue', async () => {
+    await assert.rejects(run((_m, path) => (path === '/graphql' ? json({ errors: [{ message: 'Resource not accessible' }] }) : json({ default_branch: 'main' })), (f) => f.queueSupport('o/r')), /Resource not accessible/);
+  });
+  it('requiredChecks lists the contexts of the required_status_checks rules', async () => {
+    const rules = [{ type: 'merge_queue', parameters: {} }, { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'ci' }, { context: 'e2e (1)' }] } }];
+    const { res, calls } = await run(() => json(rules), (f) => f.requiredChecks('o/r', 'main'));
+    assert.deepEqual(res, ['ci', 'e2e (1)']);
+    assert.equal(calls[0]!.path, '/repos/o/r/rules/branches/main');
+  });
+  it('enqueue PUTs merge-async with the pinned head; 409 means already queued; 400 and 405 are NotQueueableError', async () => {
+    const ok = await run((m) => (m === 'PUT' ? json({}, { status: 202 }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' }));
+    assert.deepEqual(ok.res, { state: 'queued' });
+    assert.deepEqual(ok.calls.at(-1), { method: 'PUT', path: '/repos/o/r/pulls/7/merge-async', body: { merge_action: 'merge_queue', sha: 'h' } });
+    assert.deepEqual((await run((m) => (m === 'PUT' ? new Response('pending', { status: 409 }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' }))).res, { state: 'queued' });
+    for (const status of [400, 405]) {
+      await assert.rejects(run((m) => (m === 'PUT' ? new Response('Changes must be made through the merge queue', { status }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' })), (e) => e instanceof NotQueueableError && /merge queue/.test(e.message));
+    }
+    await assert.rejects(run((m) => (m === 'PUT' ? new Response('boom', { status: 500 }) : json(pull())), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' })), /500/);
+  });
+  it('enqueue of a merged PR reports merged with its sha and sends nothing', async () => {
+    const { res, calls } = await run(() => json(pull({ merged_at: '2026-11-01T00:00:00Z', merge_commit_sha: 'm9' })), (f) => f.enqueuePullRequest('o/r', 7, { expectSha: 'h' }));
+    assert.deepEqual(res, { state: 'merged', mergeSha: 'm9' });
+    assert.ok(!calls.some((c) => c.method === 'PUT'));
+  });
+  it('isQueued reads mergeQueueEntry; dequeue mutates only a queued PR', async () => {
+    const entry = (e: unknown) => (m: string, path: string) => (path === '/graphql' ? gql({ repository: { pullRequest: { mergeQueueEntry: e } } }) : json(pull()));
+    assert.equal((await run(entry({ id: 'E' }), (f) => f.isQueued('o/r', 7))).res, true);
+    assert.equal((await run(entry(null), (f) => f.isQueued('o/r', 7))).res, false);
+    const idle = await run(entry(null), (f) => f.dequeuePullRequest('o/r', 7));
+    assert.equal(idle.calls.length, 1);
+    const queued = await run(entry({ id: 'E' }), (f) => f.dequeuePullRequest('o/r', 7));
+    assert.match(queued.calls.at(-1)!.body.query, /dequeuePullRequest/);
+    assert.deepEqual(queued.calls.at(-1)!.body.variables, { id: 'PR_1' });
+  });
+  it('resetBranch force-patches the ref and creates it when the ref does not exist', async () => {
+    const patched = await run(() => json({}), (f) => f.resetBranch('o/r', 'bauherr/train', 's1'));
+    assert.deepEqual(patched.calls, [{ method: 'PATCH', path: '/repos/o/r/git/refs/heads/bauherr/train', body: { sha: 's1', force: true } }]);
+    const created = await run((m) => (m === 'PATCH' ? new Response('nf', { status: 422 }) : json({})), (f) => f.resetBranch('o/r', 'bauherr/train', 's1'));
+    assert.deepEqual(created.calls.at(-1), { method: 'POST', path: '/repos/o/r/git/refs', body: { ref: 'refs/heads/bauherr/train', sha: 's1' } });
+    await assert.rejects(run(() => new Response('boom', { status: 500 }), (f) => f.resetBranch('o/r', 'bauherr/train', 's1')), /500/);
+  });
+  it('mergeIntoBranch POSTs /merges with the head sha; 201 gives the merge sha, 204 the branch tip, 409 a conflict', async () => {
+    const ok = await run(() => json({ sha: 'm1' }, { status: 201 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'));
+    assert.deepEqual(ok.res, { sha: 'm1' });
+    assert.deepEqual(ok.calls[0], { method: 'POST', path: '/repos/o/r/merges', body: { base: 'bauherr/train', head: 'h1', commit_message: 'bauherr train: merge h1' } });
+    const same = await run((m) => (m === 'POST' ? new Response(null, { status: 204 }) : json({ object: { sha: 'tip' } })), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'));
+    assert.deepEqual(same.res, { sha: 'tip' });
+    assert.deepEqual((await run(() => new Response('conflict', { status: 409 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'))).res, { conflict: true });
+    await assert.rejects(run(() => new Response('boom', { status: 500 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1')), /500/);
   });
 });

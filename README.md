@@ -38,11 +38,15 @@ flowchart LR
 | Release | The Product's own CI |
 | Done | Ticket closed on merge |
 
-Human gates:
+Human gates (configured in [`pack/workflow.yaml`](pack/workflow.yaml)):
 
-- **Plan approval** (shipped): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Approval through the UI or MCP is refused while critical decisions are unanswered.
-- **Merge request review** (shipped): native review and merge in your forge.
-- Planned: **factory code review and auto-merge** ([#82](https://github.com/getbauherr/bauherr/issues/82)), **staging acceptance with a result summary** ([#83](https://github.com/getbauherr/bauherr/issues/83)) and a **production deploy approval** ([#84](https://github.com/getbauherr/bauherr/issues/84)). These revise the gate model so that humans approve the plan, accept the result on staging and approve the production deploy.
+- **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
+- **Approve plan** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
+- **Accept on staging** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
+- **Approve production** (on by default: `production_gate: human` on `release`, or "Ask me before deploying to production" on a Product; a Product without `productionChecks` shows the "Configure production checks" gate, linking to Settings > Products, until they are set; removing `production_gate` from the workflow sends a staging-confirmed Ticket to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
+- **Merge request review**: the factory reviews and merges ([#82](https://github.com/getbauherr/bauherr/issues/82)); no human.
+
+By default a Ticket needs the owner only for Refine questions, Approve production and declared blockers.
 
 Stages, labels, triggers, run states, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
 
@@ -110,15 +114,16 @@ To work on tickets from your own Claude Code session instead, create an API key 
 
 | What | Where |
 |---|---|
-| `PORT`, `PUBLIC_URL`, `BAUHERR_DISABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
+| `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
 | Stages, steps, gates | [`pack/workflow.yaml`](pack/workflow.yaml), [docs/spec/workflow.md](docs/spec/workflow.md) |
+| Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
 | Budgets, model Tiers, Connections | Settings in the UI |
 | Provider credentials and data flows | [docs/legal.md](docs/legal.md) |
 
-Payload's `/admin` is a developer escape hatch; set `BAUHERR_DISABLE_ADMIN=1` to switch it off.
+Payload's `/admin` is a developer escape hatch and off by default (it redirects to `/settings`); set `BAUHERR_ENABLE_ADMIN=1` to switch it on for Admins. `/api` is unaffected.
 
 ## Architecture
 
@@ -140,6 +145,8 @@ pnpm typecheck   # builds the packages, then type-checks all of them
 pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 ```
 
+Each suite uses its own database `bauherr_test_<suite>_<suffix>` and drops it afterwards. The suffix is `$VITEST_DB_SUFFIX`, else a hash of the worktree path (empty under `CI`), so `pnpm test` can run in several worktrees at once.
+
 ## Releasing
 
 One git tag publishes everything. From `main`:
@@ -148,7 +155,7 @@ One git tag publishes everything. From `main`:
 git tag v0.1.0-rc.1 && git push origin v0.1.0-rc.1
 ```
 
-[`release.yml`](.github/workflows/release.yml) (environment `release`, tag must be on `main`) first pushes the multi-arch image `ghcr.io/getbauherr/bauherr:<version>` (`latest` only for versions without a `-pre` suffix), then publishes npm `bauherr@<version>` from `packages/cli` with provenance via trusted publishing (no token stored; the npm package settings name this repository and workflow). Pre-releases get the npm tag `next`. If the npm package requires staged publishing, promote the staged version on npmjs.com. The CLI pins the image tag to its own version.
+[`release.yml`](.github/workflows/release.yml) (environment `release`, tag must be on `main`) first pushes the multi-arch image `ghcr.io/getbauherr/bauherr:<version>` (`latest` only for versions without a `-pre` suffix), then stages npm `bauherr@<version>` from `packages/cli` with provenance via trusted publishing (`npm stage publish`; no token stored, so setup-node has no `registry-url` (it would write a token placeholder into `.npmrc` and break OIDC; `NODE_AUTH_TOKEN` is unset before publish); the npm package settings name this repository and workflow and allow staged publishing only). Pre-releases get the npm tag `next`. A maintainer approves the staged version (`npm stage approve <stage-id>` or on npmjs.com) to make it installable. The CLI pins the image tag to its own version.
 
 ## Status and roadmap
 

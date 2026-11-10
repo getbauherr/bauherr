@@ -1,16 +1,16 @@
 ---
-globs: ["SECURITY-CONTEXT.md", "**/auth/**", "**/security/**"]
+globs: ["**/SECURITY-CONTEXT.md", "**/auth/**", "**/security/**"]
 applies: every Product
 ---
 
 # Security context
 
-Every Product keeps a `SECURITY-CONTEXT.md` at its Repository root (the main Repository if several). It tells agents what to be careful with. v0.1 ships only this file; a security workflow type is later.
+Every Product keeps a `SECURITY-CONTEXT.md` at `products/<slug>/SECURITY-CONTEXT.md` in the Workspace Knowledge repo, not in the Product repository. It tells agents what to be careful with and is the input of the `security-scan` Run ([workflow-security.yaml](../workflow-security.yaml)).
 
 ## Rules
 - Read it before editing anything named in it.
 - A change touching a protected path needs an explicit Goal statement covering it and a human-reviewed MR; otherwise declare a blocker.
-- If the file is missing, create it from the template in the Plan Run and ask the Bauherr to confirm it (`decision-sheet`).
+- If the file is missing, propose it from the template as a Knowledge PR and ask the Bauherr to confirm it (`decision-sheet`). A scan Run without it still runs and files one Ticket asking for it.
 - Keep it short and factual: no secrets, no credentials, no incident detail.
 - Update it in the same MR when a change moves a trust boundary or adds an identity.
 

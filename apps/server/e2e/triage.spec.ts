@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { email } from './user'
 
-const email = process.env.E2E_EMAIL!
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
@@ -15,15 +15,17 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.board')).toBeVisible()
 
-  const card = page.locator('.card', { hasText: 'Clarify the export scope' }).first()
+  const card = page.locator('.card', { hasText: 'Settle the export format' }).first()
   await expect(card.getByText('Answer questions')).toBeVisible()
-  await card.getByRole('link', { name: 'Clarify the export scope' }).click()
+  await card.getByRole('link', { name: 'Settle the export format' }).click()
 
-  const gate = page.getByRole('region', { name: 'Answer questions' })
-  await expect(gate).toContainText('0 of 1 answered')
-  await expect(page.locator('.sheet tbody tr')).toHaveCount(1)
-  await page.getByRole('radio', { name: 'XLSX' }).check()
-  await page.getByRole('button', { name: 'Save answers' }).click()
-  await expect(page.getByText('D1 Which export format: XLSX')).toBeVisible()
-  await expect(gate).toHaveCount(0)
+  const bar = page.getByTestId('action-bar')
+  await bar.getByRole('link', { name: 'Answer 1 question' }).click()
+  const chat = page.getByRole('region', { name: 'Answer questions' })
+  await expect(chat).toContainText('Which export format')
+  await expect(page.locator('.sheet')).toHaveCount(0)
+  await chat.getByRole('button', { name: 'XLSX' }).click()
+  await expect(chat).toContainText('D1 XLSX. Next: the plan is being written, then you can approve it.', { timeout: 60_000 })
+  await expect(bar.getByRole('link', { name: /^Answer/ })).toHaveCount(0)
+  await expect(page.locator('.sheet')).toHaveCount(0)
 })

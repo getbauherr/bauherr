@@ -1,8 +1,10 @@
 import { createHmac, createSign, timingSafeEqual } from 'node:crypto';
 import type {
-  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
-  PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
+  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
+  PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
+import { Conflict, NotQueueableError } from './contracts.js';
+import { timedFetch } from './http.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 
 export interface GithubAuth {
@@ -18,6 +20,7 @@ export interface AppAuthOptions {
   privateKeyPem: string;
   baseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
   /** Epoch ms; injectable for tests. */
   now?: () => number;
 }
@@ -38,10 +41,10 @@ export function appAuth(o: AppAuthOptions): GithubAuth {
     kind: 'app',
     async token() {
       if (cached && cached.expiresAt - 300_000 > now()) return cached.token;
-      const res = await doFetch(`${o.baseUrl ?? 'https://api.github.com'}/app/installations/${o.installationId}/access_tokens`, {
+      const res = await timedFetch(doFetch, `${o.baseUrl ?? 'https://api.github.com'}/app/installations/${o.installationId}/access_tokens`, {
         method: 'POST',
         headers: { authorization: `Bearer ${jwt()}`, accept: 'application/vnd.github+json', 'user-agent': 'bauherr' },
-      });
+      }, o.timeoutMs);
       if (!res.ok) throw new GithubError(res.status, 'POST', 'access_tokens', await res.text());
       const j = (await res.json()) as { token: string; expires_at: string };
       cached = { token: j.token, expiresAt: Date.parse(j.expires_at) };
@@ -60,11 +63,12 @@ export interface GithubOptions {
   auth: GithubAuth;
   baseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   maxRetries?: number;
 }
 
-const MAX_WAIT_MS = 300_000;
+export const MAX_WAIT_MS = 300_000;
 
 /** Minimal REST client: Link pagination, backoff on 403/429 honouring Retry-After. */
 export class Http {
@@ -72,6 +76,9 @@ export class Http {
   private doFetch: typeof fetch;
   private sleep: (ms: number) => Promise<void>;
   private maxRetries: number;
+  get authKind() {
+    return this.o.auth.kind;
+  }
   constructor(private o: GithubOptions) {
     this.base = o.baseUrl ?? 'https://api.github.com';
     this.doFetch = o.fetch ?? fetch;
@@ -79,21 +86,21 @@ export class Http {
     this.maxRetries = o.maxRetries ?? 3;
   }
 
-  async raw(method: string, path: string, body?: unknown): Promise<Response> {
+  async raw(method: string, path: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
-      const res = await this.doFetch(url, {
+      const res = await timedFetch(this.doFetch, url, {
         cache: 'no-store', // Next patches fetch; a cached poll response never advances the cursor
         method,
         headers: {
           authorization: `Bearer ${await this.o.auth.token()}`,
-          accept: 'application/vnd.github+json',
+          accept,
           'x-github-api-version': '2022-11-28',
           'user-agent': 'bauherr',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      }, this.o.timeoutMs);
       const limited = res.status === 429 || (res.status === 403 && (res.headers.has('retry-after') || res.headers.get('x-ratelimit-remaining') === '0'));
       if (limited && attempt < this.maxRetries) {
         const retryAfter = res.headers.get('retry-after');
@@ -170,7 +177,7 @@ class GithubTickets implements TicketSource {
   async list(opts: ListOptions = {}) {
     const q = new URLSearchParams({ state: opts.state ?? 'open', per_page: '100' });
     if (opts.labels?.length) q.set('labels', opts.labels.join(','));
-    return (await this.h.paginate(`${this.p}/issues?${q}`)).filter(isIssue).map(summary);
+    return (await this.h.paginate(`${this.p}/issues?${q}`)).filter(isIssue).map((i) => ({ ...summary(i), body: i.body ?? '' }));
   }
   async get(id: string): Promise<Ticket> {
     const [i, blockers] = await Promise.all([this.issue(id), this.blockers(id)]);
@@ -178,7 +185,7 @@ class GithubTickets implements TicketSource {
     return {
       ...summary(i), body,
       parent: i.parent_issue_url ? String(i.parent_issue_url).split('/').at(-1)! : null,
-      blockedBy: blockers.map((b) => String(b.number)),
+      blockedBy: [...new Set([...blockers.map((b) => String(b.number)), ...relations.blockedBy])],
       links: relations.links,
       closeReason: i.state === 'closed' ? (i.state_reason ?? 'completed') : null,
     };
@@ -233,6 +240,16 @@ class GithubTickets implements TicketSource {
       throw e;
     }
   }
+  async labelEvents(id: string): Promise<LabelEvent[]> {
+    return (await this.h.paginate(`${this.p}/issues/${id}/events?per_page=100`))
+      .filter((e) => (e.event === 'labeled' || e.event === 'unlabeled') && e.label)
+      .map((e) => ({ label: e.label.name, action: e.event, actor: e.actor?.login ?? null, at: e.created_at }));
+  }
+  async whoami() {
+    // An App installation token has no user: the factory is then recognised by its `[bot]` actor.
+    if (this.h.authKind === 'app') return null;
+    return (await this.h.json('GET', '/user')).login;
+  }
   async unassign(id: string, assignees: string[]) {
     if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
   }
@@ -268,6 +285,8 @@ const pr = (p: any): PullRequest => ({
   number: p.number, url: p.html_url, title: p.title, body: p.body ?? '',
   state: p.merged_at ? 'merged' : p.state, head: p.head.ref, base: p.base.ref, headSha: p.head.sha,
   headRepo: p.head.repo?.full_name ?? '', baseRepo: p.base.repo?.full_name ?? '', draft: !!p.draft,
+  ...(p.mergeable === false || p.mergeable_state === 'dirty' ? { mergeable: false } : p.mergeable === true ? { mergeable: true } : {}),
+  ...(p.mergeable_state === 'behind' ? { behind: true } : {}),
   ...(p.merge_commit_sha && p.merged_at ? { mergeSha: p.merge_commit_sha } : {}),
 });
 
@@ -305,6 +324,15 @@ class GithubForge implements Forge {
   async listBranches(repo: RepoRef): Promise<Branch[]> {
     return (await this.h.paginate(`/repos/${repo}/branches?per_page=100`)).map((b) => ({ name: b.name, sha: b.commit.sha }));
   }
+  async getBranch(repo: RepoRef, name: string): Promise<Branch | null> {
+    try {
+      const b = await this.h.json('GET', `/repos/${repo}/branches/${name.split('/').map(encodeURIComponent).join('/')}`);
+      return { name, sha: b.commit.sha };
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) return null;
+      throw e;
+    }
+  }
   async createBranch(repo: RepoRef, name: string, from?: string): Promise<Branch> {
     const base = from ?? (await this.getRepository(repo)).defaultBranch;
     const ref = await this.h.json('GET', `/repos/${repo}/git/ref/heads/${base}`);
@@ -321,35 +349,213 @@ class GithubForge implements Forge {
   async listPullRequests(repo: RepoRef, state: 'open' | 'closed' | 'all' = 'open') {
     return (await this.h.paginate(`/repos/${repo}/pulls?state=${state}&per_page=100`)).map(pr);
   }
+  async listMergedPullRequests(repo: RepoRef, limit: number) {
+    const out: PullRequest[] = [];
+    for (let page = 1; out.length < limit && page <= 5; page++) {
+      const batch = await this.h.json('GET', `/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`);
+      out.push(...batch.map(pr).filter((p: PullRequest) => p.state === 'merged'));
+      if (batch.length < 100) break;
+    }
+    return out.slice(0, limit);
+  }
+  async closePullRequest(repo: RepoRef, n: number) {
+    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { state: 'closed' });
+  }
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return comment(await this.h.json('POST', `/repos/${repo}/issues/${n}/comments`, { body }));
+  }
+  async listPullRequestComments(repo: RepoRef, n: number) {
+    return (await this.h.paginate(`/repos/${repo}/issues/${n}/comments?per_page=100`)).map(comment);
   }
   async listPullRequestFiles(repo: RepoRef, n: number): Promise<PullRequestFile[]> {
     return (await this.h.paginate(`/repos/${repo}/pulls/${n}/files?per_page=100`)).map((f) => ({
       filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions,
     }));
   }
+  async compare(repo: RepoRef, base: string, head: string) {
+    return (await this.h.raw('GET', `/repos/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`, undefined, 'application/vnd.github.diff')).text();
+  }
+  async retargetPullRequest(repo: RepoRef, n: number, base: string) {
+    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { base });
+  }
   async mergePullRequest(repo: RepoRef, n: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }) {
     const p = await this.getPullRequest(repo, n);
     const m = await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge`, { merge_method: o.method, ...(o.expectSha ? { sha: o.expectSha } : {}) });
     let branchDeleteError: string | undefined;
     if (o.deleteBranch && p.headRepo.toLowerCase() === p.baseRepo.toLowerCase()) {
+      try {
+        for (const s of await this.h.paginate(`/repos/${repo}/pulls?state=open&base=${encodeURIComponent(p.head)}&per_page=100`)) await this.retargetPullRequest(repo, s.number, p.base);
+      } catch (e) {
+        return { mergeSha: m.sha as string, branchDeleteError: `kept ${p.head}: retargeting stacked PRs failed: ${e instanceof Error ? e.message : String(e)}` };
+      }
       await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${p.head.split('/').map(encodeURIComponent).join('/')}`).catch((e) => {
         if (!(e instanceof GithubError && [404, 422].includes(e.status))) branchDeleteError = e instanceof Error ? e.message : String(e);
       });
     }
     return { mergeSha: m.sha as string, ...(branchDeleteError ? { branchDeleteError } : {}) };
   }
+  private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    const r = await this.h.json('POST', '/graphql', { query, variables });
+    if (r.errors?.length) throw new Error(`GitHub GraphQL: ${r.errors.map((e: { message: string }) => e.message).join('; ')}`);
+    return r.data as T;
+  }
+  async queueSupport(repo: RepoRef) {
+    const [owner, name] = repo.split('/');
+    const d = await this.graphql<{ repository: { mergeQueue: unknown } }>('query($o:String!,$n:String!,$b:String!){repository(owner:$o,name:$n){mergeQueue(branch:$b){id}}}', { o: owner, n: name, b: (await this.getRepository(repo)).defaultBranch });
+    return !!d.repository.mergeQueue;
+  }
+  async requiredChecks(repo: RepoRef, branch: string) {
+    const rules = await this.h.json('GET', `/repos/${repo}/rules/branches/${branch.split('/').map(enc).join('/')}`);
+    return (rules as any[]).filter((r) => r.type === 'required_status_checks').flatMap((r) => (r.parameters?.required_status_checks ?? []).map((c: { context: string }) => c.context));
+  }
+  async enqueuePullRequest(repo: RepoRef, n: number, o: { expectSha: string }) {
+    const p = await this.getPullRequest(repo, n);
+    if (p.state === 'merged') return { state: 'merged' as const, ...(p.mergeSha ? { mergeSha: p.mergeSha } : {}) };
+    try {
+      await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge-async`, { merge_action: 'merge_queue', sha: o.expectSha });
+    } catch (e) {
+      if (e instanceof GithubError && [400, 405].includes(e.status)) throw new NotQueueableError(e.message);
+      if (!(e instanceof GithubError && e.status === 409)) throw e; // 409: already pending in the queue
+    }
+    return { state: 'queued' as const };
+  }
+  async isQueued(repo: RepoRef, n: number) {
+    const [owner, name] = repo.split('/');
+    const d = await this.graphql<{ repository: { pullRequest: { mergeQueueEntry: unknown } | null } }>('query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){mergeQueueEntry{id}}}}', { o: owner, n: name, p: n });
+    return !!d.repository.pullRequest?.mergeQueueEntry;
+  }
+  async dequeuePullRequest(repo: RepoRef, n: number) {
+    if (!(await this.isQueued(repo, n))) return;
+    await this.graphql('mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}', { id: (await this.h.json('GET', `/repos/${repo}/pulls/${n}`)).node_id });
+  }
+  async resetBranch(repo: RepoRef, branch: string, sha: string) {
+    const ref = branch.split('/').map(enc).join('/');
+    try {
+      await this.h.json('PATCH', `/repos/${repo}/git/refs/heads/${ref}`, { sha, force: true });
+    } catch (e) {
+      if (!(e instanceof GithubError && [404, 422].includes(e.status))) throw e; // no such ref yet
+      await this.h.json('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
+    }
+  }
+  async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
+    try {
+      const m = await this.h.json('POST', `/repos/${repo}/merges`, { base: branch, head: headSha, commit_message: `bauherr train: merge ${headSha.slice(0, 7)}` });
+      return { sha: m ? (m.sha as string) : (await this.h.json('GET', `/repos/${repo}/git/ref/heads/${branch.split('/').map(enc).join('/')}`)).object.sha as string }; // 204: already contained
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 409) return { conflict: true as const };
+      throw e;
+    }
+  }
+  async listFiles(repo: RepoRef, ref?: string) {
+    const c = await this.h.json('GET', `/repos/${repo}/commits/${enc(ref ?? (await this.getRepository(repo)).defaultBranch)}`);
+    const tree = await this.h.json('GET', `/repos/${repo}/git/trees/${c.commit.tree.sha}?recursive=1`);
+    return { commit: c.sha as string, paths: (tree.tree as any[]).filter((t) => t.type === 'blob').map((t) => t.path as string), truncated: tree.truncated === true };
+  }
+  async getFile(repo: RepoRef, path: string, ref?: string) {
+    const f = await this.h.json('GET', `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}${ref ? `?ref=${enc(ref)}` : ''}`);
+    const data = f.encoding === 'base64' ? f.content : (await this.h.json('GET', `/repos/${repo}/git/blobs/${f.sha}`)).content; // contents API omits files over 1 MB
+    return { content: Buffer.from(data, 'base64').toString('utf8'), sha: f.sha as string };
+  }
+  async putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }) {
+    const url = `/repos/${repo}/contents/${o.path.split('/').map(enc).join('/')}`;
+    if (o.expectSha === '') {
+      const exists = await this.h.raw('GET', `${url}?ref=${enc(o.branch)}`).then(() => true, (e) => (e instanceof GithubError && e.status === 404 ? false : Promise.reject(e)));
+      if (exists) throw new Conflict(`${o.path} exists`);
+    }
+    try {
+      const r = await this.h.json('PUT', url, { message: o.message, content: Buffer.from(o.content).toString('base64'), branch: o.branch, ...(o.expectSha ? { sha: o.expectSha } : {}) });
+      return { sha: r.content.sha as string };
+    } catch (e) {
+      if (e instanceof GithubError && (e.status === 409 || e.status === 422)) throw new Conflict(e.message);
+      throw e;
+    }
+  }
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/repos/${repo}/commits/${sha}`)).commit.committer.date as string;
   }
+  /** Release with the commit its tag points at (one request); null when the tag is gone. */
+  private async release(repo: RepoRef, r: any): Promise<Release | null> {
+    try {
+      const sha = (await this.h.json('GET', `/repos/${repo}/commits/${enc(r.tag_name)}`)).sha as string;
+      return { id: String(r.id), tag: r.tag_name, sha, name: r.name ?? r.tag_name, body: r.body ?? '', url: r.html_url, prerelease: !!r.prerelease, createdAt: r.created_at };
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
+  }
+  /** One list request, then newest to oldest one compare each until a release no longer contains `sha`; the last one that did is the first to ship it. */
+  async findRelease(repo: RepoRef, o: { sha: string }) {
+    let found: Release | null = null;
+    for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
+      const rel = await this.release(repo, r);
+      if (!rel) continue;
+      if (rel.sha !== o.sha) {
+        const status = (await this.h.json('GET', `/repos/${repo}/compare/${enc(o.sha)}...${enc(rel.sha)}?per_page=1`)).status;
+        if (status !== 'ahead') break;
+      }
+      found = rel;
+    }
+    return found;
+  }
+  /** Published release of `tag` (one request for it, one for its commit), or null when there is none. */
+  async releaseByTag(repo: RepoRef, tag: string) {
+    try {
+      const r = await this.h.json('GET', `/repos/${repo}/releases/tags/${enc(tag)}`);
+      return r.draft ? null : this.release(repo, r);
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
+  }
+  async listReleases(repo: RepoRef) {
+    const out: Release[] = [];
+    for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
+      const rel = await this.release(repo, r);
+      if (rel) out.push(rel);
+    }
+    return out;
+  }
+  async isAncestor(repo: RepoRef, base: string, head: string) {
+    return ['ahead', 'identical'].includes((await this.h.json('GET', `/repos/${repo}/compare/${enc(base)}...${enc(head)}?per_page=1`)).status);
+  }
+  async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
+    const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease });
+    return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string, prerelease: !!o.prerelease, createdAt: r.created_at };
+  }
+  async listTags(repo: RepoRef) {
+    return (await this.h.paginate(`/repos/${repo}/tags?per_page=100`)).map((t) => t.name as string);
+  }
+  async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
+    const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, { body: o.body });
+    return (await this.release(repo, r))!;
+  }
+  async latestRelease(repo: RepoRef) {
+    try {
+      return await this.release(repo, await this.h.json('GET', `/repos/${repo}/releases/latest`));
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
+  }
+  async listCommits(repo: RepoRef, o: { from?: string; to: string }) {
+    const commits: any[] = o.from
+      ? (await this.h.json('GET', `/repos/${repo}/compare/${enc(o.from)}...${enc(o.to)}`)).commits.reverse()
+      : await this.h.json('GET', `/repos/${repo}/commits?sha=${enc(o.to)}&per_page=100`);
+    return commits.map((c) => ({ sha: c.sha as string, message: c.commit.message as string }));
+  }
+  async rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean> {
+    const runs = [...new Set(checks.map((c) => c.runId).filter((r): r is number => !!r))];
+    await Promise.all(runs.map((r) => this.h.json('POST', `/repos/${repo}/actions/runs/${r}/rerun-failed-jobs`)));
+    return runs.length > 0;
+  }
   async listChecks(repo: RepoRef, sha: string): Promise<Check[]> {
-    const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => ({
-      id: c.id, name: c.name, status: c.status, conclusion: c.conclusion,
-    }));
+    const runs = (await this.h.paginate(`/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, (p) => p.check_runs)).map((c) => {
+      const runId = Number(/\/actions\/runs\/(\d+)/.exec(c.html_url ?? '')?.[1]);
+      return { id: c.id, name: c.name, status: c.status, conclusion: c.conclusion, startedAt: c.started_at ?? undefined, url: c.html_url ?? undefined, ...(runId && { runId }), ...(c.output?.text && { output: c.output.text }) };
+    });
     const statuses = (await this.h.json('GET', `/repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
     return [...runs, ...statuses.map((s: any): Check => (s.state === 'pending'
-      ? { name: s.context, status: 'in_progress', conclusion: null }
-      : { name: s.context, status: 'completed', conclusion: s.state === 'success' ? 'success' : 'failure' }))];
+      ? { name: s.context, status: 'in_progress', conclusion: null, startedAt: s.created_at }
+      : { name: s.context, status: 'completed', conclusion: s.state === 'success' ? 'success' : 'failure', startedAt: s.created_at }))];
   }
 }

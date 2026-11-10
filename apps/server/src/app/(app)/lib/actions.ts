@@ -3,23 +3,23 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, rankTicket, releaseLock, requestChanges, loadTicket, postDecisions, sourceOf } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { RERUNNABLE } from './run'
-import { parseDecisions, sheetOf } from './plan'
+import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
+import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
   let token: string | undefined
+  const email = String(form.get('email'))
   try {
-    ;({ token } = await payload.login({
-      collection: 'bauherren',
-      data: { email: String(form.get('email')), password: String(form.get('password')) },
-    }))
+    token = (await signInWithPassword(payload, email, String(form.get('password')), clientIp(await headers()))).token
   } catch (e) {
-    if ((e as { status?: number }).status !== 401) throw e
+    // A wrong password and too many sign-ins at once get the same generic error: neither says whether the account exists.
+    if (!(e instanceof LoginBusy) && (e as { status?: number }).status !== 401) throw e
   }
   if (!token) redirect('/login?error=1')
   const cookie = generatePayloadCookie({ collectionAuthConfig: payload.collections.bauherren.config.auth, cookiePrefix: payload.config.cookiePrefix, token, returnCookieAsObject: true })
@@ -66,10 +66,60 @@ export async function approvePlanAction(form: FormData) {
   revalidatePath(`/tickets/${ticket}`)
 }
 
+export async function expediteAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(expedite(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
 export async function acceptStagingAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(acceptStaging(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function approveProductionAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(approveProduction(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function approveSkillProposalAction(form: FormData) {
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(approveSkillProposal(payload, user, { proposal: Number(form.get('proposal')), expectSha: String(form.get('expectSha') ?? ''), workspaceId }))
+  revalidatePath('/knowledge')
+}
+
+export async function grantReviewRoundAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(grantReviewRound(payload, user, { ticket, workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+export async function stopReviewAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(stopReview(payload, user, { ticket, note: String(form.get('note') ?? ''), workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+/** "Needs you" on a stuck review: back to Build, with an optional note for the next Run. */
+export async function backToBuildAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(backToBuild(payload, user, { ticket, note: String(form.get('note') ?? ''), workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
+}
+
+/** "Cancelled": the Ticket goes back to Triage. */
+export async function backToBacklogAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(backToBacklog(payload, user, { ticket, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
 }
 
@@ -80,24 +130,25 @@ export async function requestChangesAction(form: FormData) {
   revalidatePath(`/tickets/${ticket}`)
 }
 
-/** Answers are re-validated against the live decision sheet: only known rows and listed options are recorded. */
-export async function answerDecisions(form: FormData) {
-  const ticket = Number(form.get('ticket'))
+/** Discards one of the caller's open request sessions (New request page). */
+export async function discardIntake(session: number) {
+  const { user, payload } = await acting()
+  await inWorkspace(abandonIntake(payload, user, session))
+  revalidatePath('/requests/new')
+}
+
+/** Opens (or resumes) the owner's chat over the Ticket's open decision rows. */
+export async function startOwnerChat(ticket: number) {
   const { user, payload, workspaceId } = await acting()
-  await inWorkspace(
-    (async () => {
-      const t = await loadTicket(payload, user, ticket)
-      if (String(t.workspace) !== String(workspaceId)) throw new NotInWorkspace()
-      const { ts, n } = await sourceOf(payload, t)
-      const sheet = sheetOf(await ts.listComments(n))?.body ?? ''
-      const answers = parseDecisions(sheet).flatMap((d) => {
-        const answer = form.get(d.id)
-        return typeof answer === 'string' && d.options.includes(answer) ? [{ id: d.id, title: d.title, answer }] : []
-      })
-      if (answers.length) await postDecisions(payload, user, { ticket, workspaceId, answers })
-    })(),
-  )
+  return inWorkspace(startOwnerIntake(payload, user, { ticket, workspaceId }))
+}
+
+/** A clicked option or typed message: an answer is recorded verbatim, an explain request is answered and records nothing. */
+export async function askOwnerChat(session: number, ticket: number, decision: string, text: string, literal?: boolean) {
+  const { user, payload, workspaceId } = await acting()
+  const next = await inWorkspace(askOwnerIntake(payload, user, { session, decision, text, literal, workspaceId }))
   revalidatePath(`/tickets/${ticket}`)
+  return next
 }
 
 /** Re-runs the stage of a failed or needs_human Run for an Admin or a member of its Workspace, records a human touch, opens the new Run. */
@@ -109,13 +160,14 @@ export async function rerunStage(runId: number) {
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
   const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
-  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: user.email, at: new Date().toISOString() }, overrideAccess: true })
+  if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
   redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
 }
 
-/** Force-releases the lease of a running session Run (Admin or Workspace member); the successor Run is claimable at once. */
+/** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */
 export async function releaseRunLock(runId: number) {
   const user = await requireBauherr()
+  if (user.role !== 'admin') redirect(`/runs/${runId}`)
   await releaseLock(await payloadClient(), user, { runId }).catch((e) => {
     if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
   })
@@ -127,4 +179,68 @@ export async function rankTicketAction(ticket: number, before: number | null, af
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(rankTicket(payload, user, { ticket, before, after, workspaceId }))
   revalidatePath('/')
+}
+
+/** Persists "Send to top of the queue": first among the Workspace's Tickets of its stage group. */
+export async function rankFirstAction(ticket: number) {
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(rankFirst(payload, user, { ticket, workspaceId }))
+  revalidatePath('/')
+}
+
+export type EditState = { pr?: { number: number; url: string }; stale?: { sha: string; diff: string }; error?: string }
+
+/** Saves a Knowledge document as a PR (merged later by the watcher); a stale base returns the diff instead of writing. */
+export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Promise<EditState> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return await saveDocument(payload, user, { workspace: workspaceId, path: String(fd.get('path')), content: String(fd.get('content')).replace(/\r\n/g, '\n'), baseSha: String(fd.get('baseSha')) })
+  } catch (e) {
+    if (e instanceof EditRefused) return { error: e.message }
+    throw e
+  }
+}
+
+/** Posts a Ticket comment with its uploaded images; answers the image links or an error text (the images stay for a retry). */
+export async function postCommentAction(ticket: number, body: string, mediaIds: number[]): Promise<{ images: string[] } | { error: string }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return { images: await postComment(payload, user, { ticket, workspaceId, body, mediaIds }) }
+  } catch (e) {
+    if (e instanceof NotInWorkspace) notFound()
+    return { error: e instanceof CommentRefused ? e.message : 'The forge did not accept the comment. Your images are kept; try again.' }
+  }
+}
+
+const repairError = (e: unknown): { error: string } => {
+  if (e instanceof NotAdmin || e instanceof Error) return { error: e.message }
+  throw e
+}
+
+/** Admin "Fix state" on the Ticket page. The disclosure posts `kind` (and `stage`); answers an error text instead of throwing. */
+export async function repairTicketAction(ticket: number, _prev: { error?: string; saved?: boolean }, fd: FormData): Promise<{ error?: string; saved?: boolean }> {
+  const { user, payload, workspaceId } = await acting()
+  const kind = String(fd.get('kind'))
+  const stage = String(fd.get('stage'))
+  const repair: Repair | null = kind === 'stage' && (REPAIR_STAGES as readonly string[]).includes(stage) ? { kind, stage: stage as (typeof REPAIR_STAGES)[number] } : kind === 'clear-waiting' || kind === 'reset-counters' || kind === 'rank-top' ? { kind } : null
+  if (!repair) return { error: 'Choose a repair.' }
+  try {
+    await inWorkspace(repairTicket(payload, user, { ticket, workspaceId, repair }))
+  } catch (e) {
+    return repairError(e)
+  }
+  revalidatePath(`/tickets/${ticket}`)
+  return { saved: true }
+}
+
+/** Admin: relink a Build Run to its replacement MR (Run page). */
+export async function relinkRunAction(runId: number, _prev: { error?: string; saved?: boolean }, fd: FormData): Promise<{ error?: string; saved?: boolean }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    await inWorkspace(relinkRunMr(payload, user, { runId, workspaceId, prUrl: String(fd.get('prUrl') ?? '').trim() }))
+  } catch (e) {
+    return repairError(e)
+  }
+  revalidatePath(`/runs/${runId}`)
+  return { saved: true }
 }

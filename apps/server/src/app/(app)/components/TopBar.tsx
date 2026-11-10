@@ -1,42 +1,22 @@
 import Link from 'next/link'
 import { logout, selectWorkspace } from '../lib/actions'
 import type { Bauherr, Workspace } from '../lib/session'
-import { ChevronDown, LogOut, Settings } from './icons'
 import { Nav } from './Nav'
-import { Popover } from './Popover'
-import { ThemeToggle } from './ThemeToggle'
+import { UserMenu } from './UserMenu'
 
-const initials = (email: string) => email.slice(0, 2).toUpperCase()
-
-export function TopBar({ user, workspaces, workspace, needsYou }: { needsYou: number; user: Bauherr; workspaces: Workspace[]; workspace: Workspace | null }) {
+export function TopBar({ user, workspaces, workspace, needsYou, drafts, hasKnowledge }: { needsYou: number; drafts: number; hasKnowledge: boolean; user: Bauherr; workspaces: Workspace[]; workspace: Workspace | null }) {
   return (
-    <header className="topbar">
-      <Link href="/" className="brand">
+    <header className="topbar flex min-h-14 items-center gap-6 border-b border-border bg-card px-8 max-sm:flex-wrap max-sm:gap-x-4 max-sm:gap-y-0 max-sm:px-4 max-sm:py-2">
+      <Link href="/" className="flex items-center gap-2">
         <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden>
           <rect x="3" y="3" width="26" height="26" stroke="currentColor" strokeWidth="2" />
           <rect x="3" y="18" width="11" height="11" fill="var(--accent)" />
         </svg>
         <span className="heading">Bauherr</span>
       </Link>
-      <Nav needsYou={needsYou} />
-      <div className="tools">
-        <Popover label={<>{workspace?.name ?? 'No Workspace'}<ChevronDown /></>}>
-          {workspaces.map((w) => (
-            <form key={w.slug} action={selectWorkspace.bind(null, w.slug)}>
-              <button className="row" aria-current={w.slug === workspace?.slug}>{w.name}</button>
-            </form>
-          ))}
-          <Link href="/settings/workspace" className="row sep"><Settings />Workspace settings</Link>
-        </Popover>
-        <ThemeToggle />
-        <Popover label={<span className="avatar">{initials(user.email)}<span className="sr">User menu</span></span>}>
-          <p className="small row muted">{user.email}</p>
-          <Link href="/settings/bauherren" className="row">Bauherren</Link>
-          <Link href="/settings/api-key" className="row">API key</Link>
-          <form action={logout}>
-            <button className="row sep"><LogOut />Sign out</button>
-          </form>
-        </Popover>
+      <Nav needsYou={needsYou} drafts={drafts} hasKnowledge={hasKnowledge} />
+      <div className="ml-auto flex items-center gap-2">
+        <UserMenu email={user.email} admin={user.role === 'admin'} workspaces={workspaces.map(({ slug, name }) => ({ slug, name }))} current={workspace?.slug} logout={logout} selectWorkspace={selectWorkspace} />
       </div>
     </header>
   )

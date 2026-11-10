@@ -31,3 +31,13 @@ export const Settings = icon(
     <circle cx="12" cy="12" r="3" />
   </>,
 )
+export const ArrowUp = icon(<path d="m5 12 7-7 7 7M12 19V5" />)
+export const Plus = icon(<path d="M5 12h14M12 5v14" />)
+export const X = icon(<path d="M18 6 6 18M6 6l12 12" />)
+export const Ellipsis = icon(
+  <>
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+    <circle cx="5" cy="12" r="1" />
+  </>,
+)

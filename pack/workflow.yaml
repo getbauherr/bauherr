@@ -1,18 +1,19 @@
 # Minimal base workflow (v0.1 skeleton). Spec: docs/spec/workflow.md
 # Optional per stage: `mode: session|autonomous` (default autonomous). Workspace.modeByStage / defaultMode and
 # env BAUHERR_DEFAULT_MODE override it (apps/server/src/lib/mode.ts).
+# Human gates: refine (Triage questions) is always on; production is on by default (`production_gate: human` on `release`;
+# a Product without productionChecks shows the "Configure production checks" gate until they are set).
+# Optional, off by default: `gate: human` on `plan` (Approve plan) or on `release` (Accept on staging).
 stages:
   # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
   - name: triage
-    exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research]
+    exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
     steps: [{kind: agent-run, skill: triage}]
   - name: plan
     steps: [{kind: agent-run, skill: run-contract}]
   - name: build
-    gate_before: human
     steps: [{kind: agent-run, skill: run-contract}]
   - name: review
     steps: [{kind: agent-run, skill: review}]
-  # gate: human = acceptance on staging before done (label bauherr:approved:staging)
-  - {name: release, gate: human}
+  - {name: release, production_gate: human}
   - {name: done}

@@ -34,7 +34,8 @@ The gateway's `sub/*` model family forwards the caller's own `Authorization` hea
 
 - `deploy/gateway/config.yaml.tmpl`: `sub/*` has no `params.apiKey`, only `auth.passthrough` of the request header; `x-agw-key` is removed before upstream.
 - `frontendPolicies.accessLog` adds only run, stage, product and ticket headers; `database.llm` stays `metadata`, so no header or prompt is persisted.
-- Only keys with `metadata.kind: owner-session` (`allowedModels: ["sub/*"]`, created by `ensureSessionKey`) pass the `sub/*` authorization rule.
+- Only keys with `metadata.kind: owner-session` (`allowedModels: ["sub/*", "ws-<slug>/*"]`, created by `ensureSessionKey`) pass the `sub/*` authorization rule.
+- The same key may call `ws-<slug>/*`, the owner's own use of the Workspace API key. Those routes set `params.apiKey`, which replaces the forwarded `Authorization`, and strip `x-agw-key`.
 
 ## What is stored
 
@@ -45,7 +46,7 @@ The gateway's `sub/*` model family forwards the caller's own `Authorization` hea
 
 ## Egress policy
 
-The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent.
+The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent. With the optional [router profile](router.md) the router container calls only the gateway, with its own key.
 
 ## Optional dashboards profile
 

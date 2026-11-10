@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let member: Record<string, any>
@@ -14,14 +14,10 @@ let jobs: typeof import('../src/jobs')
 let actions: typeof import('../src/lib/actions')
 const o = { overrideAccess: true } as const
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_lease WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_lease')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_lease')
+  testDb = await createTestDb('lease')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -31,7 +27,7 @@ beforeAll(async () => {
   jobs = await import('../src/jobs')
   actions = await import('../src/lib/actions')
   const { callTool } = await import('../src/lib/mcp-tools')
-  call = (user, name, input) => callTool({ payload, user }, name, input)
+  call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   const other = (await payload.create({ collection: 'workspaces', data: { name: 'other', slug: 'other' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
@@ -43,6 +39,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** A Ticket (the fake forge only knows #1) with an awaiting_session build Run. */
@@ -61,7 +58,7 @@ it('claim returns a token; the same user with another token or none is refused',
   const { leaseToken, run: claimed } = await call(member, 'claim_run', { runId: run.id })
   expect(leaseToken).toMatch(/^[\w-]{43}$/)
   expect(claimed.leaseHash).toBeUndefined()
-  await expect(call(member, 'heartbeat', { runId: run.id, leaseToken })).resolves.toEqual({ ok: true })
+  await expect(call(member, 'heartbeat', { runId: run.id, leaseToken })).resolves.toMatchObject({ ok: true })
   await expect(call(member, 'heartbeat', { runId: run.id, leaseToken: 'x'.repeat(43) })).rejects.toThrow(`run ${run.id} is leased by another session`)
   await expect(call(member, 'report_step', { runId: run.id, summary: 's' })).rejects.toThrow('leased by another session')
   await expect(call(member, 'release_run', { runId: run.id })).rejects.toThrow('leased by another session')
@@ -73,6 +70,12 @@ it('a claim race has one winner', async () => {
   const r = await Promise.allSettled([call(member, 'claim_run', { runId: run.id }), call(member, 'claim_run', { runId: run.id })])
   expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1)
   expect(r.find((x) => x.status === 'rejected')).toMatchObject({ reason: { message: expect.stringContaining('claimed by someone else') } })
+})
+
+it('the loser of a claim race that reads after the winner committed gets the same message', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  await expect(call(member, 'claim_run', { runId: run.id })).rejects.toThrow(`run ${run.id} was claimed by someone else`)
 })
 
 it('update_worklog needs the token of the live lease', async () => {
@@ -140,7 +143,7 @@ it('list_frontier flags claimable and leased Tickets', async () => {
   expect(new Date(f.leaseExpiresAt).getTime()).toBe(beat + jobs.SESSION_TIMEOUT_MS)
 })
 
-it('a Run handed back via release_run is not escalated by its age', async () => {
+it('a Run handed back via release_run stays awaiting_session', async () => {
   const { run } = await seed()
   await raw(sql`UPDATE "runs" SET "created_at" = now() - interval '2 hours' WHERE "id" = ${run.id}`)
   const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
@@ -148,7 +151,7 @@ it('a Run handed back via release_run is not escalated by its age', async () => 
   await jobs.expireStaleSessions(payload)
   expect(await status(run.id)).toBe('awaiting_session')
   await jobs.expireStaleSessions(payload, late())
-  expect(await status(run.id)).toBe('needs_human')
+  expect(await status(run.id)).toBe('awaiting_session')
 })
 
 it('release lock refuses a Run that is not running', async () => {

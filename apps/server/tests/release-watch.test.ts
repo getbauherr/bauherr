@@ -1,24 +1,21 @@
-import pg from 'pg'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let fake: FakeBackend
 let ws: number
 let product: number
 let release: typeof import('../src/lib/release')
+let jobs: typeof import('../src/jobs')
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_release_watch WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_release_watch')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_release_watch')
+  testDb = await createTestDb('release_watch')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -26,15 +23,17 @@ beforeAll(async () => {
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   release = await import('../src/lib/release')
+  jobs = await import('../src/jobs')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
-  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, stagingUrl: 'https://staging.example' }, ...o })).id as number
+  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, gateOwners: 'owner', stagingUrl: 'https://staging.example' }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
 })
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** A review Ticket (forge issue + Payload row) whose build Run opened an MR. */
@@ -123,6 +122,19 @@ it('evaluates only the latest run of a check name', async () => {
   expect(await summaries(n)).toHaveLength(1)
 })
 
+it('a red staging check is re-run once; red then green confirms staging', async () => {
+  await setProduct({ deployChecks: '' })
+  const { pr, n } = await reviewTicket('retry staging')
+  const sha = fake.merge(repo, pr.number)
+  await release.watchRelease(payload)
+  fake.setChecks(repo, sha, [{ id: 1, runId: 3, name: 'ci', status: 'completed', conclusion: 'failure' }])
+  fake.setRerunChecks(repo, sha, [{ id: 2, runId: 3, name: 'ci', status: 'completed', conclusion: 'success' }])
+  await release.watchRelease(payload)
+  expect(await summaries(n)).toHaveLength(0)
+  await release.watchRelease(payload)
+  expect(await summaries(n)).toHaveLength(1)
+})
+
 it('webhook mode: POSTs once, retries after a non-2xx, confirms only 2 minutes after the request', async () => {
   await setProduct({ deployMode: 'webhook', deployWebhookUrl: 'https://hook.example/deploy', stagingUrl: 'https://staging.example' })
   const status = { hook: 500, staging: 200 }
@@ -173,10 +185,11 @@ it('notes a closed-unmerged MR once and leaves the Ticket in review', async () =
   expect((await reload(t.id as number)).stage).toBe('review')
 })
 
+const droppedNotes = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(release.DROPPED_MARKER))
 const reopenedNotes = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith(release.REOPENED_MARKER))
 
 it('reopens a Ticket closed by its merged factory MR, comments once, then posts the staging summary', async () => {
-  await setProduct({ deployChecks: '' })
+  await setProduct({ deployChecks: '', productionGate: true, productionChecks: 'deploy-prod' })
   const { t, pr, n } = await reviewTicket('closed by merge', true)
   const sha = fake.merge(repo, pr.number)
   fake.setChecks(repo, sha, green)
@@ -185,28 +198,205 @@ it('reopens a Ticket closed by its merged factory MR, comments once, then posts 
   await release.watchRelease(payload)
   await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(1)
+  expect(await droppedNotes(n)).toHaveLength(0)
   expect((await fake.tickets(repo).get(n)).state).toBe('open')
   expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'release' })
   expect(await summaries(n)).toHaveLength(1)
+  await setProduct({ productionGate: false, productionChecks: '' })
 })
 
-it('leaves a Ticket closed by a human without a merged factory MR closed', async () => {
+it('settles a Ticket closed by a human before any merge as done, noted once', async () => {
   const { t, n } = await reviewTicket('closed by hand', true)
   await fake.tickets(repo).close(n, 'not_planned')
   await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
   await release.watchRelease(payload)
+  await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(0)
+  expect(await droppedNotes(n)).toHaveLength(1)
   expect((await fake.tickets(repo).get(n)).state).toBe('closed')
-  expect((await reload(t.id as number)).state).toBe('closed')
+  expect(await reload(t.id as number)).toMatchObject({ state: 'closed', stage: 'done' })
+})
+
+it('keeps a not-planned close after the merge closed, sets stage done, notes once', async () => {
+  const { t, pr, n } = await reviewTicket('dropped after merge', true)
+  fake.merge(repo, pr.number)
+  await fake.tickets(repo).close(n, 'not_planned')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(0)
+  expect(await droppedNotes(n)).toHaveLength(1)
+  expect((await fake.tickets(repo).get(n)).state).toBe('closed')
+  expect(await reload(t.id as number)).toMatchObject({ state: 'closed', stage: 'done' })
+})
+
+it('does not settle a Ticket reopened on the forge before the next pass', async () => {
+  const { t, n } = await reviewTicket('reopened early', true)
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  expect(await droppedNotes(n)).toHaveLength(0)
+  expect(await reload(t.id as number)).toMatchObject({ state: 'open', stage: 'review' })
+})
+
+it('does not touch a decided closed Ticket again', async () => {
+  const { t, n } = await reviewTicket('decided', true)
+  await fake.tickets(repo).close(n, 'not_planned')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed' }, ...o })
+  await release.watchRelease(payload)
+  const spy = vi.spyOn(fake.tickets(repo), 'get')
+  try {
+    await release.watchRelease(payload)
+    expect(spy.mock.calls.filter(([x]) => x === n)).toHaveLength(0)
+  } finally {
+    spy.mockRestore()
+  }
 })
 
 it('leaves an accepted Ticket closed', async () => {
   const { t, pr, n } = await reviewTicket('accepted', true)
   fake.merge(repo, pr.number)
+  fake.actingAs = 'owner'
   await fake.tickets(repo).addLabels(n, [release.APPROVED_STAGING])
+  fake.actingAs = 'factory'
   await fake.tickets(repo).close(n, 'completed')
-  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging' }, ...o })
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging', productionState: 'awaiting_approval' }, ...o })
   await release.watchRelease(payload)
   expect(await reopenedNotes(n)).toHaveLength(0)
   expect((await fake.tickets(repo).get(n)).state).toBe('closed')
+})
+
+it('does not settle a completed close as done on an agent-set staging label while the staging gate is off', async () => {
+  const { t, pr, n } = await reviewTicket('agent accepted', true)
+  fake.merge(repo, pr.number)
+  fake.actingAs = 'intruder'
+  await fake.tickets(repo).addLabels(n, [release.APPROVED_STAGING])
+  fake.actingAs = 'factory'
+  await fake.tickets(repo).close(n, 'completed')
+  await payload.update({ collection: 'tickets', id: t.id, data: { state: 'closed', stage: 'release', releaseState: 'on_staging', labels: [release.APPROVED_STAGING] }, ...o })
+  await release.watchRelease(payload)
+  expect(await reopenedNotes(n)).toHaveLength(1)
+  expect((await fake.tickets(repo).get(n)).state).toBe('open')
+})
+
+it('parallel passes: one webhook, one timeout comment, one release', async () => {
+  await setProduct({ deployMode: 'webhook', deployWebhookUrl: 'https://hook.example/deploy', stagingUrl: 'https://staging.example' })
+  const fetchMock = vi.fn(async (url: string) => new Response(null, { status: url.includes('hook') ? 200 : 500 }))
+  vi.stubGlobal('fetch', fetchMock)
+  const twice = (now: number) => Promise.all([release.watchRelease(payload, now), release.watchRelease(payload, now)])
+  try {
+    const { t, pr, n } = await reviewTicket('parallel')
+    fake.merge(repo, pr.number)
+    const t0 = Date.now()
+    const [a, b] = await twice(t0)
+    expect(a.released + b.released).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((await reload(t.id as number)).deployRequestedAt).not.toBeNull()
+    const [c, d] = await twice(t0 + release.STAGING_TIMEOUT_MS + 1000)
+    expect(c.timedOut + d.timedOut).toBe(1)
+    expect((await reload(t.id as number)).releaseState).toBe('timed_out')
+    expect((await fake.tickets(repo).listComments(n)).filter((x) => x.body.includes('staging not confirmed'))).toHaveLength(1)
+  } finally {
+    vi.unstubAllGlobals()
+    await setProduct({ deployMode: 'observe-ci', deployWebhookUrl: null })
+  }
+})
+
+it('a failed label add during the merge pass keeps the DB stage; the next poll restores the forge label', async () => {
+  const { t, pr, n } = await reviewTicket('flaky')
+  fake.merge(repo, pr.number)
+  fake.failNext('addLabels')
+  await release.watchRelease(payload)
+  expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
+  expect((await reload(t.id as number)).mergeSha).toBeTruthy()
+  await (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
+  expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
+  expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
+})
+
+describe('staging on a descendant SHA', () => {
+  const pending = [{ name: 'ci', status: 'in_progress', conclusion: null }]
+  const red = [{ name: 'ci', status: 'completed', conclusion: 'failure' }]
+  const calls: string[] = []
+  const methods = ['listChecks', 'getBranch', 'getRepository', 'isAncestor', 'listCommits'] as const
+  let originals: any[] = []
+  beforeEach(async () => {
+    await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`UPDATE "tickets" SET "stage" = 'build'`)
+    originals = methods.map((m) => (fake.forge as any)[m])
+    calls.length = 0
+    methods.forEach((m, i) => ((fake.forge as any)[m] = (...a: unknown[]) => (calls.push(m === 'listChecks' ? `${m}:${a[1]}` : m), originals[i](...a))))
+  })
+  afterEach(() => methods.forEach((m, i) => ((fake.forge as any)[m] = originals[i])))
+  const tipSha = async () => (await originals[1](repo, 'main')).sha as string
+  const merged = async (title: string) => {
+    const t = await reviewTicket(title)
+    return { ...t, sha: fake.merge(repo, t.pr.number) }
+  }
+
+  it('a pending mergeSha costs one listChecks and nothing else', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('pending')
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, pending)
+    calls.length = 0
+    await release.watchRelease(payload)
+    expect(calls.filter((c) => !c.startsWith('listChecks:'))).toEqual([])
+    expect(await summaries(n)).toHaveLength(0)
+  })
+
+  it('a red mergeSha with a green descendant tip confirms, within 4 calls', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('batch a')
+    const tip = { sha: await tipSha() }
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, red)
+    fake.setChecks(repo, tip.sha, green)
+    fake.setAncestors(repo, tip.sha, [sha])
+    calls.length = 0
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(1)
+    expect(calls).not.toContain('listCommits')
+    expect(calls.filter((c) => c === 'getRepository' || c === 'getBranch')).toHaveLength(2)
+    expect(calls.filter((c) => c === `listChecks:${tip.sha}`)).toHaveLength(1)
+  })
+
+  it('two waiting Tickets in one tick share one tip lookup', async () => {
+    await setProduct({ deployChecks: '' })
+    const a = await merged('share a')
+    const b = await merged('share b')
+    await release.watchRelease(payload)
+    const tip = await tipSha()
+    fake.setChecks(repo, a.sha, red)
+    fake.setChecks(repo, b.sha, red)
+    fake.setChecks(repo, tip, red)
+    calls.length = 0
+    await release.watchRelease(payload)
+    expect(calls.filter((x) => x === 'getBranch')).toHaveLength(1)
+    expect(calls.filter((x) => x === `listChecks:${tip}`)).toHaveLength(1)
+  })
+
+  it('a red or pending tip does not confirm', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('late red')
+    const tip = { sha: await tipSha() }
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, red)
+    fake.setAncestors(repo, tip.sha, [sha])
+    fake.setChecks(repo, tip.sha, red)
+    await release.watchRelease(payload)
+    fake.setChecks(repo, tip.sha, pending)
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(0)
+  })
+
+  it('a green tip that does not descend from mergeSha does not count', async () => {
+    await setProduct({ deployChecks: '' })
+    const { sha, n } = await merged('unrelated')
+    const tip = { sha: await tipSha() }
+    await release.watchRelease(payload)
+    fake.setChecks(repo, sha, red)
+    fake.setChecks(repo, tip.sha, green)
+    fake.setAncestors(repo, tip.sha, [])
+    await release.watchRelease(payload)
+    expect(await summaries(n)).toHaveLength(0)
+  })
 })

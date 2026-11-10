@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
-import pg from 'pg'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let member: Record<string, any>
@@ -15,14 +15,10 @@ let actions: typeof import('../src/lib/actions')
 const o = { overrideAccess: true } as const
 let other: number
 
+let testDb: TestDb
 beforeAll(async () => {
-  const base = process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_test_backlog WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_test_backlog')
-  await admin.end()
-  process.env.DATABASE_URL = base.replace(/\/[^/]+$/, '/bauherr_test_backlog')
+  testDb = await createTestDb('backlog')
+  process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
@@ -32,7 +28,7 @@ beforeAll(async () => {
   jobs = await import('../src/jobs')
   actions = await import('../src/lib/actions')
   const { callTool } = await import('../src/lib/mcp-tools')
-  call = (user, name, input) => callTool({ payload, user }, name, input)
+  call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
   other = (await payload.create({ collection: 'workspaces', data: { name: 'other', slug: 'other' }, ...o })).id as number
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
@@ -44,6 +40,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await payload?.destroy()
+  await testDb?.drop(payload)
 })
 
 /** An open Ticket with rank `rank` and, unless `run` is null, an awaiting_session Run of the given stage. */
@@ -65,10 +62,10 @@ it('claim_next returns null when nothing is claimable', async () => {
   expect(await call(member, 'claim_next', {})).toBeNull()
 })
 
-it('claim_next takes in-flight work before the top-ranked Ticket, skipping blocked ones', async () => {
+it('claim_next takes the rightmost stage before the top-ranked Ticket, skipping blocked ones', async () => {
   await reset()
   const top = await seed('a')
-  const flight = await seed('z', { reviewRounds: 1 })
+  const flight = await seed('z', { stage: 'review' })
   const blocker = await seed('zz', {}, null)
   const blocked = await seed('A', { blockedBy: [blocker.ticket.id] })
   expect((await call(member, 'list_frontier', {})).map((t: any) => t.ticket).slice(0, 2)).toEqual([flight.ticket.id, top.ticket.id])
@@ -112,9 +109,9 @@ it('new Tickets rank after the last one of their Workspace only', async () => {
   await reset()
   await seed('m', {}, null)
   await seed('Z', {}, null)
-  const next = await jobs.lastRankAfter(payload, ws)
+  const next = await actions.lastRankAfter(payload, ws)
   expect(next > 'm').toBe(true)
-  expect(await jobs.lastRankAfter(payload, other)).toBe('V')
+  expect(await actions.lastRankAfter(payload, other)).toBe('V')
 })
 
 it('rankTicket drops the lower bound when the displayed neighbours are out of rank order', async () => {
@@ -156,4 +153,89 @@ it('rankTicket opens a gap when the neighbours leave no room, keeping the order'
   await actions.rankTicket(payload, member, { ticket: moved.ticket.id, before: a.ticket.id, after: b.ticket.id, workspaceId: ws })
   const [ra, rm, rb, rc] = [await rankOf(a.ticket.id), await rankOf(moved.ticket.id), await rankOf(b.ticket.id), await rankOf(c.ticket.id)]
   expect(ra < rm && rm < rb && rb < rc).toBe(true)
+})
+
+it('claim_run refuses a Run that claim_next would not return and names the right one', async () => {
+  await reset()
+  const low = await seed('b')
+  const review = await seed('z', { stage: 'review' }, { stage: 'review' })
+  await expect(call(member, 'claim_run', { runId: low.run!.id })).rejects.toThrow(`take Run ${review.run!.id} (#1, review) first`)
+  expect((await call(member, 'claim_run', { runId: review.run!.id })).run.id).toBe(review.run!.id)
+  expect((await call(member, 'claim_run', { runId: low.run!.id })).run.id).toBe(low.run!.id)
+})
+
+it('claim_next goes one column left when the right column is leased by another agent', async () => {
+  await reset()
+  await seed('a', { stage: 'review' }, { stage: 'review', status: 'running', sessionOwner: outsider.id })
+  const build = await seed('b')
+  const claimed = await call(member, 'claim_next', {})
+  expect(claimed.run.id).toBe(build.run!.id)
+  expect(claimed.skipped).toEqual([expect.objectContaining({ stage: 'review', reason: `leased by ${outsider.email}` })])
+  const row = (await call(member, 'list_frontier', {})).find((t: any) => t.stage === 'review')
+  expect(row).toMatchObject({ claimable: false, reason: `leased by ${outsider.email}` })
+})
+
+it('claim_next skips a parent and reports a blocked Ticket ahead', async () => {
+  await reset()
+  await seed('a', { stage: 'parent' }, { stage: 'plan' })
+  const blocker = await seed('zz', {}, null)
+  await seed('b', { stage: 'review', blockedBy: [blocker.ticket.id] }, null)
+  const build = await seed('c')
+  const claimed = await call(member, 'claim_next', {})
+  expect(claimed.run.id).toBe(build.run!.id)
+  expect(claimed.skipped).toEqual([expect.objectContaining({ stage: 'review', reason: expect.stringMatching(/^blocked by #/) })])
+})
+
+it('claim_run rejects the Run of a parent', async () => {
+  await reset()
+  const parent = await seed('a', { stage: 'parent' }, { stage: 'plan' })
+  await expect(call(member, 'claim_run', { runId: parent.run!.id })).rejects.toThrow('parents are not claimable')
+})
+
+it('claim_run refuses a lower-ranked Run even when the caller\'s login is on its Ticket from an earlier claim', async () => {
+  await reset()
+  const sess = await payload.create({ collection: 'bauherren', data: { email: 's@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const top = await seed('a')
+  const mine = await seed('b', { assignees: 'fake' })
+  await expect(call(sess, 'claim_run', { runId: mine.run!.id })).rejects.toThrow(`take Run ${top.run!.id} (#1, build) first`)
+})
+
+it('claim_run refuses a Run outside the frontier', async () => {
+  await reset()
+  const blocker = await seed('zz', {}, null)
+  const blocked = await seed('a', { blockedBy: [blocker.ticket.id] })
+  await expect(call(member, 'claim_run', { runId: blocked.run!.id })).rejects.toThrow(`Run ${blocked.run!.id} is not claimable now`)
+})
+
+it('claim_next moves past a top Run whose claim errors, and claim_run no longer waits for it', async () => {
+  await reset()
+  const top = await seed('a')
+  const next = await seed('b')
+  const after = await seed('c')
+  const spy = vi.spyOn(await import('../src/lib/actions'), 'sourceOf').mockRejectedValueOnce(new Error('source unreachable'))
+  const claimed = await call(member, 'claim_next', {})
+  spy.mockRestore()
+  expect(claimed.run.id).toBe(next.run!.id)
+  expect(claimed.skipped).toContainEqual({ run: top.run!.id, reason: 'claim failed: source unreachable' })
+  expect((await call(member, 'claim_run', { runId: after.run!.id })).run.id).toBe(after.run!.id)
+})
+
+it('ranks zzzzxV and zzzzxk are in the same order on the Board and in claim_next', async () => {
+  await reset()
+  const upper = await seed('zzzzxV')
+  const lower = await seed('zzzzxk')
+  const { frontierOrder } = await import('../src/lib/frontier')
+  const board = frontierOrder([upper.ticket, lower.ticket] as any, new Map()).map((t) => t.id)
+  expect(board).toEqual([upper.ticket.id, lower.ticket.id])
+  expect((await call(member, 'claim_next', {})).run.id).toBe(upper.run!.id)
+})
+
+it('JS cmp order equals ORDER BY "rank" COLLATE "C" for mixed-case ranks', async () => {
+  await reset()
+  const ids = [(await seed('zzzzxV', {}, null)).ticket.id, (await seed('zzzzxk', {}, null)).ticket.id, (await seed('zzzzxA', {}, null)).ticket.id, (await seed('zzzzx0', {}, null)).ticket.id]
+  const { cmp } = await import('../src/lib/frontier')
+  const ranks = await Promise.all(ids.map(rankOf))
+  const js = ids.map((id, i) => ({ id, rank: ranks[i] })).sort((x, y) => cmp(x.rank, y.rank)).map((x) => x.id)
+  const db = await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${ws} ORDER BY "rank" COLLATE "C"`)
+  expect(db.rows.map((r: any) => r.id)).toEqual(js)
 })

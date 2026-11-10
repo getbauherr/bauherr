@@ -10,8 +10,10 @@ export const PACK_DIR = resolve(import.meta.dirname, '../../../../pack');
 
 export type Stub = { url: string; seen: { headers: IncomingHttpHeaders; body: string }[]; close(): Promise<void> };
 
-/** Plays the gateway: answers every /v1/messages with a minimal streamed end_turn message. */
-export async function startStubGateway(text = 'done', port = 0, budgetExceeded = false): Promise<Stub> {
+export type StubTool = { name: string; input: object };
+
+/** Plays the gateway: answers every /v1/messages with a minimal streamed end_turn message, or with one tool_use when `tool` returns a call for the request's `model`, `prompt` (all messages, as JSON) and the agent's `cwd`. */
+export async function startStubGateway(text = 'done', port = 0, budgetExceeded = false, tool?: (model: string, prompt: string, cwd: string) => StubTool | undefined): Promise<Stub> {
   const seen: Stub['seen'] = [];
   let n = 0;
   const server: Server = createServer((req, res) => {
@@ -24,14 +26,19 @@ export async function startStubGateway(text = 'done', port = 0, budgetExceeded =
         return;
       }
       const id = `msg_stub_${++n}`;
+      const parsed = (tool ? JSON.parse(body) : { model: '', messages: [] }) as { model: string; messages: unknown[] };
+      const last = JSON.stringify(parsed.messages);
+      const call = last.includes('tool_result') ? undefined : tool?.(parsed.model, last, /Primary working directory: ([^\\\s]+)/.exec(body)?.[1] ?? '');
       const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.end(
         ev('message_start', { message: { id, type: 'message', role: 'assistant', model: 'stub-model', content: [], stop_reason: null, usage: { input_tokens: 10, output_tokens: 1 } } }) +
-          ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }) +
-          ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text } }) +
+          (call
+            ? ev('content_block_start', { index: 0, content_block: { type: 'tool_use', id: `toolu_${n}`, name: call.name, input: {} } }) +
+              ev('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(call.input) } })
+            : ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }) + ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text } })) +
           ev('content_block_stop', { index: 0 }) +
-          ev('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } }) +
+          ev('message_delta', { delta: { stop_reason: call ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } }) +
           ev('message_stop', {}),
       );
     });
@@ -60,7 +67,7 @@ export function makeBareRepo(): string {
   return `file://${root}`;
 }
 
-export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'triage' | 'plan' | 'build' }): RunCtx & { logs: string[]; comments: string[]; worklogs: string[]; stages: string[]; prs: { head: string; body: string }[] } {
+export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'triage' | 'plan' | 'build' | 'scan' }): RunCtx & { logs: string[]; comments: string[]; worklogs: string[]; stages: string[]; prs: { head: string; body: string }[] } {
   const logs: string[] = [];
   const comments: string[] = [];
   const worklogs: string[] = [];

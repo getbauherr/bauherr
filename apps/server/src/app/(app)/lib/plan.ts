@@ -1,6 +1,9 @@
 export const PLAN_MARKER = '<!-- bauherr:plan -->'
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 export const TRIAGE_MARKER = '<!-- bauherr:triage -->'
+export const ESCALATION_MARKER = '<!-- bauherr:escalation -->'
+export const INVESTIGATION_MARKER = '<!-- bauherr:investigation -->'
+export const SECURITY_FINDING_MARKER = (key: string) => `<!-- bauherr:security-finding:${key} -->`
 export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
 export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[] }
@@ -14,8 +17,8 @@ export const firstWith = <T extends Commentish>(comments: T[], marker: string): 
 const section = (md: string, heading: RegExp): string =>
   new RegExp(`^##\\s+${heading.source}.*$([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'im').exec(md)?.[1] ?? ''
 
-/** Splits at `;` (when `semi`) and at `.` followed by whitespace, ignoring parentheses and code spans. */
-const split = (text: string, semi: boolean): string[] => {
+/** Splits at `;` (when `semi`), at `.` and (when `q`) at `?` followed by whitespace, ignoring parentheses and code spans. */
+const split = (text: string, semi: boolean, q = false): string[] => {
   const out: string[] = []
   let cur = ''
   let depth = 0
@@ -26,7 +29,7 @@ const split = (text: string, semi: boolean): string[] => {
     if (c === '`') code = !code
     else if (!code && c === '(') depth++
     else if (!code && c === ')') depth = Math.max(0, depth - 1)
-    else if (!code && !depth && ((semi && c === ';') || (c === '.' && /\s/.test(text[i + 1] ?? ' ')))) {
+    else if (!code && !depth && ((semi && c === ';') || ((c === '.' || (q && c === '?')) && /\s/.test(text[i + 1] ?? ' ')))) {
       out.push(cur)
       cur = ''
     }
@@ -36,31 +39,58 @@ const split = (text: string, semi: boolean): string[] => {
 }
 
 const CRITICAL = /(?:,\s*|\s+[—–-]\s+)critical\s*\.?$|\s*\(critical\)\s*\.?$/i
+const CRITICAL_FIELD = /\s*\bcritical:\s*(true|yes|false|no)\b(?:\s*\([^)]*\))?\.?/gi
+const TITLE_FIELD = /\s*\(\s*critical:\s*(?:true|yes|false|no)\s*\)/gi
+const LETTERED = /\s+(?=\(\w\)\s)/
+const isCritical = (title: string, body: string): boolean =>
+  CRITICAL.test(title) || [...`${title} ${body}`.matchAll(CRITICAL_FIELD)].some((m) => /^(true|yes)$/i.test(m[1]!))
+
+const ROW = /^(?=\s*[-*]\s+\*\*D\d+\b|\s*\|\s*D\d+\s*\|)/m
 
 /**
- * Rows of the plan's `## Decisions` block: `- **D<n> <title>[, critical | — critical | - critical | (critical)]**. Default: … Alternative(s): …`.
+ * Rows of the plan's `## Decisions` block, in any of three shapes:
+ * `- **D<n>** Question? Alternatives: …; … Default: … Why: … critical: true|false.` (canonical),
+ * `- **D<n> <title>[, critical | — critical | - critical | (critical)]**. Default: … Alternative(s): …`, and
+ * table rows `| D<n> | question | a / b | default | why | yes |`.
  * Without `Default:` the default is the first sentence. Alternatives split at `;` and sentence ends, one option each.
  */
-export const parseDecisions = (plan: string): Decision[] => {
-  const bullets = section(plan, /Decisions\b/).split(/^(?=\s*[-*]\s+\*\*D\d+\b)/m)
-  return bullets.flatMap((b) => {
-    const m = /^\s*[-*]\s+\*\*(D\d+)\s+(.+?)\*\*[.:]?\s*([\s\S]*)$/.exec(b)
+export const parseDecisions = (plan: string): Decision[] =>
+  section(plan, /Decisions\b/).split(ROW).flatMap((b) => {
+    const t = /^\s*\|\s*(D\d+)\s*\|(.*)$/m.exec(b)
+    if (t) {
+      const [question = '', options = '', def = '', , crit = ''] = t[2]!.split('|').map((c) => c.trim())
+      return [{ id: t[1]!, title: question, critical: /^(yes|true)\b/i.test(crit), default: def || options.split(' / ')[0]!, options: [def, ...options.split(' / ').filter((o) => o !== def)].filter(Boolean) }]
+    }
+    const m = /^\s*[-*]\s+\*\*(D\d+)(?:\s+(.+?))?\*\*[.:]?\s*([\s\S]*)$/.exec(b)
     if (!m) return []
-    const [, id, head, rest] = m as unknown as [string, string, string, string]
-    const body = rest.replace(/\s+/g, ' ').trim()
-    const alternatives = [...body.matchAll(/Alternatives?:\s*(.+?)(?=\s*Alternatives?:|$)/g)].flatMap((a) => split(a[1]!, true))
-    const lead = /^(.*?)(?=\s*Alternatives?:|$)/.exec(body)![1]!.replace(/^Default:\s*/, '')
+    const [, id, bold, rest] = m as unknown as [string, string, string | undefined, string]
+    let title = bold?.replace(/\.$/, '') ?? ''
+    let body = rest.replace(/\s+/g, ' ').trim()
+    if (!bold) {
+      const [first = '', ...more] = split(body.replace(/^\([^)]*\)\s*/, ''), false, true)
+      title = first.replace(/\.$/, '')
+      body = more.join('. ')
+    }
+    const critical = isCritical(title, body)
+    body = body.replace(CRITICAL_FIELD, '')
+    title = title.replace(TITLE_FIELD, '').replace(CRITICAL_FIELD, '')
+    const alts = [...body.matchAll(/(?:Alternatives?|Options):\s*(.+?)(?=\s*(?:Alternatives?:|Options:|(?:Recommended\s+default|Default):?\s|Why:)|$)/g)].flatMap((a) => split(a[1]!, true).flatMap((x) => x.split(LETTERED)).flatMap((x) => x.split(' / ')))
+    const marked = /\b(?:Recommended\s+default|Default):?\s+(.*?)(?=\s*(?:Alternatives?:|Options:|Why:)|$)/.exec(body)?.[1]
+    const lead = marked ?? /^(.*?)(?=\s*(?:Alternatives?|Options):|$)/.exec(body)![1]!
     const def = (split(lead, false)[0] ?? '').trim()
-    const title = head.replace(/\.$/, '')
+    const letter = /^\(?(\w)\)?(?!\w)/.exec(def)?.[1]
+    const alternatives = alts.filter((a) => !letter || !a.startsWith(`(${letter})`)).map((a) => a.replace(/^\(\w\)\s+/, ''))
     return [{
       id,
       title: title.replace(CRITICAL, '').trim(),
-      critical: CRITICAL.test(title),
+      critical,
       default: def,
-      options: [def, ...alternatives],
+      options: [...new Set([def, ...alternatives])],
     }]
   })
-}
+
+/** True when the `## Decisions` section has bullet or table lines (whether or not they parse). */
+export const decisionsSectionHasRows = (plan: string): boolean => /^\s*[-*|]/m.test(section(plan, /Decisions\b/))
 
 /** `D<n>: <answer>` lines of a decisions Comment. */
 export const parseAnswers = (comment: string): Record<string, string> =>
@@ -76,16 +106,24 @@ export const planSummary = (plan: string): { title: string; steps: number } => {
   return { title: title.trim(), steps: (section(plan, /Steps\b/).match(/^\s*\d+\.\s/gm) ?? []).length }
 }
 
-export type SubTicket = { title: string; body: string }
+/** Path globs of the plan's `## Files` section, one per line (list bullets and backticks stripped); `[]` without the section. */
+export const planFiles = (plan: string): string[] => [
+  ...new Set(section(plan, /Files\b/).split('\n').map((l) => l.trim().replace(/^[-*]\s+/, '').replace(/`/g, '').trim()).filter((l) => l && !l.startsWith('#'))),
+]
 
-/** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines. */
+export type SubTicket = { title: string; body: string; after?: string }
+
+/** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines; an `after: <sibling title>` line orders it behind that sibling. */
 export const subTickets = (plan: string): SubTicket[] =>
   section(plan, /Sub-tickets\b/)
     .split(/^(?=[-*]\s+\*\*)/m)
     .flatMap((item) => {
       const m = /^[-*]\s+\*\*(.+?)\*\*\s*(?:[—–:-]\s*)?([\s\S]*)$/.exec(item.trim())
       const title = m?.[1]?.trim()
-      return title ? [{ title, body: m![2]!.split('\n').map((l) => l.trim()).filter(Boolean).join('\n') }] : []
+      if (!title) return []
+      const lines = m![2]!.split('\n').map((l) => l.trim()).filter(Boolean)
+      const after = lines.map((l) => /^after:\s*(.+)$/i.exec(l)?.[1]?.trim()).find(Boolean)
+      return [{ title, body: lines.filter((l) => !/^after:\s*\S/i.test(l)).join('\n'), ...(after && { after }) }]
     })
 
 /** The decision sheet in force: the newest plan or triage Comment (triage questions use the plan's `## Decisions` format). */

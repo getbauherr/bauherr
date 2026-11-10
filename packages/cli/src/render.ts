@@ -8,12 +8,13 @@ const envFile = (dir: string) => join(dir, '.env')
 export const cliVersion = (): string =>
   (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
 
-/** Repo-root compose.yaml turned into the installed one: image pinned, no build, no fixed host ports or container names, secrets from the env file. */
+/** Repo-root compose.yaml turned into the installed one: image pinned, no build, no fixed db/gateway host ports or container names, secrets from the env file. */
 export const renderCompose = (template: string, version: string): string =>
   template
     .replace('${BAUHERR_VERSION:-dev}', version)
+    .replace(/^  build:\n(?:    .*\n)+/m, '')
     .split('\n')
-    .filter((l) => !/^\s+build: \.$/.test(l) && !/container_name:/.test(l) && !/ports: \["127\.0\.0\.1:/.test(l))
+    .filter((l) => !/container_name:/.test(l) && !/ports: \["127\.0\.0\.1:(54330|4000):/.test(l))
     .join('\n')
     .replace('PAYLOAD_SECRET_FILE: /run/secrets/payload_secret', 'PAYLOAD_SECRET: ${PAYLOAD_SECRET:?run bauherr init}')
     .replace('ENCRYPTION_KEY_FILE: /run/secrets/encryption_key', 'ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run bauherr init}')

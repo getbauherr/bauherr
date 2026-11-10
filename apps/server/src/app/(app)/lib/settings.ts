@@ -1,8 +1,19 @@
+import type { Check, Forge } from '@bauherr/adapters'
+import { formatReviewChecks } from '@bauherr/runner'
 import { ValidationError } from 'payload'
+import { invisibleDead } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
-import { packed, resolveMode } from '../../../lib/mode'
+import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
+import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
+import { backendFor } from '../../../lib/adapters'
+import { connectionInput } from '../../../lib/connection'
+import { forgeOf } from '../../../lib/release'
+import { suggestOverlapIgnore } from '../../../lib/overlap'
+import { wipCount } from '../../../lib/wip'
+import { FORGE_TIMEOUT_MS, within } from './overview'
+import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
 export type FormState = { saved?: boolean; error?: string; fields?: Record<string, string>; notice?: string }
@@ -17,11 +28,15 @@ export async function run(fn: () => Promise<string | void>, rename: Record<strin
     const errors = (e as { data?: { errors?: { path: string; message: string }[] } }).data?.errors
     if (e instanceof ValidationError || errors) {
       const fields = Object.fromEntries((errors ?? []).map((x) => [rename[x.path] ?? x.path, x.message]))
-      return { fields, error: Object.keys(fields).length ? undefined : (e as Error).message }
+      const n = Object.keys(fields).length
+      return { fields, error: n ? (n === 1 ? '1 field needs attention' : `${n} fields need attention`) : (e as Error).message }
     }
     return { error: (e as Error).message }
   }
 }
+
+/** Provider presets as the Connection form needs them. */
+export const connectionPresets = Object.fromEntries(Object.entries(PRESETS).map(([k, v]) => [k, { required: v.required, hint: v.secret.hint }]))
 
 export const isAdmin = (u: Bauherr) => u.role === 'admin'
 export const only = (u: Bauherr) => {
@@ -30,16 +45,18 @@ export const only = (u: Bauherr) => {
 
 const o = { overrideAccess: true, depth: 0 } as const
 
-/** The preset of the Workspace's llm-provider Connection (anthropic when it has none). */
+/** Preset (of the first llm-provider Connection; anthropic when it has none) plus the slugs of all of them. */
 export async function presetFor(workspace: number) {
-  const { docs } = await (await payloadClient()).find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, limit: 1, select: { config: true }, ...o } as never)
-  return PRESETS[presetOf((docs[0] as unknown as { config?: never } | undefined)?.config)]
+  const { docs } = await (await payloadClient()).find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', pagination: false, select: { config: true, slug: true }, ...o } as never)
+  const conns = docs as unknown as { config?: never; slug: string }[]
+  return { ...PRESETS[presetOf(conns[0]?.config)], slugs: conns.map((c) => c.slug) }
 }
 
 export async function loadWorkspaceSettings(id: number) {
   const payload = await payloadClient()
   const ws = (await payload.findByID({ collection: 'workspaces', id, select: { gatewayKey: false }, ...o } as never)) as unknown as Record<string, any>
   const preset = await presetFor(id)
+  const github = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: id } }, { kind: { equals: 'github' } }] }, select: { name: true }, pagination: false, ...o } as never)).docs as unknown as { id: number; name: string }[]
   const spend = gatewayEnabled() && process.env.GATEWAY_DATABASE_URL ? await budgetStatus(ws.slug).catch(() => null) : null
   return {
     name: ws.name as string,
@@ -47,11 +64,18 @@ export async function loadWorkspaceSettings(id: number) {
     budgetUnit: (ws.budgetUnit ?? 'usd') as 'usd' | 'tokens',
     budgetUsd30d: ws.budgetUsd30d as number | null,
     budgetTokens30d: ws.budgetTokens30d as number | null,
-    modelByTier: (ws.modelByTier ?? {}) as Record<string, string>,
+    hasRouter: !!ws.routerKey,
+    routerBudgetShare: (ws.routerBudgetShare ?? 20) as number,
+    // Tiers are stored as `<connection>/<model>`; the form shows the bare id of the first Connection, which `saveWorkspace` qualifies again.
+    modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
+    modelChoices: preset.defaultModels ? [...new Set(Object.values(preset.defaultModels))] : null,
     defaultMode: (ws.defaultMode ?? '') as string,
     modeByStage: (ws.modeByStage ?? {}) as Record<string, string>,
     placeholders: preset.defaultModels ?? DEFAULT_MODEL_BY_TIER,
     tiersRequired: !preset.defaultModels,
+    githubConnections: github.map((c) => [String(c.id), c.name] as [string, string]),
+    knowledgeConnection: String(typeof ws.knowledgeConnection === 'object' ? ws.knowledgeConnection?.id ?? '' : ws.knowledgeConnection ?? ''),
+    knowledgeRepo: (ws.knowledgeRepo ?? '') as string,
     spend,
     gatewayOn: gatewayEnabled(),
   }
@@ -61,22 +85,96 @@ export async function loadProducts(workspace: number) {
   const payload = await payloadClient()
   const where = { workspace: { equals: workspace } }
   const find = async (collection: string, extra: object = {}) => (await payload.find({ collection, where, sort: 'id', ...o, pagination: false, ...extra } as never)).docs as unknown as Record<string, any>[]
-  const [products, repositories, sources, connections] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } })])
+  const [products, repositories, sources, connections, embedTokens] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } }), find('embed_tokens')])
   return {
-    connections: connections.filter((c) => c.kind === 'github').map((c) => ({ id: c.id as number, name: c.name as string })),
+    connections: connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab').map((c) => ({ id: c.id as number, name: c.name as string })),
     products: await Promise.all(
-      products.map(async (p) => ({
-        id: p.id as number,
-        name: p.name as string,
-        slug: p.slug as string,
-        deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, gateOwners: (p.gateOwners ?? '') as string },
-        blocked: await blockedBy(payload, 'products', p.id),
-        repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
-        sources: sources
-          .filter((s) => (s.product?.id ?? s.product) === p.id)
-          .map((s) => ({ id: s.id as number, repo: s.repo as string, connection: (s.connection?.name ?? '') as string, cursor: (s.cursor ?? '') as string, polledAt: s.updatedAt as string })),
-      })),
+      products.map(async (p) => {
+        const product = {
+          id: p.id as number,
+          // Heuristic for setup step 3: any later Product save (not only the staging/gates form) also counts; create alone can differ by a few ms.
+          touched: Date.parse(p.updatedAt) - Date.parse(p.createdAt) >= 1000,
+          name: p.name as string,
+          slug: p.slug as string,
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number },
+          merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
+          reviewChecks: formatReviewChecks(p.reviewChecks),
+          securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
+          blocked: await blockedBy(payload, 'products', p.id),
+          embedTokens: embedTokens
+            .filter((e) => (e.product?.id ?? e.product) === p.id)
+            .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string })),
+          repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
+          sources: sources
+            .filter((s) => (s.product?.id ?? s.product) === p.id)
+            .map((s) => ({ id: s.id as number, repo: s.repo as string, connection: (s.connection?.name ?? '') as string, cursor: (s.cursor ?? '') as string, polledAt: s.updatedAt as string })),
+        }
+        const productionOn = productionGateOn({ productionGate: product.deploy.productionGate })
+        return { ...product, productionOn, setup: setupOf(product, productionOn) }
+      }),
     ),
+  }
+}
+
+/** One Product of the Workspace with the workflow facts and the people who can be gate owners (Members with a GitHub login); undefined when it belongs to another Workspace. */
+export async function loadProduct(workspace: number, id: number, viewerIsAdmin = false) {
+  const { products, connections } = await loadProducts(workspace)
+  const product = products.find((p) => p.id === id)
+  if (!product) return undefined
+  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, { or: [{ role: { equals: 'admin' } }, { 'tenants.tenant': { equals: workspace } }] }] }, sort: 'email', pagination: false, ...o } as never)
+  const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
+  // Admins are not tenant-scoped: only an Admin sees other Admins' emails; for everyone the callout still knows whether an Admin can be notified.
+  const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
+  return { product, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
+}
+
+export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
+
+const RECENT_COMMITS = 5
+const MAX_COMMITS_READ = 10
+
+/**
+ * Check names reported on the newest commits of the default branch plus `extraShas` (merge commits of recent Tickets), at most 10 commits in all.
+ * Sorted by how often a name was seen, then by name. `null` when the forge could not be read within `timeoutMs`.
+ */
+export async function collectChecks(forge: Forge, repo: string, extraShas: string[], timeoutMs = 3000): Promise<RecentCheck[] | null> {
+  const read = async () => {
+    const { defaultBranch } = await forge.getRepository(repo)
+    const head = (await forge.listBranches(repo)).find((b) => b.name === defaultBranch)?.sha
+    const newest = head ? (await forge.listCommits(repo, { to: head })).slice(0, RECENT_COMMITS).map((c) => c.sha) : []
+    const shas = [...new Set([...newest, ...extraShas])].slice(0, MAX_COMMITS_READ)
+    const runs = (await Promise.all(shas.map((sha) => forge.listChecks(repo, sha).catch(() => null)))).filter((r): r is Check[] => r !== null)
+    if (shas.length && !runs.length) return null
+    const byName = new Map<string, RecentCheck>()
+    for (const checks of runs) {
+      const latest = new Map<string, Check>()
+      for (const c of checks) if (!latest.has(c.name) || (c.id ?? 0) >= (latest.get(c.name)!.id ?? 0)) latest.set(c.name, c)
+      for (const [name, c] of latest) {
+        const seen = byName.get(name)
+        byName.set(name, { name, seen: (seen?.seen ?? 0) + 1, of: runs.length, lastConclusion: seen?.lastConclusion ?? c.conclusion ?? c.status })
+      }
+    }
+    return [...byName.values()].sort((a, b) => b.seen - a.seen || a.name.localeCompare(b.name))
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([read(), new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), timeoutMs)))])
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** The check names the Product's forge reported lately, for the check pickers; `null` when there is no forge or it does not answer. Read-only, call it on the Product page only. */
+export async function recentChecks(productId: number): Promise<RecentCheck[] | null> {
+  try {
+    const payload = await payloadClient()
+    const { backend, repo } = await forgeOf(payload, productId)
+    const merged = await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: productId } }, { mergeSha: { exists: true } }] }, sort: '-id', limit: RECENT_COMMITS, select: { mergeSha: true }, ...o } as never)
+    return await collectChecks(backend.forge, repo, (merged.docs as unknown as { mergeSha?: string }[]).flatMap((t) => t.mergeSha || []))
+  } catch {
+    return null
   }
 }
 
@@ -99,7 +197,7 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
   if (!admin && workspace == null) return []
   const own = admin ? [] : (await workspacesOf(user)).map((w) => w.id)
   const where = admin ? {} : { 'tenants.tenant': { equals: workspace } }
-  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where, sort: 'email', ...o, depth: 1, pagination: false } as never)
+  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where, sort: 'email', ...o, depth: 1, pagination: false, showHiddenFields: true } as never)
   return (docs as unknown as Record<string, any>[]).map((b) => ({
     id: b.id as number,
     email: b.email as string,
@@ -107,6 +205,8 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
     workspaces: ((b.tenants ?? []) as { tenant: { id: number; name: string } | number }[])
       .flatMap((t) => (typeof t.tenant === 'object' && t.tenant ? [t.tenant] : []))
       .filter((w) => admin || own.includes(w.id)),
+    locked: !!b.lockUntil && new Date(b.lockUntil as string).getTime() > Date.now(),
+    githubLogin: (b.githubLogin ?? '') as string,
     oidcLinked: !!b.oidcSubject,
     oidcSubject: admin ? ((b.oidcSubject ?? '') as string) : '',
   }))
@@ -171,16 +271,29 @@ export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: 
 export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
   const base = packed()
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true }, ...o } as never)) as Doc
-  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: s.gate_before ?? '', steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
+  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true, expediteLane: true }, ...o } as never)) as Doc
+  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
   const where = { workspace: { equals: workspace } }
   const [products, versions] = await Promise.all([
     payload.find({ collection: 'products', where, sort: 'name', pagination: false, ...o } as never),
     payload.find({ collection: 'workflow_versions', where, sort: '-version', pagination: false, ...o } as never),
   ])
   const baseJson = JSON.stringify({ stages: base })
+  const wip = await Promise.all(WIP_STAGES.map(async (s) => ({ stage: s, limit: wipLimit(ws, s), count: await wipCount(payload, workspace, s) })))
+  const overlap = await Promise.all(
+    (products.docs as unknown as Doc[]).map(async (p) => {
+      const ignore = (p.overlapIgnore ?? []) as string[]
+      const suggestions = await forgeOf(payload, p.id).then(({ backend, repo }) => suggestOverlapIgnore(backend.forge, repo)).catch(() => [])
+      return { id: p.id as number, name: p.name as string, ignore, suggestions: suggestions.filter((x) => !ignore.includes(x.path)) }
+    }),
+  )
   return {
     stages,
+    wip,
+    expediteLane: ws.expediteLane !== false,
+    overlap,
+    gates: humanGates(),
+    ladder: { plan: gateOn('plan'), staging: gateOn('release'), production: productionGateOn() },
     versions: (products.docs as unknown as Doc[]).map((p) => {
       const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)
       return { product: p.name as string, version: (v?.version ?? null) as number | null, at: (v?.createdAt ?? null) as string | null, overlay: v ? JSON.stringify(v.compiled) !== baseJson : false }
@@ -188,8 +301,9 @@ export async function loadWorkflow(workspace: number) {
   }
 }
 
-/** Factory health: instance-wide job counts of the last 24 h, the oldest queued job (within 7 days), last poll and error per Ticket source of the Workspace. */
-export async function loadHealth(workspace: number) {
+/** Factory health: instance-wide job counts of the last 24 h, the oldest queued job (within 7 days), last poll and error per Ticket source of the Workspace, and the top 5 flaky checks (passed after a retry) of the last 30 days. */
+/** `deadMs`: how long the forge-backed dead-Ticket scan may take; past it `dead` is null ("could not be checked"), never an empty list. */
+export async function loadHealth(workspace: number, deadMs = FORGE_TIMEOUT_MS) {
   const payload = await payloadClient()
   const day = { greater_than_equal: new Date(Date.now() - 864e5).toISOString() }
   const count = async (where: Doc) => (await payload.count({ collection: 'payload-jobs', where: { createdAt: day, ...where }, ...o } as never)).totalDocs
@@ -200,11 +314,41 @@ export async function loadHealth(workspace: number) {
     payload.find({ collection: 'payload-jobs', where: { createdAt: { greater_than_equal: new Date(Date.now() - 7 * 864e5).toISOString() }, completedAt: { exists: false }, processing: { not_equals: true }, hasError: { not_equals: true } }, sort: 'createdAt', limit: 1, pagination: false, select: { createdAt: true }, ...o } as never),
     payload.find({ collection: 'ticket_sources', where: { workspace: { equals: workspace } }, sort: 'id', pagination: false, select: { repo: true, lastPolledAt: true, lastError: true }, ...o } as never),
   ])
+  const flakeRows = (await payload.find({ collection: 'check_flakes', where: { workspace: { equals: workspace }, outcome: { equals: 'flake' }, createdAt: { greater_than_equal: new Date(Date.now() - 30 * 864e5).toISOString() } }, sort: '-createdAt', pagination: false, ...o, depth: 1 } as never)).docs as unknown as Doc[]
+  const byCheck = new Map<string, { check: string; count: number; lastSeen: string; ticket: number | null }>()
+  for (const r of flakeRows) {
+    const f = byCheck.get(r.checkName) ?? { check: r.checkName as string, count: 0, lastSeen: r.createdAt as string, ticket: (r.ticket?.number ?? null) as number | null }
+    byCheck.set(r.checkName, { ...f, count: f.count + 1 })
+  }
+  const flakes = [...byCheck.values()]
+    .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
+    .slice(0, 5)
+  const hotfixes = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { expedite: { equals: true } }, { expediteAt: { exists: true } }, { releaseAt: { exists: true } }] }, sort: '-releaseAt', limit: 5, pagination: false, select: { expediteAt: true, releaseAt: true }, ...o } as never)).docs as unknown as Doc[]
+  const leadMs = hotfixes.map((h) => new Date(h.releaseAt).getTime() - new Date(h.expediteAt).getTime()).filter((ms) => ms >= 0)
   return {
+    /** Mean time from the Expedite flag to the merge of the last 5 Hotfixes; null when there is none. */
+    expediteLeadMs: leadMs.length ? Math.round(leadMs.reduce((a, b) => a + b, 0) / leadMs.length) : null,
     queued,
     running,
     failed,
     oldestQueued: ((oldest.docs[0] as Doc | undefined)?.createdAt ?? null) as string | null,
+    /** Tickets with no live Run, no wait and no need for the owner; the goal is 0. */
+    dead: await within(invisibleDead(payload, workspace), deadMs).then((ds) => ds.map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause }))).catch(() => null),
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
+    flakes,
+  }
+}
+
+const REPO_LIST_MS = 3000
+
+/** Full names of the repositories a forge Connection can see, sorted; null when the forge fails or does not answer within 3 s (the form then asks for a typed `owner/name`). One attempt, no retries. */
+export async function listRepos(connectionId: number): Promise<string[] | null> {
+  try {
+    const conn = await connectionInput(await payloadClient(), connectionId)
+    const timeout = new Promise<never>((_, reject) => AbortSignal.timeout(REPO_LIST_MS).addEventListener('abort', () => reject(new Error('timeout'))))
+    const repos = await Promise.race([backendFor(conn, { maxRetries: 0, timeoutMs: REPO_LIST_MS }).forge.listRepositories(), timeout])
+    return repos.map((r) => r.fullName).sort()
+  } catch {
+    return null
   }
 }

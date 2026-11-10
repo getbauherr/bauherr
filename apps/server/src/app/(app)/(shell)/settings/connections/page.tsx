@@ -1,66 +1,56 @@
+import { notFound } from 'next/navigation'
+import { EditDrawer } from '../../../components/EditDrawer'
 import { EmptyState } from '../../../components/EmptyState'
 import { ConnectionForm } from '../../../components/SettingsConnectionForm'
 import { SettingsForm } from '../../../components/SettingsForm'
-import { PRESETS } from '../../../../../lib/providers'
-import { isAdmin, loadConnections } from '../../../lib/settings'
+import { Badge } from '../../../components/ui/badge'
+import { Card } from '../../../components/ui/card'
+import { Table } from '../../../components/ui/table'
+import { connectionPresets as presets, isAdmin, loadConnections } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { verifyConnection } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
-const presets = Object.fromEntries(Object.entries(PRESETS).map(([k, v]) => [k, { required: v.required, hint: v.secret.hint }]))
-const chip = { ok: ['succeeded', 'Verified'], failed: ['failed', 'Failed'], none: ['queued', 'Not verified'] } as const
+const chip = { ok: ['ok', 'Verified'], failed: ['destructive', 'Failed'], none: ['neutral', 'Not verified'] } as const
 
 export default async function ConnectionSettings() {
   const { user, workspace } = await currentWorkspace()
+  if (!isAdmin(user)) notFound()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const connections = await loadConnections(workspace.id)
-  const admin = isAdmin(user)
   return (
     <>
+      <h2 className="heading">Connections</h2>
       {!connections.length && <EmptyState text={`${workspace.name} has no Connections yet.`} />}
       {connections.length > 0 && (
-        <div className="scroll">
-          <table className="table">
-            <thead><tr><th>Name</th><th>Kind</th><th>Preset</th><th>Status</th><th /></tr></thead>
+        <Table>
+            <thead><tr className="label"><th>Name</th><th>Kind</th><th>Preset</th><th>Status</th><th /></tr></thead>
             <tbody>
               {connections.map((c) => (
                 <tr key={c.id}>
                   <td>{c.name}</td>
                   <td>{c.kind}</td>
-                  <td>{c.provider || <span className="muted">n/a</span>}</td>
+                  <td>{c.provider || <span className="text-muted-foreground">n/a</span>}</td>
                   <td>
-                    {c.kind === 'llm-provider' ? (
-                      <>
-                        <span className={`chip label ${chip[c.status][0]}`}>{chip[c.status][1]}</span>{' '}
-                        {c.detail && <span className="small muted">{c.status === 'ok' ? c.detail.slice(0, 16).replace('T', ' ') : c.detail}</span>}
-                      </>
-                    ) : <span className="muted">n/a</span>}
+                    <Badge variant={chip[c.status][0]}>{chip[c.status][1]}</Badge>{' '}
+                    {c.detail && <span className="small text-muted-foreground">{c.status === 'ok' ? c.detail.slice(0, 16).replace('T', ' ') : c.detail}</span>}
                   </td>
                   <td>
-                    {admin && (
-                      <div className="row-between">
-                        <details className="edit"><summary className="btn">Edit</summary>
-                          <div className="card-lg"><ConnectionForm presets={presets} value={{ id: c.id, name: c.name, kind: c.kind, provider: c.provider, config: c.config }} /></div>
-                        </details>
-                        {c.kind === 'llm-provider' && (
-                          <SettingsForm action={verifyConnection} submit="Verify again" inline><input type="hidden" name="id" value={c.id} /></SettingsForm>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center justify-start gap-3">
+                      <EditDrawer><ConnectionForm presets={presets} value={{ id: c.id, name: c.name, kind: c.kind, provider: c.provider, config: c.config }} /></EditDrawer>
+                      <SettingsForm action={verifyConnection} submit="Verify again" inline><input type="hidden" name="id" value={c.id} /></SettingsForm>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </Table>
       )}
-      {admin && (
-        <section className="card-lg stack">
-          <h2 className="heading">Add Connection</h2>
-          <ConnectionForm presets={presets} submit="Add Connection" reset primary />
-        </section>
-      )}
+      <Card asChild className="gap-4"><section>
+        <h2 className="heading">Add Connection</h2>
+        <ConnectionForm presets={presets} submit="Add Connection" reset primary />
+      </section></Card>
     </>
   )
 }

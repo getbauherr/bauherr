@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { layoutGraph, type GraphTicket } from '../src/app/(app)/lib/graph'
 
-const t = (number: number, blockedBy: number[] = [], extra: Partial<GraphTicket> = {}): GraphTicket => ({ id: number, number, stage: 'build', run: null, blockedBy: blockedBy.map((id) => ({ id })), ...extra })
+const t = (number: number, blockedBy: number[] = [], extra: Partial<GraphTicket> = {}): GraphTicket => ({ id: number, number, stage: 'build', rank: String(number).padStart(6, '0'), run: null, blockedBy: blockedBy.map((id) => ({ id })), ...extra })
 const node = (g: ReturnType<typeof layoutGraph>, id: number) => g.nodes.find((n) => n.id === id)!
 const crit = (g: ReturnType<typeof layoutGraph>) => g.nodes.filter((n) => n.critical).map((n) => n.id)
 
@@ -42,8 +42,22 @@ describe('layoutGraph', () => {
     expect(g.edges).toHaveLength(1)
     expect(layoutGraph([t(1), t(2, [1])]).cycle).toBe(false)
   })
+  it('orders rows and isolated Tickets by execution order, not number', () => {
+    const g = layoutGraph([t(1, [], { stage: 'plan' }), t(2, [], { stage: 'release' }), t(3, [], { stage: 'build', rank: '000009' }), t(4, [], { stage: 'build', rank: '000002' }), t(5, [], { stage: 'done' })])
+    expect(g.nodes.map((n) => n.id)).toEqual([2, 4, 3, 1, 5])
+    const rows = layoutGraph([t(1, [], { stage: 'plan' }), t(2, [1], { stage: 'plan' }), t(3, [1], { stage: 'release' })])
+    expect([3, 2].map((i) => node(rows, i).row)).toEqual([0, 1])
+  })
   it('is ready only without open blockers, lease or done stage', () => {
     const g = layoutGraph([t(1), t(2, [1]), t(3, [], { run: { status: 'running' } }), t(4, [], { stage: 'done' }), t(5, [], { run: { status: 'failed' } })])
     expect([1, 2, 3, 4, 5].map((i) => node(g, i).ready)).toEqual([true, false, false, false, true])
+  })
+  it('draws a hold as a dashed implicit edge and lays the held Ticket after its holder; the hold is never critical', () => {
+    const g = layoutGraph([t(1), t(2, [], { overlaps: 1 })])
+    expect(g.edges).toEqual([{ from: 1, to: 2, critical: false, implicit: true }])
+    expect([1, 2].map((i) => node(g, i).col)).toEqual([0, 1])
+    expect(node(g, 2).ready).toBe(true)
+    expect(layoutGraph([t(1), t(2, [1], { overlaps: 1 })]).edges).toEqual([{ from: 1, to: 2, critical: true }])
+    expect(layoutGraph([t(2, [], { overlaps: 99 })]).edges).toEqual([])
   })
 })

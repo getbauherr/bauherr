@@ -11,3 +11,8 @@ export const heartbeatAge = (iso: string, now = Date.now()): { text: string; sta
   const s = Math.round(ms / 1000)
   return { text: `${s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`} ago`, stale: ms > STALE_MS }
 }
+
+const ACTIVITY: Record<string, string> = { build: 'building', review: 'reviewing', plan: 'planning', release: 'deploying', triage: 'triaging' }
+
+/** What the Ticket's Run is doing right now; null unless the latest Run is `running`. */
+export const activity = (t: { run: { stage: string; status: string } | null }): string | null => (t.run?.status === 'running' ? (ACTIVITY[t.run.stage] ?? 'working') : null)

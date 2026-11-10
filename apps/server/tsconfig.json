@@ -6,7 +6,7 @@
     "allowJs": true,
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "paths": { "@payload-config": ["./src/payload.config.ts"] }
+    "paths": { "@payload-config": ["./src/payload.config.ts"], "@/*": ["./src/app/(app)/*"] }
   },
   "include": ["next-env.d.ts", "src", "scripts", "tests", "next.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules"]

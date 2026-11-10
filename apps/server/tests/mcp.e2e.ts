@@ -1,23 +1,25 @@
 /**
  * MCP transport test against a real `next dev`. Needs Postgres: set MCP_E2E_DATABASE_URL
- * (any database on a server you can CREATE DATABASE in); skipped without it (CI without Postgres).
+ * (any database on a server you may create databases on); skipped without it (CI without Postgres).
  * Run: MCP_E2E_DATABASE_URL=postgres://u:p@127.0.0.1:5432/postgres pnpm --filter server test:mcp
  */
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
-import pg from 'pg'
+import { createTestDb, type TestDb } from './helpers/test-db'
 
 const base = process.env.MCP_E2E_DATABASE_URL
 const PORT = 3111
 const API_KEY = 'e2e-api-key-0123456789'
+let agentKey = ''
 let dev: ChildProcess | undefined
 let stub: ReturnType<typeof createServer> | undefined
 let runId: number | string
+let mcpDb: TestDb | undefined
 const assigned: string[] = []
 
-const rpc = async (method: string, params: unknown, key: string | null = API_KEY) => {
+const rpc = async (method: string, params: unknown, key: string | null = agentKey) => {
   const res = await fetch(`http://127.0.0.1:${PORT}/mcp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(key ? { authorization: `Bearer ${key}` } : {}) },
@@ -25,20 +27,16 @@ const rpc = async (method: string, params: unknown, key: string | null = API_KEY
   })
   return { status: res.status, body: res.status === 200 ? await res.json() : null }
 }
-const call = async (name: string, args: unknown) => {
-  const { body } = await rpc('tools/call', { name, arguments: args })
+const call = async (name: string, args: unknown, key: string | null = agentKey) => {
+  const { body } = await rpc('tools/call', { name, arguments: args }, key)
   const text = body.result.content[0].text as string
   return { isError: !!body.result.isError, text, json: body.result.isError ? null : JSON.parse(text) }
 }
 
 before(async () => {
   if (!base) return
-  const admin = new pg.Client({ connectionString: base })
-  await admin.connect()
-  await admin.query('DROP DATABASE IF EXISTS bauherr_e2e WITH (FORCE)')
-  await admin.query('CREATE DATABASE bauherr_e2e')
-  await admin.end()
-  Object.assign(process.env, { DATABASE_URL: base.replace(/\/[^/]+$/, '/bauherr_e2e'), PAYLOAD_SECRET: 'e2e', ENCRYPTION_KEY: 'e2e', JOBS_AUTORUN: '0' })
+  mcpDb = await createTestDb('e2e', base)
+  Object.assign(process.env, { DATABASE_URL: mcpDb.url, PAYLOAD_SECRET: 'e2e', ENCRYPTION_KEY: 'e2e', JOBS_AUTORUN: '0' })
 
   stub = createServer((req, res) => {
     res.setHeader('content-type', 'application/json')
@@ -62,11 +60,12 @@ before(async () => {
   await payload.create({ collection: 'ticket_sources', data: { repo: 'o/r', product, connection, workspace }, ...o })
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: '1', number: 1, state: 'open', stage: 'plan', product, workspace }, ...o })
   runId = (await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'plan', mode: 'session', status: 'awaiting_session', workspace }, ...o })).id
-  await payload.create({
+  const dev0 = await payload.create({
     collection: 'bauherren',
     data: { email: 'dev@e2e.test', password: 'pw-dev-12345', role: 'bauherr', githubLogin: 'bot', tenants: [{ tenant: workspace }], enableAPIKey: true, apiKey: API_KEY },
     ...o,
   } as never)
+  agentKey = await (await import('../src/lib/api-key')).mintAgentKey(payload, dev0, 'e2e')
   await payload.destroy()
 
   dev = spawn('npx', ['next', 'dev', '--port', String(PORT)], { stdio: 'ignore', env: process.env, detached: true })
@@ -80,6 +79,7 @@ before(async () => {
 after(async () => {
   if (dev?.pid) process.kill(-dev.pid)
   stub?.close()
+  await mcpDb?.drop()
 })
 
 test('rejects calls without a valid API key', { skip: !base }, async () => {
@@ -105,4 +105,12 @@ test('list_frontier and claim_run over HTTP', { skip: !base }, async () => {
   assert.equal((await call('heartbeat', { runId })).isError, true)
   assert.equal((await call('heartbeat', { runId, leaseToken: claimed.json.leaseToken })).json.ok, true)
   assert.equal((await call('list_frontier', {})).json[0].run.status, 'running')
+})
+
+test('an agent key cannot use gate tools; the personal key reaches them', { skip: !base }, async () => {
+  const agent = await call('approve', { ticket: 1, gate: 'plan' })
+  assert.equal(agent.isError, true)
+  assert.match(agent.text, /^forbidden: approve needs a human/)
+  const human = await call('approve', { ticket: 1, gate: 'plan' }, API_KEY)
+  assert.doesNotMatch(human.text, /needs a human/)
 })

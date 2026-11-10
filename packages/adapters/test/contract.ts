@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { APPROVED_PLAN, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
+import { APPROVED_PLAN, Conflict, NotQueueableError, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
 
 export interface ContractEnv {
   backend: Backend;
@@ -8,6 +8,8 @@ export interface ContractEnv {
   user: string;
   /** Writes a file on a branch (needed so a PR has a diff). */
   commitFile(branch: string, path: string, content: string): Promise<void>;
+  /** Switches the repo's native merge queue on (fakes only); the enqueue cases run only when given. */
+  enableQueue?(): void;
   /** Runs after the suite with the created ticket ids, branches and PR numbers. */
   cleanup?(created: { tickets: string[]; branches: string[]; prs: number[]; labels: string[] }): Promise<void>;
 }
@@ -80,6 +82,16 @@ export function contractSuite(name: string, env: ContractEnv): void {
       await ts.addLabels(t.id, ['bauherr:a', 'bauherr:b']);
       await ts.removeLabels(t.id, ['bauherr:a', 'bauherr:never-there']);
       assert.deepEqual((await ts.get(t.id)).labels, ['bauherr:b']);
+    });
+
+    it('records label events with actor and order', async () => {
+      const t = await mk('label-events');
+      await ts.addLabels(t.id, ['bauherr:a']);
+      await ts.removeLabels(t.id, ['bauherr:a']);
+      const events = (await ts.labelEvents(t.id)).filter((e) => e.label === 'bauherr:a');
+      assert.deepEqual(events.map((e) => e.action), ['labeled', 'unlabeled']);
+      assert.ok(events.every((e) => e.actor && e.at));
+      assert.equal(events[0]!.actor, await ts.whoami());
     });
 
     it('setStage keeps exactly one stage label', async () => {
@@ -187,10 +199,56 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal((await f.getPullRequest(repo, p.number)).head, branch);
       assert.ok((await f.listPullRequests(repo)).some((x) => x.number === p.number));
       assert.equal((await f.commentOnPullRequest(repo, p.number, 'lgtm')).body, 'lgtm');
+      assert.ok((await f.listPullRequestComments(repo, p.number)).some((c) => c.body === 'lgtm'));
       const files = await f.listPullRequestFiles(repo, p.number);
       assert.deepEqual(files.map((x) => x.filename), ['contract/hello.txt']);
       assert.equal(files[0]?.status, 'added');
+      const diff = await f.compare(repo, b.sha, (await f.getPullRequest(repo, p.number)).headSha);
+      assert.ok(diff.includes('contract/hello.txt') && diff.includes('+hello'));
       assert.ok(Array.isArray(await f.listChecks(repo, (await f.getPullRequest(repo, p.number)).headSha)));
+      assert.equal(await f.rerunFailed(repo, []), false);
+    });
+
+    it('queue: support is a boolean and dequeuing a PR that is not queued is a no-op', async () => {
+      const f = backend.forge;
+      const branch = `bauherr-contract-queue-${Date.now()}`;
+      await f.createBranch(repo, branch);
+      made.branches.push(branch);
+      await env.commitFile(branch, 'contract/queue.txt', 'q\n');
+      const p = await f.openPullRequest(repo, { title: 'contract queue PR', head: branch, base: (await f.getRepository(repo)).defaultBranch });
+      made.prs.push(p.number);
+      assert.equal(typeof (await f.queueSupport(repo)), 'boolean');
+      assert.equal(await f.isQueued(repo, p.number), false);
+      await f.dequeuePullRequest(repo, p.number);
+      assert.equal((await f.getPullRequest(repo, p.number)).state, 'open');
+      if (!env.enableQueue) return;
+      await assert.rejects(f.enqueuePullRequest(repo, p.number, { expectSha: p.headSha }), NotQueueableError);
+      env.enableQueue();
+      assert.equal(await f.queueSupport(repo), true);
+      await assert.rejects(f.enqueuePullRequest(repo, p.number, { expectSha: 'stale' }));
+      assert.deepEqual(await f.enqueuePullRequest(repo, p.number, { expectSha: p.headSha }), { state: 'queued' });
+      assert.equal(await f.isQueued(repo, p.number), true);
+      await f.dequeuePullRequest(repo, p.number);
+      await f.dequeuePullRequest(repo, p.number);
+      assert.equal(await f.isQueued(repo, p.number), false);
+    });
+
+    it('files: putFile -> getFile -> listFiles, stale expectSha conflicts', async () => {
+      const f = backend.forge;
+      const branch = `bauherr-contract-files-${Date.now()}`;
+      await f.createBranch(repo, branch);
+      made.branches.push(branch);
+      const path = 'contract/doc é.md';
+      await f.putFile(repo, { branch, path, content: '# One\n', message: 'add', expectSha: '' });
+      await assert.rejects(f.putFile(repo, { branch, path, content: 'x', message: 'again', expectSha: '' }), Conflict);
+      const first = await f.getFile(repo, path, branch);
+      assert.equal(first.content, '# One\n');
+      await f.putFile(repo, { branch, path, content: '# Two\n', message: 'edit', expectSha: first.sha });
+      await assert.rejects(f.putFile(repo, { branch, path, content: '# Three\n', message: 'stale', expectSha: first.sha }), Conflict);
+      assert.equal((await f.getFile(repo, path, branch)).content, '# Two\n');
+      const listed = await f.listFiles(repo, branch);
+      assert.ok(listed.paths.includes(path));
+      assert.ok(listed.commit);
     });
   });
 }

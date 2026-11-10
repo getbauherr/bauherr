@@ -1,9 +1,9 @@
-import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { getPayload } from 'payload'
 import { parse } from 'yaml'
 import config from '../src/payload.config'
+import { replaceAgentKey } from '../src/lib/api-key'
 import { ensureSessionKey, gatewayEnabled, writeSecretFile } from '../src/lib/gateway'
 
 const env = (k: string): string => {
@@ -33,11 +33,8 @@ const admin = await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }
 // ensure() never touches an existing user; re-seeding is how the password is reset.
 await payload.update({ collection: 'bauherren', id: admin.id, data: { password: adminPassword, role: 'admin' }, ...o })
 
-// MCP connect: the Admin's API key lets the owner's Claude Code session reach /mcp. Never printed.
-const keyed = (await payload.findByID({ collection: 'bauherren', id: admin.id, depth: 0, showHiddenFields: true, ...o })) as unknown as { enableAPIKey?: boolean; apiKey?: string }
-const mcpKey = keyed.enableAPIKey && keyed.apiKey ? keyed.apiKey : randomBytes(32).toString('hex')
-if (!keyed.enableAPIKey || !keyed.apiKey) await payload.update({ collection: 'bauherren', id: admin.id, data: { enableAPIKey: true, apiKey: mcpKey }, ...o })
-if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, mcpKey)
+// MCP connect: an agent key for the Admin lets the owner's Claude Code session reach /mcp (it cannot approve gates). A key file asked for replaces the previous 'seed' key (no accumulation); never printed.
+if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, await replaceAgentKey(payload, admin, 'seed'))
 
 const ws = await ensure('workspaces', eq({ slug: 'getbauherr' }), { name: 'getbauherr', slug: 'getbauherr' })
 const workspace = ws.id
@@ -52,7 +49,11 @@ const github = await scoped('connections', { name: 'github' }, {
   capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false },
 })
 await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
-const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr' })
+const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production', releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' })
+// ensure() never updates an existing Product: set the check `production.yml` reports once, never overwrite a changed value.
+if (!product.productionChecks) await payload.update({ collection: 'products', id: product.id, data: { productionGate: true, productionChecks: 'production' }, ...o })
+// Same for the release: pre-releases v0.1.0-rc.N, the factory waits for the `image` and `npm` jobs of release.yml.
+if (!product.releaseChecks) await payload.update({ collection: 'products', id: product.id, data: { releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
 const compiled = parse(readFileSync(fileURLToPath(new URL('../../../pack/workflow.yaml', import.meta.url)), 'utf8'))

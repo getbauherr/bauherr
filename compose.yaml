@@ -1,11 +1,14 @@
 x-app: &app
-  build: .
+  build:
+    context: .
+    args:
+      BAUHERR_REVISION: ${BAUHERR_REVISION:-}
   image: ghcr.io/getbauherr/bauherr:${BAUHERR_VERSION:-dev}
   depends_on:
     db: {condition: service_healthy}
     init: {condition: service_completed_successfully}
     gateway: {condition: service_started}
-  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway"]
+  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway", "bauherr-media:/data/media"]
   environment:
     DATABASE_URL: postgres://bauherr:bauherr@db:5432/bauherr
     GATEWAY_URL: http://gateway:4000
@@ -16,11 +19,31 @@ x-app: &app
     PAYLOAD_SECRET_FILE: /run/secrets/payload_secret
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
-    BAUHERR_DISABLE_ADMIN: ${BAUHERR_DISABLE_ADMIN:-}
+    BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
+    BAUHERR_MAX_RUNS: ${BAUHERR_MAX_RUNS:-4}
+    # Postgres pool per container (app, worker, poller); see docs/first-run.md "Database connections".
+    DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+    DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}
+    # Sign-in IP limit, see docs/auth.md: failed sign-ins per IP and minute; proxies in front that append to x-forwarded-for (0 = limit off).
+    LOGIN_IP_MAX_ATTEMPTS: ${LOGIN_IP_MAX_ATTEMPTS:-}
+    TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-}
+    # Owner-session key budget in USD per rolling 30 days (Audit only), see docs/session-mode.md.
+    SESSION_BUDGET_USD: ${SESSION_BUDGET_USD:-}
     # Optional OIDC sign-in, see docs/auth.md. Empty OIDC_ISSUER = password login only.
     OIDC_ISSUER: ${OIDC_ISSUER:-}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
     OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+    # Pasted screenshots: local volume by default; MEDIA_S3_BUCKET (+ endpoint, region, keys) switches to any S3-compatible bucket, see docs/media.md.
+    MEDIA_DIR: /data/media
+    MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-}
+    MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-}
+    MEDIA_S3_REGION: ${MEDIA_S3_REGION:-}
+    MEDIA_S3_ACCESS_KEY_ID: ${MEDIA_S3_ACCESS_KEY_ID:-}
+    MEDIA_S3_SECRET_ACCESS_KEY: ${MEDIA_S3_SECRET_ACCESS_KEY:-}
+    MEDIA_S3_ACCESS_KEY_ID_FILE: ${MEDIA_S3_ACCESS_KEY_ID_FILE:-}
+    MEDIA_S3_SECRET_ACCESS_KEY_FILE: ${MEDIA_S3_SECRET_ACCESS_KEY_FILE:-}
+    MEDIA_MAX_BYTES: ${MEDIA_MAX_BYTES:-}
+    MEDIA_MAX_PER_SESSION: ${MEDIA_MAX_PER_SESSION:-}
 
 services:
   init:
@@ -34,10 +57,11 @@ services:
       [ -s /run/secrets/$$n ] || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /run/secrets/$$n; done;
       mkdir -p /gateway/providers /gateway/catalogs; cp /deploy/gateway/catalogs/*.json /gateway/catalogs/;
       if [ ! -s /gateway/config.yaml ]; then
-      if [ \"$$OTEL_ENABLED\" = 1 ]; then T='tracing: {otlpEndpoint: \"http://jaeger:4317\"}'; else T=''; fi;
+      if [ \"$$OTEL_ENABLED\" = 1 ]; then echo 'OTEL_ENABLED=1: start the stack with --profile observability so jaeger receives traces'; T='tracing: {host: \"jaeger:4317\", randomSampling: true}'; else T=''; fi;
       sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" -e \"s|__TRACING__|$$T|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi"
   db:
     image: postgres:17
+    command: [postgres, -c, max_connections=300]
     container_name: bauherr-db
     ports: ["127.0.0.1:54330:5432"]
     environment: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}
@@ -47,7 +71,7 @@ services:
       interval: 5s
       retries: 10
   gateway:
-    image: cr.agentgateway.dev/agentgateway:v1.6.0
+    image: cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b
     user: "0" # provider key files are 0600 and written by root in app/worker
     command: [-f, /gateway/config.yaml]
     ports: ["127.0.0.1:4000:4000"] # admin API :15000 stays internal
@@ -55,6 +79,57 @@ services:
     depends_on:
       db: {condition: service_healthy}
       init: {condition: service_completed_successfully}
+    restart: unless-stopped
+  # Opt-in vLLM Semantic Router (`docker compose --profile router up`), docs/router.md. Not published: reachable as http://router:8801.
+  # router-core = ExtProc (downloads its classifier models into bauherr-router on first start); router = its Envoy front.
+  router-core:
+    image: ghcr.io/vllm-project/semantic-router/vllm-sr:v0.4.0
+    profiles: [router]
+    command: [/gateway/router/config.yaml] # rendered by Bauherr with the first `router` Connection; restarts until it exists
+    volumes: ["bauherr-gateway:/gateway:ro", "bauherr-router:/app/models"]
+    depends_on:
+      gateway: {condition: service_started}
+    healthcheck:
+      test: [CMD, curl, -fsS, "http://127.0.0.1:8080/ready"]
+      interval: 10s
+      retries: 30
+      start_period: 120s
+    restart: unless-stopped
+  router:
+    image: envoyproxy/envoy:v1.35.3
+    profiles: [router]
+    volumes: ["./deploy/router/envoy.yaml:/etc/envoy/envoy.yaml:ro"]
+    depends_on:
+      router-core: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8801'"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
+  # Opt-in observability (`docker compose --profile observability up -d`, OTEL_ENABLED=1), docs/observability.md. Only the UIs publish, on loopback.
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    profiles: [observability]
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=30d]
+    ports: ["127.0.0.1:9090:9090"]
+    volumes: ["./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro", "bauherr-prometheus:/prometheus"]
+    depends_on:
+      gateway: {condition: service_started}
+    healthcheck:
+      test: [CMD, wget, -qO-, "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e
+    profiles: [observability]
+    command: [--config, /etc/jaeger/config.yaml]
+    ports: ["127.0.0.1:16686:16686"] # OTLP 4317/4318 stay internal
+    volumes: ["./deploy/jaeger/config.yaml:/etc/jaeger/config.yaml:ro"]
+    healthcheck:
+      test: [CMD, wget, -qO-, "http://127.0.0.1:13133/status"]
+      interval: 10s
+      retries: 6
     restart: unless-stopped
   app:
     <<: *app
@@ -70,7 +145,7 @@ services:
     depends_on:
       app: {condition: service_healthy} # app applies prod migrations on boot
     healthcheck:
-      test: [CMD-SHELL, "pgrep -f jobs:run"]
+      test: [CMD-SHELL, "pgrep -f jobs-runs"]
       interval: 15s
       retries: 3
   poller: # own process: a long agent Run in `worker` must not delay polls
@@ -87,3 +162,6 @@ volumes:
   bauherr-pg:
   bauherr-secrets:
   bauherr-gateway:
+  bauherr-media:
+  bauherr-router:
+  bauherr-prometheus:

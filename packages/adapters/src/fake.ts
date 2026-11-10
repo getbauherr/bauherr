@@ -1,21 +1,41 @@
 import type {
-  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, ListOptions, NewPullRequest, NewTicket,
-  PullRequest, PullRequestFile, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
+  Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
+  PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
+import { createHash } from 'node:crypto';
+import { Conflict, NotQueueableError } from './contracts.js';
 import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
   number: number; title: string; body: string; state: 'open' | 'closed'; labels: string[];
-  assignees: string[]; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[];
+  assignees: string[]; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[]; events: LabelEvent[];
 }
 interface FakeRepo {
   defaultBranch: string;
   branches: Map<string, { sha: string; files: Map<string, string> }>;
   prs: PullRequest[];
   checks: Map<string, Check[]>;
+  /** Checks `rerunFailed` switches `checks[sha]` to. */
+  rerunChecks: Map<string, Check[]>;
+  reruns: Check[][];
   commitDates: Map<string, string>;
+  releases: Release[];
+  tags: string[];
+  /** Commits a release tag contains besides its own (test helper `addRelease`). */
+  contains: Map<string, string[]>;
+  commits: { sha: string; message: string }[];
+  /** Ancestors of a commit (test helper `setAncestors`). */
+  ancestors: Map<string, string[]>;
+  queueSupport: boolean;
+  requiredChecks: string[];
+  /** PR numbers in the merge queue, head entry first. */
+  queue: number[];
+  /** Files at every commit sha a branch ever had, so a branch can be reset to a sha and a head merged by sha. */
+  snapshots: Map<string, Map<string, string>>;
 }
+
+const blobSha = (c: string): string => createHash('sha1').update(c).digest('hex');
 
 /** In-memory Backend. `native` = relations as fields; otherwise body convention + close-reason labels. */
 export class FakeBackend implements Backend {
@@ -23,6 +43,10 @@ export class FakeBackend implements Backend {
   readonly forge: Forge;
   private ticketSources = new Map<string, FakeTickets>();
   private repos = new Map<string, FakeRepo>();
+  /** Login recorded as the actor of label changes. */
+  actingAs = 'factory';
+  /** What `whoami` reports: the factory credential's own login. */
+  login: string | null = 'factory';
   private tick = 0;
   private seq = 0;
 
@@ -44,11 +68,33 @@ export class FakeBackend implements Backend {
   }
 
   /** Test helper: writes a file on a branch (creates the repo with branch `main` if unknown). */
-  commit(repo: RepoRef, branch: string, path: string, content: string): void {
+  commit(repo: RepoRef, branch: string, path: string, content: string): string {
     const b = this.repo(repo).branches.get(branch);
     if (!b) throw new Error(`no branch ${branch}`);
     b.files.set(path, content);
     b.sha = `sha${++this.seq}`;
+    this.repo(repo).snapshots.set(b.sha, new Map(b.files));
+    for (const p of this.repo(repo).prs) if (p.head === branch) (delete p.mergeable, delete p.behind);
+    return b.sha;
+  }
+
+  /** Test helper: the next `times` calls of the label operation throw a 503. */
+  failNext(op: 'addLabels' | 'removeLabels', times = 1): void {
+    this.failures[op] = times;
+  }
+  failures = { addLabels: 0, removeLabels: 0 };
+  maybeFail(op: 'addLabels' | 'removeLabels'): void {
+    if (this.failures[op]-- > 0) throw Object.assign(new Error('503'), { status: 503 });
+  }
+
+  /** Test helper: sets whether the forge reports an open PR as mergeable (false = conflicts). */
+  setMergeable(repo: RepoRef, number: number, value: boolean | undefined): void {
+    this.setPullRequest(repo, number, { mergeable: value });
+  }
+
+  /** Test helper: sets whether the forge reports an open PR as behind its base. */
+  setBehind(repo: RepoRef, number: number, value: boolean | undefined): void {
+    this.setPullRequest(repo, number, { behind: value });
   }
 
   /** Test helper: merges an open PR (merge commit on the base branch). */
@@ -73,6 +119,16 @@ export class FakeBackend implements Backend {
     this.repo(repo).checks.set(sha, checks);
   }
 
+  /** Test helper: what `listChecks(sha)` reports after the next `rerunFailed`. */
+  setRerunChecks(repo: RepoRef, sha: string, checks: Check[]): void {
+    this.repo(repo).rerunChecks.set(sha, checks);
+  }
+
+  /** Test helper: the `rerunFailed` calls so far. */
+  reruns(repo: RepoRef): Check[][] {
+    return this.repo(repo).reruns;
+  }
+
   /** Test helper: overrides fields of a PR (draft, headRepo, head, ...). */
   setPullRequest(repo: RepoRef, number: number, patch: Partial<PullRequest>): void {
     const pr = this.repo(repo).prs.find((p) => p.number === number);
@@ -85,10 +141,59 @@ export class FakeBackend implements Backend {
     this.repo(repo).commitDates.set(sha, iso);
   }
 
+  /** Test helper: a release made by the Product's own tooling (or earlier by the factory). */
+  addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[]; prerelease?: boolean; createdAt?: number | string }): Release {
+    const r = this.repo(repo);
+    if (o.contains) r.contains.set(o.tag, o.contains);
+    const rel: Release = { id: String(++this.seq), tag: o.tag, sha: o.sha, name: o.tag, body: o.body ?? '', url: `https://fake/${repo}/releases/tag/${o.tag}`, prerelease: !!o.prerelease, createdAt: new Date(o.createdAt ?? Date.now()).toISOString() };
+    r.releases.push(rel);
+    return rel;
+  }
+
+  /** Test helper: a tag without a release. */
+  addTag(repo: RepoRef, tag: string): void {
+    this.repo(repo).tags.push(tag);
+  }
+
+  /** Test helper: releases of `repo`, oldest first. */
+  listReleases(repo: RepoRef): Release[] {
+    return [...this.repo(repo).releases];
+  }
+
+  /** Test helper: the commits `isAncestor` reports as ancestors of `head` (every commit is its own ancestor). */
+  setAncestors(repo: RepoRef, head: string, shas: string[]): void {
+    this.repo(repo).ancestors.set(head, shas);
+  }
+
+  /** Test helper: the commits `listCommits` returns (newest first). */
+  setCommits(repo: RepoRef, commits: { sha: string; message: string }[]): void {
+    this.repo(repo).commits = commits;
+  }
+
+  /** Test helper: whether the repo reports a native merge queue (default off). */
+  setQueueSupport(repo: RepoRef, value: boolean): void {
+    this.repo(repo).queueSupport = value;
+  }
+
+  /** Test helper: the check names the default branch requires. */
+  setRequiredChecks(repo: RepoRef, names: string[]): void {
+    this.repo(repo).requiredChecks = names;
+  }
+
+  /** Test helper: the forge works off the head queue entry: merges it (`merge<N>` sha) or, when its number is in `fail`, drops it unmerged. Returns the PR number, or null on an empty queue. */
+  advanceQueue(repo: RepoRef, o: { fail?: number[] } = {}): number | null {
+    const r = this.repo(repo);
+    const n = r.queue.shift();
+    if (n === undefined) return null;
+    if (!o.fail?.includes(n)) this.merge(repo, n);
+    return n;
+  }
+
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), commitDates: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
+      r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
     return r;
@@ -110,6 +215,10 @@ export class FakeBackend implements Backend {
       listRepositories: async () => [...this.repos.keys()].map((n) => view(n, n)),
       getRepository: async (repo) => view(repo, repo),
       listBranches: async (repo) => [...this.repo(repo).branches].map(([name, b]): Branch => ({ name, sha: b.sha })),
+      getBranch: async (repo, name) => {
+        const b = this.repo(repo).branches.get(name);
+        return b ? { name, sha: b.sha } : null;
+      },
       createBranch: async (repo, name, from) => {
         const r = this.repo(repo);
         const src = r.branches.get(from ?? r.defaultBranch);
@@ -131,11 +240,20 @@ export class FakeBackend implements Backend {
       getPullRequest: async (repo, n) => find(repo, n),
       listPullRequests: async (repo, state = 'open') =>
         this.repo(repo).prs.filter((p) => state === 'all' || (state === 'open') === (p.state === 'open')),
+      listMergedPullRequests: async (repo, limit) => this.repo(repo).prs.filter((p) => p.state === 'merged').slice(-limit).reverse(),
+      closePullRequest: async (repo, n) => {
+        const pr = find(repo, n);
+        if (pr.state === 'open') pr.state = 'closed';
+      },
       commentOnPullRequest: async (repo, n, body) => {
         find(repo, n);
         const c: Comment = { id: String(++this.seq), author: this.opts.user ?? 'fake', body, createdAt: this.now() };
         comments.set(`${repo}#${n}`, [...(comments.get(`${repo}#${n}`) ?? []), c]);
         return c;
+      },
+      listPullRequestComments: async (repo, n) => {
+        find(repo, n);
+        return comments.get(`${repo}#${n}`) ?? [];
       },
       listPullRequestFiles: async (repo, n) => {
         const r = this.repo(repo);
@@ -149,14 +267,111 @@ export class FakeBackend implements Backend {
         }
         return out;
       },
+      compare: async (repo, base, head) => {
+        const r = this.repo(repo);
+        const files = (ref: string) => (r.branches.get(ref) ?? [...r.branches.values()].find((b) => b.sha === ref))?.files ?? new Map<string, string>();
+        const [a, b] = [files(base), files(head)];
+        return [...b].filter(([name, content]) => a.get(name) !== content).map(([name, content]) => `--- a/${name}\n+++ b/${name}\n${content.split('\n').map((l) => `+${l}`).join('\n')}`).join('\n');
+      },
       listChecks: async (repo, sha) => this.repo(repo).checks.get(sha) ?? [],
+      rerunFailed: async (repo, checks) => {
+        const r = this.repo(repo);
+        r.reruns.push(checks);
+        for (const [sha, next] of r.rerunChecks) r.checks.set(sha, next);
+        r.rerunChecks.clear();
+        return checks.length > 0 && checks.every((c) => c.runId);
+      },
+      listFiles: async (repo, ref) => {
+        const r = this.repo(repo);
+        const b = r.branches.get(ref ?? r.defaultBranch);
+        if (!b) throw new Error(`no branch ${ref}`);
+        return { commit: b.sha, paths: [...b.files.keys()] };
+      },
+      getFile: async (repo, path, ref) => {
+        const r = this.repo(repo);
+        const content = (r.branches.get(ref ?? r.defaultBranch) ?? [...r.branches.values()].find((b) => b.sha === ref))?.files.get(path);
+        if (content === undefined) throw new Error(`no file ${path}`);
+        return { content, sha: blobSha(content) };
+      },
+      putFile: async (repo, o) => {
+        const b = this.repo(repo).branches.get(o.branch);
+        if (!b) throw new Error(`no branch ${o.branch}`);
+        const old = b.files.get(o.path);
+        if (o.expectSha !== undefined && (old === undefined ? '' : blobSha(old)) !== o.expectSha) throw new Conflict(`${o.path} changed`);
+        this.commit(repo, o.branch, o.path, o.content);
+        return { sha: blobSha(o.content) };
+      },
+      findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha || this.repo(repo).contains.get(r.tag)?.includes(o.sha)) ?? null,
+      createRelease: async (repo, o) => {
+        if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
+        return this.addRelease(repo, { ...o, createdAt: this.repo(repo).commitDates.get(o.sha) });
+      },
+      listReleases: async (repo) => [...this.repo(repo).releases].reverse(),
+      releaseByTag: async (repo, tag) => this.repo(repo).releases.find((r) => r.tag === tag) ?? null,
+      isAncestor: async (repo, base, head) => base === head || !!this.repo(repo).ancestors.get(head)?.includes(base),
+      updateRelease: async (repo, id, o) => {
+        const rel = this.repo(repo).releases.find((r) => r.id === id);
+        if (!rel) throw new Error(`no release ${id}`);
+        rel.body = o.body;
+        return { ...rel };
+      },
+      latestRelease: async (repo) => this.repo(repo).releases.filter((r) => !r.prerelease).at(-1) ?? null,
+      listTags: async (repo) => [...this.repo(repo).releases.map((r) => r.tag), ...this.repo(repo).tags],
+      listCommits: async (repo) => this.repo(repo).commits,
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),
+      retargetPullRequest: async (repo, n, base) => {
+        const pr = find(repo, n);
+        if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
+        pr.base = base;
+      },
+      resetBranch: async (repo, branch, at) => {
+        const r = this.repo(repo);
+        const files = r.snapshots.get(at);
+        if (!files) throw new Error(`no commit ${at}`);
+        r.branches.set(branch, { sha: at, files: new Map(files) });
+      },
+      mergeIntoBranch: async (repo, branch, headSha) => {
+        const r = this.repo(repo);
+        const target = r.branches.get(branch);
+        const head = r.snapshots.get(headSha);
+        if (!target || !head) throw new Error(`no branch ${branch} or commit ${headSha}`);
+        if (r.prs.some((p) => p.headSha === headSha && p.mergeable === false) || [...head].some(([path, c]) => target.files.has(path) && target.files.get(path) !== c)) return { conflict: true };
+        if ([...head].every(([path, c]) => target.files.get(path) === c)) return { sha: target.sha };
+        for (const [path, c] of head) target.files.set(path, c);
+        target.sha = `sha${++this.seq}`;
+        r.snapshots.set(target.sha, new Map(target.files));
+        return { sha: target.sha };
+      },
+      queueSupport: async (repo) => this.repo(repo).queueSupport,
+      requiredChecks: async (repo) => this.repo(repo).requiredChecks,
+      enqueuePullRequest: async (repo, n, o) => {
+        const r = this.repo(repo);
+        const pr = find(repo, n);
+        if (pr.state === 'merged') return { state: 'merged', mergeSha: pr.mergeSha };
+        if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
+        if (!r.queueSupport) throw new NotQueueableError('the base branch has no merge queue');
+        if (pr.mergeable === false) throw new NotQueueableError('the pull request is not mergeable');
+        if (o.expectSha !== sha(r, pr.head)) throw new Error(`PR ${n} head moved`);
+        if (!r.queue.includes(n)) r.queue.push(n);
+        return { state: 'queued' };
+      },
+      dequeuePullRequest: async (repo, n) => {
+        const r = this.repo(repo);
+        r.queue = r.queue.filter((x) => x !== n);
+      },
+      isQueued: async (repo, n) => this.repo(repo).queue.includes(n) && find(repo, n).state === 'open',
       mergePullRequest: async (repo, n, o) => {
         const pr = find(repo, n);
         if (pr.state !== 'open') throw new Error(`PR ${n} is ${pr.state}`);
+        if (pr.mergeable === false) throw new Error('merge commit cannot be cleanly created');
         if (o.expectSha && o.expectSha !== sha(this.repo(repo), pr.head)) throw new Error(`PR ${n} head moved`);
-        if (o.deleteBranch && pr.headRepo === pr.baseRepo) this.repo(repo).branches.delete(pr.head);
-        return { mergeSha: this.merge(repo, n) };
+        const mergeSha = this.merge(repo, n);
+        if (o.deleteBranch && pr.headRepo === pr.baseRepo) {
+          // Like the real forges: the PRs stacked on the deleted head are moved to this PR's base first.
+          for (const s of this.repo(repo).prs) if (s.state === 'open' && s.base === pr.head) s.base = pr.base;
+          this.repo(repo).branches.delete(pr.head);
+        }
+        return { mergeSha };
       },
     };
   }
@@ -170,6 +385,9 @@ class FakeTickets implements TicketSource {
     const t = this.items.get(Number(id));
     if (!t) throw new Error(`no ticket ${id}`);
     return t;
+  }
+  private record(t: FakeTicket, action: LabelEvent['action'], labels: string[]): void {
+    for (const label of labels) t.events.push({ label, action, actor: this.b.actingAs, at: this.b.now() });
   }
   private touch(t: FakeTicket): void {
     t.updatedAt = this.b.now();
@@ -201,7 +419,7 @@ class FakeTickets implements TicketSource {
     const { state = 'open', labels = [] } = opts;
     return [...this.items.values()]
       .filter((t) => (state === 'all' || t.state === state) && labels.every((l) => t.labels.includes(l)))
-      .map((t) => this.summary(t));
+      .map((t) => ({ ...this.summary(t), body: t.body }));
   }
   async get(id: string) {
     return this.full(this.t(id));
@@ -217,8 +435,9 @@ class FakeTickets implements TicketSource {
     const number = this.items.size + 1;
     const t: FakeTicket = {
       number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignees: [],
-      updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] }, comments: [],
+      updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] }, comments: [], events: [],
     };
+    this.record(t, 'labeled', t.labels);
     this.touch(t);
     this.items.set(number, t);
     return this.full(t);
@@ -242,14 +461,25 @@ class FakeTickets implements TicketSource {
     return this.t(id).comments.filter((c) => !since || c.createdAt >= since);
   }
   async addLabels(id: string, labels: string[]) {
+    this.b.maybeFail('addLabels');
     const t = this.t(id);
-    for (const l of labels) if (!t.labels.includes(l)) t.labels.push(l);
+    const added = labels.filter((l) => !t.labels.includes(l));
+    t.labels.push(...added);
+    this.record(t, 'labeled', added);
     this.touch(t);
   }
   async removeLabels(id: string, labels: string[]) {
+    this.b.maybeFail('removeLabels');
     const t = this.t(id);
+    this.record(t, 'unlabeled', t.labels.filter((l) => labels.includes(l)));
     t.labels = t.labels.filter((l) => !labels.includes(l));
     this.touch(t);
+  }
+  async labelEvents(id: string) {
+    return [...this.t(id).events];
+  }
+  async whoami() {
+    return this.b.login;
   }
   async claim(id: string, assignee: string) {
     const t = this.t(id);

@@ -1,14 +1,21 @@
 import { resolve } from 'node:path'
 import type { Payload } from 'payload'
 import type { RunCtx } from '@bauherr/runner'
-import { setStage } from '@bauherr/adapters'
-import { githubFor } from './adapters'
+import { moveStage } from './stage-move'
+import { enterStage } from './wip'
+import { backendFor } from './adapters'
 import { prOf } from './release'
-import type { ConnectionInput } from './connection'
-import { DEFAULT_MODEL_BY_TIER } from './gateway'
+import { dequeueBeforeChange } from './merge-mode'
+import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, scanCaps } from './investigation'
+import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
+import { webOrigin, type ConnectionInput } from './connection'
+import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
+import { read as readKnowledge } from './knowledge'
 
-export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)' }
+export { tierModels }
+
+export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)', scan: 'the scan findings are recorded' }
 /** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
 const AUTONOMOUS_BUILD_GOAL = 'the change is implemented and the checks pass'
 export type GoalStage = keyof typeof DEFAULT_GOAL
@@ -45,6 +52,12 @@ export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage
   }
 }
 
+/** What the Runner's git commands need to reach the forge. */
+export const gitAccess = (github: ConnectionInput) => {
+  const gitBaseUrl = process.env.BAUHERR_GIT_BASE_URL || (github.kind === 'gitlab' ? webOrigin(github) : undefined)
+  return { gitToken: github.secret!, ...(gitBaseUrl && { gitBaseUrl }), ...(github.kind === 'gitlab' && { gitUser: 'oauth2' }) }
+}
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -53,7 +66,7 @@ export const buildRunCtx = async (
   const { run, ticket, repo } = d
   const opts = { overrideAccess: true } as const
   const workspace = typeof run.workspace === 'object' ? run.workspace.id : run.workspace
-  const backend = githubFor(d.github)
+  const backend = backendFor(d.github)
   const tickets = backend.tickets(repo)
   const issue = await tickets.get(String(ticket.number))
   const goal = await goalFor(payload, ticket, issue.body, run.stage)
@@ -65,26 +78,35 @@ export const buildRunCtx = async (
   const gatewayUrl = process.env.GATEWAY_URL
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
-  const tiers = { ...DEFAULT_MODEL_BY_TIER, ...(ws.modelByTier as Record<string, string> | null) }
-  const modelByTier = Object.fromEntries(Object.entries(tiers).map(([t, m]) => [t, `ws-${ws.slug}/${m}`]))
-  const mr = run.stage === 'plan' || run.stage === 'triage' ? null : await prOf(payload, ticket)
+  const modelByTier = await tierModels(payload, ws)
+  const mr = run.stage === 'plan' || run.stage === 'triage' || run.stage === 'scan' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
+  // A Build Run pushes to this MR: a queued entry must be taken out first, a push would invalidate it.
+  if (run.stage === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
   if (run.stage === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
+  const productDoc = (await payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, ...opts })) as Doc
+  const base = run.stage === 'scan' ? scanCaps(productDoc) : baseCaps(run.stage)
+  const escalated = await isEscalated(payload, run)
+  const caps = escalated ? escalatedCaps(run.stage, base) : base
+  if (escalated && run.stage === 'build') await noteEscalatedBuild(payload, run, caps)
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, maxTurns: 20, maxBudgetUsd: 0.5, tier: run.stage === 'review' ? 'standard' : 'cheap' },
+    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...caps, tier: escalated ? 'strong' : run.stage === 'review' || run.stage === 'scan' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
-      ...(run.stage !== 'plan' && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}) },
+      ...((run.stage !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
+      ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
-    product: { id: String(typeof ticket.product === 'object' ? ticket.product.id : ticket.product), repo, defaultBranch: repoInfo.defaultBranch },
+    ...(run.stage === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
+    ...(run.stage === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
+    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
+      ...(run.stage === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
     connection: {
       gatewayUrl,
       gatewayKey: d.gatewayKey,
-      gitToken: d.github.secret!,
       modelByTier,
-      ...(process.env.BAUHERR_GIT_BASE_URL ? { gitBaseUrl: process.env.BAUHERR_GIT_BASE_URL } : {}),
+      ...gitAccess(d.github),
     },
     forge: {
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),
@@ -93,7 +115,14 @@ export const buildRunCtx = async (
         const existing = lastWith(WORKLOG_MARKER)
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
-      setStage: (number, stage) => setStage(tickets, String(number), stage),
+      setStage: async (number, stage) => {
+        const move = () => moveStage(payload, tickets, { product: ticket.product, number }, stage)
+        if (stage !== 'review') return move()
+        await enterStage(payload, ticket, 'review', async () => {
+          await move()
+          await payload.update({ collection: 'tickets', id: ticket.id, data: { stage }, overrideAccess: true })
+        })
+      },
     },
     recorder: {
       step: async (s) => {

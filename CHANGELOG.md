@@ -3,3 +3,268 @@
 All notable changes to this project are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
+
+## 0.2.0 - 2026-11-09
+
+### Features
+- Upgrade agentgateway v1.6.0 → v1.7.0 ([#444](https://github.com/getbauherr/bauherr/issues/444), [#447 chore(deps): agentgateway v1.7.0 (Refs #444)](https://github.com/getbauherr/bauherr/pull/447))
+
+## 0.1.1 - 2026-11-09
+
+### Features
+- Router profile: vLLM Semantic Router and auto tier ([#58](https://github.com/getbauherr/bauherr/issues/58), [#431 feat(router): Router compose profile, router key and auto tier (Refs #58)](https://github.com/getbauherr/bauherr/pull/431))
+  - `docker compose --profile router up` starts the vLLM Semantic Router (vllm-sr v0.4.0, pinned) with its Envoy front. Without the profile nothing router-related starts and no model weights are downloaded (D2).
+  - The gateway has a virtual model `ws-<slug>/<connection>/auto` served by the router. A Workspace creates it by adding an LLM Connection with the new preset `router`, which needs no secret from the user.
+  - **The router calls back into the gateway with a dedicated router key for the Workspace** (D1b = 1, owner 2026-11-09). Bauherr creates the key and stores it encrypted like the Workspace gateway key. The gateway attributes its spend to the Workspace, and inner calls appear in `request_logs` under `workspace-<slug>`.
+  - A Runner tier `auto` exists: `tierModels` resolves it to the router model when the Workspace has a `router` Connection, and a Run with `tier: auto` sends its model calls through the router.
+  - A tier other than `auto` behaves exactly as today. Workspaces without a `router` Connection are unaffected (no new required config).
+  - The gateway config with a `router` entry passes `agentgateway --validate-only` (`gateway-config.test.ts`).
+  - `docs/router.md` answers the wayfinder question: how the key travels, how spend is attributed, what is double-counted (D4), the single-Workspace limit (D3), and the measured smoke result.
+- measure PR wall time after the build-once change (#294 follow-up) ([#347](https://github.com/getbauherr/bauherr/issues/347), [#433 ci(server): Template DB for tests and 3-way shard (Refs #347)](https://github.com/getbauherr/bauherr/pull/433))
+- Releases page and manual mode ([#405](https://github.com/getbauherr/bauherr/issues/405), [#425 feat(release): Releases page: pick done Tickets, ship a version; manual mode reminder (Refs #405)](https://github.com/getbauherr/bauherr/pull/425))
+- Payload's REST sign-in /api/bauherren/login bypasses the sign-in queue and its cap ([#428](https://github.com/getbauherr/bauherr/issues/428), [#429 fix(auth): REST sign-in through the sign-in queue, per-IP limit, GraphQL off (Refs #428)](https://github.com/getbauherr/bauherr/pull/429))
+- stable 'released before', one date source, retry-safe ship e2e ([#430](https://github.com/getbauherr/bauherr/issues/430), [#435 fix(release): Backfill old releases once, retry-safe ship e2e (Refs #430)](https://github.com/getbauherr/bauherr/pull/435))
+- docs/auth.md: say when the IP limit is trustworthy (TRUSTED_PROXY_HOPS) ([#432](https://github.com/getbauherr/bauherr/issues/432), [#434 fix(auth): Short x-forwarded-for chains share one IP bucket; document IP-limit trust (Refs #432)](https://github.com/getbauherr/bauherr/pull/434))
+- Lows from #347 and #430, plus #347's 10-run CI measurement (2026-11-09) ([#436](https://github.com/getbauherr/bauherr/issues/436), [#441 fix(core): Board reminder skips earlier releases, retry-gated ship e2e, per-run template DB (Refs #436)](https://github.com/getbauherr/bauherr/pull/441))
+- Follow-ups from #58: migrations crash on newer Workspace columns; router doubles the gateway budget ([#438](https://github.com/getbauherr/bauherr/issues/438), [#443 fix(router): Schema-safe migration, router-key revoke and tier checks (Refs #438)](https://github.com/getbauherr/bauherr/pull/443))
+- npm trusted publishing fails with E401 (setup-node registry-url placeholder token) ([#439](https://github.com/getbauherr/bauherr/issues/439), [#440 fix(release): Publish npm via trusted publishing without registry-url (Refs #439)](https://github.com/getbauherr/bauherr/pull/440))
+
+
+## 0.1.0 - 2026-11-09
+
+### Features
+- Docs site and domain ([#25](https://github.com/getbauherr/bauherr/issues/25), [#187 feat(docs): Add Zensical landing site for getbauherr.dev (Refs #25)](https://github.com/getbauherr/bauherr/pull/187))
+  - `docs/site` is a Zensical project (same toolchain as docs.einsfuenf.de: `zensical.toml`, `pyproject.toml` + `uv.lock`) that builds with `uv run zensical build --strict`.
+  - The landing page shows the one-command start `npx bauherr init` (copy-ready code block, requirements line matching the README: Docker with Compose, Node 22.14+) and an intake link.
+  - The site uses the Bauherr design tokens (accent, surfaces, Archivo / IBM Plex Mono, light and dark) and the Bauherr wordmark/mark as logo and favicon.
+  - `docs/site/docs/CNAME` contains `getbauherr.dev` and ends up in the built site.
+  - A GitHub Actions workflow builds the site on every PR touching `docs/site/**` (strict, no deploy) and deploys it to GitHub Pages on push to `main`.
+  - GitHub Pages for the repo is set to "GitHub Actions" source with custom domain `getbauherr.dev` and HTTPS enforced; `https://getbauherr.dev/` answers 200 with the landing page.
+  - The only owner step is DNS (already done per the ticket comment of 2026-10-30); the plan adds no new owner step.
+- Add CHANGELOG.md ([#70](https://github.com/getbauherr/bauherr/issues/70))
+- pick up tickets without a stage label ([#76](https://github.com/getbauherr/bauherr/issues/76), [#131 feat(server): Triage stage for Tickets without a stage label (#76)](https://github.com/getbauherr/bauherr/pull/131))
+  - Every open Ticket without a stage label (and not excluded) gets a Triage Run within one poll cycle; its outcome is one of: `bauherr:stage:plan` (ready), `bauherr:needs-refinement` (questions for the owner on the Ticket), or skip (a one-line reason Comment, no stage).
+  - Questions show on the Ticket page as a decision sheet (the existing DecisionSheet, #79); when they are answered the Ticket moves to `plan` automatically.
+  - Excluded kinds are documented and configurable: labels `wayfinder:map`, `wayfinder:grilling`, `wayfinder:research`, and Tickets assigned to a person.
+- Notify the owner at human gates ([#77](https://github.com/getbauherr/bauherr/issues/77), [#129 feat(server): Notify the gate's person by assignee and mention (#77)](https://github.com/getbauherr/bauherr/pull/129))
+  - When a Ticket reaches a human gate (Approve plan, Answer decisions/questions, Accept on staging, Staging not confirmed, Run needs you, Run failed), the gate's person gets a GitHub notification: the factory assigns them on the issue and @mentions them in one gate Comment with a link to the Ticket page.
+  - When the gate is passed, the factory removes the assignee again (never a person who assigned themselves).
+  - The overview's Needs you list is the inbox of open gates (exists; gets the gate person and the age).
+- Review stage: factory code review and auto-merge ([#82](https://github.com/getbauherr/bauherr/issues/82), [#124 feat(server): Review stage — factory code review and auto-merge (#82)](https://github.com/getbauherr/bauherr/pull/124))
+  - When a Ticket enters `review` with a factory MR linked, the factory starts a **Review Run** (session or autonomous, following the Workspace mode). The Run uses a reviewer without memory of the change and checks:
+  - correctness
+  - over-engineering
+  - spec vs plan
+  - the `## Evidence` section
+  - The Review Run posts one `<!-- bauherr:review -->` comment on the MR: a verdict and findings with severity, file:line, defect and scenario.
+  - **High or medium findings → back to Build:**
+  - the findings are written into the worklog (Current instructions + Unfinished work),
+  - the stage goes to `build`,
+  - a new Build Run is started that pushes to the **same MR branch**.
+  - After 2 review→build rounds on a Ticket, it goes `needs_human` with a Ticket comment.
+  - **Clean review** (low findings only, recorded under Open) **+ all check runs on the head SHA green** (no checks counts as green) **+ `## Evidence` present + Product `autoMerge` on (default on)** → the factory squash-merges and deletes the branch, with no human touch. `watch-release` then takes the Ticket to `release`.
+  - Checks pending → wait.
+  - Checks red → back to Build (counts as a round).
+  - `autoMerge` off → a "ready to merge" comment; the merge stays with a human.
+  - `docs/spec/workflow.md` and `pack/workflow.yaml` describe the review stage. The "native MR review" human gate from #10 is removed.
+- Release stage: staging deploy, result summary, acceptance gate ([#83](https://github.com/getbauherr/bauherr/issues/83), [#108 feat(release): Release stage with staging summary and acceptance gate (#83)](https://github.com/getbauherr/bauherr/pull/108))
+  - A Ticket whose linked MR is merged moves to `release` without a human; when its merge commit is on staging (per the Product's deploy mode), the factory posts one `<!-- bauherr:staging-summary -->` Comment and the Ticket page shows a **Gate "Accept on staging"** with the summary beside it.
+  - The summary is templated from structured data: plan steps → outcome (from the worklog Goal/Decisions and the MR evidence), MRs, review findings and deviations (from the MR bodies), decisions taken, staging URL, open items (worklog "Unfinished work"). No model call.
+  - Any Bauherr of the Workspace accepts (label `bauherr:approved:staging`, human touch `accept:staging`) or requests changes with a note: the note lands in the worklog "Current instructions", the stage goes back to `build`, a Build Run starts.
+  - After acceptance the Ticket moves to `done` unless the Product has a production gate (#84, later: then it waits there).
+  - The overview's needs-you includes "Accept on staging"; the Run page's stage graph shows a `release` node with the deploy observation.
+  - Products carry `stagingUrl` and `deploy` (`observe-ci` default | `webhook` with URL) in the settings UI; `docs/spec/workflow.md` §1/§2 updated (Release = observe CI, gate = staging acceptance); typecheck, unit tests and Playwright pass with the fake forge.
+- Production deploy gate: manual approval ([#84](https://github.com/getbauherr/bauherr/issues/84), [#160 feat(server): Production approval gate with observed deploy result (Refs #84)](https://github.com/getbauherr/bauherr/pull/160))
+  - A Product with `productionGate` on never changes production without an explicit approval: a Ticket accepted on staging stays in `release` and waits for `bauherr:approved:production`.
+  - The approval can be given in the Bauherr UI, via MCP `approve_production`, or by setting the label `bauherr:approved:production` on the forge; the factory never adds that label itself.
+  - On approval the Product's own pipeline deploys (optional `productionWebhookUrl` POST, or the pipeline reacting to the label); the factory runs no deploy command.
+  - The factory observes the pipeline result (Product's `productionChecks` on the merge commit) and records `productionState` `deploying | deployed | failed | timed_out` on the Ticket.
+  - The approval (human touch `approve:production`, actor, time) and the deploy result (one `<!-- bauherr:production -->` Ticket Comment) are recorded; klima-portal's manual `deploy_production` counts as a Product pipeline.
+  - `deployed` moves the Ticket to `done` and closes it `completed`; `failed` / `timed_out` surfaces as a needs-you gate and never closes it.
+  - The Ticket page, Board and needs-you list show the new gate and states; docs and tests cover the flow.
+- Parent tickets: approval inheritance and grouping for sub-tickets ([#100](https://github.com/getbauherr/bauherr/issues/100), [#136 feat(server): Sub-tickets inherit the plan approval and group under the parent (#100)](https://github.com/getbauherr/bauherr/pull/136))
+  - A plan may contain a `## Sub-tickets` section; when the owner approves that plan, the factory creates each listed child as a real sub-issue of the parent (forge sub-issues, `addSubTicket`), labelled `bauherr:stage:plan` + `bauherr:approved:plan` (inherited), so Build starts without a second approval.
+  - Only children listed at approval time inherit; a child added later gets no approval.
+  - The Board groups children under their parent (count + progress), and the parent closes when all children are closed.
+- Release notes on GitHub and GitLab at production release ([#106](https://github.com/getbauherr/bauherr/issues/106), [#186 feat(server): Publish a forge Release when production is approved (Refs #106)](https://github.com/getbauherr/bauherr/pull/186))
+  - When the production gate (#84) is approved for a Product's Tickets, the factory publishes exactly one Release on the Product's forge (GitHub Release; GitLab Release through the #119 driver) for the deployed commit; a retry or a second tick never creates a second one.
+  - The Release body lists every Ticket accepted on staging since the last release, grouped Features / Fixes, in plain user language (built from the "What you get" part of the staging summaries), with links to the Tickets and MRs.
+  - The user-language rewrite is one cheap-tier model pass through the Workspace gateway, within the Workspace budget; if the pass fails or the budget blocks it, the deterministic text is published instead.
+  - A Product with `releaseMode = notes-only` (default) and an existing release for the deployed commit (e.g. semantic-release) gets the notes written into that release body; no second tag is created.
+  - A Product with `releaseMode = factory` gets a semver computed from conventional commits since the last release, the tag on the deployed commit, the Release, and a `CHANGELOG.md` entry via an MR (never a direct push to the default branch).
+  - Forge contract has `findRelease`, `createRelease`, `updateRelease` (+ file read/write for the changelog MR), implemented by the GitHub driver and the fake forge; the GitLab driver (#119) implements the same contract.
+  - Each Ticket records the release it shipped in (`releaseUrl`) and a Ticket Comment links it.
+- Backlog order: owner rank, claim_next, finish before start ([#114](https://github.com/getbauherr/bauherr/issues/114), [#126 feat(server): Backlog order — Board rank, claim_next, in-flight first (#114)](https://github.com/getbauherr/bauherr/pull/126))
+  - The owner orders open Tickets once by dragging cards on the Board; the order is kept per Workspace in Bauherr (never written to the forge).
+  - `list_frontier` returns Tickets in that order: in-flight first, then by rank; blocked and leased Tickets last.
+  - A session calls `claim_next` and gets the top claimable Run, atomically: two sessions calling at the same moment get different Tickets.
+  - "In flight" work (changes requested, review fixes, release follow-ups) is taken before new Tickets.
+- dependency graph view with critical path ([#118](https://github.com/getbauherr/bauherr/issues/118), [#128 feat(ui): Dependency graph view with critical path (#118)](https://github.com/getbauherr/bauherr/pull/128))
+  - The Tickets page has a **Board | Graph** switch. `/?view=graph` shows the Graph; Board stays the default, and every other `?view=` value keeps redirecting to `/` as in #116.
+  - The Graph shows open Tickets (after the product filter) as nodes and blocked-by relations as edges, laid out left to right. The column is the length of the longest blocker chain leading to the Ticket. Every open blocked-by edge between shown Tickets is drawn.
+  - Nodes are coloured by stage, with the same tokens as the Board columns.
+  - **Ready** Tickets are marked with an outline plus the word "ready", so colour is never the only signal. Ready means no open blockers, not leased, and not done.
+  - The **critical path** (the longest open chain) has highlighted edges and nodes, and a legend explains it.
+  - Isolated Tickets (no edges) are collapsed into one "No dependencies (N)" group after the graph, so it stays readable.
+  - A node is a link to `/tickets/<id>`, keyboard-focusable, with an `aria-label` of the form "#118 Title, stage plan, ready, blocked by #114".
+  - At phone width the graph scrolls horizontally inside its container, with no page scroll. Light and dark themes both work.
+- GitLab driver: issues, merge requests and pipelines behind the adapter contracts ([#119](https://github.com/getbauherr/bauherr/issues/119), [#158 feat(adapters): Add GitLab backend and Connection kind (Refs #119)](https://github.com/getbauherr/bauherr/pull/158))
+  - `packages/adapters/src/gitlab.ts` exports `GitlabBackend` (`Backend`: `capabilities`, `forge`, `tickets(repo)`) with a PAT auth helper, exported from `index.ts`.
+  - Ticket source on GitLab issues: `list`, `get`, `poll` (cursor via `updated_after`), `create`, `comment`/`listComments`/`updateComment` (system notes skipped), `addLabels`/`removeLabels`, `claim`/`release`/`unassign`/`userExists`, `close`/`reopen` (close reason as label), `addSubTicket`/`listSubTickets`/`addBlockedBy`/`addLink`/`frontier` via the body convention.
+  - Forge on GitLab: repositories, branches, merge requests (`openPullRequest`, `getPullRequest` with `mergeSha` once merged, `listPullRequests`, `commentOnPullRequest`, `listPullRequestFiles`), pipelines as `listChecks`, `getCommitDate`, squash `mergePullRequest` pinned to `expectSha`.
+  - A Connection of kind `gitlab` with a base URL (self-hosted einsfuenf.de or gitlab.com) can be created in Settings, and every server code path that built a GitHub backend builds the GitLab one for it.
+  - Server code no longer assumes `github.com`/`/pull/` for MR URLs, and the Runner clones from the Connection's own base URL.
+  - Contract tests against the fake pass unchanged; a recorded-fixture suite covers every GitLab method (request shape + mapping); a sandbox write test runs the shared `contractSuite` against a GitLab project and is skipped until its env is set (needs owner item #17).
+  - Acceptance: a Workspace with a GitLab Connection runs a Ticket plan -> merged MR -> staging summary like GitHub (proven on fixtures + fake-forge e2e now; on the real sandbox once #17 exists).
+- bauherr CLI package and release workflow (npx bauherr up) ([#123](https://github.com/getbauherr/bauherr/issues/123), [#139 feat(cli): npx bauherr init and tag-driven release to GHCR and npm (#123)](https://github.com/getbauherr/bauherr/pull/139))
+  - `npx bauherr@<version> init` starts the Bauherr stack on a clean machine that has Docker, with no clone and no build. The CLI follows the decisions of #4:
+  - it asks for dir, port and public URL (`--yes` takes the defaults);
+  - it writes `<dir>/compose.yaml` and `<dir>/.env` (secrets from `crypto.randomBytes`, mode 600, never printed, kept on re-run);
+  - it runs `docker compose up -d --wait`, prints the URL and opens it.
+  - Further commands: `up`, `down`, `status`, and `seed` (wraps the seed step of `docs/first-run.md`).
+  - Before writing anything it fails clearly when Docker is missing, the daemon is unreachable or the port is busy.
+  - One git tag `v*` publishes, in this order:
+  - the multi-arch image `ghcr.io/getbauherr/bauherr:<version>` (`GITHUB_TOKEN`, `packages: write`);
+  - npm `bauherr@<version>` via trusted publishing (OIDC, `id-token: write`, environment `release`, GitHub-hosted runner, npm ≥ 11.5.1, provenance), staged so the owner promotes it on npm.
+  - The CLI pins the image tag to its own version. Upgrading is `npx bauherr@latest init`, which keeps `.env`.
+  - The repo-root `compose.yaml` stays the contract and the documented fallback (`docker compose up` with the `init` secrets service). It gains `image: ghcr.io/getbauherr/bauherr:${BAUHERR_VERSION:-dev}` next to `build: .`, so the source checkout still builds locally.
+- submit_review rejects finding paths with parentheses (Next.js route groups) ([#127](https://github.com/getbauherr/bauherr/issues/127), [#154 fix(server): Review findings accept route-group and dynamic-segment paths (#127)](https://github.com/getbauherr/bauherr/pull/154))
+  - A `submit_review` finding with `file` `apps/server/src/app/(app)/(shell)/tickets/[id]/page.tsx` is accepted by `normalizeReview`.
+  - `(`, `)`, `[`, `]` are allowed in finding paths; whitespace, control characters and any `..` path segment are still rejected.
+  - The MCP `submit_review` input schema accepts and rejects exactly the same paths as `normalizeReview` (one pattern, defined once).
+- Factory MRs must not auto-close Tickets (acceptance gate skipped) ([#132](https://github.com/getbauherr/bauherr/issues/132), [#134 fix(server): Factory MRs never close Tickets; Staging column (#132)](https://github.com/getbauherr/bauherr/pull/134))
+  - A factory MR never closes its Ticket. Only acceptance on staging closes it (#113).
+  - **Prevention:** the Runner's MR body says `Refs <ticket url>` (it says `Closes <ticket url>` today, at `packages/runner/src/index.ts:125`, so every autonomous MR skipped acceptance). The session conventions (`docs/session-mode.md`, `pack/skills/run-contract`) say to write `Refs #N`, never `Closes/Fixes/Resolves`.
+  - **Cure** (covers human-written PR bodies and older MRs): when `watch-release` finds a Ticket that is **closed** in the forge but still in `review`/`release` in Bauherr, it reopens the Ticket and posts one comment explaining why. The Ticket then continues to the staging summary and the acceptance gate.
+  - The reopen applies only if Bauherr has not recorded an acceptance and the Ticket's factory MR is merged.
+  - A Ticket a human closed deliberately before any factory MR merged stays closed.
+  - **Column name:** the Board column for the `release` stage reads **Staging**, and its cards keep "Accept on staging". Only the label changes; the stage stays `release`.
+- a restart mid-request records the verdict but leaves the Ticket in review ([#133](https://github.com/getbauherr/bauherr/issues/133), [#161 fix(server): Resume reviews whose verdict was recorded but not applied (Refs #133)](https://github.com/getbauherr/bauherr/pull/161))
+  - A Ticket whose latest review Run is `succeeded` with a stored verdict, but which is still `stage: review` with no `reviewState` and no active review Run, is concluded again within about 3 minutes (the verdict leads to Build with a Build Run, or to the merge gate).
+  - Killing the app between the review Run write (`ownerWrite` in `submit_review`, or the `runs` update in the autonomous Runner path) and the stage move ends with a Build Run for a `changes` verdict.
+  - The retry posts no second MR review comment, and does not touch Tickets in `waiting_checks`, `needs_human`, `ready_for_human` or `merged`.
+  - A review that was flagged as untrustworthy (`problem`: incomplete `checked`, contradictory verdict) is still handed to a human on retry, never merged or sent to Build.
+  - Tests cover the restart case for `changes` and `clean`, and the cases where nothing may be retried.
+- Release watch: respect a deliberate close after merge; bound the closed-ticket scan ([#135](https://github.com/getbauherr/bauherr/issues/135), [#183 fix(server): Decide closed review/release Tickets once in watch-release](https://github.com/getbauherr/bauherr/pull/183))
+  - A Ticket closed by its merged factory MR (close reason `completed`, no acceptance label) is reopened once, with one `<!-- bauherr:reopened -->` comment, as today.
+  - A closed review/release Ticket whose forge close reason is `not_planned` (or `duplicate`) after the merge stays closed: its stage is set to `done` (local and forge label) and one `<!-- bauherr:dropped -->` note is posted.
+  - Every closed review/release Ticket is decided in the first `watch-release` pass that sees it (reopened, or stage `done`); decided Tickets no longer match the per-minute query, so no forge calls are spent on them again.
+  - A Ticket closed by a human before any factory MR merged stays closed and drops out of the query the same way.
+  - Tests cover: merge-close reopened once, `not_planned` close stays closed and shows `done`, decided closed Tickets are not touched on the next pass.
+- Review → Build: worklog rewrite drops sections and low findings ([#137](https://github.com/getbauherr/bauherr/issues/137), [#157 fix(server): Review rounds update only their worklog sections; lows under Open (#137)](https://github.com/getbauherr/bauherr/pull/157))
+  - After a review round that returns the Ticket to Build, the worklog's Goal, Owners, Decisions and Affected Tickets sections are byte-for-byte unchanged.
+  - Only `Current instructions` (replaced), `Unfinished work` (blocking findings appended) and `Open` (low findings) change.
+  - Each blocking finding appears exactly once in the worklog (under Unfinished work, not also under Current instructions); each low finding appears exactly once (under Open).
+  - A second round that repeats the same finding does not duplicate its line.
+  - The staging summary's `## Open` also lists the worklog's `Open` items.
+  - The worklog template and the `worklog` skill document the `Open` section.
+- Sub-tickets follow-ups: duplicate child rows, inheritance record, close retry, label ([#138](https://github.com/getbauherr/bauherr/issues/138), [#163 fix(server): Enforce one Ticket per forge issue and harden sub-ticket fan-out (Refs #138)](https://github.com/getbauherr/bauherr/pull/163))
+  - Two Tickets for the same forge issue can no longer exist: `tickets` has a unique `(product, externalId)` and every creator (`spawnSubTickets`, `poll-tickets`) tolerates losing the race.
+  - A child created by `spawnSubTickets` has `inheritedApprovalFrom` and `parent` stored before `addSubTicket`, so a crash afterwards leaves the record intact and a retry completes it.
+  - A parent whose forge issue was closed but whose local stage is still `parent` is finished (stage `done`) on the next pass.
+  - A parent without a rank gets one, and its children rank directly after it.
+  - The NoRoom fallback test asserts that the children's ranks ascend and sort after the tail.
+  - The Board column for parent Tickets reads "Split", not "children".
+  - `lastRankAfter` is no longer re-exported from `jobs/index.ts` for tests.
+  - Findings 1 and 2 have tests; 3 to 7 are fixed (none dropped).
+- Review round cap: owner can grant one more round from the UI ([#140](https://github.com/getbauherr/bauherr/issues/140), [#164 feat(server): Owner can grant one more review round after the cap (#140)](https://github.com/getbauherr/bauherr/pull/164))
+  - A Ticket in `review` with `reviewState: needs_human` and `reviewRounds > MAX_REVIEW_ROUNDS` shows the Gate "Round cap reached" on its Ticket page with the findings of the escalation Comment and the actions "Grant one more round" and "Stop".
+  - "Grant one more round" records a human touch (`review-cap:grant`), resets `reviewState` to null, lowers `reviewRounds` by 1 (exactly one more round), writes the escalation findings into the worklog Current instructions, starts a Build Run on the same MR and sets the stage to `build`.
+  - After the grant, the next review runs automatically and a clean result auto-merges through the existing merge gate.
+  - A second cap hit sets `reviewState: needs_human` again and shows the gate again.
+  - "Stop" records a human touch (`review-cap:stop`), leaves the MR open, resets `reviewState`, moves the Ticket to `triage` and posts a Comment with the note.
+  - The MCP tool `grant_review_round` (and `stop_review`) does the same, for the owner only: a session Run's lease holder cannot call it for its own Ticket.
+  - `needsYou` returns "Round cap reached" for the gate, so the Overview, the nav badge and gate notifications list it.
+  - Both actions refuse a Ticket that is not at the cap (wrong stage, wrong `reviewState`, or `reviewRounds` <= cap).
+  - Tests, `docs/spec/workflow.md` (round cap paragraph) and `docs/session-mode.md` (tool list) are updated.
+- Gates and triage follow-ups: silent gate when owners are unreachable, small races ([#142](https://github.com/getbauherr/bauherr/issues/142), [#159 fix(server): Flag unreachable gates, keep session logins assigned, untriage after the terminal update (Refs #142)](https://github.com/getbauherr/bauherr/pull/159))
+  - A gate whose owners are all rejected for good (404/422) is not marked notified, posts no Comment, and is retried on every gate sweep.
+  - Such a gate shows "no reachable owner" in the Admin gate list (overview row), and the label clears once an owner is reached.
+  - A test covers (1): all owners 404 -> not notified, "no reachable owner" set; after the owner list changes (or the claim succeeds) the gate is notified with one Comment.
+  - The gate-passed unassign in `syncGate` leaves the login of an active session Run assigned.
+  - The race-start guard in the poll re-reads the Ticket row (`gateAssignees`) before deciding to start a Run.
+  - The `claimRun` JSDoc sits directly above `claimRun`, not above `sessionLogin`.
+  - `untriage` runs after the Run's terminal update in the `run-stage` task (success and failure paths), covered by a test.
+  - An `untriage` failure in the catch block is logged, does not mask the original error, and `queueReconcile` still runs; covered by a test.
+- Provider auth modes: inline AWS IAM and Entra, ambient single-tenant ([#143](https://github.com/getbauherr/bauherr/issues/143), [#153 feat(gateway): Add inline IAM/Entra and ambient provider auth modes (Refs #143)](https://github.com/getbauherr/bauherr/pull/153))
+- Several providers per Workspace and per-tier provider ([#144](https://github.com/getbauherr/bauherr/issues/144), [#167 feat(gateway): Several providers per Workspace and per-tier provider (Refs #144)](https://github.com/getbauherr/bauherr/pull/167))
+- Intake engine and session API ([#145](https://github.com/getbauherr/bauherr/issues/145), [#156 feat(server): Intake engine and session API (Refs #145)](https://github.com/getbauherr/bauherr/pull/156))
+- Intake UI: New request chat ([#146](https://github.com/getbauherr/bauherr/issues/146), [#178 feat(server): Add New request intake chat page (Refs #146)](https://github.com/getbauherr/bauherr/pull/178))
+- Intake screenshots ([#147](https://github.com/getbauherr/bauherr/issues/147), [#177 feat(server): Intake screenshots: upload, vision input, attachments (Refs #147)](https://github.com/getbauherr/bauherr/pull/177))
+- Owner questions via the intake engine for wayfinder tickets ([#148](https://github.com/getbauherr/bauherr/issues/148), [#179 feat(server): Answer wayfinder decisions interactively as owner (Refs #148)](https://github.com/getbauherr/bauherr/pull/179))
+- Embeddable widget and embed token ([#149](https://github.com/getbauherr/bauherr/issues/149), [#176 feat(server): Embeddable intake widget and embed tokens (Refs #149)](https://github.com/getbauherr/bauherr/pull/176))
+- Knowledge sources, index and search ([#150](https://github.com/getbauherr/bauherr/issues/150), [#155 feat(server): Index and search Knowledge sources with citations (Refs #150)](https://github.com/getbauherr/bauherr/pull/155))
+- Knowledge page: browse, search, read, write-backs ([#151](https://github.com/getbauherr/bauherr/issues/151), [#181 feat(server): Add the Knowledge page to browse, search and read documents (Refs #151)](https://github.com/getbauherr/bauherr/pull/181))
+- Knowledge editor: edit via PR with auto-merge ([#152](https://github.com/getbauherr/bauherr/issues/152), [#182 feat(server): Edit Knowledge documents via PR with auto-merge (Refs #152)](https://github.com/getbauherr/bauherr/pull/182))
+- Agent identity: sessions must not hold the owner's gate rights ([#166](https://github.com/getbauherr/bauherr/issues/166), [#173 feat(server): Agent keys for MCP sessions, gate tools human-only (Refs #166)](https://github.com/getbauherr/bauherr/pull/173))
+  - Session Runs authenticate to `/mcp` with an agent key (kind `agent`), stored separately from the owner's personal API key; the key used is recorded on the Run and on every `tool_calls` row.
+  - Every gate tool (`approve`, `accept_staging`, `approve_production`, `grant_review_round`, `stop_review`, `request_changes`) refuses an agent key with a clear error; a unit test covers each tool by name.
+  - With a human key (personal key) or the UI, the same gate calls work as before (existing tests stay green; one positive test per gate tool via MCP).
+  - A new gate tool cannot ship unguarded: a test fails when a tool is flagged owner-only in the registry but lacks the human-only check, or when the expected gate set changes without updating the test.
+  - Every `human_touches` row names a person (`actor` = a user email); an agent key can never write one.
+  - `docs/session-mode.md`, `docs/first-run.md`, `docs/gateway-smoke.md`, the seed script and the `/settings/api-key` page use the agent key; existing personal keys are migrated per D2 and the old setup is called out as a warning.
+- Merge conflicts after another merge go back to Build (merge main), not to merge-failure escalation ([#168](https://github.com/getbauherr/bauherr/issues/168), [#172 fix(server): Return conflicting MRs to Build to merge main (Refs #168)](https://github.com/getbauherr/bauherr/pull/172))
+  - A forge PR carries `mergeable?: boolean` (false = conflicts with base, undefined = unknown); the GitHub adapter fills it from `mergeable` / `mergeable_state: dirty`, the contract documents the GitLab mapping (`has_conflicts` / `merge_status: cannot_be_merged`) for the #119 driver.
+  - A clean-reviewed MR that is not mergeable returns to Build on the same MR with the Current instruction "merge main into the MR branch (no rebase, no force push), resolve the conflicts keeping both sides, rerun checks", and this return does not add a review round and does not add a merge failure.
+  - A merge call that fails while the re-read MR is `mergeable === false` takes the same route instead of counting toward `MAX_MERGE_FAILURES`; any other merge failure still counts and still escalates at 3.
+  - A Ticket in `waiting_checks` whose MR turned unmergeable is routed the same way on the next `watchReviews` pass (every minute), before waiting for checks.
+  - After Build pushes the merge commit, a new Review Run starts on the new head SHA (`reviewedSha` updated), is told to check only the merge resolution, and a clean review then merges.
+  - Two clean PRs that conflict: the first merges, the second goes to Build without consuming a round or a failure count; after the main merge and a review, the second merges.
+  - The run-contract and worklog skills and `docs/spec/workflow.md` document "merge main, never rebase/force".
+- Atomic state guards: replace payload.update-by-where CAS (staging claim and others) ([#169](https://github.com/getbauherr/bauherr/issues/169), [#184 fix(server): Guard staging claim, stage transition and bulk run updates atomically (Refs #169)](https://github.com/getbauherr/bauherr/pull/184))
+  - The staging `claim()` in `apps/server/src/lib/release.ts` is one conditional raw `UPDATE ... RETURNING` (via `cas()`), and the caller acts only when a row came back.
+  - Two parallel `watchRelease` passes over one release Ticket send exactly one staging webhook and post exactly one "staging not confirmed" timeout comment (proved by `Promise.all` tests).
+  - The review-to-release transition in `watchRelease` is guarded, so a parallel pass cannot overwrite `deployRequestedAt` after the other pass claimed it.
+  - The bulk `runs` updates in `apps/server/src/lib/actions.ts` (~481, ~512) are checked and converted to raw conditional updates.
+  - The session-expiry updates in `apps/server/src/jobs/index.ts` (~183, ~190) are converted, so `untriage` runs once per expired Run.
+  - No `payload.update({ ..., where })` (or `payload.delete` with `where`) is left in `apps/server/src`; a test fails CI if one is added.
+  - A short rule in `CONTRIBUTING.md` says: state guards never use `payload.update` with `where`; use `cas()`.
+- Unclaimed session Runs must not expire to needs_human ([#170](https://github.com/getbauherr/bauherr/issues/170), [#171 fix(server): Keep unclaimed session Runs queued and requeue expired ones (Refs #170)](https://github.com/getbauherr/bauherr/pull/171))
+  - An unclaimed (`awaiting_session`) non-triage session Run is still `awaiting_session` after 2 hours (indeed never expires by time).
+  - A claimed (`running`) session Run without heartbeat for SESSION_TIMEOUT_MS is still abandoned by `expireStaleSessions` as today.
+  - An unclaimed Triage Run still expires to `abandoned` (unchanged).
+  - No Run ends `needs_human` with "session heartbeat timeout" any more, so needs-you lists no unclaimed Runs.
+  - Runs that already expired this way get a successor `awaiting_session` Run (the old Run becomes `abandoned`), via a one-off migration.
+- Forge approval labels must come from a human gate owner (verify the label actor) ([#174](https://github.com/getbauherr/bauherr/issues/174), [#190 feat(server): Verify gate label actors before approving (Refs #174)](https://github.com/getbauherr/bauherr/pull/190))
+  - A `bauherr:approved:plan` label whose latest `labeled` event actor is not a gate owner or Admin login does not start Build: the label is removed again and one Comment explains why.
+  - The same label added by a gate owner or Admin login (not the factory's own identity) works as before and starts Build.
+  - A gate label the factory itself added through `approvePlan`, `acceptStaging` or sub-ticket inheritance is accepted because a matching human touch exists, even though its actor is the factory's token login.
+  - A gate label added by the factory's token login without such a record (an agent session running `gh issue edit --add-label`) is rejected like a foreign actor.
+  - `bauherr:approved:staging` is verified by the same code path; the gated labels live in one list so optional gates (#175) can filter it.
+  - Accepting a manually set label records a human touch with the verified actor login.
+  - If the actor cannot be determined (events call fails, no events), the label is not treated as approval and nothing is removed; the next poll retries.
+  - Tests use the fake forge with labeled events (adapter contract test + server poller test).
+- Human gates: only refinement and production by default, configurable per workflow ([#175](https://github.com/getbauherr/bauherr/issues/175), [#191 feat(server): Configurable human gates, plan and staging off by default (Refs #175)](https://github.com/getbauherr/bauherr/pull/191))
+  - `pack/workflow.yaml` declares the human gates; the default has exactly two human touch points: refine (Triage hold, always) and production (#84). Plan approval (`plan`, `gate: human`) and staging acceptance (`release`, `gate: human`) are optional and off by default.
+  - Default workflow: a Ticket triaged `plan` reaches a merged MR and the production gate with zero owner touches (no human_touches rows, no needs-you value on the way).
+  - With the plan gate off, a posted plan with no unanswered critical decision starts Build at once; the factory adds no `bauherr:approved:plan` label and records no human touch. Sub-ticket children of such a plan go straight to Build.
+  - With the plan gate off, a posted plan with an unanswered critical decision puts the Ticket back on the refine hold ("Answer questions"); answering re-plans and then proceeds without approval.
+  - With the release gate off, a merged MR confirmed on staging moves on by itself: to the production gate when it is on, else to `done` (closed); no `accept:staging` touch.
+  - `gate: human` on `plan` or `release` restores today's behaviour (Approve plan / Accept on staging, UI and MCP, label checks).
+  - `needsYou` returns "Approve plan" / "Answer decisions" / "Accept on staging" only when the matching gate is on. The Board shows "needs you" only for refine questions, the production gate and declared blockers (`Run needs you` from a Run's own `needs_human`, `Staging not confirmed`, `Round cap reached`, `Run failed`).
+  - The Settings workflow view shows which gates are on; `docs/spec/workflow.md` §1/§2/§7/§12 and README "Human gates" describe the new model.
+- e2e/triage.spec.ts fails on main (seed ticket maps to the wrong forge issue) ([#180](https://github.com/getbauherr/bauherr/issues/180), [#188 fix(server): Move e2e fake-forge triage sheet to forge #14 (Refs #180)](https://github.com/getbauherr/bauherr/pull/188))
+  - The fake forge posts the triage questions sheet on forge #14, the issue the e2e seed Ticket "Clarify the export scope" (number 14, url `.../issues/14`) points to.
+  - Forge numbers #11-#13 are placeholders again, so every seeded Ticket number matches its forge issue (#11 stays the parent "Overhaul invoicing" in the DB).
+  - `e2e/triage.spec.ts` passes: the Gate "Answer questions" renders with "0 of 1 answered" and answering moves the Ticket on.
+  - `pnpm exec playwright test` on a fresh DB passes every spec, locally (Playwright-in-Docker recipe) and in the CI e2e job.
+  - No other test or spec changes behaviour (unit tests do not reference forge #11 or #14).
+- flaky 'a claim race has one winner' test; find out whether claims can double-win ([#392](https://github.com/getbauherr/bauherr/issues/392), [#412 fix(lease): A claim race loser gets one message, whenever it read the Run (Refs #392)](https://github.com/getbauherr/bauherr/pull/412))
+- a Ticket parked 'ready for human' never gets a new review after a new head ([#393](https://github.com/getbauherr/bauherr/issues/393), [#410 Restart parked reviews on a new MR head (Refs #393)](https://github.com/getbauherr/bauherr/pull/410))
+- a locked account's password sign-in token keeps working ([#399](https://github.com/getbauherr/bauherr/issues/399), [#409 fix(auth): Refuse a locked account's local JWT, Board & WIP copy (Refs #399)](https://github.com/getbauherr/bauherr/pull/409))
+- two concurrent sign-ins of one user drop a session ([#401](https://github.com/getbauherr/bauherr/issues/401), [#414 fix(auth): Serialise password sign-ins per account (Refs #401)](https://github.com/getbauherr/bauherr/pull/414))
+- Release shipping: forge tag, release and ancestry ([#404](https://github.com/getbauherr/bauherr/issues/404), [#408 feat(release): Ship a release from the forge: tag, release, ancestry, idempotent retry (Refs #404)](https://github.com/getbauherr/bauherr/pull/408))
+- report e2e tests that only pass on retry ([#406](https://github.com/getbauherr/bauherr/issues/406), [#413 ci(e2e): Record tests that pass only on retry as flake stats (Refs #406)](https://github.com/getbauherr/bauherr/pull/413))
+- Next-step bar: a button for every need, and link every Ticket the reason names ([#407](https://github.com/getbauherr/bauherr/issues/407), [#415 feat(ui): Link every Ticket and Run in the next-step bar, one button per need (Refs #407)](https://github.com/getbauherr/bauherr/pull/415))
+- flaky e2e owner-chat.spec.ts:21 (answer a decision with a suggestion chip) ([#411](https://github.com/getbauherr/bauherr/issues/411), [#419 fix(ui): Keep the Answer questions region mounted after the last answer (Refs #411)](https://github.com/getbauherr/bauherr/pull/419))
+- a session declares the stages it works, so an unclaimed Review doesn't block Builds ([#416](https://github.com/getbauherr/bauherr/issues/416), [#418 feat(lease): Sessions declare the stages they work (Refs #416)](https://github.com/getbauherr/bauherr/pull/418))
+- Review lows from #399, #404 and #406 (2026-11-09) ([#417](https://github.com/getbauherr/bauherr/issues/417), [#420 fix(core): Harden account-lock, release lookup and flake keys (Refs #417)](https://github.com/getbauherr/bauherr/pull/420))
+- Review lows from #401, #407 and #416 (2026-11-09, batch 2) ([#421](https://github.com/getbauherr/bauherr/issues/421), [#423 test(core): Cover hotfix claim order and the failed release next step (Refs #421)](https://github.com/getbauherr/bauherr/pull/423))
+- the Postgres pool has no size or timeout set, so pool exhaustion hangs the whole app ([#422](https://github.com/getbauherr/bauherr/issues/422), [#426 fix(core): Postgres pool size and timeout from env (Refs #422)](https://github.com/getbauherr/bauherr/pull/426))
+- Sign-in queue: cap waiters per account, and test the sign-in action itself ([#424](https://github.com/getbauherr/bauherr/issues/424), [#427 fix(auth): Cap queued sign-ins per account; tests go through signInWithPassword (Refs #424)](https://github.com/getbauherr/bauherr/pull/427))
+
+
+### Added
+
+- Release publishing at the production gate: one forge Release per approved batch (`products.releaseMode` `notes-only` or `factory`), user-language notes, `releaseUrl` on Tickets, CHANGELOG MR in factory mode (#106).
+- Security: MCP sessions authenticate with agent keys (`/settings/api-key`); gate tools (`approve`, `accept_staging`, `grant_review_round`, `stop_review`, `request_changes`) refuse them. Existing personal API keys are disabled by migration: mint an agent key and re-add the MCP server ([session mode](docs/session-mode.md#agent-identity)). Refs #166.

@@ -31,10 +31,12 @@ A 4px grid: `space-1` to `space-12`. Desktop pages pad `space-8`, phones `space-
 
 ## Patterns the product is built from
 
-- **Decision sheet**: a table of rows, each with a number, the decision, the recommended default and a `critical` mark. The Bauherr answers once; unanswered non-critical rows take their default. Render it with the `DecisionSheet` component.
-- **Gate**: the two human gates (plan approval, merge) are the only places the product asks for a signature. A `Gate` shows what is being approved, the evidence, the budget and model used, and one primary button.
+- **Decision sheet**: a table of rows, each with a number, the decision, the recommended default and a `critical` mark. The Bauherr answers once; unanswered non-critical rows take their default. The Ticket page does not render it as a table: the owner answers the rows one at a time in the owner chat.
+- **Gate**: the two human gates (plan approval, merge) are the only places the product asks for a signature. A `Gate` shows only what is being approved (budget, model and evidence sit in the Ticket page's Details); the action is the ActionBar's one primary button.
+- **Action bar**: one sticky bar at the top of the Ticket page (docked to the bottom on phones) with a sentence and exactly one primary button; same place in every state.
 - **Status**: every ticket, run and step carries a `StatusChip` (queued, running, succeeded, failed, cancelled, needs human) using the status colors with its word.
 - **Run views**: graph, timeline and list share the same node: name, type, status chip, duration in `mono`. Nodes appear with `duration-panel`; status changes with `duration-state`.
+- **Chat**: every AI chat surface (owner decisions chat, intake request chat, the embed widget and any later one) is built from [assistant-ui](https://www.assistant-ui.com/elements/) (`@assistant-ui/react`), as much of it as fits: thread, message, composer, attachments, suggestions, tool UI. It is an approved dependency; no hand-built chat components. Style it with the tokens above.
 - **Empty states**: one sentence in `body`, one action. No illustrations.
 
 ## Iconography
@@ -43,8 +45,12 @@ Line icons at 1.5px stroke on a 20px grid, `currentColor`, from one set (Lucide)
 
 ## Motion
 
-Use only `duration-state`, `duration-panel`, `duration-page` with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, infinite loops, parallax, skeleton shimmer. A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and the only looping motion in the product.
+Use only `duration-state`, `duration-panel`, `duration-page` with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, infinite loops, parallax, skeleton shimmer. A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the running-Ticket indicator, the only looping motion in the product. The indicator marks a Ticket whose Run is `running`: a dashed accent border marching at 1.6s on Graph nodes, a stripe sliding along the edge of Board cards, always with the activity word (building, reviewing, planning, deploying). Under `prefers-reduced-motion` it is a solid accent border plus the word.
 
 ## Writing
 
 Singular Bauherr, plural Bauherren, never "Bauherrs". People are added, not created: "Add Bauherr", "Add Product". Sentence case. Second person for the Bauherr ("You approve the plan"), third person for agents ("The agent opened a merge request"). Buttons are verbs ("Approve plan", "Re-run failed steps"). Errors say what happened and what to do next in one sentence each. No exclamation marks, no emoji, no praise.
+
+## Styling
+
+Pages use Tailwind v4 utilities with shadcn/ui components (Radix primitives, copied into `apps/server/src/app/(app)/components/ui`, no runtime UI package). `app.css` holds only legacy classes still in use: the pages not yet moved (Requests, Intake chat, Settings > Products and the shared form primitives) and a few shared helpers (`.muted`, `.small`, `.stack`, `.err`). Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is not loaded; shadcn roots carry the `aui-root` class for the part they need. Chat UIs use assistant-ui's shadcn components.
