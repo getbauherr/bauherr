@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { LinkPending } from './LinkPending'
 
 type Entry = [label: string, href: string]
 const owner: Entry[] = [['General', '/settings/workspace'], ['Products', '/settings/products'], ['People', '/settings/bauherren'], ['AI usage', '/settings/usage']]
@@ -11,7 +12,7 @@ const linkClass = 'block border-l border-l-border px-3 py-2 text-muted-foregroun
 export function SettingsNav({ admin }: { admin: boolean }) {
   const path = usePathname()
   const current = (href: string) => (href === '/runs' ? path.startsWith('/runs') : path === href || (href === '/settings/products' && path.startsWith(`${href}/`))) ? 'page' : undefined
-  const link = ([label, href]: Entry, nested?: boolean) => <Link key={href} href={href} aria-current={current(href)} className={nested ? `${linkClass} pl-6 max-sm:inline-block max-sm:pl-3` : linkClass}>{label}</Link>
+  const link = ([label, href]: Entry, nested?: boolean) => <Link key={href} href={href} aria-current={current(href)} className={nested ? `${linkClass} pl-6 max-sm:inline-block max-sm:pl-3` : linkClass}>{label}<LinkPending /></Link>
   return (
     <nav className="flex flex-col max-sm:flex-row max-sm:overflow-x-auto max-sm:border-b max-sm:border-border" aria-label="Settings">
       {owner.map((e) => link(e))}

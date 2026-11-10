@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
+import { NavProgress } from '../components/NavProgress'
 import { TopBar } from '../components/TopBar'
 import { countOwnDrafts } from '../lib/requests'
 import { currentWorkspace, payloadClient } from '../lib/session'
@@ -14,6 +15,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
   const [needsYou, drafts] = workspace ? await Promise.all([countNeedsYou(workspace.id), countOwnDrafts(user.id as number, workspace.id)]) : [0, 0]
   return (
     <>
+      <NavProgress />
       <TopBar user={user} workspaces={workspaces} workspace={workspace} needsYou={needsYou} drafts={drafts} hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)} />
       <main className="flex flex-col gap-6 p-8 max-sm:p-4 max-sm:has-[[data-testid=action-bar]]:pb-[calc(var(--next-step-h,132px)+var(--space-4))]">{children}</main>
       <footer className="small muted p-8 pt-0 max-sm:p-4">

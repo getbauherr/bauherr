@@ -14,8 +14,9 @@ export type KnowledgePage = {
   repo: string | null
   hits: Citation[] | null
   doc: (KnowledgeDoc & { html: string }) | null
-  writeBacks: WriteBack[] | null
-  proposals: SkillProposalRow[]
+  /** Started with the load, not awaited: forge calls, so the page streams them in behind a Suspense boundary. */
+  writeBacks: Promise<WriteBack[] | null>
+  proposals: Promise<SkillProposalRow[]>
 }
 
 const FORGE_TIMEOUT_MS = 3000
@@ -93,7 +94,7 @@ export const loadKnowledge = async (workspace: number, q: string | undefined, do
   const found = key ? docs.find((d) => d.source === key.source && d.path === key.path) : null
   const text = found ? await readDocument(payload, workspace, found.source, found.path) : null
   const doc = found && text !== null ? { source: found.source, path: found.path, title: title(found.path, found.heading), html: renderMarkdown(text) } : null
-  const writeBacks = admin && repo ? await loadWriteBacks(payload, ws.knowledgeConnection, repo) : admin ? [] : null
-  const proposals = admin && repo ? await loadProposals(payload, workspace, ws.knowledgeConnection, repo).catch(() => []) : []
+  const writeBacks = admin && repo ? loadWriteBacks(payload, ws.knowledgeConnection, repo) : Promise.resolve(admin ? [] : null)
+  const proposals = admin && repo ? loadProposals(payload, workspace, ws.knowledgeConnection, repo).catch(() => []) : Promise.resolve([])
   return { sources, repo, hits, doc, writeBacks, proposals }
 }
