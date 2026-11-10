@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { getPayload } from 'payload'
-import { parse } from 'yaml'
 import config from '../src/payload.config'
 import { replaceAgentKey } from '../src/lib/api-key'
 import { ensureSessionKey, gatewayEnabled, writeSecretFile } from '../src/lib/gateway'
+import { compile, parseFactory } from '../src/lib/workflow'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -56,7 +56,7 @@ if (!product.productionChecks) await payload.update({ collection: 'products', id
 if (!product.releaseChecks) await payload.update({ collection: 'products', id: product.id, data: { releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
-const compiled = parse(readFileSync(fileURLToPath(new URL('../../../pack/workflow.yaml', import.meta.url)), 'utf8'))
+const compiled = compile(parseFactory(readFileSync(fileURLToPath(new URL('../../../pack/factory.yaml', import.meta.url)), 'utf8')))
 await scoped('workflow_versions', { product: product.id, version: 1 }, { compiled })
 
 const smoke = process.env.BAUHERR_SMOKE_REPO

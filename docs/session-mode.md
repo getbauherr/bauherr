@@ -4,7 +4,7 @@ A stage can run in **session** mode: the Run waits as `awaiting_session` until y
 
 ## Choose the mode
 
-First match wins: `Workspace.modeByStage` (JSON, e.g. `{"plan":"session","build":"session"}`) · `Workspace.defaultMode` · env `BAUHERR_DEFAULT_MODE` · `mode:` on the stage in `pack/workflow.yaml` · `autonomous`.
+First match wins: `Workspace.modeByStage` (JSON, e.g. `{"plan":"session","build":"session"}`) · `Workspace.defaultMode` · env `BAUHERR_DEFAULT_MODE` · `mode:` on the stage in `pack/factory.yaml` · `autonomous`.
 
 ## Connect
 

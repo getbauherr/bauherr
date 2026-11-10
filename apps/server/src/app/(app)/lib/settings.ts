@@ -7,6 +7,7 @@ import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../..
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { WIP_STAGES, wipLimit } from '../../../lib/wip-limits'
+import { DEFAULT } from '../../../lib/workflow'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
@@ -278,7 +279,7 @@ export async function loadWorkflow(workspace: number) {
     payload.find({ collection: 'products', where, sort: 'name', pagination: false, ...o } as never),
     payload.find({ collection: 'workflow_versions', where, sort: '-version', pagination: false, ...o } as never),
   ])
-  const baseJson = JSON.stringify({ stages: base })
+  const baseJson = JSON.stringify(DEFAULT())
   const wip = await Promise.all(WIP_STAGES.map(async (s) => ({ stage: s, limit: wipLimit(ws, s), count: await wipCount(payload, workspace, s) })))
   const overlap = await Promise.all(
     (products.docs as unknown as Doc[]).map(async (p) => {
