@@ -4,6 +4,7 @@ import type { Payload } from 'payload'
 import { latestWith } from '../app/(app)/lib/plan'
 import { NotAdmin, NotInWorkspace } from './actions'
 import { cas, changelogPr, forgeOf, id, releaseMarker } from './release'
+import { DEFAULT, nameOf } from './workflow'
 import { completeCheap } from './gateway'
 import { collectItem, renderNotes as renderItems, summarizeRelease } from './release-notes'
 import { personOf } from './person'
@@ -42,7 +43,7 @@ const mapLimit = async <T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
   const { lastReleaseAt } = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
   const afterLastRelease = lastReleaseAt ? [{ or: [{ releaseAt: { exists: false } }, { releaseAt: { greater_than: lastReleaseAt } }] }] : []
-  return (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: 'done' } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }, ...afterLastRelease] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
+  return (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: nameOf(DEFAULT(), 'done') } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }, ...afterLastRelease] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
 }
 
 /** Records a Ticket found in the latest release as released in it. Conditional, so a value a ship wrote first stays; no comment, no touch, no `updatedAt`. */

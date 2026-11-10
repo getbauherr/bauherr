@@ -5,7 +5,8 @@ import { sendBackToBuild, ticketsOf } from './actions'
 import { escalate, escalateInvalidReview, escalateReviewCap, resumeEscalationNotes } from './escalation'
 import { resumeInvestigations } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
-import { DEFAULT, liveStages } from './workflow'
+import { kindOfRun } from './stage-text'
+import { DEFAULT, is, liveStages, nameOf } from './workflow'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
 type Doc = Record<string, any>
@@ -32,16 +33,18 @@ const replacementMr = async (payload: Payload, t: Doc) => {
 }
 
 const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Cause | null> => {
+  const wf = DEFAULT()
+  const latestIs = (kind: string) => !!latest && kindOfRun(wf, latest as { stage: string; kind?: string | null }) === kind
   if (!t.stage) {
     // Untriaged and marked covered, but the only Triage Run ended unclaimed: nothing will ever look at it again.
     const covered = t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()
-    return covered && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }) && latest?.stage === 'triage' && latest.status === 'abandoned' ? 'triage-expired' : null
+    return covered && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }) && latestIs('triage') && latest?.status === 'abandoned' ? 'triage-expired' : null
   }
-  if (t.stage === 'review') {
+  if (is(wf, t.stage, 'review')) {
     if (t.reviewState === 'merged') return null
     // Parked for a human because the review output was invalid (#376, #393): the successor review runs strong, once.
     if (t.reviewState === 'ready_for_human') {
-      if (latest?.stage === 'review' && latest.status === 'succeeded' && latest.artifacts?.review?.problem) return !latest.escalation ? 'review-invalid' : null
+      if (latestIs('review') && latest?.status === 'succeeded' && latest.artifacts?.review?.problem) return !latest.escalation ? 'review-invalid' : null
       if (!t.reviewWaitingSince || Date.now() - Date.parse(t.reviewWaitingSince) <= REVIEW_STALLED_MS) return null
       const touches = (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { at: { greater_than: t.reviewWaitingSince } }] }, pagination: false, ...o })).docs as Doc[]
       return touches.some((h) => h.actor !== 'factory') ? null : 'review-stalled'
@@ -51,7 +54,7 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
       if (!mr || mr.pr.state === 'closed') return 'mr-missing'
       if (mr.pr.state === 'merged') return null
       // No verdict applied and the review Run ended without one: the Run's own end state decides (escalate, or a need).
-      if (t.reviewState !== 'needs_human') return !t.reviewState && latest?.stage === 'review' ? runEnd(latest) : null
+      if (t.reviewState !== 'needs_human') return !t.reviewState && latestIs('review') ? runEnd(latest as Doc) : null
       // At the round cap one strong fix round is repaired, then the owner decides (grant one more round or stop); never agent-callable.
       if ((t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'review-escalated'
       return mergeChecks(await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)).state === 'red' ? 'checks-red' : 'review-escalated'
@@ -105,6 +108,7 @@ const record = async (payload: Payload, d: Dead, what: string): Promise<true> =>
 /** Repairs one dead Ticket by its cause; returns whether it acted. The marker Comment is written only after the repair succeeded. */
 export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
   const t = d.ticket
+  const wf = DEFAULT()
   if (!REPAIRED.includes(d.cause) || (await repaired(payload, d))) return false
   switch (d.cause) {
     case 'run-failed':
@@ -129,12 +133,12 @@ export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
     }
     case 'mr-missing': {
       const found = await replacementMr(payload, t)
-      const relinked = found && (await payload.db.drizzle.execute(sql`UPDATE "runs" SET "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: found.url })}::jsonb, "updated_at" = now() WHERE "id" = (SELECT "id" FROM "runs" WHERE "ticket_id" = ${t.id} AND "stage" = 'build' ORDER BY "created_at" DESC LIMIT 1) RETURNING "id"`)).rows.length > 0
+      const relinked = found && (await payload.db.drizzle.execute(sql`UPDATE "runs" SET "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: found.url })}::jsonb, "updated_at" = now() WHERE "id" = (SELECT "id" FROM "runs" WHERE "ticket_id" = ${t.id} AND "kind" = 'build' ORDER BY "created_at" DESC LIMIT 1) RETURNING "id"`)).rows.length > 0
       if (!relinked) {
         if ((await sendBackToBuild(payload, t, 'The MR was closed.')) !== 'build') return false
         return record(payload, d, 'The MR was closed; back to Build.')
       }
-      await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = 'review' AND "review_state" = 'needs_human'`)
+      await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = 'needs_human'`)
       await startReviewIfReady(payload, { ...t, reviewState: null })
       return record(payload, d, `Linked ${found.url} and resumed the review.`)
     }

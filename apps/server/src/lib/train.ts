@@ -6,6 +6,7 @@ import { executionOrder, type FrontierTicket } from './frontier'
 import { TRAIN_BRANCH, trainConcurrency } from './merge-mode'
 import { queueDistill } from './skill-distill'
 import { failedCheck, forgeOf, id, latestChecks, prOf } from './release'
+import { DEFAULT, nameOf } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -85,9 +86,10 @@ const mergeMembers = async (payload: Payload, c: Ctx, members: TrainMember[]): P
 /** One step of a running train. `done` when the train is over (merged, failed or invalidated) and a new one may start, `wait` while checks run. */
 const advance = async (payload: Payload, c: Ctx, state: TrainState, at: number): Promise<'wait' | 'done'> => {
   const end = async () => (await casTrain(payload, c.product.id, null, state), 'done' as const)
+  const review = nameOf(DEFAULT(), 'review')
   for (const m of state.members) {
     const [t, pr] = await Promise.all([payload.findByID({ collection: 'tickets', id: m.ticket, ...o }) as Promise<Doc>, c.backend.forge.getPullRequest(c.repo, m.pr)])
-    if (t.state !== 'open' || t.stage !== 'review' || t.reviewState !== 'queued' || pr.state !== 'open' || pr.headSha !== m.headSha) return end()
+    if (t.state !== 'open' || t.stage !== review || t.reviewState !== 'queued' || pr.state !== 'open' || pr.headSha !== m.headSha) return end()
   }
   if ((await c.backend.forge.getBranch(c.repo, c.base))?.sha !== state.baseSha) return end()
   const k = state.members.length
@@ -128,7 +130,7 @@ const advance = async (payload: Payload, c: Ctx, state: TrainState, at: number):
 
 /** Builds a train from the queued Tickets: by Board order, at most `trainConcurrency`, each merged into `bauherr/train` on top of the base; one that conflicts goes back to Build. */
 const start = async (payload: Payload, c: Ctx, at: number): Promise<void> => {
-  const queued = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: c.product.id } }, { state: { equals: 'open' } }, { stage: { equals: 'review' } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
+  const queued = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: c.product.id } }, { state: { equals: 'open' } }, { stage: { equals: nameOf(DEFAULT(), 'review') } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   queued.sort((a, b) => executionOrder(a as FrontierTicket, b as FrontierTicket))
   const limit = trainConcurrency((await payload.findByID({ collection: 'workspaces', id: id(c.product.workspace), ...o })) as Doc)
   const base = (await c.backend.forge.getBranch(c.repo, c.base))?.sha

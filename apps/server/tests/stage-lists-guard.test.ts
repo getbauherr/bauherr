@@ -10,8 +10,6 @@ const ALLOWED: Record<string, string> = {
   'apps/server/src/lib/workflow.ts': 'the one module that derives every stage list',
   'apps/server/src/lib/actions.ts': 'ad-hoc subsets (stages past the Expedite lane, latest build/review Run lookups); move to kinds with the outcome step',
   'apps/server/src/jobs/index.ts': 'ad-hoc subset (plan/build tickets swept for plan approval); move to kinds with the outcome step',
-  'apps/server/src/lib/overlap.ts': 'ad-hoc subset (build/review tickets hold a diff); move to kinds with the outcome step',
-  'apps/server/src/lib/release.ts': 'ad-hoc subset (review/release stages of the MR gate); move to kinds with the outcome step',
   'apps/server/src/app/(app)/(shell)/settings/actions.ts': 'Workspace mode form offers plan and build only; moves with per-Workspace config',
   'apps/server/src/app/(app)/(shell)/settings/workspace/page.tsx': 'Workspace mode form offers plan and build only; moves with per-Workspace config',
 }

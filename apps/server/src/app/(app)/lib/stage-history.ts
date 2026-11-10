@@ -1,5 +1,5 @@
 import type { Stage } from './needs-you'
-import { board, DEFAULT } from '../../../lib/workflow'
+import { board, DEFAULT, is, kindOf, nameOf } from '../../../lib/workflow'
 
 type Doc = Record<string, any>
 export type RunLine = { id: number; status: string; mode: string; reason: string | null; duration: string | null; costUsd: number | null; unpricedTokens: number | null; createdAt: string; evidence: string }
@@ -25,9 +25,10 @@ export type StageHistoryInput = {
 
 /** Stages up to the current one, plus every stage that has a Run. */
 export const reachedStages = (ticket: { state?: string | null; stage: Stage }, runs: { stage: string }[]): Stage[] => {
-  if (ticket.stage === 'parent') return []
-  const stages = board(DEFAULT())
-  const at = stages.indexOf(ticket.state === 'closed' ? 'done' : ticket.stage)
+  const wf = DEFAULT()
+  if (is(wf, ticket.stage, 'container')) return []
+  const stages = board(wf)
+  const at = stages.indexOf(ticket.state === 'closed' ? nameOf(wf, 'done') : ticket.stage)
   return stages.filter((s, i) => i <= at || runs.some((r) => r.stage === s))
 }
 
@@ -45,9 +46,10 @@ export const stageHistory = (stage: Stage, i: StageHistoryInput): StageHistoryDa
     stage,
     runs: runs.map((r) => ({ id: r.id, status: r.status, mode: r.mode, reason: r.error ?? null, duration: formatDuration(seconds(r)), costUsd: r.costUsd ?? null, unpricedTokens: r.reconcileStatus === 'unpriced' ? r.gatewayTokensTotal ?? 0 : null, createdAt: r.createdAt, evidence: firstLine(r.evidence) })),
   }
-  if (stage === 'plan') out.plan = { markdown: i.plan, decisions: i.decisions.map((d) => ({ id: d.id, title: d.title, answer: i.answers[d.id] ?? null })) }
-  if (stage === 'build' && i.mr) out.mr = i.mr
-  if (stage === 'review') out.reviews = runs.filter((r) => r.verdict).map((r) => ({ verdict: r.verdict, findings: Array.isArray(r.findings) ? r.findings.length : 0, sha: r.reviewedSha ?? null }))
-  if (stage === 'release' || stage === 'done') out.release = { summary: i.stagingSummary, accepted: i.accepted, production: i.production }
+  const kind = kindOf(DEFAULT(), stage)
+  if (kind === 'plan') out.plan = { markdown: i.plan, decisions: i.decisions.map((d) => ({ id: d.id, title: d.title, answer: i.answers[d.id] ?? null })) }
+  if (kind === 'build' && i.mr) out.mr = i.mr
+  if (kind === 'review') out.reviews = runs.filter((r) => r.verdict).map((r) => ({ verdict: r.verdict, findings: Array.isArray(r.findings) ? r.findings.length : 0, sha: r.reviewedSha ?? null }))
+  if (kind === 'release' || kind === 'done') out.release = { summary: i.stagingSummary, accepted: i.accepted, production: i.production }
   return out
 }
