@@ -74,16 +74,16 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       token: ctx.connection.gitToken,
       ...(ctx.connection.gitUser ? { user: ctx.connection.gitUser } : {}),
       branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
-      ...(ctx.existingPr && ctx.run.stage !== 'plan' ? { checkout: ctx.existingPr.branch } : {}),
+      ...(ctx.existingPr && ctx.run.kind !== 'plan' ? { checkout: ctx.existingPr.branch } : {}),
     });
-    if (ctx.run.stage === 'review') {
+    if (ctx.run.kind === 'review') {
       if (!ctx.existingPr) return finish('failed', 'review run without an MR');
       await git(clone.dir, clone.env, 'fetch', '--depth', '200', 'origin', `${ctx.product.defaultBranch}:refs/remotes/origin/${ctx.product.defaultBranch}`);
       artifacts.reviewedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
     }
     const base = ctx.product.defaultBranch;
     let conflicted = false;
-    if (ctx.mergeBase && ctx.existingPr && ctx.run.stage === 'build') {
+    if (ctx.mergeBase && ctx.existingPr && ctx.run.kind === 'build') {
       const merged = await mergeBase(clone, clone.env, base);
       conflicted = merged === 'conflict';
       if (!conflicted) {
@@ -94,15 +94,15 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
         artifacts.prUrl = ctx.existingPr.url;
         artifacts.evidence = `Merged origin/${base} ${await git(clone.dir, clone.env, 'rev-parse', `origin/${base}`)} into the MR branch without an agent (${merged}).`;
         await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);
-        await ctx.forge.setStage(ctx.ticket.number, 'review');
+        if (ctx.stageNames.review) await ctx.forge.setStage(ctx.ticket.number, ctx.stageNames.review);
         return finish('succeeded');
       }
       artifacts.mergeConflict = true;
     }
-    const fixedGoal = ctx.run.stage === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.stage === 'triage' ? TRIAGE_GOAL : ctx.run.stage === 'review' ? REVIEW_GOAL : ctx.run.stage === 'scan' ? SCAN_GOAL : null;
+    const fixedGoal = ctx.run.kind === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.kind === 'triage' ? TRIAGE_GOAL : ctx.run.kind === 'review' ? REVIEW_GOAL : ctx.run.kind === 'scan' ? SCAN_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
-    if (ctx.run.stage === 'review') {
+    if (ctx.run.kind === 'review') {
       const remote = `origin/${base}`;
       artifacts.reviewedPatchId = await patchId(clone, clone.env, base).catch(() => '');
       if (ctx.conflictBase) await interdiff(clone, clone.env, base, ctx.conflictBase, join(clone.dir, DIFF_FILE));
@@ -117,7 +117,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
 
     if (state.budgetExhausted) {
       // A partial scan still hands over the findings written so far.
-      if (ctx.run.stage === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
+      if (ctx.run.kind === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
       return finish('budget_exhausted', 'gateway budget exceeded');
     }
     const r = state.result;
@@ -126,7 +126,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     if (state.verdict?.kind === 'needs_human') return finish('needs_human', state.verdict.reason, state.verdict.reasonKind);
 
     const goal = readGoal(join(clone.dir, GOAL_FILE));
-    if (ctx.run.stage === 'review') {
+    if (ctx.run.kind === 'review') {
       const file = join(clone.dir, REVIEW_FILE);
       if (!existsSync(file)) return finish('failed', `review run wrote no ${REVIEW_FILE}`);
       try {
@@ -136,7 +136,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       return finish('succeeded');
     }
-    if (ctx.run.stage === 'scan') {
+    if (ctx.run.kind === 'scan') {
       const file = join(clone.dir, FINDINGS_FILE);
       if (!existsSync(file)) return finish('failed', `scan run wrote no ${FINDINGS_FILE}`);
       try {
@@ -146,7 +146,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       return finish('succeeded');
     }
-    if (ctx.run.stage === 'triage') {
+    if (ctx.run.kind === 'triage') {
       const file = join(clone.dir, TRIAGE_FILE);
       if (!existsSync(file)) return finish('failed', `triage run wrote no ${TRIAGE_FILE}`);
       try {
@@ -156,7 +156,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       return finish('succeeded');
     }
-    if (ctx.run.stage === 'plan') {
+    if (ctx.run.kind === 'plan') {
       if (ctx.ticket.investigation) {
         const file = join(clone.dir, INVESTIGATION_FILE);
         if (!existsSync(file)) return finish('failed', `investigation run wrote no ${INVESTIGATION_FILE}`);
@@ -230,7 +230,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       artifacts.prUrl = ctx.existingPr.url;
       await ctx.forge.comment(ctx.ticket.number, `Evidence of run ${ctx.run.id}, pushed to ${ctx.existingPr.url}:\n\n${artifacts.evidence}\n`);
       await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(goal.map((g) => ({ text: g.text, done: g.status === 'verified' })), `Pushed to ${ctx.existingPr.url}. Waiting for review.`));
-      await ctx.forge.setStage(ctx.ticket.number, 'review');
+      if (ctx.stageNames.review) await ctx.forge.setStage(ctx.ticket.number, ctx.stageNames.review);
       return finish('succeeded');
     }
     const pr = await ctx.forge.openPullRequest({
@@ -241,7 +241,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     artifacts.prUrl = pr.url;
     await ctx.forge.comment(ctx.ticket.number, `Link: ${pr.url}`);
     await ctx.forge.upsertWorklog(ctx.ticket.number, worklogBody(goal.map((g) => ({ text: g.text, done: g.status === 'verified' })), `MR opened: ${pr.url}. Waiting for review.`));
-    await ctx.forge.setStage(ctx.ticket.number, 'review');
+    if (ctx.stageNames.review) await ctx.forge.setStage(ctx.ticket.number, ctx.stageNames.review);
     return finish('succeeded');
   } catch (e) {
     ctx.recorder.log(`run ${ctx.run.id} failed: ${e instanceof Error ? e.message : String(e)}`);

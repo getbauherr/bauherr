@@ -23,9 +23,13 @@ export type ToolCallRecord = {
 };
 
 export type RunCtx = {
+  /** Stage names the Runner moves a Ticket to: the review stage after a Build Run pushed (absent when the workflow has none). */
+  stageNames: { review?: string };
   run: {
     id: string;
-    stage: 'triage' | 'plan' | 'build' | 'review' | 'scan';
+    /** The Run's stage name in the workflow (display, gateway header); behaviour follows `kind`. */
+    stage: string;
+    kind: 'triage' | 'plan' | 'build' | 'review' | 'scan';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;

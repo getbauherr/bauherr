@@ -13,7 +13,7 @@ import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
 import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
-import { DEFAULT, is } from './workflow'
+import { byKind, DEFAULT, is } from './workflow'
 
 export { tierModels }
 
@@ -96,7 +96,8 @@ export const buildRunCtx = async (
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
-    run: { id: String(run.id), stage: run.stage, goal: { statements }, ...caps, tier: escalated ? 'strong' : kind === 'review' || kind === 'scan' ? 'standard' : 'cheap' },
+    stageNames: { review: byKind(wf, 'review')?.name },
+    run: { id: String(run.id), stage: run.stage, kind: kind as RunCtx['run']['kind'], goal: { statements }, ...caps, tier: escalated ? 'strong' : kind === 'review' || kind === 'scan' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
