@@ -19,6 +19,8 @@ export type RunDoc = {
   workspace: number
   model: string | null
   executor: string | null
+  sessionLabel: string | null
+  outcome: string | null
   clientName: string | null
   clientVersion: string | null
   provider: string | null

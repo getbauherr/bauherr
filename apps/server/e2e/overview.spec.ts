@@ -292,7 +292,7 @@ test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics wit
   await expect(page.getByRole('heading', { name: 'Sub-tickets' })).toBeVisible()
   await expect(page.locator('.echildren li')).toHaveCount(2)
   await expect(page.locator('.eprog')).toContainText('1/2 done')
-  await expect(page.locator('ol[aria-label=Stage]')).toHaveCount(0)
+  await expect(page.getByTestId('ticket-path')).toHaveCount(0)
   await shoot('epic-page')
 
   await page.goto('/?view=epics&done=1')
@@ -301,7 +301,7 @@ test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics wit
   await rows.filter({ hasText: 'Retire the legacy importer' }).getByRole('link', { name: 'Open epic' }).click()
   await expect(page.getByRole('heading', { name: 'Sub-tickets' })).toBeVisible()
   await expect(page.locator('.echildren li')).toHaveCount(1)
-  await expect(page.locator('ol[aria-label=Stage]')).toHaveCount(0)
+  await expect(page.getByTestId('ticket-path')).toHaveCount(0)
   await shoot('epic-page-closed')
   await page.goto('/?epic=')
 })

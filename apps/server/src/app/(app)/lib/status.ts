@@ -94,3 +94,7 @@ export const statusLine = (r: StatusRow): string => {
   const s = ticketStatus(DEFAULT(), r)
   return s.detail ? `${s.label}: ${s.detail}` : s.label
 }
+
+/** The status label of a history phase (`ticket_events.phase`) in the stage of kind `stageKind`. */
+export const phaseLabel = (phase: string, stageKind?: string | null): string =>
+  ({ working: 'In progress', queued: 'Queued', human: 'Waiting for you', closed: 'Done', ci: stageKind === 'release' ? 'Waiting on deploy' : 'Waiting on CI' })[phase] ?? phase

@@ -39,7 +39,10 @@ export default async function RunPage({ params, searchParams }: { params: Promis
     ['Ended', run.finishedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Duration', fmtDuration(durationMs(run.startedAt, run.finishedAt))],
     ['Status', <StatusChip key="s" status={run.status} />],
-    ['Executor', run.executor ?? '—'],
+    ['Kind', run.kind ?? kindOfRun(DEFAULT(), run) ?? '—'],
+    ['Outcome', run.outcome ?? '—'],
+    ['Executor', run.executor ?? run.mode],
+    ['Session', run.sessionLabel ?? '—'],
     ['Client', [run.clientName, run.clientVersion].filter(Boolean).join(' ') || '—'],
     ['Model', run.model ?? '—'],
     ['Provider', run.provider ?? '—'],
@@ -104,7 +107,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           {run.evidence && <div><h2 className="label text-muted-foreground">Evidence</h2><Markdown className="small" html={renderMarkdown(run.evidence)} /></div>}
           {run.error && <p className="text-destructive">{run.error}</p>}
           <p className="flex flex-wrap items-center justify-between gap-3">
-            <Link className="text-primary" href={`/tickets/${ticket.id}`}>Ticket #{ticket.number}</Link>
+            <Link className="text-primary" href={`/tickets/${ticket.id}#steps`}>Ticket #{ticket.number}, its steps</Link>
             {isWebUrl(prUrl) && <a className="text-primary" href={prUrl}>Merge request</a>}
           </p>
           {admin && kindOfRun(DEFAULT(), run) === 'build' && <RelinkMr run={run.id} />}

@@ -102,7 +102,7 @@ const latestRuns = async (payload: Payload, tickets: number[]): Promise<Map<numb
 }
 
 /** Kind of the forge Connection per Product id. */
-const forgeKinds = async (payload: Payload, workspace: number): Promise<Map<number, 'github' | 'gitlab'>> =>
+export const forgeKinds = async (payload: Payload, workspace: number): Promise<Map<number, 'github' | 'gitlab'>> =>
   new Map((await payload.db.drizzle.execute(sql`SELECT s."product_id" AS product, c."kind" AS kind FROM "ticket_sources" s JOIN "connections" c ON c."id" = s."connection_id" WHERE s."workspace_id" = ${workspace}`)).rows.map((r) => [r.product as number, r.kind as 'github' | 'gitlab']))
 
 /** The newest stage-change event of each Ticket: when it entered its current stage. */
