@@ -10,6 +10,7 @@ import { wipLimitsError } from './lib/wip-limits'
 import { runKind, runStageError, waitingForError } from './lib/stage-text'
 import { DEFAULT, defaultWip } from './lib/workflow'
 import { chatCollections } from './lib/chat/collections'
+import { TEMPLATE_NAMES } from './lib/template-text'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -466,6 +467,11 @@ const tickets = col('tickets', [
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
   { name: 'openCriticalDecisions', type: 'number', admin: { readOnly: true, description: 'Unanswered critical decisions of the plan or triage sheet, as last read from the forge comments (plan submit, answers, the gate sweep). Pages read this instead of the forge; null = never read.' } },
   { name: 'liveness', type: 'json', admin: { readOnly: true, description: 'Last `watch-liveness` finding for a Ticket with no live Run: {cause, need, at}. null = not dead at the last sweep.' } },
+  { name: 'decision', type: 'json', admin: { readOnly: true, description: 'The open human checkpoint, prepared for the Inbox and the Ticket page (`buildDecision`): {need, checkpoint, title, ask, recommendation, why, options, next, evidence, details, preparedBy, preparedAt, openSince}. Written by the gate sweep together with `needsYou`; null = nothing is waiting.' } },
+  { name: 'planTldr', type: 'json', admin: { readOnly: true, description: 'Parsed `## TL;DR` of the latest plan: {decision, recommendation, why, risk, options}. Stored when the plan is posted, so no page or sweep reads the forge for it.' } },
+  { name: 'stagingTldr', type: 'json', admin: { readOnly: true, description: 'First two sections of the posted staging summary: {whatYouGet, found}.' } },
+  { name: 'decidedAt', type: 'date', admin: { readOnly: true, description: 'When the owner last decided a checkpoint in the UI; the sweep does not reopen `decidedNeed` for 2 minutes.' } },
+  { name: 'decidedNeed', type: 'text', admin: { readOnly: true } },
   text('historyKey', { admin: { readOnly: true, description: 'The `stage|phase` of the newest ticket_events row; `record` writes an event only when it changes.' } }),
 ], {
   indexes: [{ fields: ['product', 'externalId'], unique: true }, { fields: ['workspace', 'state'] }],
@@ -657,6 +663,11 @@ export const collections: CollectionConfig[] = [
     json('results'),
     text('reason'),
   ]),
+  col('templates', [
+    select('name', [...TEMPLATE_NAMES], { required: true }),
+    { name: 'body', type: 'textarea', required: true, admin: { description: 'The Workspace\'s version of the pack template `pack/templates/<name>.md`, without front matter. Absent = the pack default.' } },
+    text('updatedBy'),
+  ], { indexes: [{ fields: ['workspace', 'name'], unique: true }] }),
   col('check_flakes', [
     rel('ticket', 'tickets', { required: true }),
     text('checkName', { required: true }),

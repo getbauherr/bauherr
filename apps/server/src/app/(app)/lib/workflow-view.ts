@@ -1,4 +1,6 @@
 import type { Payload } from 'payload'
+import type { Need } from '../../../lib/needs-you'
+import { NEED_NODE } from '../../../lib/checkpoints'
 import { flow } from '../../../lib/history'
 import { byKind, type Kind, type Workflow } from '../../../lib/workflow'
 import type { TicketRow } from './overview'
@@ -8,20 +10,11 @@ export type Exec = { label: string; session: boolean; tip: string }
 export type Bar = { working: number; human: number; ci: number; queued: number }
 export type NodeStats = { count: number; limit: number | null; bar: Bar; execs: Exec[]; medianSec: number | null; state: 'active' | 'attention' | 'idle' }
 
-const CHECKPOINTS: Record<string, [Kind, string]> = {
-  'Answer questions': ['triage', 'refine'],
-  'Approve plan': ['plan', 'gate'],
-  'Answer decisions': ['plan', 'gate'],
-  'Accept on staging': ['release', 'gate'],
-  'Staging not confirmed': ['release', 'gate'],
-  'Approve production': ['release', 'production'],
-  'Production deploy failed': ['release', 'production'],
-  'Configure production checks': ['release', 'production'],
-}
+const CHECKPOINTS = NEED_NODE
 
 /** The graph node id (`<stage>:refine|gate|production`) of the human checkpoint a Ticket waits at, else null. */
 export const checkpointOf = (wf: Workflow, t: Pick<TicketRow, 'needsYou'>): string | null => {
-  const c = t.needsYou ? CHECKPOINTS[t.needsYou] : undefined
+  const c = t.needsYou ? CHECKPOINTS[t.needsYou as Need] : undefined
   const stage = c && byKind(wf, c[0])?.name
   return stage ? `${stage}:${c![1]}` : null
 }

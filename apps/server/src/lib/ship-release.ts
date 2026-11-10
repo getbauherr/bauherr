@@ -6,6 +6,7 @@ import { NotAdmin, NotInWorkspace } from './actions'
 import { cas, changelogPr, forgeOf, id, releaseMarker } from './release'
 import { DEFAULT, nameOf } from './workflow'
 import { completeCheap } from './gateway'
+import { noteTemplates } from './templates'
 import { collectItem, renderNotes as renderItems, summarizeRelease } from './release-notes'
 import { personOf } from './person'
 import { SUMMARY_MARKER } from './summary'
@@ -71,8 +72,8 @@ export const proposeVersion = (last: string | null, tickets: { labels?: string[]
 }
 
 /** Deterministic notes (Features, Fixes) of the Tickets from their staging summaries. */
-export const renderNotes = async (ts: TicketSource, tickets: Doc[]): Promise<string> =>
-  renderItems(await Promise.all(tickets.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: t.labels ?? [] }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null))))
+export const renderNotes = async (ts: TicketSource, tickets: Doc[], tpls?: Awaited<ReturnType<typeof noteTemplates>>): Promise<string> =>
+  renderItems(await Promise.all(tickets.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: t.labels ?? [] }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null, tpls?.summary))), tpls?.note)
 
 const shippedMarker = (tag: string) => `<!-- bauherr:shipped:${tag} -->`
 
@@ -130,7 +131,7 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   }
   if (latest && !p.lastReleaseAt) p = await payload.update({ collection: 'products', id: product, data: { lastReleaseTag: latest.tag, lastReleaseSha: latest.sha, lastReleaseAt: new Date(await backend.forge.getCommitDate(repo, latest.sha)).toISOString() }, ...o }) as Doc
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
-  const notes = picked.length ? await renderNotes(ts, picked) : ''
+  const notes = picked.length ? await renderNotes(ts, picked, await noteTemplates(payload, id(p.workspace))) : ''
   const last = latest?.tag ?? p.lastReleaseTag ?? null
   return { waiting, picked, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past }
 }

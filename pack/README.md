@@ -6,10 +6,14 @@ OSS core pack: content, not code. Name `core`, version `0.1.0` (semver, released
 ```
 pack.yaml            manifest: layers, skills, rules, hooks, purposes
 skills/<name>/       Agent Skills folders (SKILL.md + references/)
+templates/*.md       text structures for people (request, plan, decision, review, staging summary, release note, worklog, triage questions)
 rules/*.md           markdown rules with globs/applies front matter
 hooks/               hook stubs + hooks.yaml (SDK event mapping)
 ```
 Spec that links to all of it: [docs/spec/workflow.md](../docs/spec/workflow.md).
+
+## Templates
+One file per text the factory or its agents write for people: front matter (`name`, `title`, `used_by`, `description`) and `## Heading {#id}` sections, each with a guidance comment. A Workspace can override each in Settings > Templates; `load_skill` and the Runner append the effective ones to the skills that write them. Default templates reproduce the factory's own output exactly.
 
 ## Layers
 core (this pack) → stack (optional sub-packs, e.g. `pack/stacks/laravel`) → client (the Workspace's Knowledge repo). A later layer appends; client wins on conflict.

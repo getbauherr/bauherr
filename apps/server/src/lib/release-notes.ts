@@ -1,4 +1,5 @@
 import { bullets, section } from './summary'
+import { headingOf, packTemplate, renderTemplate, type Tpl } from './templates'
 
 export interface NoteItem {
   number: number
@@ -15,21 +16,22 @@ export interface NoteItem {
 export const isFix = (title: string, labels: string[]): boolean => labels.includes('bug') || /^fix(\(.*\))?!?:/i.test(title)
 
 /** Item from a Ticket and its staging summary Comment (null = none posted). */
-export const collectItem = (t: { number: number; title: string; url: string; labels: string[] }, summary: string | null): NoteItem => ({
+export const collectItem = (t: { number: number; title: string; url: string; labels: string[] }, summary: string | null, summaryTpl: Tpl = packTemplate('staging-summary')): NoteItem => ({
   number: t.number,
   title: t.title.replace(/^\w+(\(.*\))?!?:\s*/, ''),
   url: t.url,
   fix: isFix(t.title, t.labels),
-  bullets: bullets(section(summary ?? '', 'What you get')),
+  bullets: bullets(section(summary ?? '', headingOf(summaryTpl, 'what-you-get'))),
   mrs: bullets(section(summary ?? '', 'Merge requests')).filter((m) => m.startsWith('[')),
 })
 
-const render = (heading: string, items: NoteItem[]): string[] =>
-  items.length ? [`### ${heading}`, ...items.flatMap((i) => [`- ${i.title} ([#${i.number}](${i.url})${i.mrs.map((m) => `, ${m}`).join('')})`, ...i.bullets.map((b) => `  - ${b}`)]), ''] : []
+const render = (items: NoteItem[]): string => items.flatMap((i) => [`- ${i.title} ([#${i.number}](${i.url})${i.mrs.map((m) => `, ${m}`).join('')})`, ...i.bullets.map((b) => `  - ${b}`)]).join('\n')
 
 /** Deterministic notes: Features, then Fixes, each item linked to its Ticket and MRs. */
-export const renderNotes = (items: NoteItem[]): string =>
-  [...render('Features', items.filter((i) => !i.fix)), ...render('Fixes', items.filter((i) => i.fix))].join('\n').trim()
+export const renderNotes = (items: NoteItem[], tpl: Tpl = packTemplate('release-note')): string => {
+  const [features, fixes] = [items.filter((i) => !i.fix), items.filter((i) => i.fix)]
+  return renderTemplate(tpl, { ...(features.length && { features: render(features) }), ...(fixes.length && { fixes: render(fixes) }) }).trim()
+}
 
 /** Next semver from the last release tag and the commit messages since: breaking = major, `feat` = minor, else patch; no previous release = 0.1.0. With `tags` (all forge tags) the result is a pre-release `<base>-rc.<n>`, n = 1 + the highest existing `v<base>-rc.<n>`. */
 export const nextVersion = (lastTag: string | null, messages: string[], tags?: string[]): string => {

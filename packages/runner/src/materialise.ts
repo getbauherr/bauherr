@@ -36,7 +36,14 @@ export function materialise(cwd: string, ctx: RunCtx): string {
   const { packDir } = ctx;
   mkdirSync(join(cwd, '.claude'), { recursive: true });
   const skills = join(packDir, 'skills');
+  const own = (skill: string) => existsSync(join(cwd, '.claude/skills', skill, 'SKILL.md'));
+  const repoOwned = Object.keys(ctx.templates ?? {}).filter(own);
   if (existsSync(skills)) cpSync(skills, join(cwd, '.claude/skills'), { recursive: true, force: false }); // repo's own config wins
+  for (const [skill, list] of Object.entries(ctx.templates ?? {})) {
+    const file = join(cwd, '.claude/skills', skill, 'SKILL.md');
+    if (repoOwned.includes(skill) || !existsSync(file)) continue;
+    appendFileSync(file, list.map((t) => `\n\n## Template: ${t.title}\n\n\`\`\`\`markdown\n${t.body.trim()}\n\`\`\`\``).join(''));
+  }
 
   const rules = readRules(packDir);
 

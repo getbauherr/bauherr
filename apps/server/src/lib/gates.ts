@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
 import type { TicketSource } from '@bauherr/adapters'
+import { decisionMarkdown, justDecided, prepareDecision, sameDecision } from './decision'
+import { template } from './templates'
 import { record } from './history'
 import { hasProductionChecks } from './mode'
 import { type Need, needsOf } from './needs-you'
@@ -67,9 +69,14 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
   const wf = DEFAULT()
   const productionChecksMissing = is(wf, t.stage, 'release') && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
-  const candidate = needsOf(t, run, productionChecksMissing)
+  // A checkpoint the owner decided in the UI a moment ago stays closed until the forge side has caught up.
+  const raw = needsOf(t, run, productionChecksMissing)
+  const candidate = justDecided(t, raw) ? null : raw
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
+  // The prepared Decision (Inbox card, Ticket page) follows `needsYou`: written when its content changed, cleared with the need.
+  const decision = candidate ? await prepareDecision(payload, t, candidate, run) : null
+  if (!sameDecision(t.decision, decision)) await cas(payload, t.id, sql`"decision" = ${decision ? JSON.stringify(decision) : null}::jsonb`, sql`true`)
   await record(payload, t.id, { cause: 'sweep' }, { ticket: t, run })
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
@@ -116,7 +123,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
       const claim = marker
       if (await cas(payload, t.id, sql`"gate_notice_claim" = ${claim}`, sql`"gate_notice_claim" IS DISTINCT FROM ${claim}`)) {
         try {
-          await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${t.expedite ? 'Hotfix, ' : ''}${want} — ${publicUrl()}/tickets/${t.id}`)
+          await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${t.expedite ? 'Hotfix, ' : ''}${want} — ${publicUrl()}/tickets/${t.id}${decision && decision.need === want ? `\n\n${decisionMarkdown(decision, await template(payload, id(t.workspace), 'decision'))}` : ''}`)
         } catch (e) {
           await cas(payload, t.id, sql`"gate_notice_claim" = NULL`, sql`"gate_notice_claim" = ${claim}`)
           throw e

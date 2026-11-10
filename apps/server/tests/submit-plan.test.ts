@@ -13,6 +13,7 @@ let call: (user: Record<string, any>, name: string, input: unknown) => Promise<a
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 const MARKER = '<!-- bauherr:plan -->'
+const TLDR = '## TL;DR\nDecision: Approve the change\nRecommendation: Approve; it is small.\nWhy:\n- One file\nRisk: none\n\n'
 
 let testDb: TestDb
 beforeAll(async () => {
@@ -52,11 +53,29 @@ const plans = async (n: string) => (await fake.tickets(repo).listComments(n)).fi
 it('posts the plan comment once and updates it on a second call', async () => {
   const { n, run } = await seed()
   const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
-  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: '## Goal\none' })).resolves.toMatchObject({ created: true })
-  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: `${MARKER}\n## Goal\ntwo` })).resolves.toMatchObject({ created: false })
+  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: `${TLDR}## Goal\none` })).resolves.toMatchObject({ created: true })
+  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: `${MARKER}\n${TLDR}## Goal\ntwo` })).resolves.toMatchObject({ created: false })
   const comments = await plans(n)
   expect(comments).toHaveLength(1)
-  expect(comments[0]!.body).toBe(`${MARKER}\n## Goal\ntwo`)
+  expect(comments[0]!.body).toBe(`${MARKER}\n${TLDR.trim()}\n\n## Goal\ntwo`)
+})
+
+it('refuses a plan without a TL;DR and lists the missing lines; stores the parsed one on the Ticket', async () => {
+  const { n, run } = await seed()
+  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: '## Goal\none' })).rejects.toThrow('Missing: `Decision:`, `Recommendation:`, `Why:`, `Risk:`')
+  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: '## TL;DR\nDecision: x\n## Goal\none' })).rejects.toThrow('`Recommendation:`')
+  expect(await plans(n)).toHaveLength(0)
+  await call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: `${TLDR}## Goal\none` })
+  const t = (await payload.find({ collection: 'tickets', where: { number: { equals: Number(n) } }, limit: 1, ...o })).docs[0] as Record<string, any>
+  expect(t.planTldr).toMatchObject({ decision: 'Approve the change', why: ['One file'], risk: 'none' })
+})
+
+it('a hotfix plan needs no TL;DR', async () => {
+  const { n, run } = await seed()
+  await payload.update({ collection: 'tickets', where: { number: { equals: Number(n) } }, data: { expedite: true }, ...o })
+  const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
+  await expect(call(member, 'submit_plan', { runId: run.id, leaseToken, markdown: '## Goal\nfix' })).resolves.toMatchObject({ created: true })
 })
 
 it('only the lease holder of a running plan Run may call it', async () => {

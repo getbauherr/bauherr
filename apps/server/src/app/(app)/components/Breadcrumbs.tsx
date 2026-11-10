@@ -6,6 +6,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { usePageTitle } from './PageTitle'
 
 const sections: Record<string, { label: string; one: string }> = {
+  inbox: { label: 'Inbox', one: 'Inbox' },
   requests: { label: 'Requests', one: 'Request' },
   releases: { label: 'Releases', one: 'Release' },
   knowledge: { label: 'Knowledge', one: 'Document' },
@@ -17,7 +18,7 @@ const sections: Record<string, { label: string; one: string }> = {
   setup: { label: 'Set up', one: 'Set up' },
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const settingsPage: Record<string, string> = { workspace: 'General', products: 'Products', bauherren: 'People', usage: 'AI usage', workflow: 'Board & WIP', connections: 'Connections', 'api-key': 'API key', audit: 'Audit', 'chat-feedback': 'Chat feedback' }
+const settingsPage: Record<string, string> = { workspace: 'General', products: 'Products', bauherren: 'People', usage: 'AI usage', workflow: 'Board & WIP', connections: 'Connections', 'api-key': 'API key', audit: 'Audit', templates: 'Templates', 'chat-feedback': 'Chat feedback' }
 
 type Crumb = { label: string; href?: string }
 

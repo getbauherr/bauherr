@@ -20,6 +20,7 @@ import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
 import { isAdmin, listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
+import { isTemplateName, lintTemplate } from '../../../../lib/template-text'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
@@ -382,3 +383,27 @@ export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revoke
 export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))
+
+/** Admin: saves the Workspace's version of a template; refused while the linter finds an error (the factory depends on those parts). */
+export const saveTemplate = act({}, async ({ user, workspace, payload }, fd) => {
+  const wsId = inWorkspace({ workspace })
+  only(user)
+  const name = s(fd, 'name')
+  if (!isTemplateName(name)) throw new Error('Unknown template.')
+  const body = String(fd.get('body') ?? '').replace(/\r\n/g, '\n').trim()
+  const errors = lintTemplate(name, body).filter((f) => f.level === 'error')
+  if (errors.length) throw new Error(errors.map((f) => f.message).join(' '))
+  const found = (await payload.find({ collection: 'templates', where: { workspace: { equals: wsId }, name: { equals: name } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  if (found) await payload.update({ collection: 'templates', id: found.id, data: { body, updatedBy: user.email }, overrideAccess: true })
+  else await payload.create({ collection: 'templates', data: { name, body, updatedBy: user.email, workspace: wsId } as never, overrideAccess: true })
+})
+
+/** Admin: drops the Workspace's version, so the pack's default applies again. */
+export const resetTemplate = act({}, async ({ user, workspace, payload }, fd) => {
+  const wsId = inWorkspace({ workspace })
+  only(user)
+  const name = s(fd, 'name')
+  if (!isTemplateName(name)) throw new Error('Unknown template.')
+  const found = (await payload.find({ collection: 'templates', where: { workspace: { equals: wsId }, name: { equals: name } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  if (found) await payload.delete({ collection: 'templates', id: found.id, overrideAccess: true })
+})

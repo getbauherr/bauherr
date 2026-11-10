@@ -60,7 +60,7 @@ it('assigns and mentions the Admin once per gate, and clears both when the gate 
   await gates.syncGates(payload)
   const [c, ...rest] = await gateComments(n)
   expect(rest).toHaveLength(0)
-  expect(c.body).toMatch(/^<!-- bauherr:gate:Approve plan:[0-9a-f]{40} -->\n@fake: Approve plan — .*\/tickets\/\d+$/)
+  expect(c.body).toMatch(/^<!-- bauherr:gate:Approve plan:[0-9a-f]{40} -->\n@fake: Approve plan — .*\/tickets\/\d+\n\n## Decision\n/)
   expect(issue(n).assignees).toEqual(['fake'])
   expect(await reload(id)).toMatchObject({ gateNotified: 'Approve plan', gateAssignees: 'fake' })
 

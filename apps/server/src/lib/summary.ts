@@ -1,3 +1,5 @@
+import { packTemplate, renderTemplate, type Tpl } from './templates'
+
 export const SUMMARY_MARKER = '<!-- bauherr:staging-summary -->'
 
 export interface SummaryInput {
@@ -33,7 +35,7 @@ export const bullets = (md: string): string[] =>
 const list = (items: string[], empty: string): string => (items.length ? items.map((i) => `- ${i}`).join('\n') : empty)
 
 /** Markdown staging summary from structured data; no model call. Starts with {@link SUMMARY_MARKER}. */
-export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stagingUrl, mergeSha }: SummaryInput): string => {
+export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stagingUrl, mergeSha }: SummaryInput, tpl: Tpl = packTemplate('staging-summary')): string => {
   const outcomes = bullets(section(plan ?? '', 'Goal'))
   const goals = bullets(section(worklog ?? '', 'Goal')).map((g) => g.replace(/^\[( |x)\]\s*/i, (_, m) => (m === ' ' ? '(open) ' : '(done) ')).trim())
   const decisions = bullets(section(worklog ?? '', 'Decisions'))
@@ -43,18 +45,17 @@ export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stag
   return [
     SUMMARY_MARKER,
     `# Staging summary: #${ticket.number} ${ticket.title}`,
-    '## What you get',
-    ...(outcomes.length ? [list(outcomes, '')] : []),
-    `**Progress**\n${list(goals, 'No Goal recorded.')}`,
-    `**Merge requests**\n${list(mrs.map((m) => `[#${m.number} ${m.title}](${m.url})`), 'None linked.')}`,
-    ...(proof ? [`**Evidence**\n${proof}`] : []),
-    '## Found on the way',
-    list(findings, 'Nothing recorded.'),
-    '## Decisions taken',
-    list(decisions, 'None.'),
-    '## Open',
-    list(open, 'Nothing.'),
-    '## Accept',
-    `${stagingUrl ? `Check it on staging: ${stagingUrl}\n\n` : ''}${mergeSha ? `Merge commit: \`${mergeSha}\`\n\n` : ''}Accept on staging on the [Ticket](${ticket.url}), or request changes with a note.`,
+    renderTemplate(tpl, {
+      'what-you-get': [
+        ...(outcomes.length ? [list(outcomes, '')] : []),
+        `**Progress**\n${list(goals, 'No Goal recorded.')}`,
+        `**Merge requests**\n${list(mrs.map((m) => `[#${m.number} ${m.title}](${m.url})`), 'None linked.')}`,
+        ...(proof ? [`**Evidence**\n${proof}`] : []),
+      ].join('\n\n'),
+      found: list(findings, 'Nothing recorded.'),
+      decisions: list(decisions, 'None.'),
+      open: list(open, 'Nothing.'),
+      accept: `${stagingUrl ? `Check it on staging: ${stagingUrl}\n\n` : ''}${mergeSha ? `Merge commit: \`${mergeSha}\`\n\n` : ''}Accept on staging on the [Ticket](${ticket.url}), or request changes with a note.`,
+    }),
   ].join('\n\n') + '\n'
 }

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { GRAPH_CHECKPOINT } from './checkpoints'
 import { resolve } from 'node:path'
 import { parse } from 'yaml'
 
@@ -203,9 +204,9 @@ export const graph = (wf: Workflow): Graph => {
   for (const s of wf.stages) {
     nodes.push({ id: s.name, title: s.title, kind: s.kind, ...(s.role && { role: s.role }), checkpoint: s.kind === 'human' })
     const checkpoint = (suffix: string, label: string) => nodes.push({ id: `${s.name}:${suffix}`, title: label, kind: 'human', checkpoint: true })
-    if (s.kind === 'triage') checkpoint('refine', 'Answer questions')
-    if (s.gate === 'human') checkpoint('gate', s.kind === 'plan' ? 'Approve plan' : 'Accept on staging')
-    if (s.production_gate === 'human') checkpoint('production', 'Approve production')
+    if (s.kind === 'triage') checkpoint('refine', GRAPH_CHECKPOINT.refine)
+    if (s.gate === 'human') checkpoint('gate', s.kind === 'plan' ? GRAPH_CHECKPOINT.plan : GRAPH_CHECKPOINT.staging)
+    if (s.production_gate === 'human') checkpoint('production', GRAPH_CHECKPOINT.production)
     for (const [outcome, to] of Object.entries(s.outcomes)) edges.push({ from: s.name, to, outcome, back: o.includes(to) && o.indexOf(to) < o.indexOf(s.name) })
   }
   return { nodes, edges }

@@ -7,7 +7,7 @@ description: Plan template for an expedite (hotfix) Ticket labelled bauherr:expe
 
 Budget: read only what the root cause needs, write at most 40 lines. The plan is posted for audit; it is not approved by a human.
 
-Write `.bauherr/plan.md` with exactly these sections:
+Write `.bauherr/plan.md` with exactly these sections (no `## TL;DR`: nobody decides on a hotfix plan):
 
 ## Goal
 - One line: what is broken and what works after the fix.

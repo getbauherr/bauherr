@@ -3,6 +3,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import { settleDecision } from './decision'
+import { SKILL_TEMPLATES, template, templateBlock } from './templates'
 import { FILE_PATTERN, acceptStaging, approveSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
@@ -433,13 +435,13 @@ export const tools: Tool[] = [
   {
     name: 'submit_plan',
     access: 'agent',
-    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only.',
+    description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only. The plan must start with a ## TL;DR section (lines Decision:, Recommendation:, Why: 1-3 bullets, Risk:); a hotfix plan is exempt.',
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
       if (kindOfRun(DEFAULT(), run) !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
-      return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown })), leaseExpiresAt }
+      return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown, requireSummary: true })), leaseExpiresAt }
     },
   },
   {
@@ -723,11 +725,13 @@ export const tools: Tool[] = [
   {
     name: 'load_skill',
     access: 'agent',
-    description: 'Read a pack skill (SKILL.md) by name, e.g. run-contract, worklog.',
+    description: 'Read a pack skill (SKILL.md) by name, e.g. run-contract, worklog. The skills that write text for people (run-contract, review, triage, intake) end with the Workspace\'s templates for it.',
     inputSchema: obj({ name: str('Skill name') }, ['name']),
-    async run(a) {
+    async run(a, c) {
       if (!/^[\w-]+$/.test(a.name)) throw new Error('invalid skill name')
-      return packFile(`skills/${a.name}/SKILL.md`)
+      const ws = c.workspace ?? tenantsOf(c.user)[0]
+      const tpls = ws === undefined ? [] : await Promise.all((SKILL_TEMPLATES[a.name] ?? []).map((n) => template(c.payload, ws, n)))
+      return [packFile(`skills/${a.name}/SKILL.md`), ...tpls.map((t) => templateBlock(t))].join('\n\n')
     },
   },
   {
@@ -754,6 +758,9 @@ export const tools: Tool[] = [
   },
 ]
 
+/** Tools of a human decision on one Ticket. */
+const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'grant_review_round', 'stop_review', 'request_changes'])
+
 /** Input digest: argument names plus a hash; raw payloads are never stored. */
 export const digest = (input: unknown): string =>
   `${Object.keys((input as object) ?? {}).join(',')} sha256:${createHash('sha256').update(JSON.stringify(input ?? {})).digest('hex').slice(0, 16)}`
@@ -769,6 +776,9 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
     if (tool.access !== 'agent' && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
     const out = await tool.run(input ?? {}, c)
     ok = true
+    // A decision taken here (chat, MCP) closes the Ticket's Inbox card at once, as in the UI.
+    const ticket = (input as { ticket?: number | string } | null)?.ticket
+    if (DECIDES.has(name) && ticket !== undefined) await settleDecision(c.payload, ticket)
     return out
   } finally {
     const workspace = c.workspace ?? tenantsOf(c.user)[0]

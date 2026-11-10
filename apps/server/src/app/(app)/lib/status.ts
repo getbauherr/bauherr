@@ -1,3 +1,4 @@
+import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 import { kindOfRun } from '../../../lib/stage-text'
 import { DEFAULT, is, type Workflow } from '../../../lib/workflow'
 import { duration } from './format'
@@ -88,7 +89,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   if (run?.status === 'queued') return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
   if (r.needsYou) {
     const why = RUN_PROBLEMS.includes(r.needsYou) ? first(r.run?.error) : null
-    return { phase: 'human', label: 'Waiting for you', detail: why ? `${r.needsYou}: ${why}` : r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
+    return { phase: 'human', label: WAITING_FOR_YOU, detail: why ? `${r.needsYou}: ${why}` : r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
   }
   const wait = ci(wf, r)
   if (wait) return { phase: 'ci', label: wait.label, detail: wait.detail, who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
@@ -105,4 +106,4 @@ export const statusLine = (r: StatusRow): string => {
 
 /** The status label of a history phase (`ticket_events.phase`) in the stage of kind `stageKind`. */
 export const phaseLabel = (phase: string, stageKind?: string | null): string =>
-  ({ working: 'In progress', queued: 'Queued', human: 'Waiting for you', closed: 'Done', ci: stageKind === 'release' ? 'Waiting on deploy' : 'Waiting on CI' })[phase] ?? phase
+  ({ working: 'In progress', queued: 'Queued', human: WAITING_FOR_YOU, closed: 'Done', ci: stageKind === 'release' ? 'Waiting on deploy' : 'Waiting on CI' })[phase] ?? phase

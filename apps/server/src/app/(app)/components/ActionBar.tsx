@@ -28,6 +28,8 @@ type Props = {
   stagingUrl?: string | null
   /** The Ticket can still enter the Expedite lane (open, not flagged, before release); shows the Expedite button. */
   canExpedite?: boolean
+  /** The prepared Decision's ask: the bar's sentence, so the Inbox and this page say the same. */
+  ask?: string | null
 }
 
 const Post = ({ ticket, action, children, variant = 'default' }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; variant?: 'default' | 'outline' }) => (
@@ -38,7 +40,7 @@ const Post = ({ ticket, action, children, variant = 'default' }: { ticket: numbe
 )
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite }: Props) {
+export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask }: Props) {
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open, reason }
   const verb = gate?.verb(ctx) ?? ''
@@ -75,7 +77,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   })()
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
-    <NextStepBar sentence={gate ? gate.sentence(ctx) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need ? undefined : { label: idle.label, disabled: true, reason: idle.reason })}>
+    <NextStepBar sentence={gate ? (ask ?? gate.sentence(ctx)) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need ? undefined : { label: idle.label, disabled: true, reason: idle.reason })}>
       {(gate || canExpedite) && (
         <>
           {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}

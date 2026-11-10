@@ -85,7 +85,7 @@ test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and
   await signIn(page, 'member@example.com')
   for (const path of ['audit', 'workflow', 'connections']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
   await page.goto('/settings/workspace')
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['General', 'Products', 'People', 'AI usage', 'API key'])
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['General', 'Products', 'People', 'AI usage', 'Templates', 'API key'])
   await expect(page.getByText('Advanced', { exact: true })).toHaveCount(0)
   for (const text of ['Factory health', 'Gateway key', 'Model tiers', 'Run mode', 'Knowledge repo', 'read-only']) await expect(page.getByText(text)).toHaveCount(0)
   await expect(page.getByLabel('Budget per 30 days')).toBeVisible()

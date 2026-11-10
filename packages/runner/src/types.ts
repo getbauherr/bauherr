@@ -66,6 +66,8 @@ export type RunCtx = {
     toolCall(d: ToolCallRecord): Promise<void>;
     log(msg: string): void;
   };
+  /** The Workspace's effective templates by skill name (`SKILL_TEMPLATES`): each is appended to that skill's text under `## Template: <title>`. */
+  templates?: Record<string, { title: string; body: string }[]>;
   /** Path to the core pack (`pack/`). */
   packDir: string;
 };

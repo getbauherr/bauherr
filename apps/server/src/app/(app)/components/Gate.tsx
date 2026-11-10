@@ -3,18 +3,6 @@ import { Markdown } from './Markdown'
 import { SubmitButton } from './SubmitButton'
 import { Card } from './ui/card'
 
-export function Gate({ plan }: { plan: { title: string; steps: number } | null }) {
-  return (
-    <Card asChild className="max-w-[640px] gap-4 p-6">
-      <section aria-label="Approve plan">
-        <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
-          <dt>Approves</dt><dd>{plan ? `${plan.title} · ${plan.steps} ${plan.steps === 1 ? 'step' : 'steps'}` : 'Plan comment not readable, open it on the forge.'}</dd>
-        </dl>
-      </section>
-    </Card>
-  )
-}
-
 type ReleaseGateProps = { ticket: number; timedOut: boolean; summaryHtml: string | null }
 
 /** The staging summary, and the Request-changes form, which the bar's `#changes` link reveals through `:target`. */

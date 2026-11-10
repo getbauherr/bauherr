@@ -8,7 +8,8 @@ const when = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`
 
 const Meta = ({ k, v }: { k: string; v: string | null }) => (v ? <><dt className="text-muted-foreground">{k}</dt><dd className="m-0 min-w-0 break-words">{v}</dd></> : null)
 
-function StepRow({ s }: { s: Step }) {
+/** `open`: the Ticket's decision while this is the step it waits at; it replaces "who decided" until someone has. */
+function StepRow({ s, open }: { s: Step; open?: { ticket: number; ask: string } | null }) {
   const r = s.run
   return (
     <li className="flex flex-col gap-1 border-t border-border py-2 first:border-t-0" data-testid="step" data-phase={s.phase}>
@@ -20,6 +21,7 @@ function StepRow({ s }: { s: Step }) {
         {s.ci?.url && <a className="small text-primary" href={s.ci.url}>Merge request and checks</a>}
       </div>
       {s.ci?.provider && <p className="small m-0 text-muted-foreground">Waiting on {s.ci.provider}</p>}
+      {open && !s.decision && <p className="small m-0" data-testid="step-open-decision">{open.ask} <Link className="text-primary" href={`/inbox#t${open.ticket}`}>Decide in Inbox</Link></p>}
       {s.decision && <p className="small m-0" data-testid="step-decision">Decided: {s.decision.what}{s.decision.actor ? ` by ${s.decision.actor}` : ''}</p>}
       {r && (
         <dl className="small m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5" data-testid="step-run">
@@ -39,7 +41,8 @@ function StepRow({ s }: { s: Step }) {
 }
 
 /** The Ticket's steps, newest first: one entry per stage visit with its phases, who ran them and how long each took; totals on top. */
-export function TicketSteps({ steps }: { steps: Steps }) {
+export function TicketSteps({ steps, decision }: { steps: Steps; decision?: { ticket: number; ask: string } | null }) {
+  const latest = steps.visits.at(-1)?.steps.at(-1)
   const t = steps.totals
   const total = [['Lead time', t.lead], ['Waiting for you', t.human], ['In progress', t.working], ['Queued', t.queued], ['Waiting on CI', t.ci]] as const
   return (
@@ -52,7 +55,7 @@ export function TicketSteps({ steps }: { steps: Steps }) {
           {[...steps.visits].reverse().map((v, i) => (
             <li key={`${v.stage}-${v.at}-${i}`} className="rounded-md border border-border bg-card p-3" data-testid="visit" data-stage={v.stage}>
               <h3 className="heading m-0 flex flex-wrap items-baseline gap-x-3 capitalize">{v.title}<span className="mono small font-normal text-muted-foreground">{duration(v.seconds)}</span></h3>
-              <ul className="m-0 mt-1 flex list-none flex-col p-0">{[...v.steps].reverse().map((s) => <StepRow key={s.id} s={s} />)}</ul>
+              <ul className="m-0 mt-1 flex list-none flex-col p-0">{[...v.steps].reverse().map((s) => <StepRow key={s.id} s={s} open={decision && s === latest && s.phase === 'human' ? decision : null} />)}</ul>
             </li>
           ))}
         </ol>

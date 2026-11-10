@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
+import { type DecisionAction, canDecide, settleDecision } from '../../../lib/decision'
 import { DEFAULT, repairable } from '../../../lib/workflow'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
@@ -64,28 +65,36 @@ export async function approvePlanAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(approvePlan(payload, user, { ticket, workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 export async function expediteAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(expedite(payload, user, { ticket, workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 export async function acceptStagingAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(acceptStaging(payload, user, { ticket, workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 export async function approveProductionAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(approveProduction(payload, user, { ticket, workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 export async function approveSkillProposalAction(form: FormData) {
@@ -98,14 +107,18 @@ export async function grantReviewRoundAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(grantReviewRound(payload, user, { ticket, workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 export async function stopReviewAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(stopReview(payload, user, { ticket, note: String(form.get('note') ?? ''), workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 /** "Needs you" on a stuck review: back to Build, with an optional note for the next Run. */
@@ -113,7 +126,9 @@ export async function backToBuildAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(backToBuild(payload, user, { ticket, note: String(form.get('note') ?? ''), workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 /** "Cancelled": the Ticket goes back to Triage. */
@@ -121,14 +136,18 @@ export async function backToBacklogAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(backToBacklog(payload, user, { ticket, workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 export async function requestChangesAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(requestChanges(payload, user, { ticket, note: String(form.get('note') ?? ''), workspaceId }))
+  await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
 }
 
 /** Discards one of the caller's open request sessions (New request page). */
@@ -152,17 +171,57 @@ export async function askOwnerChat(session: number, ticket: number, decision: st
   return next
 }
 
-/** Re-runs the stage of a failed or needs_human Run for an Admin or a member of its Workspace, records a human touch, opens the new Run. */
-export async function rerunStage(runId: number) {
-  const user = await requireBauherr()
-  const payload = await payloadClient()
+/** Starts a new Run of the stage of a failed or needs_human Run (Admin or a member of its Workspace) and records a human touch; null when the Run cannot be re-run by this person. */
+const startRerun = async (user: Awaited<ReturnType<typeof requireBauherr>>, payload: Awaited<ReturnType<typeof payloadClient>>, runId: number) => {
   const o = { depth: 0, overrideAccess: true } as const
   const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number } | null
-  if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) redirect(`/runs/${runId}`)
+  if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) return null
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
   const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
   if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
-  redirect(`/runs/${next.id}${created ? '' : '?notice=active'}`)
+  return { run, next: next.id as number, created }
+}
+
+/** Re-runs the stage of a failed or needs_human Run, opens the new Run. */
+export async function rerunStage(runId: number) {
+  const user = await requireBauherr()
+  const payload = await payloadClient()
+  const r = await startRerun(user, payload, runId)
+  if (!r) redirect(`/runs/${runId}`)
+  await settleDecision(payload, r.run.ticket)
+  redirect(`/runs/${r.next}${r.created ? '' : '?notice=active'}`)
+}
+
+/** One decision of the Inbox card: runs the existing action of the option for the Ticket (a note goes where the action takes one), then closes the card at once. A card for a need the Ticket no longer has is refused. Answers an error text instead of throwing. */
+export async function decideAction(ticket: number, need: string, action: DecisionAction, note = ''): Promise<{ error?: string }> {
+  const { user, payload, workspaceId } = await acting()
+  const a = { ticket, workspaceId }
+  try {
+    const row = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null; workspace: unknown } | null
+    if (!row || String((row.workspace as { id?: number })?.id ?? row.workspace) !== String(workspaceId)) notFound()
+    if (row.needsYou !== need) return { error: 'This decision changed. Reload the Inbox.' }
+    if (!canDecide(user, need as never)) return { error: 'Only an Admin can decide this.' }
+    if (action === 'approvePlan') await approvePlan(payload, user, a)
+    else if (action === 'requestChanges') await requestChanges(payload, user, { ...a, note })
+    else if (action === 'acceptStaging') await acceptStaging(payload, user, a)
+    else if (action === 'approveProduction') await approveProduction(payload, user, a)
+    else if (action === 'grantRound') await grantReviewRound(payload, user, a)
+    else if (action === 'stopReview') await stopReview(payload, user, { ...a, note })
+    else if (action === 'backToBuild') await backToBuild(payload, user, { ...a, note })
+    else if (action === 'backToBacklog') await backToBacklog(payload, user, a)
+    else if (action === 'expedite') await expedite(payload, user, a)
+    else if (action === 'rerun') {
+      const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: ticket } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+      if (!latest || !(await startRerun(user, payload, latest.id as number))) return { error: 'The latest step cannot be re-run.' }
+    } else return { error: 'Open the ticket to do this.' }
+  } catch (e) {
+    if (e instanceof NotInWorkspace) notFound()
+    return { error: e instanceof Error ? e.message : 'The action failed.' }
+  }
+  await settleDecision(payload, ticket)
+  revalidatePath('/inbox')
+  revalidatePath(`/tickets/${ticket}`)
+  return {}
 }
 
 /** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */

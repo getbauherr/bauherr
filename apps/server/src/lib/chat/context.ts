@@ -10,6 +10,7 @@ import { nodeStats } from '../../app/(app)/lib/workflow-view'
 import { ticketStatus } from '../../app/(app)/lib/status'
 import { duration } from '../../app/(app)/lib/format'
 import { graph } from '../workflow'
+import { canDecide } from '../decision'
 
 type Doc = Record<string, any>
 export type PageContext = { label: string; markdown: string; entity?: { kind: 'ticket' | 'run' | 'request' | 'product'; id: number | string } }
@@ -17,9 +18,9 @@ export type PageContext = { label: string; markdown: string; entity?: { kind: 't
 export const CONTEXT_MAX_CHARS = 1500
 const o = { depth: 0, overrideAccess: true } as const
 const PAGES: Record<string, string> = {
-  '/': 'Workflow', '/insights': 'Insights', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
+  '/': 'Workflow', '/inbox': 'Inbox', '/insights': 'Insights', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
   '/settings': 'Settings', '/settings/api-key': 'Settings: API key', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
-  '/settings/usage': 'Settings: Usage', '/settings/workflow': 'Settings: Board & WIP', '/settings/workspace': 'Settings: Workspace',
+  '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/settings/workflow': 'Settings: Board & WIP', '/settings/workspace': 'Settings: Workspace',
 }
 /** One line of text others wrote: no line breaks or markup that could pose as page structure. */
 const line = (s: unknown, n = 120): string => String(s ?? '').replace(/\s+/g, ' ').replace(/[<>`]/g, '').trim().slice(0, n)
@@ -27,6 +28,20 @@ const day = (d: unknown): string => (d ? String(d).slice(0, 16).replace('T', ' '
 const gone = (): PageContext => ({ label: 'Not found', markdown: 'The page shows something that does not exist in this Workspace.' })
 const make = (label: string, lines: string[], entity?: PageContext['entity']): PageContext => ({ label: line(label, 100), markdown: lines.join('\n').slice(0, CONTEXT_MAX_CHARS), ...(entity && { entity }) })
 const numeric = (s: string): number | null => (/^\d+$/.test(s) ? Number(s) : null)
+
+/** The prepared Decision as plain lines, for the Ticket's page and the Inbox list. */
+const decisionText = (d: Doc): string[] => [
+  `Decision (${line(d.checkpoint)}): ${line(d.ask, 160)}`,
+  ...(d.recommendation ? [`Recommendation: ${line(d.recommendation, 200)}`] : []),
+  ...(d.why ?? []).slice(0, 3).map((w: string) => `- ${line(w, 140)}`),
+  `Options: ${(d.options ?? []).map((o: Doc) => `${line(o.label, 40)} (${line(o.effect, 80)})`).join('; ')}`,
+]
+
+const inboxPage = async (payload: Payload, user: Doc, ws: number): Promise<PageContext> => {
+  const { docs } = await payload.find({ collection: 'tickets', where: { workspace: { equals: ws }, state: { equals: 'open' }, needsYou: { exists: true } }, select: { number: true, title: true, needsYou: true, decision: true }, limit: 12, sort: 'updatedAt', ...o })
+  const rows = (docs as Doc[]).filter((t) => canDecide(user, t.needsYou))
+  return make('Inbox', ['Inbox: the decisions that wait for the person, each prepared the same way.', ...(rows.length ? rows.map((t) => `- #${t.number} ${line(t.title, 60)}: ${line(t.decision?.ask ?? t.needsYou, 140)}`) : ['Nothing needs the person.'])])
+}
 
 const decisionsOpen = async (payload: Payload, t: Doc): Promise<number | null> => {
   try {
@@ -49,6 +64,7 @@ const ticketPage = async (payload: Payload, user: Doc, ws: number, id: number): 
     `Ticket #${t.number}: ${line(t.title)}`,
     `Stage: ${stageTitle(wf, t.state === 'closed' ? nameOf(wf, 'done') : (t.stage ?? nameOf(wf, 'triage')))}; status: ${row ? plainStatus(row) : t.state === 'closed' ? 'Done' : 'Open'}`,
     `Needs the person: ${row?.needsYou ?? 'nothing'}${open != null ? `; open decisions: ${open}` : ''}`,
+    ...(t.decision && t.decision.need === t.needsYou ? decisionText(t.decision) : []),
     ...(row?.blockedBy.length ? [`Blocked by: ${row.blockedBy.map((b) => `#${b.number}`).join(', ')}`] : []),
     ...(row?.waiting ? [`Waiting: ${line(row.waiting)}`] : []),
     ...(runs.length ? ['Latest Runs (id, stage, status, when):', ...runs.map((r) => `- Run ${r.id}: ${stageTitle(wf, r.stage)}, ${r.status}, ${day(r.createdAt)}${admin ? `, ${r.mode}` : ''}`)] : ['No Runs yet']),
@@ -149,6 +165,7 @@ export const resolveContext = async (payload: Payload, user: Doc, workspace: num
   }
   if (section === 'settings' && id === 'products' && more.length === 1 && numeric(more[0]!) !== null) return productPage(payload, ws, numeric(more[0]!)!)
   if (section === 'settings' && id && !more.length && PAGES[path]) return settingsPage(payload, ws, id, PAGES[path])
+  if (path === '/inbox') return inboxPage(payload, user, ws)
   if (path === '/') return workflowPage(ws, a.path)
   if (path === '/insights') return insightsPage(payload, ws, a.path)
   return make(PAGES[path] ?? 'Unknown page', [PAGES[path] ? `${PAGES[path]} page.` : `A page the assistant has no details for (${line(path, 80)}).`])

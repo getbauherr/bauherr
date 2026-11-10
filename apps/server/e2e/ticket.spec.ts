@@ -113,7 +113,7 @@ test('an approval Ticket shows the bar, title, pipeline and the gate; the rest s
   await expect(page.getByTestId('action-bar')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Tidy the settings copy')
   await expect(page.getByTestId('ticket-path')).toBeVisible()
-  await expect(page.getByText('Approves', { exact: true })).toBeVisible()
+  await expect(page.getByText('Recommended')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Approve plan' })).toHaveCount(0)
   for (const name of ['Budget', 'Model', 'Worklog']) await expect(page.getByText(name, { exact: true })).toBeHidden()
   await page.getByTestId('action-bar').getByRole('link', { name: 'Show details' }).click()
