@@ -23,7 +23,7 @@ import { isAdmin, listRepos, only, presetFor, run, type FormState } from '../../
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
-import { DEFAULT, wipStages } from '../../../../lib/workflow'
+import { DEFAULT, modeStages, wipStages } from '../../../../lib/workflow'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -66,7 +66,7 @@ export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d
     const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
     const conn = Number(s(fd, 'knowledgeConnection')) || undefined
     await assertInWorkspace(payload, 'connections', [conn], wsId)
-    const stages = Object.fromEntries(['plan', 'build'].map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
+    const stages = Object.fromEntries(modeStages(DEFAULT()).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
     Object.assign(data, { modelByTier: tiers, name: s(fd, 'name'), defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null, knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null })
   } else if (!(await workspacesOf(user)).some((x) => x.id === wsId)) throw new Error('Not your Workspace.')
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)

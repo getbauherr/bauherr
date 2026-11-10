@@ -9,6 +9,7 @@ export type RunDoc = {
   id: number
   ticket: number
   stage: string
+  kind?: string | null
   status: string
   mode: string
   sessionOwner: number | null

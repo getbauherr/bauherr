@@ -184,6 +184,8 @@ export const pullRank = (wf: Workflow): string[] => board(wf).filter((n) => kind
 export const wipStages = (wf: Workflow): string[] => named(wf, ...WIP)
 export const defaultWip = (wf: Workflow): Record<string, number> => Object.fromEntries(wf.stages.filter((s) => s.wip).map((s) => [s.name, s.wip as number]))
 export const heldStages = (wf: Workflow): string[] => wf.stages.filter((s) => WIP.includes(s.kind) && s.kind !== 'release').map((s) => s.name).reverse()
+/** Stages whose Run mode a Workspace overrides (Settings > Run mode). */
+export const modeStages = (wf: Workflow): string[] => named(wf, 'plan', 'build')
 export const liveStages = (wf: Workflow): string[] => named(wf, ...LIVE)
 export const inFlight = (wf: Workflow): string[] => named(wf, ...IN_FLIGHT)
 export const repairable = (wf: Workflow): string[] => wf.stages.filter((s) => s.kind !== 'container' && s.kind !== 'done').map((s) => s.name)
