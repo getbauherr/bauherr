@@ -84,6 +84,10 @@ Feedback: `messageId` is the client's message id (before the PUT, the `answerId`
 - `chat_messages`: `thread`, `messageId` (unique per thread), `parentId`, `message`, `role`, `answer`, `feedback` (`up`/`down`), `feedbackReasons`, `feedbackNote`, `feedbackAt`.
 - Admin read model: `chatFeedback(payload, workspace, {limit})` in `lib/chat/insights.ts`: rated answers with question, answer excerpt, tools, usage, thread and rater.
 
+## UI notes
+
+The assistant skill is read from `skills/assistant/SKILL.md` of `BAUHERR_PACK_DIR`, falling back to the built-in pack (the gated test pack has no skills). `#123` in an answer is a link to `/tickets/n/123` (UI route: the Ticket when the number is unique in the Workspace, else a chooser listing the Products). A feedback `POST` right after the answer waits for the client's save of that message (the UI chains them); the UI sends the reasons and note of a thumbs-down as `reasons` and `note`. Docked UI: [ui.md](ui.md#chat).
+
 ## Testing without a gateway
 
 `CHAT_FAKE=1` (or `INTAKE_FAKE=1`; refused in production builds like the other fakes) answers with a scripted model: any text is echoed as `[fake] you said: <text>`, a message containing `status` calls `factory_status`, `approve #<n>` calls `approve` for Ticket `<n>`, and a tool result is acknowledged as `[fake] tool result: ...`.

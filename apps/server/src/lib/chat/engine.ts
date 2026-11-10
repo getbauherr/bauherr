@@ -27,9 +27,11 @@ export const CLIENT_RESULT_CHARS = 4000
 const MODEL_RESULT_CHARS = 30_000
 const MAX_HISTORY = 40
 
+/** The assistant skill of `BAUHERR_PACK_DIR`; a pack override without one (the gated test pack) falls back to the built-in pack. */
 const skill = async (): Promise<string> => {
-  const dir = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
-  return (await readFile(resolve(dir, 'skills/assistant/SKILL.md'), 'utf8')).replace(/^---[\s\S]*?---\s*/, '')
+  const read = async (dir: string) => (await readFile(resolve(dir, 'skills/assistant/SKILL.md'), 'utf8')).replace(/^---[\s\S]*?---\s*/, '')
+  const builtIn = resolve(process.cwd(), '../../pack')
+  return process.env.BAUHERR_PACK_DIR ? read(process.env.BAUHERR_PACK_DIR).catch(() => read(builtIn)) : read(builtIn)
 }
 
 /** Skill + today + the page block; the person's words and tool results never enter it. */

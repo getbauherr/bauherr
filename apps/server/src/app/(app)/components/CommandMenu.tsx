@@ -1,6 +1,8 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { request } from './chat/dock-state'
+import { Chat } from './chat/icons'
 import { LogOut, Moon, Plus, Search, Ticket } from './icons'
 import { settingsPages, type NavItem } from './nav-items'
 import { toggleTheme } from './ThemeToggle'
@@ -44,6 +46,8 @@ export function CommandMenu({ items, admin, logout }: { items: Pick<NavItem, 'hr
   const needle = q.trim().toLowerCase()
   const pages = [...items.map(({ href, label }) => ({ href, label })), ...settingsPages(admin).map(([label, href]) => ({ href, label: `Settings: ${label}` }))].filter((p) => p.label.toLowerCase().includes(needle))
   const actions = [
+    { label: 'Ask the factory', Icon: Chat, run: () => run(() => request('focus')) },
+    { label: 'New chat', Icon: Chat, run: () => run(() => request('new')) },
     { label: 'New request', Icon: Plus, run: () => go('/requests/new') },
     { label: 'Toggle theme', Icon: Moon, run: () => run(toggleTheme) },
     { label: 'Sign out', Icon: LogOut, run: () => run(() => void logout()) },

@@ -103,6 +103,9 @@ await ticket(25, 'Hold the approved export tweak', 'plan', product, { labels: ['
 const t26 = await ticket(26, 'Approve the retry policy', 'plan', product)
 const t27 = await ticket(27, 'Review the retry policy', 'review', product)
 await run(t26, 'plan', 'succeeded', { startedAt: '2026-10-30T09:40:00Z', finishedAt: '2026-10-30T09:42:00Z' })
+// chat-dock.spec.ts: two plans of its own awaiting approval (#28 is approved in the chat, #29 declined; twins in `src/lib/fake-forge.ts`) and a second member who must not see the first one's threads.
+for (const [n, title] of [[28, 'Chat: cache the export totals'], [29, 'Chat: rename the export columns']] as const) await run(await ticket(n, title, 'plan', product), 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
+await ensure('bauherren', { email: 'chat-other@example.com' }, { email: 'chat-other@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })
 await ensure('runs', { ticket: t27, stage: 'review', status: 'running' }, { ticket: t27, stage: 'review', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 // Hotfix (#373): a card in the Hotfix lane of Build, and a merged one 12 minutes after its flag for the lead time in Factory health.
 await ticket(125, 'Hotfix: checkout crash', 'build', product, { expedite: true, expediteAt: '2026-11-05T08:00:00Z', rank: '999999' })
