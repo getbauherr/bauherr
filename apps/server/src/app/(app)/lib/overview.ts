@@ -122,8 +122,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      // The stored count of unanswered critical decisions (kept by plan submit, answers and the gate sweep) turns "Approve plan" into "Answer decisions" without a forge call.
-      needsYou: need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need,
+      needsYou: need,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ ticket: t, need: null, run: null, waiting: waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,

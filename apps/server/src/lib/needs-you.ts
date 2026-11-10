@@ -32,7 +32,7 @@ export const stageOf = (t: { state?: string | null; stage?: string | null }): St
  * D5 (c): a succeeded plan awaiting approval with `unansweredCritical` > 0 is "Answer decisions" (before "Approve plan").
  */
 export const needsYou = (
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null },
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null },
   run: { stage: string; status: string; reasonKind?: string | null } | null,
   unansweredCritical = 0,
   gates: readonly HumanGate[] = humanGates(),
@@ -85,10 +85,14 @@ export const reviewWord = (reviewState?: string | null): string =>
     needs_human: 'Needs a human, see the latest Comment',
   })[reviewState ?? ''] ?? 'Factory reviewing'
 
-type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }
+type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null }
 
 /** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. Closed Tickets only while a release check failed. */
-export const needsOf = (t: Row, run: { stage: string; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean): Need | null =>
+export const needsOf = (t: Row, run: { stage: string; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean): Need | null => {
+  const need =
   t.state !== 'closed' || t.releaseChecksState === 'failed'
     ? needsYou({ stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run)
     : null
+  // The stored count of unanswered critical decisions turns "Approve plan" into "Answer decisions" without a forge call.
+  return need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need
+}
