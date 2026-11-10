@@ -24,7 +24,8 @@ test('the graph draws the stages of the workflow in order, with the counts of th
     // the node and the list heading read the same count (a WIP limit set by another spec turns it into "n / limit")
     const count = (await page.locator(`[data-testid=stage-node][data-stage=${stage}] [data-testid=stage-count]`).textContent())!.trim()
     await expect(page.locator(`.col[data-stage=${stage}] h2`)).toContainText(count)
-    if (!count.includes('/')) expect(await page.locator(`.col[data-stage=${stage}] .card`).count()).toBe(Number(count))
+    // the done group is collapsed behind "Show N done"
+    if (!count.includes('/') && stage !== 'done') expect(await page.locator(`.col[data-stage=${stage}] .card`).count()).toBe(Number(count))
   }
   // outcome edges: forward solid, backward dashed
   await expect(page.locator('[data-edge="build>review"][data-outcome=done]')).toHaveCount(1)
@@ -88,4 +89,33 @@ test('phone: the graph is a column of the same cards with the transitions as tex
   await expect(page.getByTestId('stage-node').first()).toBeVisible()
   await expect(page.getByRole('list', { name: 'Transitions of build' })).toContainText('replan → plan (back)')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+const fits = (page: import('@playwright/test').Page) =>
+  page.getByTestId('workflow-graph').evaluate((el) => {
+    const done = el.querySelector('[data-stage=done]')!.getBoundingClientRect()
+    return { wrapper: el.scrollWidth <= el.clientWidth, page: document.documentElement.scrollWidth <= window.innerWidth, done: done.left >= 0 && done.right <= window.innerWidth, width: Math.round(el.clientWidth) }
+  })
+
+test('the whole graph fits its container at 1280x800: dock closed, dock open, sidebar collapsed', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.reload()
+  await expect(page.getByTestId('workflow-graph')).toBeVisible()
+  expect(await fits(page)).toMatchObject({ wrapper: true, page: true, done: true })
+  await page.getByTestId('chat-open').click()
+  await expect(page.getByTestId('chat-dock')).toBeVisible()
+  const open = await fits(page)
+  expect(open).toMatchObject({ wrapper: true, page: true, done: true })
+  expect(open.width).toBeLessThan(800)
+  await page.keyboard.press('Control+b')
+  expect(await fits(page)).toMatchObject({ wrapper: true, page: true, done: true })
+  await page.setViewportSize({ width: 1024, height: 768 })
+  expect(await fits(page)).toMatchObject({ wrapper: true, page: true, done: true })
+})
+
+test('the done group is collapsed behind a link and opens with it', async ({ page }) => {
+  await expect(page.locator('.col[data-stage=done] .card')).toHaveCount(0)
+  await page.getByTestId('show-done-group').click()
+  await expect(page).toHaveURL(/stage=done/)
+  await expect(page.locator('.col[data-stage=done] .card').first()).toBeVisible()
 })

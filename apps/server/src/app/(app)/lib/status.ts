@@ -38,6 +38,8 @@ export type StatusRow = {
   forge: 'github' | 'gitlab' | null
   gate: { people: string[] } | null
   track: Track
+  /** Sub-tickets of a split Ticket (stage of kind container). */
+  children?: { total: number; done: number } | null
 }
 
 const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying' }
@@ -70,6 +72,12 @@ const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | nul
 export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): TicketStatus => {
   const run = r.run && r.run.stage === r.stage ? r.run : null
   if (!r.open) return { phase: 'done', label: 'Done', detail: null, who: null, tone: 'ok' }
+  // Still open on the forge in the done stage: awaiting close or archive.
+  if (is(wf, r.stage, 'done')) return { phase: 'done', label: 'Done', detail: 'closing', who: null, tone: 'ok' }
+  if (is(wf, r.stage, 'container')) {
+    const c = r.children ?? { total: 0, done: 0 }
+    return { phase: 'blocked', label: 'Split', detail: `into ${c.total} sub-ticket${c.total === 1 ? '' : 's'} (${c.done} done)`, who: null, tone: 'muted' }
+  }
   if (run?.status === 'running') {
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''

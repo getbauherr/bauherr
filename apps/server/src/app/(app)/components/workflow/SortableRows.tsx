@@ -12,10 +12,10 @@ type Item = { id: number; cells: ReactNode[]; movable: boolean; running?: boolea
 export const COLUMNS = [
   { head: '#', col: 'w-14', cell: '' },
   { head: 'Ticket', col: '', cell: '' },
-  { head: 'Product', col: 'hidden w-32 lg:table-column', cell: 'hidden lg:table-cell' },
-  { head: 'Status', col: 'w-[17rem] max-md:w-40', cell: '' },
-  { head: 'Who', col: 'hidden w-60 lg:table-column', cell: 'hidden lg:table-cell' },
-  { head: 'In stage for', col: 'hidden w-24 md:table-column', cell: 'hidden md:table-cell' },
+  { head: 'Product', col: 'hidden w-32 @min-[800px]:table-column', cell: 'hidden @min-[800px]:table-cell' },
+  { head: 'Status', col: 'w-44 @min-[640px]:w-[17rem]', cell: '' },
+  { head: 'Who', col: 'hidden w-60 @min-[960px]:table-column', cell: 'hidden @min-[960px]:table-cell' },
+  { head: 'In stage for', col: 'hidden w-24 @min-[640px]:table-column', cell: 'hidden @min-[640px]:table-cell' },
 ] as const
 
 const move = <T,>(xs: T[], from: number, to: number): T[] => {

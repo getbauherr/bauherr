@@ -12,7 +12,7 @@ import { loadOverview } from '../lib/overview'
 import { isAdmin } from '../lib/settings'
 import { currentWorkspace, payloadClient, rememberEpic, requireBauherr } from '../lib/session'
 import { releaseReminders } from '../../../lib/ship-release'
-import { board, DEFAULT, graph as workflowGraph } from '../../../lib/workflow'
+import { board, byKind, DEFAULT, graph as workflowGraph } from '../../../lib/workflow'
 import { checkpointOf, nodeStats, stageMedians } from '../lib/workflow-view'
 import { BAR_LEGEND } from '../components/workflow/legend'
 
@@ -75,7 +75,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               <span>Dashed lines go back to an earlier stage; dashed pills wait for you.</span>
             </p>
             {picked && <p className="small" data-testid="stage-filter">Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link></p>}
-            {groups.length ? <TicketList groups={groups} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
+            {groups.length ? <TicketList groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
           </div>
         )
       ) : sp.epic ? (

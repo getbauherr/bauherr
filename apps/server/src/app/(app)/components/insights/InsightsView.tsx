@@ -52,7 +52,7 @@ export function InsightsView({ data, wip, days }: { data: Insights; wip: WipAge[
           <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Median time per stage">
             {data.stages.map((s) => (
               <li key={s.stage} className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 md:grid-cols-[7rem_minmax(0,1fr)_15rem]" data-testid="stage-time" data-stage={s.stage} data-bottleneck={data.bottleneck?.stage === s.stage || undefined}>
-                <span className="text-[13px] font-semibold">{stageTitle(wf, s.stage)}<span className="small block font-normal text-muted-foreground">{s.tickets} {s.tickets === 1 ? 'Ticket' : 'Tickets'}</span></span>
+                <span className="text-[13px] font-semibold capitalize">{stageTitle(wf, s.stage)}<span className="small block font-normal text-muted-foreground">{s.tickets} {s.tickets === 1 ? 'Ticket' : 'Tickets'}</span></span>
                 <span className="flex h-6 overflow-hidden rounded-sm bg-secondary" role="img" aria-label={PHASES.map((p) => `${p.label} ${sec(s.phases[p.key])}`).join(', ')}>
                   {PHASES.map((p) => s.phases[p.key] > 0 && (
                     <span key={p.key} className={cn('flex items-center justify-center overflow-hidden text-[11px] leading-6', SERIES[p.key], p.key === 'working' ? 'text-primary-foreground' : p.key === 'human' ? 'text-background' : 'text-foreground')} style={{ width: `${(s.phases[p.key] / max) * 100}%` }} title={`${p.label}: ${sec(s.phases[p.key])}`}>
@@ -100,7 +100,7 @@ export function InsightsView({ data, wip, days }: { data: Insights; wip: WipAge[
                 <tr key={t.id}>
                   <td className="mono small text-muted-foreground">#{t.number}</td>
                   <td><Link className="hover:underline" href={`/tickets/${t.id}`}>{t.title}</Link></td>
-                  <td className="small text-muted-foreground">{stageTitle(wf, t.stage)}</td>
+                  <td className="small text-muted-foreground capitalize">{stageTitle(wf, t.stage)}</td>
                   <td className="mono small" title={t.since}>{duration(t.seconds)}</td>
                 </tr>
               ))}

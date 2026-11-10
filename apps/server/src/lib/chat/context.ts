@@ -4,8 +4,12 @@ import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadOverviewRows, within, FORGE_TIMEOUT_MS } from '../../app/(app)/lib/overview'
 import { ticketsOf, tenantsOf } from '../actions'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
-import { DEFAULT, gates, nameOf, title as stageTitle } from '../workflow'
-import { factoryStatus } from './tools'
+import { board, DEFAULT, gates, is, nameOf, title as stageTitle } from '../workflow'
+import { loadInsights, RANGES } from '../../app/(app)/lib/insights'
+import { nodeStats } from '../../app/(app)/lib/workflow-view'
+import { ticketStatus } from '../../app/(app)/lib/status'
+import { duration } from '../../app/(app)/lib/format'
+import { graph } from '../workflow'
 
 type Doc = Record<string, any>
 export type PageContext = { label: string; markdown: string; entity?: { kind: 'ticket' | 'run' | 'request' | 'product'; id: number | string } }
@@ -13,7 +17,7 @@ export type PageContext = { label: string; markdown: string; entity?: { kind: 't
 export const CONTEXT_MAX_CHARS = 1500
 const o = { depth: 0, overrideAccess: true } as const
 const PAGES: Record<string, string> = {
-  '/': 'Board', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
+  '/': 'Workflow', '/insights': 'Insights', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
   '/settings': 'Settings', '/settings/api-key': 'Settings: API key', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
   '/settings/usage': 'Settings: Usage', '/settings/workflow': 'Settings: Board & WIP', '/settings/workspace': 'Settings: Workspace',
 }
@@ -90,6 +94,47 @@ const settingsPage = async (payload: Payload, ws: number, page: string, name: st
   return make(name, [`${name} page.`])
 }
 
+const query = (path: string) => new URLSearchParams(path.split('#')[0]!.split('?')[1] ?? '')
+
+/** The Workflow view: the selected `?stage=` and, per stage, the open Tickets with their status (stage and status counts only; the Tickets are in `list_tickets`). */
+const workflowPage = async (ws: number, path: string): Promise<PageContext> => {
+  const wf = DEFAULT()
+  const { tickets, wip } = await loadOverviewRows(ws, false)
+  const open = tickets.filter((t) => t.open && !is(wf, t.stage, 'container'))
+  const stats = nodeStats(wf, open, wip, {})
+  const nodes = graph(wf).nodes
+  const picked = nodes.find((n) => n.id === query(path).get('stage'))
+  const lines = board(wf).map((stage) => {
+    const n = stats.stages.get(stage)!
+    const rows = open.filter((t) => t.stage === stage)
+    const by = new Map<string, number>()
+    for (const t of rows) by.set(ticketStatus(wf, t).label, (by.get(ticketStatus(wf, t).label) ?? 0) + 1)
+    return `- ${stageTitle(wf, stage)}: ${rows.length}${n.limit ? `/${n.limit}` : ''}${by.size ? ` (${[...by].map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ')})` : ''}`
+  })
+  const waiting = [...stats.checkpoints].map(([id, c]) => `${nodes.find((x) => x.id === id)?.title ?? id}: ${c}`)
+  return make('Workflow', [
+    'Workflow: the stages of the factory with their open Tickets and statuses.',
+    ...(picked ? [`Selected: ${picked.title}${picked.id.includes(':') ? ' (a human checkpoint; the list shows the Tickets waiting there)' : ''}`] : []),
+    ...lines,
+    `Waiting at checkpoints: ${waiting.length ? waiting.join(', ') : 'nothing'}`,
+    `Need the person: ${open.filter((t) => t.needsYou).slice(0, 8).map((t) => `#${t.number} (${t.needsYou})`).join(', ') || 'nothing'}`,
+  ])
+}
+
+/** Insights: the range, the tiles and the bottleneck sentence as text. */
+const insightsPage = async (payload: Payload, ws: number, path: string): Promise<PageContext> => {
+  const q = query(path)
+  const days = RANGES.find((r) => String(r) === q.get('range')) ?? 30
+  const d = await loadInsights(payload, DEFAULT(), ws, { days, product: numeric(q.get('product') ?? '') })
+  const t = (s: number | null) => (s == null ? '-' : duration(s))
+  return make('Insights', [
+    `Insights: time to market of the Tickets that started in the last ${days} days.`,
+    `Done: ${d.done}; lead time median ${t(d.leadMedianSec)}, 85th percentile ${t(d.leadP85Sec)}; cycle time median ${t(d.cycleMedianSec)}`,
+    `Share of time: ${Object.entries(d.share).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(', ')}`,
+    d.bottleneck ? `Bottleneck: ${d.bottleneck.sentence}` : 'Bottleneck: none yet',
+  ])
+}
+
 /** What the person is looking at, from the PATH only (never client-sent content), limited to the Workspace they act in; a foreign or unknown id reads as "not found". */
 export const resolveContext = async (payload: Payload, user: Doc, workspace: number | string, a: { path: string }): Promise<PageContext> => {
   const ws = Number(workspace)
@@ -104,9 +149,7 @@ export const resolveContext = async (payload: Payload, user: Doc, workspace: num
   }
   if (section === 'settings' && id === 'products' && more.length === 1 && numeric(more[0]!) !== null) return productPage(payload, ws, numeric(more[0]!)!)
   if (section === 'settings' && id && !more.length && PAGES[path]) return settingsPage(payload, ws, id, PAGES[path])
-  if (path === '/') {
-    const s = await factoryStatus(ws)
-    return make('Board', ['Board: all open Tickets by stage.', ...s.stages.map((x) => `- ${x.stage}: ${x.tickets}${x.wipLimit ? `/${x.wipLimit}` : ''}`), `Need the person: ${s.needYou.length ? s.needYou.slice(0, 8).map((t) => `#${t.number} (${t.need})`).join(', ') : 'nothing'}`])
-  }
+  if (path === '/') return workflowPage(ws, a.path)
+  if (path === '/insights') return insightsPage(payload, ws, a.path)
   return make(PAGES[path] ?? 'Unknown page', [PAGES[path] ? `${PAGES[path]} page.` : `A page the assistant has no details for (${line(path, 80)}).`])
 }

@@ -58,7 +58,7 @@ export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, {
     const n = of(t.stage)
     const s = ticketStatus(wf, t, now)
     n.count++
-    n.bar[s.phase === 'working' ? 'working' : s.phase === 'human' ? 'human' : s.phase === 'ci' ? 'ci' : 'queued']++
+    if (s.phase !== 'done') n.bar[s.phase === 'working' ? 'working' : s.phase === 'human' ? 'human' : s.phase === 'ci' ? 'ci' : 'queued']++
     if (s.phase === 'working' && t.run) n.execs.push({ label: t.run.mode === 'session' || t.run.executor === 'session' ? t.run.sessionLabel || t.owner || 'Session' : 'Runner', session: t.run.mode === 'session' || t.run.executor === 'session', tip: `${s.who} · #${t.number} ${s.detail}` })
     const c = checkpointOf(wf, t)
     if (c) checkpoints.set(c, (checkpoints.get(c) ?? 0) + 1)

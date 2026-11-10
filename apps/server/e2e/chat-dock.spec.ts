@@ -14,7 +14,7 @@ const signIn = async (page: Page, who = email) => {
   await page.getByLabel('Email').fill(who)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 }
 
 const dock = (page: Page) => page.getByTestId('chat-dock')

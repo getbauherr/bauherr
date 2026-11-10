@@ -1,13 +1,18 @@
 import type { Graph } from '../../../../lib/workflow'
 
 export type Variant = 'full' | 'path'
+/** `fullCompact` and `pathCompact` are the narrow-container layouts of the two variants (container below 900 px). */
+export type Size = 'full' | 'path' | 'fullCompact' | 'pathCompact'
 const SIZE = {
-  full: { stage: [120, 176], small: [88, 176], check: [84, 76], gap: 26, step: 20, font: 11 },
-  path: { stage: [108, 56], small: [84, 56], check: [76, 40], gap: 26, step: 16, font: 10 },
+  full: { stage: [104, 168], small: [68, 168], check: [68, 76], gap: 22, step: 20, font: 11, straightLabels: true },
+  fullCompact: { stage: [68, 124], small: [54, 124], check: [28, 52], gap: 14, step: 16, font: 10, straightLabels: false },
+  path: { stage: [96, 56], small: [64, 56], check: [44, 40], gap: 20, step: 16, font: 10, straightLabels: true },
+  pathCompact: { stage: [62, 48], small: [48, 48], check: [24, 32], gap: 12, step: 14, font: 9, straightLabels: false },
 } as const
 
 export type Placed = { id: string; x: number; y: number; w: number; h: number }
-export type Edge = { key: string; from: string; to: string; outcome: string; back: boolean; dotted: boolean; d: string; label: { x: number; y: number } | null }
+/** Coordinates are in layout units: x scales with the container, y is pixels. `end` is where the arrowhead points: `down` into a card top, `up` into a card bottom, `right` into a card side. */
+export type Edge = { key: string; from: string; to: string; outcome: string; back: boolean; dotted: boolean; d: string; label: { x: number; y: number } | null; end: { x: number; y: number; dir: 'down' | 'up' | 'right' } | null }
 export type Layout = { width: number; height: number; nodes: Placed[]; edges: Edge[]; terminals: Map<string, { outcome: string; to: string }[]> }
 
 type Arc = { key: string; from: number; to: number; outcome: string; up: boolean; back: boolean; level: number }
@@ -17,7 +22,7 @@ type Arc = { key: string; from: number; to: number; outcome: string; up: boolean
  * forward edges that skip nodes as arcs above, backward edges as dashed arcs below, nested by span so no two arcs share a lane where they overlap. A checkpoint that sits on the
  * way (plan gate, staging gate, production) joins its stage to the next stage; the refine checkpoint only hangs on its stage.
  */
-export const layoutFlow = (g: Graph, variant: Variant): Layout => {
+export const layoutFlow = (g: Graph, variant: Size): Layout => {
   const z = SIZE[variant]
   const index = new Map(g.nodes.map((n, i) => [n.id, i]))
   const isCheck = (i: number) => g.nodes[i]!.checkpoint && g.nodes[i]!.id.includes(':')
@@ -56,7 +61,7 @@ export const layoutFlow = (g: Graph, variant: Variant): Layout => {
 
   const widths = g.nodes.map((n, i) => (isCheck(i) ? z.check[0] : n.kind === 'container' || n.kind === 'done' ? z.small[0] : z.stage[0]))
   const gaps = g.nodes.map((_, i) => {
-    const label = [...straight.values()].filter((s) => s.from === i && s.to === i + 1 && s.outcome).map((s) => s.outcome.length)[0] ?? 0
+    const label = [...straight.values()].filter((s) => z.straightLabels && s.from === i && s.to === i + 1 && s.outcome).map((s) => s.outcome.length)[0] ?? 0
     return Math.max(z.gap, Math.round(label * z.font * 0.62) + 12)
   })
   const xs: number[] = []
@@ -92,7 +97,7 @@ export const layoutFlow = (g: Graph, variant: Variant): Layout => {
     const a = nodes[s.from]!
     const b = nodes[s.to]!
     const x1 = a.x + a.w
-    edges.push({ key: s.key, from: g.nodes[s.from]!.id, to: g.nodes[s.to]!.id, outcome: s.outcome, back: false, dotted: s.dotted, d: `M${x1} ${cy}H${b.x}`, label: s.outcome ? { x: (x1 + b.x) / 2, y: cy - 6 } : null })
+    edges.push({ key: s.key, from: g.nodes[s.from]!.id, to: g.nodes[s.to]!.id, outcome: s.outcome, back: false, dotted: s.dotted, d: `M${x1} ${cy}H${b.x}`, label: s.outcome && z.straightLabels ? { x: (x1 + b.x) / 2, y: cy - 10 } : null, end: s.dotted ? null : { x: b.x, y: cy, dir: 'right' } })
   }
   for (const a of arcs) {
     const sx = slot(a.up ? 'top' : 'bottom', a.from, a)
@@ -105,7 +110,8 @@ export const layoutFlow = (g: Graph, variant: Variant): Layout => {
     edges.push({
       key: a.key, from: g.nodes[a.from]!.id, to: g.nodes[a.to]!.id, outcome: a.outcome, back: a.back, dotted: false,
       d: `M${sx} ${y0}V${yl - away * r}Q${sx} ${yl} ${sx + dir * r} ${yl}H${ex - dir * r}Q${ex} ${yl} ${ex} ${yl - away * r}V${y0}`,
-      label: { x: (sx + ex) / 2, y: a.up ? yl - 5 : yl + z.font + 4 },
+      label: a.outcome ? { x: (sx + ex) / 2, y: yl } : null,
+      end: { x: ex, y: y0, dir: a.up ? 'down' : 'up' },
     })
   }
   return { width, height: top + rowH + bottom, nodes, edges, terminals }

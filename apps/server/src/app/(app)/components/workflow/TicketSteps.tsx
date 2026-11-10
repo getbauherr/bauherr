@@ -51,7 +51,7 @@ export function TicketSteps({ steps }: { steps: Steps }) {
         <ol className="m-0 flex list-none flex-col gap-3 p-0">
           {[...steps.visits].reverse().map((v, i) => (
             <li key={`${v.stage}-${v.at}-${i}`} className="rounded-md border border-border bg-card p-3" data-testid="visit" data-stage={v.stage}>
-              <h3 className="heading m-0 flex flex-wrap items-baseline gap-x-3">{v.title}<span className="mono small font-normal text-muted-foreground">{duration(v.seconds)}</span></h3>
+              <h3 className="heading m-0 flex flex-wrap items-baseline gap-x-3 capitalize">{v.title}<span className="mono small font-normal text-muted-foreground">{duration(v.seconds)}</span></h3>
               <ul className="m-0 mt-1 flex list-none flex-col p-0">{[...v.steps].reverse().map((s) => <StepRow key={s.id} s={s} />)}</ul>
             </li>
           ))}

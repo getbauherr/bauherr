@@ -58,7 +58,7 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
 
   const cards = page.locator('.card')
   const before = await cards.count()
-  await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
+  await page.getByRole('combobox', { name: 'Product' }).selectOption({ label: 'Acme Shop' })
   await expect(page).toHaveURL(/product=/)
   await expect.poll(() => cards.count()).toBeLessThan(before)
 
@@ -82,11 +82,11 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   await expect(page.locator('table thead th')).toHaveText(['Ticket', 'Stage', 'Status', 'When'])
   await expect(page.locator('table tbody tr').first().locator('td').last()).toHaveText(/(ago|just now)$/)
   await expect(main.getByRole('link', { name: /^Workflow/ })).not.toHaveAttribute('aria-current', 'page')
-  await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
+  await page.getByRole('combobox', { name: 'Product' }).selectOption({ label: 'Acme Web' })
   await expect(page).toHaveURL(/\/runs\?product=/)
   // other specs start Runs on Acme Web Tickets, so assert the seeded Runs by Ticket instead of the row count
   for (const title of ['Tidy the settings copy', 'Fix the date parser', 'Add a dark theme to the dashboard', 'Export invoices as CSV', 'Live build in progress']) await expect(page.locator('table tbody tr').filter({ hasText: title }).first()).toBeVisible()
-  await page.getByLabel('Product').selectOption({ label: 'Acme Shop' })
+  await page.getByRole('combobox', { name: 'Product' }).selectOption({ label: 'Acme Shop' })
   await expect(page.locator('table tbody tr')).toHaveCount(2)
 })
 

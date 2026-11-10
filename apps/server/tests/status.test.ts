@@ -48,3 +48,19 @@ describe('ticketStatus', () => {
     for (const [, r] of table) expect(JSON.stringify(at(r))).not.toMatch(/Working/)
   })
 })
+
+describe('terminal and split stages', () => {
+  it('an open Ticket in the done stage is Done and closing, never Queued', () => {
+    expect(at(row({ stage: 'done' }))).toMatchObject({ phase: 'done', label: 'Done', detail: 'closing', who: null })
+    expect(at(row({ stage: 'done', run: run({ stage: 'done' }), queuedWhy: 'x' }))).toMatchObject({ label: 'Done', detail: 'closing' })
+  })
+  it('a closed Ticket is always Done, whatever else its row says', () => {
+    expect(at(row({ open: false, stage: 'done' }))).toMatchObject({ label: 'Done', detail: null })
+    expect(at(row({ open: false, stage: 'build', needsYou: 'Run failed', blockedBy: [{ number: 1 }], run: run() }))).toMatchObject({ phase: 'done', label: 'Done' })
+  })
+  it('a split Ticket reads how far its sub-tickets are', () => {
+    expect(at(row({ stage: 'parent', children: { total: 3, done: 1 } }))).toMatchObject({ label: 'Split', detail: 'into 3 sub-tickets (1 done)' })
+    expect(at(row({ stage: 'parent', children: { total: 1, done: 0 } })).detail).toBe('into 1 sub-ticket (0 done)')
+    expect(at(row({ stage: 'parent' })).detail).toBe('into 0 sub-tickets (0 done)')
+  })
+})
