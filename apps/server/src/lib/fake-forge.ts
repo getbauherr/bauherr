@@ -115,6 +115,12 @@ const build = (): FakeBackend => {
   void ts.comment('26', WORKLOG)
   void ts.create({ title: 'Review the retry policy', labels: ['bauherr:stage:review'] })
   void ts.comment('27', WORKLOG)
+  // #28 and #29 are the chat-dock spec's own plans awaiting approval (one approved, one declined).
+  for (const [n, title] of [[28, 'Chat: cache the export totals'], [29, 'Chat: rename the export columns']] as const) {
+    void ts.create({ title, labels: ['bauherr:stage:plan'] })
+    void ts.comment(String(n), PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
+    void ts.comment(String(n), WORKLOG)
+  }
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))
