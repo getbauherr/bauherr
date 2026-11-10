@@ -4,7 +4,8 @@ import { epicHue, epicShortTitle } from '../lib/epics'
 import { cardStatus, showsProduct } from '../lib/card-status'
 import { activity, ago, heartbeatAge } from '../lib/format'
 import { GATES } from '../lib/gates'
-import { BOARD_STAGES, type Need, stageLabel } from '../lib/needs-you'
+import type { Need } from '../lib/needs-you'
+import { board, DEFAULT, title as stageTitle } from '../../../lib/workflow'
 import type { RunRow, TicketRow } from '../lib/overview'
 import { executionOrder } from '../../../lib/frontier'
 import { SortableCards } from './SortableCards'
@@ -37,14 +38,14 @@ export function BoardView({ tickets, showProduct, admin, wip }: { tickets: Ticke
   return (
     <>
     <div className="board flex items-start gap-4 overflow-x-auto">
-      {BOARD_STAGES.map((s) => {
+      {board(DEFAULT()).map((s) => {
         // The column shows the owner's rank, not the pull order: a card never jumps because it is blocked or in progress (the status badge says so). Only the Hotfix lane sorts first.
         const rows = tickets.filter((t) => t.stage === s).map((t) => ({ ...t, expediting: t.expedite })).sort(executionOrder)
         return (
           <Card key={s} asChild className="col flex-none basis-[260px] p-3">
           <section data-stage={s}>
               <h2 className="label">
-                {stageLabel(s)}{' '}
+                {stageTitle(DEFAULT(), s)}{' '}
                 {wip[s]?.limit != null ? (admin ? <Link href="/settings/workflow#wip" className="hover:underline"><span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span></Link> : <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={wip[s].count > wip[s].limit! ? 'over' : wip[s].count === wip[s].limit ? 'full' : undefined}>{wip[s].count} / {wip[s].limit}</span>) : <span className="text-muted-foreground">{rows.length}</span>}
               </h2>
               <SortableCards

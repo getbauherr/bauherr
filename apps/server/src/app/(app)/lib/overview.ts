@@ -7,7 +7,8 @@ import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
 import { type Epic, epicWhere, plainStatus } from './epics'
 import { wipCounts } from '../../../lib/wip'
-import { WIP_STAGES, waitingText, wipLimit } from '../../../lib/wip-limits'
+import { waitingText, wipLimit } from '../../../lib/wip-limits'
+import { DEFAULT, wipStages } from '../../../lib/workflow'
 
 export type RunRow = {
   id: number
@@ -114,7 +115,7 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
     tickets({ parent: { exists: true } }, 'number'),
     wipCounts(payload, workspace),
   ])
-  const wip = Object.fromEntries(WIP_STAGES.map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
+  const wip = Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
   const blockers = new Map(blockerDocs.map((b) => [b.id as number, { id: b.id as number, number: b.number as number, open: b.state !== 'closed' }]))
   const parents = new Map(parentDocs.map((p) => [p.id as number, { id: p.id as number, number: p.number as number, title: p.title as string }]))
   const epicDocs = await tickets(epicWhere([...new Set(subs.map((c) => c.parent as number))]))

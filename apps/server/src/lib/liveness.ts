@@ -5,6 +5,7 @@ import { sendBackToBuild, ticketsOf } from './actions'
 import { escalate, escalateInvalidReview, escalateReviewCap, resumeEscalationNotes } from './escalation'
 import { resumeInvestigations } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
+import { DEFAULT, liveStages } from './workflow'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
 type Doc = Record<string, any>
@@ -23,7 +24,6 @@ export type Dead = { ticket: Doc; cause: Cause; run: Doc | null; need: Need | nu
 /** A clean review waiting this long for a human merge, without a human touch, is stalled. */
 const REVIEW_STALLED_MS = 30 * 60_000
 
-const STAGES = ['plan', 'build', 'review']
 
 /** The newest open factory MR of a Ticket (highest number), found by branch name when the linked MR is closed or missing. */
 const replacementMr = async (payload: Payload, t: Doc) => {
@@ -73,7 +73,7 @@ const runEnd = (latest: Doc): Cause | null => {
  * `need: null` means the owner sees nothing: the invariant is broken.
  */
 export const deadTickets = async (payload: Payload, workspace?: number | string): Promise<Dead[]> => {
-  const where: Where = { and: [{ state: { equals: 'open' } }, { or: [{ stage: { in: STAGES } }, { stage: { exists: false } }] }, ...(workspace === undefined ? [] : [{ workspace: { equals: workspace } }])] }
+  const where: Where = { and: [{ state: { equals: 'open' } }, { or: [{ stage: { in: liveStages(DEFAULT()) } }, { stage: { exists: false } }] }, ...(workspace === undefined ? [] : [{ workspace: { equals: workspace } }])] }
   const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.waitingFor && !(t.blockedBy?.length ?? 0))
   if (!tickets.length) return []
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]

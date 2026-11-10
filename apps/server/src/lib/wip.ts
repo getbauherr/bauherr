@@ -8,7 +8,8 @@ import { isExpediting } from './expedite'
 import { holdOverlap } from './overlap'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
-import { WIP_STAGES, waitingText, wipLimit, type WipStage } from './wip-limits'
+import { waitingText, wipLimit } from './wip-limits'
+import { DEFAULT, heldStages, wipStages } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
@@ -21,14 +22,14 @@ export const wipCount = async (payload: Payload, workspace: number | string, sta
   (await payload.count({ collection: 'tickets', where: wipWhere(workspace, stage), overrideAccess: true })).totalDocs
 
 /** `wipCount` of every limited column. */
-export const wipCounts = async (payload: Payload, workspace: number | string): Promise<Record<WipStage, number>> =>
-  Object.fromEntries(await Promise.all(WIP_STAGES.map(async (s) => [s, await wipCount(payload, workspace, s)]))) as Record<WipStage, number>
+export const wipCounts = async (payload: Payload, workspace: number | string): Promise<Record<string, number>> =>
+  Object.fromEntries(await Promise.all(wipStages(DEFAULT()).map(async (s) => [s, await wipCount(payload, workspace, s)])))
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
  * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage, nor is an expedite Ticket (it takes an extra slot and is not counted). A Build entry is also held (`'held'`, waiting with a reason, no limit involved) while an earlier Ticket overlaps its paths.
  */
-export const enterStage = async (payload: Payload, t: Doc, stage: Exclude<WipStage, 'release'>, move: () => Promise<void>): Promise<'moved' | 'waiting' | 'held'> => {
+export const enterStage = async (payload: Payload, t: Doc, stage: string, move: () => Promise<void>): Promise<'moved' | 'waiting' | 'held'> => {
   if (stage === 'build' && (await holdOverlap(payload, t))) return 'held'
   const ws = Number(id(t.workspace))
   const limit = wipLimit(await payload.findByID({ collection: 'workspaces', id: ws, select: { wipLimits: true }, ...o }), stage)
@@ -39,7 +40,7 @@ export const enterStage = async (payload: Payload, t: Doc, stage: Exclude<WipSta
   }
   if (limit == null || (await isExpediting(payload, t))) return enter()
   return payload.db.drizzle.transaction(async (tx: any) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, ${WIP_STAGES.indexOf(stage)}::int)`)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, ${wipStages(DEFAULT()).indexOf(stage)}::int)`)
     if ((await wipCount(payload, ws, stage)) < limit) return enter()
     if (t.waitingFor !== stage || t.waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: null }, ...o })
     return 'waiting' as const
@@ -70,7 +71,7 @@ const startAfterPull = async (payload: Payload, t: Doc, stage: string): Promise<
 export const pullWaiting = async (payload: Payload): Promise<number> => {
   const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ waitingFor: { exists: true } }, { state: { equals: 'open' } }] }, pagination: false, depth: 1, overrideAccess: true })).docs as Doc[]
   let pulled = 0
-  for (const stage of ['review', 'build', 'plan'] as const) {
+  for (const stage of heldStages(DEFAULT())) {
     const queue = waiting
       .filter((t) => t.waitingFor === stage && !((t.blockedBy as Doc[]) ?? []).some((b) => b.state !== 'closed'))
       .sort((a, b) => executionOrder({ id: a.id, number: a.number, rank: a.rank, stage }, { id: b.id, number: b.number, rank: b.rank, stage }))

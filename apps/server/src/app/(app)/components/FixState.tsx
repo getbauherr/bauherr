@@ -1,6 +1,5 @@
-import { REPAIR_STAGES } from '../../../lib/actions'
 import { relinkRunAction, repairTicketAction } from '../lib/actions'
-import { stageLabel } from '../../../lib/needs-you'
+import { DEFAULT, repairable, title } from '../../../lib/workflow'
 import { Reveal } from './Reveal'
 import { Field, SettingsForm } from './SettingsForm'
 
@@ -18,7 +17,7 @@ export function FixState({ ticket, stage }: { ticket: number; stage: string }) {
       <p className="small text-muted-foreground">Admin only. Fixes a Ticket the factory left in a wrong state.</p>
       <SettingsForm action={action} submit="Set stage" confirm="Confirm set stage" inline>
         <input type="hidden" name="kind" value="stage" />
-        <Field name="stage" label="Stage" hint="Moves the forge label and the stage." options={REPAIR_STAGES.map((s) => [s, stageLabel(s)] as [string, string])} defaultValue={stage} />
+        <Field name="stage" label="Stage" hint="Moves the forge label and the stage." options={repairable(DEFAULT()).map((s) => [s, title(DEFAULT(), s)] as [string, string])} defaultValue={stage} />
       </SettingsForm>
       {REPAIRS.map(([kind, label, hint]) => (
         <SettingsForm key={kind} action={action} submit={label} confirm={`Confirm ${label.toLowerCase()}`} inline>

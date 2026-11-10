@@ -5,6 +5,8 @@ import {
   appAuth, closeReasonLabel, Conflict, FakeBackend, GithubBackend, githubWebhooks, NotQueueableError, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
 } from '../src/index.js';
 
+const ORDER = ['triage', 'plan', 'build', 'review', 'release', 'done'];
+
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
 
 describe('body convention', () => {
@@ -25,12 +27,12 @@ describe('stage helpers', () => {
   it('labels', () => {
     assert.equal(stageLabel('plan'), 'bauherr:stage:plan');
     assert.equal(closeReasonLabel('duplicate'), 'bauherr:close-reason:duplicate');
-    assert.equal(stageOf(['x', 'bauherr:stage:build']), 'build');
-    assert.equal(stageOf(['x']), null);
+    assert.equal(stageOf(['x', 'bauherr:stage:build'], ORDER), 'build');
+    assert.equal(stageOf(['x'], ORDER), null);
   });
   it('the later stage wins when a Ticket carries two stage labels', () => {
-    assert.equal(stageOf(['bauherr:stage:release', 'bauherr:stage:review']), 'release');
-    assert.equal(stageOf(['bauherr:stage:review', 'bauherr:stage:release']), 'release');
+    assert.equal(stageOf(['bauherr:stage:release', 'bauherr:stage:review'], ORDER), 'release');
+    assert.equal(stageOf(['bauherr:stage:review', 'bauherr:stage:release'], ORDER), 'release');
   });
   it('setStage adds before it removes: a failed add keeps the old label', async () => {
     const b = new FakeBackend();

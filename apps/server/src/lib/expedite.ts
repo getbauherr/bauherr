@@ -3,12 +3,12 @@ import type { Payload, Where } from 'payload'
 import { NEEDS_REFINEMENT } from './needs-you'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
+import { DEFAULT, inFlight as inFlightStages } from './workflow'
 import { enterStage } from './wip'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 /** Stages in which an expedite Ticket occupies the Workspace's one expedite slot, until it is done. */
-const IN_FLIGHT = ['plan', 'build', 'review', 'release']
 const IGNORED = '<!-- bauherr:expedite-ignored -->'
 const QUEUED = '<!-- bauherr:expedite-queued -->'
 const HAS_PLAN = /^##\s+(Plan|Steps)\b/im
@@ -18,7 +18,7 @@ export const laneOn = async (payload: Payload, workspace: number | string): Prom
   ((await payload.findByID({ collection: 'workspaces', id: workspace, select: { expediteLane: true }, ...o })) as Doc).expediteLane !== false
 
 const inFlight = (payload: Payload, t: Doc, extra: Where) =>
-  payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: id(t.workspace) } }, { expedite: { equals: true } }, { state: { equals: 'open' } }, { stage: { in: IN_FLIGHT } }, { id: { not_equals: t.id } }, extra] }, overrideAccess: true })
+  payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: id(t.workspace) } }, { expedite: { equals: true } }, { state: { equals: 'open' } }, { stage: { in: inFlightStages(DEFAULT()) } }, { id: { not_equals: t.id } }, extra] }, overrideAccess: true })
 
 /** Whether another expedite Ticket of the Workspace is in flight. */
 const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> => (await inFlight(payload, t, {})).totalDocs > 0
@@ -29,7 +29,7 @@ const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> => (await i
  */
 export const isExpediting = async (payload: Payload, t: Doc): Promise<boolean> => {
   if (!t.expedite || t.state === 'closed' || !(await laneOn(payload, id(t.workspace)))) return false
-  if (IN_FLIGHT.includes(t.stage)) return (await inFlight(payload, t, { id: { less_than: t.id } })).totalDocs === 0
+  if (inFlightStages(DEFAULT()).includes(t.stage)) return (await inFlight(payload, t, { id: { less_than: t.id } })).totalDocs === 0
   return !(await slotTaken(payload, t))
 }
 

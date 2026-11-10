@@ -1,4 +1,5 @@
-import { STAGES, type Stage } from './needs-you'
+import type { Stage } from './needs-you'
+import { board, DEFAULT } from '../../../lib/workflow'
 
 type Doc = Record<string, any>
 export type RunLine = { id: number; status: string; mode: string; reason: string | null; duration: string | null; costUsd: number | null; unpricedTokens: number | null; createdAt: string; evidence: string }
@@ -25,8 +26,9 @@ export type StageHistoryInput = {
 /** Stages up to the current one, plus every stage that has a Run. */
 export const reachedStages = (ticket: { state?: string | null; stage: Stage }, runs: { stage: string }[]): Stage[] => {
   if (ticket.stage === 'parent') return []
-  const at = STAGES.indexOf(ticket.state === 'closed' ? 'done' : ticket.stage)
-  return STAGES.filter((s, i) => i <= at || runs.some((r) => r.stage === s))
+  const stages = board(DEFAULT())
+  const at = stages.indexOf(ticket.state === 'closed' ? 'done' : ticket.stage)
+  return stages.filter((s, i) => i <= at || runs.some((r) => r.stage === s))
 }
 
 const seconds = (r: Doc) => (r.startedAt && r.finishedAt ? Math.max(0, Math.round((+new Date(r.finishedAt) - +new Date(r.startedAt)) / 1000)) : null)

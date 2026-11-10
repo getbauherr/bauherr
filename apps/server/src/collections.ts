@@ -6,7 +6,8 @@ import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, p
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
-import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
+import { wipLimitsError } from './lib/wip-limits'
+import { DEFAULT, defaultWip } from './lib/workflow'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -156,7 +157,7 @@ const workspaces = col(
     {
       name: 'wipLimits',
       type: 'json',
-      defaultValue: DEFAULT_WIP_LIMITS,
+      defaultValue: defaultWip(DEFAULT()),
       validate: (v: unknown) => wipLimitsError(v) ?? true,
       access: { update: ({ req }) => req.user?.role === 'admin' },
       admin: { description: 'Tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit.' },

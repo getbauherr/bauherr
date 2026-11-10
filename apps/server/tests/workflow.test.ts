@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BOARD_STAGES, STAGES } from '../src/lib/needs-you'
-import { DEFAULT_WIP_LIMITS, WIP_STAGES } from '../src/lib/wip-limits'
 import * as w from '../src/lib/workflow'
 
 const pack = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
@@ -16,8 +14,7 @@ afterEach(() => {
 describe('derived lists reproduce the constants they replace', () => {
   it('order, board, pullRank', () => {
     expect(w.order(wf)).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
-    expect(w.board(wf)).toEqual([...STAGES])
-    expect(w.board(wf)).toEqual([...BOARD_STAGES])
+    expect(w.board(wf)).toEqual(['triage', 'plan', 'build', 'review', 'release', 'done'])
     expect(w.pullRank(wf)).toEqual(['release', 'review', 'build', 'plan', 'triage'])
   })
   it('isForward', () => {
@@ -28,8 +25,8 @@ describe('derived lists reproduce the constants they replace', () => {
     expect(w.isForward(wf, 'nope', 'done')).toBe(false)
   })
   it('wip', () => {
-    expect(w.wipStages(wf)).toEqual([...WIP_STAGES])
-    expect(w.defaultWip(wf)).toEqual(DEFAULT_WIP_LIMITS)
+    expect(w.wipStages(wf)).toEqual(['plan', 'build', 'review', 'release'])
+    expect(w.defaultWip(wf)).toEqual({ plan: 3, build: 2, review: 3, release: 5 })
     expect(w.heldStages(wf)).toEqual(['review', 'build', 'plan'])
   })
   it('live, in flight, repairable, exclude labels', () => {
@@ -65,9 +62,9 @@ describe('gates match tests/human-gates.test.ts', () => {
     const mode = await import('../src/lib/mode')
     expect(mode.humanGates()).toEqual(['refine', ...(expected.plan ? ['plan'] : []), ...(expected.staging ? ['staging'] : []), ...(expected.production ? ['production'] : [])])
   })
-  it('DEFAULT throws a clear error for a pack without factory.yaml', () => {
+  it('DEFAULT uses the core pack factory.yaml for a pack dir without one', () => {
     process.env.BAUHERR_PACK_DIR = pack('does-not-exist')
-    expect(() => w.DEFAULT()).toThrow(/cannot read .*factory\.yaml/)
+    expect(w.DEFAULT()).toEqual(wf)
   })
 })
 

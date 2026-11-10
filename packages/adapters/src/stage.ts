@@ -4,12 +4,11 @@ const STAGE = 'bauherr:stage:';
 export const APPROVED_PLAN = 'bauherr:approved:plan';
 export const stageLabel = (name: string): string => STAGE + name;
 export const closeReasonLabel = (reason: string): string => `bauherr:close-reason:${reason}`;
-const STAGE_ORDER = ['triage', 'plan', 'build', 'review', 'release', 'done'];
-/** The stage label's name; with two stage labels (a half-finished move) the later stage wins. */
-export const stageOf = (labels: string[]): string | null => {
+/** The stage label's name; with two known stage labels (a half-finished move) the one later in `order` wins. */
+export const stageOf = (labels: string[], order: readonly string[]): string | null => {
   const names = labels.filter((l) => l.startsWith(STAGE)).map((l) => l.slice(STAGE.length));
-  const known = names.filter((n) => STAGE_ORDER.includes(n));
-  return known.length > 1 ? known.reduce((a, b) => (STAGE_ORDER.indexOf(b) > STAGE_ORDER.indexOf(a) ? b : a)) : (names[0] ?? null);
+  const known = names.filter((n) => order.includes(n));
+  return known.length > 1 ? known.reduce((a, b) => (order.indexOf(b) > order.indexOf(a) ? b : a)) : (names[0] ?? null);
 };
 
 /** One stage label per ticket: adds the new one first, then removes the others, so a failed call never leaves none. */

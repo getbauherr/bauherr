@@ -133,15 +133,22 @@ export const compile = (doc: unknown): Workflow => {
 const packDir = () => process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 let cached: { path: string; wf: Workflow } | undefined
 
-/** The workflow of `factory.yaml` in the pack dir, compiled once per path; throws on first use when the file is unreadable or invalid. */
+const corePack = () => resolve(process.cwd(), '../../pack')
+
+/** The workflow of `factory.yaml` in the pack dir, compiled once per path. A pack dir without the file (an overlay that only adds rules or skills) uses the core pack's; throws on first use when neither is readable or the file is invalid. */
 export const DEFAULT = (): Workflow => {
   const path = resolve(packDir(), 'factory.yaml')
   if (cached?.path !== path) {
     let text: string
     try {
       text = readFileSync(path, 'utf8')
-    } catch (e) {
-      throw new Error(`cannot read ${path}: ${(e as Error).message}`)
+    } catch {
+      const core = resolve(corePack(), 'factory.yaml')
+      try {
+        text = readFileSync(core, 'utf8')
+      } catch (e) {
+        throw new Error(`cannot read ${path} or ${core}: ${(e as Error).message}`)
+      }
     }
     cached = { path, wf: compile(parseFactory(text)) }
   }

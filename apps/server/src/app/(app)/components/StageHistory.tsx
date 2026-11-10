@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { stageLabel } from '../lib/needs-you'
+import { DEFAULT, title } from '../../../lib/workflow'
 import { ago } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
 import type { StageHistoryData } from '../lib/stage-history'
@@ -20,7 +20,7 @@ export function StageHistory({ data, admin }: { data: StageHistoryData; admin: b
   const { runs, plan, mr, reviews, release } = data
   return (
     <section className="flex flex-col gap-4 rounded-md border border-border bg-card p-4" aria-label="Stage history" data-testid="stage-history">
-      <h2 className="heading m-0">{stageLabel(data.stage).replace(/^./, (c) => c.toUpperCase())} history</h2>
+      <h2 className="heading m-0">{title(DEFAULT(), data.stage).replace(/^./, (c) => c.toUpperCase())} history</h2>
       {runs.length > 0 && (
         <Table>
           <thead>
