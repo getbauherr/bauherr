@@ -10,6 +10,7 @@ const sections: Record<string, { label: string; one: string }> = {
   releases: { label: 'Releases', one: 'Release' },
   knowledge: { label: 'Knowledge', one: 'Document' },
   runs: { label: 'Runs', one: 'Run' },
+  insights: { label: 'Insights', one: 'Insights' },
   tickets: { label: 'Workflow', one: 'Ticket' },
   settings: { label: 'Settings', one: 'Settings' },
   'release-notes': { label: 'Release notes', one: 'Release notes' },

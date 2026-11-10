@@ -126,7 +126,10 @@ _Avoid_: Audit entry, transition
 
 **Phase**:
 What a Ticket's time is spent on while in a stage: working (a Run runs), queued (waiting for the factory), human (waiting for the owner), ci (waiting for checks, the merge queue or a deploy), closed.
-_Avoid_: Status, state
+_Avoid_: State
+
+**Status**:
+The one label the owner reads for an open Ticket (`ticketStatus`): In progress, Queued, Waiting for you, Waiting on CI / merge queue / deploy, Blocked, Failed or Done, with a detail line and who is doing it. A Phase refined by blockers and failed Runs; "Working" is not a Status.
 
 **Lead time**:
 From a Ticket's first event to its first closed event.

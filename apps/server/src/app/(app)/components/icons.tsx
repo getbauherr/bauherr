@@ -77,3 +77,4 @@ export const FileText = icon(
     <path d="M14 2v5a1 1 0 0 0 1 1h5M10 9H8M16 13H8M16 17H8" />
   </>,
 )
+export const ChartColumn = icon(<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />)

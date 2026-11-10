@@ -95,3 +95,15 @@ export function TicketControls({ products, epics }: { products: { id: number; na
     </Pending>
   )
 }
+
+export function InsightsControls({ products, days, ranges }: { products: { id: number; name: string }[]; days: number; ranges: readonly number[] }) {
+  const { href } = useHref()
+  return (
+    <Pending className={controls}>
+      <Tabs aria-label="Range" className="mr-auto">
+        {ranges.map((r) => <Tab key={r} href={href({ range: String(r) })} aria-current={r === days ? 'page' : undefined}>{r} days</Tab>)}
+      </Tabs>
+      <ProductSelect products={products} />
+    </Pending>
+  )
+}
