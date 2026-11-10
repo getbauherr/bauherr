@@ -12,7 +12,7 @@ test('Graph view: blocked-by chain, ready marker, critical path, node link, no o
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
   const tabs = page.getByRole('navigation', { name: 'Tickets layout' })
   await tabs.getByRole('link', { name: 'Graph' }).click()
@@ -49,8 +49,8 @@ test('Graph view: blocked-by chain, ready marker, critical path, node link, no o
   await expect(page.getByRole('region', { name: /^Without dependencies/ }).locator('a.gnode').first()).toBeVisible()
   await expect(page.locator('details a.gnode')).toHaveCount(0)
 
-  await tabs.getByRole('link', { name: 'Board' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await tabs.getByRole('link', { name: 'Workflow' }).click()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
   await page.goto('/?view=graph')
   await node(9).click()
   await expect(page).toHaveURL(/\/tickets\/\d+/)
@@ -67,7 +67,7 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/?view=graph')
 
@@ -83,8 +83,8 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
 
   const node = page.locator('a.gnode[data-ticket="123"]')
   await expect(node).toHaveAttribute('data-running', '')
-  await expect(node.locator('text.act')).toHaveText('building')
-  await expect(node).toHaveAttribute('aria-label', /, building$|, building,/)
+  await expect(node.locator('text.act')).toHaveText(/^building/)
+  await expect(node).toHaveAttribute('aria-label', /, building/)
   expect(await node.locator('.box').evaluate((e) => getComputedStyle(e).animationName)).toBe('march')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   expect(await node.locator('.box').evaluate((e) => getComputedStyle(e).animationName)).toBe('none')

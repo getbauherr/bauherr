@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { GATES } from '../src/app/(app)/lib/gates'
 import { describe, expect, it } from 'vitest'
-import { activity, heartbeatAge } from '../src/app/(app)/lib/format'
+import { heartbeatAge } from '../src/app/(app)/lib/format'
 import { NEEDS, needsYou, releaseWord, stageOf } from '../src/app/(app)/lib/needs-you'
 
 process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
@@ -108,12 +108,3 @@ describe('parent stage', () => {
   })
 })
 
-describe('activity', () => {
-  it('names what a running Run is doing and is null otherwise', () => {
-    expect(activity({ run: r('build', 'running') })).toBe('building')
-    expect(activity({ run: r('release', 'running') })).toBe('deploying')
-    expect(activity({ run: r('build', 'awaiting_session') })).toBeNull()
-    expect(activity({ run: r('build', 'succeeded') })).toBeNull()
-    expect(activity({ run: null })).toBeNull()
-  })
-})

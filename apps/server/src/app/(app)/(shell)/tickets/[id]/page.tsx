@@ -13,14 +13,16 @@ import { CommentComposer } from '../../../components/CommentComposer'
 import { OwnerChat } from '../../../components/OwnerChat'
 import { Gate, ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
-import { StageHistory } from '../../../components/StageHistory'
-import { StagePipeline } from '../../../components/StagePipeline'
+import { TicketSteps } from '../../../components/workflow/TicketSteps'
+import { WorkflowGraph } from '../../../components/workflow/WorkflowGraph'
 import { StatusChip } from '../../../components/StatusChip'
 import { TicketDetails } from '../../../components/TicketDetails'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER } from '../../../../../lib/summary'
-import { loadEpic, within } from '../../../lib/overview'
+import { forgeKinds, loadEpic, within } from '../../../lib/overview'
+import { buildSteps } from '../../../lib/steps'
+import { timeline } from '../../../../../lib/history'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
@@ -28,11 +30,9 @@ import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { DEFAULT, is, nameOf } from '../../../../../lib/workflow'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
-import { checkLines, reachedStages, stageHistory } from '../../../lib/stage-history'
 import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
-import { latestChecks, prOf } from '../../../../../lib/release'
 import { waitingLabel } from '../../../../../lib/wip'
 
 export const dynamic = 'force-dynamic'
@@ -53,11 +53,11 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 const Pulse = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-sm bg-secondary`} aria-hidden />
 
 /** DB data of the page, passed to the streamed parts. */
-type Page = { ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; reached: ReturnType<typeof reachedStages>; selected: ReturnType<typeof reachedStages>[number] | undefined }
+type Page = { ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean }
 
 /** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
-  const { ticket, product, runs, blockers, admin, selected } = P
+  const { ticket, product, runs, blockers, admin } = P
   const wf = DEFAULT()
   const live = await within(
     (async () => {
@@ -93,17 +93,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   // OwnerChat hides itself when nothing is open on load; it stays mounted while decisions exist, so the refresh after the last answer keeps its summary.
   const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
-  let mr: { url: string; headSha: string | null; checks: ReturnType<typeof checkLines> } | null = null
-  if (selected && is(wf, selected, 'build')) {
-    try {
-      const found = await within(prOf(payload, ticket), LIVE_MS)
-      if (found) mr = { url: found.pr.url, headSha: found.pr.headSha, checks: checkLines(latestChecks(await within(found.backend.forge.listChecks(found.repo, found.pr.headSha), LIVE_MS))) }
-    } catch {
-      mr = null
-    }
-  }
-  const stageData = selected && stageHistory(selected, { runs, plan: plan ? withoutDecisions(strip(plan, PLAN_MARKER)) : null, decisions, answers, mr, stagingSummary: stagingSummary ? strip(stagingSummary, SUMMARY_MARKER) : null, accepted: acceptedStaging, production: ticket.productionState ?? null })
-  return { forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history, stageData }
+  return { forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
 }
 type Derived = Awaited<ReturnType<typeof derive>>
 
@@ -113,12 +103,11 @@ async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
 }
 
-async function Live({ P, d, epic }: { P: Page; d: Promise<Derived>; epic: boolean }) {
-  const { ticket, admin } = P
+async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
+  const { ticket } = P
   const x = await d
   return (
     <>
-      {x.stageData && !epic && <StageHistory data={x.stageData} admin={admin} />}
       {x.history && <p className="small text-muted-foreground">{x.history}</p>}
       {x.forgeError && <p className="small text-muted-foreground">The forge could not be reached; plan and worklog are unavailable.</p>}
       {x.gate?.kind === 'plan' && <Gate plan={x.summary ?? null} />}
@@ -158,10 +147,9 @@ async function Composer({ ticket, d }: { ticket: number; d: Promise<Derived> }) 
   return !x.forgeError ? <CommentComposer ticket={ticket} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} /> : null
 }
 
-export default async function TicketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ stage?: string }> }) {
+export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const wf = DEFAULT()
   const { id } = await params
-  const { stage: stageParam } = await searchParams
   const { user, workspace } = await currentWorkspace()
   const admin = isAdmin(user)
   if (!workspace || !/^\d+$/.test(id)) notFound()
@@ -169,18 +157,21 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const q = { depth: 0, overrideAccess: true } as const
   const [ticket] = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: workspace.id } }] }, limit: 1, ...q })).docs as Doc[]
   if (!ticket) notFound()
-  const [product, ws, runs, blockers, blocks, shots, epic] = await Promise.all([
+  const [product, ws, runs, blockers, blocks, shots, epic, spans, touches, forges] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
-    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, kind: true, status: true, startedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true } }), ...q }).then((r) => r.docs as Doc[]),
+    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, kind: true, status: true, startedAt: true, finishedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true, mode: true, executor: true, sessionLabel: true, clientName: true, clientVersion: true, model: true, provider: true, outcome: true, artifacts: true } }), ...q }).then((r) => r.docs as Doc[]),
     ticket.blockedBy?.length ? payload.find({ collection: 'tickets', where: { and: [{ id: { in: ticket.blockedBy } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]) : [],
     payload.find({ collection: 'tickets', where: { and: [{ blockedBy: { equals: ticket.id } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
     loadEpic(workspace.id, ticket),
+    timeline(payload, ticket.id),
+    payload.find({ collection: 'human_touches', where: { ticket: { equals: ticket.id } }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
+    forgeKinds(payload, workspace.id),
   ])
-  const reached = reachedStages({ state: ticket.state, stage: stageOf(ticket) }, runs as { stage: string }[])
-  const selected = reached.find((s) => s === stageParam)
-  const P: Page = { ticket, product, ws, runs, blockers, blocks, shots, admin, reached, selected }
+  const P: Page = { ticket, product, ws, runs, blockers, blocks, shots, admin }
+  const forge = forges.get(ticket.product)
+  const steps = buildSteps(wf, spans, runs, touches, { current: stageOf(ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
   const d = derive(payload, P)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
 
@@ -196,8 +187,15 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           <EpicProgress epic={epic} />
           <EpicChildren epic={epic} />
         </section>
-      ) : <StagePipeline current={stageOf(ticket)} reached={reached} selected={selected} />}
-      <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} epic={!!epic} /></Suspense>
+      ) : (
+        <section className="flex flex-col gap-2" aria-labelledby="path">
+          <h2 className="heading flex flex-wrap items-baseline gap-x-3" id="path">Path{steps.rounds.map((r) => <span key={r.stage} className="small font-normal text-muted-foreground" data-testid="path-rounds">{r.title}: {r.n} rounds</span>)}</h2>
+          <WorkflowGraph wf={wf} variant="path" path={steps.path} />
+        </section>
+      )}
+      <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
+
+      {!epic && <Section id="steps" title="Steps"><TicketSteps steps={steps} /></Section>}
 
       <TicketDetails key={ticket.id}>
         <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">

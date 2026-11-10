@@ -13,7 +13,7 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
   const card = page.locator('.card', { hasText: 'Settle the export format' }).first()
   await expect(card.getByText('Answer questions')).toBeVisible()

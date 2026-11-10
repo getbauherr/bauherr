@@ -13,7 +13,7 @@ const login = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 }
 
 // Own seeded Ticket (#21, one open decision D1): independent of every other spec, so shard order does not matter.

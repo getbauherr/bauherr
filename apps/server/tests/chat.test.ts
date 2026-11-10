@@ -75,7 +75,7 @@ const drain = async (g: AsyncGenerator<any>): Promise<any[]> => {
   for await (const e of g) out.push(e)
   return out
 }
-const page = { label: 'Board', markdown: 'Board page', path: '/' }
+const page = { label: 'Workflow', markdown: 'Workflow page', path: '/' }
 const text = (t: string) => [{ role: 'user' as const, content: [{ type: 'text' as const, text: t }] }]
 const turn = async (user: Doc, workspace: number, threadId: number, said: string, model = fakeModel) => {
   const thread = (await threads.ownThread(who(user, workspace), threadId))!
@@ -135,14 +135,14 @@ it('run stream: context first, deltas, done with the issued answerId and usage; 
   const id = await newThread()
   const events = await turn(alice, wsA, id, 'hello there')
   expect(types(events)).toEqual(['context', 'delta', 'delta', 'done'])
-  expect(events[0]).toEqual({ type: 'context', label: 'Board' })
+  expect(events[0]).toEqual({ type: 'context', label: 'Workflow' })
   expect(events.filter((e) => e.type === 'delta').map((e) => e.text).join('')).toBe('[fake] you said: hello there')
   const done = events.at(-1)
   expect(done.usage).toMatchObject({ model: 'fake', tokensIn: 10, costUsd: null })
   expect(done.usage.ms).toBeGreaterThanOrEqual(0)
   const [row] = (await payload.find({ collection: 'chat_messages', where: { messageId: { equals: done.answerId } }, depth: 0, ...o })).docs as Doc[]
   expect(row).toMatchObject({ role: 'assistant', message: null, answer: { model: 'fake', toolCalls: [] } })
-  expect((await payload.findByID({ collection: 'chat_threads', id, depth: 0, ...o })).context).toEqual({ path: '/', label: 'Board' })
+  expect((await payload.findByID({ collection: 'chat_threads', id, depth: 0, ...o })).context).toEqual({ path: '/', label: 'Workflow' })
 })
 
 it('a read tool round: tool-call, tool-result, then the answer; both write a tool_calls row', async () => {
@@ -312,7 +312,7 @@ it('context: ticket, run, home and settings pages from the path; a foreign id is
   const t = await c(`/tickets/${stuck.id}`)
   expect(t.entity).toEqual({ kind: 'ticket', id: stuck.id })
   expect(t.label).toBe('Ticket #700 Export hangs')
-  expect(t.markdown).toContain('Stage: build; status: Needs you')
+  expect(t.markdown).toContain('Stage: build; status: Waiting for you: Run needs you')
   expect(t.markdown).toContain('Needs the person: Run needs you')
   expect(t.markdown).toMatch(/Run \d+: build, needs_human/)
   expect(t.markdown).not.toContain('autonomous')
@@ -320,6 +320,13 @@ it('context: ticket, run, home and settings pages from the path; a foreign id is
   const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, limit: 1, depth: 0, ...o })).docs[0]!
   expect(await c(`/runs/${run.id}`)).toMatchObject({ entity: { kind: 'run', id: run.id }, label: `Run ${run.id} of #${ticket.number}` })
   expect((await c('/')).markdown).toContain('Need the person: #700 (Run needs you)')
+  const wf = await c('/?stage=build')
+  expect(wf.label).toBe('Workflow')
+  expect(wf.markdown).toContain('Selected: build')
+  expect(wf.markdown).toMatch(/- build: \d+/)
+  const ins = await c('/insights?range=7')
+  expect(ins.label).toBe('Insights')
+  expect(ins.markdown).toMatch(/last 7 days\.\nDone: \d+; lead time median .*\nShare of time: .*\nBottleneck: /)
   expect((await c('/settings/workflow')).markdown).toMatch(/Stages: .*plan.*\n.*Human gates/)
   expect((await c('/settings/workspace')).markdown).toContain('Model tiers: cheap=')
   expect(await c('/releases')).toMatchObject({ label: 'Releases' })
@@ -389,7 +396,7 @@ it('routes: 401 without a session, foreign threads are 404, the run streams NDJS
   ]
   for (const b of bad) expect((await post(b)).status).toBe(400)
   const ctxRes = await context.GET(req('context?path=/', keyAlice))
-  expect(await ctxRes.json()).toMatchObject({ label: 'Board' })
+  expect(await ctxRes.json()).toMatchObject({ label: 'Workflow' })
   expect((await context.GET(req('context?path=x', keyAlice))).status).toBe(400)
   expect((await confirm.POST(req('', keyAlice, { method: 'POST', body: JSON.stringify({ toolCallId: 'none', approved: true }) }), ctx(t.id))).status).toBe(409)
   expect((await feedback.POST(req('', keyAlice, { method: 'POST', body: JSON.stringify({ messageId: 'none', value: 'sideways' }) }), ctx(t.id))).status).toBe(400)

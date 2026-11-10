@@ -1,14 +1,15 @@
-import { Activity, BookOpen, MessageSquare, Package, Settings, Ticket } from './icons'
+import { Activity, BookOpen, ChartColumn, MessageSquare, Package, Settings, Ticket } from './icons'
 
 export type NavItem = { href: string; label: string; Icon: typeof Ticket; match: (path: string) => boolean }
 
 /** Sidebar destinations of the main group; Knowledge needs a Knowledge repo, Runs an Admin. */
 export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admin: boolean }): NavItem[] => [
-  { href: '/', label: 'Tickets', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') },
+  { href: '/', label: 'Workflow', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') },
   { href: '/requests', label: 'Requests', Icon: MessageSquare, match: (p) => p.startsWith('/requests') },
   { href: '/releases', label: 'Releases', Icon: Package, match: (p) => p.startsWith('/releases') },
   ...(hasKnowledge ? [{ href: '/knowledge', label: 'Knowledge', Icon: BookOpen, match: (p: string) => p.startsWith('/knowledge') }] : []),
   ...(admin ? [{ href: '/runs', label: 'Runs', Icon: Activity, match: (p: string) => p.startsWith('/runs') }] : []),
+  { href: '/insights', label: 'Insights', Icon: ChartColumn, match: (p: string) => p.startsWith('/insights') },
 ]
 
 export const settingsItem = (admin: boolean): NavItem => ({ href: admin ? '/settings/workspace' : '/settings/api-key', label: 'Settings', Icon: Settings, match: (p) => p.startsWith('/settings') })

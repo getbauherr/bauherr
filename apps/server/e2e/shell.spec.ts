@@ -19,11 +19,11 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
   const bar = page.getByRole('banner')
   await expect(bar).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link', { name: /^Tickets/ })).toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByRole('link', { name: /^Workflow/ })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: /^Requests/ })).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(5) // Tickets, Requests, Releases, Knowledge, Runs (Admin)
+  await expect(nav.getByRole('link')).toHaveCount(6) // Workflow, Requests, Releases, Knowledge, Runs (Admin), Insights
   await expect(nav.getByRole('link', { name: 'Knowledge' })).toBeVisible()
-  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Tickets')
+  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Workflow')
   await expect(bar.getByRole('link', { name: 'New request' })).toBeVisible()
   await nav.getByRole('link', { name: /^Requests/ }).click()
   await expect(nav.getByRole('link', { name: /^Requests/ })).toHaveAttribute('aria-current', 'page')
@@ -94,7 +94,7 @@ const nav = (page: Page) => page.getByRole('navigation', { name: 'Main' })
 
 test('Knowledge link and Workspace switcher are absent for one Workspace without a knowledge repo', async ({ page }) => {
   await signIn(page, 'solo@example.com')
-  await expect(nav(page).getByRole('link', { name: 'Tickets' })).toBeVisible()
+  await expect(nav(page).getByRole('link', { name: 'Workflow' })).toBeVisible()
   await expect(nav(page).getByRole('link', { name: 'Knowledge' })).toHaveCount(0)
   // Zeta has its one Product, so the empty Board names the next action instead of asking for an Admin.
   await expect(page.getByText('Describe what you want built.')).toBeVisible()

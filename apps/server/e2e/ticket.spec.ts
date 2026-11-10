@@ -15,7 +15,7 @@ const login = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 }
 
 // [slug, Ticket title, primary verb].
@@ -72,7 +72,7 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
   const row = page.locator('.card', { hasText: 'Add a light theme to the dashboard' }).first()
   await expect(row.getByText('Answer decisions')).toBeVisible()
@@ -112,7 +112,7 @@ test('an approval Ticket shows the bar, title, pipeline and the gate; the rest s
   await expect(details).not.toHaveAttribute('open', '')
   await expect(page.getByTestId('action-bar')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Tidy the settings copy')
-  await expect(page.locator('ol[aria-label=Stage]')).toBeVisible()
+  await expect(page.getByTestId('ticket-path')).toBeVisible()
   await expect(page.getByText('Approves', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Approve plan' })).toHaveCount(0)
   for (const name of ['Budget', 'Model', 'Worklog']) await expect(page.getByText(name, { exact: true })).toBeHidden()
@@ -136,7 +136,7 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
     await page.getByLabel('Email').fill(who)
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page.locator('.board')).toBeVisible()
+    await expect(page.locator('[data-testid=workflow]')).toBeVisible()
     await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
     await page.getByText('Details', { exact: true }).click()
     const details = page.locator('details')
@@ -238,26 +238,33 @@ test('a comment with a pasted, dropped and picked image is posted and the image 
   }
 })
 
-test('a passed stage opens its history without moving the Ticket; an unreached one is not a link', async ({ page }) => {
+test('the path highlights the stages a Ticket visited and the steps name who ran them', async ({ page }) => {
   await login(page)
-  await page.locator('.card', { hasText: 'Fix the date parser' }).first().getByRole('link', { name: 'Fix the date parser' }).click()
-  const strip = page.locator('ol[aria-label=Stage]')
-  await expect(page.getByTestId('stage-history')).toHaveCount(0)
-  await expect(strip.getByRole('link', { name: 'review' })).toHaveCount(0)
-  await expect(strip.getByText('review')).toHaveAttribute('aria-disabled', 'true')
-  await expect(strip.getByText('review')).toHaveAttribute('title', 'Not reached yet')
-  await strip.getByRole('link', { name: 'plan' }).click()
-  await expect(page).toHaveURL(/\?stage=plan$/)
-  const panel = page.getByTestId('stage-history')
-  await expect(panel).toContainText('Plan history')
-  await expect(panel).toContainText('dark theme for the dashboard')
-  await expect(panel.locator('tbody tr')).toHaveCount(1)
-  await expect(panel.getByText('✓ Succeeded')).toBeVisible()
-  await page.reload()
-  await expect(page.getByTestId('stage-history')).toBeVisible()
-  await expect(strip.locator('[aria-current=step]')).toContainText('build')
-  await page.goto(page.url().replace('stage=plan', 'stage=review'))
-  await expect(page.getByTestId('stage-history')).toHaveCount(0)
+  await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
+  const path = page.getByTestId('ticket-path')
+  const node = (stage: string) => path.getByTestId('path-node').filter({ hasText: new RegExp(`^${stage}`) })
+  for (const stage of ['triage', 'plan', 'build']) await expect(node(stage)).toHaveAttribute('data-visited', 'true')
+  await expect(node('review')).not.toHaveAttribute('data-visited', 'true')
+  await expect(node('build')).toHaveAttribute('data-current', 'true')
+  await expect(path.locator('[data-edge="plan>build"]')).toHaveClass(/text-primary/)
+  await expect(path.locator('[data-edge="build>review"]')).not.toHaveClass(/text-primary/)
+  const steps = page.getByTestId('ticket-steps')
+  const build = steps.locator('[data-testid=visit][data-stage=build]')
+  await expect(build.getByTestId('step-run')).toContainText('Session')
+  await expect(build.getByTestId('step-run')).toContainText('e2e-laptop')
+  await expect(build.getByTestId('step-run')).toContainText('claude-code 2.1.0')
+  await expect(build.getByTestId('step-run')).toContainText('claude-sonnet-4-5')
+  await expect(build.getByTestId('step-run')).toContainText('anthropic')
+  await expect(build.getByRole('link', { name: /^Run #\d+$/ })).toHaveAttribute('href', /\/runs\/\d+$/)
+  await expect(steps.locator('[data-testid=visit][data-stage=plan]').getByTestId('step-decision')).toHaveText(/approve plan by .+@example\.com/)
+  await expect(steps.getByTestId('total-lead-time')).not.toHaveText('0 s')
+})
+
+test('a Ticket that looped shows its rounds', async ({ page }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Upgrade the payment SDK' }).first().getByRole('link', { name: 'Upgrade the payment SDK' }).click()
+  await expect(page.getByTestId('path-rounds')).toContainText(['build: 2 rounds', 'review: 2 rounds'])
+  await expect(page.locator('[data-testid=visit][data-stage=build]')).toHaveCount(2)
 })
 
 // Own seeded Ticket (#2 on Acme Checks): failed release checks with no run link leave one details button in the bar.

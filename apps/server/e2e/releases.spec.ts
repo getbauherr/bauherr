@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 })
 
 test('lists the done Tickets of a manual Product, one ship button, notes preview, Board reminder', async ({ page }) => {

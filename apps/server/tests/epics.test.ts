@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Epic, epicHue, epicNamed, epicProgress, epicRestoreUrl, epicWhere, epicShortTitle, epicsToShow, inEpic, plainStatus } from '../src/app/(app)/lib/epics'
+import { type Epic, epicHue, epicNamed, epicProgress, epicRestoreUrl, epicWhere, epicShortTitle, epicsToShow, inEpic } from '../src/app/(app)/lib/epics'
 
 const child = (id: number, stage: Epic['children'][0]['stage'], open: boolean) => ({ id, number: id, title: `c${id}`, stage, open, status: '' })
 const epic = (id: number, rank: string | null, open = true, product: number | null = 1, children: Epic['children'] = []): Epic => ({ id, number: id, title: `e${id}`, open, rank, product, children })
@@ -25,16 +25,6 @@ describe('epics', () => {
     expect(epicHue(1)).not.toBe(epicHue(2))
     expect(epicShortTitle('Overhaul invoicing')).toBe('Overhaul invoicing')
     expect(epicShortTitle('A very long epic title indeed')).toHaveLength(18)
-  })
-  it('says status in plain words', () => {
-    const t = { open: true, needsYou: null, blockedBy: [], waiting: null, run: null }
-    expect(plainStatus({ ...t, open: false })).toBe('Done')
-    expect(plainStatus({ ...t, needsYou: 'Approve plan' })).toBe('Needs you')
-    expect(plainStatus({ ...t, run: { status: 'running' } })).toBe('Working')
-    expect(plainStatus({ ...t, blockedBy: [{}] })).toBe('Blocked')
-    expect(plainStatus({ ...t, waiting: 'Waiting: Build is full' })).toBe('Waiting')
-    expect(plainStatus({ ...t, needsYou: 'Cancelled', run: { status: 'cancelled', error: 'owner decision pending\nmore' } })).toBe('Needs you: owner decision pending')
-    expect(plainStatus(t)).toBe('Queued')
   })
   it('finds epics structurally: stage parent or any Ticket with sub-tickets', () => {
     expect(epicWhere([])).toEqual({ or: [{ stage: { equals: 'parent' } }] })

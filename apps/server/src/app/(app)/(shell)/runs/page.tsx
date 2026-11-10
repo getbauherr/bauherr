@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { EmptyState } from '../../components/EmptyState'
 import { RunsControls } from '../../components/OverviewControls'
-import { RunsTable } from '../../components/OverviewViews'
+import { RunsTable } from '../../components/RunsTable'
 import { epicNamed, epicRestoreUrl, inEpic } from '../../lib/epics'
 import { loadOverview, RUNS_LIMIT } from '../../lib/overview'
 import { currentWorkspace, rememberEpic } from '../../lib/session'
