@@ -1,12 +1,8 @@
 import { type HumanGate, humanGates } from './mode'
+import { DEFAULT, liveStages, stage } from './workflow'
 
-export const STAGES = ['triage', 'plan', 'build', 'review', 'release', 'done'] as const
-/** `parent`: a Ticket whose plan was split into sub-tickets; it has no Runs and closes with its last child. */
-export type Stage = (typeof STAGES)[number] | 'parent'
-/** Board columns; `parent` (epics) is not one, see the Epics view. */
-export const BOARD_STAGES: readonly Stage[] = ['triage', 'plan', 'build', 'review', 'release', 'done']
-/** The `release` stage is shown as Staging; the stage name itself stays. */
-export const stageLabel = (s: string): string => (s === 'release' ? 'Staging' : s)
+/** A stage name of the workflow; `parent` is a Ticket whose plan was split into sub-tickets (no Runs, closes with its last child). */
+export type Stage = string
 
 export const APPROVED_PLAN = 'bauherr:approved:plan'
 export const APPROVED_STAGING = 'bauherr:approved:staging'
@@ -28,7 +24,7 @@ const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
 
 /** Closed tickets are `done`; open ones without a known stage label are `triage`. */
 export const stageOf = (t: { state?: string | null; stage?: string | null }): Stage =>
-  t.state === 'closed' ? 'done' : t.stage === 'parent' || BOARD_STAGES.includes(t.stage as Stage) ? (t.stage as Stage) : 'triage'
+  t.state === 'closed' ? 'done' : t.stage && stage(DEFAULT(), t.stage) ? t.stage : 'triage'
 
 /**
  * D5 for v1: plan posted = the latest Run is a succeeded plan Run (tickets carry no comment cache).
@@ -59,7 +55,7 @@ export const needsYou = (
     if (ticket.productionState === 'failed' || ticket.productionState === 'timed_out') return 'Production deploy failed'
   }
   if (ticket.releaseChecksState === 'failed') return 'Release failed'
-  if (run?.status === 'cancelled' && run.stage === stage && ['plan', 'build', 'review'].includes(stage)) return 'Cancelled'
+  if (run?.status === 'cancelled' && run.stage === stage && liveStages(DEFAULT()).includes(stage)) return 'Cancelled'
   // A failed Run is the owner's only once the escalation ladder ended (`reasonKind` set by `escalate`); until then the factory retries it on a stronger model.
   if (run?.status === 'failed' && run.stage !== 'triage' && run.reasonKind && run.reasonKind !== 'stuck') return 'Run failed'
   if (ticket.labels.includes(EXPEDITE_PROPOSED) && !ticket.expedite && !ticket.labels.includes(EXPEDITE_LABEL) && stage !== 'release') return 'Expedite?'

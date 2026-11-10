@@ -3,8 +3,9 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, REPAIR_STAGES, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
+import { DEFAULT, repairable } from '../../../lib/workflow'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
@@ -222,7 +223,7 @@ export async function repairTicketAction(ticket: number, _prev: { error?: string
   const { user, payload, workspaceId } = await acting()
   const kind = String(fd.get('kind'))
   const stage = String(fd.get('stage'))
-  const repair: Repair | null = kind === 'stage' && (REPAIR_STAGES as readonly string[]).includes(stage) ? { kind, stage: stage as (typeof REPAIR_STAGES)[number] } : kind === 'clear-waiting' || kind === 'reset-counters' || kind === 'rank-top' ? { kind } : null
+  const repair: Repair | null = kind === 'stage' && repairable(DEFAULT()).includes(stage) ? { kind, stage } : kind === 'clear-waiting' || kind === 'reset-counters' || kind === 'rank-top' ? { kind } : null
   if (!repair) return { error: 'Choose a repair.' }
   try {
     await inWorkspace(repairTicket(payload, user, { ticket, workspaceId, repair }))

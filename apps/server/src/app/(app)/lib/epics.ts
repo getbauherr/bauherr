@@ -1,6 +1,7 @@
 import type { Where } from 'payload'
 import { statusOf } from './card-status'
-import { BOARD_STAGES, type Stage } from './needs-you'
+import type { Stage } from './needs-you'
+import { board, DEFAULT } from '../../../lib/workflow'
 
 export type EpicChild = { id: number; number: number; title: string; stage: Stage; open: boolean; status: string }
 export type Epic = { id: number; number: number; title: string; open: boolean; rank: string | null; product: number | null; children: EpicChild[] }
@@ -18,7 +19,7 @@ export const plainStatus = (t: { open: boolean; needsYou: string | null; blocked
 export const epicProgress = (e: Pick<Epic, 'children'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => ({
   done: e.children.filter((c) => !c.open).length,
   total: e.children.length,
-  stages: BOARD_STAGES.map((stage) => ({ stage, count: e.children.filter((c) => c.open && c.stage === stage).length })).filter((s) => s.count),
+  stages: board(DEFAULT()).map((stage) => ({ stage, count: e.children.filter((c) => c.open && c.stage === stage).length })).filter((s) => s.count),
 })
 
 /** Epics in rank order (then number); done ones (closed) only with `showDone`; `product` narrows when set. */

@@ -3,14 +3,14 @@
 The single human-readable spec of the Bauherr workflow. Rules live in the core pack; this page links to them and does not repeat them. Decisions: #10 (workflow), #37 (Run contract), #36/#39 (team patterns).
 
 ## 1. Stages and labels
-Triage → Plan → Build → Review → Release → Done. Fixed in v0.1.
+Triage → Plan → Build → Review → Release → Done, declared in `pack/factory.yaml` (see the end of §14).
 
 - The Stage is a Label in the Ticket source: `bauherr:stage:<name>` (the same on GitLab: scoped `stage::` labels are Premium+). Bauherr derives it and never stores it as truth. Moving a stage adds the new label before it removes the old one (with two labels the later stage wins); when the forge lost the label, the stored stage wins and `poll-tickets` restores the label.
 - Other labels: `bauherr:go` (start), `bauherr:approved:plan` (plan gate, only with the plan gate on), `bauherr:approved:staging` (staging gate; with the release gate off the factory sets it itself when staging is confirmed), `bauherr:blocked` (needs a person).
 
 | Stage | Agent work | Ends with |
 |---|---|---|
-| Triage | cheap triage Run per open, unassigned Ticket without a stage label ([triage](../../pack/skills/triage/SKILL.md)); a Ticket carrying one of the stage's `exclude_labels` in `pack/workflow.yaml` (`wayfinder:map\|grilling\|research`) is not triaged; no gate, but a `refine` hold shows the owner an "Answer questions" Gate (assignee + mention, #77) | `plan`: stage label plan; `refine`: label `bauherr:needs-refinement` + a decision-sheet Comment for the owner, the stage label plan once every critical question is answered; `skip`: reason Comment, no stage. Re-triaged only when the Ticket changes; at most 5 new Triage Runs per Workspace per poll, and after 3 failed, invalid or expired attempts one Comment stops it until the Ticket changes. Session Runs end with `submit_triage`; autonomous Runs write `.bauherr/triage.json` (no shell, writes only under `.bauherr/`) and the server applies it through the same validation |
+| Triage | cheap triage Run per open, unassigned Ticket without a stage label ([triage](../../pack/skills/triage/SKILL.md)); a Ticket carrying one of the stage's `exclude_labels` in `pack/factory.yaml` (`wayfinder:map\|grilling\|research`) is not triaged; no gate, but a `refine` hold shows the owner an "Answer questions" Gate (assignee + mention, #77) | `plan`: stage label plan; `refine`: label `bauherr:needs-refinement` + a decision-sheet Comment for the owner, the stage label plan once every critical question is answered; `skip`: reason Comment, no stage. Re-triaged only when the Ticket changes; at most 5 new Triage Runs per Workspace per poll, and after 3 failed, invalid or expired attempts one Comment stops it until the Ticket changes. Session Runs end with `submit_triage`; autonomous Runs write `.bauherr/triage.json` (no shell, writes only under `.bauherr/`) and the server applies it through the same validation |
 | Plan | plan Run | plan Comment (Goal, Steps, Files) + Goal in the worklog (+ Sub-tickets if large) |
 | Build | build Run | MR Linked on the Ticket |
 | Review | review Run: reviewer without memory of the change ([review](../../pack/skills/review/SKILL.md)) | review Comment on the MR; merge or back to Build |
@@ -22,7 +22,7 @@ Pre-review (Build): a Build whose MR-only diff has 30 or more changed lines ends
 Config per stage: label, gate (`human` or absent; see §2), max runs, and the stage's **steps** (§15). The workflow is config in Git, compiled into a versioned Postgres row on change (§15).
 
 ## 2. Gates and approvals
-Human gates are workflow config in `pack/workflow.yaml`. Default: exactly two human touch points, **refine** (Triage's questions, always on) and **production** (`production_gate: human` on `release`, on by default; a Product without `productionChecks` shows the visible gate "Configure production checks" (Ticket page, links to `/settings/products/<id>#production`, listed in needs-you) until checks exist, then the normal "Approve production" gate; if `production_gate` is removed from the workflow, a staging-confirmed Ticket goes to `done`). **Plan** (`gate: human` on `plan`) and **staging** (`gate: human` on `release`) are optional and off by default: a Ticket triaged `plan` then reaches a merged MR and the production gate without an owner touch. `humanGates()` in `apps/server/src/lib/mode.ts` lists the enabled gates (also for the label-actor guard, #174). Per-Product overlays are §15.
+Human gates are workflow config in `pack/factory.yaml`. Default: exactly two human touch points, **refine** (Triage's questions, always on) and **production** (`production_gate: human` on `release`, on by default; a Product without `productionChecks` shows the visible gate "Configure production checks" (Ticket page, links to `/settings/products/<id>#production`, listed in needs-you) until checks exist, then the normal "Approve production" gate; if `production_gate` is removed from the workflow, a staging-confirmed Ticket goes to `done`). **Plan** (`gate: human` on `plan`) and **staging** (`gate: human` on `release`) are optional and off by default: a Ticket triaged `plan` then reaches a merged MR and the production gate without an owner touch. `humanGates()` in `apps/server/src/lib/mode.ts` lists the enabled gates (also for the label-actor guard, #174). Per-Product overlays are §15.
 
 | Gate | Before | Approval lives in |
 |---|---|---|
@@ -183,9 +183,28 @@ Persona `owner`: the Ticket page opens the owner chat on mount while the decisio
 ## 14. Pack artifacts index
 Manifest: [pack.yaml](../../pack/pack.yaml). Hooks map to SDK events in [hooks.yaml](../../pack/hooks/hooks.yaml).
 
+### `factory.yaml` (the file)
+`pack/factory.yaml` is the one source of the stage list: team and workflow. All stage lists in the code (Board columns, pull order, WIP stages, repairable stages, ...) are derived from it by `apps/server/src/lib/workflow.ts` (pure: `parseFactory`, `lint`, `compile`, `DEFAULT()`, derived lists such as `board()`, `pullRank()`, `gates()`, `graph()`).
+
+```yaml
+version: 1
+team:
+  roles: {<id>: {title, tier | (provider and model), agents?, profile?, profile_file?}}
+workflow:
+  stages:
+    - {name, kind, title?, role?, skill?, mode?, gate?, production_gate?, wip?, exclude_labels?, outcomes: {<outcome>: <stage | escalate | backlog>}}
+```
+Kinds: `triage`, `plan`, `container` (parent of split sub-tickets), `build`, `review`, `release`, `done`, `agent`, `human`. Built-in kinds declare exactly these outcomes: triage `plan, refine, skip`; plan `done, decisions` (+ `split`); container `children_done`; build `done, stuck, replan`; review `clean, changes, stop`; release `accepted, changes`; done none. `agent` and `human` declare at least one.
+
+A pack dir (`BAUHERR_PACK_DIR`) without `factory.yaml` uses the core pack's file; an unreadable or invalid file throws at first use. No other code lists stage names: `tests/stage-lists-guard.test.ts` fails on a stage-name array literal outside `lib/workflow.ts` (allow-list with reasons in the test).
+
+Lint (`lint()`, run by `compile()`): (1) `version` is 1; names match `^[a-z][a-z0-9-]*$`, are unique and not `checks`, `scan`, `distill`, `escalate`, `backlog`; (2) one `triage` first, one `done` last, at most one each of plan, container, build, review, release, and a container iff `plan` has a `split` outcome; (3) build, review, release all present or all absent, with `review.changes` and `release.changes` to build, `review.clean` to release, `release.accepted` to done; (4) the outcome keys above; (5) every target is a stage, `escalate` or `backlog`, every stage is reachable from triage and reaches done; (6) `role` required on triage, plan, build, review, agent, forbidden on container, release, done, human, and a key of `team.roles`; a role has a `title` and one of `tier` or `provider` plus `model`; (7) `gate` only on plan and release, `production_gate` only on release, `wip` only on plan, build, review, release, agent, human, `mode` is `session` or `autonomous`.
+
+Declared but not yet driving behaviour: `kind` (beyond deriving the stage lists), `outcomes`, `team.roles` and their profile files, `title`, and `agent`/`human` stages. Only the derived lists, `gate`, `production_gate`, `mode`, `exclude_labels` and the `wip` defaults take effect today (WIP limits are still read from `Workspace.wipLimits`, the file only supplies defaults). Later steps remove this note.
+
 ## 15. Steps and workflow config
 A stage is an ordered DAG of steps (decision #44). Step types: `agent-run` (a Run with a Goal), `external-service` (a connected agent service, e.g. a code-security scanner; callback with poll fallback; findings become Tickets, Comments or scorecard results), `ci-job` (wait for a named check), `human-gate`, `check` (scorecard rule). Step contract: `{id, type, needs, inputs, timeout, budget?, retries}` → `{status, outputs, evidence, started, finished, cost}`. A failed blocking step stops the stage; *repair run* re-runs failed steps only.
 
-Gate keys: `gate: human` on `plan` or `release`; any other value is ignored. The compiled version records the enabled gates (`humanGates()`) with the DAG. Where the workflow lives (decision #45): base `pack/workflow.yaml` in the core pack (read-only in the UI), per-Product overlay `products/<slug>/workflow.yaml` in the Knowledge repo; the factory compiles the merged DAG into a `workflow_versions` row that Runs reference. Validated by `bauherr pack lint`.
+Gate keys: `gate: human` on `plan` or `release`; any other value is ignored. The compiled version records the enabled gates (`humanGates()`) with the DAG. Where the workflow lives (decision #45): base `pack/factory.yaml` in the core pack (read-only in the UI), per-Product overlay `products/<slug>/workflow.yaml` in the Knowledge repo; the factory compiles the merged DAG into a `workflow_versions` row that Runs reference. Validated by `bauherr pack lint`.
 
 What the Bauherr sees per Ticket run: graph (nodes with status, duration, type, resource), timeline (nested sub-steps, dependency arrows), list (filterable), run details (launched by, started, ended, duration, status, cost), repair run. Per Product: the compiled workflow with the overlay diff highlighted.

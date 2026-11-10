@@ -21,7 +21,7 @@ import { isAdmin, listRepos, only, presetFor, run, type FormState } from '../../
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
-import { WIP_STAGES } from '../../../../lib/wip-limits'
+import { DEFAULT, wipStages } from '../../../../lib/workflow'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -75,7 +75,7 @@ export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd)
   only(user)
   const wsId = inWorkspace({ workspace })
   const limits: Record<string, number> = {}
-  for (const stage of WIP_STAGES) {
+  for (const stage of wipStages(DEFAULT())) {
     const v = s(fd, `wip_${stage}`)
     if (v === '') continue
     if (!/^[1-9]\d*$/.test(v)) throw Object.assign(new Error('Invalid limit.'), { data: { errors: [{ path: `wip_${stage}`, message: 'A whole number of at least 1, or empty for no limit' }] } })

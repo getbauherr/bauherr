@@ -38,7 +38,7 @@ flowchart LR
 | Release | The Product's own CI |
 | Done | Ticket closed on merge |
 
-Human gates (configured in [`pack/workflow.yaml`](pack/workflow.yaml)):
+Human gates (configured in [`pack/factory.yaml`](pack/factory.yaml)):
 
 - **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
 - **Approve plan** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
@@ -117,7 +117,7 @@ To work on tickets from your own Claude Code session instead, create an API key 
 | `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
-| Stages, steps, gates | [`pack/workflow.yaml`](pack/workflow.yaml), [docs/spec/workflow.md](docs/spec/workflow.md) |
+| Stages, steps, gates | [`pack/factory.yaml`](pack/factory.yaml), [docs/spec/workflow.md](docs/spec/workflow.md) |
 | Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
 | Budgets, model Tiers, Connections | Settings in the UI |

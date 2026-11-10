@@ -71,6 +71,18 @@ _Avoid_: Knowledge base, wiki
 A reusable instruction package an agent loads when its description matches the task, following the open Agent Skills format.
 _Avoid_: Prompt, recipe
 
+**Stage kind**:
+What a Stage is for in the workflow (`triage`, `plan`, `container`, `build`, `review`, `release`, `done`, `agent`, `human`); the factory's rules attach to the kind, not to the Stage's name.
+
+**Outcome**:
+A named result of a Stage (`plan`, `clean`, `changes`, ...) that maps to the Stage a Ticket moves to next; declared per Stage in `factory.yaml`.
+
+**Role**:
+A member of the factory's team (`team.roles` in `factory.yaml`): a title, a model tier or provider/model, and a profile; a Stage names the Role that works it.
+
+**Checkpoint**:
+A point where the workflow waits for a human (Triage's questions, a `gate: human`, the production gate, a `human` Stage).
+
 ### Tickets
 
 **Ticket**:

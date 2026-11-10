@@ -12,6 +12,7 @@ import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvesti
 import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
+import { DEFAULT, pullRank } from './workflow'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor } from './run-ctx'
 import * as knowledge from './knowledge'
@@ -110,8 +111,7 @@ const str = (description: string) => ({ type: 'string', description })
 const runId = { runId: { type: ['number', 'string'], description: 'Run id' } }
 const leaseToken = { leaseToken: str('Lease token returned by claim_run') }
 const sessionArg = { session: str('Stable name of this session (max 64 chars). Pass it on every claim_next, claim_run and list_frontier: a Review of a build you labelled the same is skipped as "your own build".') }
-const STAGES = ['release', 'review', 'build', 'plan', 'triage']
-const stagesArg = { stages: { type: 'array', items: { enum: STAGES }, description: 'Only these stages; the pull order applies within them. Omit for all.' } }
+const stagesArg = () => ({ stages: { type: 'array', items: { enum: pullRank(DEFAULT()) }, description: 'Only these stages; the pull order applies within them. Omit for all.' } })
 const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id (Bauherr database id)' } }
 
 class ClaimLost extends Error {}
@@ -127,8 +127,9 @@ const labelOf = (a: { session?: unknown }): string | null => {
 const stagesOf = (a: { stages?: unknown }): string[] | null => {
   if (a.stages == null) return null
   if (!Array.isArray(a.stages)) throw new Error('stages must be an array')
-  const bad = a.stages.filter((s) => !STAGES.includes(s))
-  if (bad.length) throw new Error(`unknown stage ${bad.join(', ')}; use ${STAGES.join(', ')}`)
+  const known = pullRank(DEFAULT())
+  const bad = a.stages.filter((s) => !known.includes(s))
+  if (bad.length) throw new Error(`unknown stage ${bad.join(', ')}; use ${known.join(', ')}`)
   return a.stages.length ? a.stages : null
 }
 
@@ -258,7 +259,9 @@ export const tools: Tool[] = [
     name: 'list_frontier',
     access: 'agent',
     description: 'Open, unblocked Tickets with stage and latest Run state. Only claim Tickets with claimable=true; leased ones show leasedBy + leaseExpiresAt: never touch their branch or worktree.',
-    inputSchema: obj({ product: str('Product slug'), ...sessionArg, ...stagesArg }),
+    get inputSchema() {
+      return obj({ product: str('Product slug'), ...sessionArg, ...stagesArg() })
+    },
     async run(a, c) {
       const label = labelOf(a)
       const f = await frontier(c, a.product, stagesOf(a))
@@ -297,7 +300,9 @@ export const tools: Tool[] = [
     name: 'claim_run',
     access: 'agent',
     description: 'Claim an awaiting_session Run: status running, Ticket assigned. Only the Run claim_next would return is accepted (a Run whose claim failed in the last 5 minutes does not count); any other is refused with "take Run N (#T, column) first", a blocked, leased or superseded one with "not claimable now". The check is workspace-wide, while claim_next {product} is product-scoped. Prefer claim_next. Returns the leaseToken (shown once): every later call on the Run needs it, hand it to subagents.',
-    inputSchema: obj({ ...runId, ...sessionArg, ...stagesArg }, ['runId']),
+    get inputSchema() {
+      return obj({ ...runId, ...sessionArg, ...stagesArg() }, ['runId'])
+    },
     async run(a, c) {
       const label = labelOf(a)
       const stages = stagesOf(a)
@@ -319,7 +324,9 @@ export const tools: Tool[] = [
     name: 'claim_next',
     access: 'agent',
     description: 'Claim the top claimable Run in frontier order (Tickets of the expedite lane first, then right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
-    inputSchema: obj({ product: str('Product slug'), ...sessionArg, ...stagesArg }),
+    get inputSchema() {
+      return obj({ product: str('Product slug'), ...sessionArg, ...stagesArg() })
+    },
     async run(a, c) {
       const label = labelOf(a)
       const stages = stagesOf(a)

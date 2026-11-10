@@ -6,7 +6,8 @@ import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, p
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
-import { DEFAULT_WIP_LIMITS, wipLimitsError } from './lib/wip-limits'
+import { wipLimitsError } from './lib/wip-limits'
+import { DEFAULT, defaultWip } from './lib/workflow'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -156,7 +157,7 @@ const workspaces = col(
     {
       name: 'wipLimits',
       type: 'json',
-      defaultValue: DEFAULT_WIP_LIMITS,
+      defaultValue: defaultWip(DEFAULT()),
       validate: (v: unknown) => wipLimitsError(v) ?? true,
       access: { update: ({ req }) => req.user?.role === 'admin' },
       admin: { description: 'Tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit.' },
@@ -167,7 +168,7 @@ const workspaces = col(
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
     { name: 'routerBudgetShare', type: 'number', defaultValue: 20, min: 1, max: 99, admin: { description: 'Percent of the budget for `auto` traffic while a router Connection exists.' } },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
-    select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/workflow.yaml, then autonomous.' } }),
+    select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/factory.yaml, then autonomous.' } }),
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
     rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),

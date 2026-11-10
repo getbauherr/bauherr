@@ -1,4 +1,4 @@
-import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError, stageLabel, stageOf } from '@bauherr/adapters'
+import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError, stageLabel } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
@@ -17,7 +17,8 @@ import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from 
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
-import { moveStage } from './stage-move'
+import { moveStage, stageOf } from './stage-move'
+import { DEFAULT, liveStages, repairable } from './workflow'
 import { preReviewFailures } from './pre-review'
 import { enterStage, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
@@ -117,9 +118,8 @@ export class NotAdmin extends Error {
   }
 }
 
-export const REPAIR_STAGES = ['triage', 'plan', 'build', 'review', 'release'] as const
 export const COUNTERS = ['gatePendingAttempts', 'mergeFailures', 'releaseAttempts', 'reviewRounds', 'conflictReturns'] as const
-export type Repair = { kind: 'stage'; stage: (typeof REPAIR_STAGES)[number] } | { kind: 'clear-waiting' } | { kind: 'reset-counters' } | { kind: 'rank-top' }
+export type Repair = { kind: 'stage'; stage: string } | { kind: 'clear-waiting' } | { kind: 'reset-counters' } | { kind: 'rank-top' }
 
 /** Admin-only "Fix state": narrow repairs of one Ticket of the selected Workspace, each recorded as a `repair:<kind>` human touch. The stage move writes the forge label through `moveStage` (the poller sees it as the factory's own move). */
 export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId: TicketId; repair: Repair }) => {
@@ -127,7 +127,7 @@ export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: Tic
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const r = a.repair
   if (r.kind === 'stage') {
-    if (!REPAIR_STAGES.includes(r.stage)) throw new Error(`unknown stage ${r.stage}`)
+    if (!repairable(DEFAULT()).includes(r.stage)) throw new Error(`unknown stage ${r.stage}`)
     const { ts } = await sourceOf(payload, t)
     await moveStage(payload, ts, t, r.stage)
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: r.stage, waitingFor: null, waitingReason: null }, overrideAccess: true })
@@ -935,7 +935,7 @@ export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: Tick
 /** Owner action on a cancelled Ticket (the "Cancelled" need): the Ticket goes to Triage and is planned again; its Runs stay as they are. */
 export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
-  if (t.state === 'closed' || !['plan', 'build', 'review'].includes(t.stage)) throw new Error('the Ticket is not in a factory stage')
+  if (t.state === 'closed' || !liveStages(DEFAULT()).includes(t.stage)) throw new Error('the Ticket is not in a factory stage')
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
   if (latest?.status !== 'cancelled' || latest.stage !== t.stage) throw new Error('the Ticket is not cancelled')
   const { ts, n } = await sourceOf(payload, t)

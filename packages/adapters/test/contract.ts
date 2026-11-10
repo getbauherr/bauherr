@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 import { APPROVED_PLAN, Conflict, NotQueueableError, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
 
+const ORDER = ['triage', 'plan', 'build', 'review', 'release', 'done'];
+
 export interface ContractEnv {
   backend: Backend;
   repo: string;
@@ -101,7 +103,7 @@ export function contractSuite(name: string, env: ContractEnv): void {
       await setStage(ts, t.id, 'build');
       const { labels } = await ts.get(t.id);
       assert.deepEqual(labels.filter((l) => l.startsWith('bauherr:stage:')), [stageLabel('build')]);
-      assert.equal(stageOf(labels), 'build');
+      assert.equal(stageOf(labels, ORDER), 'build');
       assert.ok(labels.includes('keep') && labels.includes(APPROVED_PLAN));
     });
 

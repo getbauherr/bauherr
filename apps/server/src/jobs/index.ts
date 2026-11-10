@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { Cron } from 'croner'
 import type { Payload, PayloadRequest, TaskConfig } from 'payload'
-import { APPROVED_PLAN, setStage, stageLabel, stageOf, type TicketSource } from '@bauherr/adapters'
+import { APPROVED_PLAN, setStage, stageLabel, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
 import { connectionInput } from '../lib/connection'
@@ -17,7 +17,7 @@ import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRan
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
-import { isForward, moveStage } from '../lib/stage-move'
+import { isForward, moveStage, stageOf } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
 import { enterStage, pullWaiting } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
@@ -35,14 +35,14 @@ export const ACTIVE = ['queued', 'awaiting_session', 'running']
 export const SESSION_TIMEOUT_MS = 30 * 60_000
 export { stageOf }
 
-/** Decision D2. Fallback only: pack/workflow.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
+/** Decision D2. Fallback only: pack/factory.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
 const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
 export const excludedLabels = (stages: { name: string; exclude_labels?: string[] }[] = packed()): string[] => {
   const list = stages.find((s) => s.name === 'triage')?.exclude_labels
   return list?.length ? list : D2_EXCLUDED
 }
 
-/** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/workflow.yaml. */
+/** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/factory.yaml. */
 export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = excludedLabels()): boolean =>
   t.state === 'open' && !t.assignee && !stageOf(t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
 

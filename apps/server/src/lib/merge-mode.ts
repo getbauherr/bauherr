@@ -1,7 +1,8 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Forge } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { DEFAULT_WIP_LIMITS, wipLimit } from './wip-limits'
+import { wipLimit } from './wip-limits'
+import { DEFAULT, defaultWip } from './workflow'
 
 type Doc = Record<string, any>
 
@@ -20,7 +21,7 @@ export const isQueue = (product: Doc): boolean => mergeModeOf(product) === 'queu
 export const isTrain = (product: Doc): boolean => mergeModeOf(product) === 'train'
 
 /** PRs the factory train tests together at most: the Workspace's Review WIP limit. */
-export const trainConcurrency = (workspace: { wipLimits?: unknown } | null | undefined): number => wipLimit(workspace, 'review') ?? DEFAULT_WIP_LIMITS.review
+export const trainConcurrency = (workspace: { wipLimits?: unknown } | null | undefined): number => wipLimit(workspace, 'review') ?? defaultWip(DEFAULT()).review
 
 /**
  * A queued entry must never be pushed to (a push invalidates it on both forges): takes the PR out of the queue and moves a `queued` Ticket back to `waiting_checks`.

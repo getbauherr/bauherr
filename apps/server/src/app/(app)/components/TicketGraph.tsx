@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { stageGroup } from '../../../lib/frontier'
 import { layoutGraph } from '../lib/graph'
-import { stageLabel } from '../lib/needs-you'
+import { DEFAULT, title } from '../../../lib/workflow'
 import type { TicketRow } from '../lib/overview'
 import { activity } from '../lib/format'
 
@@ -13,7 +13,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
 
 function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; critical: boolean }; x: number; y: number }) {
   const doing = activity(t)
-  const label = `#${t.number} ${t.title}, stage ${stageLabel(t.stage)}${n.ready ? ', ready' : ''}${doing ? `, ${doing}` : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
+  const label = `#${t.number} ${t.title}, stage ${title(DEFAULT(), t.stage)}${n.ready ? ', ready' : ''}${doing ? `, ${doing}` : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
   return (
     <Link href={`/tickets/${t.id}`} aria-label={label} className="gnode group cursor-pointer outline-none [--stage:var(--ink-muted)] data-[stage=plan]:[--stage:var(--warn)] data-[stage=build]:[--stage:var(--accent)] data-[stage=review]:[--stage:var(--accent-strong)] data-[stage=release]:[--stage:var(--warn)] data-[stage=done]:[--stage:var(--ok)]" data-stage={t.stage} data-ready={n.ready || undefined} data-critical={n.critical || undefined} data-running={doing ? '' : undefined} data-ticket={t.number}>
       <rect className="box fill-card stroke-border group-hover:stroke-primary group-data-[critical]:fill-accent group-data-[ready]:stroke-ok group-data-[ready]:[stroke-width:2] group-data-[ready]:group-hover:stroke-primary group-data-[running]:motion-safe:animate-march group-data-[running]:stroke-primary group-data-[running]:motion-safe:[stroke-dasharray:6_4] group-data-[running]:[stroke-width:2] group-focus-visible:stroke-ring group-focus-visible:[stroke-width:2]" x={nx} y={ny} width={W} height={H} rx={4} />
@@ -70,7 +70,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
             const group = g === 5 ? [...all].sort((p, q) => byId.get(q.id)!.number - byId.get(p.id)!.number).slice(0, DONE_LIMIT) : all
             return (
               <section key={g} aria-labelledby={`tg-iso-${g}`}>
-                <h3 className="label" id={`tg-iso-${g}`}>{g === 5 ? 'done' : stageLabel(byId.get(group[0].id)!.stage)} ({all.length})</h3>
+                <h3 className="label" id={`tg-iso-${g}`}>{g === 5 ? 'done' : title(DEFAULT(), byId.get(group[0].id)!.stage)} ({all.length})</h3>
                 <ul className="mt-2 mb-4 flex list-none flex-wrap gap-3 p-0">
                   {group.map((n) => <li key={n.id}><svg className="block max-w-none" role="group" aria-label={`Ticket #${byId.get(n.id)!.number}`} width={W + PAD * 2} height={H + PAD * 2}><Node t={byId.get(n.id)!} n={n} x={PAD} y={PAD} /></svg></li>)}
                 </ul>
