@@ -50,7 +50,9 @@ const ticket = async (n: number, title: string, stage: string, p: string | numbe
 const run = async (t: string | number, stage: string, status: string, extra: Record<string, unknown> = {}) =>
   ensure('runs', { ticket: t, stage, status }, { ticket: t, stage, status, mode: 'autonomous', workspace, ...extra })
 
-const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product)
+// `openCriticalDecisions` mirrors what plan submission stores for the fake forge's full PLAN (one critical decision, D2).
+const openCritical = { openCriticalDecisions: 1 }
+const t1 = await ticket(1, 'Add a dark theme to the dashboard', 'plan', product, openCritical)
 const t2 = await ticket(2, 'Export invoices as CSV', 'build', product)
 const t3 = await ticket(3, 'Checkout fails for empty carts', 'build', shop)
 await ticket(4, 'Triage the onboarding feedback', 'triage', shop)
@@ -90,10 +92,10 @@ const t18 = await ticket(20, 'Fix the date parser', 'build', product)
 await ensure('tickets', { externalId: 'e2e-gated-2' }, { title: 'Ship the gated header', externalId: 'e2e-gated-2', number: 2, url: 'https://github.com/acme/gated/issues/2', state: 'open', labels: ['bauherr:stage:release', 'bauherr:approved:staging'], ...rel, productionState: 'awaiting_approval', product: gated, workspace, rank: '000017' })
 for (let n = 101; n <= 122; n++) await ticket(n, `Isolated chore ${n}`, n <= 103 ? 'release' : n <= 106 ? 'review' : n <= 112 ? 'build' : n <= 115 ? 'plan' : n <= 118 ? 'triage' : 'done', product)
 const t21 = await ticket(21, 'Remember the theme choice', 'plan', product)
-const t22 = await ticket(22, 'Pick the export columns', 'plan', product)
+const t22 = await ticket(22, 'Pick the export columns', 'plan', product, openCritical)
 // Own Tickets of triage.spec.ts (#23, held by Triage with questions) and of the plan-approval test in ticket.spec.ts (#24, approved there). The numbers follow the fake forge (`src/lib/fake-forge.ts`), which creates them in this order.
 await ticket(23, 'Settle the export format', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
-const t24 = await ticket(24, 'Add a light theme to the dashboard', 'plan', product)
+const t24 = await ticket(24, 'Add a light theme to the dashboard', 'plan', product, openCritical)
 // Own Tickets of the next-step button cases in ticket.spec.ts (#385): #25 an approved plan held by an overlap, #26 a plan awaiting approval, #27 a Build with a live Run. Twins in `src/lib/fake-forge.ts` carry these numbers.
 await ticket(25, 'Hold the approved export tweak', 'plan', product, { labels: ['bauherr:stage:plan', 'bauherr:approved:plan'], waitingFor: 'build', waitingReason: 'overlaps #356' })
 const t26 = await ticket(26, 'Approve the retry policy', 'plan', product)

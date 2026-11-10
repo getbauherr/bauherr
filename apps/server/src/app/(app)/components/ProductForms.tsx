@@ -1,6 +1,7 @@
 import Link from 'next/link'
+import { type ComponentProps, Suspense, cache } from 'react'
 import { namesOf, productionCallouts, productionWorkflow } from '../lib/product-setup'
-import type { loadProduct, RecentCheck } from '../lib/settings'
+import { type loadProduct, type RecentCheck, recentChecks } from '../lib/settings'
 import { CopyField, Field, MultiPick } from './SettingsForm'
 import { GateLadder, RadioCards, SettingsSection, StatusCallout, ToggleRow } from './SettingsParts'
 
@@ -28,20 +29,40 @@ export const RepositoryFields = ({ connections, tickets = true }: { connections:
   </>
 )
 
-/** Staging, Approvals and Production sections of a Product (page `/settings/products/<id>` and step 3 of /setup); render inside the form that saves them. `checks` are the recent check names from the forge (`recentChecks`), null when it could not be read. */
-export function DeploySections({ data: { product: p, workflow, members, adminApprover }, checks, admin, numbered }: { data: NonNullable<Awaited<ReturnType<typeof loadProduct>>>; checks: RecentCheck[] | null; admin: boolean; numbered?: boolean }) {
+const checksFor = cache(recentChecks)
+const optionsOf = (checks: RecentCheck[] | null) => (checks ?? []).map((c) => ({ value: c.name, meta: `seen on ${c.seen} of ${c.of} recent commits · last: ${c.lastConclusion}` }))
+
+type PickProps = Omit<ComponentProps<typeof MultiPick>, 'options' | 'notice'>
+
+async function LoadedChecksPick({ product, ...pick }: PickProps & { product: number }) {
+  const checks = await checksFor(product)
+  return <MultiPick {...pick} options={optionsOf(checks)} notice={checks ? undefined : CHECKS_UNREADABLE} />
+}
+
+/** A check picker that renders at once with the saved names and receives the forge's recent check names (`recentChecks`, 3 s, null when unreadable) when they arrive; only the picker is replaced, the rest of the form keeps what was typed. */
+const ChecksPick = (props: PickProps & { product: number }) => (
+  <Suspense fallback={<MultiPick {...props} options={[]} notice="Loading recent checks from the forge…" />}>
+    <LoadedChecksPick {...props} />
+  </Suspense>
+)
+
+async function LoadedCallouts({ product, checks, notifiable }: { product: number; checks: string[]; notifiable: boolean }) {
+  const seen = (await checksFor(product))?.map((c) => c.name) ?? null
+  return productionCallouts({ checks, seen, notifiable, on: true }).map((c) => <StatusCallout key={c.lead} tone={c.tone} lead={c.lead}>{c.text}</StatusCallout>)
+}
+
+/** Staging, Approvals and Production sections of a Product (page `/settings/products/<id>` and step 3 of /setup); render inside the form that saves them. Reads only the database; the forge-backed parts (check pickers, "Ready" callout) stream in. */
+export function DeploySections({ data: { product: p, workflow, members, adminApprover }, admin, numbered }: { data: NonNullable<Awaited<ReturnType<typeof loadProduct>>>; admin: boolean; numbered?: boolean }) {
   const d = p.deploy
   const production = namesOf(d.productionChecks)
   const num = (i: number) => (numbered ? i + 2 : undefined)
-  const options = (checks ?? []).map((c) => ({ value: c.name, meta: `seen on ${c.seen} of ${c.of} recent commits · last: ${c.lastConclusion}` }))
-  const unreadable = checks ? undefined : CHECKS_UNREADABLE
   const admins = members.filter((m) => m.admin).map((m) => `@${m.login}`)
-  const status = { checks: production, seen: checks?.map((c) => c.name) ?? null, notifiable: !!d.gateOwners || adminApprover }
-  const [off] = productionCallouts({ ...status, on: false })
+  const notifiable = !!d.gateOwners || adminApprover
+  const [off] = productionCallouts({ checks: production, seen: null, notifiable, on: false })
   return (
     <>
       <SettingsSection id="staging" n={num(0)} title="Staging" purpose="How merged changes reach the site where you try them." advanced={
-        <MultiPick name="deployChecks" legend="Which checks mean deployed to staging?" hint="Empty: all checks must be green. Pick some if a slow or optional check should not hold up staging." options={options} value={namesOf(d.checks)} addLabel="Add a check that has not run yet" example="deploy-staging" missingMeta="not seen recently" notice={unreadable} />
+        <ChecksPick product={p.id} name="deployChecks" legend="Which checks mean deployed to staging?" hint="Empty: all checks must be green. Pick some if a slow or optional check should not hold up staging." value={namesOf(d.checks)} addLabel="Add a check that has not run yet" example="deploy-staging" missingMeta="not seen recently" />
       }>
         <RadioCards name="deployMode" legend="How do merged changes reach staging?" value={d.mode} options={[
           { value: 'observe-ci', title: 'My CI deploys to staging', text: 'Bauherr waits until the checks on the merge commit are green.' },
@@ -85,8 +106,8 @@ export function DeploySections({ data: { product: p, workflow, members, adminApp
         <SettingsSection id="production" n={num(2)} title="Production" purpose="How Bauherr knows your production deploy finished." advanced={
           <Field name="productionWebhookUrl" label="Also call this URL when I approve" type="url" hint="Optional. Bauherr POSTs {ticket, sha, environment: production} once per approval. Use it if your pipeline cannot listen for the GitHub label." example="https://ci.acme.com/hooks/prod" defaultValue={d.productionWebhookUrl} />
         }>
-          {productionCallouts({ ...status, on: true }).map((c) => <StatusCallout key={c.lead} tone={c.tone} lead={c.lead}>{c.text}</StatusCallout>)}
-          <MultiPick name="productionChecks" legend="Which check reports the production deploy?" hint="Bauherr marks the deploy as done when these checks succeed on the approved commit." options={options} value={production} addLabel="Add a check that has not run yet" example="deploy-production" missingMeta="not seen recently" notice={unreadable} />
+          <Suspense fallback={null}><LoadedCallouts product={p.id} checks={production} notifiable={notifiable} /></Suspense>
+          <ChecksPick product={p.id} name="productionChecks" legend="Which check reports the production deploy?" hint="Bauherr marks the deploy as done when these checks succeed on the approved commit." value={production} addLabel="Add a check that has not run yet" example="deploy-production" missingMeta="not seen recently" />
           <details className="small muted">
             <summary>How does my pipeline know when to deploy?</summary>
             <div className="stack mt-3">

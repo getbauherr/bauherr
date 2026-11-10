@@ -6,7 +6,7 @@ import { laneOn } from './expedite'
 import { gateOn } from './mode'
 import { dequeueBeforeChange, isQueue, isTrain } from './merge-mode'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
-import { logins } from './gates'
+import { logins, storeOpenCritical } from './gates'
 import { decrypt } from './secrets'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { fakeOwnerModel } from './intake/fake'
@@ -198,10 +198,12 @@ export const updateWorklog = async (payload: Payload, user: Doc, a: { ticket: Ti
 
 /** Posts or updates the Ticket's single plan Comment (`<!-- bauherr:plan -->`). */
 export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; markdown: string }) => {
-  const { ts, n } = await sourceOf(payload, await loadTicket(payload, user, a.ticket))
+  const t = await loadTicket(payload, user, a.ticket)
+  const { ts, n } = await sourceOf(payload, t)
   const body = `${PLAN_MARKER}\n${a.markdown.replace(PLAN_MARKER, '').trim()}`
   const existing = latestWith(await ts.listComments(n), PLAN_MARKER)
   const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
+  await storeOpenCritical(payload, t.id, await ts.listComments(n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
   return { commentId: saved.id, created: !existing }
 }
 
@@ -606,6 +608,7 @@ export const postDecisions = async (
       if (log) await src.ts.updateComment(src.n, log.id, appendDecisions(log.body, lines))
       else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendDecisions(WORKLOG_TEMPLATE, lines)}`)
     }
+    await storeOpenCritical(payload, t.id, await src.ts.listComments(src.n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
     await releaseIfAnswered(payload, src, t)
     return { recorded: changed.length }
   })
