@@ -10,6 +10,7 @@ skills:
   - {path: skills/run-contract, purpose: How a Run reads its Goal, what counts as evidence, exit rule, blockers}
   - {path: skills/triage, purpose: Triage Run on a Ticket without a stage - plan, refine (questions for the owner) or skip}
   - {path: skills/intake, purpose: Intake session - one plain-language question per turn until the Ticket draft is complete}
+  - {path: skills/assistant, purpose: Factory chat - the assistant docked on every page, answers about what the person sees, confirms writes on a card}
   - {path: skills/review, purpose: Review Run on a factory MR - checklist, severity rubric, verdict and findings format}
   - {path: skills/worklog, purpose: Per-Ticket worklog template and reconciliation}
   - {path: skills/coordinate, purpose: Parallel lanes with owners (research in v0.1)}

@@ -9,6 +9,7 @@ import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { wipLimitsError } from './lib/wip-limits'
 import { runKind, runStageError, waitingForError } from './lib/stage-text'
 import { DEFAULT, defaultWip } from './lib/workflow'
+import { chatCollections } from './lib/chat/collections'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -700,4 +701,5 @@ export const collections: CollectionConfig[] = [
     rel('product', 'products', { required: true }),
     json('compiled'),
   ]),
+  ...chatCollections,
 ]

@@ -128,6 +128,14 @@ _Avoid_: Job, execution, session
 One recorded unit inside a Run (an agent turn or tool call), kept for audit and cost.
 _Avoid_: Action, event
 
+**Chat thread**:
+One person's stored conversation with the factory assistant in one Workspace; it remembers the page of its last message and at most one tool call awaiting confirmation. Private to its owner. It is not a Run and not an Intake session.
+_Avoid_: Conversation, session
+
+**Page context**:
+What the assistant is told about the page the person is looking at, built on the server from the URL path alone (never from text the browser sends) and limited to the person's current Workspace.
+_Avoid_: Screen state, page content
+
 **Intake session**:
 A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run.
 _Avoid_: Chat, interview, request
