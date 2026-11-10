@@ -15,7 +15,7 @@ const signIn = async (page: Page, as = email) => {
   await page.getByLabel('Email').fill(as)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 const shoot = async (page: Page, name: string) => {
   if (!shots) return
@@ -68,7 +68,7 @@ test('an empty Workspace links to /setup and the Admin walks all four steps to a
   await page.getByLabel('Product name').fill('Rollback Probe')
   await page.getByLabel('Repository').evaluate((el: HTMLInputElement) => el.removeAttribute('required'))
   await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page.locator('[role=alert].err').first()).toBeVisible()
+  await expect(page.locator('[role=alert].text-destructive').first()).toBeVisible()
   expect(((await (await page.request.get('/api/products?where[name][equals]=Rollback%20Probe&depth=0')).json()).docs as unknown[]).length).toBe(0)
 
   await page.getByLabel('Product name').fill('Newco Shop')

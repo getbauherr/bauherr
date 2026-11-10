@@ -16,7 +16,7 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
 
   await page.getByRole('link', { name: /^Requests/ }).click()
   await page.getByRole('link', { name: 'New request' }).first().click()
-  await page.locator('.intake').getByRole('link', { name: 'Requests', exact: true }).click()
+  await page.getByTestId('intake').getByRole('link', { name: 'Requests', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
   const draft = page.locator('tbody tr').filter({ hasText: 'Export totals drift' })
   await expect(draft).toContainText('Draft')
@@ -46,7 +46,7 @@ test('an own Draft opens from Requests after logout and login and is finished an
     await page.getByLabel('Email').fill('signout-requests@example.com') // signing out ends every session of the user, so this test has one of its own
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page.locator('header.topbar')).toBeVisible()
+    await expect(page.getByRole('banner')).toBeVisible()
   }
   const say = async (text: string, reply: string) => {
     await page.getByLabel(/Describe your request|Your answer/).fill(text)
@@ -77,7 +77,7 @@ test('an empty own Draft opens its session', async ({ page }) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
   await page.goto('/requests')
   await page.getByRole('link', { name: 'Export totals drift' }).click()
   await expect(page.getByRole('heading', { name: 'New request' })).toBeVisible()
@@ -90,7 +90,7 @@ test('New request hides the Product select for a single-Product Workspace', asyn
   await page.getByLabel('Email').fill('solo@example.com')
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
   await page.goto('/requests/new')
   await expect(page.getByLabel('Describe your request')).toBeVisible()
   await expect(page.getByLabel('Product')).toHaveCount(0)

@@ -1,7 +1,8 @@
+import { cookies } from 'next/headers'
 import type { ReactNode } from 'react'
-import Link from 'next/link'
-import { NavProgress } from '../components/NavProgress'
-import { TopBar } from '../components/TopBar'
+import { AppShell } from '../components/AppShell'
+import { SIDEBAR_COOKIE } from '../components/ui/sidebar-cookie'
+import { logout, selectWorkspace } from '../lib/actions'
 import { countOwnDrafts } from '../lib/requests'
 import { currentWorkspace, payloadClient } from '../lib/session'
 import { appVersion } from '../lib/version'
@@ -14,13 +15,20 @@ export default async function Layout({ children }: { children: ReactNode }) {
   const { user, workspaces, workspace } = await currentWorkspace()
   const [needsYou, drafts] = workspace ? await Promise.all([countNeedsYou(workspace.id), countOwnDrafts(user.id as number, workspace.id)]) : [0, 0]
   return (
-    <>
-      <NavProgress />
-      <TopBar user={user} workspaces={workspaces} workspace={workspace} needsYou={needsYou} drafts={drafts} hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)} />
-      <main className="flex flex-col gap-6 p-8 max-sm:p-4 max-sm:has-[[data-testid=action-bar]]:pb-[calc(var(--next-step-h,132px)+var(--space-4))]">{children}</main>
-      <footer className="small muted p-8 pt-0 max-sm:p-4">
-        <Link href="/release-notes" data-testid="app-version">v{appVersion()}</Link>
-      </footer>
-    </>
+    <AppShell
+      defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'}
+      email={user.email}
+      admin={user.role === 'admin'}
+      version={appVersion()}
+      workspaces={workspaces.map(({ slug, name }) => ({ slug, name }))}
+      current={workspace?.slug}
+      needsYou={needsYou}
+      drafts={drafts}
+      hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)}
+      logout={logout}
+      selectWorkspace={selectWorkspace}
+    >
+      {children}
+    </AppShell>
   )
 }

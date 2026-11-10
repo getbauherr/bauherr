@@ -11,8 +11,8 @@ const CHECKS_UNREADABLE = 'Could not read checks from GitHub right now. Type the
 export const ProductNameFields = () => (
   <>
     <Field name="name" label="Product name" hint="What you call this product on the Board and in Tickets." example="Acme Shop" required />
-    <details className="advanced">
-      <summary className="small">Advanced</summary>
+    <details data-slot="advanced">
+      <summary className="small cursor-pointer text-primary">Advanced</summary>
       <div className="mt-3">
         <Field name="slug" label="Short name" hint="Used in links and in the Knowledge repo folder products/<short name>/. Empty: derived from the name." example="acme-shop" />
       </div>
@@ -69,7 +69,7 @@ export function DeploySections({ data: { product: p, workflow, members, adminApp
           { value: 'webhook', title: 'Bauherr calls my deploy hook', text: 'Bauherr sends one request to your URL, then waits until the staging site answers.' },
         ]} />
         <Field name="stagingUrl" label="Staging site" type="url" hint="Where you try changes before they go live. The Ticket shows an Open staging button." example="https://staging.acme.com" defaultValue={d.stagingUrl} />
-        <div className="only-webhook">
+        <div className="[form:has(input[name=deployMode][value=observe-ci]:checked)_&]:hidden">
           <Field name="deployWebhookUrl" label="Deploy hook URL" type="url" hint="Bauherr POSTs {ticket, sha, stagingUrl} here once per merge." example="https://ci.acme.com/hooks/staging" defaultValue={d.webhookUrl} />
         </div>
       </SettingsSection>
@@ -79,10 +79,10 @@ export function DeploySections({ data: { product: p, workflow, members, adminApp
         <GateLadder plan={workflow.plan} staging={workflow.staging}>
           <ToggleRow name="productionGate" label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. Your own pipeline does the deploy." defaultChecked={p.productionOn} disabled={workflow.forcesProduction} reason={workflow.forcesProduction ? 'On for every Product by the workflow.' : undefined} />
         </GateLadder>
-        <div className="only-off">
+        <div className="[form:has(input[name=productionGate]:checked)_&]:hidden">
           <StatusCallout tone="muted" lead={off!.lead}>{off!.text}</StatusCallout>
         </div>
-        <p className="small muted">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/settings/workflow">See the workflow</Link>.</>}</p>
+        <p className="small text-muted-foreground">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/settings/workflow">See the workflow</Link>.</>}</p>
         <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
         {workflow.staging && <ToggleRow name="expediteSkipStaging" label="Skip staging approval for Hotfixes" help="A Hotfix Ticket moves on from staging without your Accept. The production approval still waits for you." defaultChecked={d.expediteSkipStaging} />}
         <Field name="checkRetries" label="Re-run a failed check once" type="number" min={0} max={1} hint="1: a failed check is re-run once before it sends the change back or stops a release. 0 turns this off." defaultValue={d.checkRetries} />
@@ -102,15 +102,15 @@ export function DeploySections({ data: { product: p, workflow, members, adminApp
       </SettingsSection>
 
 
-      <div className="only-production">
+      <div className="[form:not(:has(input[name=productionGate]:checked))_&]:hidden">
         <SettingsSection id="production" n={num(2)} title="Production" purpose="How Bauherr knows your production deploy finished." advanced={
           <Field name="productionWebhookUrl" label="Also call this URL when I approve" type="url" hint="Optional. Bauherr POSTs {ticket, sha, environment: production} once per approval. Use it if your pipeline cannot listen for the GitHub label." example="https://ci.acme.com/hooks/prod" defaultValue={d.productionWebhookUrl} />
         }>
           <Suspense fallback={null}><LoadedCallouts product={p.id} checks={production} notifiable={notifiable} /></Suspense>
           <ChecksPick product={p.id} name="productionChecks" legend="Which check reports the production deploy?" hint="Bauherr marks the deploy as done when these checks succeed on the approved commit." value={production} addLabel="Add a check that has not run yet" example="deploy-production" missingMeta="not seen recently" />
-          <details className="small muted">
-            <summary>How does my pipeline know when to deploy?</summary>
-            <div className="stack mt-3">
+          <details className="small text-muted-foreground">
+            <summary className="cursor-pointer">How does my pipeline know when to deploy?</summary>
+            <div className="flex flex-col gap-4 mt-3">
               <p>When you approve, Bauherr adds the label <span className="mono">bauherr:approved:production</span> to the issue and, if set, calls your URL. Your pipeline deploys and reports a check on the approved commit. Report it on the commit from the Ticket, not on the latest main. Bauherr watches that check and closes the Ticket when it succeeds.</p>
               <p>GitHub Actions example: a workflow that runs when the label is added and reports <span className="mono">{production.join(', ') || 'deploy-production'}</span> on the Ticket&apos;s merge commit.</p>
               <CopyField block text={productionWorkflow(production.length ? production : ['deploy-production'])} />

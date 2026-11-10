@@ -53,9 +53,9 @@ export function CommentComposer({ ticket, maxBytes, maxImages }: { ticket: numbe
     })
 
   return (
-    <section className="stack" aria-labelledby="comment">
+    <section className="flex flex-col gap-4" aria-labelledby="comment">
       <h2 className="heading" id="comment">Comment</h2>
-      <div className="stack" style={{ maxWidth: 640 }}>
+      <div className="flex flex-col gap-4" style={{ maxWidth: 640 }}>
         <Textarea aria-label="Comment" placeholder="Write a comment; paste or drop images" value={text} onChange={(e) => (setText(e.target.value), setPosted(null))} onPaste={onPaste} onDrop={onDrop} onDragOver={(e) => e.preventDefault()} />
         {shots.length > 0 && (
           <ul className="shots" aria-label="Images to post">
@@ -72,7 +72,7 @@ export function CommentComposer({ ticket, maxBytes, maxImages }: { ticket: numbe
           <input ref={pick} type="file" accept={TYPES.join(',')} multiple hidden aria-label="Pick images" onChange={(e) => (void add(Array.from(e.target.files ?? [])), (e.target.value = ''))} />
           <Button type="button" variant="outline" disabled={shots.length >= maxImages || uploading > 0} onClick={() => pick.current?.click()}>Add image</Button>
           <Button type="button" disabled={pending || uploading > 0 || (!text.trim() && !shots.length)} onClick={send}>Post comment</Button>
-          {uploading > 0 && <span className="small muted" role="status">Uploading…</span>}
+          {uploading > 0 && <span className="small text-muted-foreground" role="status">Uploading…</span>}
         </div>
         {error && <p className="small crit" role="alert">{error}</p>}
         {posted && (

@@ -12,7 +12,7 @@ const signIn = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 
 const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
@@ -21,7 +21,7 @@ const confirmRemove = async (scope: Locator, label: string, done: (timeout: numb
   const holds = (timeout: number) => done(timeout).then(() => true, () => false)
   await expect(async () => {
     if (await holds(500)) return
-    await scope.locator('details.advanced').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
+    await scope.locator('details[data-slot=advanced]').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
     if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
     await confirm.click({ timeout: 2_000, noWaitAfter: true })
     await done(8_000)

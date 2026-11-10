@@ -14,7 +14,7 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Web' }).click()

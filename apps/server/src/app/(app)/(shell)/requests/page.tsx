@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { Button } from '../../components/ui/button'
+import { Badge } from '../../components/ui/badge'
+import { Table } from '../../components/ui/table'
 import { EmptyState } from '../../components/EmptyState'
 import { ago } from '../../lib/format'
 import { loadRequests, REQUESTS_LIMIT } from '../../lib/requests'
@@ -12,16 +13,10 @@ export default async function Requests() {
   const { rows, total, multiProduct } = workspace ? await loadRequests(workspace.id, user.id as number) : { rows: [], total: 0, multiProduct: false }
   return (
     <>
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="title">Requests</h1>
-        <Button asChild>
-          <Link href="/requests/new">New request</Link>
-        </Button>
-      </div>
+      <h1 className="title">Requests</h1>
       {rows.length ? (
         <>
-          <div className="scroll">
-            <table className="table">
+          <Table>
               <thead>
                 <tr className="label">{['Request', ...(multiProduct ? ['Product'] : []), 'Status', 'Updated'].map((h) => <th key={h}>{h}</th>)}</tr>
               </thead>
@@ -29,18 +24,17 @@ export default async function Requests() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      {r.href ? <Link className="link" href={r.href}>{r.title}</Link> : r.title}
-                      {r.ticket && <> {r.ticket.id ? <Link className="link" href={`/tickets/${r.ticket.id}`}>#{r.ticket.number}</Link> : <span>#{r.ticket.number}</span>}</>}
+                      {r.href ? <Link className="text-primary" href={r.href}>{r.title}</Link> : r.title}
+                      {r.ticket && <> {r.ticket.id ? <Link className="text-primary" href={`/tickets/${r.ticket.id}`}>#{r.ticket.number}</Link> : <span>#{r.ticket.number}</span>}</>}
                     </td>
                     {multiProduct && <td>{r.product}</td>}
-                    <td><span className={`chip label ${r.linked ? 'succeeded' : 'queued'}`}>{r.linked ? 'Sent' : 'Draft'}</span></td>
-                    <td className="muted">{ago(r.updatedAt)}</td>
+                    <td><Badge variant={r.linked ? 'ok' : 'neutral'}>{r.linked ? 'Sent' : 'Draft'}</Badge></td>
+                    <td className="text-muted-foreground">{ago(r.updatedAt)}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
-          {total > REQUESTS_LIMIT && <p className="muted small">Showing the newest {REQUESTS_LIMIT}</p>}
+            </Table>
+          {total > REQUESTS_LIMIT && <p className="text-muted-foreground small">Showing the newest {REQUESTS_LIMIT}</p>}
         </>
       ) : (
         <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/requests/new', label: 'New request' }} />

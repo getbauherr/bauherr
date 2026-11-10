@@ -14,7 +14,7 @@ test('a draft saved before logout is reopened from Requests, finished, sent and 
     await page.getByLabel('Email').fill('signout-flow@example.com') // signing out ends every session of the user, so this test has one of its own
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page.locator('header.topbar')).toBeVisible()
+    await expect(page.getByRole('banner')).toBeVisible()
   }
   const say = async (text: string, reply: string) => {
     await page.getByLabel(/Describe your request|Your answer/).fill(text)

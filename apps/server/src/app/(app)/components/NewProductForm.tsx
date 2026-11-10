@@ -32,13 +32,13 @@ export function NewProductForm({ connections }: { connections: { id: number; nam
       {connections.length === 1 ? (
         <>
           <input type="hidden" name="connection" value={connection} />
-          <p className="small">Account <span className="label-strong">{connections[0]!.name}</span></p>
+          <p className="small">Account <span className="font-medium text-foreground">{connections[0]!.name}</span></p>
         </>
       ) : (
         <Field name="connection" label="Account" hint="The GitHub or GitLab account Bauherr uses to read and write this repository." options={connections.map((c) => [String(c.id), c.name])} defaultValue={String(connection)} onChange={(e) => setConnection(Number(e.target.value))} />
       )}
       {listing === 'loading' ? (
-        <p role="status" className="small muted">Reading repositories...</p>
+        <p role="status" className="small text-muted-foreground">Reading repositories...</p>
       ) : (
         <>
           {Array.isArray(listing) && listing.length > 0 && (
@@ -49,8 +49,8 @@ export function NewProductForm({ connections }: { connections: { id: number; nam
           )}
         </>
       )}
-      <details className="advanced">
-        <summary className="small">Advanced</summary>
+      <details data-slot="advanced">
+        <summary className="small cursor-pointer text-primary">Advanced</summary>
         <div className="mt-3">
           <Field name="slug" label="Short name" hint="Used in links and in the Knowledge repo folder products/<short name>/. It cannot change later." example="acme-shop" value={slug} onChange={(e) => (setSlugEdited(true), setSlug(e.target.value))} />
         </div>
