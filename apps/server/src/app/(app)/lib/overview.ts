@@ -4,7 +4,7 @@ import type { Payload } from 'payload'
 import { hasProductionChecks } from '../../../lib/mode'
 import { nextStep } from '../../../lib/next-step'
 import { payloadClient } from './session'
-import { type Stage, needsYou, stageOf } from './needs-you'
+import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere, plainStatus } from './epics'
 import { wipCounts } from '../../../lib/wip'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
@@ -107,7 +107,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
     const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
-    const need = isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null
+    const need = needsOf(t, run, !hasProductionChecks(byId.get(t.product) ?? {}))
     return {
       id: t.id,
       number: t.number,
@@ -122,8 +122,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      // The stored count of unanswered critical decisions (kept by plan submit, answers and the gate sweep) turns "Approve plan" into "Answer decisions" without a forge call.
-      needsYou: need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need,
+      needsYou: need,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ ticket: t, need: null, run: null, waiting: waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,

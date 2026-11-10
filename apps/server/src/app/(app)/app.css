@@ -1,3 +1,5 @@
+/* next/font (layout.tsx) self-hosts the families the generated tokens name; same stacks, loaded fonts first. */
+:root{--font-sans:var(--font-archivo),"Archivo","Helvetica Neue",Arial,sans-serif;--font-mono:var(--font-plex-mono),"IBM Plex Mono",ui-monospace,Menlo,monospace}
 *{box-sizing:border-box}
 body{margin:0;background:var(--surface-000);color:var(--ink);font:400 15px/22px var(--font-sans)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -72,3 +74,9 @@ a.link{color:var(--accent)}
   .ptable td{padding:var(--space-1) 0;border:0}
   .ptable td[data-label]::before{content:attr(data-label) ': ';color:var(--ink-muted)}
 }
+a:has(>[data-pending="true"]){animation:link-pulse 1s ease-in-out infinite}
+@keyframes link-pulse{50%{opacity:.5}}
+#nav-progress{position:fixed;inset:0 0 auto 0;z-index:50;height:2px;background:var(--accent);transform:scaleX(0);transform-origin:left;opacity:0;pointer-events:none;transition:opacity var(--duration-state) var(--ease-out)}
+#nav-progress[data-active="true"]{opacity:1;animation:nav-progress 8s var(--ease-out) forwards}
+@keyframes nav-progress{to{transform:scaleX(.9)}}
+@media (prefers-reduced-motion:reduce){a:has(>[data-pending="true"]){animation:none;opacity:.5}#nav-progress[data-active="true"]{animation:none;transform:scaleX(1)}}
