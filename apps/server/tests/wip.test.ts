@@ -333,7 +333,7 @@ describe('limits', () => {
 
   it('the migration sets the defaults on existing Workspaces', async () => {
     const db = payload.db.drizzle
-    await db.execute(sql`ALTER TABLE "tickets" DROP COLUMN "waiting_for"; ALTER TABLE "workspaces" DROP COLUMN "wip_limits"; DROP TYPE "public"."enum_tickets_waiting_for"`)
+    await db.execute(sql`ALTER TABLE "tickets" DROP COLUMN "waiting_for"; ALTER TABLE "workspaces" DROP COLUMN "wip_limits"; DROP TYPE IF EXISTS "public"."enum_tickets_waiting_for"`)
     await (await import('../src/migrations/20261103_180000_wip_limits')).up({ db } as never)
     const rows = (await db.execute(sql`SELECT "wip_limits" AS w FROM "workspaces"`)).rows
     expect(rows.length).toBeGreaterThan(0)
