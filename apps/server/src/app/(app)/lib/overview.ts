@@ -8,7 +8,7 @@ import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere, plainStatus } from './epics'
 import { wipCounts } from '../../../lib/wip'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
-import { byKind, DEFAULT, wipStages } from '../../../lib/workflow'
+import { byKind, DEFAULT, is, wipStages } from '../../../lib/workflow'
 
 export type RunRow = {
   id: number
@@ -178,7 +178,7 @@ export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | n
     payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
     wipCounts(payload, workspace),
   ])
-  if (!subs.length && ticket.stage !== 'parent') return null
+  if (!subs.length && !is(DEFAULT(), ticket.stage, 'container')) return null
   const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }])))
   return epicOf(ticket, subs, new Map(rows.map((r) => [r.id, r])))
 }
