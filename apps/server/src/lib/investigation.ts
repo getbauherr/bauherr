@@ -84,7 +84,7 @@ const completeInvestigation = async (payload: Payload, t: Doc, run: Doc): Promis
   let did = false
   if (fresh.stage !== plan) {
     did = true
-    await moveStage(payload, ts, fresh, plan)
+    await moveStage(payload, ts, fresh, plan, 'investigation')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: plan, waitingFor: null, waitingReason: REASON }, overrideAccess: true })
   }
   const line = `Investigation Run #${run.id}`

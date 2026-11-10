@@ -52,7 +52,7 @@ const completeMove = async (payload: Payload, t: Doc, stage: string): Promise<vo
   if (t.stage !== stage) {
     const { tickets: ts } = await forgeOf(payload, id(t.product))
     if (is(DEFAULT(), stage, 'plan') && (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) await ts.removeLabels(String(t.number), [NEEDS_REFINEMENT])
-    await moveStage(payload, ts, t, stage)
+    await moveStage(payload, ts, t, stage, 'pulled')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage }, ...o })
   }
 }

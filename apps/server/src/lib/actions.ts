@@ -17,6 +17,7 @@ import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from 
 
 export { MAX_REVIEW_ROUNDS }
 import { ACTIVE, RELEASED_BY, abandonRun, startReviewIfReady, startRunIfNeeded } from '../jobs'
+import { record } from './history'
 import { moveStage, stageOf } from './stage-move'
 import { kindOfRun } from './stage-text'
 import { byKind, DEFAULT, is, liveStages, nameOf, repairable } from './workflow'
@@ -130,7 +131,7 @@ export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: Tic
   if (r.kind === 'stage') {
     if (!repairable(DEFAULT()).includes(r.stage)) throw new Error(`unknown stage ${r.stage}`)
     const { ts } = await sourceOf(payload, t)
-    await moveStage(payload, ts, t, r.stage)
+    await moveStage(payload, ts, t, r.stage, 'repair')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: r.stage, waitingFor: null, waitingReason: null }, overrideAccess: true })
   } else if (r.kind === 'clear-waiting') {
     await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, waitingReason: null }, overrideAccess: true })
@@ -265,7 +266,7 @@ const enterReview = async (payload: Payload, t: Doc) => {
   const review = nameOf(DEFAULT(), 'review')
   const { ts } = await sourceOf(payload, t)
   const entered = await enterStage(payload, t, review, async () => {
-    await moveStage(payload, ts, t, review)
+    await moveStage(payload, ts, t, review, 'request_review')
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: review, reviewWaitingSince: null }, overrideAccess: true })
   })
   if (entered === 'waiting') return { stage: t.stage as string, waiting: review }
@@ -287,7 +288,7 @@ export const parkForChecks = async (payload: Payload, t: Doc, mr: Mr, gate: { st
     await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
     return
   }
-  await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'))
+  await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'), 'checks_failed')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null, waitingFor: 'checks', waitingReason: null, reviewWaitingSince: now() }, overrideAccess: true })
 }
 
@@ -344,8 +345,12 @@ export const watchChecks = async (payload: Payload, at = Date.now()): Promise<nu
   return moved
 }
 
-const touch = (payload: Payload, user: Doc, t: Doc, kind: string) =>
-  payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at: now() }, overrideAccess: true })
+/** Records the human touch; a gate action also ends the Ticket's wait for the owner in its history. */
+const touch = async (payload: Payload, user: Doc, t: Doc, kind: string) => {
+  const row = await payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at: now() }, overrideAccess: true })
+  if (/^(approve:plan|accept:staging|request-changes|review-cap:grant)/.test(kind)) await record(payload, t.id, { phase: 'queued', executor: 'human', actor: personOf(user), cause: `gate:${kind}` })
+  return row
+}
 
 /** Whether the Ticket has an open critical decision: it holds every forward move. */
 export const holdsRefine = async (ts: TicketSource, n: string) => openCritical(await ts.listComments(n)).length > 0
@@ -435,13 +440,14 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<string | nu
     await ts.addLabels(n, [NEEDS_REFINEMENT])
     await ts.removeLabels(n, [stageLabel(nameOf(wf, 'plan'))])
     await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'triage'), ...(await covered(ts, n)) }, ...ro })
+    await record(payload, t.id, { cause: 'advancePlan:refine' })
     return 'refine'
   }
   const parent = await spawnSubTickets(payload, t)
   const build = nameOf(wf, 'build')
   if (!parent) {
     const entered = await enterStage(payload, t, build, async () => {
-      await moveStage(payload, ts, t, build)
+      await moveStage(payload, ts, t, build, 'plan_accepted')
       await payload.update({ collection: 'tickets', id: t.id, data: { stage: build }, ...ro })
     })
     if (entered !== 'moved') return null
@@ -522,7 +528,7 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
       if (!(await ts.get(me.id)).blockedBy.includes(after.id)) await ts.addBlockedBy(me.id, after.id)
       await payload.update({ collection: 'tickets', id: me.docId, data: { blockedBy: [after.docId] }, ...ro })
     }
-    await moveStage(payload, ts, parent, container)
+    await moveStage(payload, ts, parent, container, 'split')
     await payload.update({ collection: 'tickets', id: parent.id, data: { stage: container }, ...ro })
     return true
   })
@@ -542,7 +548,7 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
       const kids = await ts.listSubTickets(n)
       if (!kids.length || kids.some((k) => k.state !== 'closed')) continue
       if ((await ts.get(n)).state !== 'closed') await ts.close(n, 'completed')
-      await moveStage(payload, ts, p, done)
+      await moveStage(payload, ts, p, done, 'children_done')
       await payload.update({ collection: 'tickets', id: p.id, data: { stage: done, state: 'closed' }, ...ro })
       await ts.comment(n, `All sub-tickets are closed:\n${kids.map((k) => `- #${k.number} ${k.title}`).join('\n')}`)
       closed++
@@ -636,7 +642,7 @@ const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc) =>
   if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await ts.listComments(n)).length) return
   await enterStage(payload, t, nameOf(wf, 'plan'), async () => {
     await ts.removeLabels(n, [NEEDS_REFINEMENT])
-    await moveStage(payload, ts, t, nameOf(wf, 'plan'))
+    await moveStage(payload, ts, t, nameOf(wf, 'plan'), 'answered')
   })
 }
 
@@ -720,7 +726,7 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
   else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
-  await moveStage(payload, src.ts, t, nameOf(wf, 'build'))
+  await moveStage(payload, src.ts, t, nameOf(wf, 'build'), 'request_changes')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
   await clearApprovalLabel(payload, src.ts, src.n)
   await touch(payload, user, t, 'request-changes:staging')
@@ -853,7 +859,7 @@ const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: stri
   else await ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
   await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'), escalation ? { escalation } : {})
-  await moveStage(payload, ts, t, nameOf(wf, 'build'))
+  await moveStage(payload, ts, t, nameOf(wf, 'build'), 'back_to_build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null }, overrideAccess: true })
 }
 
@@ -912,7 +918,7 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
-  await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'))
+  await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'), 'review_cap_grant')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build') }, overrideAccess: true })
   await touch(payload, user, t, 'review-cap:grant')
   return { stage: nameOf(wf, 'build'), run: run.id as TicketId }
@@ -926,7 +932,7 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
     sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
-  await moveStage(payload, mr.tickets, t, nameOf(wf, 'triage'))
+  await moveStage(payload, mr.tickets, t, nameOf(wf, 'triage'), 'review_cap_stop')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'triage') }, overrideAccess: true })
   const note = a.note?.trim()
   await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}`)
@@ -975,6 +981,7 @@ export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (stale.length) await ts.removeLabels(n, stale)
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${t.id}`)
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: null, reviewState: null, triagedAt: null, triageAttempts: 0, labels: ((t.labels ?? []) as string[]).filter((l) => stageOf([l]) === null) }, overrideAccess: true })
+  await record(payload, t.id, { cause: 'backToBacklog', executor: 'human', actor: personOf(user) })
   await ts.comment(n, `Sent back to the backlog by ${user.email}.`)
   await touch(payload, user, t, 'back-to-backlog')
   return { stage: nameOf(wf, 'triage') }
@@ -1303,7 +1310,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   if (t.expedite && !current.includes(EXPEDITE_LABEL) && (await laneOn(payload, id(doc.workspace)))) await ts.addLabels(n, [EXPEDITE_PROPOSED])
   if (t.outcome === 'plan') {
     const entered = await enterStage(payload, doc, nameOf(wf, 'plan'), async () => {
-      await moveStage(payload, ts, doc, nameOf(wf, 'plan'))
+      await moveStage(payload, ts, doc, nameOf(wf, 'plan'), 'triage')
     })
     if (entered === 'waiting') await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   } else {

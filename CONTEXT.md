@@ -118,6 +118,26 @@ A reference from a Ticket to an asset kept elsewhere (a document, a prototype, a
 A file stored with a Ticket in the Ticket source, such as a screenshot; only available where the Ticket source supports it.
 _Avoid_: Upload, asset (an asset lives elsewhere and is Linked)
 
+### History
+
+**Ticket event**:
+One row of a Ticket's append-only history: the moment its stage or phase changed, with the cause, the Run and the Executor.
+_Avoid_: Audit entry, transition
+
+**Phase**:
+What a Ticket's time is spent on while in a stage: working (a Run runs), queued (waiting for the factory), human (waiting for the owner), ci (waiting for checks, the merge queue or a deploy), closed.
+_Avoid_: Status, state
+
+**Lead time**:
+From a Ticket's first event to its first closed event.
+
+**Cycle time**:
+From a Ticket's first event outside the triage stage to its first closed event.
+
+**Executor**:
+Who did a step: a session (an agent session), the runner (the autonomous Runner), CI, a human or the factory itself; a Run records its executor, client, model and provider.
+_Avoid_: Agent (it names the model or client, not who executed)
+
 ### Work
 
 **Run**:
