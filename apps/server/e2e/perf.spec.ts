@@ -45,6 +45,7 @@ const targets: Target[] = [
       ['Products', '/settings/products', 'Products'],
       ['AI usage', '/settings/usage', 'AI usage'],
       ['Board & WIP', '/settings/workflow', 'Board & WIP'],
+      ['Templates', '/settings/templates', 'Templates'],
       ['Connections', '/settings/connections', 'Connections'],
       ['Agent keys', '/settings/api-key', 'Agent keys'],
       ['Audit', '/settings/audit', 'Audit'],

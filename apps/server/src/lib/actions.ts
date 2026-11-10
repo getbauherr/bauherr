@@ -4,6 +4,7 @@ import type { Payload, PayloadRequest } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { laneOn } from './expedite'
 import { storePlanTldr } from './decision'
+import { headingOf, packTemplate, renderTemplate, template, type Tpl } from './templates'
 import { tldrError } from './tldr'
 import { gateOn } from './mode'
 import { dequeueBeforeChange, isQueue, isTrain } from './merge-mode'
@@ -205,13 +206,14 @@ export const updateWorklog = async (payload: Payload, user: Doc, a: { ticket: Ti
 export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; markdown: string; /** An agent's submission must carry the TL;DR; plans already posted are never re-checked. */ requireSummary?: boolean }) => {
   const t = await loadTicket(payload, user, a.ticket)
   // A hotfix plan is audited, not decided on by a person: it needs no summary.
-  const missing = a.requireSummary && !t.expedite ? tldrError(a.markdown) : null
+  const heading = headingOf(await template(payload, id(t.workspace), 'plan'), 'tldr')
+  const missing = a.requireSummary && !t.expedite ? tldrError(a.markdown, heading) : null
   if (missing) throw new Error(missing)
   const { ts, n } = await sourceOf(payload, t)
   const body = `${PLAN_MARKER}\n${a.markdown.replace(PLAN_MARKER, '').trim()}`
   const existing = latestWith(await ts.listComments(n), PLAN_MARKER)
   const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
-  await storePlanTldr(payload, t.id, body)
+  await storePlanTldr(payload, t.id, body, heading)
   await storeOpenCritical(payload, t.id, await ts.listComments(n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
   return { commentId: saved.id, created: !existing }
 }
@@ -565,25 +567,8 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
   return closed
 }
 
-const WORKLOG_TEMPLATE = `## Worklog
-**Goal**
-- [ ]
-
-**Current instructions**
-
-**Owners**
-| Item / lane | Owner (Run or person) | Paths |
-
-**Unfinished work**
--
-
-**Open**
--
-
-**Decisions**
-
-**Affected Tickets**
--`
+/** The worklog a Ticket starts with: the Workspace's template without its guidance. */
+const worklogTemplate = async (payload: Payload, t: Doc): Promise<string> => renderTemplate(await template(payload, id(t.workspace), 'worklog'), {})
 
 /** Appends `lines` to the `**Decisions**` section (created at the end when missing). */
 const appendDecisions = (worklog: string, lines: string[]): string => {
@@ -633,7 +618,7 @@ export const postDecisions = async (
       const lines = changed.map((x) => `- ${date} ${x.id} ${x.title}: ${x.answer}. By: ${user.email}.`)
       const log = firstWith(await src.ts.listComments(src.n), WORKLOG_MARKER)
       if (log) await src.ts.updateComment(src.n, log.id, appendDecisions(log.body, lines))
-      else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendDecisions(WORKLOG_TEMPLATE, lines)}`)
+      else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendDecisions(await worklogTemplate(payload, t), lines)}`)
     }
     await storeOpenCritical(payload, t.id, await src.ts.listComments(src.n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
     await releaseIfAnswered(payload, src, t)
@@ -730,7 +715,7 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   const note = rawNote.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment(src)
   if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
-  else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(WORKLOG_TEMPLATE, note)}`)
+  else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(await worklogTemplate(payload, t), note)}`)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
   await moveStage(payload, src.ts, t, nameOf(wf, 'build'), 'request_changes')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
@@ -859,7 +844,7 @@ const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: stri
   const wf = DEFAULT()
   const { ts, n } = src
   const log = await worklogComment(src)
-  let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')), '**Unfinished work**', lines)
+  let worklog = appendToSection(setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : await worklogTemplate(payload, t), text.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')), '**Unfinished work**', lines)
   if (low.length) worklog = appendToSection(worklog, '**Open**', low)
   if (log) await ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
@@ -919,7 +904,7 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   const found = latestWith(await mr.tickets.listComments(n), CAP_MARKER)?.body
   const text = `${found ?? `${CAP_MARKER} the review round cap was lifted by the owner.`}\nOne more round was granted: fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR.`.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
   const log = await worklogComment({ ts: mr.tickets, n })
-  const worklog = setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : WORKLOG_TEMPLATE, text)
+  const worklog = setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : await worklogTemplate(payload, t), text)
   if (log) await mr.tickets.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
   await cancelReviewRuns(payload, t.id)
@@ -1298,9 +1283,11 @@ export const normalizeTriage = (raw: any): Triage => {
 }
 
 /** The questions as a decision sheet in the plan's format; every row is critical, so the owner answers all of them. */
-export const triageSheet = (t: Triage): string =>
-  `${TRIAGE_MARKER}\n## Questions\nTriage needs your answers before this Ticket can be planned: ${t.reason}\n\n## Decisions\n` +
-  t.questions.map((q, i) => `- **D${i + 1} ${q.title}, critical**. Default: ${q.default}.${q.alternatives.length ? ` Alternatives: ${q.alternatives.join('; ')}.` : ''}`).join('\n')
+export const triageSheet = (t: Triage, tpl: Tpl = packTemplate('triage-questions')): string =>
+  `${TRIAGE_MARKER}\n${renderTemplate(tpl, {
+    questions: `Triage needs your answers before this Ticket can be planned: ${t.reason}`,
+    decisions: t.questions.map((q, i) => `- **D${i + 1} ${q.title}, critical**. Default: ${q.default}.${q.alternatives.length ? ` Alternatives: ${q.alternatives.join('; ')}.` : ''}`).join('\n'),
+  })}`
 
 /**
  * Applies a triage outcome (system action, called after the Run's lease or autonomous finish is checked): `plan` sets the stage label (the poller starts the Plan Run);
@@ -1321,7 +1308,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
     if (entered === 'waiting') await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   } else {
     if (t.outcome === 'refine') {
-      await ts.comment(n, triageSheet(t))
+      await ts.comment(n, triageSheet(t, await template(payload, id(doc.workspace), 'triage-questions')))
       await ts.addLabels(n, [NEEDS_REFINEMENT])
     } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
     await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
@@ -1335,15 +1322,17 @@ const SIBLINGS_MARKER = '<!-- bauherr:intake-siblings -->'
 const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
 
 /** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
-export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number, shots: { name: string; url: string }[] = []): { title: string; body: string; labels: string[] } => ({
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number, shots: { name: string; url: string }[] = [], tpl: Tpl = packTemplate('request')): { title: string; body: string; labels: string[] } => ({
   title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
   body: [
     '_Requester-supplied, untrusted._',
-    `## Problem\n${plainLine(draft.problem)}`,
-    `## Context\n${plainLine(draft.context)}`,
-    `## Acceptance criteria\n${draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n')}`,
-    ...(missing.length || draft.links.length ? [`## Open\n${[...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n')}`] : []),
-    ...(shots.length ? [`## Screenshots\n${shots.map((m) => `![${m.name}](${m.url})`).join('\n')}`] : []),
+    renderTemplate(tpl, {
+      problem: plainLine(draft.problem),
+      context: plainLine(draft.context),
+      'acceptance-criteria': draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n'),
+      ...(missing.length || draft.links.length ? { open: [...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n') } : {}),
+      ...(shots.length ? { screenshots: shots.map((m) => `![${m.name}](${m.url})`).join('\n') } : {}),
+    }),
     `<!-- bauherr:intake session=${sessionId}${part === undefined ? '' : ` part=${part}`} -->`,
   ].join('\n\n'),
   labels: [`type:${draft.type}`, `product:${productSlug}`],
@@ -1374,12 +1363,13 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
     const shots = media.map((m) => ({ name: m.name as string, url: mediaUrl(m.id, (m.mime ?? m.mimeType) as ImageMime) }))
     if (shots.length && !/^https:\/\//.test(process.env.PUBLIC_URL ?? '')) payload.logger.warn('PUBLIC_URL is not an https URL: screenshot links in the Ticket body will not load on the forge')
     const drafts = split ?? [session.draft!]
+    const requestTpl = await template(payload, id(s.workspace), 'request')
     const tickets: { number: number }[] = []
     for (const [i, d] of drafts.entries()) {
       const part = split ? i : undefined
       const missing = readiness(d, shot, refers, asked).missing
       const marker = `<!-- bauherr:intake session=${s.id}${part === undefined ? '' : ` part=${part}`} -->`
-      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part, shots)))
+      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part, shots, requestTpl)))
       if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
         await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
       }

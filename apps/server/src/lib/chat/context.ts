@@ -20,7 +20,7 @@ const o = { depth: 0, overrideAccess: true } as const
 const PAGES: Record<string, string> = {
   '/': 'Workflow', '/inbox': 'Inbox', '/insights': 'Insights', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
   '/settings': 'Settings', '/settings/api-key': 'Settings: API key', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
-  '/settings/usage': 'Settings: Usage', '/settings/workflow': 'Settings: Board & WIP', '/settings/workspace': 'Settings: Workspace',
+  '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/settings/workflow': 'Settings: Board & WIP', '/settings/workspace': 'Settings: Workspace',
 }
 /** One line of text others wrote: no line breaks or markup that could pose as page structure. */
 const line = (s: unknown, n = 120): string => String(s ?? '').replace(/\s+/g, ' ').replace(/[<>`]/g, '').trim().slice(0, n)

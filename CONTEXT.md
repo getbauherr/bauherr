@@ -86,6 +86,9 @@ A point where the workflow waits for a human (Triage's questions, a `gate: human
 **Decision**:
 What one Checkpoint asks of a person, prepared the same way every time (ask, recommendation, at most three facts, options, what happens next) and stored on the Ticket; the Inbox lists exactly the Tickets that have one.
 
+**Template**:
+The markdown structure of one text written for people (request, plan, decision, review, staging summary, release note, worklog, triage questions): shipped in the pack, overridable per Workspace, handed to agents with their skill.
+
 **TL;DR**:
 The leading section of a plan (`Decision:`, `Recommendation:`, `Why:`, `Risk:`) the plan Checkpoint's Decision is made from.
 

@@ -4,6 +4,7 @@ import { type Need, NEEDS } from './needs-you'
 import { productionGateOn } from './mode'
 import { cas, id } from './release'
 import { bullets, section } from './summary'
+import { type Tpl, packTemplate, renderTemplate } from './templates'
 import { parseTldr, type PlanTldr } from './tldr'
 
 export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'open'
@@ -265,3 +266,13 @@ export const storeStagingTldr = (payload: Payload, ticket: number | string, tldr
   const json = JSON.stringify(tldr)
   return cas(payload, ticket, sql`"staging_tldr" = ${json}::jsonb`, sql`"staging_tldr" IS DISTINCT FROM ${json}::jsonb`)
 }
+
+/** The decision as the markdown of the `decision` template: the Comment that notifies a person, and what the chat reads. */
+export const decisionMarkdown = (d: Decision, tpl: Tpl = packTemplate('decision')): string =>
+  renderTemplate(tpl, {
+    decision: d.ask,
+    ...(d.recommendation ? { recommendation: d.recommendation } : {}),
+    ...(d.why.length ? { why: d.why.map((w) => `- ${w}`).join('\n') } : {}),
+    options: d.options.map((o) => `- **${o.label}**: ${o.effect}`).join('\n'),
+    next: d.next,
+  })

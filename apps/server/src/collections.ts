@@ -10,6 +10,7 @@ import { wipLimitsError } from './lib/wip-limits'
 import { runKind, runStageError, waitingForError } from './lib/stage-text'
 import { DEFAULT, defaultWip } from './lib/workflow'
 import { chatCollections } from './lib/chat/collections'
+import { TEMPLATE_NAMES } from './lib/template-text'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 
@@ -662,6 +663,11 @@ export const collections: CollectionConfig[] = [
     json('results'),
     text('reason'),
   ]),
+  col('templates', [
+    select('name', [...TEMPLATE_NAMES], { required: true }),
+    { name: 'body', type: 'textarea', required: true, admin: { description: 'The Workspace\'s version of the pack template `pack/templates/<name>.md`, without front matter. Absent = the pack default.' } },
+    text('updatedBy'),
+  ], { indexes: [{ fields: ['workspace', 'name'], unique: true }] }),
   col('check_flakes', [
     rel('ticket', 'tickets', { required: true }),
     text('checkName', { required: true }),

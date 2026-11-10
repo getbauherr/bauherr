@@ -14,6 +14,7 @@ import { webOrigin, type ConnectionInput } from './connection'
 import { tierModels } from './gateway'
 import { forgeOf, id } from './release'
 import { storePlanTldr } from './decision'
+import { SKILL_TEMPLATES, forAgent, headingOf, template } from './templates'
 import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
 import { byKind, DEFAULT, is } from './workflow'
@@ -109,6 +110,7 @@ export const buildRunCtx = async (
 
   return {
     stageNames: { review: byKind(wf, 'review')?.name },
+    templates: Object.fromEntries(await Promise.all(Object.entries(SKILL_TEMPLATES).filter(([skill]) => skill !== 'intake').map(async ([skill, names]) => [skill, await Promise.all(names.map(async (n) => { const t = await template(payload, workspace, n); return { title: t.title, body: forAgent(t.body) } }))] as const))),
     run: { id: String(run.id), stage: run.stage, kind: kind as RunCtx['run']['kind'], goal: { statements }, ...caps, tier: escalated ? 'strong' : kind === 'review' || kind === 'scan' ? 'standard' : 'cheap' },
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
@@ -129,7 +131,7 @@ export const buildRunCtx = async (
       openPullRequest: async (p) => backend.forge.openPullRequest(p.repo, p),
       comment: async (number, body) => {
         await tickets.comment(String(number), body)
-        if (body.startsWith(PLAN_MARKER)) await storePlanTldr(payload, ticket.id, body)
+        if (body.startsWith(PLAN_MARKER)) await storePlanTldr(payload, ticket.id, body, headingOf(await template(payload, workspace, 'plan'), 'tldr'))
       },
       upsertWorklog: async (number, body) => {
         const existing = lastWith(WORKLOG_MARKER)

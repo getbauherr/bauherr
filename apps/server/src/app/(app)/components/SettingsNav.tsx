@@ -10,7 +10,7 @@ type Entry = [label: string, href: string]
 /** Second-level Settings navigation: a column beside the page (a scrolling row on phones) built from the sidebar's menu styles. */
 export function SettingsNav({ admin }: { admin: boolean }) {
   const path = usePathname()
-  const current = (href: string) => path === href || (href === '/settings/products' && path.startsWith(`${href}/`))
+  const current = (href: string) => path === href || (['/settings/products', '/settings/templates'].includes(href) && path.startsWith(`${href}/`))
   const link = ([label, href]: Entry) => (
     <SidebarMenuItem key={href} className="max-sm:shrink-0">
       <SidebarMenuSubButton asChild isActive={current(href)} className="h-9 max-sm:whitespace-nowrap">
@@ -22,6 +22,7 @@ export function SettingsNav({ admin }: { admin: boolean }) {
     <nav aria-label="Settings" className="max-sm:overflow-x-auto">
       <SidebarMenu className="max-sm:flex-row">
         {settingsOwner.map((e) => link(e))}
+        {!admin && link(['Templates', '/settings/templates'])}
         {!admin && link(['API key', '/settings/api-key'])}
         {admin && (
           <li className="max-sm:shrink-0">

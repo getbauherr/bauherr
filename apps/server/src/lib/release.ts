@@ -15,6 +15,7 @@ import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 import { stagingTldrOf, storeStagingTldr } from './decision'
+import { headingOf, noteTemplates, template } from './templates'
 import { DEFAULT, byKind, is, nameOf } from './workflow'
 
 type Doc = Record<string, any>
@@ -68,6 +69,7 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
     const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).filter((x): x is number => x !== null))]
     const mrs = await Promise.all(numbers.map((num) => backend.forge.getPullRequest(repo, num)))
     const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
+    const tpl = await template(payload, id(t.workspace), 'staging-summary')
     const summary = buildStagingSummary({
         ticket: { number: t.number, title: t.title, url: t.url },
         plan: latestWith(comments, PLAN_MARKER)?.body ?? null,
@@ -76,9 +78,9 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
         evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
         stagingUrl: product.stagingUrl || null,
         mergeSha,
-      })
+      }, tpl)
     await ts.comment(n, summary)
-    await storeStagingTldr(payload, t.id, stagingTldrOf(summary))
+    await storeStagingTldr(payload, t.id, stagingTldrOf(summary, { whatYouGet: headingOf(tpl, 'what-you-get'), found: headingOf(tpl, 'found') }))
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: 'on_staging' }, overrideAccess: true })
   await record(payload, t.id, { cause: 'release:on_staging' })
@@ -482,8 +484,9 @@ export const publishRelease = async (payload: Payload, productId: number | strin
   if (!release?.body.includes(marker)) {
     notes = batch[0]!.releaseNotes
     if (!notes || batch.some((t) => t.releaseNotes !== notes)) {
-      const items = await Promise.all(batch.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: (await ts.get(String(t.number))).labels }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null)))
-      const deterministic = renderNotes(items)
+      const tpls = await noteTemplates(payload, id(product.workspace))
+      const items = await Promise.all(batch.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: (await ts.get(String(t.number))).labels }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null, tpls.summary)))
+      const deterministic = renderNotes(items, tpls.note)
       const ws = (await payload.findByID({ collection: 'workspaces', id: id(product.workspace), ...o })) as Doc
       notes = process.env.GATEWAY_URL ? await rewrite(deterministic, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user)) : deterministic
       await Promise.all(batch.map((t) => payload.update({ collection: 'tickets', id: t.id, data: { releaseNotes: notes }, ...o })))
