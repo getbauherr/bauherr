@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 })
 
 const open = async (page: import('@playwright/test').Page, title: string) => {
@@ -64,7 +64,7 @@ test('Details shows the merge commit to an Admin only', async ({ page }) => {
   await page.getByLabel('Email').fill('member@example.com')
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
   await open(page, 'Ship the export header')
   await page.getByText('Details', { exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
@@ -74,7 +74,7 @@ test('Details shows the merge commit to an Admin only', async ({ page }) => {
 test('dependencies are visible on cards and the Ticket page', async ({ page }) => {
   const row = page.locator('.card', { hasText: 'Blocked: add the invoice filter' }).first()
   await expect(row.locator('[data-status=blocked]')).toHaveText('Blocked')
-  await expect(row.locator('[data-status=blocked]')).toHaveAttribute('title', 'Blocked by #8')
+  await expect(row.getByTestId('status-detail')).toHaveText('by #8')
   await row.getByRole('link', { name: 'Blocked: add the invoice filter' }).click()
   await page.getByText('Details', { exact: true }).click()
   await expect(page.getByText('Blocked by #8 Blocker: migrate the invoice table')).toBeVisible()

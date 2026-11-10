@@ -4,7 +4,7 @@ export type NavItem = { href: string; label: string; Icon: typeof Ticket; match:
 
 /** Sidebar destinations of the main group; Knowledge needs a Knowledge repo, Runs an Admin. */
 export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admin: boolean }): NavItem[] => [
-  { href: '/', label: 'Tickets', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') },
+  { href: '/', label: 'Workflow', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') },
   { href: '/requests', label: 'Requests', Icon: MessageSquare, match: (p) => p.startsWith('/requests') },
   { href: '/releases', label: 'Releases', Icon: Package, match: (p) => p.startsWith('/releases') },
   ...(hasKnowledge ? [{ href: '/knowledge', label: 'Knowledge', Icon: BookOpen, match: (p: string) => p.startsWith('/knowledge') }] : []),

@@ -146,19 +146,19 @@ test('the Ticket page Runs table shows Run and Duration to an Admin only and nev
   }
 })
 
-test('WIP limits: set in Settings > Board & WIP, shown in the Board header, a waiting card says why', async ({ page }) => {
+test('WIP limits: set in Settings > Board & WIP, shown in the Workflow list heading, a waiting Ticket says why', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
   await page.getByLabel(/^Build/).fill('1')
   await page.getByRole('button', { name: 'Save' }).first().click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 
-  await page.goto('/?view=board')
+  await page.goto('/')
   await expect(page.locator('section.col[data-stage="build"] h2')).toContainText(/\d+ \/ 1/)
-  const waiting = page.locator('section.col[data-stage="plan"] [data-status=waiting]').first()
-  await expect(waiting).toHaveText('Waiting')
-  await expect(waiting).toHaveAttribute('title', /Queued for Build: Build is full \(\d+\/1\)\. Starts by itself\./)
-  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/board-waiting-1280x800.png` })
+  const waiting = page.locator('section.col[data-stage="plan"] .card', { hasText: 'Waiting for a Build slot' })
+  await expect(waiting.locator('[data-status=queued]')).toHaveText('Queued')
+  await expect(waiting.getByTestId('status-detail')).toHaveText(/Build is full \(\d+\/1\)/)
+  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/workflow-waiting-1280x800.png` })
   await page.getByRole('link', { name: 'Waiting for a Build slot' }).click()
   await expect(page.getByTestId('action-bar').getByTitle(/Queued for Build: Build is full/)).toHaveCount(1)
 
@@ -216,13 +216,13 @@ test('every Settings nav link opens a page whose heading matches, none is an anc
   }
 })
 
-test('the Board WIP count links to the WIP limits section', async ({ page }) => {
+test('the Workflow list WIP count links to the WIP limits section', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
   await page.getByLabel(/^Build/).fill('1')
   await page.getByRole('button', { name: 'Save' }).first().click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-  await page.goto('/?view=board')
+  await page.goto('/')
   await page.locator('section.col[data-stage="build"] h2 a').click()
   await expect(page).toHaveURL(/\/settings\/workflow#wip$/)
   await expect(page.getByRole('heading', { name: 'WIP limits' })).toBeVisible()

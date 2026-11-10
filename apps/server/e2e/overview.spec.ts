@@ -6,7 +6,7 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
-test('Board only, Runs on its own page, legacy view URLs redirect, Product filter', async ({ page }) => {
+test('Workflow view, Runs on its own page, legacy view URLs redirect, Product filter', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await page.getByLabel('Email').fill(email)
@@ -15,12 +15,11 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
 
   const main = page.getByRole('navigation', { name: 'Main' })
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.locator('.board .col')).toHaveCount(6)
+  await expect(page.locator('[data-testid=workflow] .col')).toHaveCount(6)
   await expect(page.locator('.col[data-stage=parent]')).toHaveCount(0)
-  await expect(page.getByText('Split')).toHaveCount(0)
   await expect(page.locator('.col[data-stage=release] h2')).toContainText('Staging')
   await expect(page.getByRole('navigation', { name: 'View' })).toHaveCount(0)
-  await expect(main.getByRole('link', { name: /^Tickets/ })).toHaveAttribute('aria-current', 'page')
+  await expect(main.getByRole('link', { name: /^Workflow/ })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByLabel(/need you/)).toBeVisible()
   // decision sheets are read from the forge; the production image has no fake forge
   if (process.env.E2E_FAKE_FORGE) await expect(page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).first()).toBeVisible()
@@ -32,24 +31,13 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(tag).toHaveText('Overhaul invoicing')
   await expect(tag).toHaveAttribute('href', /\/tickets\/\d+$/)
   await expect(page.locator('.col[data-stage=build] .card').filter({ hasText: 'Export invoices as CSV' }).locator('.epic-tag')).toHaveCount(0)
-  // card budget (#258): title + status or needs-you verb + epic tag + Product, number and rank excluded; 3 text elements, 4 when it needs the owner
-  const cardTexts = page.locator('.board .card')
-  expect(await cardTexts.count()).toBeGreaterThan(5)
-  for (const card of await cardTexts.all()) {
-    const texts = await card.locator('> :not(.num):not(.rank):not(.menu)').count()
-    expect(texts).toBeLessThanOrEqual(((await card.locator('[data-gate], .text-warn').count()) ? 4 : 3) + ((await card.locator('[data-hotfix]').count()) ? 1 : 0))
-    const visible = (await card.evaluate((e) => {
-      const c = e.cloneNode(true) as HTMLElement
-      c.querySelectorAll('.rank').forEach((r) => r.remove())
-      return c.textContent ?? ''
-    }))
-    expect(visible).not.toMatch(/run #\d+|@\w+|\bago\b|heartbeat|waiting \d/i)
-  }
-  await expect(page.locator('.card [data-slot=badge]').first()).toHaveAttribute('title', /.+/)
+  const rows = page.locator('[data-testid=workflow] .card')
+  expect(await rows.count()).toBeGreaterThan(5)
+  for (const row of await rows.all()) expect(await row.textContent()).not.toMatch(/\bWorking\b|run #\d+|heartbeat/i)
   await expect(page.locator('.card a[href^="http"]')).toHaveCount(0)
-  const blocked = page.locator('.card').filter({ hasText: 'Blocked: add the invoice filter' }).first().locator('[data-status=blocked]')
-  await expect(blocked).toHaveText('Blocked')
-  await expect(blocked).toHaveAttribute('title', 'Blocked by #8')
+  const blocked = page.locator('.card').filter({ hasText: 'Blocked: add the invoice filter' }).first()
+  await expect(blocked.locator('[data-status=blocked]')).toHaveText('Blocked')
+  await expect(blocked.getByTestId('status-detail')).toHaveText('by #8')
   // Hotfix swimlane (#373): the lane's card is marked and first in its column, above every ranked card
   const buildCards = page.locator('.col[data-stage=build] .card')
   await expect(buildCards.first()).toHaveAttribute('data-lane', 'hotfix')
@@ -62,7 +50,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
       await page.setViewportSize({ width: w, height: h })
       for (const scheme of ['light', 'dark'] as const) {
         await page.emulateMedia({ colorScheme: scheme })
-        await page.screenshot({ path: `${shots}/board-epic-tag-${scheme}-${w}x${h}.png` })
+        await page.screenshot({ path: `${shots}/workflow-epic-tag-${scheme}-${w}x${h}.png` })
       }
     }
     await page.setViewportSize({ width: 1280, height: 720 })
@@ -84,7 +72,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
 
   await page.goto('/?view=list&state=all')
   await expect(page).toHaveURL(/\/\?state=all$/)
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
   await page.goto('/?view=runs&product=999999')
   await expect(page).toHaveURL(/\/runs\?product=999999$/)
@@ -93,7 +81,7 @@ test('Board only, Runs on its own page, legacy view URLs redirect, Product filte
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
   await expect(page.locator('table thead th')).toHaveText(['Ticket', 'Stage', 'Status', 'When'])
   await expect(page.locator('table tbody tr').first().locator('td').last()).toHaveText(/(ago|just now)$/)
-  await expect(main.getByRole('link', { name: /^Tickets/ })).not.toHaveAttribute('aria-current', 'page')
+  await expect(main.getByRole('link', { name: /^Workflow/ })).not.toHaveAttribute('aria-current', 'page')
   await page.getByLabel('Product').selectOption({ label: 'Acme Web' })
   await expect(page).toHaveURL(/\/runs\?product=/)
   // other specs start Runs on Acme Web Tickets, so assert the seeded Runs by Ticket instead of the row count
@@ -172,13 +160,13 @@ test('dragging a Board card shows the drop position', async ({ page }) => {
   await expect(card(upper)).toHaveAttribute('data-drop', 'before')
   const shots = process.env.SHOTS_DIR
   if (shots) {
-    for (const [w, h] of [[1280, 800], [390, 844]] as const) {
+    for (const [w, h] of [[1280, 2400]] as const) {
       await page.setViewportSize({ width: w, height: h })
       for (const scheme of ['light', 'dark'] as const) {
         await page.emulateMedia({ colorScheme: scheme })
         await hover(upper)
         await expect(marks).toHaveCount(1)
-        await page.screenshot({ path: `${shots}/board-drop-line-${scheme}-${w}x${h}.png` })
+        await page.screenshot({ path: `${shots}/workflow-drop-line-${scheme}-${w}x${h}.png` })
       }
     }
     await page.setViewportSize({ width: 1280, height: 720 })
@@ -238,18 +226,17 @@ test('hovering or dropping on a closed card in a mixed column shows no drop posi
   expect(await titles()).toEqual(before)
 })
 
-test('A running Run marks its card and names the activity', async ({ page }) => {
+test('A running Run reads In progress with who runs it', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  const card = page.locator('.col[data-stage=build] .card[data-running]').filter({ hasText: 'Live build in progress' })
-  await expect(card).toContainText('Working')
-  await expect(card.locator('[data-status=working]')).toHaveText('Working')
-  await expect(card.locator('[data-status=working]')).toHaveAttribute('title', /^building/)
-  await expect(card.locator('[data-status=working]')).toHaveAttribute('title', /build Run #\d+ · scheduler/)
-  await expect(card).not.toContainText(/scheduler|Run #/)
+  const row = page.locator('.col[data-stage=build] .card[data-running]').filter({ hasText: 'Live build in progress' })
+  await expect(row.locator('[data-status=working]')).toHaveText('In progress')
+  await expect(row.getByTestId('status-detail')).toHaveText(/^building for /)
+  await expect(row.getByTestId('row-who')).toHaveText('Bauherr runner · claude-sonnet-4-5')
+  await expect(row).not.toContainText(/Working|Run #/)
 })
 
 test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics with progress; epic page shows sub-tickets', async ({ page }) => {
@@ -258,7 +245,7 @@ test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics wit
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
   const shots = process.env.SHOTS_DIR
   const shoot = async (name: string) => {
     if (!shots) return
@@ -276,7 +263,7 @@ test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics wit
   await expect(page).toHaveURL(/epic=/)
   await expect(page.locator('.card')).toHaveCount(1)
   await expect(page.locator('.card')).toContainText('Invoice PDF layout')
-  await shoot('board-epic-filter')
+  await shoot('workflow-epic-filter')
   const epic = new URL(page.url()).searchParams.get('epic')!
   await page.goto(`/?view=graph&epic=${epic}`)
   await expect(page.locator('a.gnode')).toHaveCount(1)
@@ -331,7 +318,7 @@ test('The epic filter is remembered per user; an explicit All clears it; the emp
   await expect(page).toHaveURL(/epic=/)
   await page.goto('/runs')
   await expect(page).toHaveURL(/epic=/)
-  await main.getByRole('link', { name: /^Tickets/ }).click()
+  await main.getByRole('link', { name: /^Workflow/ }).click()
   await expect(page).toHaveURL(/epic=/)
   await expect(page.locator('.card')).toHaveCount(1)
   await expect(epic).not.toHaveValue('')

@@ -3,16 +3,20 @@ import { stageGroup } from '../../../lib/frontier'
 import { layoutGraph } from '../lib/graph'
 import { DEFAULT, title } from '../../../lib/workflow'
 import type { TicketRow } from '../lib/overview'
-import { activity } from '../lib/format'
+import { ticketStatus } from '../lib/status'
 
 const DONE_LIMIT = 12
 const W = 220, H = 64, GX = 72, GY = 20, PAD = 4
 const x = (col: number) => PAD + col * (W + GX)
 const y = (row: number) => PAD + row * (H + GY)
+const doingOf = (t: TicketRow) => {
+  const s = ticketStatus(DEFAULT(), t)
+  return s.phase === 'working' ? s.detail : null
+}
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; critical: boolean }; x: number; y: number }) {
-  const doing = activity(t)
+  const doing = doingOf(t)
   const label = `#${t.number} ${t.title}, stage ${title(DEFAULT(), t.stage)}${n.ready ? ', ready' : ''}${doing ? `, ${doing}` : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
   return (
     <Link href={`/tickets/${t.id}`} aria-label={label} className="gnode group cursor-pointer outline-none [--stage:var(--ink-muted)] data-[stage=plan]:[--stage:var(--warn)] data-[stage=build]:[--stage:var(--accent)] data-[stage=review]:[--stage:var(--accent-strong)] data-[stage=release]:[--stage:var(--warn)] data-[stage=done]:[--stage:var(--ok)]" data-stage={t.stage} data-ready={n.ready || undefined} data-critical={n.critical || undefined} data-running={doing ? '' : undefined} data-ticket={t.number}>
@@ -21,7 +25,7 @@ function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; criti
       <text className="mono fill-foreground" x={nx + 14} y={ny + 20}>#{t.number}</text>
       <text className="label fill-muted-foreground" x={nx + W - 10} y={ny + 20} textAnchor="end">{t.stage}</text>
       <text className="fill-foreground text-[14px]" x={nx + 14} y={ny + 40}>{clip(t.title, 28)}</text>
-      {doing && <text className="act label fill-primary" x={nx + 14} y={ny + 56}>{doing}</text>}
+      {doing && <text className="act label fill-primary" x={nx + 14} y={ny + 56}>{clip(doing, 22)}</text>}
       {n.ready && <text className="ready label fill-ok" x={nx + 14} y={ny + 56}>ready</text>}
       {n.critical && <text className="label fill-primary" x={nx + W - 10} y={ny + 56} textAnchor="end">critical</text>}
     </Link>
@@ -34,7 +38,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
   const at = new Map(nodes.map((n) => [n.id, n]))
   const linked = nodes.filter((n) => !n.isolated)
   const isolated = nodes.filter((n) => n.isolated)
-  const running = isolated.filter((n) => activity(byId.get(n.id)!)).length
+  const running = isolated.filter((n) => doingOf(byId.get(n.id)!)).length
   const cols = Math.max(0, ...linked.map((n) => n.col)) + 1
   const rows = Math.max(0, ...linked.map((n) => n.row)) + 1
   return (

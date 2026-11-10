@@ -19,7 +19,7 @@ export const nextStep = ({ ticket, need, run, waiting, blockers, holders = [], a
   if (need) return { label: need, enabled: true, reason: '', links: [] }
   if (blockers.length) return { label: 'Blocked', enabled: false, reason: `Blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}.`, links: blockers.map((b) => ({ text: `#${b.number}`, href: `/tickets/${b.id}` })) }
   if (run && ['running', 'awaiting_session'].includes(run.status) && run.escalation) return { label: 'Escalated', enabled: false, reason: `Escalated to the strong model (step ${run.escalation.step} of 4): ${run.escalation.reason}${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
-  if (run && ['running', 'awaiting_session'].includes(run.status)) return { label: 'Working', enabled: false, reason: `The factory is working on this${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
+  if (run && ['running', 'awaiting_session'].includes(run.status)) return { label: 'In progress', enabled: false, reason: `The factory is working on this${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
   if (run && run.stage === ticket.stage && liveStages(wf).includes(run.stage) && ['failed', 'cancelled', 'needs_human'].includes(run.status)) return { label: 'Escalating', enabled: false, reason: 'The last Run stopped; the factory retries it on a stronger model by itself.', links: [] }
   const wait = ticket.waitingFor
   if (wait === 'checks') return { label: 'Waiting for checks', enabled: false, reason: 'Waiting for the MR checks to finish. Review starts by itself.', links: [] }

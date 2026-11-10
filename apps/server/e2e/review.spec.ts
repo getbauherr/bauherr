@@ -42,7 +42,7 @@ test('Ticket at the review round cap shows the gate with both actions', async ({
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
   await page.locator('.card', { hasText: 'Harden the retry loop' }).first().getByRole('link', { name: 'Harden the retry loop' }).click()
   await expect(page.getByTestId('action-bar')).toContainText('The review sent this back too often')
   await expect(page.getByRole('button', { name: 'Grant one more round' })).toBeVisible()

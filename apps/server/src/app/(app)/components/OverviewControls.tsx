@@ -76,7 +76,7 @@ export function TicketControls({ products, epics }: { products: { id: number; na
   return (
     <Pending className={controls}>
       <Tabs aria-label="Tickets layout" className="mr-auto">
-        <Tab href={href({ view: null })} aria-current={graph || list ? undefined : 'page'}>Board</Tab>
+        <Tab href={href({ view: null })} aria-current={graph || list ? undefined : 'page'}>Workflow</Tab>
         <Tab href={href({ view: 'graph' })} aria-current={graph ? 'page' : undefined}>Graph</Tab>
         <Tab href={href({ view: 'epics', epic: null })} aria-current={list ? 'page' : undefined}>Epics</Tab>
       </Tabs>

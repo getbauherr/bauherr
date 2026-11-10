@@ -1,5 +1,4 @@
 import type { Where } from 'payload'
-import { statusOf } from './card-status'
 import type { Stage } from './needs-you'
 import { board, byKind, DEFAULT } from '../../../lib/workflow'
 
@@ -11,9 +10,8 @@ export const epicHue = (id: number): number => Math.round(id * 137.508) % 360
 
 export const epicShortTitle = (title: string): string => (title.length > 18 ? `${title.slice(0, 17)}…` : title)
 
-/** What the Bauherr should read instead of run internals; a stopped Run adds its one-line reason. */
-export const plainStatus = (t: { open: boolean; needsYou: string | null; blockedBy: unknown[]; waiting: string | null; run: { status: string; error?: string | null } | null }): string =>
-  !t.open ? 'Done' : t.needsYou ? `Needs you${['Cancelled', 'Run failed', 'Run needs you'].includes(t.needsYou) && t.run?.error ? `: ${t.run.error.split('\n')[0]!.slice(0, 60)}` : ''}` : statusOf(t) ?? 'Queued'
+/** The one-line status of a Ticket (`statusLine`); the chat engine still imports it under this name. */
+export { statusLine as plainStatus } from './status'
 
 /** `done`: closed sub-tickets of `total`; `stages`: open sub-tickets per Board column, in column order. */
 export const epicProgress = (e: Pick<Epic, 'children'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => ({

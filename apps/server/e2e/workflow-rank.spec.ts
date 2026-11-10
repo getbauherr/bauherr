@@ -7,7 +7,7 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 test.use({ viewport: { width: 1280, height: 2400 } }) // the whole column is on screen, so a drag needs no scrolling
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
-// The Board shows the owner's rank (#357): a drop or a menu move stays where it was put after a reload, whatever is blocked or live in the column.
+// The Workflow list shows the owner's rank (#357): a drop or a menu move stays where it was put after a reload, whatever is blocked or live in the column.
 const col = (page: Page) => page.locator('.col[data-stage=build]')
 const cards = (page: Page) => col(page).locator('.card')
 const titles = (page: Page) => col(page).locator('.card .ticket-title').allTextContents()
@@ -25,7 +25,7 @@ const stays = async (page: Page, check: (t: string[]) => void) => {
 const menu = async (page: Page, name: string, item: string) => {
   const c = card(page, name)
   await c.hover()
-  await c.getByRole('button', { name: 'Card actions' }).click()
+  await c.getByRole('button', { name: 'Ticket actions' }).click()
   await page.getByRole('menuitem', { name: item, exact: true }).click()
 }
 
@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }) => {
   await expect(cards(page)).not.toHaveCount(0)
 })
 
-test('a card dropped on the last card is last after a reload, although blocked cards exist', async ({ page }) => {
+test('a row dropped on the last card is last after a reload, although blocked cards exist', async ({ page }) => {
   const before = await lane(page)
   expect(before.length).toBeGreaterThan(5)
   const last = before[before.length - 1]
@@ -47,7 +47,7 @@ test('a card dropped on the last card is last after a reload, although blocked c
   await stays(page, (t) => expect(t.at(-1)).toBe(chore(107)))
 })
 
-test('a card dropped between two cards sits between them after a reload', async ({ page }) => {
+test('a row dropped between two cards sits between them after a reload', async ({ page }) => {
   const before = await lane(page)
   const moved = before[before.length - 1]
   const [above, below] = [before[1], before[2]]
@@ -60,7 +60,7 @@ test('a card dropped between two cards sits between them after a reload', async 
   })
 })
 
-test('card menu: send to bottom, send to top, move up and down persist', async ({ page }) => {
+test('row menu: send to bottom, send to top, move up and down persist', async ({ page }) => {
   await menu(page, chore(108), 'Send to bottom')
   await stays(page, (t) => expect(t.at(-1)).toBe(chore(108)))
   await menu(page, chore(108), 'Move up')
@@ -76,7 +76,7 @@ test('card menu: send to bottom, send to top, move up and down persist', async (
 
 test('send to top of the queue puts the card first below the Hotfix lane; keyboard and right-click open the menu', async ({ page }) => {
   const target = card(page, chore(109))
-  await target.getByRole('button', { name: 'Card actions' }).focus()
+  await target.getByRole('button', { name: 'Ticket actions' }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeVisible()
   await page.keyboard.press('End')
@@ -97,7 +97,7 @@ test('a 500 ms touch press opens the menu', async ({ page }) => {
 
 test('a blocked card is ranked like any other and says why it waits', async ({ page }) => {
   const blocked = card(page, 'Blocked: add the invoice filter')
-  await expect(blocked.locator('[data-status=blocked]')).toHaveAttribute('title', 'Blocked by #8')
+  await expect(blocked.getByTestId('status-detail')).toHaveText('by #8')
   const toTop = (await lane(page)).at(-1) === 'Blocked: add the invoice filter'
   await menu(page, 'Blocked: add the invoice filter', toTop ? 'Send to top' : 'Send to bottom')
   await stays(page, (t) => expect(toTop ? t[0] : t.at(-1)).toBe('Blocked: add the invoice filter'))

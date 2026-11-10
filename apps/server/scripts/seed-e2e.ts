@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import { hasProductionChecks } from '../src/lib/mode'
 import { needsOf } from '../src/lib/needs-you'
+import { DEFAULT, kindOf } from '../src/lib/workflow'
 import config from '../src/payload.config'
 
 /** Seeds what the Playwright smoke needs on an empty DB: one admin, one Workspace, one Product, one Ticket. Idempotent. */
@@ -114,7 +115,7 @@ await ticket(124, 'Waiting for a Build slot', 'plan', product, { waitingFor: 'bu
 const live = await ticket(123, 'Live build in progress', 'build', product, { rank: '900000' })
 const distilled = await ticket(127, 'Fix the flaky export test', 'done', product, { state: 'closed' })
 await ensure('skill_proposals', { ticket: distilled }, { ticket: distilled, workspace, status: 'replayed', pr: 2, skillPath: 'workspace/skills/tdd-first/SKILL.md', score: 1, baselineScore: 0.5 })
-await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
+await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', executor: 'runner', model: 'claude-sonnet-4-5', provider: 'anthropic', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'plan', 'succeeded', { startedAt: '2026-10-30T12:05:00Z', finishedAt: '2026-10-30T12:06:00Z' })
 await run(t18, 'build', 'failed', { reasonKind: 'decision', startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
@@ -123,7 +124,7 @@ await run(t24, 'plan', 'succeeded', { startedAt: '2026-10-30T09:30:00Z', finishe
 await ensure('runs', { ticket: t21, stage: 'plan', status: 'running' }, { ticket: t21, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await ensure('runs', { ticket: t22, stage: 'plan', status: 'running' }, { ticket: t22, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t1, 'plan', 'succeeded', { startedAt: '2026-10-30T09:00:00Z', finishedAt: '2026-10-30T09:02:30Z', costUsd: 0.1234 })
-const build = await run(t2, 'build', 'succeeded', { startedAt: '2026-10-30T09:10:00Z', finishedAt: '2026-10-30T09:25:12Z', gatewayCostUsd: 1.5, model: 'claude-sonnet-4-5', tokensIn: 12000, tokensOut: 3400, tokensCache: 8000, evidence: 'Checks: pass', artifacts: { prUrl: 'https://github.com/acme/web/pull/12' } })
+const build = await run(t2, 'build', 'succeeded', { startedAt: '2026-10-30T09:10:00Z', finishedAt: '2026-10-30T09:25:12Z', gatewayCostUsd: 1.5, model: 'claude-sonnet-4-5', provider: 'anthropic', executor: 'session', mode: 'session', sessionLabel: 'e2e-laptop', clientName: 'claude-code', clientVersion: '2.1.0', outcome: 'done', tokensIn: 12000, tokensOut: 3400, tokensCache: 8000, evidence: 'Checks: pass', artifacts: { prUrl: 'https://github.com/acme/web/pull/12' } })
 const steps = [['09:10:05', 'Read the plan and the repo'], ['09:14:00', 'Implement the CSV export'], ['09:21:30', 'Run the checks']] as const
 for (const [i, [at, summary]] of steps.entries()) {
   const step = await ensure('steps', { run: build.id, seq: i + 1 }, { run: build.id, seq: i + 1, summary, startedAt: `2026-10-30T${at}Z`, tokensIn: 4000, tokensOut: 1100, workspace })
@@ -131,6 +132,30 @@ for (const [i, [at, summary]] of steps.entries()) {
 }
 for (const [checkName, sha] of [['e2e', 'sha-a'], ['e2e', 'sha-b'], ['lint', 'sha-a']] as const) await ensure('check_flakes', { ticket: t2, sha, checkName }, { ticket: t2, sha, checkName, outcome: 'flake', workspace })
 await ensure('human_touches', { kind: 'approve:plan', ticket: t2 }, { kind: 'approve:plan', ticket: t2, actor: email, at: '2026-10-30T09:05:00Z', workspace })
+// Ticket history (`ticket_events`) for the Workflow view, the Ticket page's path and Insights: `[stage, phase, hours ago, extra]`, written directly (relative to the seeding time, keyed by `e2e:<number>:<index>`).
+const wfSeed = DEFAULT()
+const seedNow = Date.now()
+type Step = [stage: string, phase: string, hoursAgo: number, extra?: Record<string, unknown>]
+const history = async (number: number, steps: Step[]) => {
+  const t = (await payload.find({ collection: 'tickets', where: { externalId: { equals: `e2e-${number}` } }, limit: 1, depth: 0, ...o })).docs[0] as { id: number }
+  for (const [i, [stage, phase, hours, extra]] of steps.entries()) {
+    const cause = `e2e:${number}:${i}`
+    const executor = phase === 'working' ? 'runner' : phase === 'human' ? 'human' : phase === 'ci' ? 'ci' : 'factory'
+    await ensure('ticket_events', { ticket: t.id, cause }, { ticket: t.id, workspace, at: new Date(seedNow - hours * 3600e3).toISOString(), stage, stageKind: kindOf(wfSeed, stage), phase, fromStage: steps[i - 1]?.[0] ?? null, executor, cause, ...extra })
+  }
+  const last = steps[steps.length - 1]!
+  await payload.update({ collection: 'tickets', id: t.id, data: { historyKey: `${last[0]}|${last[1]}` }, ...o })
+}
+const approve = { cause: 'gate:approve:plan', actor: email }
+const full = (done: number, k: number): Step[] => {
+  const d = [0.3, 0.1, 0.5, 0.4, 6, 20, 3, 1, 0.5, 0.4, 0.3, 12].map((h) => h * k)
+  const rows: [string, string, Record<string, unknown>?][] = [['triage', 'queued'], ['triage', 'working'], ['plan', 'queued'], ['plan', 'working'], ['plan', 'human'], ['build', 'queued', approve], ['build', 'working'], ['review', 'queued'], ['review', 'working'], ['review', 'ci'], ['release', 'ci'], ['release', 'human'], ['done', 'closed', { cause: 'gate:approve:production', actor: email }]]
+  let at = done + d.reduce((a, b) => a + b, 0)
+  return rows.map(([stage, phase, extra], i): Step => { const step: Step = [stage, phase, at, extra]; at -= d[i] ?? 0; return step })
+}
+for (const [n, done, k] of [[126, 40, 0.7], [127, 20, 0.6], [36, 70, 1], [34, 216, 1.3], [13, 480, 0.8]] as const) await history(n, full(done, k))
+await history(2, [['triage', 'queued', 30], ['triage', 'working', 29.8], ['plan', 'queued', 29.5], ['plan', 'working', 29.3], ['plan', 'human', 29], ['build', 'queued', 28.5, approve], ['build', 'working', 28.2, { run: build.id, executor: 'session', actor: 'e2e-laptop', cause: 'run:claimed' }], ['build', 'queued', 27.9, { cause: 'run:finished' }]])
+await history(5, [['triage', 'queued', 50], ['triage', 'working', 49.8], ['plan', 'queued', 49.5], ['plan', 'working', 49.3], ['build', 'queued', 48], ['build', 'working', 47], ['review', 'queued', 45], ['review', 'working', 44.5], ['build', 'queued', 44, { outcome: 'changes', cause: 'moveStage:request_changes' }], ['build', 'working', 43], ['review', 'queued', 41, { outcome: 'done' }], ['review', 'working', 40.5], ['review', 'queued', 40.2]])
 const widgetOnly = (await ensure('products', { slug: 'acme-widget' }, { name: 'Acme Widget', slug: 'acme-widget', workspace })).id
 await ensure('embed_tokens', { name: 'Widget only' }, { name: 'Widget only', product: widgetOnly, tokenHash: 'e2e-widget-only-hash', workspace })
 await ensure('workflow_versions', { product }, { version: 1, product, compiled: { stages: [{ name: 'plan' }] }, workspace })

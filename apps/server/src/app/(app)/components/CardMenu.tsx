@@ -32,7 +32,7 @@ export function CardMenu({ open, onOpenChange, actions }: { open: boolean; onOpe
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label="Card actions" className="menu absolute top-1 right-1 flex size-7 items-center justify-center rounded-sm border-0 bg-transparent text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-secondary focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100">
+        <button type="button" aria-label="Ticket actions" className="menu flex size-7 items-center justify-center rounded-sm border-0 bg-transparent text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-secondary focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100">
           <Ellipsis />
         </button>
       </DropdownMenuTrigger>

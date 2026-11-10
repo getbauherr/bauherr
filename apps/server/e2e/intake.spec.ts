@@ -14,7 +14,7 @@ const signIn = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 }
 const say = async (page: Page, text: string, reply: string | RegExp) => {
   await page.getByLabel(/Describe your request|Your answer/).fill(text)
@@ -82,7 +82,7 @@ test('a Product user describes a request, answers the questions and sends a Tick
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
   await page.getByRole('link', { name: /^Requests/ }).click()
   await page.getByRole('link', { name: 'New request' }).first().click()

@@ -312,7 +312,7 @@ it('context: ticket, run, home and settings pages from the path; a foreign id is
   const t = await c(`/tickets/${stuck.id}`)
   expect(t.entity).toEqual({ kind: 'ticket', id: stuck.id })
   expect(t.label).toBe('Ticket #700 Export hangs')
-  expect(t.markdown).toContain('Stage: build; status: Needs you')
+  expect(t.markdown).toContain('Stage: build; status: Waiting for you: Run needs you')
   expect(t.markdown).toContain('Needs the person: Run needs you')
   expect(t.markdown).toMatch(/Run \d+: build, needs_human/)
   expect(t.markdown).not.toContain('autonomous')

@@ -32,7 +32,7 @@ const h2 = (text: string): Content => ({ sel: 'h2.heading', text: `^${text}$` })
 /** Clicks run from `from`, so each one is a client-side navigation like a user's. */
 const targets: Target[] = [
   { route: '/requests', from: '/', click: (p) => main(p).getByRole('link', { name: /^Requests/ }).click(), content: h1('Requests') },
-  { route: '/', from: '/requests', click: (p) => main(p).getByRole('link', { name: /^Tickets/ }).click(), content: h1('Tickets') },
+  { route: '/', from: '/requests', click: (p) => main(p).getByRole('link', { name: /^Workflow/ }).click(), content: h1('Workflow') },
   { route: '/releases', from: '/', click: (p) => main(p).getByRole('link', { name: 'Releases' }).click(), content: h1('Releases') },
   { route: '/knowledge', from: '/', click: (p) => main(p).getByRole('link', { name: 'Knowledge' }).click(), content: h1('Knowledge') },
   { route: '/runs', from: '/', click: (p) => main(p).getByRole('link', { name: 'Runs' }).click(), content: h1('Runs') },
@@ -48,7 +48,7 @@ const targets: Target[] = [
       ['Audit', '/settings/audit', 'Audit'],
     ] as const
   ).map(([link, route, heading]): Target => ({ route, from: '/settings/workspace', click: (p) => settings(p).getByRole('link', { name: link }).click(), content: h2(heading) })),
-  { route: '/tickets/[id]', from: '/', click: (p) => p.locator('.board a[href^="/tickets/"]').first().click(), content: { sel: '[data-testid=action-bar]' } },
+  { route: '/tickets/[id]', from: '/', click: (p) => p.locator('[data-testid=workflow] a[href^="/tickets/"]').first().click(), content: { sel: '[data-testid=action-bar]' } },
   { route: '/runs/[id]', from: '/runs', click: (p) => p.locator('main a[href^="/runs/"]').first().click(), content: { sel: 'h1.title', text: '^#\\d+ ' } },
 ]
 

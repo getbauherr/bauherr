@@ -15,7 +15,7 @@ const login = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 }
 
 // [slug, Ticket title, primary verb].
@@ -72,7 +72,7 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.board')).toBeVisible()
+  await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
   const row = page.locator('.card', { hasText: 'Add a light theme to the dashboard' }).first()
   await expect(row.getByText('Answer decisions')).toBeVisible()
@@ -136,7 +136,7 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
     await page.getByLabel('Email').fill(who)
     await page.getByLabel('Password').fill(password())
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page.locator('.board')).toBeVisible()
+    await expect(page.locator('[data-testid=workflow]')).toBeVisible()
     await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
     await page.getByText('Details', { exact: true }).click()
     const details = page.locator('details')
