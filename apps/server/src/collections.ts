@@ -461,6 +461,8 @@ const tickets = col('tickets', [
   { name: 'mainMergeSha', type: 'text', admin: { readOnly: true, description: 'The MR head on which the factory last found nothing to merge; with `mainMergeNoops` it detects a forge that keeps reporting that head behind or conflicting.' } },
   { name: 'mainMergeNoops', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'No-op merges of the base on `mainMergeSha`; the 3rd needs a human. Reset by a merge that pushes.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
+  { name: 'openCriticalDecisions', type: 'number', admin: { readOnly: true, description: 'Unanswered critical decisions of the plan or triage sheet, as last read from the forge comments (plan submit, answers, the gate sweep). Pages read this instead of the forge; null = never read.' } },
+  { name: 'liveness', type: 'json', admin: { readOnly: true, description: 'Last `watch-liveness` finding for a Ticket with no live Run: {cause, need, at}. null = not dead at the last sweep.' } },
 ], {
   indexes: [{ fields: ['product', 'externalId'], unique: true }],
   hooks: {
@@ -531,6 +533,7 @@ export const collections: CollectionConfig[] = [
       access: { update: ({ req }) => req.user?.role === 'admin' },
       admin: { description: 'Path globs that never hold a Build for overlapping files, e.g. ["CHANGELOG.md","pnpm-lock.yaml"].' },
     },
+    { name: 'overlapSuggestions', type: 'json', admin: { readOnly: true, description: 'Result of the last "Suggest paths" action: {at, items: [{path, percent}]}. Computed on request, never on page render.' } },
   ]),
   connections,
   col('repositories', [text('fullName', { required: true }), rel('product', 'products', { required: true })]),

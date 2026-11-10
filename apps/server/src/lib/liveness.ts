@@ -149,20 +149,36 @@ export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
   }
 }
 
-/** One watchdog pass: repairs every dead Ticket whose cause the factory can fix itself. Returns how many it repaired. */
+/** A stored finding older than this means the sweep is not keeping up: the page says "could not be checked" instead of listing it. */
+export const FINDING_FRESH_MS = 15 * 60_000
+
+/** Stores what the sweep found for the pages (`liveness` = {cause, need, at}) and clears the finding of every other Ticket; one statement each, no `updated_at` bump. */
+const storeFindings = async (payload: Payload, dead: Dead[]): Promise<void> => {
+  const at = new Date().toISOString()
+  for (const d of dead) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "liveness" = ${JSON.stringify({ cause: d.cause, need: d.need, at })}::jsonb WHERE "id" = ${d.ticket.id}`)
+  await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "liveness" = NULL WHERE "liveness" IS NOT NULL${dead.length ? sql` AND "id" NOT IN (${sql.join(dead.map((d) => sql`${d.ticket.id}`), sql`, `)})` : sql``}`)
+}
+
+/** One watchdog pass: repairs every dead Ticket whose cause the factory can fix itself, and stores the findings of the rest for Factory health. Returns how many it repaired. */
 export const sweepLiveness = async (payload: Payload): Promise<number> => {
   let repaired = (await resumeInvestigations(payload)) + (await resumeEscalationNotes(payload))
-  for (const d of await deadTickets(payload)) {
+  const dead = await deadTickets(payload)
+  const fixed = new Set<unknown>()
+  for (const d of dead) {
     if (!REPAIRED.includes(d.cause)) continue
     try {
-      if (await repair(payload, d)) repaired++
+      if (await repair(payload, d)) {
+        repaired++
+        fixed.add(d.ticket.id)
+      }
     } catch (e) {
       payload.logger.warn({ err: e, ticket: d.ticket.id, cause: d.cause }, 'liveness repair failed')
     }
   }
+  await storeFindings(payload, dead.filter((d) => !fixed.has(d.ticket.id))).catch((e) => payload.logger.warn({ err: e }, 'liveness findings not stored'))
   return repaired
 }
 
-/** Dead Tickets the owner cannot see: no live Run, no wait, no need. The goal is 0. */
+/** Dead Tickets the owner cannot see: no live Run, no wait, no need. The goal is 0. Calls the forge per Ticket: jobs and tools only, pages read the findings the sweep stores. */
 export const invisibleDead = async (payload: Payload, workspace: number | string): Promise<Dead[]> => (await deadTickets(payload, workspace)).filter((d) => !d.need)
 

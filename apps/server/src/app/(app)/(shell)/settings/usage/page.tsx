@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { EmptyState } from '../../../components/EmptyState'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
@@ -6,7 +7,7 @@ import { Table } from '../../../components/ui/table'
 import { currentWorkspace } from '../../../lib/session'
 import { isAdmin } from '../../../lib/settings'
 import { tracesUp, tracesUrl } from '../../../lib/admin-proxy'
-import { loadUsage, type Bar, type CostRow } from '../../../lib/usage'
+import { loadSpendUsd, loadUsage, type Bar, type CostRow } from '../../../lib/usage'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,19 +45,34 @@ function Costs({ title, rows, head }: { title: string; rows: CostRow[]; head: st
   )
 }
 
+const Budget = ({ bars, tokens }: { bars: Bar[]; tokens: boolean }) => bars.map((b) => <Gauge key={b.label} bar={b} tokens={tokens} />)
+
+async function SpentBudget({ bars, slug }: { bars: Bar[]; slug: string }) {
+  const spent = await loadSpendUsd(slug)
+  return <Budget bars={bars.map((b, i) => (i === 0 ? { ...b, spent } : b))} tokens={false} />
+}
+
+async function Traces({ admin }: { admin: boolean }) {
+  const up = admin && (await tracesUp())
+  return up ? <Button asChild variant="outline"><a href={tracesUrl()} target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>
+}
+
 export default async function UsageSettings() {
   const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const u = await loadUsage(workspace.id)
   const admin = isAdmin(user)
-  const traces = admin && (await tracesUp())
   const tokens = u.unit === 'tokens'
   return (
     <>
       <h2 className="heading">AI usage</h2>
       <section aria-label="Budget" className="flex flex-col gap-3">
         <h3 className="heading">Budget, last 30 days</h3>
-        {u.bars.map((b) => <Gauge key={b.label} bar={b} tokens={tokens} />)}
+        {u.spendOf ? (
+          <Suspense fallback={<><Budget bars={u.bars} tokens={false} /><div className="h-2 animate-pulse rounded-sm bg-secondary" aria-hidden /></>}>
+            <SpentBudget bars={u.bars} slug={u.spendOf} />
+          </Suspense>
+        ) : <Budget bars={u.bars} tokens={tokens} />}
       </section>
       <section aria-label="Provider" className="flex flex-col gap-2">
         <h3 className="heading">Provider</h3>
@@ -77,7 +93,7 @@ export default async function UsageSettings() {
       {admin && (
         <div className="flex gap-3">
           <Button asChild variant="outline"><a href="/-/gateway/config_dump" target="_blank" rel="noreferrer">Open gateway config</a></Button>
-          {traces ? <Button asChild variant="outline"><a href={tracesUrl()} target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>}
+          <Suspense fallback={<Button variant="outline" disabled>Open traces</Button>}><Traces admin={admin} /></Suspense>
         </div>
       )}
     </>

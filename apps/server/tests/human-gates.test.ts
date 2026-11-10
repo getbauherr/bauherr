@@ -274,3 +274,28 @@ describe('needsYou by gates', () => {
     expect(needs.needsYou({ stage: 'triage', labels: ['bauherr:needs-refinement'] }, null, 0, ['refine'])).toBe('Answer questions')
   })
 })
+
+describe('stored count of open critical decisions (pages read it instead of the forge)', () => {
+  it('is written by submitPlan, lowered by postDecisions, and the board turns Approve plan into Answer decisions from it', async () => {
+    usePack('gated-pack')
+    const { id } = await planTicket('stored-count', CRITICAL)
+    expect(await reload(id)).toMatchObject({ openCriticalDecisions: 1 })
+    const { loadOverviewRows } = await import('../src/app/(app)/lib/overview')
+    const row = async () => (await loadOverviewRows(ws, false)).tickets.find((t) => t.id === id)!
+    expect((await row()).needsYou).toBe('Answer decisions')
+    await actions.postDecisions(payload, user, { ticket: id, answers: [{ id: 'D1', title: 'Storage', answer: 'postgres' }] })
+    expect(await reload(id)).toMatchObject({ openCriticalDecisions: 0 })
+    expect((await row()).needsYou).toBe('Approve plan')
+    usePack()
+  })
+
+  it('the gate sweep refreshes it from the forge comments of a Ticket awaiting plan approval', async () => {
+    usePack('gated-pack')
+    const { id } = await planTicket('swept-count', CRITICAL)
+    await payload.update({ collection: 'tickets', id, data: { openCriticalDecisions: 0 }, ...o } as never)
+    const { syncGate } = await import('../src/lib/gates')
+    await syncGate(payload, await reload(id), { id: 1, stage: 'plan', status: 'succeeded' })
+    expect(await reload(id)).toMatchObject({ openCriticalDecisions: 1 })
+    usePack()
+  })
+})

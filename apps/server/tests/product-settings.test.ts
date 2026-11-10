@@ -149,3 +149,13 @@ it('recentChecks answers null for a Product without a ticket source, so the pick
   const product = await payload.create({ collection: 'products', data: { name: 'Plain', slug: 'plain', workspace: ws.id as number }, ...o })
   expect(await recentChecks(product.id as number)).toBeNull()
 })
+
+it('loadWorkflow shows the stored overlap suggestions (minus listed paths) with their time and makes no forge call', async () => {
+  const { loadWorkflow } = await import('../src/app/(app)/lib/settings')
+  const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'wf', slug: 'wf-ws' }, ...o })).id as number
+  const at = '2026-11-10T10:00:00.000Z'
+  await payload.create({ collection: 'products', data: { name: 'None', slug: 'wf-none', workspace }, ...o })
+  await payload.create({ collection: 'products', data: { name: 'Some', slug: 'wf-some', workspace, overlapIgnore: ['pnpm-lock.yaml'], overlapSuggestions: { at, items: [{ path: 'pnpm-lock.yaml', percent: 40 }, { path: 'CHANGELOG.md', percent: 30 }] } }, ...o } as never)
+  const { overlap } = await loadWorkflow(workspace)
+  expect(overlap.map((p) => [p.name, p.suggestedAt, p.suggestions])).toEqual([['None', null, []], ['Some', at, [{ path: 'CHANGELOG.md', percent: 30 }]]])
+})

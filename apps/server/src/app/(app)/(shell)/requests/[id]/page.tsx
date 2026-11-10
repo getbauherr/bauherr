@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 import { sourceOf } from '../../../../../lib/actions'
 import { mediaLimits } from '../../../../../lib/intake/media'
 import { Markdown } from '../../../components/Markdown'
@@ -8,10 +9,13 @@ import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ago } from '../../../lib/format'
 import { renderMarkdown } from '../../../lib/markdown'
+import { within } from '../../../lib/overview'
 import { loadRequest } from '../../../lib/requests'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
+
+const COMMENTS_MS = 5000
 
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -19,23 +23,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
   const request = await loadRequest(workspace.id, Number(id), user.id as number)
   if (!request) notFound()
-  const payload = await payloadClient()
-  let forgeError = false
-  const comments = (
-    await Promise.all(
-      request.tickets.map(async (t) => {
-        try {
-          const { ts, n } = await sourceOf(payload, (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as never)
-          return (await ts.listComments(n)).filter((c) => !c.body.startsWith('<!-- bauherr:')).map((c) => ({ ...c, ticket: t.number }))
-        } catch {
-          forgeError = true
-          return []
-        }
-      }),
-    )
-  ).flat().sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   const next = request.tickets.find((t) => t.need)
-  const { maxBytes, maxPerSession } = mediaLimits()
 
   return (
     <div className="flex flex-col gap-4">
@@ -80,22 +68,49 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
       {request.tickets.length > 0 && (
         <section className="flex flex-col gap-2" aria-labelledby="comments">
           <h2 className="heading" id="comments">Comments</h2>
-          {forgeError && <p className="small text-muted-foreground">The forge could not be reached; some comments are unavailable.</p>}
-          {comments.length ? (
-            <ul className="m-0 flex list-none flex-col gap-3 p-0">
-              {comments.map((c) => (
-                <li key={`${c.ticket}-${c.id}`} className="flex flex-col gap-1" data-testid="request-comment">
-                  <p className="small m-0 text-muted-foreground">#{c.ticket} · {c.author} · {ago(c.createdAt)}</p>
-                  <Markdown html={renderMarkdown(c.body)} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground">No comments yet.</p>
-          )}
-          {!forgeError && <RequestComposer tickets={request.tickets} maxBytes={maxBytes} maxImages={maxPerSession} />}
+          <Suspense fallback={<div className="h-16 animate-pulse rounded-sm bg-secondary" aria-busy="true" />}>
+            <Comments tickets={request.tickets} />
+          </Suspense>
         </section>
       )}
     </div>
+  )
+}
+
+/** The forge-backed Comments, streamed after the page; 5 s per Ticket, then "could not be reached". */
+async function Comments({ tickets }: { tickets: Parameters<typeof RequestComposer>[0]['tickets'] }) {
+  const payload = await payloadClient()
+  let forgeError = false
+  const comments = (
+    await Promise.all(
+      tickets.map(async (t) => {
+        try {
+          const { ts, n } = await sourceOf(payload, (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as never)
+          return (await within(ts.listComments(n), COMMENTS_MS)).filter((c) => !c.body.startsWith('<!-- bauherr:')).map((c) => ({ ...c, ticket: t.number }))
+        } catch {
+          forgeError = true
+          return []
+        }
+      }),
+    )
+  ).flat().sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  const { maxBytes, maxPerSession } = mediaLimits()
+  return (
+    <>
+      {forgeError && <p className="small text-muted-foreground">The forge could not be reached; some comments are unavailable.</p>}
+      {comments.length ? (
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
+          {comments.map((c) => (
+            <li key={`${c.ticket}-${c.id}`} className="flex flex-col gap-1" data-testid="request-comment">
+              <p className="small m-0 text-muted-foreground">#{c.ticket} · {c.author} · {ago(c.createdAt)}</p>
+              <Markdown html={renderMarkdown(c.body)} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-muted-foreground">No comments yet.</p>
+      )}
+      {!forgeError && <RequestComposer tickets={tickets} maxBytes={maxBytes} maxImages={maxPerSession} />}
+    </>
   )
 }

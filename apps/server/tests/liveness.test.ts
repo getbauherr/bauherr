@@ -240,6 +240,15 @@ it('after one pass no repairable Ticket stays dead without a need', async () => 
   expect(await liveness.invisibleDead(payload, ws)).toEqual([])
 })
 
+it('the sweep stores its finding on a Ticket it does not repair and clears it once the Ticket is no longer dead', async () => {
+  const cancelled = await seed('build', { runs: [{ stage: 'build', status: 'cancelled' }] })
+  await liveness.sweepLiveness(payload)
+  expect((await reload(cancelled.id)).liveness).toMatchObject({ cause: 'run-cancelled', need: 'Cancelled' })
+  await payload.create({ collection: 'runs', data: { ticket: cancelled.id, stage: 'build', mode: 'session', workspace: ws, status: 'awaiting_session' }, ...o })
+  await liveness.sweepLiveness(payload)
+  expect((await reload(cancelled.id)).liveness).toBeNull()
+})
+
 it('review-stalled: a ready_for_human review waiting over 30 minutes without a human touch', async () => {
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
   const at = async (m: number) => {

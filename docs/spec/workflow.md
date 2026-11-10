@@ -119,6 +119,8 @@ Invariant: every open, non-parent Ticket in plan, build or review has a live Run
 
 Review restart (task `resume-reviews`, every minute): a Ticket parked at `ready_for_human`, or at `needs_human` below the round cap, whose MR head differs from the last review's `reviewedSha` is cleared (conditional UPDATE) and reviewed again, unless `rebindReview` moves the verdict (same-diff main merge); one Comment `New head <sha7>; review restarted (was <state>).`
 
+Every sweep also stores its findings for the pages: `tickets.liveness` = `{cause, need, at}` for each Ticket still dead after the repairs, cleared for every other Ticket. Factory health reads these (no forge call); a finding older than 15 minutes shows as "could not be checked". `deadTickets` and `invisibleDead` stay for jobs and MCP tools.
+
 Each repair posts one Comment line with the marker `<!-- bauherr:liveness:<cause>:<run id> -->`, which makes it once per (Ticket, cause, Run). An unclaimed Triage Run no longer expires: it waits for a session like any other unclaimed Run (an expiry used up the Ticket's triage attempts). MCP `return_to_build` lets an agent do the `mr-missing` and `checks-red` repairs itself; it is refused for a Ticket that is not dead for one of those causes. Gates stay human-only.
 
 ## 6. Human takeover

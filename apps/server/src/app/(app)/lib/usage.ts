@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { budgetStatus, gatewayEnabled, shareOf } from '../../../lib/gateway'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { payloadClient } from './session'
+import { FORGE_TIMEOUT_MS, within } from './overview'
 
 const o = { overrideAccess: true, depth: 0 } as const
 
@@ -14,11 +15,16 @@ export type Usage = {
   providers: { name: string; preset: string; secret: 'set' | 'not set' | 'not needed' }[]
   tiers: { tier: string; model: string }[]
   costs: { product: CostRow[]; ticket: CostRow[]; stage: CostRow[] }
+  /** Workspace slug whose USD spend `loadSpendUsd` reads from the gateway; null when there is none to read (token mode, no gateway). */
+  spendOf: string | null
 }
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
 
-/** Everything the AI usage page shows; secrets only ever reach this function as a boolean. */
+/** The Workspace key's USD spend of the last 30 days from the gateway database; null when it cannot be read within 3 s. The only external read of the page: stream it. */
+export const loadSpendUsd = (slug: string): Promise<number | null> => within(budgetStatus(slug), FORGE_TIMEOUT_MS).then((b) => b.spentUsd, () => null)
+
+/** Everything the AI usage page shows from the database; secrets only ever reach this function as a boolean. */
 export async function loadUsage(workspace: number): Promise<Usage> {
   const payload = await payloadClient()
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { gatewayKey: false }, ...o } as never)) as unknown as Record<string, any>
@@ -52,11 +58,10 @@ export async function loadUsage(workspace: number): Promise<Usage> {
     UNION ALL
     (SELECT 'ticket', title, ticket_id, number::int, SUM(cost)::float, bool_or(estimate), SUM(unpriced)::int FROM c GROUP BY ticket_id, title, number ORDER BY SUM(cost) DESC, ticket_id LIMIT 20)
   `)).rows as { k: 'product' | 'stage' | 'ticket' | 'tokens'; label: string; id: number | null; number: number | null; cost: number; estimate: boolean; unpriced: number }[]
-  const usd = tokens || !(gatewayEnabled() && process.env.GATEWAY_DATABASE_URL) ? null : (await budgetStatus(ws.slug).catch(() => null))?.spentUsd ?? null
-  const spent = tokens ? rows.find((r) => r.k === 'tokens')?.cost ?? 0 : usd
+  const spent = tokens ? rows.find((r) => r.k === 'tokens')?.cost ?? 0 : null
   const bars: Bar[] = ws.routerKey
     ? [{ label: 'Total', spent, limit: base }, { label: 'Direct', spent: null, limit: shareOf(base, tokens, 100 - share) }, { label: 'Auto', spent: null, limit: shareOf(base, tokens, share) }]
     : [{ label: 'Workspace', spent, limit: base }]
   const of = (k: string): CostRow[] => rows.filter((r) => r.k === k).sort((a, b) => b.cost - a.cost).map((r) => ({ label: r.label, costUsd: r.cost, estimate: r.estimate, unpriced: r.unpriced, ...(r.id != null && { id: r.id, number: r.number ?? undefined }) }))
-  return { unit: tokens ? 'tokens' : 'usd', bars, providers, tiers, costs: { product: of('product'), ticket: of('ticket'), stage: of('stage') } }
+  return { unit: tokens ? 'tokens' : 'usd', bars, providers, tiers, costs: { product: of('product'), ticket: of('ticket'), stage: of('stage') }, spendOf: tokens || !(gatewayEnabled() && process.env.GATEWAY_DATABASE_URL) ? null : (ws.slug as string) }
 }

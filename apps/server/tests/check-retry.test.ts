@@ -3,12 +3,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-const scan = vi.hoisted(() => ({ hang: false }))
-vi.mock('../src/lib/liveness', async (orig) => {
-  const real = await orig<typeof import('../src/lib/liveness')>()
-  return { ...real, invisibleDead: (...a: Parameters<typeof real.invisibleDead>) => (scan.hang ? new Promise<never>(() => {}) : real.invisibleDead(...a)) }
-})
-
 let payload: Payload
 let fake: FakeBackend
 let product: number
@@ -151,15 +145,19 @@ it('Factory health lists the flaky checks of the Workspace by count', async () =
   expect(ours.map((f) => [f.check, f.count])).toEqual([['e2e', 2], ['lint', 1]])
 })
 
-it('Factory health reports the dead-Ticket scan as unavailable when it times out, never as zero', async () => {
+it('Factory health lists the findings the liveness sweep stored, without a forge call, and says "could not be checked" (null) when one is stale', async () => {
   const { loadHealth } = await import('../src/app/(app)/lib/settings')
   expect((await loadHealth(ws)).dead).toEqual([])
-  scan.hang = true
-  try {
-    expect((await loadHealth(ws, 50)).dead).toBeNull()
-  } finally {
-    scan.hang = false
-  }
+  const { id } = await seed([])
+  const number = ((await payload.findByID({ collection: 'tickets', id, ...o })) as unknown as { number: number }).number
+  const find = (at: string, need: string | null) => payload.update({ collection: 'tickets', id, data: { liveness: { cause: 'review-stalled', need, at } }, ...o } as never)
+  await find(new Date().toISOString(), null)
+  expect((await loadHealth(ws)).dead).toEqual([{ id, number, cause: 'review-stalled' }])
+  await find(new Date().toISOString(), 'Needs you')
+  expect((await loadHealth(ws)).dead).toEqual([])
+  await find(new Date(Date.now() - 20 * 60_000).toISOString(), null)
+  expect((await loadHealth(ws)).dead).toBeNull()
+  await payload.update({ collection: 'tickets', id, data: { liveness: null }, ...o } as never)
 })
 
 it('an e2e-flaky check run records one flake row per listed test, once', async () => {

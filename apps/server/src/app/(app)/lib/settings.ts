@@ -1,7 +1,7 @@
 import type { Check, Forge } from '@bauherr/adapters'
 import { formatReviewChecks } from '@bauherr/runner'
 import { ValidationError } from 'payload'
-import { invisibleDead } from '../../../lib/liveness'
+import { type Cause, FINDING_FRESH_MS } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
 import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
@@ -11,9 +11,7 @@ import { DEFAULT, wipStages } from '../../../lib/workflow'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
-import { suggestOverlapIgnore } from '../../../lib/overlap'
 import { wipCount } from '../../../lib/wip'
-import { FORGE_TIMEOUT_MS, within } from './overview'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -281,13 +279,11 @@ export async function loadWorkflow(workspace: number) {
   ])
   const baseJson = JSON.stringify(DEFAULT())
   const wip = await Promise.all(wipStages(DEFAULT()).map(async (s) => ({ stage: s, limit: wipLimit(ws, s), count: await wipCount(payload, workspace, s) })))
-  const overlap = await Promise.all(
-    (products.docs as unknown as Doc[]).map(async (p) => {
-      const ignore = (p.overlapIgnore ?? []) as string[]
-      const suggestions = await forgeOf(payload, p.id).then(({ backend, repo }) => suggestOverlapIgnore(backend.forge, repo)).catch(() => [])
-      return { id: p.id as number, name: p.name as string, ignore, suggestions: suggestions.filter((x) => !ignore.includes(x.path)) }
-    }),
-  )
+  const overlap = (products.docs as unknown as Doc[]).map((p) => {
+    const ignore = (p.overlapIgnore ?? []) as string[]
+    const stored = p.overlapSuggestions as { at: string; items: { path: string; percent: number }[] } | null
+    return { id: p.id as number, name: p.name as string, ignore, suggestions: (stored?.items ?? []).filter((x) => !ignore.includes(x.path)), suggestedAt: stored?.at ?? null }
+  })
   return {
     stages,
     wip,
@@ -303,18 +299,21 @@ export async function loadWorkflow(workspace: number) {
 }
 
 /** Factory health: instance-wide job counts of the last 24 h, the oldest queued job (within 7 days), last poll and error per Ticket source of the Workspace, and the top 5 flaky checks (passed after a retry) of the last 30 days. */
-/** `deadMs`: how long the forge-backed dead-Ticket scan may take; past it `dead` is null ("could not be checked"), never an empty list. */
-export async function loadHealth(workspace: number, deadMs = FORGE_TIMEOUT_MS) {
+/** `dead` is read from the findings the `watch-liveness` sweep stores on the Tickets (no forge call); null ("could not be checked") when a finding is older than 15 minutes, never an empty list from a sweep that stopped. */
+export async function loadHealth(workspace: number) {
   const payload = await payloadClient()
   const day = { greater_than_equal: new Date(Date.now() - 864e5).toISOString() }
   const count = async (where: Doc) => (await payload.count({ collection: 'payload-jobs', where: { createdAt: day, ...where }, ...o } as never)).totalDocs
-  const [queued, running, failed, oldest, sources] = await Promise.all([
+  const [queued, running, failed, oldest, sources, findings] = await Promise.all([
     count({ completedAt: { exists: false }, processing: { not_equals: true }, hasError: { not_equals: true } }),
     count({ processing: { equals: true }, completedAt: { exists: false } }),
     count({ hasError: { equals: true } }),
     payload.find({ collection: 'payload-jobs', where: { createdAt: { greater_than_equal: new Date(Date.now() - 7 * 864e5).toISOString() }, completedAt: { exists: false }, processing: { not_equals: true }, hasError: { not_equals: true } }, sort: 'createdAt', limit: 1, pagination: false, select: { createdAt: true }, ...o } as never),
     payload.find({ collection: 'ticket_sources', where: { workspace: { equals: workspace } }, sort: 'id', pagination: false, select: { repo: true, lastPolledAt: true, lastError: true }, ...o } as never),
+    payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { liveness: { exists: true } }] }, sort: 'number', pagination: false, select: { number: true, liveness: true }, ...o } as never),
   ])
+  const found = findings.docs as unknown as { id: number; number: number; liveness: { cause: string; need: string | null; at: string } }[]
+  const stale = found.some((t) => Date.now() - Date.parse(t.liveness.at) > FINDING_FRESH_MS)
   const flakeRows = (await payload.find({ collection: 'check_flakes', where: { workspace: { equals: workspace }, outcome: { equals: 'flake' }, createdAt: { greater_than_equal: new Date(Date.now() - 30 * 864e5).toISOString() } }, sort: '-createdAt', pagination: false, ...o, depth: 1 } as never)).docs as unknown as Doc[]
   const byCheck = new Map<string, { check: string; count: number; lastSeen: string; ticket: number | null }>()
   for (const r of flakeRows) {
@@ -334,7 +333,7 @@ export async function loadHealth(workspace: number, deadMs = FORGE_TIMEOUT_MS) {
     failed,
     oldestQueued: ((oldest.docs[0] as Doc | undefined)?.createdAt ?? null) as string | null,
     /** Tickets with no live Run, no wait and no need for the owner; the goal is 0. */
-    dead: await within(invisibleDead(payload, workspace), deadMs).then((ds) => ds.map((d) => ({ id: d.ticket.id as number, number: d.ticket.number as number, cause: d.cause }))).catch(() => null),
+    dead: stale ? null : found.filter((t) => !t.liveness.need).map((t) => ({ id: t.id, number: t.number, cause: t.liveness.cause as Cause })),
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
     flakes,
   }

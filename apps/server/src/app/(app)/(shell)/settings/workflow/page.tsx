@@ -3,7 +3,7 @@ import { EmptyState } from '../../../components/EmptyState'
 import { GateRow, GateLadder, ToggleRow } from '../../../components/SettingsParts'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { Table } from '../../../components/ui/table'
-import { saveExpediteLane, saveOverlapIgnore, saveWipLimits } from '../actions'
+import { saveExpediteLane, saveOverlapIgnore, saveWipLimits, suggestOverlapPaths } from '../actions'
 import { isAdmin, loadWorkflow } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import type { HumanGate } from '../../../../../lib/mode'
@@ -48,9 +48,13 @@ export default async function Workflow() {
             <input type="hidden" name="id" value={p.id} />
             <Field name="ignore" label={`Paths that never hold a Build (${p.name})`} rows={4} defaultValue={p.ignore.join('\n')} example="pnpm-lock.yaml" />
           </SettingsForm>
+          <SettingsForm action={suggestOverlapPaths} submit="Suggest paths" inline>
+            <input type="hidden" name="id" value={p.id} />
+            <span className="small text-muted-foreground">{p.suggestedAt ? `Suggested ${p.suggestedAt.slice(0, 16).replace('T', ' ')} from the last 100 merged pull requests.` : 'Not suggested yet. Reads the last 100 merged pull requests from the forge.'}</span>
+          </SettingsForm>
           {p.suggestions.length > 0 && (
             <>
-              <p className="small text-muted-foreground">Suggested from history: changed in at least 25% of the last 100 merged pull requests. Nothing is applied until you add it.</p>
+              <p className="small text-muted-foreground">Changed in at least 25% of the last 100 merged pull requests. Nothing is applied until you add it.</p>
               <ul>
                 {p.suggestions.map((x) => (
                   <li key={x.path}>

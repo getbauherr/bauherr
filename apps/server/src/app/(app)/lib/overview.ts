@@ -1,8 +1,8 @@
 import { cache } from 'react'
-import { ticketsOf } from '../../../lib/actions'
+import { sql } from '@payloadcms/db-postgres'
+import type { Payload } from 'payload'
 import { hasProductionChecks } from '../../../lib/mode'
 import { nextStep } from '../../../lib/next-step'
-import { unansweredCriticalCount } from './plan'
 import { payloadClient } from './session'
 import { type Stage, needsYou, stageOf } from './needs-you'
 import { type Epic, epicWhere, plainStatus } from './epics'
@@ -65,8 +65,6 @@ export type TicketRow = {
 
 const LIVE = ['running', 'awaiting_session']
 export const RUNS_LIMIT = 100
-/** Plan comments are fetched from the forge only for tickets awaiting plan approval, at most this many per load. */
-export const DECISIONS_LOOKUPS = 20
 const CLOSED_LIMIT = 200
 export const FORGE_TIMEOUT_MS = 3000
 const RUN_FIELDS = { ticket: true, stage: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, reconcileStatus: true, gatewayTokensTotal: true, createdAt: true, escalation: true, investigation: true, reasonKind: true } as const
@@ -75,56 +73,41 @@ export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
 type Base = { tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; epics: Epic[]; wip: Record<string, { count: number; limit: number | null }> }
+type Doc = Record<string, any>
+const q = { depth: 0, overrideAccess: true } as const
 
-/** Everything of `loadOverview` that needs only the database (no forge call): enough for counts and epics, which the top bar and the Ticket page need on every request. */
-export const loadOverviewRows = cache(async (workspace: number, all: boolean): Promise<Base & { planLookups: { id: number; number: number; product: number }[] }> => {
-  const payload = await payloadClient()
-  const q = { depth: 0, overrideAccess: true } as const
+const docsOf = async (payload: Payload, collection: string, extra: object): Promise<Doc[]> => ((await payload.find({ collection, pagination: false, ...q, ...extra } as never)).docs as unknown as Doc[])
+
+/** The newest Run of each Ticket (one `DISTINCT ON` query for the ids, then the Run fields), never all Runs of the Tickets. */
+const latestRuns = async (payload: Payload, tickets: number[]): Promise<Map<number, RunRow>> => {
+  if (!tickets.length) return new Map()
+  const ids = (await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "id" FROM "runs" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) ORDER BY "ticket_id", "created_at" DESC, "id" DESC`)).rows.map((r) => r.id as number)
+  return new Map((await docsOf(payload, 'runs', { where: { id: { in: ids } }, select: RUN_FIELDS }) as unknown as RunRow[]).map((r) => [r.ticket, r]))
+}
+
+/** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
+const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null }[], wip: Base['wip']): Promise<TicketRow[]> => {
   const ws = { workspace: { equals: workspace } }
-  const [open, closed, recent, products, wsDoc] = await Promise.all([
-    payload.find({ collection: 'tickets', where: { and: [ws, { state: { equals: 'open' } }] }, sort: '-sourceUpdatedAt', pagination: false, ...q }),
-    all ? payload.find({ collection: 'tickets', where: { and: [ws, { state: { equals: 'closed' } }] }, sort: '-updatedAt', limit: CLOSED_LIMIT, ...q }) : null,
-    payload.find({ collection: 'runs', where: ws, sort: '-createdAt', limit: RUNS_LIMIT, select: RUN_FIELDS, ...q }),
-    payload.find({ collection: 'products', where: ws, sort: 'name', pagination: false, ...q }),
-    payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
-  ])
-  const ticketDocs = [...open.docs, ...(closed?.docs ?? [])] as unknown as Record<string, any>[]
-  const runRows = recent.docs as unknown as RunRow[]
-  const known = new Set(ticketDocs.map((t) => t.id))
-  const missing = [...new Set(runRows.map((r) => r.ticket))].filter((id) => !known.has(id))
-  if (missing.length) {
-    const extra = await payload.find({ collection: 'tickets', where: { and: [ws, { id: { in: missing } }] }, pagination: false, ...q })
-    ticketDocs.push(...(extra.docs as unknown as Record<string, any>[]))
-  }
   const blockerIds = [...new Set(ticketDocs.flatMap((t) => (t.blockedBy ?? []) as number[]))]
   const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
-  const docsOf = async (collection: string, extra: object): Promise<Record<string, any>[]> => ((await payload.find({ collection, pagination: false, ...q, ...extra } as never)).docs as unknown as Record<string, any>[])
-  const tickets = (where: object, sort?: string) => docsOf('tickets', { where: { and: [ws, where] }, sort })
-  const owned = async (latest: Map<number, RunRow>): Promise<Map<number, string>> => {
-    const ownerIds = [...new Set([...latest.values()].filter((r) => LIVE.includes(r.status) && r.mode === 'session' && r.sessionOwner).map((r) => r.sessionOwner!))]
-    return new Map(ownerIds.length ? (await docsOf('bauherren', { where: { id: { in: ownerIds } } })).map((o) => [o.id as number, String(o.email).split('@')[0]] as const) : [])
-  }
-  const [blockerDocs, parentDocs, [latest, owners], subs, counts] = await Promise.all([
-    blockerIds.length ? tickets({ id: { in: blockerIds } }) : [],
-    parentIds.length ? tickets({ id: { in: parentIds } }) : [],
+  const tickets = (ids: number[]) => (ids.length ? docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: ids } }] } }) : [])
+  const [blockerDocs, parentDocs, [latest, owners]] = await Promise.all([
+    tickets(blockerIds),
+    tickets(parentIds),
     (async () => {
-      const latest = new Map<number, RunRow>()
-      if (ticketDocs.length) for (const r of (await docsOf('runs', { where: { ticket: { in: ticketDocs.map((t) => t.id) } }, sort: '-createdAt', select: RUN_FIELDS })) as unknown as RunRow[]) if (!latest.has(r.ticket)) latest.set(r.ticket, r)
-      return [latest, await owned(latest)] as const
+      const latest = await latestRuns(payload, ticketDocs.map((t) => t.id))
+      const ownerIds = [...new Set([...latest.values()].filter((r) => LIVE.includes(r.status) && r.mode === 'session' && r.sessionOwner).map((r) => r.sessionOwner!))]
+      return [latest, new Map(ownerIds.length ? (await docsOf(payload, 'bauherren', { where: { id: { in: ownerIds } } })).map((o) => [o.id as number, String(o.email).split('@')[0]] as const) : [])] as const
     })(),
-    tickets({ parent: { exists: true } }, 'number'),
-    wipCounts(payload, workspace),
   ])
-  const wip = Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
   const blockers = new Map(blockerDocs.map((b) => [b.id as number, { id: b.id as number, number: b.number as number, open: b.state !== 'closed' }]))
   const parents = new Map(parentDocs.map((p) => [p.id as number, { id: p.id as number, number: p.number as number, title: p.title as string }]))
-  const epicDocs = await tickets(epicWhere([...new Set(subs.map((c) => c.parent as number))]))
-  const productRows = products.docs as unknown as { id: number; name: string; productionChecks?: string | null }[]
   const byId = new Map(productRows.map((p) => [p.id, p]))
-  const rows = ticketDocs.map((t): TicketRow => {
+  return ticketDocs.map((t): TicketRow => {
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
     const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
+    const need = isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null
     return {
       id: t.id,
       number: t.number,
@@ -139,7 +122,8 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
-      needsYou: isOpen || t.releaseChecksState === 'failed' ? needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing: !hasProductionChecks(byId.get(t.product) ?? {}), releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run) : null,
+      // The stored count of unanswered critical decisions (kept by plan submit, answers and the gate sweep) turns "Approve plan" into "Answer decisions" without a forge call.
+      needsYou: need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ ticket: t, need: null, run: null, waiting: waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: isOpen && t.waitingFor === 'build' ? Number(/^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1]) || null : null,
       parent: parents.get(t.parent) ?? null,
@@ -148,31 +132,52 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
       blockedBy,
     }
   })
-  const byRow = new Map(rows.map((r) => [r.id, r]))
-  const epics = epicDocs.map((e): Epic => ({
-    id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null,
-    children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(c), open: c.state !== 'closed', status: r ? plainStatus(r) : 'Done' } }),
-  }))
-  const planLookups = rows.filter((r) => r.needsYou === 'Approve plan').slice(0, DECISIONS_LOOKUPS).map((r) => ({ id: r.id, number: r.number, product: ticketDocs.find((t) => t.id === r.id)!.product as number }))
-  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics, wip, planLookups }
+}
+
+const epicOf = (e: Doc, subs: Doc[], byRow: Map<number, TicketRow>): Epic => ({
+  id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null,
+  children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(c), open: c.state !== 'closed', status: r ? plainStatus(r) : 'Done' } }),
 })
 
-/** `loadOverviewRows` plus the forge lookup that turns "Approve plan" into "Answer decisions" (3 s each, in parallel). Only the Board and Runs pages show that difference; the count of Tickets that need you is the same without it. */
-export const loadOverview = cache(async (workspace: number, all: boolean): Promise<Base> => {
-  const { planLookups, ...base } = await loadOverviewRows(workspace, all)
+/** Everything the Board, Runs and the top bar need, from the database only (no forge call). */
+export const loadOverviewRows = cache(async (workspace: number, all: boolean): Promise<Base> => {
   const payload = await payloadClient()
-  const sources = new Map<number, ReturnType<typeof ticketsOf>>()
-  const answer = new Set<number>()
-  await Promise.all(
-    planLookups.map(async ({ id, number, product }) => {
-      try {
-        if (!sources.has(product)) sources.set(product, ticketsOf(payload, product))
-        const ts = await sources.get(product)!
-        if (unansweredCriticalCount(await within(ts.listComments(String(number)), FORGE_TIMEOUT_MS))) answer.add(id)
-      } catch {
-        // forge unreachable or slow: keep "Approve plan"
-      }
-    }),
-  )
-  return answer.size ? { ...base, tickets: base.tickets.map((t) => (answer.has(t.id) ? { ...t, needsYou: 'Answer decisions' } : t)) } : base
+  const ws = { workspace: { equals: workspace } }
+  const [open, closed, recent, products, wsDoc, subs, counts] = await Promise.all([
+    payload.find({ collection: 'tickets', where: { and: [ws, { state: { equals: 'open' } }] }, sort: '-sourceUpdatedAt', pagination: false, ...q }),
+    all ? payload.find({ collection: 'tickets', where: { and: [ws, { state: { equals: 'closed' } }] }, sort: '-updatedAt', limit: CLOSED_LIMIT, ...q }) : null,
+    payload.find({ collection: 'runs', where: ws, sort: '-createdAt', limit: RUNS_LIMIT, select: RUN_FIELDS, ...q }),
+    payload.find({ collection: 'products', where: ws, sort: 'name', pagination: false, ...q }),
+    payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
+    docsOf(payload, 'tickets', { where: { and: [ws, { parent: { exists: true } }] }, sort: 'number' }),
+    wipCounts(payload, workspace),
+  ])
+  const ticketDocs = [...open.docs, ...(closed?.docs ?? [])] as unknown as Doc[]
+  const runRows = recent.docs as unknown as RunRow[]
+  const known = new Set(ticketDocs.map((t) => t.id))
+  const missing = [...new Set(runRows.map((r) => r.ticket))].filter((id) => !known.has(id))
+  if (missing.length) ticketDocs.push(...(await docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: missing } }] } })))
+  const wip = Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
+  const productRows = products.docs as unknown as { id: number; name: string; productionChecks?: string | null }[]
+  const [rows, epicDocs] = await Promise.all([rowsOf(payload, workspace, ticketDocs, productRows, wip), docsOf(payload, 'tickets', { where: { and: [ws, epicWhere([...new Set(subs.map((c) => c.parent as number))])] } })])
+  const byRow = new Map(rows.map((r) => [r.id, r]))
+  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics: epicDocs.map((e) => epicOf(e, subs, byRow)), wip }
 })
+
+/** Same data as `loadOverviewRows`; the name the Board and Runs pages use. */
+export const loadOverview = loadOverviewRows
+
+/** The epic a Ticket is (its sub-tickets with their status), else null; reads only that Ticket's children. */
+export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | null> => {
+  const payload = await payloadClient()
+  const ws = { workspace: { equals: workspace } }
+  const [subs, products, wsDoc, counts] = await Promise.all([
+    docsOf(payload, 'tickets', { where: { and: [ws, { parent: { equals: ticket.id } }] }, sort: 'number' }),
+    docsOf(payload, 'products', { where: ws, select: { name: true, productionChecks: true } }),
+    payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
+    wipCounts(payload, workspace),
+  ])
+  if (!subs.length && ticket.stage !== 'parent') return null
+  const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }])))
+  return epicOf(ticket, subs, new Map(rows.map((r) => [r.id, r])))
+}

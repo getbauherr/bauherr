@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
+import type { TicketSource } from '@bauherr/adapters'
 import { hasProductionChecks } from './mode'
 import { type Need, needsYou } from './needs-you'
 import { publicUrl } from './oidc'
@@ -12,6 +13,13 @@ import { sql } from '@payloadcms/db-postgres'
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
 const PLAN_GATES: (Need | null)[] = ['Approve plan', 'Answer decisions']
+
+/** Stores the Ticket's count of unanswered critical decisions from its forge comments (`unansweredCriticalCount`), so pages show "Answer decisions" without a forge call; returns the count. Written only when it changed. */
+export const storeOpenCritical = async (payload: Payload, ticket: number | string, comments: Parameters<typeof unansweredCriticalCount>[0]): Promise<number> => {
+  const n = unansweredCriticalCount(comments)
+  await cas(payload, ticket, sql`"open_critical_decisions" = ${n}::int`, sql`"open_critical_decisions" IS DISTINCT FROM ${n}::int`)
+  return n
+}
 
 export const logins = (v: unknown): string[] => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 
@@ -63,10 +71,12 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const owners = candidate ? await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o })) : []
   const base = owners.length ? candidate : null
   let forge: ReturnType<typeof forgeOf> | undefined
-  const source = async () => (await (forge ??= forgeOf(payload, id(t.product)))).tickets
+  const source = async (): Promise<TicketSource> => (await (forge ??= forgeOf(payload, id(t.product)))).tickets
+  // The one bounded forge read per awaiting-plan Ticket and sweep that keeps `openCriticalDecisions` current for the pages; a failed read keeps the stored value, and only a first notice (not yet held) needs the answer.
+  const open = candidate === 'Approve plan' ? await (async () => storeOpenCritical(payload, t.id, await (await source()).listComments(String(t.number))))().catch((e) => { if (!PLAN_GATES.includes(held)) throw e; return null }) : null
   let want = base
   if (base === 'Approve plan' && PLAN_GATES.includes(held)) want = held
-  else if (base === 'Approve plan' && unansweredCriticalCount(await (await source()).listComments(String(t.number)))) want = 'Answer decisions'
+  else if (base === 'Approve plan' && open) want = 'Answer decisions'
   if (want === held && (want || (!mine.length && !t.gateUnreachable))) return false
   const n = String(t.number)
   let added = mine
