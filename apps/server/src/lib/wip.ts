@@ -40,7 +40,7 @@ export const enterStage = async (payload: Payload, t: Doc, stage: string, move: 
   }
   if (limit == null || (await isExpediting(payload, t))) return enter()
   return payload.db.drizzle.transaction(async (tx: any) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, ${wipStages(DEFAULT()).indexOf(stage)}::int)`)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, hashtext(${'wip:' + stage}))`)
     if ((await wipCount(payload, ws, stage)) < limit) return enter()
     if (t.waitingFor !== stage || t.waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: null }, ...o })
     return 'waiting' as const

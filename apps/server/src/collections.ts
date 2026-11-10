@@ -7,6 +7,7 @@ import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { wipLimitsError } from './lib/wip-limits'
+import { runKind, runStageError, waitingForError } from './lib/stage-text'
 import { DEFAULT, defaultWip } from './lib/workflow'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
@@ -416,7 +417,7 @@ const tickets = col('tickets', [
   { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
-  select('waitingFor', ['plan', 'build', 'review', 'checks'], { admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
+  text('waitingFor', { validate: (v: unknown) => waitingForError(DEFAULT(), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
   date('expediteAt'),
   text('gateNoticeClaim'),
   { name: 'expedite', type: 'checkbox', defaultValue: false, admin: { description: 'Carries the bauherr:expedite label while the Workspace has the Expedite lane on: skips Triage, bypasses WIP and the overlap hold, no plan gate.' } },
@@ -545,7 +546,8 @@ export const collections: CollectionConfig[] = [
   tickets,
   col('runs', [
     rel('ticket', 'tickets', { required: true }),
-    select('stage', ['triage', 'plan', 'build', 'review', 'scan', 'distill'], { required: true }),
+    text('stage', { required: true, index: true, validate: (v: unknown) => runStageError(DEFAULT(), v) }),
+    text('kind', { index: true, admin: { description: 'The stage kind the Run ran for (or scan / distill); filled from `stage` on create.' } }),
     select('status', runStatuses, { required: true, defaultValue: 'queued' }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
     rel('sessionOwner', 'bauherren'),
@@ -587,7 +589,16 @@ export const collections: CollectionConfig[] = [
     date('finishedAt'),
     text('error'),
     json('artifacts'),
-  ]),
+  ], {
+    hooks: {
+      beforeValidate: [
+        ({ data, operation }) => {
+          if (operation === 'create' && data && !data.kind && typeof data.stage === 'string') data.kind = runKind(DEFAULT(), data.stage)
+          return data
+        },
+      ],
+    },
+  }),
   col('steps', [
     rel('run', 'runs', { required: true }),
     num('seq'),
