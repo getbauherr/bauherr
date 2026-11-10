@@ -72,9 +72,9 @@ test('command palette: opens with Ctrl+K, finds a Ticket by number, navigates, a
   await expect(dialog.getByRole('option', { name: 'Toggle theme' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('button', { name: 'Search' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Command palette' })).toBeFocused()
 
-  await page.getByRole('button', { name: 'Search' }).click()
+  await page.getByRole('button', { name: 'Command palette' }).click()
   await page.getByPlaceholder(/Go to a page/).fill('#1')
   const hit = dialog.getByRole('group', { name: 'Tickets' }).getByRole('option').first()
   await expect(hit).toContainText('#1')

@@ -26,7 +26,7 @@ export function KnowledgeRepo({ connections, connection, repos, repo }: { connec
       {listing === 'loading' ? (
         <>
           <input type="hidden" name="knowledgeRepo" value={repo} />
-          <p role="status" className="small muted">Reading repositories...</p>
+          <p role="status" className="small text-muted-foreground">Reading repositories...</p>
         </>
       ) : (
         <PickField key={`${conn}-${listing?.length ?? 'x'}`} name="knowledgeRepo" label="Repository" options={listing} defaultValue={repo} hint={listing === null && conn ? 'Could not list repositories; type owner/name.' : undefined} example="acme/knowledge" />

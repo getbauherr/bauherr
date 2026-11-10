@@ -26,7 +26,7 @@ export function CommandInput({ className, ...props }: ComponentProps<typeof Comm
   return (
     <div data-slot="command-input-wrapper" className="flex h-12 items-center gap-2 border-b border-border px-3 text-muted-foreground">
       <Search />
-      <CommandPrimitive.Input data-slot="command-input" className={cn('h-full w-full bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground', className)} {...props} />
+      <CommandPrimitive.Input data-slot="command-input" className={cn('h-full w-full bg-transparent text-[15px] text-foreground outline-none focus-visible:outline-none placeholder:text-muted-foreground', className)} {...props} />
     </div>
   )
 }

@@ -81,7 +81,7 @@ export function NextStepBar({ sentence, primary, children }: { sentence: ReactNo
       role="region"
       aria-label="Next step"
     >
-      <p className="min-w-0 flex-[1_1_20ch] text-pretty">{sentence}</p>
+      <p className="min-w-0 flex-[1_1_20ch] text-pretty max-sm:flex-none">{sentence}</p>
       {(children || button) && <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">{children}{button}</div>}
     </div>
   )

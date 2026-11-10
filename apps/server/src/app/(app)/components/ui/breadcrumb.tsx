@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 
 export const Breadcrumb = (props: ComponentProps<'nav'>) => <nav aria-label="Breadcrumb" data-slot="breadcrumb" {...props} />
 
-export const BreadcrumbList = ({ className, ...props }: ComponentProps<'ol'>) => <ol data-slot="breadcrumb-list" className={cn('flex flex-wrap items-center gap-1.5 text-[15px] text-muted-foreground', className)} {...props} />
+export const BreadcrumbList = ({ className, ...props }: ComponentProps<'ol'>) => <ol data-slot="breadcrumb-list" className={cn('m-0 flex list-none flex-wrap items-center gap-1.5 p-0 text-[15px] text-muted-foreground', className)} {...props} />
 
 export const BreadcrumbItem = ({ className, ...props }: ComponentProps<'li'>) => <li data-slot="breadcrumb-item" className={cn('inline-flex items-center gap-1.5', className)} {...props} />
 

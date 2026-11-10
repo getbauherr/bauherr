@@ -2,6 +2,7 @@ import { PageTitle } from '../../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../../components/EmptyState'
+import { Table } from '../../../../components/ui/table'
 import { Field, SettingsForm } from '../../../../components/SettingsForm'
 import { DeploySections, RepositoryFields } from '../../../../components/ProductForms'
 import { RadioCards, SettingsSection, SetupChecklist, ToggleRow } from '../../../../components/SettingsParts'
@@ -67,24 +68,22 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         <>
           <p className="small text-muted-foreground">Short name <span className="mono">{p.slug}</span>. It names the Knowledge repo folder and cannot change.</p>
           {p.sources.map((s) => (
-            <div key={s.id} className="row-between">
+            <div key={s.id} className="flex flex-wrap items-center justify-between gap-3">
               <span className="small">Last checked <span className="mono">{when(s.polledAt)}</span> ({s.connection}), position <span className="mono">{s.cursor || 'none'}</span></span>
               {admin && <Remove collection="ticket_sources" id={s.id} label="Stop reading tickets" />}
             </div>
           ))}
-          {admin && p.repositories.map((r) => <div key={r.id} className="row-between"><span className="mono small">{r.fullName}</span><Remove collection="repositories" id={r.id} label="Remove repository" /></div>)}
+          {admin && p.repositories.map((r) => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3"><span className="mono small">{r.fullName}</span><Remove collection="repositories" id={r.id} label="Remove repository" /></div>)}
         </>
       }>
         {(p.repositories.length > 0 || orphans.length > 0) && (
-          <div className="scroll">
-            <table className="table">
+          <Table>
               <thead><tr><th>Repository</th><th>Reads tickets</th></tr></thead>
               <tbody>
                 {p.repositories.map((r) => <tr key={r.id}><td className="mono">{r.fullName}</td><td>{p.sources.some((s) => s.repo === r.fullName) ? 'Yes' : 'No'}</td></tr>)}
                 {orphans.map((s) => <tr key={`s${s.id}`}><td className="mono">{s.repo}</td><td>Yes</td></tr>)}
               </tbody>
-            </table>
-          </div>
+            </Table>
         )}
         {admin && (connections.length ? (
           <SettingsForm action={addRepository} submit="Add repository" reset>
@@ -135,16 +134,13 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       </SettingsSection>
 
       <SettingsSection id="widget" n={7} title="Website widget" purpose="Lets your users send requests from your own site." advanced={revoked.length > 0 && (
-        <div className="scroll">
-          <table className="table">
+        <Table>
             <thead><tr><th>Revoked widgets</th><th>Sites</th><th>Revoked</th></tr></thead>
             <tbody>{revoked.map((e) => <tr key={e.id}><td>{e.name}</td><td className="mono">{e.origins}</td><td className="mono">{when(e.revokedAt)}</td></tr>)}</tbody>
-          </table>
-        </div>
+          </Table>
       )}>
         {active.length > 0 ? (
-          <div className="scroll">
-            <table className="table">
+          <Table>
               <thead><tr><th>Name</th><th>Sites</th><th>Created</th><th /></tr></thead>
               <tbody>
                 {active.map((e) => (
@@ -154,8 +150,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
         ) : (
           <p className="small text-muted-foreground">No website widget yet. Add one to collect requests from your users.</p>
         )}

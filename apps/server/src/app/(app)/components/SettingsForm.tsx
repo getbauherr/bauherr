@@ -3,7 +3,12 @@ import { createContext, startTransition, useActionState, useContext, useId, useE
 import type { FormState } from '../lib/settings'
 import { NextStepBar } from './NextStepBar'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
+import { Textarea } from './ui/textarea'
+import { Alert } from './ui/alert'
 import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { NativeSelect } from './ui/native-select'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 const Ctx = createContext<FormState>({})
@@ -25,8 +30,8 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
   }, [state])
   const status = (
     <>
-      {state.saved && <span role="status" className="small ok">Saved</span>}
-      {state.error && <span role="alert" className="small err">{state.error}</span>}
+      {state.saved && <span role="status" className="small text-ok">Saved</span>}
+      {state.error && <span role="alert" className="small text-destructive">{state.error}</span>}
     </>
   )
   return (
@@ -34,7 +39,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
       <form
         ref={ref}
         id={formId}
-        className={inline ? 'sform inline' : 'sform'}
+        className={inline ? 'flex flex-row items-center gap-4' : 'flex flex-col gap-4'}
         onChange={bar ? () => setDirty(true) : undefined}
         onSubmit={(e) => {
           e.preventDefault()
@@ -49,12 +54,12 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
         )}
         {children}
         {!bar && (
-          <div className="actions">
+          <div className="flex flex-wrap items-center gap-3">
             {confirm ? <ConfirmButton label={submit} confirm={confirm} primary={primary} /> : <Button variant={primary ? 'default' : 'outline'} disabled={pending}>{submit}</Button>}
             {status}
           </div>
         )}
-        {state.notice && (copy ? <CopyField text={state.notice} /> : <p role="status" className="mono notice">{state.notice}</p>)}
+        {state.notice && (copy ? <CopyField text={state.notice} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
       </form>
     </Ctx>
   )
@@ -69,22 +74,22 @@ export function Field({ name, label, hint, example, explain, options, empty, row
   const described = [hint && `${uid}-h`, example && `${uid}-x`, error && `${uid}-e`].filter(Boolean).join(' ') || undefined
   const props = { name, id: uid, 'aria-invalid': !!error || undefined, 'aria-describedby': described }
   return (
-    <div className="field">
-      <label htmlFor={uid} className="small label-strong">{label}</label>
-      {hint && <span id={`${uid}-h`} className="small muted">{hint}</span>}
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={uid} className="small">{label}</Label>
+      {hint && <span id={`${uid}-h`} className="small text-muted-foreground">{hint}</span>}
       {options ? (
-        <select {...props} defaultValue={rest.defaultValue as string} onChange={rest.onChange as never} disabled={rest.disabled}>
+        <NativeSelect {...props} defaultValue={rest.defaultValue as string} onChange={rest.onChange as never} disabled={rest.disabled}>
           {empty !== undefined && <option value="">{empty}</option>}
           {options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>))}
-        </select>
+        </NativeSelect>
       ) : rows ? (
-        <textarea {...props} rows={rows} defaultValue={rest.defaultValue as string} disabled={rest.disabled} required={rest.required} />
+        <Textarea {...props} rows={rows} defaultValue={rest.defaultValue as string} disabled={rest.disabled} required={rest.required} className="min-h-18" />
       ) : (
-        <input {...props} {...rest} />
+        <Input {...props} {...rest} />
       )}
-      {example && <span id={`${uid}-x`} className="small muted">e.g. <span className="mono">{example}</span></span>}
-      {explain && <details className="small muted"><summary>What is this?</summary>{explain}</details>}
-      {error && <span id={`${uid}-e`} role="alert" className="small err">{error}</span>}
+      {example && <span id={`${uid}-x`} className="small text-muted-foreground">e.g. <span className="mono">{example}</span></span>}
+      {explain && <details className="small text-muted-foreground"><summary className="cursor-pointer">What is this?</summary>{explain}</details>}
+      {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
     </div>
   )
 }
@@ -109,9 +114,9 @@ function Picker({ name, label, options, defaultValue, empty, hint, example, requ
   }, [start, known, defaultValue])
   const described = [hint && `${uid}-h`, error && `${uid}-e`].filter(Boolean).join(' ') || undefined
   return (
-    <div className="field">
-      <label htmlFor={uid} className="small label-strong">{label}</label>
-      {hint && <span id={`${uid}-h`} className="small muted">{hint}</span>}
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={uid} className="small">{label}</Label>
+      {hint && <span id={`${uid}-h`} className="small text-muted-foreground">{hint}</span>}
       <input ref={hidden} type="hidden" name={name} value={choice === OTHER ? typed : choice} />
       <Select value={choice === '' ? NONE : choice} onValueChange={(v) => setChoice(v === NONE ? '' : v)}>
         <SelectTrigger id={uid} aria-invalid={!!error || undefined} aria-describedby={described}><SelectValue /></SelectTrigger>
@@ -122,7 +127,7 @@ function Picker({ name, label, options, defaultValue, empty, hint, example, requ
         </SelectContent>
       </Select>
       {choice === OTHER && <Input aria-label={`${label}, other`} placeholder={example} value={typed} required={required} aria-invalid={!!error || undefined} onChange={(e) => setTyped(e.target.value)} />}
-      {error && <span id={`${uid}-e`} role="alert" className="small err">{error}</span>}
+      {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
     </div>
   )
 }
@@ -139,8 +144,8 @@ export function PickField({ options, empty, defaultValue = '', ...rest }: { name
 export function CopyField({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false)
   return (
-    <div className="stack">
-      {block ? <pre className="mono notice overflow-x-auto">{text}</pre> : <p role="status" className="mono notice">{text}</p>}
+    <div className="flex flex-col gap-4">
+      {block ? <Alert className="mono overflow-x-auto"><pre className="m-0">{text}</pre></Alert> : <Alert role="status" className="mono">{text}</Alert>}
       <Button
         type="button"
         variant="outline"
@@ -177,21 +182,21 @@ export function MultiPick({ name, legend, hint, options, value, addLabel, exampl
     setDraft('')
   }
   return (
-    <fieldset className="checks" disabled={disabled} aria-describedby={error ? `${uid}-e` : undefined}>
-      <legend className="small label-strong">{legend}</legend>
-      {hint && <span className="small muted">{hint}</span>}
+    <fieldset className="m-0 flex flex-col gap-2 border-0 p-0" disabled={disabled} aria-describedby={error ? `${uid}-e` : undefined}>
+      <legend className="small p-0 font-medium text-foreground">{legend}</legend>
+      {hint && <span className="small text-muted-foreground">{hint}</span>}
       <input type="hidden" name={name} value={items.filter((i) => checked.has(i.value)).map((i) => i.value).join(',')} />
       {items.map((i) => (
-        <label key={i.value} className="check">
-          <input type="checkbox" checked={checked.has(i.value)} onChange={(e) => setChecked((c) => { const n = new Set(c); if (e.target.checked) n.add(i.value); else n.delete(i.value); return n })} />
-          <span className="stack-1">
-            <span className={mono ? 'mono break-anywhere' : 'break-anywhere'}>{i.label ?? i.value}</span>
-            {i.meta && <span className="small muted">{i.meta}</span>}
+        <label key={i.value} className="flex items-center gap-2">
+          <Checkbox checked={checked.has(i.value)} onChange={(e) => setChecked((c) => { const n = new Set(c); if (e.target.checked) n.add(i.value); else n.delete(i.value); return n })} />
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className={mono ? 'mono wrap-anywhere' : 'wrap-anywhere'}>{i.label ?? i.value}</span>
+            {i.meta && <span className="small text-muted-foreground">{i.meta}</span>}
           </span>
         </label>
       ))}
-      {notice && <span className="small muted">{notice}</span>}
-      {!checked.size && emptyNote && <span className="small muted">{emptyNote}</span>}
+      {notice && <span className="small text-muted-foreground">{notice}</span>}
+      {!checked.size && emptyNote && <span className="small text-muted-foreground">{emptyNote}</span>}
       <div className="flex gap-2">
         <Input
           aria-label={addLabel}
@@ -209,17 +214,17 @@ export function MultiPick({ name, legend, hint, options, value, addLabel, exampl
         />
         <Button type="button" variant="outline" onClick={add}>Add</Button>
       </div>
-      {error && <span id={`${uid}-e`} role="alert" className="small err">{error}</span>}
+      {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
     </fieldset>
   )
 }
 
 export function Checks({ name, items, checked }: { name: string; items: { id: number; label: string }[]; checked: number[] }) {
   return (
-    <fieldset className="checks">
-      <legend className="small muted">Workspaces</legend>
+    <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+      <legend className="small p-0 text-muted-foreground">Workspaces</legend>
       {items.map((i) => (
-        <label key={i.id} className="check"><input type="checkbox" name={name} value={i.id} defaultChecked={checked.includes(i.id)} />{i.label}</label>
+        <label key={i.id} className="flex items-center gap-2"><Checkbox name={name} value={i.id} defaultChecked={checked.includes(i.id)} />{i.label}</label>
       ))}
     </fieldset>
   )

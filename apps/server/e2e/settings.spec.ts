@@ -39,7 +39,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(advanced).not.toHaveAttribute('open', /.*/)
   await nav.getByText('Advanced', { exact: true }).click()
   await expect(advanced).toHaveAttribute('open', '')
-  for (const name of ['Board & WIP', 'Connections', 'Agent keys', 'Audit', 'Runs']) await expect(advanced.getByRole('link', { name, exact: true })).toBeVisible()
+  for (const name of ['Board & WIP', 'Connections', 'Agent keys', 'Audit']) await expect(advanced.getByRole('link', { name, exact: true })).toBeVisible()
   await advanced.getByRole('link', { name: 'Connections' }).click()
   await expect(page).toHaveURL(/\/settings\/connections$/)
   await expect(advanced).toHaveAttribute('open', '')
@@ -77,7 +77,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await ws.getByLabel('Name').fill(created)
   await ws.getByRole('button', { name: 'Create Workspace' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-  await page.getByRole('button', { name: 'Workspace' }).click()
+  await page.getByTestId('workspace-switcher').click()
   await expect(page.getByRole('menu').getByRole('menuitem', { name: created })).toBeVisible()
 })
 

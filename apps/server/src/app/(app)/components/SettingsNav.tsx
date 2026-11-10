@@ -11,8 +11,8 @@ type Entry = [label: string, href: string]
 export function SettingsNav({ admin }: { admin: boolean }) {
   const path = usePathname()
   const current = (href: string) => path === href || (href === '/settings/products' && path.startsWith(`${href}/`))
-  const link = ([label, href]: Entry, nested?: boolean) => (
-    <SidebarMenuItem key={href} className={nested ? 'max-sm:inline-block' : 'max-sm:shrink-0'}>
+  const link = ([label, href]: Entry) => (
+    <SidebarMenuItem key={href} className="max-sm:shrink-0">
       <SidebarMenuSubButton asChild isActive={current(href)} className="h-9 max-sm:whitespace-nowrap">
         <Link href={href}>{label}<LinkPending /></Link>
       </SidebarMenuSubButton>
@@ -25,9 +25,9 @@ export function SettingsNav({ admin }: { admin: boolean }) {
         {!admin && link(['API key', '/settings/api-key'])}
         {admin && (
           <li className="max-sm:shrink-0">
-            <details className="group block max-sm:w-max max-sm:whitespace-nowrap" open={settingsAdvanced.some(([, href]) => current(href)) || undefined}>
-              <summary className="flex h-9 max-sm:inline-flex cursor-pointer items-center rounded-md px-2 text-[15px] text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring group-open:text-foreground max-sm:whitespace-nowrap">Advanced</summary>
-              <ul className="mt-1 flex flex-col gap-1 pl-3 max-sm:mt-0 max-sm:inline-block max-sm:pl-1">{settingsAdvanced.map((e) => link(e, true))}</ul>
+            <details className="group block max-sm:flex max-sm:items-center max-sm:gap-1 max-sm:whitespace-nowrap max-sm:[&::details-content]:contents" open={settingsAdvanced.some(([, href]) => current(href)) || undefined}>
+              <summary className="flex h-9 cursor-pointer items-center rounded-md px-2 text-[15px] text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring group-open:text-foreground max-sm:whitespace-nowrap">Advanced</summary>
+              <ul className="m-0 mt-1 flex list-none flex-col gap-1 p-0 pl-3 max-sm:mt-0 max-sm:flex max-sm:flex-row max-sm:gap-1 max-sm:pl-0">{settingsAdvanced.map(link)}</ul>
             </details>
           </li>
         )}

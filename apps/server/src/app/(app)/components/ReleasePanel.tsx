@@ -93,19 +93,19 @@ export function ReleasePanel({ product, admin, tickets, version: v0, versions, n
       <section className="flex flex-col gap-3" aria-labelledby="draft">
         <h2 className="heading" id="draft">This release</h2>
         <div className="flex max-w-xs flex-col gap-1">
-          <span className="small label-strong" id="version-label">Version</span>
+          <span className="small font-medium text-foreground" id="version-label">Version</span>
           <Select value={version} onValueChange={setVersion} disabled={!admin}>
             <SelectTrigger aria-labelledby="version-label" className="mono"><SelectValue /></SelectTrigger>
             <SelectContent>{versions.map((v) => <SelectItem key={v} value={v} className="mono">{v}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <label className="flex flex-col gap-1">
-          <span className="small label-strong">Summary</span>
+          <span className="small font-medium text-foreground">Summary</span>
           <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!admin} rows={3} className="max-w-[80ch]" />
         </label>
         {admin && <div><Button type="button" variant="outline" onClick={summarise} disabled={pending || !n}>Summarise</Button></div>}
         <label className="flex flex-col gap-1">
-          <span className="small label-strong">Release notes</span>
+          <span className="small font-medium text-foreground">Release notes</span>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!admin} rows={12} className="mono max-w-[80ch]" />
         </label>
       </section>

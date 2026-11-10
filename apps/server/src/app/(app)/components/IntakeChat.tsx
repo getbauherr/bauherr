@@ -6,6 +6,8 @@ import { makeIntakeAdapter, toMessages, type Turn } from './chat/intake-adapter'
 import { ChatThread } from './chat/thread'
 import { NextStepBar } from './NextStepBar'
 import { Button } from './ui/button'
+import { Card } from './ui/card'
+import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 const LAST_PRODUCT = 'bauherr-product'
@@ -21,7 +23,7 @@ function DiscardDialog({ first, busy, error, onClose, onDiscard }: { first: stri
       <div className="flex flex-col gap-4">
         <h2 id="discard-title" className="heading">Discard this draft?</h2>
         <p className="body text-muted-foreground">{first}</p>
-        {error && <p className="err" role="alert">{error}</p>}
+        {error && <p className="text-destructive" role="alert">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => ref.current?.close()}>Keep draft</Button>
           <Button type="button" variant="destructive" disabled={busy} onClick={onDiscard}>Discard</Button>
@@ -83,33 +85,33 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
     setBusy(false)
   }
 
-  if (sent) return <div className="card-lg stack" role="status"><p className="body">{sent.length > 1 ? `Requests ${sent.map((n) => `#${n}`).join(', ')} sent. We'll ask if anything is unclear.` : `Request #${sent[0]} sent. We'll ask if anything is unclear.`}</p><a className="btn" href="/">Back to tickets</a></div>
+  if (sent) return <Card className="gap-4" role="status"><p className="body">{sent.length > 1 ? `Requests ${sent.map((n) => `#${n}`).join(', ')} sent. We'll ask if anything is unclear.` : `Request #${sent[0]} sent. We'll ask if anything is unclear.`}</p><Button asChild variant="outline" className="self-start"><a href="/">Back to tickets</a></Button></Card>
 
   const draft = turn?.draft
   return (
-    <div className="intake">
-      <div className="stack">
-        <h2 className="label muted">Your drafts</h2>
+    <div data-testid="intake" className="grid grid-cols-[minmax(0,640px)_minmax(0,360px)] items-start gap-8 max-sm:grid-cols-[minmax(0,1fr)]">
+      <div className="flex flex-col gap-4">
+        <h2 className="label text-muted-foreground">Your drafts</h2>
         {others.length ? (
-          <ul className="stack" aria-label="Your drafts">
+          <ul className="flex flex-col gap-4" aria-label="Your drafts">
             {others.map((o) => (
               <li key={o.id} className="chips">
                 <a href={`/requests/new?session=${o.id}`}>Resume</a>
-                <span>{products.length > 1 && `${o.product}: `}{o.first} <span className="muted">{o.when}</span></span>
+                <span>{products.length > 1 && `${o.product}: `}{o.first} <span className="text-muted-foreground">{o.when}</span></span>
                 <Button type="button" variant="outline" disabled={busy} onClick={() => setDiscarding({ id: o.id, first: o.first })}>Discard</Button>
               </li>
             ))}
           </ul>
-        ) : <p className="small muted">No open drafts.</p>}
-        <a className="small muted" href="/requests">Requests</a>
+        ) : <p className="small text-muted-foreground">No open drafts.</p>}
+        <a className="small text-muted-foreground" href="/requests">Requests</a>
         {products.length > 1 && (
-          <label className="field">
-            <span className="label muted">Product</span>
+          <Label className="flex flex-col gap-1">
+            <span className="label text-muted-foreground">Product</span>
             <Select value={String(product)} onValueChange={(v) => pick(Number(v))} disabled={!!session}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>{products.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
             </Select>
-          </label>
+          </Label>
         )}
         <AssistantRuntimeProvider runtime={runtime}>
           <ChatThread attachments draftKey={`intake:${userId}:${session ?? 'new'}`} maxHeight="max-h-[60vh]" first={{ label: 'Describe your request', placeholder: 'Describe your request in one sentence' }} next={{ label: 'Your answer', placeholder: 'Your answer' }} />
@@ -128,17 +130,17 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
             setBusy(false)
           }
         }} />}
-        {error && <p className="err" role="alert">{error}</p>}
+        {error && <p className="text-destructive" role="alert">{error}</p>}
         <NextStepBar sentence="Describe the change, then send it" primary={turn && (turn.ready || turn.exhausted) ? { label: turn.split ? `Create ${turn.split.length} tickets` : 'Submit request', disabled: busy, onClick: submit } : undefined} />
       </div>
       {draft?.problem && (
-        <aside className="card-lg stack" aria-label="Draft">
-          <h2 className="label muted">Draft</h2>
+        <Card asChild className="gap-4"><aside aria-label="Draft">
+          <h2 className="label text-muted-foreground">Draft</h2>
           <p className="body">{draft.problem}</p>
-          {draft.context && <details><summary className="small muted">Context</summary><p className="body muted">{draft.context}</p></details>}
+          {draft.context && <details><summary className="small text-muted-foreground">Context</summary><p className="body text-muted-foreground">{draft.context}</p></details>}
           {turn?.split ? <ol>{turn.split.map((d) => <li key={d.problem}>{d.problem}</li>)}</ol> : null}
           {draft.acceptance_criteria.length ? <ul>{draft.acceptance_criteria.map((c) => <li key={c}>{c}</li>)}</ul> : null}
-        </aside>
+        </aside></Card>
       )}
     </div>
   )

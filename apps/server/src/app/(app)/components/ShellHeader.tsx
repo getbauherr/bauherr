@@ -16,7 +16,7 @@ export function ShellHeader({ items, admin, logout }: { items: Pick<NavItem, 'hr
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4 max-sm:gap-1 max-sm:px-2">
       <SidebarTrigger />
-      <Separator orientation="vertical" className="mr-1 h-5 max-sm:hidden" />
+      <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5 max-sm:hidden" />
       <Breadcrumbs />
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {!path.startsWith('/requests/new') && (
