@@ -13,6 +13,7 @@ let product: number
 let member: Record<string, any>
 let call: (user: Record<string, any>, name: string, input: unknown) => Promise<any>
 let jobs: typeof import('../src/jobs')
+let actions: typeof import('../src/lib/actions')
 let release: typeof import('../src/lib/release')
 let wip: typeof import('../src/lib/wip')
 let needs: typeof import('../src/app/(app)/lib/needs-you')
@@ -32,6 +33,7 @@ beforeAll(async () => {
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   release = await import('../src/lib/release')
   jobs = await import('../src/jobs')
+  actions = await import('../src/lib/actions')
   const { callTool } = await import('../src/lib/mcp-tools')
   call = (user, name, input) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   wip = await import('../src/lib/wip')
@@ -157,4 +159,30 @@ it('one Ticket goes through the whole renamed flow', async () => {
   expect(await reload(id)).toMatchObject({ stage: 'shipped', state: 'closed' })
   expect(await labelsOf(n)).toContain('bauherr:stage:shipped')
   expect(await kinds(id)).toEqual([['intake', 'triage'], ['design', 'plan'], ['code', 'build'], ['check', 'review'], ['code', 'build'], ['check', 'review']])
+})
+
+it('WIP limits are keyed by the renamed stages and hold a Ticket entering a full column', async () => {
+  const { DEFAULT, defaultWip, wipStages } = await import('../src/lib/workflow')
+  const { wipLimitsError } = await import('../src/lib/wip-limits')
+  expect(defaultWip(DEFAULT())).toEqual({ design: 3, code: 2, check: 3, ship: 5 })
+  expect(wipStages(DEFAULT())).toEqual(['design', 'code', 'check', 'ship'])
+  expect(wipLimitsError({ check: 1 })).toBeNull()
+  expect(wipLimitsError({ review: 1 })).toBe('unknown column review')
+  await payload.update({ collection: 'workspaces', id: ws, data: { wipLimits: { check: 1 } }, ...o })
+  const seed = async (title: string, stage: string) => {
+    const issue = await fake.tickets(repo).create({ title, labels: [`bauherr:stage:${stage}`] })
+    return (await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, product, workspace: ws }, ...o })).id as number
+  }
+  const occupant = await seed('occupies check', 'check')
+  const waiter = await seed('wants check', 'code')
+  expect(await wip.wipCount(payload, ws, 'check')).toBe(1)
+  expect(await actions.requestReview(payload, member, { ticket: waiter, evidence: '' })).toMatchObject({ waiting: 'check' })
+  expect(await reload(waiter)).toMatchObject({ stage: 'code', waitingFor: 'check' })
+  expect(await wip.wipCount(payload, ws, 'check')).toBe(1)
+  expect(await wip.waitingLabel(payload, await reload(waiter))).toBe('Waiting: Check is full (1/1)')
+  await payload.update({ collection: 'tickets', id: occupant, data: { state: 'closed', stage: 'shipped' }, ...o })
+  expect(await wip.pullWaiting(payload)).toBe(1)
+  expect(await reload(waiter)).toMatchObject({ stage: 'check', waitingFor: null })
+  expect(await wip.wipCount(payload, ws, 'check')).toBe(1)
+  await payload.update({ collection: 'workspaces', id: ws, data: { wipLimits: {} }, ...o })
 })
