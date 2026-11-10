@@ -60,6 +60,7 @@ test('an own Draft opens from Requests after logout and login and is finished an
   await say('The reopen check is broken', 'Who is affected, and since when?')
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
+  await page.waitForURL('**/login')
   await signIn()
   await page.goto('/requests')
   await page.locator('tbody tr').filter({ hasText: 'The reopen check is broken' }).getByRole('link', { name: 'The reopen check is broken' }).click()

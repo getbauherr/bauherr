@@ -66,7 +66,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const productionChecksMissing = t.stage === 'release' && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
   const candidate = needsOf(t, run, productionChecksMissing)
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
-  if ((t.needsYou ?? null) !== candidate) await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: candidate }, ...o })
+  if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
