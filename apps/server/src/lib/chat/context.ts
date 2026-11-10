@@ -4,7 +4,7 @@ import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadOverviewRows, within, FORGE_TIMEOUT_MS } from '../../app/(app)/lib/overview'
 import { ticketsOf, tenantsOf } from '../actions'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
-import { DEFAULT, gates, title as stageTitle } from '../workflow'
+import { DEFAULT, gates, nameOf, title as stageTitle } from '../workflow'
 import { factoryStatus } from './tools'
 
 type Doc = Record<string, any>
@@ -43,7 +43,7 @@ const ticketPage = async (payload: Payload, user: Doc, ws: number, id: number): 
   const admin = user.role === 'admin'
   return make(`Ticket #${t.number} ${line(t.title, 60)}`, [
     `Ticket #${t.number}: ${line(t.title)}`,
-    `Stage: ${stageTitle(wf, t.state === 'closed' ? 'done' : (t.stage ?? 'triage'))}; status: ${row ? plainStatus(row) : t.state === 'closed' ? 'Done' : 'Open'}`,
+    `Stage: ${stageTitle(wf, t.state === 'closed' ? nameOf(wf, 'done') : (t.stage ?? nameOf(wf, 'triage')))}; status: ${row ? plainStatus(row) : t.state === 'closed' ? 'Done' : 'Open'}`,
     `Needs the person: ${row?.needsYou ?? 'nothing'}${open != null ? `; open decisions: ${open}` : ''}`,
     ...(row?.blockedBy.length ? [`Blocked by: ${row.blockedBy.map((b) => `#${b.number}`).join(', ')}`] : []),
     ...(row?.waiting ? [`Waiting: ${line(row.waiting)}`] : []),

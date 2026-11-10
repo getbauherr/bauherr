@@ -3,7 +3,7 @@ import { loadOverviewRows } from '../../app/(app)/lib/overview'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
-import { DEFAULT, board, title as stageTitle } from '../workflow'
+import { DEFAULT, type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
 type Doc = Record<string, any>
 export type ToolKind = 'read' | 'confirm'
@@ -50,14 +50,16 @@ const ticketOf = async (c: Ctx, ticketId: unknown): Promise<Doc | null> => {
 }
 
 const ticketLine = (t: Doc) => `#${t.number} ${t.title}`
-const stageOf = (t: Doc): string => (t.state === 'closed' ? 'done' : (t.stage ?? 'triage'))
+const stageOf = (t: Doc): string => (t.state === 'closed' ? nameOf(DEFAULT(), 'done') : (t.stage ?? nameOf(DEFAULT(), 'triage')))
 const stageOfTicket = (t: Doc) => stageTitle(DEFAULT(), stageOf(t))
-const gateCard = (heading: (t: Doc) => string, next: string, o: { stage?: string; destructive?: boolean; extra?: (i: Doc) => { label: string; value: string }[] } = {}) =>
+const gateCard = (heading: (t: Doc) => string, next: string, o: { kind?: Kind; destructive?: boolean; extra?: (i: Doc) => { label: string; value: string }[] } = {}) =>
   async (c: Ctx, input: Doc): Promise<Card> => {
-    const { stage, destructive = false, extra = () => [] } = o
+    const { kind, destructive = false, extra = () => [] } = o
     const t = await ticketOf(c, input.ticket)
     if (!t) throw new Error('Ticket not found in this Workspace')
-    if (stage && stageOf(t) !== stage) throw new Error(`${ticketLine(t)} is in ${stageTitle(DEFAULT(), stageOf(t))}, not ${stageTitle(DEFAULT(), stage)}`)
+    const wf = DEFAULT()
+    const stage = kind && byKind(wf, kind)?.name
+    if (stage && stageOf(t) !== stage) throw new Error(`${ticketLine(t)} is in ${stageTitle(wf, stageOf(t))}, not ${stageTitle(wf, stage)}`)
     return { title: heading(t), details: [{ label: 'Ticket', value: ticketLine(t) }, { label: 'Stage', value: stageOfTicket(t) }, ...extra(input), { label: 'What happens next', value: next }], ...(destructive && { destructive }) }
   }
 const note = (i: Doc) => (typeof i.note === 'string' && i.note.trim() ? [{ label: 'Note', value: i.note.trim() }] : [])
@@ -137,35 +139,35 @@ const ENTRIES: Record<string, Entry> = {
     schema: withTicket(),
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, gate: 'plan', workspaceId: c.workspace }),
-    describe: gateCard((t) => `Approve the plan for ${ticketLine(t)}`, 'Build starts when a slot is free', { stage: 'plan' }),
+    describe: gateCard((t) => `Approve the plan for ${ticketLine(t)}`, 'Build starts when a slot is free', { kind: 'plan' }),
   },
   accept_staging: {
     description: 'Accept a Ticket on staging (release gate); it moves to done.',
     schema: withTicket(),
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, workspaceId: c.workspace }),
-    describe: gateCard((t) => `Accept ${ticketLine(t)} on staging`, 'The Ticket moves to Done; a production approval may follow', { stage: 'release' }),
+    describe: gateCard((t) => `Accept ${ticketLine(t)} on staging`, 'The Ticket moves to Done; a production approval may follow', { kind: 'release' }),
   },
   approve_production: {
     description: 'Approve the production deploy of a Ticket accepted on staging, or retry a failed deploy.',
     schema: withTicket(),
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, workspaceId: c.workspace }),
-    describe: gateCard((t) => `Deploy ${ticketLine(t)} to production`, "The Product's own pipeline deploys; Bauherr observes the result", { stage: 'release', destructive: true }),
+    describe: gateCard((t) => `Deploy ${ticketLine(t)} to production`, "The Product's own pipeline deploys; Bauherr observes the result", { kind: 'release', destructive: true }),
   },
   grant_review_round: {
     description: 'At the review round cap, grant exactly one more review round.',
     schema: withTicket(),
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, workspaceId: c.workspace }),
-    describe: gateCard((t) => `Grant one more review round for ${ticketLine(t)}`, 'The Ticket goes back to Build on the same MR', { stage: 'review' }),
+    describe: gateCard((t) => `Grant one more review round for ${ticketLine(t)}`, 'The Ticket goes back to Build on the same MR', { kind: 'review' }),
   },
   stop_review: {
     description: 'At the review round cap, stop: the MR stays open and the Ticket moves to triage.',
     schema: withTicket({ note: prop('Why it was stopped') }),
     kind: 'confirm',
     ticket: (t, i, c) => ({ ticket: t, note: i.note, workspaceId: c.workspace }),
-    describe: gateCard((t) => `Stop the review of ${ticketLine(t)}`, 'The MR stays open and the Ticket moves to Triage', { stage: 'review', destructive: true, extra: note }),
+    describe: gateCard((t) => `Stop the review of ${ticketLine(t)}`, 'The MR stays open and the Ticket moves to Triage', { kind: 'review', destructive: true, extra: note }),
   },
   request_changes: {
     description: 'Send a Ticket in release back to Build with a note; starts a Build Run.',
