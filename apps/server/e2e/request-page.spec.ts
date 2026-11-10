@@ -12,7 +12,7 @@ test('a Sent request opens its page with Tickets, plain status and a merged comm
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 
   await page.goto('/requests')
   await page.locator('tbody tr').filter({ hasText: 'Invoice filter and CSV export' }).getByRole('link', { name: 'Invoice filter and CSV export' }).click()
@@ -47,6 +47,6 @@ test('a request of another id is a 404', async ({ page }) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
   expect((await page.goto('/requests/999999'))?.status()).toBe(404)
 })

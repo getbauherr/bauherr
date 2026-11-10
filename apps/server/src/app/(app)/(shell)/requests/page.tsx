@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { Button } from '../../components/ui/button'
 import { EmptyState } from '../../components/EmptyState'
 import { ago } from '../../lib/format'
 import { loadRequests, REQUESTS_LIMIT } from '../../lib/requests'
@@ -12,12 +11,7 @@ export default async function Requests() {
   const { rows, total, multiProduct } = workspace ? await loadRequests(workspace.id, user.id as number) : { rows: [], total: 0, multiProduct: false }
   return (
     <>
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="title">Requests</h1>
-        <Button asChild>
-          <Link href="/requests/new">New request</Link>
-        </Button>
-      </div>
+      <h1 className="title">Requests</h1>
       {rows.length ? (
         <>
           <div className="scroll">
@@ -34,13 +28,13 @@ export default async function Requests() {
                     </td>
                     {multiProduct && <td>{r.product}</td>}
                     <td><span className={`chip label ${r.linked ? 'succeeded' : 'queued'}`}>{r.linked ? 'Sent' : 'Draft'}</span></td>
-                    <td className="muted">{ago(r.updatedAt)}</td>
+                    <td className="text-muted-foreground">{ago(r.updatedAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {total > REQUESTS_LIMIT && <p className="muted small">Showing the newest {REQUESTS_LIMIT}</p>}
+          {total > REQUESTS_LIMIT && <p className="text-muted-foreground small">Showing the newest {REQUESTS_LIMIT}</p>}
         </>
       ) : (
         <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/requests/new', label: 'New request' }} />

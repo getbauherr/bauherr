@@ -12,14 +12,15 @@ const signIn = async (page: Page, who: string) => {
   await page.getByLabel('Email').fill(who)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 
 test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', async ({ page }) => {
   await signIn(page, email)
   await page.getByRole('button', { name: 'User menu' }).click()
   await expect(page.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
-  await page.getByRole('menuitem', { name: 'Settings' }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await page.getByRole('navigation', { name: 'Settings' }).getByText('Advanced', { exact: true }).click()
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Agent keys' }).click()
   await expect(page).toHaveURL(/\/settings\/api-key$/)

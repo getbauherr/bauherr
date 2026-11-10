@@ -9,7 +9,7 @@ const modes = [
   { id: 'dark', label: 'Dark', Icon: Moon },
 ] as const
 
-const stored = () => {
+export const storedTheme = () => {
   try {
     return localStorage.getItem('bauherr-theme') ?? 'system'
   } catch {
@@ -17,18 +17,24 @@ const stored = () => {
   }
 }
 
+export const setTheme = (id: string) => {
+  const root = document.documentElement
+  if (id === 'system') root.removeAttribute('data-theme')
+  else root.dataset.theme = id
+  try {
+    id === 'system' ? localStorage.removeItem('bauherr-theme') : localStorage.setItem('bauherr-theme', id)
+  } catch {}
+}
+
+export const toggleTheme = () => setTheme((document.documentElement.dataset.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark')
+
 /** One row of three theme buttons for the avatar menu; picking keeps the menu open. */
 export function ThemeRow() {
   const [mode, setMode] = useState<string>('system')
-  useEffect(() => setMode(stored()), [])
+  useEffect(() => setMode(storedTheme()), [])
   const pick = (id: string) => {
     setMode(id)
-    const root = document.documentElement
-    if (id === 'system') root.removeAttribute('data-theme')
-    else root.dataset.theme = id
-    try {
-      id === 'system' ? localStorage.removeItem('bauherr-theme') : localStorage.setItem('bauherr-theme', id)
-    } catch {}
+    setTheme(id)
   }
   return (
     <DropdownMenuRadioGroup aria-label="Theme" value={mode} onValueChange={pick} className="flex items-center gap-1 px-2 py-1">

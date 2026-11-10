@@ -29,6 +29,14 @@
   --color-border: var(--hairline);
   --color-input: var(--hairline);
   --color-ring: var(--focus);
+  --color-sidebar: var(--surface-100);
+  --color-sidebar-foreground: var(--ink);
+  --color-sidebar-primary: var(--accent);
+  --color-sidebar-primary-foreground: var(--on-accent);
+  --color-sidebar-accent: var(--accent-soft);
+  --color-sidebar-accent-foreground: var(--ink);
+  --color-sidebar-border: var(--hairline);
+  --color-sidebar-ring: var(--focus);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-transparent: transparent;

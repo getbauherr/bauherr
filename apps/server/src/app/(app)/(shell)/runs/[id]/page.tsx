@@ -1,3 +1,4 @@
+import { PageTitle } from '../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ListView, TimelineView } from '../../../components/RunViews'
@@ -56,6 +57,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         </NextStepBar>
       )}
       <header className="flex flex-col gap-4">
+        <PageTitle>{`#${ticket.number} Run ${run.id}`}</PageTitle>
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
         <p className="body"><StatusChip status={run.status} /> <span className="text-muted-foreground">{run.stage}</span></p>
         {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}

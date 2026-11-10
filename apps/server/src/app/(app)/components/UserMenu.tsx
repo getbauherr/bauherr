@@ -1,42 +1,33 @@
 'use client'
 import Link from 'next/link'
-import { LogOut, Settings } from './icons'
+import { ChevronsUpDown, FileText, LogOut } from './icons'
 import { LinkPending } from './LinkPending'
 import { ThemeRow } from './ThemeToggle'
-import { Button } from './ui/button'
+import { Avatar, AvatarFallback } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { SidebarMenuButton, useSidebar } from './ui/sidebar'
 
 const initials = (email: string) => email.slice(0, 2).toUpperCase()
 
 /** Client component: Radix `asChild` items cannot take server-rendered children (React 19 lazy elements). */
-export function UserMenu({ email, admin, workspaces, current, logout, selectWorkspace }: { email: string; admin: boolean; workspaces: { slug: string; name: string }[]; current?: string; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }) {
+export function UserMenu({ email, version, logout }: { email: string; version: string; logout: () => Promise<void> }) {
+  const { isMobile } = useSidebar()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="px-2">
-          <span className="grid size-6 place-items-center rounded-sm bg-secondary text-xs/4 font-medium">{initials(email)}<span className="sr-only">User menu</span></span>
-        </Button>
+        <SidebarMenuButton size="lg" tooltip={email} aria-label="User menu">
+          <Avatar className="size-8"><AvatarFallback>{initials(email)}</AvatarFallback></Avatar>
+          <span className="min-w-0 flex-1 truncate">{email}</span>
+          <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
+        </SidebarMenuButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{email}</DropdownMenuLabel>
-        {workspaces.length > 1 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-            {workspaces.map((w) => (
-              <form key={w.slug} action={selectWorkspace.bind(null, w.slug)}>
-                <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
-                  <button aria-current={w.slug === current}>{w.name}</button>
-                </DropdownMenuItem>
-              </form>
-            ))}
-          </>
-        )}
+      <DropdownMenuContent side={isMobile ? 'top' : 'right'} align="end" className="w-64">
+        <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ThemeRow />
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href={admin ? '/settings/workspace' : '/settings/api-key'}><Settings />Settings<LinkPending /></Link>
+          <Link href="/release-notes" data-testid="app-version"><FileText />Release notes<span className="mono ml-auto text-muted-foreground">v{version}</span><LinkPending /></Link>
         </DropdownMenuItem>
         <form action={logout}>
           <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>

@@ -17,7 +17,7 @@ const signIn = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 
 const main = (page: Page) => page.getByRole('navigation', { name: 'Main' })
@@ -35,7 +35,8 @@ const targets: Target[] = [
   { route: '/', from: '/requests', click: (p) => main(p).getByRole('link', { name: /^Tickets/ }).click(), content: h1('Tickets') },
   { route: '/releases', from: '/', click: (p) => main(p).getByRole('link', { name: 'Releases' }).click(), content: h1('Releases') },
   { route: '/knowledge', from: '/', click: (p) => main(p).getByRole('link', { name: 'Knowledge' }).click(), content: h1('Knowledge') },
-  { route: '/settings/workspace', from: '/', click: async (p) => { await p.getByRole('button', { name: 'User menu' }).click(); await p.getByRole('menuitem', { name: 'Settings' }).click() }, content: h2('General') },
+  { route: '/runs', from: '/', click: (p) => main(p).getByRole('link', { name: 'Runs' }).click(), content: h1('Runs') },
+  { route: '/settings/workspace', from: '/', click: (p) => p.getByRole('link', { name: 'Settings', exact: true }).click(), content: h2('General') },
   ...(
     [
       ['People', '/settings/bauherren', 'People'],

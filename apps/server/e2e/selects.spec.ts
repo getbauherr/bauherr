@@ -11,7 +11,7 @@ const signIn = async (page: Page) => {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 
 test('Workspace: model tiers are selects with Other..., the Knowledge repo is a select or, with a failing forge, text', async ({ page }) => {

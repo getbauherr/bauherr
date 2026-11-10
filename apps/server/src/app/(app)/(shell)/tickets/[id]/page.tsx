@@ -1,3 +1,4 @@
+import { PageTitle } from '../../../components/PageTitle'
 import { APPROVED_PLAN } from '@bauherr/adapters'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -186,6 +187,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   return (
     <div className="flex flex-col gap-4">
       <Suspense fallback={<Pulse h="h-12" />}><Top P={P} d={d} /></Suspense>
+      <PageTitle>{`#${ticket.number}`}</PageTitle>
       <h1 className="title">#{ticket.number} {ticket.title}</h1>
       <p className="small text-muted-foreground">{product.name}</p>
       {epic ? (

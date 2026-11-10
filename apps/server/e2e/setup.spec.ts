@@ -15,7 +15,7 @@ const signIn = async (page: Page, as = email) => {
   await page.getByLabel('Email').fill(as)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 const shoot = async (page: Page, name: string) => {
   if (!shots) return

@@ -1,3 +1,4 @@
+import { PageTitle } from '../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
@@ -28,6 +29,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   return (
     <div className="flex flex-col gap-4">
       <p className="small"><Link className="text-primary" href="/requests">Requests</Link></p>
+      <PageTitle>{request.problem || 'Untitled request'}</PageTitle>
       <h1 className="title">{request.problem || 'Untitled request'}</h1>
       <p className="small text-muted-foreground">{request.product} · <Badge variant={request.sent ? 'ok' : 'neutral'}>{request.sent ? 'Sent' : 'Draft'}</Badge></p>
       {request.context && <Markdown html={renderMarkdown(request.context)} />}

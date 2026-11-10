@@ -1,3 +1,4 @@
+import { PageTitle } from '../../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../../components/EmptyState'
@@ -54,16 +55,17 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <div className="stack-1">
-        <p className="small muted"><Link href="/settings/products">Products</Link> / {p.name}</p>
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="small text-muted-foreground"><Link href="/settings/products">Products</Link> / {p.name}</p>
+        <PageTitle>{p.name}</PageTitle>
         <h2 className="heading">{p.name}</h2>
       </div>
-      {!admin && <p className="small muted">Only an Admin can change Product settings.</p>}
+      {!admin && <p className="small text-muted-foreground">Only an Admin can change Product settings.</p>}
       <SetupChecklist rows={p.setup.rows} />
 
       <SettingsSection id="repository" n={1} title="Repository and tickets" purpose="The code the agents work in and where new Tickets come from." advanced={
         <>
-          <p className="small muted">Short name <span className="mono">{p.slug}</span>. It names the Knowledge repo folder and cannot change.</p>
+          <p className="small text-muted-foreground">Short name <span className="mono">{p.slug}</span>. It names the Knowledge repo folder and cannot change.</p>
           {p.sources.map((s) => (
             <div key={s.id} className="row-between">
               <span className="small">Last checked <span className="mono">{when(s.polledAt)}</span> ({s.connection}), position <span className="mono">{s.cursor || 'none'}</span></span>
@@ -94,10 +96,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         ))}
       </SettingsSection>
 
-      {admin ? <SettingsForm action={saveDeploy} submit="Save changes" primary bar><input type="hidden" name="id" value={p.id} />{settings}</SettingsForm> : <fieldset disabled className="stack">{settings}</fieldset>}
+      {admin ? <SettingsForm action={saveDeploy} submit="Save changes" primary bar><input type="hidden" name="id" value={p.id} />{settings}</SettingsForm> : <fieldset disabled className="flex flex-col gap-4">{settings}</fieldset>}
 
       <SettingsSection id="merging" title="Merging" purpose="How a clean change gets onto the main branch.">
-        <p className="small muted" data-testid="merge-mode">Detected mode: <span className="mono">{p.merge.mode}</span>{p.merge.preflight && <> · checked <span className="mono">{when(p.merge.preflight.at)}</span></>}</p>
+        <p className="small text-muted-foreground" data-testid="merge-mode">Detected mode: <span className="mono">{p.merge.mode}</span>{p.merge.preflight && <> · checked <span className="mono">{when(p.merge.preflight.at)}</span></>}</p>
         {p.merge.preflight && !p.merge.preflight.ok && (
           <ul className="small" data-testid="merge-problems">{p.merge.preflight.problems.map((x) => <li key={x}>{x}</li>)}</ul>
         )}
@@ -115,7 +117,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       </SettingsSection>
 
       <SettingsSection id="security" title="Security scan" purpose="A read-only Run that reviews the repository against the Product's SECURITY-CONTEXT.md in the Knowledge repo. It writes no code and opens no MR.">
-        <p className="small muted">Last scan <span className="mono">{p.securityScan.lastScanAt ? when(p.securityScan.lastScanAt) : 'never'}</span></p>
+        <p className="small text-muted-foreground">Last scan <span className="mono">{p.securityScan.lastScanAt ? when(p.securityScan.lastScanAt) : 'never'}</span></p>
         {admin && (
           <>
             <SettingsForm action={saveSecurityScan} submit="Save scan settings">
@@ -155,7 +157,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             </table>
           </div>
         ) : (
-          <p className="small muted">No website widget yet. Add one to collect requests from your users.</p>
+          <p className="small text-muted-foreground">No website widget yet. Add one to collect requests from your users.</p>
         )}
         {admin && (
           <SettingsForm action={mintEmbedToken} submit="Add widget" reset copy>
@@ -169,10 +171,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       {admin && (
         <SettingsSection id="danger" title="Delete Product">
           {p.blocked ? (
-            <p className="small muted">Cannot delete yet: still referenced by {p.blocked}. Remove those first.</p>
+            <p className="small text-muted-foreground">Cannot delete yet: still referenced by {p.blocked}. Remove those first.</p>
           ) : (
             <>
-              <p className="small muted">Permanently deletes this Product. It must have nothing attached: no repositories, ticket sources, Tickets, widget tokens or requests.</p>
+              <p className="small text-muted-foreground">Permanently deletes this Product. It must have nothing attached: no repositories, ticket sources, Tickets, widget tokens or requests.</p>
               <Remove collection="products" id={p.id} label="Delete Product" />
             </>
           )}

@@ -11,7 +11,7 @@ test('edit a Knowledge document: save is confirmed in plain words', async ({ pag
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 
   await page.goto('/knowledge/edit?path=workspace/rules/style.md')
   await expect(page.getByRole('heading', { name: /^Edit (?!.*\.md)/ })).toBeVisible()

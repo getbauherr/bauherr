@@ -12,16 +12,12 @@ const signIn = async (page: Page, who: string) => {
   await page.getByLabel('Email').fill(who)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('header.topbar')).toBeVisible()
+  await expect(page.getByRole('banner')).toBeVisible()
 }
 
 test('Run page: timeline, list, collapsed details, re-run; an owner sees only the verdict and Re-run', async ({ page, browser }) => {
   await signIn(page, email)
-  await page.getByRole('button', { name: 'User menu' }).click()
-  await page.getByRole('menuitem', { name: 'Settings' }).click()
-  const nav = page.getByRole('navigation', { name: 'Settings' })
-  await nav.getByText('Advanced', { exact: true }).click()
-  await nav.getByRole('link', { name: 'Runs' }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Runs' }).click()
   const rows = page.locator('table tbody tr')
   await rows.filter({ hasText: 'Succeeded' }).filter({ hasText: 'build' }).getByRole('link').first().click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
