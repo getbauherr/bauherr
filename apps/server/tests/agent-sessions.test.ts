@@ -240,6 +240,31 @@ describe('next_work', () => {
   })
 })
 
+it('next_work hands a custom agent stage to the role that owns it, with the stage skill and outcomes', async () => {
+  const { readFileSync } = await import('node:fs')
+  const dir = new URL('./fixtures/custom-pack', import.meta.url).pathname
+  process.env.BAUHERR_PACK_DIR = dir
+  try {
+    expect(await factory.applyFactory(payload, ws, readFileSync(`${dir}/factory.yaml`, 'utf8'), by)).toMatchObject({ ok: true })
+    const t = await ticket('needs a security look', 'security')
+    const eng = await connect('engineer')
+    expect((await call('next_work', { sessionId: eng.sessionId })).work).toBeNull()
+    const sec = await connect('security', { model: 'm-s' })
+    expect(sec.role.stages.map((x: Doc) => [x.name, x.kind])).toEqual([['security', 'agent']])
+    const w = (await call('next_work', { sessionId: sec.sessionId })).work
+    expect(w.run.id).toBe(t.run!.id)
+    expect(w).toMatchObject({ skill: 'security-review', agent: { stage: 'security' } })
+    expect([...w.outcomes].sort()).toEqual(['findings', 'pass', 'unclear'])
+    expect(await runRow(t.run!.id)).toMatchObject({ role: 'security', kind: 'agent', model: 'm-s' })
+  } finally {
+    delete process.env.BAUHERR_PACK_DIR
+    await db().execute(sql`UPDATE "runs" SET "session_id" = NULL`)
+    await payload.delete({ collection: 'runs', where: { workspace: { equals: ws } }, ...o })
+    await payload.delete({ collection: 'tickets', where: { workspace: { equals: ws } }, ...o })
+    expect(await factory.applyFactory(payload, ws, factory.packSource(), by)).toMatchObject({ ok: true })
+  }
+})
+
 describe('exceptions role', () => {
   /** What the liveness sweep stores for a stuck Ticket. */
   const finding = (id: number, cause: string, ageMs = 0) => db().execute(sql`UPDATE "tickets" SET "liveness" = ${JSON.stringify({ cause, need: null, at: new Date(Date.now() - ageMs).toISOString() })}::jsonb WHERE "id" = ${id}`)
@@ -452,6 +477,20 @@ describe('loadTeam', () => {
     expect(team.roles.find((r) => r.id === 'reviewer')!.sessions).toEqual([])
     expect(team.orphans.map((s) => [s.label, s.role])).toEqual([['lost', 'ghost']])
   })
+})
+
+it('the chat read tool team_status answers who works on what', async () => {
+  const { chatTools, teamStatus } = await import('../src/lib/chat/tools')
+  expect(chatTools().find((t) => t.name === 'team_status')).toMatchObject({ kind: 'read' })
+  const t = await ticket('busy', 'build')
+  const eng = await connect('engineer', { label: 'laptop', client: 'claude-code/2.1', model: 'm' })
+  await connect('reviewer', { label: 'idle-one' })
+  await call('next_work', { sessionId: eng.sessionId })
+  const out = await teamStatus({ payload, user, actor: { kind: 'human' }, workspace: ws })
+  const role = (title: string) => out.roles.find((r) => r.role === title)!
+  expect(role('Software engineer').sessions).toEqual([{ session: 'laptop', status: 'working', ticket: `#${t.number} busy`, client: 'claude-code 2.1', model: 'm', activeMinutesToday: 0, activeMinutesTotal: 0 }])
+  expect(role('Reviewer').sessions[0]).toMatchObject({ session: 'idle-one', status: 'idle', ticket: null })
+  expect(role('Test specialist').sessions).toEqual([])
 })
 
 it('every agent tool but connect takes an optional sessionId', async () => {

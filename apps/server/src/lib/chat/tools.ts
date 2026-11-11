@@ -3,6 +3,7 @@ import { untrustedBlock } from '@bauherr/runner'
 import { loadOverviewRows } from '../../app/(app)/lib/overview'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
+import { loadTeam, type TeamSession } from '../sessions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
 import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
@@ -116,6 +117,17 @@ const getRun = async (c: Ctx, a: Doc) => {
   }
 }
 
+/** Who works right now: per role its agent sessions (status, Ticket, client, model, active minutes) and the autonomous Runs, from the database only. */
+export const teamStatus = async (c: Ctx) => {
+  const { roles, orphans } = await loadTeam(c.payload, c.workspace!)
+  const mins = (s: number) => Math.round(s / 60)
+  const session = (x: TeamSession) => ({ session: x.label ?? x.publicId, status: x.status, ticket: x.ticket ? `#${x.ticket.number} ${x.ticket.title}` : null, client: [x.clientName, x.clientVersion].filter(Boolean).join(' ') || null, model: x.model, activeMinutesToday: mins(x.activeSecondsToday), activeMinutesTotal: mins(x.activeSecondsTotal) })
+  return {
+    roles: roles.map((r) => ({ role: r.title, ...(r.agents && { agentsCap: r.agents }), sessions: r.sessions.map(session), autonomous: r.autonomous.map((a) => ({ executor: a.executor ?? 'runner', ticket: `#${a.ticket.number} ${a.ticket.title}`, model: a.model })) })),
+    ...(orphans.length && { sessionsOfRemovedRoles: orphans.map((x) => ({ role: x.role, ...session(x) })) }),
+  }
+}
+
 /** list_frontier spans every Workspace of the caller; keep this one's Tickets. */
 const frontierIn = async (c: Ctx, a: Doc) => {
   const rows = (await callTool(c, 'list_frontier', { product: a.product })) as Doc[]
@@ -132,6 +144,7 @@ const ENTRIES: Record<string, Entry> = {
     kind: 'read',
     local: listTickets,
   },
+  team_status: { description: 'Who is working right now: every role of the team with its agent sessions (working, idle or offline, on which Ticket, client, model, active minutes today and in total) and the autonomous Runs working for it.', schema: schema({}), kind: 'read', local: teamStatus },
   get_run: { description: 'What the Run page shows: stage, status, started/finished, error or reason, evidence excerpt (Admins also see mode, model and cost).', schema: schema({ run: { type: 'integer', description: 'Run id, as in /runs/<id>' } }, ['run']), kind: 'read', local: getRun },
   list_frontier: { description: 'Open, unblocked Tickets with stage and latest Run state, in pull order.', schema: schema({ product: prop('Product slug') }), kind: 'read', local: frontierIn },
   get_ticket: { schema: withTicket(), kind: 'read', ticket: (t) => ({ ticket: t }), fence: true },

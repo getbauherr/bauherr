@@ -14,6 +14,8 @@ export type StatusRun = {
   error?: string | null
   mode: string
   executor?: string | null
+  /** Role id the Run was claimed for (`runs.role`). */
+  role?: string | null
   sessionLabel?: string | null
   clientName?: string | null
   clientVersion?: string | null
@@ -47,11 +49,13 @@ const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', bui
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
 const RUN_PROBLEMS = ['Cancelled', 'Run failed', 'Run needs you']
 
-/** Who runs a Run: the session (label or owner, client, model) or the Bauherr runner (model). */
-export const runWho = (r: Pick<StatusRun, 'mode' | 'executor' | 'sessionLabel' | 'clientName' | 'clientVersion' | 'model'>, owner: string | null): string => {
+/** Who runs a Run: the session (label or owner, role, client, model) or the runner (model); "Runner" or "CI" with the role title when the Run has a role. */
+export const runWho = (r: Pick<StatusRun, 'mode' | 'executor' | 'sessionLabel' | 'clientName' | 'clientVersion' | 'model'>, owner: string | null, roleTitle?: string | null): string => {
   const session = r.mode === 'session' || r.executor === 'session'
   const client = [r.clientName, r.clientVersion].filter(Boolean).join(' ')
-  return (session ? [r.sessionLabel || owner || 'Session', client, r.model] : ['Bauherr runner', r.model]).filter(Boolean).join(' · ')
+  const as = roleTitle ? `(${roleTitle})` : null
+  const head = session ? [`${r.sessionLabel || owner || 'Session'}${as ? ` ${as}` : ''}`, client] : [roleTitle ? `${r.executor === 'ci' ? 'CI' : 'Runner'} ${as}` : 'Bauherr runner']
+  return [...head, r.model].filter(Boolean).join(' · ')
 }
 
 const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | null => {
@@ -83,7 +87,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''
     const extra = run.investigation ? ' · investigating' : run.escalation ? ` · escalated to the strong model (step ${run.escalation.step} of 4)` : ''
-    return { phase: 'working', label: 'In progress', detail: `${VERB[kind] ?? 'running a step'}${since}${extra}`, who: runWho(run, r.owner), tone: 'accent' }
+    return { phase: 'working', label: 'In progress', detail: `${VERB[kind] ?? 'running a step'}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
   }
   if (run?.status === 'awaiting_session') return { phase: 'queued', label: 'Queued', detail: 'waiting for a session', who: null, tone: 'muted' }
   if (run?.status === 'queued') return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
