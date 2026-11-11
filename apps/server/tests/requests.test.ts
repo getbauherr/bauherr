@@ -39,18 +39,17 @@ describe('loadRequests', () => {
     expect((await requests.loadRequests(ws)).multiProduct).toBe(true)
   })
 
-  it('marks only own open Drafts resumable and hides owner-persona sessions', async () => {
+  it('leaves the caller\'s own open Drafts to loadDrafts, lists other people\'s as rows without a link, and hides owner-persona sessions', async () => {
     const draft = (problem: string) => ({ problem, context: '', acceptance_criteria: [], type: 'bug', links: [] })
     const mk = (problem: string, extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'open', persona: 'product-user', messages: [], draft: draft(problem), ...extra }, ...o } as never)
     const mine = await mk('Own draft', { user: me })
     await mk('Embed draft', {})
     await mk('Owner flow', { user: me, persona: 'owner' })
     const { rows } = await requests.loadRequests(ws, me)
-    expect(rows.find((r) => r.id === Number(mine.id))?.resumable).toBe(true)
-    expect(rows.find((r) => r.title === 'Embed draft')?.resumable).toBe(false)
-    expect(rows.find((r) => r.title === 'Export totals drift')?.resumable).toBe(false)
+    expect(rows.some((r) => r.id === Number(mine.id))).toBe(false)
+    expect(rows.find((r) => r.title === 'Embed draft')).toMatchObject({ linked: false, href: null })
     expect(rows.some((r) => r.title === 'Owner flow')).toBe(false)
-    expect((await requests.loadRequests(ws)).rows.some((r) => r.resumable)).toBe(false)
+    expect((await requests.loadRequests(ws)).rows.some((r) => r.title === 'Own draft')).toBe(true)
   })
 })
 
@@ -72,31 +71,40 @@ describe('loadRequest', () => {
     expect(await requests.loadRequest(ws2, split)).toBeNull()
     expect(await requests.loadRequest(ws, await mk({ persona: 'owner' }))).toBeNull()
     const own = await mk({ status: 'open', user: me })
-    expect(await requests.loadRequest(ws, own, me)).toMatchObject({ sent: false, own: true, tickets: [] })
+    expect(await requests.loadRequest(ws, own, me)).toMatchObject({ sent: false, own: true, mine: true, tickets: [] })
+    expect(await requests.loadRequest(ws, own)).toMatchObject({ own: false, mine: false })
     expect((await requests.loadRequests(ws, me)).rows.find((x) => x.id === split)?.href).toBe(`/requests/${split}`)
-    expect((await requests.loadRequests(ws, me)).rows.find((x) => x.id === own)?.href).toBe(`/requests/new?session=${own}`)
+    expect((await requests.loadRequests(ws, me)).rows.find((x) => x.id === own)).toBeUndefined() // an own Draft is listed by loadDrafts, not in the table
+    expect((await requests.loadRequests(ws)).rows.find((x) => x.id === own)).toMatchObject({ linked: false, href: null }) // another person's Draft is a row without a link
   })
 })
 
-describe('openSessions ?session= guard', () => {
+describe('loadDrafts', () => {
+  const mk = (extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'open', persona: 'product-user', messages: [{ role: 'user', content: 'first words' }], draft: { problem: '', context: '', acceptance_criteria: [], type: 'bug', links: [] }, user: me, ...extra }, ...o } as never).then((s) => Number(s.id))
+
+  it('lists every open Draft of the person, newest first and without a cut-off; not other people\'s, sent, abandoned, owner-persona or empty sessions', async () => {
+    const other = Number((await payload.create({ collection: 'bauherren', data: { email: 'drafts-other@example.com', password: 'x-pass-123', role: 'bauherr' }, ...o } as never)).id)
+    const older = await mk({ draft: { problem: 'Older draft', context: '', acceptance_criteria: [], type: 'bug', links: [] } })
+    const ids = [older]
+    for (let i = 0; i < 12; i++) ids.push(await mk({ draft: { problem: `Draft ${i}`, context: '', acceptance_criteria: [], type: 'bug', links: [] } }))
+    const untitled = await mk({})
+    const skipped = [await mk({ user: other }), await mk({ status: 'submitted' }), await mk({ status: 'abandoned' }), await mk({ persona: 'owner' }), await mk({ draft: null, messages: [] })]
+    await payload.update({ collection: 'intake_sessions', id: older, data: { updatedAt: new Date(Date.now() + 120_000).toISOString() }, ...o } as never)
+    const drafts = await requests.loadDrafts(me, ws)
+    expect(drafts.map((d) => d.id)).toEqual(expect.arrayContaining([...ids, untitled]))
+    expect(drafts[0]).toMatchObject({ id: older, title: 'Older draft', product: 'One' })
+    expect(drafts.find((d) => d.id === untitled)?.title).toBe('first words')
+    expect(drafts.length).toBeGreaterThan(12)
+    for (const id of skipped) expect(drafts.some((d) => d.id === id)).toBe(false)
+    expect(await requests.ownsDraft(me, ws, older)).toBe(true)
+    for (const id of skipped.slice(0, 4)) expect(await requests.ownsDraft(me, ws, id)).toBe(false)
+    expect(await requests.ownsDraft(me, ws, 99999999)).toBe(false)
+  })
+})
+
+describe('countOwnDrafts', () => {
   const draft = { problem: 'p', context: '', acceptance_criteria: [], type: 'bug', links: [] }
   const mk = (extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'open', persona: 'product-user', messages: [{ role: 'user', content: 'hi' }], draft, user: me, ...extra }, ...o } as never).then((s) => String(s.id))
-
-  it('loads own open draft by id and ignores foreign, submitted, owner-persona, other-Workspace and out-of-range ids', async () => {
-    const other = Number((await payload.create({ collection: 'bauherren', data: { email: 'other@example.com', password: 'x-pass-123', role: 'bauherr' }, ...o } as never)).id)
-    const ws2 = Number((await payload.create({ collection: 'workspaces', data: { name: 'r2', slug: 'r2' }, ...o })).id)
-    const product2 = Number((await payload.create({ collection: 'products', data: { name: 'Elsewhere', slug: 'elsewhere', workspace: ws2 }, ...o })).id)
-    const newest = await mk({})
-    const older = await mk({})
-    await payload.update({ collection: 'intake_sessions', id: Number(newest), data: { updatedAt: new Date(Date.now() + 60_000).toISOString() }, ...o } as never)
-    const foreign = [await mk({ user: other }), await mk({ status: 'submitted' }), await mk({ persona: 'owner' }), await mk({ product: product2, workspace: ws2 })]
-    expect(String((await requests.openSessions(me, ws, older)).current?.id)).toBe(older)
-    for (const id of [...foreign, '99999999999']) {
-      const { current, open } = await requests.openSessions(me, ws, id)
-      expect(String(current?.id)).toBe(newest)
-      expect(open.some((s) => String(s.id) === id)).toBe(false)
-    }
-  })
 
   it('countOwnDrafts counts only the caller\'s open Drafts that have messages', async () => {
     const before = await requests.countOwnDrafts(me, ws)

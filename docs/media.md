@@ -2,7 +2,7 @@
 
 Screenshots from the Intake chat are stored once and linked as images in the forge Ticket body (`## Screenshots`).
 
-**Attaching.** In New request and the embed widget, paste (Ctrl/Cmd+V), drop or pick (+ button) a screenshot; it shows as a chip with a remove button. The browser checks type and size against the limits below (served by `POST /intake/api/media-limits`) and shows an inline error; the server checks again and stays authoritative.
+**Attaching.** In the dock (request mode too) and the embed widget, paste (Ctrl/Cmd+V), drop or pick (attach button) a screenshot; in the dock it shows as a thumbnail with a remove button, in the widget as a chip. The widget checks type and size against the limits below (served by `POST /intake/api/media-limits`) and shows an inline error; the dock checks the type and the server answers an oversize image (`POST /api/chat/media`, shown on the thumbnail); the server stays authoritative. In a request thread the images of the message become the request's session screenshots (at most `MEDIA_MAX_PER_SESSION`), exactly as the widget's do.
 
 **Storage.** By default files live in the compose volume `bauherr-media` (`/data/media`, shared by `app`, `worker`, `poller`). Set these and restart to use any S3-compatible bucket instead (AWS, MinIO, Hetzner, R2); unset them to go back. No code change. New files go to the configured store; reads try S3 first (when configured) and fall back to the local volume, so files written under the other store stay readable. Files written to S3 need the S3 variables kept to be read.
 

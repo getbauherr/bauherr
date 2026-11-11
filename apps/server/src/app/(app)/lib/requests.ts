@@ -16,9 +16,8 @@ export type RequestRow = {
   title: string
   product: string
   linked: boolean
-  /** Same-origin target of the title link: the request page once sent, the chat for an own Draft. */
+  /** Same-origin target of the title link: the request page once sent. */
   href: string | null
-  resumable: boolean
   updatedAt: string
   ticket: { number: number; id?: number } | null
   /** Where the request's first Ticket stands, in plain words; null while it is a Draft. */
@@ -30,13 +29,13 @@ const cut = (s: string) => {
   return line.length > 80 ? `${line.slice(0, 79)}…` : line
 }
 
-/** Requests (Intake sessions, embed sessions included) of a Workspace, newest first. Own Drafts are resumable. Conversation text only feeds the title fallback. */
+/** Requests (Intake sessions, embed sessions included) of a Workspace, newest first, without the caller's own Drafts (`loadDrafts` lists those). Conversation text only feeds the title fallback. */
 export async function loadRequests(workspaceId: number, userId?: number): Promise<{ rows: RequestRow[]; total: number; multiProduct: boolean }> {
   const payload = await payloadClient()
   const o = { overrideAccess: true, pagination: false } as const
   const sessions = await payload.find({
     collection: 'intake_sessions',
-    where: { 'product.workspace': { equals: workspaceId }, status: { in: ['open', 'submitted'] }, persona: { not_equals: 'owner' } },
+    where: { 'product.workspace': { equals: workspaceId }, status: { in: ['open', 'submitted'] }, persona: { not_equals: 'owner' }, or: [{ status: { equals: 'submitted' } }, { draft: { exists: true } }] },
     sort: '-updatedAt', limit: REQUESTS_LIMIT, pagination: true, depth: 1,
     select: { product: true, user: true, status: true, draft: true, ticketNumber: true, updatedAt: true },
     overrideAccess: true,
@@ -48,7 +47,7 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
     ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, or: pairs }, depth: 0, ...o })).docs as unknown as TicketDoc[]
     : []
   const progress = await loadProgress(payload, tickets)
-  const rows = docs.map((s): RequestRow => {
+  const rows = docs.filter((s) => !(s.status === 'open' && userId != null && idOf(s.user) === userId)).map((s): RequestRow => {
     const productId = idOf(s.product)
     const problem = s.draft?.problem
     const t = s.ticketNumber == null ? undefined : tickets.find((x) => x.number === s.ticketNumber && idOf(x.product) === productId)
@@ -57,14 +56,35 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
       title: (problem?.trim() && cut(problem)) || 'Untitled request',
       product: (typeof s.product === 'object' && s.product.name) || '—',
       linked: s.status === 'submitted',
-      href: s.status === 'submitted' ? `/requests/${s.id}` : s.status === 'open' && userId != null && idOf(s.user) === userId ? `/requests/new?session=${s.id}` : null,
-      resumable: s.status === 'open' && userId != null && idOf(s.user) === userId,
+      href: s.status === 'submitted' ? `/requests/${s.id}` : null,
       updatedAt: s.updatedAt,
       ticket: s.ticketNumber == null ? null : { number: s.ticketNumber, id: t?.id },
       progress: (t && progress.get(t.id)) || null,
     }
   })
   return { rows, total: sessions.totalDocs, multiProduct }
+}
+
+export type DraftRow = { id: number; title: string; product: string; updatedAt: string }
+
+/** Every open draft of the person in a Workspace that has been written to (newest first, no cut-off): the title is the draft's problem or the first message. */
+export async function loadDrafts(userId: number, workspaceId: number): Promise<DraftRow[]> {
+  const payload = await payloadClient()
+  const { docs } = await payload.find({
+    collection: 'intake_sessions',
+    where: { and: [{ user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }, { draft: { exists: true } }] },
+    sort: '-updatedAt', pagination: false, depth: 1, select: { product: true, draft: true, messages: true, updatedAt: true }, overrideAccess: true,
+  })
+  return docs.map((s) => {
+    const first = ((s.messages as { role: string; content: string }[] | null) ?? []).find((m) => m.role === 'user')?.content ?? ''
+    return { id: s.id as number, title: cut((s.draft as { problem?: string } | null)?.problem?.trim() || first) || 'Untitled request', product: String((s.product && typeof s.product === 'object' && (s.product as { name?: string }).name) || '—'), updatedAt: s.updatedAt as string }
+  })
+}
+
+/** Whether the session is one of the person's open drafts in the Workspace (the `?session=` link of `/requests/new`). */
+export async function ownsDraft(userId: number, workspaceId: number, id: number): Promise<boolean> {
+  const payload = await payloadClient()
+  return (await payload.count({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, { user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }] }, overrideAccess: true })).totalDocs > 0
 }
 
 /** Number of the caller's open Drafts with messages in a Workspace (the Requests nav badge). */
@@ -78,16 +98,6 @@ export async function countOwnDrafts(userId: number, workspaceId: number) {
   return docs.filter((s) => (s.messages as unknown[] | null)?.length).length
 }
 
-/** The caller's resumable Intake sessions (newest open Drafts with messages) plus the `?session=` one when it is theirs: open, product-user, same Workspace. */
-export async function openSessions(userId: number, workspaceId: number | undefined, wanted?: string) {
-  if (workspaceId == null) return { open: [], current: undefined }
-  const payload = await payloadClient()
-  const mine = (extra: Where[] = []) => payload.find({ collection: 'intake_sessions', where: { and: [{ user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }, ...extra] }, sort: '-updatedAt', limit: 10, depth: 1, overrideAccess: true }).then((r) => r.docs)
-  const open = (await mine()).filter((s) => (s.messages as unknown[] | null)?.length)
-  if (wanted && /^\d{1,9}$/.test(wanted) && !open.some((s) => String(s.id) === wanted)) open.push(...(await mine([{ id: { equals: Number(wanted) } }])))
-  return { open, current: open.find((s) => String(s.id) === wanted) ?? open[0] }
-}
-
 /** Plain-language stage of a Ticket; the Board's stage names stay out of the Request page. */
 const LIFECYCLE: Record<string, string> = { triage: 'Being looked at', plan: 'Being planned', build: 'Being built', review: 'Being reviewed', release: 'On staging', container: 'Split into smaller tickets', done: 'Done' }
 export const lifecycleOf = (wf: Workflow, t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[(t.stage && kindOf(wf, t.stage)) || 'triage'] ?? LIFECYCLE.triage!)
@@ -99,6 +109,8 @@ export type RequestPage = {
   sent: boolean
   /** The caller can continue this Draft in the chat. */
   own: boolean
+  /** The caller started this request. */
+  mine: boolean
   problem: string
   context: string
   criteria: string[]
@@ -120,6 +132,7 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
     product: (typeof s.product === 'object' && s.product.name) || '—',
     sent: s.status === 'submitted',
     own: s.status === 'open' && userId != null && idOf(s.user) === userId,
+    mine: userId != null && idOf(s.user) === userId,
     problem: s.draft?.problem?.trim() ?? '',
     context: s.draft?.context?.trim() ?? '',
     criteria: (s.draft?.acceptance_criteria ?? []).filter((c) => c.trim()),

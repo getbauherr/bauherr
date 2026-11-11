@@ -10,21 +10,26 @@ type Detail = { label: string; value: string }
 /** Read from `part.artifact`, set by the adapter from the stream: the widget is picked by `kind`, never by tool name. */
 export type Artifact =
   | { kind: 'read'; summary: string }
-  | { kind: 'confirm'; summary: string; title?: string; details?: Detail[]; destructive?: boolean }
-  | { kind: 'outcome' }
+  | { kind: 'confirm'; summary: string; title?: string; details?: Detail[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean }
+  | { kind: 'outcome'; href?: string }
+  /** The Products to choose from at the start of a request thread (first message; the card asks the server itself). */
+  | { kind: 'product'; thread: number; products: { id: number; name: string }[]; current: number | null }
+  /** The interview's option buttons under its question. */
+  | { kind: 'options'; options: { label: string; recommended: boolean }[] }
   /** The owner questions of a Ticket thread (first message; the card loads them itself). */
   | { kind: 'questions'; ticket: number }
 export type Decision = { approved: boolean; reason?: string }
-export type Outcome = { ok: boolean; text: string }
+export type Outcome = { ok: boolean; text: string; href?: string }
 export type Usage = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number }
-export type Custom = { answerId?: string; usage?: Usage; /** The card message of a Ticket thread: not an answer, no usage or rating. */ synthetic?: boolean }
+export type Custom = { answerId?: string; usage?: Usage; /** The card message of a Ticket or request thread: not an answer, no usage or rating. */ synthetic?: boolean }
 
 type Ev =
   | { type: 'context'; label: string }
   | { type: 'delta'; text: string }
   | { type: 'tool-call'; id: string; name: string; kind: 'read' | 'confirm'; input: Json; summary: string }
-  | { type: 'tool-result'; id: string; ok: boolean; result: string }
-  | { type: 'confirm'; id: string; name: string; title: string; details: Detail[]; destructive: boolean }
+  | { type: 'tool-result'; id: string; ok: boolean; result: string; href?: string }
+  | { type: 'options'; id: string; options: { label: string; recommended: boolean }[] }
+  | { type: 'confirm'; id: string; name: string; title: string; details: Detail[]; destructive: boolean; approve?: string; decline?: string; noReason?: boolean }
   | { type: 'done'; answerId: string; requiresAction?: boolean; usage: Usage }
   | { type: 'error'; message: string }
 
@@ -106,12 +111,14 @@ export function makeChatAdapter({ threadId, onWrite }: Options): ChatModelAdapte
         } else if (ev.type === 'tool-result') {
           const p = tool(ev.id)
           if (decided && ev.id === decided.toolCallId) {
-            parts.push(outcome(decided, { ok: ev.ok, text: ev.result }))
+            parts.push(outcome(decided, { ok: ev.ok, text: ev.result, ...(ev.href && { href: ev.href }) }))
             if (ev.ok) onWrite()
           } else if (p) set(p, { result: { ok: ev.ok, text: ev.result } satisfies Outcome })
+        } else if (ev.type === 'options') {
+          parts.push({ type: 'tool-call', toolCallId: ev.id, toolName: 'request_options', args: {}, argsText: '{}', artifact: { kind: 'options', options: ev.options } satisfies Artifact, result: { ok: true, text: '' } satisfies Outcome }) // answered at once, so a confirm card in the same message is the only call left open
         } else if (ev.type === 'confirm') {
           const p = tool(ev.id)
-          if (p) set(p, { artifact: { kind: 'confirm', summary: (p.artifact as Artifact & { summary: string }).summary, title: ev.title, details: ev.details, destructive: ev.destructive } satisfies Artifact })
+          if (p) set(p, { artifact: { kind: 'confirm', summary: (p.artifact as Artifact & { summary: string }).summary, title: ev.title, details: ev.details, destructive: ev.destructive, approve: ev.approve, decline: ev.decline, noReason: ev.noReason } satisfies Artifact })
         } else if (ev.type === 'done') {
           custom = { answerId: ev.answerId, usage: ev.usage }
           yield out(ev.requiresAction ? { status: { type: 'requires-action', reason: 'tool-calls' } } : undefined)
@@ -123,7 +130,7 @@ export function makeChatAdapter({ threadId, onWrite }: Options): ChatModelAdapte
   }
 }
 
-const outcome = (card: Tool, o: Outcome): Tool => ({ type: 'tool-call', toolCallId: card.toolCallId + OUTCOME, toolName: card.toolName, args: {}, argsText: '', artifact: { kind: 'outcome' } satisfies Artifact, result: o })
+const outcome = (card: Tool, o: Outcome): Tool => ({ type: 'tool-call', toolCallId: card.toolCallId + OUTCOME, toolName: card.toolName, args: {}, argsText: '', artifact: { kind: 'outcome', ...(o.href && { href: o.href }) } satisfies Artifact, result: o })
 
 /** Uploads each image to `/api/chat/media` and sends it as an image part whose URL carries the media id. */
 export const makeAttachments = (): AttachmentAdapter => ({

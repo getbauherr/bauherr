@@ -184,7 +184,7 @@ One recorded unit inside a Run (an agent turn or tool call), kept for audit and 
 _Avoid_: Action, event
 
 **Chat thread**:
-One person's stored conversation with the factory assistant in one Workspace; it remembers the page of its last message and at most one tool call awaiting confirmation. Private to its owner. It is not a Run and not an Intake session.
+One person's stored conversation with the factory assistant in one Workspace; it remembers the page of its last message and at most one tool call awaiting confirmation. Private to its owner. It is not a Run and not an Intake session; a request thread is the chat surface of one Intake session (the interview runs in the dock).
 _Avoid_: Conversation, session
 
 **Page context**:
@@ -192,5 +192,5 @@ What the assistant is told about the page the person is looking at, built on the
 _Avoid_: Screen state, page content
 
 **Intake session**:
-A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run.
+A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run. In the app it is held in the docked chat (a request thread); the embeddable widget is its other surface.
 _Avoid_: Chat, interview, request

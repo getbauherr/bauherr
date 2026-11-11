@@ -65,8 +65,8 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 
 | Feature | What it does | Where | Status |
 |---|---|---|---|
-| New request | An assistant turns a wish into a written request and a Ticket | `/requests/new` | Live |
-| Request list and page | Drafts and sent requests of the Workspace | `/requests`, `/requests/[id]` | Live |
+| New request | An assistant in the docked chat turns a wish into a written request and a Ticket; you check it on a card before it is sent | Dock (`New request`, `/request`), `/requests/new` opens it | Live |
+| Request list and page | Several drafts per person (Continue, Discard) above the sent requests of the Workspace; comment and answer through the dock | `/requests`, `/requests/[id]` | Live |
 | Website widget | An embeddable request form per Product with its own token | Product page, tab Widget | Live |
 | Widget rate limit per token | Sessions per hour of a token (default 20) | Product page, tab Widget | Live |
 

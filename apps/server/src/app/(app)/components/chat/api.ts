@@ -1,10 +1,12 @@
 import type { ThreadHistoryAdapter, ThreadMessage } from '@assistant-ui/react'
 
-export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null; ticket: number | null }
-export type Pending = { toolCallId: string; name: string; kind: 'confirm'; input: unknown; summary: string; title: string; details: { label: string; value: string }[]; destructive: boolean }
+export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null; ticket: number | null; request: boolean }
+export type Pending = { toolCallId: string; name: string; kind: 'confirm'; input: unknown; summary: string; title: string; details: { label: string; value: string }[]; destructive: boolean; approve?: string; decline?: string; noReason?: boolean }
+/** A request thread: its session and Product, and (several Products, nothing said yet) the Products to choose from. */
+export type RequestInfo = { session: number | null; sent: boolean; product: string | null; productId: number | null; products: { id: number; name: string }[] }
 export type Answer = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number; toolCalls: { name: string; kind: string; ok: boolean }[] }
 export type Stored = { parentId: string | null; message: ThreadMessage & { createdAt: string }; answer: Answer | null; feedback: { value: 'up' | 'down'; reasons: string[]; note: string | null } | null }
-export type Loaded = { context: Meta['context']; ticket: number | null; pending: Pending | null; messages: Stored[] }
+export type Loaded = { context: Meta['context']; ticket: number | null; request: RequestInfo | null; pending: Pending | null; messages: Stored[] }
 export type HistoryItem = Parameters<ThreadHistoryAdapter['append']>[0]
 
 export class ApiError extends Error {
@@ -29,6 +31,10 @@ export const api = {
   create: (path: string) => call<Meta>('/threads', 'POST', { path }),
   /** The person's one thread of a Ticket (created on first use). */
   ticketThread: (ticket: number) => call<Meta>('/threads', 'POST', { ticket }),
+  /** The thread for a new request (an empty one is reused). */
+  newRequest: () => call<Meta>('/threads', 'POST', { request: true }),
+  /** The thread of one of the person's requests (created on first use). */
+  requestThread: (session: number) => call<Meta>('/threads', 'POST', { requestSession: session }),
   fetch: (id: string) => call<Meta>(`/threads/${id}`),
   update: (id: string, patch: { title?: string | null; archived?: boolean }) => call<void>(`/threads/${id}`, 'PATCH', patch),
   remove: (id: string) => call<void>(`/threads/${id}`, 'DELETE'),

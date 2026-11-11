@@ -5,7 +5,7 @@ import type { Payload } from 'payload'
 type Doc = Record<string, any>
 /** The acting person in their current Workspace; every function below treats a thread of anyone else as not found. */
 export type Who = { payload: Payload; user: Doc; workspace: number }
-export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null; /** Ticket id of a Ticket thread. */ ticket: number | null }
+export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null; /** Ticket id of a Ticket thread. */ ticket: number | null; /** A request thread (the intake interview). */ request: boolean }
 export type Answer = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number; toolCalls: { name: string; kind: string; ok: boolean }[] }
 
 export const LIST_LIMIT = 200
@@ -17,7 +17,7 @@ const o = { depth: 0, overrideAccess: true } as const
 const run = (w: { payload: Payload }, q: ReturnType<typeof sql>) => w.payload.db.drizzle.execute(q)
 const json = (v: unknown) => sql`${JSON.stringify(v)}::jsonb`
 
-const meta = (t: Doc): Meta => ({ id: t.id, title: t.title ?? null, archived: !!t.archivedAt, lastMessageAt: t.lastMessageAt ?? null, createdAt: t.createdAt, context: t.context ? { path: t.context.path, label: t.context.label } : null, ticket: t.ticket ? (typeof t.ticket === 'object' ? t.ticket.id : t.ticket) : null })
+export const meta = (t: Doc): Meta => ({ id: t.id, title: t.title ?? null, archived: !!t.archivedAt, lastMessageAt: t.lastMessageAt ?? null, createdAt: t.createdAt, context: t.context ? { path: t.context.path, label: t.context.label } : null, ticket: t.ticket ? (typeof t.ticket === 'object' ? t.ticket.id : t.ticket) : null, request: !!t.request })
 
 /** The thread when it belongs to this person in this Workspace, else null (never a hint that it exists). */
 export const ownThread = async (w: Who, id: string | number): Promise<Doc | null> => {

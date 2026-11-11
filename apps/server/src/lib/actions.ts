@@ -225,14 +225,6 @@ export class CommentRefused extends Error {}
 
 const commentMedia = (t: Doc, ...more: Doc[]) => ({ and: [{ product: { equals: id(t.product) } }, { ticketNumber: { equals: t.number } }, { workspace: { equals: id(t.workspace) } }, { session: { exists: false } }, { attached: { equals: false } }, ...more] })
 
-/** Stores one image for a Ticket comment (png, jpeg or webp; at most `maxPerSession` unposted ones per Ticket). Throws `MediaRejected` for a non-image, `CommentRefused` at the cap. */
-export const uploadCommentMedia = async (payload: Payload, user: Doc, a: { ticket: TicketId; name: string; bytes: Uint8Array }): Promise<{ id: number }> => {
-  const t = await loadTicket(payload, user, a.ticket)
-  const { maxPerSession } = mediaLimits()
-  if ((await payload.count({ collection: 'media', where: commentMedia(t), overrideAccess: true })).totalDocs >= maxPerSession) throw new CommentRefused(`at most ${maxPerSession} unposted images per Ticket`)
-  return { id: (await saveMedia(payload, { bytes: a.bytes, name: a.name, workspace: id(t.workspace), product: id(t.product), ticketNumber: t.number })).id }
-}
-
 /** Posts a Ticket comment from the UI: `body` plus one `![name](link)` line per uploaded image. The images are marked sent before the forge call and released again when it fails, so a retry works and the daily prune never deletes a posted image. Returns the image links. */
 export const postComment = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)

@@ -13,13 +13,14 @@ import { MarkdownText } from './markdown'
 import { ToolPart } from './tools'
 
 const MAX_IMAGES = 6
-export type Kind = 'ticket' | 'overview' | 'settings' | 'other'
+export type Kind = 'ticket' | 'overview' | 'settings' | 'other' | 'request'
 export const kindOf = (path: string): Kind => (path.startsWith('/tickets/') ? 'ticket' : path === '/' || path.startsWith('/?') ? 'overview' : path.startsWith('/settings') ? 'settings' : 'other')
 const suggestions: Record<Kind, string[]> = {
   ticket: ['What is blocking this ticket?', 'Summarise the plan', 'What happens next?', 'What needs me here?'],
   overview: ['What needs me right now?', 'What is the factory working on?', 'Which tickets are blocked?'],
   settings: ['Explain this page'],
   other: ['What needs me right now?', 'Explain this page'],
+  request: [],
 }
 
 /** `arg`: the command takes the rest of the line (`/comment <text>`); `run` gets it and the ids of the images in the composer, and answers false to keep the composer as it is (a failure). */
@@ -95,7 +96,7 @@ const nf = new Intl.NumberFormat('en')
 /** model · tokens in → out · seconds (cost when the gateway knows a price). */
 const Usage: FC = () => {
   const u = (useAuiState((s) => s.message.metadata.custom) as Custom | undefined)?.usage
-  if (!u) return null
+  if (!u || !(u.tokensIn || u.tokensOut)) return null
   return (
     <p data-testid="usage" className="text-xs text-muted-foreground">
       {u.model} · {nf.format(u.tokensIn)} → {nf.format(u.tokensOut)} tokens · {(u.ms / 1000).toFixed(1)} s{u.costUsd != null && ` · $${u.costUsd.toFixed(4)}`}
@@ -124,7 +125,7 @@ const AssistantMessage: FC = () => (
     </MessagePrimitive.Error>
     <AuiIf condition={(s) => s.message.status?.type !== 'running'}>
       <Usage />
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 group-data-[kind=request]/dock:hidden">
         <ActionBarPrimitive.Root className="contents">
           <ActionBarPrimitive.Copy asChild>
             <button type="button" aria-label="Copy" title="Copy" className={iconBtn}>
@@ -142,8 +143,8 @@ const AssistantMessage: FC = () => (
 
 const Welcome: FC<{ kind: Kind }> = ({ kind }) => (
   <div className={cn('flex flex-col gap-3 py-6', useAuiState((s) => s.thread.messages.length) ? 'mt-2' : 'my-auto')} data-testid="welcome">
-    <p className="text-[15px] font-semibold">Ask the factory</p>
-    <p className="text-[14px] text-muted-foreground">I can see the page you are on. Ask about it, or tell me what to approve.</p>
+    <p className="text-[15px] font-semibold">{kind === 'request' ? 'Describe what you need' : 'Ask the factory'}</p>
+    <p className="text-[14px] text-muted-foreground">{kind === 'request' ? 'Say it in a sentence, or paste a screenshot. I will ask a few questions, then you check the request before it is sent.' : 'I can see the page you are on. Ask about it, or tell me what to approve.'}</p>
     <div className="flex flex-wrap gap-2">
       {suggestions[kind].map((s) => (
         <ThreadPrimitive.Suggestion key={s} prompt={s} send className="rounded-full border px-3 py-1.5 text-left text-[13px] hover:bg-secondary">{s}</ThreadPrimitive.Suggestion>
@@ -170,7 +171,7 @@ const AddError: FC = () => {
   return message ? <p role="alert" className="text-[13px] text-destructive">{message}</p> : null
 }
 
-const Composer: FC<{ commands: Command[] }> = ({ commands }) => {
+const Composer: FC<{ commands: Command[]; kind: Kind }> = ({ commands, kind }) => {
   const aui = useAui()
   const text = useAuiState((s) => s.composer.text)
   const count = useAuiState((s) => s.composer.attachments.length)
@@ -201,7 +202,7 @@ const Composer: FC<{ commands: Command[] }> = ({ commands }) => {
         )}
         <AddError />
         <div className="flex flex-wrap gap-1.5 empty:hidden"><ComposerPrimitive.Attachments>{() => <Thumb removable />}</ComposerPrimitive.Attachments></div>
-        <ComposerPrimitive.Input rows={1} maxRows={8} style={{ outline: 'none' }} aria-label="Message the factory" placeholder="Ask, or paste a screenshot" className="max-h-48 min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 outline-none placeholder:text-muted-foreground" />
+        <ComposerPrimitive.Input rows={1} maxRows={8} style={{ outline: 'none' }} aria-label="Message the factory" placeholder={kind === 'request' ? 'Describe what you need, or paste a screenshot' : 'Ask, or paste a screenshot'} className="max-h-48 min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 outline-none placeholder:text-muted-foreground" />
         <div className="flex items-center justify-between">
           <ComposerPrimitive.AddAttachment asChild>
             <button type="button" aria-label="Attach image" title="Attach image" disabled={count >= MAX_IMAGES} className={cn(iconBtn, 'disabled:opacity-40')}><Paperclip /></button>
@@ -220,7 +221,7 @@ const Composer: FC<{ commands: Command[] }> = ({ commands }) => {
 
 /** Thread, composer and everything between; `above` renders over the composer (context chip, notes). */
 export const DockThread: FC<{ kind: Kind; commands: Command[]; above: ReactNode }> = ({ kind, commands, above }) => (
-  <ThreadPrimitive.Root className="aui-root flex min-h-0 flex-1 flex-col text-foreground">
+  <ThreadPrimitive.Root data-kind={kind} className="aui-root group/dock flex min-h-0 flex-1 flex-col text-foreground">
     <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3" aria-live="polite">
       <ThreadPrimitive.Messages>{({ message }) => (message.role === 'user' ? <UserMessage /> : isSynthetic(message) ? <QuestionsMessage /> : <AssistantMessage />)}</ThreadPrimitive.Messages>
       <AuiIf condition={(s) => s.thread.messages.every(isSynthetic)}><Welcome kind={kind} /></AuiIf>
@@ -230,7 +231,7 @@ export const DockThread: FC<{ kind: Kind; commands: Command[]; above: ReactNode 
         <button type="button" aria-label="Scroll to bottom" className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-full border bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground disabled:hidden"><ArrowDown /></button>
       </ThreadPrimitive.ScrollToBottom>
       {above}
-      <Composer commands={commands} />
+      <Composer commands={commands} kind={kind} />
     </div>
   </ThreadPrimitive.Root>
 )

@@ -23,10 +23,15 @@ test('a Sent request opens its page with Tickets, plain status and a merged comm
   await expect(tickets.first()).toContainText('Ship the CSV export')
   await expect(tickets.first()).toContainText(/Being (looked at|planned|built|reviewed)|On staging|Done/)
 
-  await page.getByLabel('Comment on').selectOption({ label: '#7 Ship the invoice filter' })
-  await page.getByRole('textbox', { name: 'Comment' }).fill('Looks right to me')
-  await page.getByRole('button', { name: 'Post comment' }).click()
-  await expect(page.getByText('Posted to the forge.')).toBeVisible()
+  await tickets.filter({ hasText: 'Ship the invoice filter' }).getByRole('button', { name: 'Comment on #7' }).click()
+  const dock = page.getByTestId('chat-dock')
+  const composer = dock.getByRole('textbox', { name: 'Message the factory' })
+  await expect(composer).toHaveValue('/comment ', { timeout: 30_000 }) // the prefill lands after the dock opens; typing before it would be overwritten
+  await expect(dock.getByTestId('context-chip')).toContainText('#7')
+  await composer.fill('/comment Looks right to me')
+  await composer.press('Enter')
+  await expect(dock.getByTestId('local-note')).toContainText('Posted to the issue.')
+  await expect(page.getByTestId('request-comment').filter({ hasText: 'Looks right to me' }).last()).toContainText('#7', { timeout: 30_000 })
   await page.reload()
   await expect(page.getByTestId('request-comment').filter({ hasText: 'Looks right to me' }).last()).toContainText('#7')
 

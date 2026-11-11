@@ -481,7 +481,7 @@ describe('loadTeam', () => {
 
 it('the chat read tool team_status answers who works on what', async () => {
   const { chatTools, teamStatus } = await import('../src/lib/chat/tools')
-  expect(chatTools().find((t) => t.name === 'team_status')).toMatchObject({ kind: 'read' })
+  expect(chatTools({ role: 'admin' }).find((t) => t.name === 'team_status')).toMatchObject({ kind: 'read' })
   const t = await ticket('busy', 'build')
   const eng = await connect('engineer', { label: 'laptop', client: 'claude-code/2.1', model: 'm' })
   await connect('reviewer', { label: 'idle-one' })

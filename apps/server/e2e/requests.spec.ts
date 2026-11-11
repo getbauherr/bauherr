@@ -15,13 +15,13 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   await page.getByRole('link', { name: /^Requests/ }).click()
-  await page.getByRole('link', { name: 'New request' }).first().click()
-  await page.getByTestId('intake').getByRole('link', { name: 'Requests', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
-  const draft = page.locator('tbody tr').filter({ hasText: 'Export totals drift' })
-  await expect(draft).toContainText('Draft')
-  await expect(draft.getByRole('link', { name: 'Export totals drift' })).toHaveAttribute('href', /^\/requests\/new\?session=\d+$/)
-  await expect(draft).not.toContainText('Ticket')
+  const draft = page.getByTestId('drafts').getByTestId('draft').filter({ hasText: 'Export totals drift' })
+  await expect(draft).toContainText('changed')
+  await expect(draft.getByRole('link', { name: 'Export totals drift' })).toHaveAttribute('href', /^\/requests\/\d+$/)
+  await expect(draft.getByRole('button', { name: 'Continue' })).toBeVisible()
+  await expect(draft.getByRole('button', { name: /^Discard draft: / })).toBeVisible()
+  await expect(page.locator('tbody')).not.toContainText('Export totals drift') // an own Draft sits in Drafts, not in the table
   const linked = page.locator('tbody tr').filter({ hasText: 'Dark theme for the dashboard' })
   await expect(linked).toContainText('Sent')
   await expect(page.locator('tbody')).not.toContainText(/Linked|Triage|↳|No Ticket yet/)
@@ -54,40 +54,7 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
   await expect(page).toHaveURL(/\/tickets\/\d+/)
 })
 
-test('an own Draft opens from Requests after logout and login and is finished and sent', async ({ page }) => {
-  test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 and INTAKE_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
-  const signIn = async () => {
-    await page.goto('/login')
-    await page.getByLabel('Email').fill('signout-requests@example.com') // signing out ends every session of the user, so this test has one of its own
-    await page.getByLabel('Password').fill(password())
-    await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page.getByRole('banner')).toBeVisible()
-  }
-  const say = async (text: string, reply: string) => {
-    await page.getByLabel(/Describe your request|Your answer/).fill(text)
-    await page.getByRole('button', { name: 'Send' }).click()
-    await expect(page.locator('[data-role=assistant]').last()).toHaveText(reply)
-  }
-  await signIn()
-  await page.goto('/requests/new')
-  await page.getByLabel('Product').click()
-  await page.getByRole('option', { name: 'Acme Web' }).click()
-  await say('The reopen check is broken', 'Who is affected, and since when?')
-  await page.getByRole('button', { name: 'User menu' }).click()
-  await page.getByRole('menuitem', { name: 'Sign out' }).click()
-  await page.waitForURL('**/login')
-  await signIn()
-  await page.goto('/requests')
-  await page.locator('tbody tr').filter({ hasText: 'The reopen check is broken' }).getByRole('link', { name: 'The reopen check is broken' }).click()
-  await expect(page).toHaveURL(/\/requests\/new\?session=\d+/)
-  await expect(page.locator('[data-role=user]').first()).toHaveText('The reopen check is broken')
-  await say('Finance, last week', 'How should it work once it is fixed?')
-  await say('Totals should match', 'Anything to add before I send this?')
-  await page.getByRole('button', { name: 'Submit request' }).click()
-  await expect(page.getByRole('status')).toContainText(/Request #\d+ sent/)
-})
-
-test('an empty own Draft opens its session', async ({ page }) => {
+test('an empty own Draft opens its request page, and Continue draft opens its thread in the dock', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -95,28 +62,27 @@ test('an empty own Draft opens its session', async ({ page }) => {
   await expect(page.getByRole('banner')).toBeVisible()
   await page.goto('/requests')
   await page.getByRole('link', { name: 'Export totals drift' }).click()
-  await expect(page.getByRole('heading', { name: 'New request' })).toBeVisible()
-  await expect(page).toHaveURL(/\/requests\/new\?session=\d+/)
-  await expect(page.getByLabel('Describe your request')).toBeVisible()
+  await expect(page).toHaveURL(/\/requests\/\d+$/)
+  await expect(page.getByRole('heading', { name: 'Export totals drift' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Discard draft' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue draft' }).click()
+  const dock = page.getByTestId('chat-dock')
+  await expect(dock).toBeVisible()
+  await expect(dock.getByTestId('context-chip')).toHaveText('New request · Acme Web', { timeout: 30_000 })
+  await expect(dock.getByRole('textbox', { name: 'Message the factory' })).toBeVisible()
 })
 
-test('New request hides the Product select for a single-Product Workspace', async ({ page }) => {
+test('/requests/new?session=<id> continues that draft in the dock', async ({ page }) => {
   await page.goto('/login')
-  await page.getByLabel('Email').fill('solo@example.com')
+  await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/requests/new')
-  await expect(page.getByLabel('Describe your request')).toBeVisible()
-  await expect(page.getByLabel('Product')).toHaveCount(0)
-  const shots = process.env.SHOTS_DIR
-  if (shots) {
-    for (const [w, h] of [[1280, 800], [390, 844]] as const) {
-      await page.setViewportSize({ width: w, height: h })
-      for (const scheme of ['light', 'dark'] as const) {
-        await page.emulateMedia({ colorScheme: scheme })
-        await page.screenshot({ path: `${shots}/new-request-single-product-${scheme}-${w}x${h}.png` })
-      }
-    }
-  }
+  await page.goto('/requests')
+  const href = (await page.getByRole('link', { name: 'Export totals drift' }).getAttribute('href'))!
+  await page.goto(`/requests/new?session=${href.split('/').pop()}`)
+  await expect(page.getByText('Your draft is open in the chat on the right.')).toBeVisible()
+  await expect(page.getByTestId('chat-dock').getByTestId('context-chip')).toHaveText('New request · Acme Web', { timeout: 30_000 })
+  await page.goto('/requests/new?session=999999999')
+  await expect(page.getByText('Describe what you need in the chat on the right.')).toBeVisible()
 })

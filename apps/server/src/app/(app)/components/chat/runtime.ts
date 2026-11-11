@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { useAui, useLocalRuntime, useRemoteThreadListRuntime, type FeedbackAdapter, type RemoteThreadListAdapter, type ThreadHistoryAdapter } from '@assistant-ui/react'
-import { api, currentPath, remember, type HistoryItem, type Meta, type Pending, type Stored } from './api'
+import { api, currentPath, remember, type HistoryItem, type Meta, type Pending, type RequestInfo, type Stored } from './api'
 import { makeAttachments, makeChatAdapter, type Artifact, type Custom } from './adapter'
 
 type Metadata = Awaited<ReturnType<RemoteThreadListAdapter['fetch']>>
@@ -9,8 +9,8 @@ type TitleChunk = TitleStream extends ReadableStream<infer C> ? C : never
 type Item = { getState(): { remoteId?: string | undefined }; initialize(): Promise<{ remoteId: string }> }
 
 export type Hooks = {
-  /** A stored thread was opened: the page it was about (null for a new one). */
-  onLoaded(threadId: string | undefined, context: Meta['context'], ticket: number | null): void
+  /** A stored thread was opened: the page it was about (null for a new one), its Ticket, its request. */
+  onLoaded(threadId: string | undefined, context: Meta['context'], ticket: number | null, request: RequestInfo | null): void
   onWrite(): void
 }
 
@@ -44,7 +44,7 @@ const cardOf = (p: Pending) => ({
   toolName: p.name,
   args: (p.input ?? {}) as Record<string, never>,
   argsText: JSON.stringify(p.input ?? {}),
-  artifact: { kind: 'confirm', summary: p.summary, title: p.title, details: p.details, destructive: p.destructive } satisfies Artifact,
+  artifact: { kind: 'confirm', summary: p.summary, title: p.title, details: p.details, destructive: p.destructive, approve: p.approve, decline: p.decline, noReason: p.noReason } satisfies Artifact,
 })
 
 /** A stored item as assistant-ui's exported repository item; the server's usage and rating win over what the client stored. A pending card the client never saved is put back. */
@@ -86,15 +86,31 @@ const withQuestions = (items: HistoryItem[], ticket: number): HistoryItem[] => {
   return [{ parentId: null, message } as HistoryItem, ...items.map((i) => (i.parentId ? i : ({ ...i, parentId: id } as HistoryItem)))]
 }
 
+const PRODUCT = (thread: string) => `product-${thread}`
+
+/** A request thread that can still pick its Product starts with the card to choose one (not stored); the first stored message hangs off it. */
+const withProduct = (items: HistoryItem[], thread: string, products: RequestInfo['products'], current: number | null): HistoryItem[] => {
+  const id = PRODUCT(thread)
+  const part = { type: 'tool-call' as const, toolCallId: id, toolName: 'choose_product', args: {}, argsText: '{}', artifact: { kind: 'product', thread: Number(thread), products, current } satisfies Artifact }
+  const message = { id, role: 'assistant', createdAt: new Date(0), content: [part], status: { type: 'complete', reason: 'unknown' }, metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { synthetic: true } } }
+  return [{ parentId: null, message } as HistoryItem, ...items.map((i) => (i.parentId ? i : ({ ...i, parentId: id } as HistoryItem)))]
+}
+
+/** A message that hung off a card which is no longer shown (the Product card of a thread that has started) becomes a root. */
+const withoutOrphans = (items: HistoryItem[]): HistoryItem[] => {
+  const ids = new Set(items.map((i) => i.message.id))
+  return items.map((i) => (i.parentId && !ids.has(i.parentId) ? ({ ...i, parentId: null } as HistoryItem) : i))
+}
+
 const listAdapter = (hooks: RefObject<Hooks>): RemoteThreadListAdapter => {
   const history = (item: () => Item): ThreadHistoryAdapter => ({
     async load() {
       const id = item().getState().remoteId
       if (!id) return { messages: [] }
       const d = await api.messages(id)
-      hooks.current.onLoaded(id, d.context, d.ticket)
+      hooks.current.onLoaded(id, d.context, d.ticket, d.request)
       const items = withPending(d.messages.map(decode), d.pending)
-      return { messages: d.ticket ? withQuestions(items, d.ticket) : items }
+      return { messages: withoutOrphans(d.ticket ? withQuestions(items, d.ticket) : d.request?.products.length ? withProduct(items, id, d.request.products, d.request.productId) : items) }
     },
     append: async (entry) => {
       const id = await remoteId(item())
@@ -155,7 +171,7 @@ export function useChatRuntime(hooks: Hooks, initialThreadId: string | undefined
     initialThreadId,
     onThreadIdChange: (id) => {
       remember.set(userKey, id ?? null)
-      if (!id) ref.current.onLoaded(undefined, null, null)
+      if (!id) ref.current.onLoaded(undefined, null, null, null)
     },
   })
   return runtime

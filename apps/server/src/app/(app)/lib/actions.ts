@@ -3,7 +3,8 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, postCommentFromChat, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, startOwnerIntake, askOwnerIntake } from '../../../lib/actions'
+import { chooseProduct, discardRequest } from '../../../lib/chat/request'
 import { startRunIfNeeded } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
@@ -166,11 +167,17 @@ export async function requestChangesAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** Discards one of the caller's open request sessions (New request page). */
+/** Discards one of the caller's open drafts and its conversation ("Discard" on the Requests page and "Discard draft" on the Request page). */
 export async function discardIntake(session: number) {
-  const { user, payload } = await acting()
-  await inWorkspace(abandonIntake(payload, user, session))
-  revalidatePath('/requests/new')
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(discardRequest({ payload, user, workspace: workspaceId }, session))
+  revalidatePath('/requests')
+}
+
+/** The Product select of a request thread in the dock: starts the interview session for a Product of the selected Workspace. Null when the thread or the Product is not theirs. */
+export async function chooseRequestProduct(thread: number, product: number): Promise<{ session: number; product: string } | null> {
+  const { user, payload, workspaceId } = await acting()
+  return chooseProduct({ payload, user, workspace: workspaceId }, thread, product)
 }
 
 /** Opens (or resumes) the owner's questions over the Ticket's open decision rows; null when none is open. */
@@ -292,17 +299,6 @@ export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Pro
   } catch (e) {
     if (e instanceof EditRefused) return { error: e.message }
     throw e
-  }
-}
-
-/** Posts a Ticket comment with its uploaded images; answers the image links or an error text (the images stay for a retry). */
-export async function postCommentAction(ticket: number, body: string, mediaIds: number[]): Promise<{ images: string[] } | { error: string }> {
-  const { user, payload, workspaceId } = await acting()
-  try {
-    return { images: await postComment(payload, user, { ticket, workspaceId, body, mediaIds }) }
-  } catch (e) {
-    if (e instanceof NotInWorkspace) notFound()
-    return { error: e instanceof CommentRefused ? e.message : 'The forge did not accept the comment. Your images are kept; try again.' }
   }
 }
 
