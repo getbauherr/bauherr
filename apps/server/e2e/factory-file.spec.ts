@@ -24,7 +24,9 @@ test('Admin checks a broken factory file, applies a stage title, downloads it an
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/settings/workflow')
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Edit workflow' }).click()
+  await expect(page).toHaveURL(/\/settings\/workflow#factory-file$/)
 
   // An apply clears the Workspace's WIP overrides (the file's `wip` governs again): remember them, put them back at the end so later specs see the same Board.
   const wipFields = page.getByLabel(/^(Plan|Build|Review|Release) \(now/)

@@ -200,10 +200,10 @@ export const buildDecision = (need: Need, f: DecisionFacts): Decision => {
         const h = f.human ?? { title: stage, outcomes: [] }
         const label = (k: string) => k.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase())
         return {
-          ask: sentence(`${h.title}:`, t.title),
+          ask: sentence(`Decide the ${h.title} step of`, t.title),
           recommendation: null,
           why: [`The ticket waits in the "${h.title}" stage for a person`],
-          options: h.outcomes.map((o, i) => ({ label: label(o), action: 'decide' as const, outcome: o, primary: i === 0, effect: `The ticket follows the outcome "${o}" of this stage.` })),
+          options: h.outcomes.map((o, i): DecisionOption => ({ label: label(o), action: 'decide' as const, outcome: o, primary: i === 0, effect: `The ticket follows the outcome "${o}" of this stage.` })).concat(h.outcomes.length ? [] : [open('Open the ticket', `/tickets/${tid}`, 'Decide on the ticket page.')]),
           next: 'The ticket moves on by the outcome you pick.',
         }
       }
@@ -255,7 +255,7 @@ type Doc = Record<string, any>
 /** The `human` stage a Ticket row sits in (its Workspace's workflow), for the options of its "Decision needed". */
 export const humanStage = (t: Doc): { title: string; outcomes: string[] } | null => {
   const def = t.stage ? stage(workflowFor(t.workspace), t.stage) : undefined
-  return def?.kind === 'human' ? { title: def.title, outcomes: Object.keys(def.outcomes) } : null
+  return def?.kind === 'human' ? { title: def.title, outcomes: def.outcomeOrder ?? Object.keys(def.outcomes) } : null
 }
 
 /** The Decision of a Ticket row for the sweep: the Product and the newest MR link are the only extra reads, none of them on the forge. */

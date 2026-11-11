@@ -84,7 +84,7 @@ it('a Ticket goes through an agent stage and a human stage on its way to review'
   await call(member, 'submit_triage', { runId: triage.runId, leaseToken: triage.leaseToken, outcome: 'plan', reason: 'clear' })
   await poll()
   const plan = await claim(id, 'plan')
-  await call(member, 'submit_plan', { runId: plan.runId, leaseToken: plan.leaseToken, markdown: '## Goal\ncustom' })
+  await call(member, 'submit_plan', { runId: plan.runId, leaseToken: plan.leaseToken, markdown: '## TL;DR\nDecision: build it\nRecommendation: yes\nWhy:\n- small\nRisk: none\n\n## Goal\ncustom' })
   await call(member, 'finish_run', { runId: plan.runId, leaseToken: plan.leaseToken, status: 'succeeded' })
   await poll()
   expect(await reload(id)).toMatchObject({ stage: 'build' })

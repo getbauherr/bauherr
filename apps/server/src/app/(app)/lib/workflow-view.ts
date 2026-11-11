@@ -13,7 +13,8 @@ export type NodeStats = { count: number; limit: number | null; bar: Bar; execs: 
 const CHECKPOINTS = NEED_NODE
 
 /** The graph node id (`<stage>:refine|gate|production`) of the human checkpoint a Ticket waits at, else null. */
-export const checkpointOf = (wf: Workflow, t: Pick<TicketRow, 'needsYou'>): string | null => {
+export const checkpointOf = (wf: Workflow, t: Pick<TicketRow, 'needsYou' | 'stage'>): string | null => {
+  if (t.needsYou === 'Decision needed') return t.stage
   const c = t.needsYou ? CHECKPOINTS[t.needsYou as Need] : undefined
   const stage = c && byKind(wf, c[0])?.name
   return stage ? `${stage}:${c![1]}` : null
