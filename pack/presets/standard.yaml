@@ -1,0 +1,31 @@
+# The factory: the team and the workflow. Spec: docs/spec/workflow.md
+# Optional per stage: `mode: session|autonomous` (default autonomous). Workspace.modeByStage / defaultMode and
+# env BAUHERR_DEFAULT_MODE override it (apps/server/src/lib/mode.ts).
+# Human gates: refine (Triage questions) is always on; production is on by default (`production_gate: human` on `release`;
+# a Product without productionChecks shows the "Configure production checks" gate until they are set).
+# Approve plan (`gate: human` on `plan`) is on by default: every plan waits for the owner. Remove it in your own factory file to let plans through.
+# Optional, off by default: `gate: human` on `release` (Accept on staging).
+version: 1
+team:
+  roles:
+    orchestrator: {title: Orchestrator, skills: [Triage, Routing, Unblocking], tier: cheap, exceptions: true, profile_file: roles/orchestrator.md}
+    engineer:     {title: Software engineer, skills: [TypeScript, Small diffs, Tests first, Refactoring], tier: cheap, profile_file: roles/engineer.md}
+    reviewer:     {title: Reviewer, skills: [Diff reading, Plan conformance, Repo rules], tier: standard, profile_file: roles/reviewer.md}
+    security:     {title: Security specialist, skills: [Threat modelling, AuthZ, Secrets, Injection, Dependencies], tier: standard, profile_file: roles/security.md}
+    ux:           {title: UX specialist, skills: [Flows, States, Copy, Accessibility], tier: standard, profile_file: roles/ux.md}
+    test:         {title: Test specialist, skills: [Failure modes, Regression, Flake hunting], tier: standard, profile_file: roles/test.md}
+workflow:
+  stages:
+    # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
+    - name: triage
+      kind: triage
+      role: orchestrator
+      skill: triage
+      exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
+      outcomes: {plan: plan, refine: triage, skip: backlog}
+    - {name: plan, kind: plan, role: engineer, skill: run-contract, gate: human, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
+    - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: review, stuck: escalate, replan: plan}}
+    - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
+    - {name: release, kind: release, title: Staging, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
+    - {name: done, kind: done}

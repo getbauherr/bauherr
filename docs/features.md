@@ -136,9 +136,8 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Feature | What it does | Where | Status |
 |---|---|---|---|
 | Products and repositories | Repository, Ticket source, staging, approvals, production, merging, releases, scan, widget, in tabs | `/settings/products` (`?tab=`) | Live |
-| Setup wizard (current) | Four steps: connect GitHub, add a Product, set staging and gates, send a first request | `/setup`, from empty states | Live, hard to find |
+| Setup wizard | Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new) | `/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist" | Live |
 | Settings by scope | Account, Factory, Workspace and Admin groups; Product page in tabs; a place in the UI for every feature | `/settings/*` | Live |
-| New setup wizard | A redesigned first run | | In progress |
 | Background jobs | 19 jobs: polling, Runs, merging, releases, scans, pruning | Counts on Health | No UI |
 | Health endpoint | Unauthenticated JSON of stale jobs | `/api/health` | No UI |
 | Payload admin | Developer escape hatch | `/admin` with `BAUHERR_ENABLE_ADMIN=1` | No UI |
@@ -159,4 +158,3 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 - No UI, by design: `return_to_build` (agent repair), the connection slug, job-level status; see "Not in the UI" in [ui.md](ui.md).
 - Written but never shown: `oidcSynced`, `productionApprovedSha`.
 - Security scan findings have no page of their own: the last scan links its Run and the finding Tickets.
-- `/setup` has no menu entry; it shows up in empty states and as "Set up" in the command palette while the Workspace has no Ticket.

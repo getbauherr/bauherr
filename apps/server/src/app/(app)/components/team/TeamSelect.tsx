@@ -1,6 +1,5 @@
 'use client'
 import * as SelectPrimitive from '@radix-ui/react-select'
-import Link from 'next/link'
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
@@ -9,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Markdown } from '../Markdown'
 import { SubmitButton } from '../SubmitButton'
 import { renderMarkdown } from '../../lib/markdown'
-import { CopyButton } from './CopyButton'
+import { ConnectBlock } from './ConnectBlock'
 import { Chip } from './Chip'
 import { agentsLabel, connectPrompt, groupOptions, live, modelName, modelValue, profileMarkdown, tagline } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
@@ -25,6 +24,8 @@ type Props = {
   docsHref: string
   /** The `claude mcp add` line with the factory URL and a key placeholder. */
   mcpLine: string
+  /** Read-only roster (setup wizard): no model/agents form and no connect block. */
+  preview?: boolean
 }
 
 function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: boolean; hot: boolean; onPick: () => void; onHot: (on: boolean) => void }) {
@@ -128,7 +129,7 @@ function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, '
   )
 }
 
-export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcpLine }: Props) {
+export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcpLine, preview }: Props) {
   const [id, setId] = useState(roles[0]?.id)
   const [hot, setHot] = useState<string>()
   const group = useRef<HTMLDivElement>(null)
@@ -154,7 +155,7 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcp
       <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:sticky lg:top-4 lg:mx-0 lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:self-start lg:overflow-y-auto lg:px-1">
         {roles.map((r) => <Card key={r.id} role={r} chosen={r.id === id} hot={hot === r.id} onPick={() => setId(r.id)} onHot={(on) => setHot(on ? r.id : undefined)} />)}
       </div>
-      <section aria-labelledby="role-title" className="flex min-h-[40rem] flex-col gap-6 rounded-md border border-border bg-card p-6">
+      <section aria-labelledby="role-title" className={cn('flex flex-col gap-6 rounded-md border border-border bg-card p-6', !preview && 'min-h-[40rem]')}>
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
           <RoleAvatar avatar={role.avatar} size="xl" animate />
           <div className="flex flex-col gap-2">
@@ -171,24 +172,8 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcp
           </div>
           {role.exceptions && <p className="small m-0 text-muted-foreground">Handles stuck tickets.</p>}
         </div>
-        <RoleSettingsForm key={role.id} role={role} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />
-        <div className="flex flex-col gap-3 border-t border-border pt-4" data-testid="connect">
-          <h3 className="heading">Connect a session</h3>
-          <ol className="m-0 flex list-none flex-col gap-3 p-0">
-            <li className="flex flex-col gap-2">
-              <span className="small">1. Add the factory to Claude Code once. <Link className="text-primary" href="/settings/api-key">Create an agent key</Link> and put it in place of the placeholder.</span>
-              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{mcpLine}</pre>
-              <div><CopyButton text={mcpLine} label="Copy command" /></div>
-            </li>
-            <li className="flex flex-col gap-2">
-              <span className="small">2. Start a session and give it this prompt.</span>
-              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{prompt}</pre>
-              <div><CopyButton text={prompt} label="Copy prompt" /></div>
-            </li>
-            <li className="small">3. The session appears here as Idle within seconds, and as Working while it holds a Run.</li>
-          </ol>
-          <a className="small text-primary" href={docsHref}>How sessions connect</a>
-        </div>
+        {!preview && <RoleSettingsForm key={role.id} role={role} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />}
+        {!preview && <ConnectBlock mcpLine={mcpLine} prompt={prompt} docsHref={docsHref} />}
       </section>
     </div>
   )

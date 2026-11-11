@@ -81,12 +81,14 @@ it.each([
 })
 
 it('an autonomous Build Run that reports replan sends the Ticket back to Plan with the comment, without an MR', async () => {
-  const issue = await fake.tickets(repo).create({ title: 'b', labels: ['bauherr:stage:build'] })
-  const t = (await payload.create({ collection: 'tickets', data: { title: 'b', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', product, workspace: ws }, ...o })).id as number
+  const issue = await fake.tickets(repo).create({ title: 'b', labels: ['bauherr:stage:build', 'bauherr:approved:plan'] })
+  const t = (await payload.create({ collection: 'tickets', data: { title: 'b', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', labels: ['bauherr:stage:build', 'bauherr:approved:plan'], product, workspace: ws }, ...o })).id as number
   const { run } = await jobs.startRunIfNeeded(payload, { id: t, workspace: ws }, 'build')
   exec.mockImplementationOnce(async () => ({ status: 'succeeded', artifacts: { agentOutcome: { outcome: 'replan', comment: 'step 2 is impossible' } }, usage }))
   await runJob(run.id as number)
   expect(await get('runs', run.id as number)).toMatchObject({ status: 'succeeded', outcome: 'replan' })
   expect(await get('tickets', t)).toMatchObject({ stage: 'plan' })
+  expect((await fake.tickets(repo).get(String(issue.number))).labels).not.toContain('bauherr:approved:plan')
+  expect(((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t } }, { stage: { equals: 'plan' } }] }, depth: 0, ...o })).docs as Record<string, any>[]).map((r) => r.status)).toEqual([expect.stringMatching(/queued|awaiting_session|running/)])
   expect((await fake.tickets(repo).listComments(String(issue.number))).some((c) => c.body === '<!-- bauherr:stage:build -->\nstep 2 is impossible')).toBe(true)
 })

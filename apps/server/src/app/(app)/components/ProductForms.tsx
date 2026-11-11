@@ -7,19 +7,6 @@ import { GateLadder, RadioCards, SettingsSection, StatusCallout, ToggleRow } fro
 
 const CHECKS_UNREADABLE = 'Could not read checks from GitHub right now. Type the check name instead.'
 
-/** Name and the optional short name of a new Product (`/settings/products/new` and /setup). */
-export const ProductNameFields = () => (
-  <>
-    <Field name="name" label="Product name" hint="What you call this product on the Board and in Tickets." example="Acme Shop" required />
-    <details data-slot="advanced">
-      <summary className="small cursor-pointer text-primary">Advanced</summary>
-      <div className="mt-3">
-        <Field name="slug" label="Short name" hint="Used in links and in the Knowledge repo folder products/<short name>/. Empty: derived from the name." example="acme-shop" />
-      </div>
-    </details>
-  </>
-)
-
 /** Repository, account and (optionally) "read tickets" of an Add repository form. */
 export const RepositoryFields = ({ connections, tickets = true }: { connections: { id: number; name: string }[]; tickets?: boolean }) => (
   <>

@@ -120,7 +120,7 @@ One row per area. The full list, with the page of each feature, is in [docs/feat
   </tr>
   <tr>
     <td width="50%"><img src="docs/assets/screenshot-templates.png" alt="Template editor with the text on the left and a live preview on the right"><br><sub><b>Templates</b>: edit the texts the factory writes, with a preview</sub></td>
-    <td width="50%"><img src="docs/assets/screenshot-command.png" alt="Command palette searching Tickets for retry"><br><sub><b>Command palette</b>: pages, Tickets and actions on Ctrl+K</sub></td>
+    <td width="50%"><img src="docs/assets/screenshot-team.png" alt="Team page: the roster with the Reviewer selected, one session working on a Ticket and one idle"><br><sub><b>Team</b>: pick a role, see who is working and who is idle</sub></td>
   </tr>
 </table>
 
@@ -132,7 +132,7 @@ Requires Docker with Compose and Node 22.14+. No clone, no build:
 npx bauherr init
 ```
 
-It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is reachable and the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`, `eval`. A localhost public URL means polling mode, a public URL enables webhooks.
+It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is reachable and the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`, `eval`. A localhost public URL means polling mode, a public URL enables webhooks. Then sign in: the setup wizard takes you through five steps (connect your forge, pick a product, pick your team, connect a session, first request).
 
 From a source checkout (Node 24 and pnpm 10 for local development):
 
@@ -211,8 +211,8 @@ pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 ## 🧭 Status and roadmap
 
 Pre-release. The factory builds Bauherr itself. Every feature with its page: [docs/features.md](docs/features.md).
-- **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Team page (pick roles, see live sessions and who works where), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, expedite lane, WIP limits, AI gateway with budgets, audit, OIDC.
-- **In progress:** a new setup wizard and regrouped settings.
+- **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, expedite lane, WIP limits, AI gateway with budgets, audit, OIDC.
+- **Next:** the intake and decision chats move into the docked chat.
 - **Planned:** a GitLab driver, notifications at checkpoints ([#77](https://github.com/getbauherr/bauherr/issues/77)), provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
 Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: [docs/releasing.md](docs/releasing.md).

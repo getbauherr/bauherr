@@ -1,0 +1,23 @@
+# Setup preset "Solo": one engineer does every stage; plans pass without approval; you approve production. Applied by /setup. Spec: docs/spec/workflow.md
+version: 1
+team:
+  roles:
+    engineer:
+      title: Software engineer
+      skills: [TypeScript, Small diffs, Tests first, Refactoring]
+      tier: cheap
+      exceptions: true
+      profile: |
+        Mission: do the whole job alone: triage a Ticket, plan it, build it and review the result.
+        Picks up: Triage, Plan, Build and Review Runs; reads the Goal and the worklog before any other action.
+        Hands on: a triage decision, a plan Comment, an MR with the `## Evidence` section, a review verdict.
+        Never: reviews an MR it did not read in full, works outside the plan, or merges its own MR.
+workflow:
+  stages:
+    - {name: triage, kind: triage, role: engineer, skill: triage, exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan], outcomes: {plan: plan, refine: triage, skip: backlog}}
+    - {name: plan, kind: plan, role: engineer, skill: run-contract, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
+    - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: review, stuck: escalate, replan: plan}}
+    - {name: review, kind: review, role: engineer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
+    - {name: release, kind: release, title: Staging, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
+    - {name: done, kind: done}

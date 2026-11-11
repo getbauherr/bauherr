@@ -41,42 +41,36 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('a Member who is not Admin cannot add a Product, skip or verify', async () => {
+it('a Member who is not Admin cannot add a Product or verify', async () => {
   const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
   const admin = signedIn
   signedIn = { user: member, workspace: { id: ws } }
   const denied = { error: 'Only an Admin can change this.' }
   expect(await actions.createProductWithRepo({}, form({ name: 'Shop', fullName: 'acme/shop' }))).toEqual(denied)
-  expect(await actions.skipDeploy({}, form({ id: 1 }))).toEqual(denied)
   expect(await actions.verifyConnection({}, form({ id: 1 }))).toEqual(denied)
   expect(await count('products')).toBe(0)
   signedIn = admin
 })
 
-it('walks the four steps: each is To do until its data exists', async () => {
+it('walks the steps: each is To do until its data exists', async () => {
   const { loadSetup } = await import('../src/app/(app)/lib/setup')
-  const state = async () => (await loadSetup(ws)).steps.map((s) => s.done)
-  expect(await state()).toEqual([false, false, false, false])
+  const state = async () => (await loadSetup(ws)).steps.filter((s) => ['forge', 'product', 'request'].includes(s.id)).map((s) => s.done)
+  expect(await state()).toEqual([false, false, false])
 
   expect(await actions.saveConnection({}, form({ name: 'GitHub', kind: 'github', secret: 'ghp_x' }))).toMatchObject({ saved: true })
-  expect(await state()).toEqual([false, false, false, false])
+  expect(await state()).toEqual([false, false, false])
   const connection = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws } }, ...o })).docs[0]!.id as number
   expect(await actions.verifyConnection({}, form({ id: connection }))).toMatchObject({ saved: true })
-  expect(await state()).toEqual([true, false, false, false])
+  expect(await state()).toEqual([true, false, false])
 
   expect(await actions.createProductWithRepo({}, form({ name: 'Shop', fullName: 'acme/shop', connection }))).toMatchObject({ saved: true })
   expect(await count('repositories')).toBe(1)
   expect(await count('ticket_sources')).toBe(1)
-  expect(await state()).toEqual([true, true, false, false])
+  expect(await state()).toEqual([true, true, false])
 
   const product = (await loadSetup(ws)).product!.id
-  await new Promise((r) => setTimeout(r, 1100))
-  expect(await actions.skipDeploy({}, form({ id: product }))).toMatchObject({ saved: true })
-  expect(await state()).toEqual([true, true, true, false])
-
   await payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'submitted', persona: 'product-user', messages: [], draft: { problem: 'x', context: '', acceptance_criteria: [], type: 'bug', links: [] } }, ...o })
-  expect(await state()).toEqual([true, true, true, true])
-  expect((await loadSetup(ws)).current).toBeUndefined()
+  expect(await state()).toEqual([true, true, true])
 })
 
 it('a failing ticket source leaves no Product, repository or source behind', async () => {
@@ -130,15 +124,6 @@ it('a token the forge rejects is recorded as failed; a network error is worded d
   expect(limitsSeen.at(-1)).toEqual({ maxRetries: 0, timeoutMs: 10_000 })
   const net = await payload.create({ collection: 'connections', data: { name: 'Net', kind: 'github', secret: 'net', workspace: ws }, ...o })
   expect(await actions.verifyConnection({}, form({ id: net.id }))).toMatchObject({ error: expect.stringContaining('Could not verify the token: request timed out') })
-})
-
-it('skipDeploy keeps a configured deploy mode and still marks the step Done', async () => {
-  const hooked = await payload.create({ collection: 'products', data: { name: 'Hooked', slug: 'hooked', workspace: ws, deployMode: 'webhook', deployWebhookUrl: 'https://example.com/hook' }, ...o })
-  await new Promise((r) => setTimeout(r, 1100))
-  expect(await actions.skipDeploy({}, form({ id: hooked.id }))).toMatchObject({ saved: true })
-  const after = await payload.findByID({ collection: 'products', id: hooked.id, ...o })
-  expect(after.deployMode).toBe('webhook')
-  expect(Date.parse(after.updatedAt) - Date.parse(after.createdAt)).toBeGreaterThanOrEqual(1000)
 })
 
 it('a second Product with the same short name is refused', async () => {

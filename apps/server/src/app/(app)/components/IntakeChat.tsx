@@ -33,7 +33,7 @@ function DiscardDialog({ first, busy, error, onClose, onDiscard }: { first: stri
   )
 }
 
-export function IntakeChat({ products, initial, others = [], userId }: { userId: number; products: { id: number; name: string }[]; initial?: { id: string; product: number; lines: Line[]; turn: Turn | null }; others?: { id: number; product: string; first: string; when: string }[] }) {
+export function IntakeChat({ products, initial, others = [], userId, onSent }: { onSent?: () => void; userId: number; products: { id: number; name: string }[]; initial?: { id: string; product: number; lines: Line[]; turn: Turn | null }; others?: { id: number; product: string; first: string; when: string }[] }) {
   const [product, setProduct] = useState(initial?.product ?? products[0].id)
   const [session, setSession] = useState<string | null>(initial?.id ?? null)
   const [turn, setTurn] = useState<Turn | null>(initial?.turn ?? null)
@@ -81,7 +81,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
     setError('')
     const r = await fetch(`/intake/api/sessions/${session}/submit`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(turn?.split ? { expect: turn.split.length } : {}) })
     const data = (await r.json().catch(() => ({}))) as { number?: number; numbers?: number[]; error?: string }
-    r.ok && data.number ? setSent(data.numbers ?? [data.number]) : setError(data.error ?? 'Could not send the request')
+    r.ok && data.number ? (setSent(data.numbers ?? [data.number]), onSent?.()) : setError(data.error ?? 'Could not send the request')
     setBusy(false)
   }
 

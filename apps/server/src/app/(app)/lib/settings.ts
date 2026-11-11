@@ -93,8 +93,6 @@ export async function loadProducts(workspace: number) {
       products.map(async (p) => {
         const product = {
           id: p.id as number,
-          // Heuristic for setup step 3: any later Product save (not only the staging/gates form) also counts; create alone can differ by a few ms.
-          touched: Date.parse(p.updatedAt) - Date.parse(p.createdAt) >= 1000,
           name: p.name as string,
           slug: p.slug as string,
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },

@@ -277,13 +277,6 @@ export const createProductWithRepo = act({}, async (c, fd) => {
   if (fd.get('open') === '1') redirect(`/settings/products/${product}?tab=deploy#staging`)
 })
 
-/** "Skip, use defaults" on /setup: a save without changes, which marks the Product's staging and gates as seen. */
-export const skipDeploy = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await c.payload.update({ collection: 'products', id: id(fd), data: {}, ...c.w } as never)
-})
-
 /** The token is shown once as the ready-made script tag; only its hash is stored. */
 export const mintEmbedToken = act({}, async (c, fd) => {
   only(c.user)
