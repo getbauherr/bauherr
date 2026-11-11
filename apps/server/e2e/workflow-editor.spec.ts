@@ -122,7 +122,13 @@ test('Admin adds an agent step between Build and Review; the card and the YAML s
   await page.locator('[data-stage=done]').dispatchEvent('dragover', { dataTransfer: transfer })
   await page.locator('[data-stage=done]').dispatchEvent('drop', { dataTransfer: transfer })
   await expect(page.getByTestId('notice')).toContainText('takes no agent')
-  await source.dragTo(page.locator('[data-stage=build] [data-testid=seat]'))
+  // Events, not a mouse drag: Playwright's native drag emulation seats the role only on some runs in the production build.
+  await source.dispatchEvent('dragend', { dataTransfer: transfer })
+  const second = await page.evaluateHandle(() => new DataTransfer())
+  await source.dispatchEvent('dragstart', { dataTransfer: second })
+  await page.locator('[data-stage=build]').dispatchEvent('dragover', { dataTransfer: second })
+  await page.locator('[data-stage=build]').dispatchEvent('drop', { dataTransfer: second })
+  await source.dispatchEvent('dragend', { dataTransfer: second })
   await expect(page.locator('[data-stage=build] [data-testid=seat]')).toContainText('Reviewer')
 
   await page.getByRole('button', { name: 'Review changes' }).click()

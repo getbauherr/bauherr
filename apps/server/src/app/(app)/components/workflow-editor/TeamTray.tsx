@@ -25,7 +25,7 @@ export function TeamTray({ doc, roles, highlight, onHighlight, onPlace, onDrag }
               data-testid="role"
               data-role={r.id}
               draggable
-              onDragStart={(e) => (e.dataTransfer.setData('text/plain', r.id), (e.dataTransfer.effectAllowed = 'move'), setTimeout(() => onDrag(r.id), 0))} // deferred: a re-render inside dragstart can cancel the drag in Chromium
+              onDragStart={(e) => (e.dataTransfer.setData('text/plain', r.id), (e.dataTransfer.effectAllowed = 'move'), onDrag(r.id))}
               onDragEnd={() => onDrag(null)}
               className={cn('flex cursor-grab flex-col gap-2 rounded-md border border-border bg-card p-2', highlight === r.id && 'bg-accent outline-2 -outline-offset-1 outline-primary')}
             >
