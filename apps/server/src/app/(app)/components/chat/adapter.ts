@@ -12,10 +12,12 @@ export type Artifact =
   | { kind: 'read'; summary: string }
   | { kind: 'confirm'; summary: string; title?: string; details?: Detail[]; destructive?: boolean }
   | { kind: 'outcome' }
+  /** The owner questions of a Ticket thread (first message; the card loads them itself). */
+  | { kind: 'questions'; ticket: number }
 export type Decision = { approved: boolean; reason?: string }
 export type Outcome = { ok: boolean; text: string }
 export type Usage = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number }
-export type Custom = { answerId?: string; usage?: Usage }
+export type Custom = { answerId?: string; usage?: Usage; /** The card message of a Ticket thread: not an answer, no usage or rating. */ synthetic?: boolean }
 
 type Ev =
   | { type: 'context'; label: string }
@@ -28,7 +30,7 @@ type Ev =
 
 const OUTCOME = ':outcome'
 export const artifactOf = (p: { artifact?: unknown }): Artifact | undefined => p.artifact as Artifact | undefined
-const mediaIdOf = (url: unknown): number | null => {
+export const mediaIdOf = (url: unknown): number | null => {
   const m = /\/m\/(\d+)\//.exec(String(url))
   return m ? Number(m[1]) : null
 }

@@ -108,5 +108,5 @@ it('Path/Steps and Insights carry the custom stages', async () => {
   const { buildSteps } = await import('../src/app/(app)/lib/steps')
   const span = (id: number, stage: string, kind: string, phase: string, m: number, from: string | null) => ({ id, at: new Date(Date.UTC(2026, 10, 1, 10, m)).toISOString(), until: new Date(Date.UTC(2026, 10, 1, 10, m + 1)).toISOString(), seconds: 60, stage, stageKind: kind, phase, fromStage: from, outcome: null, run: null, executor: 'factory', actor: null, cause: 'x' })
   const steps = buildSteps(wf, [span(1, 'build', 'build', 'working', 0, null), span(2, 'security', 'agent', 'working', 1, 'build'), span(3, 'signoff', 'human', 'human', 2, 'security')] as never, [], [], { current: 'signoff', provider: null, admin: true })
-  expect(steps.visits.map((v) => [v.stage, v.title])).toEqual([['build', 'build'], ['security', 'Security review'], ['signoff', 'Architecture sign-off']])
+  expect(steps.visits.map((v) => [v.stage, v.title])).toEqual([['build', 'Build'], ['security', 'Security review'], ['signoff', 'Architecture sign-off']])
 })

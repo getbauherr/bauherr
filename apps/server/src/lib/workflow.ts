@@ -155,7 +155,7 @@ export const compile = (doc: unknown): Workflow => {
   return {
     version: 1,
     roles: Object.entries(d.team.roles as Record<string, Omit<Role, 'id'>>).map(([id, r]) => ({ id, ...r })),
-    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? s.name, outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
+    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
     aliases: d.workflow.aliases ?? {},
   }
 }

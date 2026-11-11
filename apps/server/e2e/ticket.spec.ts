@@ -45,7 +45,8 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
       await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
       await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
-      await expect(bar.locator('[data-slot=button]')).not.toHaveCount(3)
+      await expect(bar.locator('[data-slot=button]:not([data-testid=dock-comment])')).not.toHaveCount(3)
+      await expect(bar.getByTestId('dock-comment')).toHaveText('Comment')
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
@@ -87,10 +88,10 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   expect(gaps.every((g) => g > 0)).toBe(true)
   const bar = page.getByTestId('action-bar')
   const approve = bar.getByRole('button', { name: 'Approve plan' })
-  await expect(bar.getByRole('link', { name: 'Answer 2 questions' })).toBeVisible()
   await expect(approve).toHaveCount(0)
+  await bar.getByRole('button', { name: 'Answer 2 questions' }).click()
 
-  const chat = page.getByRole('region', { name: 'Answer questions' })
+  const chat = page.getByTestId('chat-dock').getByRole('region', { name: 'Answer questions' })
   await expect(chat).toContainText('Follow the system setting')
   await chat.getByRole('button', { name: 'yes, until the user picks' }).click()
   await expect(approve).toBeVisible({ timeout: 60_000 })
@@ -115,7 +116,7 @@ test('an approval Ticket shows the bar, title, pipeline and the gate; the rest s
   await expect(page.getByTestId('ticket-path')).toBeVisible()
   await expect(page.getByText('Recommended')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Approve plan' })).toHaveCount(0)
-  for (const name of ['Budget', 'Model', 'Worklog']) await expect(page.getByText(name, { exact: true })).toBeHidden()
+  for (const name of ['Budget', 'Model', 'Worklog']) await expect(details.getByText(name, { exact: true })).toBeHidden()
   await page.getByTestId('action-bar').getByRole('link', { name: 'Show details' }).click()
   await expect(details).toHaveAttribute('open', '')
   await expect(details.getByText('Budget', { exact: true })).toBeVisible()
@@ -185,85 +186,34 @@ test('a Ticket with a live Run shows a disabled button naming the Run', async ({
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
-test('a comment with a pasted, dropped and picked image is posted and the image link serves without login', async ({ page, playwright }) => {
-  await login(page)
-  await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
-  const box = page.getByRole('textbox', { name: 'Comment' })
-  const post = page.getByRole('button', { name: 'Post comment' })
-  await expect(post).toBeDisabled()
-  const send = (type: 'paste' | 'drop', name: string) =>
-    box.evaluate((el, [type, name, b64]) => {
-      const dt = new DataTransfer()
-      dt.items.add(new File([Uint8Array.from(atob(b64!), (c) => c.charCodeAt(0))], name!, { type: 'image/png' }))
-      el.dispatchEvent(type === 'paste' ? new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }) : new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
-    }, [type, name, PNG])
-  await box.fill('The total is off')
-  await send('paste', 'pasted.png')
-  await expect(page.getByRole('list', { name: 'Images to post' }).getByText('pasted.png')).toBeVisible()
-  await send('drop', 'dropped.png')
-  await expect(page.getByText('dropped.png')).toBeVisible()
-  const chooser = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: 'Add image' }).click()
-  await (await chooser).setFiles({ name: 'picked.png', mimeType: 'image/png', buffer: Buffer.from(PNG, 'base64') })
-  await expect(page.getByText('picked.png')).toBeVisible()
-  await page.getByRole('button', { name: 'Remove picked.png' }).click()
-  await expect(page.getByText('picked.png')).toHaveCount(0)
-  if (shots) {
-    await page.setViewportSize({ width: 1280, height: 800 })
-    await page.locator('#comment').scrollIntoViewIfNeeded()
-    await page.screenshot({ path: `${shots}/comment-composer-1280x800.png` })
-  }
-
-  await post.click()
-  const status = page.getByRole('status').filter({ hasText: 'Posted to the forge' })
-  await expect(status).toBeVisible()
-  await expect(box).toHaveValue('')
-  const images = status.getByRole('img')
-  await expect(images).toHaveCount(2)
-  const src = (await images.first().getAttribute('src'))!
-  expect(src).toMatch(/\/m\/\d+\/[\w-]+\.png$/)
-  await expect.poll(() => images.first().evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0)
-  const anon = await playwright.request.newContext({ baseURL: process.env.BASE_URL })
-  const res = await anon.get(src)
-  expect(res.status()).toBe(200)
-  expect(res.headers()['content-type']).toBe('image/png')
-  await anon.dispose()
-  if (shots) for (const scheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme: scheme })
-    for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
-      await page.setViewportSize(vp)
-      await page.locator('#comment').scrollIntoViewIfNeeded()
-      await page.screenshot({ path: `${shots}/comment-posted-${scheme}-${vp.width}x${vp.height}.png` })
-    }
-  }
-})
-
 test('the path highlights the stages a Ticket visited and the steps name who ran them', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
   const path = page.getByTestId('ticket-path')
-  const node = (stage: string) => path.getByTestId('path-node').filter({ hasText: new RegExp(`^${stage}`) })
+  const node = (stage: string) => path.getByTestId('path-node').filter({ hasText: new RegExp(`^${stage}`, 'i') })
   for (const stage of ['triage', 'plan', 'build']) await expect(node(stage)).toHaveAttribute('data-visited', 'true')
   await expect(node('review')).not.toHaveAttribute('data-visited', 'true')
   await expect(node('build')).toHaveAttribute('data-current', 'true')
   await expect(path.locator('[data-edge="plan>build"]')).toHaveClass(/text-primary/)
   await expect(path.locator('[data-edge="build>review"]')).not.toHaveClass(/text-primary/)
   const steps = page.getByTestId('ticket-steps')
-  const build = steps.locator('[data-testid=visit][data-stage=build]')
+  const build = steps.locator('[data-testid=visit][data-stage=build]').first()
   await expect(build.getByTestId('step-run')).toContainText('Session')
   await expect(build.getByTestId('step-run')).toContainText('e2e-laptop')
-  await expect(build.getByTestId('step-run')).toContainText('claude-code 2.1.0')
   await expect(build.getByTestId('step-run')).toContainText('claude-sonnet-4-5')
-  await expect(build.getByTestId('step-run')).toContainText('anthropic')
+  await expect(build.getByTestId('step-detail')).toHaveCount(0)
+  await build.getByRole('button', { name: 'Executor details' }).click()
+  await expect(build.getByTestId('step-detail')).toContainText('claude-code 2.1.0')
+  await expect(build.getByTestId('step-detail')).toContainText('anthropic')
   await expect(build.getByRole('link', { name: /^Run #\d+$/ })).toHaveAttribute('href', /\/runs\/\d+$/)
   await expect(steps.locator('[data-testid=visit][data-stage=plan]').getByTestId('step-decision')).toHaveText(/approve plan by .+@example\.com/)
-  await expect(steps.getByTestId('total-lead-time')).not.toHaveText('0 s')
+  await expect(page.getByTestId('total-lead-time')).not.toHaveText('0 s')
 })
 
 test('a Ticket that looped shows its rounds', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Upgrade the payment SDK' }).first().getByRole('link', { name: 'Upgrade the payment SDK' }).click()
-  await expect(page.getByTestId('path-rounds')).toContainText(['build: 2 rounds', 'review: 2 rounds'])
+  await expect(page.getByTestId('path-rounds')).toContainText(['Build: 2 rounds', 'Review: 2 rounds'])
   await expect(page.locator('[data-testid=visit][data-stage=build]')).toHaveCount(2)
 })
 
@@ -272,7 +222,7 @@ test('a failed release with no run link offers one details button', async ({ pag
   await login(page)
   await page.locator('.card', { hasText: 'Release the CSV checks' }).first().getByRole('link', { name: 'Release the CSV checks' }).click()
   const bar = page.getByTestId('action-bar')
-  await expect(bar.locator('[data-slot=button]')).toHaveCount(1)
+  await expect(bar.locator('[data-slot=button]:not([data-testid=dock-comment])')).toHaveCount(1)
   await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText('Release failed: see details')
   await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveAttribute('href', '#details')
 })

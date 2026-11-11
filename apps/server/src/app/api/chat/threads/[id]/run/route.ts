@@ -37,6 +37,7 @@ export const POST = async (req: Request, { params }: { params: Promise<{ id: str
   const ids = [...new Set(messages.flatMap((m) => m.content.flatMap((p) => (p.type === 'image' ? [p.mediaId] : []))))]
   if (ids.length && (await w.payload.count({ collection: 'media', where: { and: [{ id: { in: ids } }, { workspace: { equals: w.workspace } }] }, overrideAccess: true })).totalDocs !== ids.length) return fail('image not found', 400)
   if ((await recentRuns(w)) >= RUNS_PER_HOUR) return fail('too many messages, try again later', 429)
-  const context = { ...(await resolveContext(w.payload, w.user, w.workspace, { path })), path }
+  const page = thread.ticket ? `/tickets/${thread.ticket}` : path // a Ticket thread is always about its Ticket, whatever page the dock sits on
+  const context = { ...(await resolveContext(w.payload, w.user, w.workspace, { path: page })), path: page }
   return ndjson(runChat({ ...w, thread, messages, context, model: await chatModelFor(w.payload, w.workspace), signal: req.signal }))
 }

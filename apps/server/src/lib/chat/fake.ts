@@ -1,7 +1,7 @@
 import { assertFakeAllowed } from '../fake-guard'
 import type { ModelCall, ModelEvent } from './stream'
 
-/** E2E and tests only (`CHAT_FAKE=1`, never in production): `approve #<n>` calls `approve`, `status` calls `factory_status`, a tool result is acknowledged, anything else is echoed. */
+/** E2E and tests only (`CHAT_FAKE=1`, never in production): `approve #<n>` calls `approve`, `comment #<n>: <text>` calls `post_comment`, `status` calls `factory_status`, a tool result is acknowledged, anything else is echoed. */
 assertFakeAllowed('CHAT_FAKE')
 
 const usage = (text: string): ModelEvent => ({ type: 'usage', tokensIn: 10, tokensOut: Math.max(1, Math.ceil(text.length / 4)), model: 'fake' })
@@ -21,6 +21,13 @@ export const fakeChatModel: ModelCall = async function* ({ messages }) {
     yield { type: 'text', text: 'Preparing the approval. ' }
     yield { type: 'tool_use', id: `toolu_fake_approve_${approve[1]}`, name: 'approve', input: { ticket: Number(approve[1]) } }
     yield usage('approve')
+    return
+  }
+  const comment = /comment #(\d+): (.+)/.exec(said)
+  if (comment) {
+    yield { type: 'text', text: 'Drafting the comment. ' }
+    yield { type: 'tool_use', id: `toolu_fake_comment_${comment[1]}`, name: 'post_comment', input: { ticket: Number(comment[1]), body: comment[2] } }
+    yield usage('comment')
     return
   }
   if (/status/i.test(said)) {

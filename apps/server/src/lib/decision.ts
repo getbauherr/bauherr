@@ -98,7 +98,7 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
           recommendation: 'Take the recommended default of each question unless it is wrong for you; every question has one.',
           why: [n ? `${n} critical question${s(n)} still open` : 'Critical questions are still open', 'Approving the plan is blocked until they are answered'],
           options: [open('Answer questions', `/tickets/${tid}#answer`, 'Opens the questions with their defaults.')],
-          next: 'Then you can approve the plan.',
+          next: 'You can then approve the plan.',
         }
       }
       case 'Answer questions':
@@ -129,7 +129,7 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
           recommendation: 'Add the names of the checks that report your production deploy.',
           why: ['Production approval is on, but this product has no production checks', 'Without them the factory cannot see whether a deploy worked'],
           options: [open('Configure checks', `/settings/products/${p.id}?tab=deploy#production`, 'Opens the product settings.')],
-          next: 'Then the production approval can be asked for.',
+          next: 'The production approval can then be asked for.',
         }
       case 'Approve production':
         return {

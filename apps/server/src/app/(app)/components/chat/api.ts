@@ -1,10 +1,10 @@
 import type { ThreadHistoryAdapter, ThreadMessage } from '@assistant-ui/react'
 
-export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null }
+export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null; ticket: number | null }
 export type Pending = { toolCallId: string; name: string; kind: 'confirm'; input: unknown; summary: string; title: string; details: { label: string; value: string }[]; destructive: boolean }
 export type Answer = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number; toolCalls: { name: string; kind: string; ok: boolean }[] }
 export type Stored = { parentId: string | null; message: ThreadMessage & { createdAt: string }; answer: Answer | null; feedback: { value: 'up' | 'down'; reasons: string[]; note: string | null } | null }
-export type Loaded = { context: Meta['context']; pending: Pending | null; messages: Stored[] }
+export type Loaded = { context: Meta['context']; ticket: number | null; pending: Pending | null; messages: Stored[] }
 export type HistoryItem = Parameters<ThreadHistoryAdapter['append']>[0]
 
 export class ApiError extends Error {
@@ -27,6 +27,8 @@ const call = async <T>(path: string, method = 'GET', body?: unknown): Promise<T>
 export const api = {
   list: () => call<{ threads: Meta[] }>('/threads').then((r) => r.threads),
   create: (path: string) => call<Meta>('/threads', 'POST', { path }),
+  /** The person's one thread of a Ticket (created on first use). */
+  ticketThread: (ticket: number) => call<Meta>('/threads', 'POST', { ticket }),
   fetch: (id: string) => call<Meta>(`/threads/${id}`),
   update: (id: string, patch: { title?: string | null; archived?: boolean }) => call<void>(`/threads/${id}`, 'PATCH', patch),
   remove: (id: string) => call<void>(`/threads/${id}`, 'DELETE'),

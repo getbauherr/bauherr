@@ -26,7 +26,7 @@ test('renders the seeded numbers: tiles, where time goes with its bottleneck, th
   const stages = page.getByTestId('stage-time')
   expect(await stages.evaluateAll((els) => els.map((e) => e.getAttribute('data-stage')))).toEqual(['triage', 'plan', 'build', 'review', 'release'])
   await expect(page.getByTestId('bottleneck')).toContainText('Bottleneck')
-  await expect(page.getByTestId('bottleneck')).toContainText(/build: Tickets wait \d+ h for a build slot/)
+  await expect(page.getByTestId('bottleneck')).toContainText(/Build: Tickets wait \d+ h for a Build slot/)
   await expect(page.locator('[data-stage=build][data-bottleneck]')).toHaveCount(1)
   expect(await page.getByTestId('week').count()).toBeGreaterThanOrEqual(3)
 })

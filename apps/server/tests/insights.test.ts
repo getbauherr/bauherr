@@ -54,7 +54,7 @@ it('turns seeded events into tiles, a bottleneck and throughput', async () => {
   expect(r.cycleMedianSec).toBe(24 * 3600)
   expect(r.share.queued).toBeCloseTo(63 / 75)
   expect(r.share.working).toBeCloseTo(12 / 75)
-  expect(r.bottleneck).toMatchObject({ stage: 'build', phase: 'queued', sentence: 'Tickets wait 20 h for a build slot' })
+  expect(r.bottleneck).toMatchObject({ stage: 'build', phase: 'queued', sentence: 'Tickets wait 20 h for a Build slot' })
   expect(r.stages.map((s) => s.stage)).toEqual(['triage', 'plan', 'build', 'review'])
   expect(r.throughput.reduce((a, w) => a + w.tickets, 0)).toBe(3)
   const wide = await insights.loadInsights(payload, DEFAULT(), ws, { days: 30, product: null, now })

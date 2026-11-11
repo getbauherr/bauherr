@@ -67,9 +67,9 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   for (const name of ['Answer questions', 'Approve the plan', 'Accept on staging', 'Ask me before production']) await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: name })).toBeVisible()
   await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: 'Answer questions' })).toContainText('Always on')
   await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: 'Ask me before production' })).toContainText(/On for every Product|Per Product/)
-  await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeHidden()
+  await expect(page.getByRole('cell', { name: /^build$/i })).toBeHidden()
   await page.getByText('Details', { exact: true }).click()
-  await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: /^build$/i })).toBeVisible()
   await expect(page.getByText('workflow.yaml')).toHaveCount(0)
 
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Health' }).click()

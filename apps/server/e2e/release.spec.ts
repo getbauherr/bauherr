@@ -32,7 +32,7 @@ test('accept on staging moves the Ticket to done', async ({ page }) => {
   await page.getByRole('button', { name: 'Accept' }).click()
   await expect(page.getByText('Accepted on staging')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Accept' })).toHaveCount(0)
-  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText('done')
+  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText(/done/i)
 })
 
 test('a production-gated Ticket waits for an explicit production approval', async ({ page }) => {
@@ -51,7 +51,7 @@ test('request changes sends the Ticket back to build', async ({ page }) => {
   await page.getByTestId('action-bar').getByRole('link', { name: 'Request changes' }).click()
   await page.getByLabel('What needs to change').fill('The filter ignores the date range')
   await page.getByRole('button', { name: 'Request changes' }).click()
-  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText('build')
+  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText(/build/i)
   await expect(page.getByRole('button', { name: 'Accept on staging' })).toHaveCount(0)
 })
 

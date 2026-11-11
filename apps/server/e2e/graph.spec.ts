@@ -23,7 +23,7 @@ test('Graph view: blocked-by chain, ready marker, critical path, node link, no o
   await expect(page.locator('.gedge')).toHaveCount(2)
   await expect(page.locator('.gedge[data-critical]')).toHaveCount(2)
   await expect(node(8)).toHaveAttribute('data-ready', 'true')
-  await expect(node(8)).toHaveAttribute('aria-label', /^#8 .*, stage build, ready$/)
+  await expect(node(8)).toHaveAttribute('aria-label', /^#8 .*, stage Build, ready$/)
   await expect(node(8).locator('text.ready')).toBeVisible()
   const stroke = () => node(8).locator('rect.box').evaluate((r) => getComputedStyle(r).stroke)
   const ready = await stroke()
@@ -75,7 +75,7 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
   await expect(iso.locator('a.gnode').first()).toHaveAttribute('data-stage', 'release')
   expect(await iso.locator('a.gnode').count()).toBeGreaterThanOrEqual(20)
   const headings = await iso.locator('h3').allTextContents()
-  expect(headings.map((h) => h.replace(/ \(\d+\)$/, ''))).toEqual(['Staging', 'review', 'build', 'plan', 'triage', 'done'])
+  expect(headings.map((h) => h.replace(/ \(\d+\)$/, ''))).toEqual(['Staging', 'Review', 'Build', 'Plan', 'Triage', 'done'])
   await expect(iso.locator('details')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   const shots = process.env.SHOTS_DIR

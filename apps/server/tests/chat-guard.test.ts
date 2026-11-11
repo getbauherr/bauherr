@@ -24,6 +24,6 @@ it('every human MCP tool that is exposed needs a confirmation, every agent read 
   expect(chat.filter((t) => human.includes(t.name)).every((t) => t.kind === 'confirm')).toBe(true)
   expect(chat.filter((t) => human.includes(t.name)).length).toBe(human.length)
   expect(chat.filter((t) => READS.includes(t.name)).every((t) => t.kind === 'read')).toBe(true)
-  expect(chat.filter((t) => t.kind === 'confirm').map((t) => t.name).sort()).toEqual([...human].sort())
+  expect(chat.filter((t) => t.kind === 'confirm' && t.name !== 'post_comment').map((t) => t.name).sort()).toEqual([...human].sort())
   for (const t of chat) expect(t.input_schema).toMatchObject({ type: 'object' })
 })

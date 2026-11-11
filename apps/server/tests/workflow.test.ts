@@ -37,7 +37,7 @@ describe('derived lists reproduce the constants they replace', () => {
   })
   it('lookups', () => {
     expect(w.title(wf, 'release')).toBe('Staging')
-    expect(w.title(wf, 'plan')).toBe('plan')
+    expect(w.title(wf, 'plan')).toBe('Plan')
     expect(w.title(wf, 'nope')).toBe('nope')
     expect(w.kindOf(wf, 'parent')).toBe('container')
     expect(w.kindOf(wf, 'nope')).toBeUndefined()
@@ -154,16 +154,16 @@ describe('lint', () => {
 it('graph of the default file', () => {
   expect(w.graph(wf)).toEqual({
     nodes: [
-      { id: 'triage', title: 'triage', kind: 'triage', role: 'orchestrator', checkpoint: false },
+      { id: 'triage', title: 'Triage', kind: 'triage', role: 'orchestrator', checkpoint: false },
       { id: 'triage:refine', title: 'Answer questions', kind: 'human', checkpoint: true },
-      { id: 'plan', title: 'plan', kind: 'plan', role: 'engineer', checkpoint: false },
+      { id: 'plan', title: 'Plan', kind: 'plan', role: 'engineer', checkpoint: false },
       { id: 'plan:gate', title: 'Approve plan', kind: 'human', checkpoint: true },
       { id: 'parent', title: 'Split', kind: 'container', checkpoint: false },
-      { id: 'build', title: 'build', kind: 'build', role: 'engineer', checkpoint: false },
-      { id: 'review', title: 'review', kind: 'review', role: 'reviewer', checkpoint: false },
+      { id: 'build', title: 'Build', kind: 'build', role: 'engineer', checkpoint: false },
+      { id: 'review', title: 'Review', kind: 'review', role: 'reviewer', checkpoint: false },
       { id: 'release', title: 'Staging', kind: 'release', checkpoint: false },
       { id: 'release:production', title: 'Approve production', kind: 'human', checkpoint: true },
-      { id: 'done', title: 'done', kind: 'done', checkpoint: false },
+      { id: 'done', title: 'Done', kind: 'done', checkpoint: false },
     ],
     edges: [
       { from: 'triage', to: 'plan', outcome: 'plan', back: false },

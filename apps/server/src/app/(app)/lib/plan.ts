@@ -6,7 +6,7 @@ export const INVESTIGATION_MARKER = '<!-- bauherr:investigation -->'
 export const SECURITY_FINDING_MARKER = (key: string) => `<!-- bauherr:security-finding:${key} -->`
 export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
-export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[] }
+export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[]; /** The row's `Why:` text, when it has one. */ why?: string }
 
 type Commentish = { body: string }
 /** Newest comment starting with `marker`. */
@@ -58,8 +58,8 @@ export const parseDecisions = (plan: string): Decision[] =>
   section(plan, /Decisions\b/).split(ROW).flatMap((b) => {
     const t = /^\s*\|\s*(D\d+)\s*\|(.*)$/m.exec(b)
     if (t) {
-      const [question = '', options = '', def = '', , crit = ''] = t[2]!.split('|').map((c) => c.trim())
-      return [{ id: t[1]!, title: question, critical: /^(yes|true)\b/i.test(crit), default: def || options.split(' / ')[0]!, options: [def, ...options.split(' / ').filter((o) => o !== def)].filter(Boolean) }]
+      const [question = '', options = '', def = '', why = '', crit = ''] = t[2]!.split('|').map((c) => c.trim())
+      return [{ id: t[1]!, title: question, critical: /^(yes|true)\b/i.test(crit), default: def || options.split(' / ')[0]!, options: [def, ...options.split(' / ').filter((o) => o !== def)].filter(Boolean), ...(why && { why })}]
     }
     const m = /^\s*[-*]\s+\*\*(D\d+)(?:\s+(.+?))?\*\*[.:]?\s*([\s\S]*)$/.exec(b)
     if (!m) return []
@@ -76,6 +76,7 @@ export const parseDecisions = (plan: string): Decision[] =>
     title = title.replace(TITLE_FIELD, '').replace(CRITICAL_FIELD, '')
     const alts = [...body.matchAll(/(?:Alternatives?|Options):\s*(.+?)(?=\s*(?:Alternatives?:|Options:|(?:Recommended\s+default|Default):?\s|Why:)|$)/g)].flatMap((a) => split(a[1]!, true).flatMap((x) => x.split(LETTERED)).flatMap((x) => x.split(' / ')))
     const marked = /\b(?:Recommended\s+default|Default):?\s+(.*?)(?=\s*(?:Alternatives?:|Options:|Why:)|$)/.exec(body)?.[1]
+    const why = /\bWhy:\s*(.*?)(?=\s*(?:Alternatives?:|Options:|(?:Recommended\s+default|Default):?\s|critical\b)|$)/i.exec(body)?.[1]?.trim().replace(/\.$/, '')
     const lead = marked ?? /^(.*?)(?=\s*(?:Alternatives?|Options):|$)/.exec(body)![1]!
     const def = (split(lead, false)[0] ?? '').trim()
     const letter = /^\(?(\w)\)?(?!\w)/.exec(def)?.[1]
@@ -86,6 +87,7 @@ export const parseDecisions = (plan: string): Decision[] =>
       critical,
       default: def,
       options: [...new Set([def, ...alternatives])],
+      ...(why && { why }),
     }]
   })
 

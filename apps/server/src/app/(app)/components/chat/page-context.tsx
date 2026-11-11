@@ -7,11 +7,11 @@ import { api } from './api'
 
 export type PageContext = { path: string; label: string; markdown: string }
 
-/** What the page behind the dock is, refetched on every client-side navigation. */
-export function usePageContext(): PageContext | null {
+/** What the page behind the dock is, refetched on every client-side navigation; `pinned`: the page a Ticket thread is about, wherever the dock sits. */
+export function usePageContext(pinned?: string): PageContext | null {
   const pathname = usePathname()
   const query = useSearchParams().toString()
-  const path = pathname + (query ? `?${query}` : '')
+  const path = pinned ?? pathname + (query ? `?${query}` : '')
   const [info, setInfo] = useState<PageContext | null>(null)
   useEffect(() => {
     let live = true

@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, postCommentFromChat, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
@@ -173,17 +173,23 @@ export async function discardIntake(session: number) {
   revalidatePath('/requests/new')
 }
 
-/** Opens (or resumes) the owner's chat over the Ticket's open decision rows. */
+/** Opens (or resumes) the owner's questions over the Ticket's open decision rows; null when none is open. */
 export async function startOwnerChat(ticket: number) {
   const { user, payload, workspaceId } = await acting()
-  return inWorkspace(startOwnerIntake(payload, user, { ticket, workspaceId }))
+  return inWorkspace(startOwnerIntake(payload, user, { ticket, workspaceId })).catch((e) => {
+    if (e instanceof Error && e.message === 'no open questions') return null
+    throw e
+  })
 }
 
 /** A clicked option or typed message: an answer is recorded verbatim, an explain request is answered and records nothing. */
 export async function askOwnerChat(session: number, ticket: number, decision: string, text: string, literal?: boolean) {
   const { user, payload, workspaceId } = await acting()
   const next = await inWorkspace(askOwnerIntake(payload, user, { session, decision, text, literal, workspaceId }))
+  // The last answer of a Triage hold ends the need now; the sweep would only notice within a minute.
+  if ('done' in next && ((await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null } | null)?.needsYou === 'Answer questions') await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
   return next
 }
 
@@ -297,6 +303,17 @@ export async function postCommentAction(ticket: number, body: string, mediaIds: 
   } catch (e) {
     if (e instanceof NotInWorkspace) notFound()
     return { error: e instanceof CommentRefused ? e.message : 'The forge did not accept the comment. Your images are kept; try again.' }
+  }
+}
+
+/** The docked chat's `/comment`: posts text and the composer's pasted images (media ids from the chat upload) to the Ticket's issue. */
+export async function postDockComment(ticket: number, body: string, mediaIds: number[]): Promise<{ images: string[] } | { error: string }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return { images: await postCommentFromChat(payload, user, { ticket, workspaceId, body, mediaIds }) }
+  } catch (e) {
+    if (e instanceof NotInWorkspace) notFound()
+    return { error: e instanceof CommentRefused ? e.message : 'The forge did not accept the comment. Your text and images are kept; try again.' }
   }
 }
 

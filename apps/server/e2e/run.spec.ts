@@ -19,7 +19,7 @@ test('Run page: timeline, list, collapsed details, re-run; an owner sees only th
   await signIn(page, email)
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Runs' }).click()
   const rows = page.locator('table tbody tr')
-  await rows.filter({ hasText: 'Succeeded' }).filter({ hasText: 'build' }).getByRole('link').first().click()
+  await rows.filter({ hasText: 'Succeeded' }).filter({ hasText: /build/i }).getByRole('link').first().click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   const runUrl = page.url()
 

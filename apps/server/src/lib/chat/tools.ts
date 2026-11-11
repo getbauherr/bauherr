@@ -5,6 +5,7 @@ import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
 import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
+import { postComment } from '../actions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
 import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
@@ -221,6 +222,17 @@ const ENTRIES: Record<string, Entry> = {
     kind: 'confirm',
     ticket: (t, i, c) => ({ ticket: t, note: i.note, workspaceId: c.workspace }),
     describe: gateCard((t) => `Request changes on ${ticketLine(t)}`, 'The Ticket goes back to Build with your note; a Build Run starts', { extra: note }),
+  },
+  post_comment: {
+    description: 'Post a comment on the Ticket\'s issue. Draft the text from what the person asked for; they confirm on a card first. Images are not part of this tool (the person pastes them with /comment).',
+    schema: withTicket({ body: prop('The comment text, markdown') }, ['body']),
+    kind: 'confirm',
+    ticket: (t, i, c) => ({ ticket: t, body: i.body, workspaceId: c.workspace }),
+    local: async (c, i) => {
+      await postComment(c.payload, c.user, { ticket: i.ticket, workspaceId: i.workspaceId, body: String(i.body ?? ''), mediaIds: [] })
+      return { posted: true }
+    },
+    describe: async (c, input) => gateCard((t) => `Comment on ${ticketLine(t)}`, 'The text is posted as a comment on the issue', { extra: (i) => [{ label: 'Comment', value: String(i.body ?? '').slice(0, 600) }] })(c, input),
   },
   approve_skill_proposal: {
     description: 'Approve a distilled skill proposal (Admin only): merges its Knowledge PR if the PR head is still expectSha.',
