@@ -239,6 +239,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:packages
       - run: pnpm --filter bauherr test
+      - name: Pack lint (size caps, cited paths, glossary, tiers, stack names, hook citations)
+        run: node packages/cli/dist/cli.js pack lint
       - run: pnpm --filter bauherr exec npm pack --dry-run
 
   # Needs the real agentgateway binary; a registry outage is a warning, a validation failure is red.

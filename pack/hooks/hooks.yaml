@@ -1,3 +1,4 @@
+# NOT ACTIVE for the three stubs below: the Runner builds its own hooks in code and does not read this file. report-usage.ts is a client-side session hook and is not listed here (docs/cost.md).
 # Maps pack hooks to Agent SDK hook events. Runner passes the event JSON on stdin; hook prints a decision JSON on stdout.
 hooks:
   - name: stop-goal-check

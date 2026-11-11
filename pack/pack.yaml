@@ -8,7 +8,7 @@ layers:
 materialise: run-worktree   # at Run start; never committed to the Product repo
 skills:
   - {path: skills/run-contract, purpose: How a Run reads its Goal, what counts as evidence, exit rule, blockers}
-  - {path: skills/triage, purpose: Triage Run on a Ticket without a stage - plan, refine (questions for the owner) or skip}
+  - {path: skills/triage, purpose: Triage Run on a Ticket without a stage - plan, refine (questions for the Bauherr) or skip}
   - {path: skills/intake, purpose: Intake session - one plain-language question per turn until the Ticket draft is complete}
   - {path: skills/assistant, purpose: Factory chat - the assistant docked on every page, answers about what the person sees, confirms writes on a card}
   - {path: skills/review, purpose: Review Run on a factory MR - checklist, severity rubric, verdict and findings format}
@@ -20,14 +20,14 @@ skills:
   - {path: skills/mr-security-review, purpose: Security review of a factory MR between Build and Review - checklist, pass or findings (the Careful setup preset)}
   - {path: skills/effort-policy, purpose: Model and effort selection}
 rules:
-  - {path: rules/team-policy.md, purpose: One agent per Run; patterns only via stage config; forbidden patterns}
+  - {path: rules/team-policy.md, purpose: Agent cap per role, subagents of a session, patterns only via stage config, forbidden patterns}
   - {path: rules/egress.md, purpose: Code and context leave only via the gateway}
   - {path: rules/evidence.md, purpose: Required content of the MR ## Evidence section}
   - {path: rules/security-context.md, purpose: Per-Product SECURITY-CONTEXT.md in the Knowledge repo, and template}
 hooks:
   manifest: hooks/hooks.yaml
   items:
-    - {path: hooks/stop-goal-check.ts, purpose: Block end of turn until each Goal statement is verified or blocked}
-    - {path: hooks/write-scope-guard.ts, purpose: Writes only inside cwd and the lane's owned paths}
-    - {path: hooks/egress-guard.sh, purpose: Block network tools except the gateway}
-lint: {config: null}   # bauherr pack lint, future
+    - {path: hooks/stop-goal-check.ts, purpose: Reference stub, not active (the Runner enforces this itself)}
+    - {path: hooks/write-scope-guard.ts, purpose: Reference stub, not active (the Runner enforces this itself)}
+    - {path: hooks/egress-guard.sh, purpose: Reference stub, not active (the Runner enforces this itself)}
+lint: {command: bauherr pack lint}   # size caps, cited paths, glossary Avoid terms, tiers vs spec, no stack names in core, hook citations; run in CI

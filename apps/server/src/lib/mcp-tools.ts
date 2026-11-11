@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
@@ -780,13 +780,15 @@ export const tools: Tool[] = [
   {
     name: 'load_skill',
     access: 'agent',
-    description: 'Read a pack skill (SKILL.md) by name, e.g. run-contract, worklog. The skills that write text for people (run-contract, review, triage, intake) end with the Workspace\'s templates for it.',
+    description: 'Read a pack skill (SKILL.md, plus its session part where it has one) by name, e.g. run-contract, worklog. The skills that write text for people (run-contract, review, triage, intake) end with the Workspace\'s templates for it.',
     inputSchema: obj({ name: str('Skill name') }, ['name']),
     async run(a, c) {
       if (!/^[\w-]+$/.test(a.name)) throw new Error('invalid skill name')
       const ws = c.workspace ?? tenantsOf(c.user)[0]
       const tpls = ws === undefined ? [] : await Promise.all((SKILL_TEMPLATES[a.name] ?? []).map((n) => template(c.payload, ws, n)))
-      return [packFile(`skills/${a.name}/SKILL.md`), ...tpls.map((t) => templateBlock(t))].join('\n\n')
+      // MCP is the session channel: a skill with mode parts gets its session part, never the autonomous one (the Runner appends that one to the skill it materialises).
+      const session = existsSync(resolve(PACK(), 'skills', a.name, 'session.md')) ? [packFile(`skills/${a.name}/session.md`)] : []
+      return [packFile(`skills/${a.name}/SKILL.md`), ...session, ...tpls.map((t) => templateBlock(t))].join('\n\n')
     },
   },
   {

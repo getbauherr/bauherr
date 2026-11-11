@@ -96,6 +96,10 @@ describe('Workspace templates', () => {
     expect(text).toContain('## Short answer')
     expect(text).not.toContain('{#tldr}')
     expect(text).toContain('## Template: Worklog')
+    // a session never receives the autonomous-only part
+    expect(text).toContain('submit_plan')
+    expect(text).not.toContain('Do not push or open the MR yourself')
+    expect(text).not.toContain('.bauherr/outcome.json')
     expect(await callTool({ payload, user, actor: { kind: 'human' }, workspace: ws } as never, 'load_skill', { name: 'worklog' })).not.toContain('## Template:')
   })
 

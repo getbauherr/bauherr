@@ -1,3 +1,4 @@
+// NOT ACTIVE: reference stub. The Runner enforces this itself for autonomous Runs (packages/runner/src/guards.ts); nothing loads this file.
 // PreToolUse(Edit|Write): allow only paths inside cwd and, when set, inside the lane's owned paths.
 import { readFileSync } from "node:fs";
 import { relative, resolve, isAbsolute } from "node:path";
