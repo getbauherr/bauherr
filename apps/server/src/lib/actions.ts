@@ -791,33 +791,83 @@ export const MAX_FINDINGS = 50
 export const MAX_TEXT = 1000
 /** Fits GitHub's 65536-character comment limit with the marker. */
 export const MAX_MARKDOWN = 60_000
+/** GitHub's comment limit, minus the marker. */
+const MAX_COMMENT = 65_000
 export const FILE_PATTERN = '^(?!(?:.*/)?\\.\\.(?:/|$))[\\w./@+()\\[\\]-]{1,300}$'
 const FILE = new RegExp(FILE_PATTERN)
 /** Areas a review must account for, each with a one-line justification. */
 export const CHECKED_AREAS = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence']
 
-export type Finding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; msg: string; scenario: string }
+/** `low` never sends the Ticket back; the others do, subject to the proof and round rules in `normalizeReview`. */
+export const FINDING_CLASSES = ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low'] as const
+/** Classes that need a failing test on the MR head: the reviewer states how to see the defect, not only a scenario. */
+const NEEDS_TEST = ['correctness', 'wrong-results', 'data-loss']
+/** Classes a round after the first may still raise, on the fix only. */
+const SEVERE = ['security', ...NEEDS_TEST]
+export const OPEN_REASONS = ['no-failing-test', 'constructed-input', 'out-of-round-scope'] as const
+export const MAX_PATCH = 4000
+
+export type FindingClass = (typeof FINDING_CLASSES)[number]
+export type FindingTest = { command: string; failure: string; patch?: string }
+export type Finding = { severity: 'high' | 'medium' | 'low'; class: FindingClass; file: string; line: number; msg: string; scenario: string; test?: FindingTest }
+/** Noted by the reviewer, never sent back to Build and never changes the outcome. */
+export type OpenItem = { text: string; reason: (typeof OPEN_REASONS)[number] }
 /** `problem` is set when the output cannot be trusted as a verdict (incomplete checklist, contradictory verdict): the Ticket goes to a human, never to a merge. */
-export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string; problem?: string }
+export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string; open: OpenItem[]; problem?: string }
 export type ReviewOutcome = 'merged' | 'queued' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'noop'
 
-/** Validates a reviewer's output. The verdict is derived: `changes` iff a high or medium finding exists. */
-export const normalizeReview = (raw: any): Review => {
+/** A finding the factory counts: it sends the Ticket back to Build. */
+const counts = (f: Finding) => f.class !== 'low'
+const loc = (f: { file: string; line: number }) => `${f.file}:${f.line}`
+
+/**
+ * Validates a reviewer's output. The verdict is derived: `changes` iff a counted finding (any class but `low`) exists.
+ * A correctness, wrong-results or data-loss finding needs `test: {command, failure}`; from the second round on only security and those classes count.
+ * A finding that breaks one of these is refused with the instruction to move it to `open`; with `demote` (the autonomous Run cannot be asked again) it is moved there instead.
+ * The old shape (no `class`) is refused with a message naming the classes.
+ */
+export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean } = {}): Review => {
+  const round = o.round ?? 1
   if (!raw || !['clean', 'changes'].includes(raw.verdict) || !Array.isArray(raw.findings) || typeof raw.markdown !== 'string' || !raw.markdown.trim()) {
     throw new Error('a review needs verdict (clean|changes), findings[] and markdown')
   }
   if (raw.findings.length > MAX_FINDINGS) throw new Error(`at most ${MAX_FINDINGS} findings`)
   if (raw.markdown.length > MAX_MARKDOWN) throw new Error(`markdown is limited to ${MAX_MARKDOWN} characters`)
-  const findings = raw.findings.map((f: any, i: number): Finding => {
+  const open: OpenItem[] = []
+  let demoted = false
+  for (const [i, x] of (raw.open === undefined ? [] : Array.isArray(raw.open) ? raw.open : [null]).entries()) {
+    if (!x || typeof x.text !== 'string' || !x.text.trim() || x.text.length > MAX_TEXT || !OPEN_REASONS.includes(x.reason)) {
+      throw new Error(`open ${i} needs text (1-${MAX_TEXT} characters) and reason (${OPEN_REASONS.join('|')})`)
+    }
+    open.push({ text: x.text, reason: x.reason })
+  }
+  const findings: Finding[] = []
+  raw.findings.forEach((f: any, i: number) => {
     if (
       !f || !BLOCKING.concat('low').includes(f.severity) || typeof f.file !== 'string' || !FILE.test(f.file) || !Number.isInteger(f.line) || f.line < 0 ||
       typeof f.msg !== 'string' || f.msg.length > MAX_TEXT || typeof f.scenario !== 'string' || f.scenario.length > MAX_TEXT
     ) {
       throw new Error(`finding ${i} needs severity (high|medium|low), file (path characters incl. ()[], no "..", max 300), line (integer >= 0), msg and scenario (max ${MAX_TEXT} characters)`)
     }
-    return { severity: f.severity, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario }
+    if (!FINDING_CLASSES.includes(f.class)) throw new Error(`finding ${i} needs class (${FINDING_CLASSES.join('|')}); a scenario without a failing test belongs in open`)
+    if ((f.class === 'low') !== (f.severity === 'low')) throw new Error(`finding ${i}: class low goes with severity low, every other class with high or medium`)
+    const t = f.test
+    if (t !== undefined && (!t || typeof t.command !== 'string' || !t.command.trim() || t.command.length > MAX_TEXT || typeof t.failure !== 'string' || !t.failure.trim() || t.failure.length > MAX_TEXT || (t.patch !== undefined && (typeof t.patch !== 'string' || t.patch.length > MAX_PATCH)))) {
+      throw new Error(`finding ${i}: test needs command and failure (max ${MAX_TEXT} characters) and optionally patch (max ${MAX_PATCH})`)
+    }
+    const finding: Finding = { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
+    const refusal = NEEDS_TEST.includes(f.class) && !t
+      ? { reason: 'no-failing-test' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no failing test: add test {command, failure} (the test that fails on the MR head and what it prints) or move it to open with reason no-failing-test` }
+      : round > 1 && counts(finding) && !SEVERE.includes(f.class)
+        ? { reason: 'out-of-round-scope' as const, text: `finding ${i} (${f.class}, ${loc(f)}) is outside round ${round}: after the first round only security, correctness, wrong-results and data-loss findings on the fix count; move it to open with reason out-of-round-scope` }
+        : null
+    if (!refusal) return void findings.push(finding)
+    if (!o.demote) throw new Error(refusal.text)
+    demoted = true
+    open.push({ text: `${loc(f)} ${f.msg} Scenario: ${f.scenario}`.slice(0, MAX_TEXT), reason: refusal.reason })
   })
-  const derived = findings.some((f: Finding) => BLOCKING.includes(f.severity)) ? 'changes' : 'clean'
+  if (open.length > MAX_FINDINGS) throw new Error(`at most ${MAX_FINDINGS} open items`)
+  const derived = findings.some(counts) ? 'changes' : 'clean'
   for (const c of Array.isArray(raw.checked) ? raw.checked : []) {
     if (!c || !CHECKED_AREAS.includes(c.area)) continue
     if (typeof c.note !== 'string' || !c.note.trim()) throw new Error(`checked.${c.area}: note is empty`)
@@ -825,12 +875,43 @@ export const normalizeReview = (raw: any): Review => {
   }
   const noted = new Set((Array.isArray(raw.checked) ? raw.checked : []).filter((c: any) => c && typeof c.note === 'string' && c.note.trim() && c.note.length <= MAX_TEXT).map((c: any) => c.area))
   const missing = CHECKED_AREAS.filter((a) => !noted.has(a))
-  const problem = raw.verdict !== derived ? `the declared verdict "${raw.verdict}" contradicts the findings (${derived})` : missing.length ? `the review did not account for: ${missing.join(', ')}` : undefined
-  return { verdict: raw.verdict !== derived ? 'changes' : derived, findings, markdown: raw.markdown, ...(problem && { problem }) }
+  const contradicts = raw.verdict !== derived && !demoted
+  const problem = contradicts ? `the declared verdict "${raw.verdict}" contradicts the findings (${derived})` : missing.length ? `the review did not account for: ${missing.join(', ')}` : undefined
+  return { verdict: contradicts ? 'changes' : derived, findings, markdown: raw.markdown, open, ...(problem && { problem }) }
 }
 
+/** Words for an Open reason, on the Ticket page and in the cap decision. */
+export const OPEN_WORDS: Record<OpenItem['reason'], string> = { 'no-failing-test': 'no failing test', 'constructed-input': 'needs an input no real path produces', 'out-of-round-scope': 'outside this round' }
+export const openLine = (x: OpenItem) => `- [${OPEN_WORDS[x.reason]}] ${oneLine(x.text)}`
+
 const oneLine = (v: unknown) => String(v).replace(/\s+/g, ' ').trim()
-const findingLine = (f: Finding) => `- [${oneLine(f.severity)}] ${oneLine(f.file)}:${oneLine(f.line)} ${oneLine(f.msg)} Scenario: ${oneLine(f.scenario)}`
+const findingLine = (f: Finding) =>
+  `- [${oneLine(f.severity)}] ${oneLine(f.file)}:${oneLine(f.line)} ${oneLine(f.msg)} Scenario: ${oneLine(f.scenario)}${f.test ? ` Failing test: \`${oneLine(f.test.command)}\` fails with: ${oneLine(f.test.failure)}.${f.test.patch ? ' Test code: in the review comment on the MR.' : ''}` : ''}`
+
+/** The MR comment: the reviewer's markdown, then what the factory adds from the structured output (the failing tests Build adds first, the Open items). */
+const reviewComment = (r: Review): string => {
+  const tests = r.findings.filter((f) => f.test)
+  const block = (code: string) => {
+    const fence = '`'.repeat(Math.max(3, ...(code.match(/`+/g) ?? []).map((m) => m.length + 1)))
+    return `${fence}\n${code}\n${fence}`
+  }
+  const parts = [
+    r.markdown,
+    tests.length && `## Failing tests\n${tests.map((f) => `- ${loc(f)}: \`${oneLine(f.test!.command)}\` fails with: ${oneLine(f.test!.failure)}${f.test!.patch ? `\n\n${block(f.test!.patch)}\n` : ''}`).join('\n')}`,
+    r.open.length && `## Noted, not sent back\n${r.open.map(openLine).join('\n')}`,
+  ].filter(Boolean)
+  return parts.join('\n\n').slice(0, MAX_COMMENT)
+}
+
+/** The review round a Ticket's next review is: returns to Build counted so far plus one. */
+export const reviewRoundOf = (t: Doc): number => Number(t.reviewRounds ?? 0) + 1
+
+/** From the second round on: the head the previous review (verdict changes) covered, so the reviewer sees only the fix. Null in round 1 and after a conflict return (which has its own base). */
+export const fixBaseOf = async (payload: Payload, t: Doc): Promise<string | null> => {
+  if (reviewRoundOf(t) < 2 || t.conflictReturnBase) return null
+  const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }, { verdict: { equals: 'changes' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  return last?.reviewedSha ?? null
+}
 
 /** The MR body has a `## Evidence` heading followed by content. */
 export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n]*$([\s\S]*?)(?=^#{1,2}[ \t]|(?![\s\S]))/im.exec(body)?.[1]?.trim()
@@ -882,12 +963,12 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   const n = String(t.number)
   if (countRound && rounds > MAX_REVIEW_ROUNDS) {
     const used = await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { in: ['review-cap:auto-grant', 'review-cap:grant'] } }] }, overrideAccess: true })
-    if (used.totalDocs) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}`)
+    if (used.totalDocs) return escalate(payload, t, `${reason}, after ${MAX_REVIEW_ROUNDS} review rounds.\n\n${lines.join('\n')}${low.length ? `\n\nNoted, not sent back:\n${low.join('\n')}` : ''}`)
     await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_rounds" = "review_rounds" - 1 WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_rounds" > ${MAX_REVIEW_ROUNDS}`)
     await factoryTouch(payload, t, 'review-cap:auto-grant')
     await mr.tickets.comment(n, `Review round cap reached after ${MAX_REVIEW_ROUNDS} rounds; the factory granted one more round.`)
   }
-  const text = opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work.`
+  const text = opts.text ?? `Review round ${rounds}: ${reason}. Fix them on MR #${mr.pr.number} (branch \`${mr.pr.head}\`); push to that branch, do not open a new MR. Blocking findings are listed under Unfinished work: for each with a failing test, first add that test (its code is in the review comment on the MR), run it and see it fail, then fix until it passes. A test that already passes voids that finding: change nothing for it and say so under Open.`
   await handBackToBuild(payload, t, { ts: mr.tickets, n }, text, lines, low, opts.escalation)
   return 'build'
 }
@@ -1099,13 +1180,13 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
   try {
     const mr = await prOf(payload, t)
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
-    const body = `${REVIEW_MARKER}\n${review.markdown.slice(0, MAX_MARKDOWN)}`
+    const body = `${REVIEW_MARKER}\n${reviewComment(review)}`
     if (!resume || !(await mr.backend.forge.listPullRequestComments(mr.repo, mr.pr.number)).some((c) => c.body === body)) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
     await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_return_base" = NULL WHERE "id" = ${t.id}`)
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
-    const blocking = review.findings.filter((f) => BLOCKING.includes(f.severity))
+    const blocking = review.findings.filter(counts)
     const outcome = blocking.length
-      ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine), review.findings.filter((f) => f.severity === 'low').map(findingLine))
+      ? await returnToBuild(payload, t, mr, `the review found ${blocking.length} blocking issue(s)`, blocking.map(findingLine), [...review.findings.filter((f) => !counts(f)).map(findingLine), ...review.open.map(openLine)])
       : await mergeGate(payload, t, mr, reviewedSha)
     return { outcome }
   } catch (e) {
@@ -1151,7 +1232,7 @@ export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: s
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open' || mr.pr.headSha !== (from?.pushedSha ?? build?.artifacts?.pushedSha)) return false
   await payload.update({ collection: 'runs', id: review.id, data: { reviewedSha: mr.pr.headSha }, overrideAccess: true })
-  await concludeReview(payload, t.id, { verdict: 'clean', findings: review.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }, mr.pr.headSha, true)
+  await concludeReview(payload, t.id, { verdict: 'clean', findings: review.findings ?? [], markdown: stored.markdown, open: stored.open ?? [], ...(stored.problem && { problem: stored.problem }) }, mr.pr.headSha, true)
   return true
 }
 
@@ -1273,7 +1354,7 @@ export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<
       }
       const stored = last.artifacts?.review
       if (typeof stored?.markdown !== 'string') continue
-      const review: Review = { verdict: last.verdict, findings: last.findings ?? [], markdown: stored.markdown, ...(stored.problem && { problem: stored.problem }) }
+      const review: Review = { verdict: last.verdict, findings: last.findings ?? [], markdown: stored.markdown, open: stored.open ?? [], ...(stored.problem && { problem: stored.problem }) }
       await concludeReview(payload, t.id, review, last.reviewedSha ?? null, true)
       resumed++
     } catch (e) {

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
-import { sourceOf } from '../../../../../lib/actions'
+import { OPEN_WORDS, sourceOf, type OpenItem } from '../../../../../lib/actions'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
@@ -145,6 +145,16 @@ async function Sections({ d }: { d: Promise<Derived> }) {
   )
 }
 
+/** What the latest review noted but did not send back (read from the stored review Run). */
+const Noted = ({ items }: { items: OpenItem[] }) =>
+  items.length > 0 ? (
+    <Section id="noted" title="Noted, not sent back">
+      <ul className="small flex list-disc flex-col gap-1 pl-5">
+        {items.map((x, i) => <li key={i}>{x.text} <span className="text-muted-foreground">({OPEN_WORDS[x.reason] ?? x.reason})</span></li>)}
+      </ul>
+    </Section>
+  ) : null
+
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { user, workspace } = await currentWorkspace()
@@ -167,6 +177,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     payload.find({ collection: 'human_touches', where: { ticket: { equals: ticket.id } }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     forgeKinds(payload, workspace.id),
   ])
+  const noted = ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true }, ...q })).docs[0] as Doc | undefined)?.artifacts?.review?.open as OpenItem[] | undefined
   const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true }, ...q }).catch(() => null)) as { id: number; number: number } | null) : null
   const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin }
   const forge = forges.get(ticket.product)
@@ -243,6 +254,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 <Suspense fallback={null}><DecisionRow d={d} /></Suspense>
               </dl>
               <Suspense fallback={<Pulse h="h-24" />}><Sections d={d} /></Suspense>
+              <Noted items={noted ?? []} />
               {shots.length > 0 && (
                 <section className="flex flex-col gap-4" aria-labelledby="attachments">
                   <h2 className="heading" id="attachments">Attachments</h2>

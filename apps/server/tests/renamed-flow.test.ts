@@ -138,7 +138,7 @@ it('one Ticket goes through the whole renamed flow', async () => {
 
   // a review with changes returns to code and counts a round
   const review1 = await claim(id, 'check')
-  expect(await call(member, 'submit_review', { ...review1, verdict: 'changes', findings: [{ severity: 'medium', file: 'a.ts', line: 3, msg: 'off by one', scenario: 'when n is 0, then it returns -1' }], checked, markdown: 'the review' })).toMatchObject({ verdict: 'changes', outcome: 'build' })
+  expect(await call(member, 'submit_review', { ...review1, verdict: 'changes', findings: [{ severity: 'medium', class: 'security', file: 'a.ts', line: 3, msg: 'off by one', scenario: 'when n is 0, then it returns -1' }], checked, markdown: 'the review' })).toMatchObject({ verdict: 'changes', outcome: 'build' })
   expect(await reload(id)).toMatchObject({ stage: 'code', reviewRounds: 1 })
   expect(await labelsOf(n)).toContain('bauherr:stage:code')
 

@@ -5,7 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -204,9 +204,10 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const fence = kind === 'triage' || kind === 'review' || kind === 'agent'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label, stages)
+  const fixBase = kind === 'review' ? await fixBaseOf(c.payload, ticket) : null
   const escalated = await isEscalated(c.payload, won)
   if (escalated && kind === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
-  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }) }, goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
@@ -572,7 +573,7 @@ export const tools: Tool[] = [
   {
     name: 'submit_review',
     access: 'agent',
-    description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, file, line, msg, scenario}]; markdown is posted as the MR review comment. Any high or medium finding makes the verdict changes (Ticket goes back to Build); clean + green checks + ## Evidence merges the MR. Include checked (one justification per area, each note 1-1000 characters; a longer or empty note is refused with an error: shorten it and call again). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
+    description: 'End your Review Run with the verdict. findings: [{severity: high|medium|low, class: correctness|wrong-results|data-loss|security|rule|plan|low, file, line, msg, scenario, test: {command, failure, patch?}}]. A correctness, wrong-results or data-loss finding needs test (the failing test on the MR head, the command and what it prints; patch is the test code); without it the call is refused: add the test or list it under open (reason no-failing-test). From the second round on only security, correctness, wrong-results and data-loss findings count; the call is refused for others: list them under open (out-of-round-scope). open: [{text, reason: no-failing-test|constructed-input|out-of-round-scope}] is noted for the Bauherr and never sends the Ticket back. Any counted finding (class other than low) makes the verdict changes (Ticket goes back to Build); markdown is posted as the MR review comment; clean + green checks + ## Evidence merges the MR. Include checked (one justification per area, each note 1-1000 characters; a longer or empty note is refused with an error: shorten it and call again). A verdict that contradicts the findings, or a missing area, sends the Ticket to a human. Never edit code in a Review Run.',
     inputSchema: obj(
       {
         ...runId,
@@ -581,10 +582,11 @@ export const tools: Tool[] = [
         findings: {
           type: 'array',
           maxItems: 50,
-          items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'file', 'line', 'msg', 'scenario'] },
+          items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, class: { enum: ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low'] }, test: { type: 'object', properties: { command: { type: 'string', maxLength: 1000 }, failure: { type: 'string', maxLength: 1000 }, patch: { type: 'string', maxLength: 4000 } }, required: ['command', 'failure'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'class', 'file', 'line', 'msg', 'scenario'] },
         },
+        open: { type: 'array', maxItems: 50, description: 'Noted, not sent back: scenarios without a failing test, findings that need an input no real path produces, findings outside the round.', items: { type: 'object', properties: { text: { type: 'string', maxLength: 1000 }, reason: { enum: ['no-failing-test', 'constructed-input', 'out-of-round-scope'] } }, required: ['text', 'reason'] } },
         checked: { type: 'array', description: 'One entry per area: correctness, over-engineering, spec-vs-plan, evidence. A review without all four goes to a human.', items: { type: 'object', properties: { area: { enum: ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'] }, note: { type: 'string', maxLength: 1000, description: 'One-line justification' } }, required: ['area', 'note'] } },
-        markdown: { type: 'string', maxLength: 60000, description: 'Review comment: verdict, findings, Open (low findings)' },
+        markdown: { type: 'string', maxLength: 60000, description: 'Review comment: verdict, findings, Open (low findings and what you could not check; the factory adds the failing tests and the open items)' },
         ...USAGE_ARG,
       },
       ['runId', 'leaseToken', 'verdict', 'findings', 'checked', 'markdown'],
@@ -593,13 +595,14 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId, a)
       if (a.usage !== undefined) await reportRunUsage(c.payload, run.id, c.session, a.usage)
       if (kindOfRun(workflowFor(run.workspace), run) !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
-      const review = normalizeReview(a)
-      const reviewedSha = (await prOf(c.payload, await getTicket(c, id(run.ticket))))?.pr.headSha ?? null
+      const ticket = await getTicket(c, id(run.ticket))
+      const review = normalizeReview(a, { round: reviewRoundOf(ticket) })
+      const reviewedSha = (await prOf(c.payload, ticket))?.pr.headSha ?? null
       await ownerWrite(
         c,
         run,
         a.leaseToken,
-        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } })}::jsonb, ${U}`,
+        sql`"status" = 'succeeded', "error" = NULL, "finished_at" = now(), "verdict" = ${review.verdict}, "findings" = ${JSON.stringify(review.findings)}::jsonb, "reviewed_sha" = ${reviewedSha}, "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ review: { markdown: review.markdown, open: review.open, ...(review.problem && { problem: review.problem }) } })}::jsonb, ${U}`,
       )
       return { verdict: review.verdict, ...(await concludeReview(c.payload, id(run.ticket), review, reviewedSha)) }
     },
