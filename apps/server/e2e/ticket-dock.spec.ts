@@ -116,6 +116,7 @@ test('the model drafts a comment, the person confirms it on a card, and a declin
   await login(page)
   await open(page, 'Review the retry policy')
   await page.getByTestId('action-bar').getByRole('button', { name: 'Comment' }).click()
+  await expect(composer(page)).toHaveValue('/comment ', { timeout: 30_000 }) // the prefill lands after the dock opens; typing before it would be overwritten
   await composer(page).fill('comment #27: Please add a test for the total')
   await composer(page).press('Enter')
   const card = dock(page).getByTestId('confirm-card')
