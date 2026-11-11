@@ -93,7 +93,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Skill proposals | The factory proposes a skill from a solved Ticket; an Admin approves or rejects it; skipped and rejected ones show their reason and results | Inbox card (Admin); `/knowledge` (Admin, needs a Knowledge repo) | Live |
 | Audit | Human touches and tool calls (argument names and hash, never payloads) | `/settings/audit` (Admin) | Live |
 
-## Team and sessions
+## Agent team and sessions
 
 | Feature | What it does | Where | Status |
 |---|---|---|---|
@@ -103,7 +103,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Agent roles | Orchestrator, engineer, reviewer, security, UX and test: profile, skills, model or tier, agent limit, declared in the factory file | Factory file; [session-mode.md](session-mode.md#connect-as-a-role) | Live |
 | Connect as a role | `connect {role}`, then `next_work` pulls the Runs of the role's stages; the orchestrator also gets stuck Tickets | MCP; [session-mode.md](session-mode.md#connect-as-a-role) | Live |
 | Presence | Sessions show as Working, Idle or Offline with their active time; Ticket status and Steps name who works ("<session> (<role>)", Runner, CI); the chat answers who is working | Ticket page, chat | Live |
-| Team page | Pick a role (avatar, profile, skills), set its model and agent limit (saved to the factory file), connect a session in three steps, live session list (Working, Idle, Offline, ticket, active time); agents on the Workflow graph; team time in Insights | `/team`, `/`, `/insights` | Live |
+| Agent team page | Pick a role (avatar, profile, skills), set its model and agent limit (saved to the factory file), connect a session in three steps, live session list (Working, Idle, Offline, ticket, active time); agents on the Workflow graph; who is working (sidebar dot, header pill) on every page; team time in Insights | `/team`, `/`, `/insights` | Live |
 | People and roles | Admin or Bauherr per person, Workspaces, GitHub login, SSO subject, unlock, remove | Settings › Workspace › People (`/settings/bauherren`) | Live |
 | Workspaces | Isolation boundary with its own Connections, budget and keys; Admins always have the menu with settings and New Workspace | Settings › Workspace › General (`/settings/workspace`), workspace menu | Live |
 | OIDC sign-in | SSO with role and Workspace mapping | `/login`; [auth.md](auth.md) | Live |

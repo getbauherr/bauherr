@@ -22,9 +22,9 @@ export default async function Team() {
   const mcpLine = `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer <your agent key>"`
   return (
     <>
-      <PageTitle>Team</PageTitle>
+      <PageTitle>Agent team</PageTitle>
       <AutoRefresh />
-      <h1 className="title">Team</h1>
+      <h1 className="title">Agent team</h1>
       <TeamView roles={team.roles} orphans={team.orphans} modelOptions={modelOptions} canEdit={admin} onSave={saveRole} docsHref={DOCS} mcpLine={mcpLine} cost={cost} />
     </>
   )

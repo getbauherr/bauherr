@@ -65,7 +65,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
         </StepCard>
       )}
       {shown === 'team' && (
-        <StepCard id="team" n={n} title="Pick your team" purpose="Who works on your tickets, and where you are asked." later={{ text: 'Change models and agents on', href: '/team', label: 'Team' }}>
+        <StepCard id="team" n={n} title="Pick your team" purpose="Who works on your tickets, and where you are asked." later={{ text: 'Change models and agents on', href: '/team', label: 'Agent team' }}>
           <PresetPicker presets={PRESETS.map((id) => ({ id, ...PRESET_TEXT[id], ...presetFacts(presetWorkflow(id)), team: rosterOf(presetWorkflow(id)) }))} />
         </StepCard>
       )}

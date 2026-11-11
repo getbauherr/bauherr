@@ -3,6 +3,7 @@ x-app: &app
     context: .
     args:
       BAUHERR_REVISION: ${BAUHERR_REVISION:-}
+      BAUHERR_BUILD_DATE: ${BAUHERR_BUILD_DATE:-}
   image: ghcr.io/getbauherr/bauherr:${BAUHERR_VERSION:-dev}
   depends_on:
     db: {condition: service_healthy}

@@ -143,7 +143,7 @@ test('the Settings nav is grouped by scope, the sidebar link opens Profile, and 
   await expect(page).toHaveURL(/\/settings\/profile$/)
   const nav = page.getByRole('navigation', { name: 'Settings' })
   await expect(nav.getByRole('group')).toHaveCount(4)
-  for (const [group, links] of [['Account', ['Profile', 'API keys']], ['Factory', ['Team', 'Workflow', 'Templates', 'Models & budget', 'AI usage']], ['Workspace', ['General', 'Products', 'Connections', 'People', 'Knowledge']], ['Admin', ['Health', 'Audit', 'Chat feedback']]] as const) {
+  for (const [group, links] of [['Account', ['Profile', 'API keys']], ['Factory', ['Workflow', 'Templates', 'Models & budget', 'AI usage']], ['Workspace', ['General', 'Products', 'Connections', 'People', 'Knowledge']], ['Admin', ['Health', 'Audit', 'Chat feedback']]] as const) {
     await expect(nav.getByRole('group', { name: group }).getByRole('link')).toHaveText([...links])
   }
   await expect(nav.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page')

@@ -6,6 +6,7 @@ import { ChatButton } from './chat/ChatButton'
 import { CommandMenu } from './CommandMenu'
 import { Plus } from './icons'
 import { LinkPending } from './LinkPending'
+import { PresencePill } from './Presence'
 import type { NavItem } from './nav-items'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -29,6 +30,7 @@ export function ShellHeader({ items, admin, setup, logout }: { items: Pick<NavIt
             </Link>
           </Button>
         )}
+        <PresencePill />
         <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />
         <ChatButton />
       </div>

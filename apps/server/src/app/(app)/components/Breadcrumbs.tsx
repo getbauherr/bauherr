@@ -11,7 +11,7 @@ const sections: Record<string, { label: string; one: string }> = {
   releases: { label: 'Releases', one: 'Release' },
   knowledge: { label: 'Knowledge', one: 'Document' },
   runs: { label: 'Runs', one: 'Run' },
-  team: { label: 'Team', one: 'Team' },
+  team: { label: 'Agent team', one: 'Agent team' },
   insights: { label: 'Insights', one: 'Insights' },
   tickets: { label: 'Workflow', one: 'Ticket' },
   settings: { label: 'Settings', one: 'Settings' },

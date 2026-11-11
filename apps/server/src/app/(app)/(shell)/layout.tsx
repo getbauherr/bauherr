@@ -7,6 +7,7 @@ import { logout, selectWorkspace } from '../lib/actions'
 import { countOwnDrafts } from '../lib/requests'
 import { currentWorkspace, payloadClient } from '../lib/session'
 import { isAdmin } from '../lib/settings'
+import { loadPresence } from '../../../lib/presence'
 import { loadSetup, SETUP_STEPS } from '../lib/setup'
 import { appVersion } from '../lib/version'
 
@@ -30,15 +31,16 @@ const setupOf = async (workspace: number) => {
 
 export default async function Layout({ children }: { children: ReactNode }) {
   const { user, workspaces, workspace } = await currentWorkspace()
-  const [needsYou, drafts, setup] = workspace ? await Promise.all([countNeedsYou(workspace.id, user.role === 'admin'), countOwnDrafts(user.id as number, workspace.id), isAdmin(user) ? setupOf(workspace.id) : undefined]) : [0, 0, undefined]
+  const [needsYou, drafts, setup, presence] = workspace ? await Promise.all([countNeedsYou(workspace.id, user.role === 'admin'), countOwnDrafts(user.id as number, workspace.id), isAdmin(user) ? setupOf(workspace.id) : undefined, payloadClient().then((p) => loadPresence(p, workspace.id))]) : [0, 0, undefined, { working: 0, idle: 0 }]
   return (
     <AppShell
       defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'}
       email={user.email}
       admin={user.role === 'admin'}
-      version={appVersion()}
       workspaces={workspaces.map(({ slug, name }) => ({ slug, name }))}
       current={workspace?.slug}
+      presence={presence}
+      version={appVersion()}
       needsYou={needsYou}
       drafts={drafts}
       setup={setup}

@@ -4,7 +4,7 @@ import { ConnectBlock } from '../team/ConnectBlock'
 import { connectPrompt } from '../team/helpers'
 import { NativeSelect } from '../ui/native-select'
 
-/** Step 4: the connect block of the Team page for the chosen role. `children` is the agent key form, shown inside step 1. */
+/** Step 4: the connect block of the Agent team page for the chosen role. `children` is the agent key form, shown inside step 1. */
 export function SessionConnect({ roles, mcpLine, docsHref, children }: { roles: { id: string; title: string }[]; mcpLine: string; docsHref: string; children: ReactNode }) {
   const [role, setRole] = useState(roles[0]!.id)
   return (

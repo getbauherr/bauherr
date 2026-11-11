@@ -3,14 +3,15 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import { LinkPending } from './LinkPending'
+import { PresenceDot } from './Presence'
 import { mainItems, settingsItem, type NavItem } from './nav-items'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, useSidebar } from './ui/sidebar'
 import { UserMenu } from './UserMenu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
-type Props = { email: string; admin: boolean; version: string; workspaces: { slug: string; name: string }[]; current?: string; needsYou: number; drafts: number; setup?: { done: number; total: number; complete: boolean }; hasKnowledge: boolean; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
+type Props = { email: string; admin: boolean; workspaces: { slug: string; name: string }[]; current?: string; needsYou: number; drafts: number; setup?: { done: number; total: number; complete: boolean }; hasKnowledge: boolean; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
 
-export function AppSidebar({ email, admin, version, workspaces, current, needsYou, drafts, setup, hasKnowledge, logout, selectWorkspace }: Props) {
+export function AppSidebar({ email, admin, workspaces, current, needsYou, drafts, setup, hasKnowledge, logout, selectWorkspace }: Props) {
   const path = usePathname()
   const { setOpenMobile } = useSidebar()
   useEffect(() => setOpenMobile(false), [path, setOpenMobile])
@@ -23,6 +24,7 @@ export function AppSidebar({ email, admin, version, workspaces, current, needsYo
           <Link href={href}>
             <Icon />
             <span>{label}</span>
+            {href === '/team' && <PresenceDot />}
             {n > 0 && <SidebarMenuBadge aria-label={`${n} ${noun}`}>{n}</SidebarMenuBadge>}
             <LinkPending />
           </Link>
@@ -60,7 +62,7 @@ export function AppSidebar({ email, admin, version, workspaces, current, needsYo
         <nav aria-label="Account">
           <SidebarMenu>{item(settingsItem())}</SidebarMenu>
         </nav>
-        <UserMenu email={email} version={version} logout={logout} />
+        <UserMenu email={email} logout={logout} />
       </SidebarFooter>
     </Sidebar>
   )
