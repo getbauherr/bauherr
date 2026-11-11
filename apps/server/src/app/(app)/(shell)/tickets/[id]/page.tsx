@@ -161,7 +161,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const [product, ws, runs, blockers, blocks, shots, epic, spans, touches, forges] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
-    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, kind: true, status: true, startedAt: true, finishedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true, mode: true, executor: true, role: true, sessionLabel: true, clientName: true, clientVersion: true, model: true, provider: true, outcome: true, artifacts: true } }), ...q }).then((r) => r.docs as Doc[]),
+    payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, kind: true, status: true, startedAt: true, finishedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true, mode: true, executor: true, role: true, sessionLabel: true, session: true, clientName: true, clientVersion: true, model: true, provider: true, outcome: true, artifacts: true } }), ...q }).then((r) => r.docs as Doc[]),
     ticket.blockedBy?.length ? payload.find({ collection: 'tickets', where: { and: [{ id: { in: ticket.blockedBy } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]) : [],
     payload.find({ collection: 'tickets', where: { and: [{ blockedBy: { equals: ticket.id } }, { workspace: { equals: workspace.id } }] }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
@@ -172,7 +172,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   ])
   const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin }
   const forge = forges.get(ticket.product)
-  const steps = buildSteps(wf, spans, runs, touches, { current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
+  const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
+  const sessions = new Map<number, string>(sessionIds.length ? ((await payload.find({ collection: 'agent_sessions', where: { id: { in: sessionIds } }, select: { publicId: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; publicId: string }[]).map((x) => [x.id, x.publicId]) : [])
+  const steps = buildSteps(wf, spans, runs, touches, { sessions, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
   const d = derive(payload, P)
   const card = cardOf(ticket, product as never)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})

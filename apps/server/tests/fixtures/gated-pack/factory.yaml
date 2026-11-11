@@ -3,7 +3,7 @@ version: 1
 team:
   roles:
     orchestrator: {title: Orchestrator, tier: cheap}
-    engineer:     {title: Software engineer, tier: cheap}
+    engineer:     {title: Software engineer, skills: [TypeScript, Small diffs], tier: cheap}
     reviewer:     {title: Reviewer, tier: standard}
 workflow:
   stages:

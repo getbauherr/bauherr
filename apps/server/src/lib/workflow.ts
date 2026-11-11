@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { parse } from 'yaml'
 
 export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'release' | 'done' | 'agent' | 'human'
-export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage follow it. */ outcomeOrder?: string[] }
+export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
 export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; skills?: string[]; exceptions?: boolean; profile?: string; profile_file?: string }
 /** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
@@ -155,7 +155,7 @@ export const compile = (doc: unknown): Workflow => {
   return {
     version: 1,
     roles: Object.entries(d.team.roles as Record<string, Omit<Role, 'id'>>).map(([id, r]) => ({ id, ...r })),
-    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? s.name, outcomes: s.outcomes ?? {}, ...(s.kind === 'human' && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
+    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? s.name, outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
     aliases: d.workflow.aliases ?? {},
   }
 }

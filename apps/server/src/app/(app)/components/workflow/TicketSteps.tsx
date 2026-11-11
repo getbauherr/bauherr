@@ -6,7 +6,7 @@ import { Badge } from '../ui/badge'
 const TONE = { working: 'accent', human: 'warn', ci: 'neutral', queued: 'muted', closed: 'ok' } as const
 const when = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`
 
-const Meta = ({ k, v }: { k: string; v: string | null }) => (v ? <><dt className="text-muted-foreground">{k}</dt><dd className="m-0 min-w-0 break-words">{v}</dd></> : null)
+const Meta = ({ k, v, href }: { k: string; v: string | null; href?: string }) => (v ? <><dt className="text-muted-foreground">{k}</dt><dd className="m-0 min-w-0 break-words">{href ? <Link className="text-primary" href={href}>{v}</Link> : v}</dd></> : null)
 
 /** `open`: the Ticket's decision while this is the step it waits at; it replaces "who decided" until someone has. */
 function StepRow({ s, open }: { s: Step; open?: { ticket: number; ask: string } | null }) {
@@ -27,7 +27,7 @@ function StepRow({ s, open }: { s: Step; open?: { ticket: number; ask: string } 
         <dl className="small m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5" data-testid="step-run">
           <Meta k="Executor" v={r.executor} />
           <Meta k="Role" v={r.role} />
-          <Meta k="Session" v={r.sessionLabel} />
+          <Meta k="Session" v={r.sessionLabel} href={r.sessionId ? `/team#${r.sessionId}` : undefined} />
           <Meta k="Client" v={r.client} />
           <Meta k="Model" v={r.model} />
           <Meta k="Provider" v={r.provider} />

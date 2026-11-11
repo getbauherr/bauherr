@@ -12,7 +12,7 @@ export const MAX_STAGE_COMMENT = 60_000
 export const stageMarker = (name: string) => `<!-- bauherr:stage:${name} -->`
 
 /** The outcome keys an `agent` stage accepts. */
-export const outcomesOf = (run: Doc): string[] => Object.keys(stageDef(workflowFor(run.workspace), run.stage)?.outcomes ?? {})
+export const outcomesOf = (run: Doc): string[] => ((d) => d?.outcomeOrder ?? Object.keys(d?.outcomes ?? {}))(stageDef(workflowFor(run.workspace), run.stage))
 
 /** Throws unless `outcome` is one of the stage's outcome keys. */
 export const assertOutcome = (run: Doc, outcome: unknown): string => {

@@ -194,6 +194,17 @@ for (const [slug, name, repo, titles, releaseAt] of [
   if (slug === 'acme-relist') await ensure('tickets', { externalId: `e2e-${slug}-old` }, { title: 'Relist the earlier release', externalId: `e2e-${slug}-old`, number: 9, url: `https://github.com/${repo}/issues/9`, state: 'closed', labels: [], stage: 'done', mergeSha: `${slug}-sha-old`, releasePublishedAt: '2026-09-01T09:00:00Z', releaseAt: '2026-09-01T09:00:00Z', product: p, workspace, rank: '000199' })
   for (const [i, title] of titles.entries()) await ensure('tickets', { externalId: `e2e-${slug}-${i + 1}` }, { title, externalId: `e2e-${slug}-${i + 1}`, number: i + 1, url: `https://github.com/${repo}/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `${slug}-sha-${i + 1}`, releaseAt, product: p, workspace, rank: String(200 + i).padStart(6, '0') })
 }
+// team.spec.ts: an orchestrator session working on #128 (in Triage, where no other spec reads the executors), an idle reviewer session and a disconnected engineer. A fresh clock each seed; `BAUHERR_SESSION_TIMEOUT_S` keeps them present for the spec.
+const teamTicket = await ticket(128, 'Team: triage in a session', 'triage', product)
+const now = Date.now()
+const minutesAgo = (m: number) => new Date(now - m * 6e4).toISOString()
+const session = (publicId: string, role: string, label: string, extra: Record<string, unknown> = {}) =>
+  ensure('agent_sessions', { publicId }, { publicId, role, label, clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', connectedAt: minutesAgo(95), lastSeenAt: minutesAgo(0), workspace, ...extra })
+const working = await session('ses_e2e_working', 'orchestrator', 'orchestrator-1@laptop')
+await session('ses_e2e_idle', 'reviewer', 'reviewer-1@laptop', { connectedAt: minutesAgo(20) })
+await session('ses_e2e_offline', 'engineer', 'engineer-2@devbox', { disconnectedAt: minutesAgo(8), lastSeenAt: minutesAgo(8) })
+const teamRun = await ensure('runs', { ticket: teamTicket, stage: 'triage', status: 'running' }, { ticket: teamTicket, stage: 'triage', status: 'running', mode: 'session', executor: 'session', role: 'orchestrator', session: working.id, sessionLabel: 'orchestrator-1@laptop', clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', workspace, heartbeatAt: minutesAgo(0), startedAt: minutesAgo(40) })
+await ensure('session_spans', { session: working.id, run: teamRun.id }, { session: working.id, run: teamRun.id, ticket: teamTicket, startedAt: minutesAgo(40), lastAt: minutesAgo(0), workspace })
 const request = async (key: string, status: string, extra: Record<string, unknown>) =>
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
 await request('Export totals drift', 'open', { user: draftOwner })

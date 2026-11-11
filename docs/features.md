@@ -48,7 +48,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Review round cap | Give the review one more round, or stop | Inbox card, Ticket page | Live |
 | Request changes, back to Build or backlog | Send a Ticket back with a note | Ticket page, Inbox | Live |
 | Notifications at checkpoints | The Inbox badge counts what needs you | Sidebar badge | Live |
-| Plain-word progress comments for product owners | Progress notes on the issue that a non-technical owner can read | | In progress |
+| Plain-word progress for product owners | One Comment on the issue, edited in place: where it is, what happens next, a six-step path; a new Comment mentions the author only for a question, ready on staging, released, stuck. The same path on the Requests pages. Text from the editable `progress` template | The issue; `/requests`, `/requests/[id]`; switch in `/settings/workspace` | Live |
 
 ## Chat
 
@@ -102,7 +102,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Agent roles | Orchestrator, engineer, reviewer, security, UX and test: profile, skills, model or tier, agent limit, declared in the factory file | Factory file; [session-mode.md](session-mode.md#connect-as-a-role) | Live |
 | Connect as a role | `connect {role}`, then `next_work` pulls the Runs of the role's stages; the orchestrator also gets stuck Tickets | MCP; [session-mode.md](session-mode.md#connect-as-a-role) | Live |
 | Presence | Sessions show as Working, Idle or Offline with their active time; Ticket status and Steps name who works ("<session> (<role>)", Runner, CI); the chat answers who is working | Ticket page, chat | Live |
-| Team page | Character select, live session list, agents on the Workflow graph, team use in Insights | | In progress |
+| Team page | Pick a role (avatar, profile, skills), set its model and agent limit (saved to the factory file), connect a session in three steps, live session list (Working, Idle, Offline, ticket, active time); agents on the Workflow graph; team time in Insights | `/team`, `/`, `/insights` | Live |
 | People and roles | Admin or Bauherr per person, Workspaces, GitHub login, SSO subject, unlock, remove | `/settings/bauherren` | Live |
 | Workspaces | Isolation boundary with its own Connections, budget and keys; Admins always have the menu with settings and New Workspace | `/settings/workspace`, workspace menu | Live |
 | OIDC sign-in | SSO with role and Workspace mapping | `/login`; [auth.md](auth.md) | Live |

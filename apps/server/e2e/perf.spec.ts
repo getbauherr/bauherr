@@ -34,6 +34,7 @@ const targets: Target[] = [
   { route: '/requests', from: '/', click: (p) => main(p).getByRole('link', { name: /^Requests/ }).click(), content: h1('Requests') },
   { route: '/inbox', from: '/', click: (p) => main(p).getByRole('link', { name: /^Inbox/ }).click(), content: h1('Inbox') },
   { route: '/', from: '/requests', click: (p) => main(p).getByRole('link', { name: /^Workflow/ }).click(), content: h1('Workflow') },
+  { route: '/team', from: '/', click: (p) => main(p).getByRole('link', { name: 'Team' }).click(), content: h1('Team') },
   { route: '/releases', from: '/', click: (p) => main(p).getByRole('link', { name: 'Releases' }).click(), content: h1('Releases') },
   { route: '/knowledge', from: '/', click: (p) => main(p).getByRole('link', { name: 'Knowledge' }).click(), content: h1('Knowledge') },
   { route: '/insights', from: '/', click: (p) => main(p).getByRole('link', { name: 'Insights' }).click(), content: h1('Insights') },

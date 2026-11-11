@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { title as stageTitle, type Workflow } from '../../../../lib/workflow'
-import { duration } from '../../lib/format'
-import { PHASES, type Insights, type PhaseKey, type WipAge } from '../../lib/insights'
+import { duration, durationHm } from '../../lib/format'
+import { PHASES, type Insights, type PhaseKey, type TeamTime, type WipAge } from '../../lib/insights'
 import { cn } from '@/lib/utils'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
@@ -25,7 +25,7 @@ const Legend = () => (
 )
 
 /** Time to market of the Tickets that started in the range: tiles, where time goes per stage, throughput and WIP age. Plain markup, no chart library. */
-export function InsightsView({ wf, data, wip, days }: { wf: Workflow; data: Insights; wip: WipAge[]; days: number }) {
+export function InsightsView({ wf, data, wip, team, days }: { wf: Workflow; data: Insights; wip: WipAge[]; team?: TeamTime; days: number }) {
   const max = Math.max(1, ...data.stages.map((s) => s.total))
   const weeks = Math.max(1, ...data.throughput.map((w) => w.tickets))
   return (
@@ -109,6 +109,43 @@ export function InsightsView({ wf, data, wip, days }: { wf: Workflow; data: Insi
           <p className="m-0 text-muted-foreground">No open Tickets.</p>
         )}
       </section>
+      {team && (
+        <section className="flex flex-col gap-3" aria-labelledby="team">
+          <h2 className="heading" id="team">Team</h2>
+          <p className="small m-0 text-muted-foreground">Active time of the agent sessions in the last {days} days and the Runs they finished. Utilisation is the share of a session&apos;s connected time that it spent on a Run.</p>
+          {team.sessions.length || team.roles.length ? (
+            <>
+              <Table data-testid="team-roles">
+                <thead><tr className="label"><th>Role</th><th>Active time</th><th>Runs finished</th></tr></thead>
+                <tbody>
+                  {team.roles.map((r) => (
+                    <tr key={r.role} data-role={r.role}><td>{r.title}</td><td className="mono small">{durationHm(r.seconds)}</td><td className="mono small">{r.runs}</td></tr>
+                  ))}
+                </tbody>
+              </Table>
+              {team.sessions.length > 0 && (
+                <Table data-testid="team-sessions">
+                  <thead><tr className="label"><th>Session</th><th>Role</th><th>Active time</th><th>Connected</th><th>Utilisation</th><th>Runs finished</th></tr></thead>
+                  <tbody>
+                    {team.sessions.map((x) => (
+                      <tr key={x.sessionId}>
+                        <td><Link className="hover:underline" href={`/team#${x.sessionId}`}>{x.label}</Link></td>
+                        <td className="small text-muted-foreground">{x.roleTitle}</td>
+                        <td className="mono small">{durationHm(x.seconds)}</td>
+                        <td className="mono small">{durationHm(x.connectedSeconds)}</td>
+                        <td className="mono small">{x.utilisation == null ? '—' : `${Math.round(x.utilisation * 100)} %`}</td>
+                        <td className="mono small">{x.runs}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </>
+          ) : (
+            <p className="m-0 text-muted-foreground">No session was connected in this range.</p>
+          )}
+        </section>
+      )}
     </div>
   )
 }

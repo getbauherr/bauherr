@@ -4,7 +4,7 @@ export type Variant = 'full' | 'path'
 /** `fullCompact` and `pathCompact` are the narrow-container layouts of the two variants (container below 900 px). */
 export type Size = 'full' | 'path' | 'fullCompact' | 'pathCompact'
 const SIZE = {
-  full: { stage: [104, 168], small: [68, 168], check: [68, 76], gap: 22, step: 20, font: 11, straightLabels: true },
+  full: { stage: [104, 244], small: [68, 244], check: [68, 76], gap: 22, step: 20, font: 11, straightLabels: true },
   fullCompact: { stage: [68, 124], small: [54, 124], check: [28, 52], gap: 14, step: 16, font: 10, straightLabels: false },
   path: { stage: [96, 56], small: [64, 56], check: [44, 40], gap: 20, step: 16, font: 10, straightLabels: true },
   pathCompact: { stage: [62, 48], small: [48, 48], check: [24, 32], gap: 12, step: 14, font: 9, straightLabels: false },

@@ -1,0 +1,54 @@
+.svg { display: block; flex: none; }
+.tile { fill: var(--surface-200); stroke: var(--hairline); stroke-width: 2; }
+.ink { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.muted { fill: none; stroke: var(--ink-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.acc { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.accFill { fill: var(--accent); stroke: none; }
+.paper { fill: var(--surface-100); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.ok { fill: none; stroke: var(--ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.warn { fill: none; stroke: var(--warn); stroke-width: 2; stroke-linecap: round; }
+.bad { fill: none; stroke: var(--danger); stroke-width: 2; stroke-linecap: round; }
+.text { fill: var(--ink); font: 600 22px var(--font-sans); text-anchor: middle; dominant-baseline: central; }
+.box { transform-box: fill-box; transform-origin: center; }
+.failX { opacity: 0; }
+
+/* Static frames above; motion below, only when asked for and allowed. */
+@media (prefers-reduced-motion: no-preference) {
+  .animate .token { animation: travel 2.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+  .animate .node { animation: arrive 2.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+  .animate .type { stroke-dasharray: 1; animation: type 4s steps(8, end) infinite; animation-delay: var(--d, 0s); }
+  .animate .cursor { animation: blink 0.9s steps(1, end) infinite; }
+  .animate .lens { animation: scan 3.6s ease-in-out infinite alternate; }
+  .animate .diff { animation: amber2green 3.6s ease-in-out infinite; animation-delay: var(--d, 0s); }
+  .animate .sweep { animation: sweep 2.8s ease-in-out infinite alternate; }
+  .animate .shackle { animation: lock 2.8s ease-in-out infinite; }
+  .animate .swapL { animation: swapR 3.6s ease-in-out infinite; }
+  .animate .swapR { animation: swapLeft 3.6s ease-in-out infinite; }
+  .animate .pointer { animation: point 3.6s ease-in-out infinite; }
+  .animate .tick { stroke-dasharray: 1; animation: tick 6s ease-in-out infinite; animation-delay: var(--d, 0s); }
+  .animate .failX { opacity: 1; stroke-dasharray: 1; animation: failX 6s ease-in-out infinite; }
+  .animate .passTick { stroke-dasharray: 1; animation: passTick 6s ease-in-out infinite; }
+  .animate .failBox { animation: failBox 6s ease-in-out infinite; }
+  .animate .pulse { animation: pulse 2.8s ease-in-out infinite; }
+}
+
+@keyframes travel {
+  0% { transform: translate(calc(var(--dx) * -0.5), calc(var(--dy) * -0.5)); opacity: 1; }
+  60% { transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5)); opacity: 1; }
+  80%, 100% { transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5)); opacity: 0; }
+}
+@keyframes arrive { 0%, 50% { stroke: var(--ink); } 65%, 85% { stroke: var(--accent); } 100% { stroke: var(--ink); } }
+@keyframes type { 0%, 8% { stroke-dashoffset: 1; } 40%, 90% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1; } }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes scan { from { transform: translateY(-4px); } to { transform: translateY(20px); } }
+@keyframes amber2green { 0%, 20% { stroke: var(--warn); } 40%, 85% { stroke: var(--ok); } 100% { stroke: var(--warn); } }
+@keyframes sweep { from { transform: translateY(0); } to { transform: translateY(32px); } }
+@keyframes lock { 0%, 35% { transform: translateY(-4px); } 55%, 90% { transform: translateY(0); } 100% { transform: translateY(-4px); } }
+@keyframes swapR { 0%, 20% { transform: translateX(0); } 45%, 70% { transform: translateX(20px); } 95%, 100% { transform: translateX(0); } }
+@keyframes swapLeft { 0%, 20% { transform: translateX(0); } 45%, 70% { transform: translateX(-20px); } 95%, 100% { transform: translateX(0); } }
+@keyframes point { 0%, 30% { transform: translate(0, 0); } 45%, 70% { transform: translate(20px, 0); } 90%, 100% { transform: translate(0, 0); } }
+@keyframes tick { 0%, 6% { stroke-dashoffset: 1; } 16%, 90% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1; } }
+@keyframes failX { 0%, 30% { stroke-dashoffset: 1; } 38%, 52% { stroke-dashoffset: 0; } 56%, 100% { stroke-dashoffset: 1; } }
+@keyframes passTick { 0%, 60% { stroke-dashoffset: 1; } 70%, 90% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1; } }
+@keyframes failBox { 0%, 30% { stroke: var(--ink); } 38%, 52% { stroke: var(--danger); } 70%, 90% { stroke: var(--ok); } 100% { stroke: var(--ink); } }
+@keyframes pulse { 0%, 100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 0.9; transform: scale(1.06); } }

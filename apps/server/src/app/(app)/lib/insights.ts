@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { flow, type Flow, type Phase } from '../../../lib/history'
+import { sessionTime } from '../../../lib/sessions'
 import { board, byKind, is, title, type Workflow } from '../../../lib/workflow'
 import { duration } from './format'
 
@@ -82,4 +83,34 @@ export const wipAge = async (payload: Payload, wf: Workflow, workspace: number, 
       AND COALESCE(t."stage", '') NOT IN (${byKind(wf, 'done')?.name ?? ''}, ${byKind(wf, 'container')?.name ?? ''})
     ORDER BY "since" ASC LIMIT 10`)).rows
   return rows.map((r) => ({ id: Number(r.id), number: Number(r.number), title: r.title as string, stage: r.stage as string, since: new Date(r.since as string).toISOString(), seconds: (now - +new Date(r.since as string)) / 1000 }))
+}
+
+export type TeamTime = {
+  roles: { role: string; title: string; seconds: number; runs: number }[]
+  sessions: { sessionId: string; label: string; role: string; roleTitle: string; seconds: number; connectedSeconds: number; utilisation: number | null; runs: number }[]
+}
+
+/** Per role and per session of the last `days` days: active time (`sessionTime`), Runs finished, and for sessions the share of their connected time spent on a Run (utilisation, 0..1). */
+export const loadTeamTime = async (payload: Payload, wf: Workflow, workspace: number, days: number, now = Date.now()): Promise<TeamTime> => {
+  const since = new Date(now - days * 864e5)
+  const [time, rows, byRole] = await Promise.all([
+    sessionTime(payload, workspace, since),
+    payload.db.drizzle.execute(sql`
+      SELECT s."public_id", s."role", s."label",
+        GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s."disconnected_at", ${new Date(now).toISOString()}::timestamptz) - GREATEST(s."connected_at", ${since.toISOString()}::timestamptz))))::float8 AS "connected",
+        (SELECT count(*) FROM "runs" r WHERE r."session_id" = s."id" AND r."finished_at" >= ${since.toISOString()}::timestamptz)::int AS "runs"
+      FROM "agent_sessions" s
+      WHERE s."workspace_id" = ${workspace} AND (s."disconnected_at" IS NULL OR s."disconnected_at" > ${since.toISOString()}::timestamptz)
+      ORDER BY s."connected_at"`).then((r) => r.rows as { public_id: string; role: string; label: string | null; connected: number; runs: number }[]),
+    payload.db.drizzle.execute(sql`SELECT "role", count(*)::int AS "runs" FROM "runs" WHERE "workspace_id" = ${workspace} AND "role" IS NOT NULL AND "finished_at" >= ${since.toISOString()}::timestamptz GROUP BY "role"`).then((r) => r.rows as { role: string; runs: number }[]),
+  ])
+  const active = new Map(time.sessions.map((x) => [x.sessionId, x.seconds]))
+  const titleOf = (id: string) => wf.roles.find((r) => r.id === id)?.title ?? id
+  return {
+    roles: wf.roles.map((r) => ({ role: r.id, title: r.title, seconds: time.roles.find((x) => x.role === r.id)?.seconds ?? 0, runs: byRole.find((x) => x.role === r.id)?.runs ?? 0 })).filter((r) => r.seconds > 0 || r.runs > 0),
+    sessions: rows.map((r) => {
+      const seconds = active.get(r.public_id) ?? 0
+      return { sessionId: r.public_id, label: r.label ?? r.public_id, role: r.role, roleTitle: titleOf(r.role), seconds, connectedSeconds: r.connected, utilisation: r.connected > 0 ? Math.min(1, seconds / r.connected) : null, runs: r.runs }
+    }),
+  }
 }

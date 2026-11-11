@@ -7,6 +7,8 @@ import { TicketGraph } from '../components/TicketGraph'
 import { EpicsView } from '../components/Epics'
 import { WorkflowGraph } from '../components/workflow/WorkflowGraph'
 import { TicketList, type Group } from '../components/workflow/TicketList'
+import { loadTeam } from '../../../lib/sessions'
+import { resolveMode } from '../../../lib/mode'
 import { epicNamed, epicRestoreUrl, epicsToShow, inEpic } from '../lib/epics'
 import { loadOverview } from '../lib/overview'
 import { isAdmin } from '../lib/settings'
@@ -14,7 +16,7 @@ import { currentWorkspace, payloadClient, rememberEpic, requireBauherr } from '.
 import { releaseReminders } from '../../../lib/ship-release'
 import { workflowFor } from '../../../lib/factory'
 import { board, byKind, graph as workflowGraph } from '../../../lib/workflow'
-import { checkpointOf, nodeStats, stageMedians } from '../lib/workflow-view'
+import { checkpointOf, nodeStats, stageAgents, stageMedians } from '../lib/workflow-view'
 import { BAR_LEGEND } from '../components/workflow/legend'
 
 export const dynamic = 'force-dynamic'
@@ -49,7 +51,10 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
     return next.size ? `/?${next}` : '/'
   }
   const onWorkflow = !graph && !list && shown.length > 0
-  const stats = onWorkflow ? nodeStats(wf, shown, data.wip, await stageMedians(await payloadClient(), workspace!.id, product)) : null
+  const payload = await payloadClient()
+  const modes = onWorkflow ? ((await payload.findByID({ collection: 'workspaces', id: workspace!.id, select: { defaultMode: true, modeByStage: true }, depth: 0, overrideAccess: true })) as { defaultMode?: string | null; modeByStage?: Record<string, unknown> | null }) : {}
+  const [medians, team] = onWorkflow ? await Promise.all([stageMedians(payload, workspace!.id, product), loadTeam(payload, workspace!.id)]) : [{}, null]
+  const stats = onWorkflow ? { ...nodeStats(wf, shown, data.wip, medians), agents: stageAgents(wf, team!.roles, (st) => resolveMode(wf, modes, st)) } : null
   const pickedStage = picked?.split(':')[0]
   const groups: Group[] = board(wf)
     .filter((s) => !pickedStage || s === pickedStage)
@@ -78,7 +83,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               {BAR_LEGEND.map((l) => <span key={l.label} className="flex items-center gap-1"><i className={`inline-block size-2 rounded-[1px] ${l.cls}`} />{l.label}</span>)}
               <span>Dashed lines go back to an earlier stage; dashed pills wait for you.</span>
             </p>
-            {picked && <p className="small" data-testid="stage-filter">Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link>{picked.includes(':') && !!stats?.checkpoints.get(picked) && <> · <Link className="text-primary" href={`/inbox?checkpoint=${encodeURIComponent(nodes.find((n) => n.id === picked)?.title ?? '')}`} data-testid="decide-in-inbox">Decide in Inbox ({stats.checkpoints.get(picked)})</Link></>}</p>}
+            {picked && <p className="small" data-testid="stage-filter">{stats?.agents?.get(picked)?.missing && <><Link className="text-warn" href="/team" data-testid="no-agent-link">No agent connected for this stage: open Team</Link> · </>}Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link>{picked.includes(':') && !!stats?.checkpoints.get(picked) && <> · <Link className="text-primary" href={`/inbox?checkpoint=${encodeURIComponent(nodes.find((n) => n.id === picked)?.title ?? '')}`} data-testid="decide-in-inbox">Decide in Inbox ({stats.checkpoints.get(picked)})</Link></>}</p>}
             {groups.length ? <TicketList wf={wf} groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
           </div>
         )

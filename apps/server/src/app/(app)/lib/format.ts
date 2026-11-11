@@ -21,3 +21,11 @@ export const duration = (sec: number): string => {
 
 /** "Waiting for you · 5 min": the status label of the Workflow view and how long the decision has been open. */
 export const waited = (iso: string): string => `${WAITING_FOR_YOU} · ${ago(iso).replace(/ ago$/, '').replace('just now', 'a moment')}`
+
+/** A span of seconds as "40 s", "35 min", "1 h 12 min". */
+export const durationHm = (sec: number): string => {
+  const s = Math.max(0, sec)
+  if (s < 60) return `${Math.round(s)} s`
+  const m = Math.round(s / 60)
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`
+}
