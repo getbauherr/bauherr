@@ -6,7 +6,7 @@ export default function ReleaseNotes() {
   return (
     <>
       <h1>Release notes</h1>
-      <p className="small text-muted-foreground">Current version v{appVersion()}</p>
+      <p className="small text-muted-foreground">Current version {appVersion()}</p>
       <Markdown html={renderMarkdown(changelog())} />
     </>
   )

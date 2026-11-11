@@ -10,7 +10,7 @@ import { SidebarMenuButton, useSidebar } from './ui/sidebar'
 const initials = (email: string) => email.slice(0, 2).toUpperCase()
 
 /** Client component: Radix `asChild` items cannot take server-rendered children (React 19 lazy elements). */
-export function UserMenu({ email, version, logout }: { email: string; version: string; logout: () => Promise<void> }) {
+export function UserMenu({ email, logout }: { email: string; logout: () => Promise<void> }) {
   const { isMobile } = useSidebar()
   return (
     <DropdownMenu>
@@ -21,13 +21,13 @@ export function UserMenu({ email, version, logout }: { email: string; version: s
           <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side={isMobile ? 'top' : 'right'} align="end" className="w-64">
-        <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+      <DropdownMenuContent side={isMobile ? 'top' : 'right'} align="end" className="w-72">
+        <DropdownMenuLabel className="truncate" title={email}>{email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ThemeRow />
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/release-notes" data-testid="app-version"><FileText />Release notes<span className="mono ml-auto text-muted-foreground">v{version}</span><LinkPending /></Link>
+          <Link href="/release-notes"><FileText />Release notes<LinkPending /></Link>
         </DropdownMenuItem>
         <form action={logout}>
           <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>

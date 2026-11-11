@@ -15,12 +15,13 @@ const signIn = async (page: Page, who = email) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
-test('Team is in the sidebar after Workflow; the roster is a keyboard-operable radiogroup with the role sheet', async ({ page }) => {
+test('Agent team is in the sidebar after Workflow, not in Settings; the roster is a keyboard-operable radiogroup with the role sheet', async ({ page }) => {
   await signIn(page)
   const links = await page.getByRole('navigation', { name: 'Main' }).getByRole('link').allInnerTexts()
-  expect(links.indexOf('Team')).toBe(links.indexOf('Workflow') + 1)
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Team' }).click()
-  await expect(page.getByRole('heading', { name: 'Team', level: 1 })).toBeVisible()
+  const at = (name: string) => links.findIndex((l) => l.startsWith(name))
+  expect(at('Agent team')).toBe(at('Workflow') + 1)
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /^Agent team/ }).click()
+  await expect(page.getByRole('heading', { name: 'Agent team', level: 1 })).toBeVisible()
   await expect(page.getByTestId('team-summary')).toHaveText(/\d+ roles · 2 sessions connected · 1 working/)
 
   const roster = page.getByRole('radiogroup', { name: 'Roles' })
@@ -79,11 +80,25 @@ test('Insights lists the sessions with their active time', async ({ page }) => {
   await expect(page.getByTestId('team-sessions')).toContainText('orchestrator-1@laptop')
 })
 
-test('a member sees the Team page but cannot change a role', async ({ page }) => {
+test('a member sees the Agent team page but cannot change a role', async ({ page }) => {
   await signIn(page, 'member@example.com')
   await page.goto('/team')
-  await expect(page.getByRole('heading', { name: 'Team', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Agent team', level: 1 })).toBeVisible()
   await page.getByRole('radiogroup', { name: 'Roles' }).locator('[data-role=engineer]').click()
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
   await expect(page.getByText('Only the owner can change a role.')).toBeVisible()
+})
+
+test('the header pill and the sidebar dot show who is working on every page; Settings does not list the Agent team', async ({ page }) => {
+  await signIn(page)
+  for (const path of ['/', '/inbox']) {
+    await page.goto(path)
+    await expect(page.getByTestId('presence-pill')).toHaveText(/^[1-9]\d* working · 1 idle$/)
+    await expect(page.getByTestId('presence-dot')).toHaveAttribute('aria-label', /^[1-9]\d* working, 1 idle$/)
+  }
+  await page.getByTestId('presence-pill').click()
+  await expect(page).toHaveURL(/\/team$/)
+  await expect(page.getByRole('heading', { name: 'Agent team', level: 1 })).toBeVisible()
+  await page.goto('/settings/profile')
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Team' })).toHaveCount(0)
 })

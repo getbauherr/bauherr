@@ -21,7 +21,7 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav.getByRole('link', { name: /^Workflow/ })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: /^Requests/ })).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(8) // Inbox, Workflow, Team, Requests, Releases, Knowledge, Runs (Admin), Insights
+  await expect(nav.getByRole('link')).toHaveCount(8) // Inbox, Workflow, Agent team, Requests, Releases, Knowledge, Runs (Admin), Insights
   await expect(nav.getByRole('link', { name: 'Knowledge' })).toBeVisible()
   await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Workflow')
   await expect(bar.getByRole('link', { name: 'New request' })).toBeVisible()
@@ -33,8 +33,20 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
   await expect(bar.getByRole('link', { name: 'New request' })).toHaveCount(0)
   await page.goto('/')
 
+  const footer = page.getByRole('contentinfo')
+  await expect(footer).toContainText(/Made with .*love in Cologne, Germany/)
+  await expect(footer.getByTestId('app-version')).toHaveAttribute('href', '/release-notes')
+  await expect(footer.getByTestId('app-version')).toHaveText(/^(dev|v\d)/)
+
   await page.getByRole('button', { name: 'User menu' }).click()
   const menu = page.getByRole('menu')
+  await expect(menu.getByTestId('app-version')).toHaveCount(0)
+  const box = await menu.boundingBox()
+  for (const name of ['System', 'Light', 'Dark']) {
+    const b = await menu.getByRole('menuitemradio', { name }).boundingBox()
+    expect(b!.x).toBeGreaterThanOrEqual(box!.x)
+    expect(b!.x + b!.width).toBeLessThanOrEqual(box!.x + box!.width)
+  }
   await expect(menu).toContainText(signOutEmail)
   await expect(menu.getByRole('menuitem', { name: /Release notes/ })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: /Bauherren|API key/ })).toHaveCount(0)

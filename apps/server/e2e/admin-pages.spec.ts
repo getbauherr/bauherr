@@ -87,7 +87,7 @@ test('a Bauherr gets 404 on the Admin pages, sees only their own groups and no t
   await signIn(page, 'member@example.com')
   for (const path of ['audit', 'workflow', 'connections', 'health', 'knowledge', 'chat-feedback', 'models']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
   await page.goto('/settings/usage')
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['Profile', 'API keys', 'Team', 'Templates', 'AI usage', 'General', 'Products', 'People'])
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['Profile', 'API keys', 'Templates', 'AI usage', 'General', 'Products', 'People'])
   await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('group')).toHaveCount(3)
   for (const text of ['Gateway key', 'Model tiers', 'Run mode']) await expect(page.getByText(text)).toHaveCount(0)
   await expect(page.getByLabel('Budget per 30 days')).toHaveCount(0) // the budget is Admin-only: no page, no field

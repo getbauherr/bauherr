@@ -38,9 +38,9 @@ export function ThemeRow() {
     setTheme(id)
   }
   return (
-    <DropdownMenuRadioGroup aria-label="Theme" value={mode} onValueChange={pick} className="flex items-center gap-1 px-2 py-1">
+    <DropdownMenuRadioGroup aria-label="Theme" value={mode} onValueChange={pick} className="mx-2 my-1 grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
       {modes.map((m) => (
-        <DropdownMenuRadioItem key={m.id} value={m.id} onSelect={(e) => e.preventDefault()} className="flex-1 justify-center">
+        <DropdownMenuRadioItem key={m.id} value={m.id} onSelect={(e) => e.preventDefault()} className="min-w-0 justify-center gap-1.5 px-1.5 py-1 text-sm [&_svg]:size-4">
           <m.Icon />
           {m.label}
         </DropdownMenuRadioItem>
