@@ -1,8 +1,8 @@
 import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
-import { is, liveStages, title, type Workflow } from './workflow'
+import { is, liveStages, roleOf, title, type Workflow } from './workflow'
 
 /** The one button of the Ticket page: the owner's turn (`enabled`) or, disabled, who has the turn and why (`reason`, plain words). `links` has one entry per Ticket (`#N`) or Run (`Run N`) the reason names, `text` being the token as written. */
-export type NextStep = { label: string; enabled: boolean; reason: string; links: { text: string; href: string }[] }
+export type NextStep = { label: string; enabled: boolean; reason: string; links: { text: string; href: string }[]; /** The button is a link (e.g. "Connect an agent") instead of a disabled button. */ href?: string }
 
 type StepTicket = { state?: string | null; stage?: string | null; labels?: string[] | null; reviewState?: string | null; productionState?: string | null; waitingFor?: string | null; waitingReason?: string | null }
 
@@ -13,12 +13,18 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
  * agent-side owner, first match: open blocker, live Run, waiting state (overlap, full column, checks), release/review wait, idle.
  * `waiting` is `waitingText` of a waiting Ticket; `admin` gates the Run number and link (Runs are an Admin view).
  */
-export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean }): NextStep => {
+export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin, connected = true }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean; /** Whether an agent of the Run's stage role is connected (matters for `awaiting_session` only). */ connected?: boolean }): NextStep => {
   const runLink = run && admin ? [{ text: `Run ${run.id}`, href: `/runs/${run.id}` }] : []
   if (need) return { label: need, enabled: true, reason: '', links: [] }
   if (blockers.length) return { label: 'Blocked', enabled: false, reason: `Blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}.`, links: blockers.map((b) => ({ text: `#${b.number}`, href: `/tickets/${b.id}` })) }
   if (run && ['running', 'awaiting_session'].includes(run.status) && run.escalation) return { label: 'Escalated', enabled: false, reason: `Escalated to the strong model (step ${run.escalation.step} of 4): ${run.escalation.reason}${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
-  if (run && ['running', 'awaiting_session'].includes(run.status)) return { label: 'In progress', enabled: false, reason: `The factory is working on this${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
+  const ref = admin ? ` (Run ${run?.id})` : ''
+  if (run?.status === 'awaiting_session') {
+    const role = roleOf(wf, run.stage)?.title
+    return { label: 'Connect an agent', enabled: false, href: '/team', reason: connected ? `Waiting for ${role ? `a ${role}` : 'an'} agent to pick this up${ref}.` : `No ${role ? `${role} ` : ''}agent is connected${ref}.`, links: runLink }
+  }
+  if (run?.status === 'queued') return { label: 'Queued', enabled: false, reason: `Queued for the Runner${ref}.`, links: runLink }
+  if (run?.status === 'running') return { label: 'In progress', enabled: false, reason: `The factory is working on this${ref}.`, links: runLink }
   if (run && run.stage === ticket.stage && liveStages(wf).includes(run.stage) && ['failed', 'cancelled', 'needs_human'].includes(run.status)) return { label: 'Escalating', enabled: false, reason: 'The last Run stopped; the factory retries it on a stronger model by itself.', links: [] }
   const wait = ticket.waitingFor
   if (wait === 'checks') return { label: 'Waiting for checks', enabled: false, reason: 'Waiting for the MR checks to finish. Review starts by itself.', links: [] }

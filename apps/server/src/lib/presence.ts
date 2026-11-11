@@ -19,3 +19,12 @@ export const loadPresence = async (payload: Payload, workspace: number | string)
   const r = rows[0] as { busy: number; idle: number; auto: number }
   return { working: r.busy + r.auto, idle: r.idle }
 }
+
+/** Connected sessions of `role` (the same rule as `loadPresence`: a running Run or seen within `sessionTimeoutS()`). */
+export const connectedOfRole = async (payload: Payload, workspace: number | string, role: string): Promise<number> => {
+  const { rows } = await payload.db.drizzle.execute(sql`
+    SELECT count(*)::int AS "n" FROM "agent_sessions" a
+    WHERE a."workspace_id" = ${workspace} AND a."role" = ${role} AND a."disconnected_at" IS NULL
+      AND (a."last_seen_at" >= now() - make_interval(secs => ${sessionTimeoutS()}) OR EXISTS (SELECT 1 FROM "runs" r WHERE r."session_id" = a."id" AND r."status" = 'running'))`)
+  return (rows[0] as { n: number }).n
+}

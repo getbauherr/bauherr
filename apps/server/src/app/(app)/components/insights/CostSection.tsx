@@ -25,7 +25,7 @@ function Lines({ id, head, lines, total, extra }: { id: string; head: string; li
       <tbody>
         {lines.map((l) => (
           <tr key={l.key} data-key={l.key}>
-            <td>{l.label}</td>
+            <td title={l.hint}>{l.label}</td>
             <td className="mono small">{usd(l.costUsd)}{l.unpriced > 0 && <span className="text-muted-foreground" title="Entries with tokens but no price"> +{l.unpriced} unpriced</span>}</td>
             <td className="mono small">{pct(l.costUsd, total)}</td>
             <td className="mono small">{tok(l.tokens)}</td>
