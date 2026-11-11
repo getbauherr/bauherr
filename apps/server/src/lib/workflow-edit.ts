@@ -1,6 +1,7 @@
 import { isMap, parseDocument, type Document, type YAMLMap, type YAMLSeq } from 'yaml'
 import { lint, NEEDS_ROLE, RESERVED, WIP, type Kind } from './workflow-rules'
 import type { CheckpointKey } from './workflow-labels'
+import type { When } from './workflow-when'
 
 // Browser-safe. The workflow editor's document operations: each takes the factory file as text and returns the edited text (comments and layout kept); the result is not linted, callers run `lint`.
 
@@ -77,6 +78,16 @@ export const setStageField = (yaml: string, stage: string, key: string, value: u
     else d.setIn(path, value)
   })
 
+/** Sets the condition of a step (it runs only when the change matches); `undefined` or an empty one makes it run for every ticket. */
+export const setWhen = (yaml: string, stage: string, when: When | undefined): string =>
+  edit(yaml, (d) => {
+    const path = ['workflow', 'stages', at(d, stage), 'when']
+    if (!when || !Object.keys(when).length) return void d.deleteIn(path)
+    const n = d.createNode(when) as YAMLMap
+    n.flow = true
+    d.setIn(path, n)
+  })
+
 export const setTitle = (yaml: string, stage: string, title: string): string => setStageField(yaml, stage, 'title', title.trim() || undefined)
 
 const GATE: Record<Exclude<CheckpointKey, 'refine'>, [Kind, 'gate' | 'production_gate']> = { plan: ['plan', 'gate'], staging: ['release', 'gate'], production: ['release', 'production_gate'] }
@@ -102,7 +113,7 @@ export const renamePath = (yaml: string, stage: string, from: string, to: string
     d.setIn(['workflow', 'stages', i, 'outcomes'], stageNode(d, { outcomes: next }).get('outcomes', true))
   })
 
-export type NewStep = { after: string; kind: 'agent' | 'human'; title: string; role?: string; skill?: string; choices?: string[] }
+export type NewStep = { after: string; kind: 'agent' | 'human'; title: string; role?: string; skill?: string; choices?: string[]; when?: When }
 
 /** Splices a step in after `after`: that step's forward path leads to it and it leads on to the old target. Returns the new text and the step's name. */
 export const addStep = (yaml: string, s: NewStep): { yaml: string; name: string } => {
@@ -120,7 +131,7 @@ export const addStep = (yaml: string, s: NewStep): { yaml: string; name: string 
   const keys: string[] = []
   for (const c of choices) keys.push(slugOf(c, keys, 'choice'))
   const outcomes: Doc = s.kind === 'agent' ? { pass: next, findings: back } : Object.fromEntries(keys.map((k, i) => [k, i === 0 ? next : back]))
-  const step: Doc = { name, title: s.title.trim(), kind: s.kind, ...(s.kind === 'agent' && { role: s.role, skill: s.skill }), outcomes }
+  const step: Doc = { name, title: s.title.trim(), kind: s.kind, ...(s.kind === 'agent' && { role: s.role, skill: s.skill }), ...(s.when && Object.keys(s.when).length && { when: s.when }), outcomes }
   let i = at(d, s.after) + 1
   while (stages[i]?.kind === 'container') i++
   seq(d).items.splice(i, 0, stageNode(d, step))

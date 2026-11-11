@@ -21,10 +21,19 @@ export type EditorData = {
   /** Open Tickets per stage name. */
   counts: Record<string, number>
   skills: string[]
+  /** Path sets (`touches` of a conditional step) that Products of the Workspace declare with paths, by set name: the Products' names. */
+  pathSets: Record<string, string[]>
   expediteLane: boolean
 }
 
 const MAX_VERSIONS = 50
+
+/** The path sets that have paths, by name, with the names of the Products that declare them. */
+const declaredSets = (products: { name: string; pathSets?: Record<string, string[]> | null }[]): Record<string, string[]> => {
+  const out: Record<string, string[]> = {}
+  for (const p of products) for (const [n, g] of Object.entries(p.pathSets ?? {})) if (g.length) (out[n] ??= []).push(p.name)
+  return out
+}
 
 /** Skills a step may use: directories of `skills/` in the pack dir and the core pack that hold a SKILL.md. */
 const skillsOfPack = (): string[] =>
@@ -51,6 +60,7 @@ export async function loadEditor(workspace: { id: number; slug: string }): Promi
     presets: PRESETS.map((id) => ({ id, ...PRESET_TEXT[id], source: presetSource(id) })),
     counts: Object.fromEntries((counts.rows as { stage: string; n: string }[]).map((r) => [r.stage, Number(r.n)])),
     skills: skillsOfPack(),
+    pathSets: declaredSets((await payload.find({ collection: 'products', where: { workspace: { equals: workspace.id } }, select: { name: true, pathSets: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { name: string; pathSets?: Record<string, string[]> | null }[]),
     expediteLane: ws.expediteLane !== false,
   }
 }

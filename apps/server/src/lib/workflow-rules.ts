@@ -1,8 +1,9 @@
 import { parse } from 'yaml'
+import { asList, REQUEST_TYPES, SET_NAME, WHEN_KEYS, type When } from './workflow-when'
 
 // Browser-safe: no node: imports. The pure half of workflow.ts (types, kind rules, lint); workflow.ts re-exports it.
 export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'release' | 'done' | 'agent' | 'human'
-export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
+export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; /** A step of kind agent or human that runs only when the change matches; otherwise the Ticket moves on (see `skipTarget`). */ when?: When; skip_to?: string; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
 export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; skills?: string[]; exceptions?: boolean; profile?: string; profile_file?: string }
 /** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
@@ -26,6 +27,9 @@ export const LIVE: Kind[] = ['plan', 'build', 'review', 'agent']
 
 const obj = (v: unknown): Record<string, any> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : undefined)
 const posInt = (v: unknown) => Number.isInteger(v) && (v as number) > 0
+
+/** Where a Ticket goes when the conditional step `s` does not match: `skip_to`, else the target of its first outcome in file order (`outcomeOrder` once compiled). */
+export const skipTarget = (s: { outcomes?: Record<string, string>; outcomeOrder?: string[]; skip_to?: string }): string | undefined => s.skip_to ?? s.outcomes?.[(s.outcomeOrder ?? Object.keys(s.outcomes ?? {}))[0] as string]
 
 export const parseFactory = (yaml: string): unknown => parse(yaml)
 
@@ -79,7 +83,7 @@ export const lint = (doc: unknown): string[] => {
       const s = st.find((x) => x.name === n)
       if (seen.has(n) || !s || !['agent', 'human'].includes(kindOf(s))) return false
       seen.add(n)
-      return Object.values(obj(s.outcomes) ?? {}).some((t) => through(String(t), seen))
+      return [...Object.values(obj(s.outcomes) ?? {}), ...(s.when ? [skipTarget(s as never)] : [])].some((t) => through(String(t), seen))
     }
     if (!through(String(obj(build.outcomes)?.done))) out.push(`stage "${build.name}": outcome done must lead to the review stage "${review.name}", passing only through agent and human stages`)
     for (const s of st) if (s !== review && Object.values(obj(s.outcomes) ?? {}).includes(release.name)) out.push(`stage "${s.name}": only the review stage may target the release stage "${release.name}"`)
@@ -122,8 +126,43 @@ export const lint = (doc: unknown): string[] => {
     if (s.gate !== undefined && !(s.gate === 'human' && (k === 'plan' || k === 'release'))) out.push(`stage "${n}": gate: human is only allowed on the plan and release stages`)
     if (s.production_gate !== undefined && !(s.production_gate === 'human' && k === 'release')) out.push(`stage "${n}": production_gate: human is only allowed on the release stage`)
     if (s.wip !== undefined && !(posInt(s.wip) && WIP.includes(k))) out.push(`stage "${n}": wip must be a positive integer on a plan, build, review, release, agent or human stage`)
+    if (s.when !== undefined) {
+      const w = obj(s.when)
+      const bad = (m: string) => out.push(`stage "${n}": when ${m}`)
+      const list = (v: unknown, ok: (x: unknown) => boolean = (x) => typeof x === 'string' && x !== '') => Array.isArray(v) && v.length > 0 && v.every(ok)
+      if (k !== 'agent' && k !== 'human') bad('is only allowed on agent and human stages')
+      else if (!w || !Object.keys(w).length) bad('must name at least one of touches, paths, labels, types')
+      else {
+        for (const key of Object.keys(w)) if (!(WHEN_KEYS as readonly string[]).includes(key)) bad(`has an unknown key "${key}" (use touches, paths, labels or types)`)
+        if (w.touches !== undefined && !(list(asList(w.touches), (x) => typeof x === 'string' && SET_NAME.test(x)) && (typeof w.touches === 'string' || Array.isArray(w.touches)))) bad('touches must be a path set name or a list of names matching ^[a-z][a-z0-9-]*$')
+        if (w.paths !== undefined && !list(w.paths)) bad('paths must be a non-empty list of path globs')
+        if (w.labels !== undefined && !list(w.labels)) bad('labels must be a non-empty list of labels')
+        if (w.types !== undefined && !list(w.types, (x) => (REQUEST_TYPES as readonly string[]).includes(x as string))) bad(`types must be a non-empty list of ${REQUEST_TYPES.join(', ')}`)
+      }
+      const skip = skipTarget(s as never)
+      const to = st.find((x) => x.name === skip)
+      if (!to) out.push(`stage "${n}": the step it skips to ("${skip}") must be a stage`)
+      else {
+        if (['triage', 'container', 'release', 'done'].includes(kindOf(to))) out.push(`stage "${n}": a skipped ticket cannot go to the ${kindOf(to)} stage "${skip}"`)
+        else if (skip === n) out.push(`stage "${n}": a skipped ticket cannot stay in the stage`)
+        if (s.skip_to !== undefined) edges.push([n, String(skip)])
+      }
+    } else if (s.skip_to !== undefined) out.push(`stage "${n}": skip_to needs a when`)
     if (s.mode !== undefined && s.mode !== 'session' && s.mode !== 'autonomous') out.push(`stage "${n}": mode must be session or autonomous`)
   })
+  for (const s of st) {
+    const chain = [String(s.name)]
+    for (let x = s; x.when; ) {
+      const next = st.find((y) => y.name === skipTarget(x as never))
+      if (!next || !next.when) break
+      if (chain.includes(String(next.name))) {
+        out.push(`stage "${s.name}": conditional stages skip in a cycle (${[...chain, next.name].join(' -> ')})`)
+        break
+      }
+      chain.push(String(next.name))
+      x = next
+    }
+  }
   const reach = (from: string, pairs: [string, string][]) => {
     const seen = new Set([from])
     for (let grew = true; grew; ) {

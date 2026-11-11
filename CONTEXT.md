@@ -78,6 +78,12 @@ _Avoid_: Prompt, recipe
 **Stage kind**:
 What a Stage is for in the workflow (`triage`, `plan`, `container`, `build`, `review`, `release`, `done`, `agent`, `human`); the factory's rules attach to the kind, not to the Stage's name.
 
+**Conditional stage**:
+An `agent` or `human` Stage with a `when` (`touches` a Path set, `paths`, `labels`, request `types`): a Ticket enters it only when the change matches, otherwise it moves on as if the Stage's pass Outcome had fired and a `skip:<stage>` event records why. Unknown changed paths count as matching.
+
+**Path set**:
+A named list of path globs a Product declares (`security`, `ui`); a conditional Stage names it in `touches`. A set the Product has not declared never matches.
+
 **Outcome**:
 A named result of a Stage (`plan`, `clean`, `changes`, ...) that maps to the Stage a Ticket moves to next; declared per Stage in `factory.yaml`.
 

@@ -25,7 +25,9 @@ workflow:
       outcomes: {plan: plan, refine: triage, skip: backlog}
     - {name: plan, kind: plan, role: engineer, skill: run-contract, gate: human, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
     - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
-    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: review, stuck: escalate, replan: plan}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: security-review, stuck: escalate, replan: plan}}
+    # Only when the change touches the Product's `security` paths (Product > Checks & merging > Path sets); otherwise the ticket goes straight on to review.
+    - {name: security-review, title: Security review, kind: agent, role: security, skill: mr-security-review, when: {touches: security}, wip: 2, outcomes: {pass: review, findings: build}}
     - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
     - {name: release, kind: release, title: Staging, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
     - {name: done, kind: done}

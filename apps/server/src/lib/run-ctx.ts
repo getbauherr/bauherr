@@ -4,7 +4,7 @@ import type { RunCtx } from '@bauherr/runner'
 import { sql } from '@payloadcms/db-postgres'
 import { presetOf } from './providers'
 import { moveStage } from './stage-move'
-import { enterStage } from './wip'
+import { advance } from './advance'
 import { backendFor } from './adapters'
 import { prOf } from './release'
 import { fixBaseOf, reviewRoundOf } from './actions'
@@ -19,7 +19,7 @@ import { SKILL_TEMPLATES, forAgent, headingOf, template } from './templates'
 import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
 import { workflowFor } from './factory'
-import { byKind, is, roleOf, stage as stageOf } from './workflow'
+import { byKind, is, nameOf, roleOf, stage as stageOf } from './workflow'
 
 export { tierModels }
 
@@ -147,12 +147,8 @@ export const buildRunCtx = async (
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
       setStage: async (number, stage) => {
-        const move = () => moveStage(payload, tickets, { product: ticket.product, number }, stage, 'runner')
-        if (!is(wf, stage, 'review')) return move()
-        await enterStage(payload, ticket, stage, async () => {
-          await move()
-          await payload.update({ collection: 'tickets', id: ticket.id, data: { stage }, overrideAccess: true })
-        })
+        if (!is(wf, stage, 'review')) return moveStage(payload, tickets, { product: ticket.product, number }, stage, 'runner')
+        await advance(payload, tickets, { ...ticket, stage: nameOf(wf, 'build') }, 'done', { by: 'factory', why: 'runner' })
       },
     },
     recorder: {

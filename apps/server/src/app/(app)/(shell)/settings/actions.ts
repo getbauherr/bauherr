@@ -10,6 +10,7 @@ import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { suggestOverlapIgnore } from '../../../../lib/overlap'
+import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { forgeOf } from '../../../../lib/release'
 import { rotateKey } from '../../../../lib/gateway'
 import { SCAN_MAX_BUDGET_USD } from '../../../../lib/investigation'
@@ -97,6 +98,21 @@ export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
   const lines = fd.has('ignore') ? s(fd, 'ignore').split('\n').map((l) => l.trim()).filter(Boolean) : [...current, s(fd, 'add')]
   if (lines.some((l) => /\s/.test(l))) throw Object.assign(new Error('Invalid glob.'), { data: { errors: [{ path: 'ignore', message: 'One path glob per line, without spaces' }] } })
   await c.payload.update({ collection: 'products', id: product, data: { overlapIgnore: [...new Set(lines)] }, ...c.w } as never)
+})
+
+/** The Product's named path sets (conditional workflow steps refer to them): the textarea replaces them; `add` appends one suggested name with an empty list. */
+export const savePathSets = act({ sets: 'sets' }, async (c, fd) => {
+  only(c.user)
+  const product = id(fd)
+  await assertInWorkspace(c.payload, 'products', [product], inWorkspace(c))
+  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { pathSets: true }, depth: 0, overrideAccess: true })) as { pathSets?: PathSets }).pathSets ?? {}
+  let pathSets: PathSets
+  try {
+    pathSets = fd.has('sets') ? parsePathSets(s(fd, 'sets')) : { ...current, [s(fd, 'add')]: current[s(fd, 'add')] ?? [] }
+  } catch (e) {
+    throw fieldError('sets', (e as Error).message)
+  }
+  await c.payload.update({ collection: 'products', id: product, data: { pathSets }, ...c.w } as never)
 })
 
 /** Reads the Product's last 100 merged pull requests from the forge (explicit action, never on render) and stores the suggested paths with the time on the Product. */

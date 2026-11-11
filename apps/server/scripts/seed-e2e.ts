@@ -203,6 +203,11 @@ await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
 // run.spec.ts re-runs this Run: it lives on Acme Checks, which no other spec counts Runs of (overview.spec.ts counts those of Acme Web and Acme Shop).
 const stalled = (await ensure('tickets', { externalId: 'e2e-checks-1' }, { title: 'Recover the stalled import', externalId: 'e2e-checks-1', number: 1, url: 'https://github.com/acme/checks/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: checksProduct, workspace, rank: '000025' })).id
 await run(stalled, 'build', 'needs_human', { startedAt: '2026-10-30T10:30:00Z' })
+// ticket.spec.ts: a Ticket on Acme Checks that passed a conditional step (`skip:` event, written as `skipEvent` does): the Steps list shows it as Skipped with the reason, it is no visit.
+const routed = (await ensure('tickets', { externalId: 'e2e-checks-3' }, { title: 'Check the CSV header', externalId: 'e2e-checks-3', number: 3, url: 'https://github.com/acme/checks/issues/3', state: 'open', labels: ['bauherr:stage:review'], stage: 'review', historyKey: 'review|queued', product: checksProduct, workspace, rank: '000027' })).id
+for (const [cause, stage, kind, phase, hoursAgo, extra] of [['e2e:routed:0', 'build', 'build', 'working', 3, {}], ['skip:e2e-security-review', 'e2e-security-review', 'agent', 'queued', 2.5, { note: 'the change touches no security paths', fromStage: 'build' }], ['e2e:routed:2', 'review', 'review', 'queued', 2.5, { fromStage: 'build' }]] as const) {
+  await ensure('ticket_events', { ticket: routed, cause }, { ticket: routed, workspace, at: new Date(seedNow - hoursAgo * 3600e3).toISOString(), stage, stageKind: kind, phase, executor: 'factory', cause, ...extra })
+}
 // Own Ticket of the release-failed case in ticket.spec.ts (#2 on Acme Checks): release checks failed with no run link, so the next-step bar falls back to the details link.
 await ensure('tickets', { externalId: 'e2e-checks-2' }, { title: 'Release the CSV checks', externalId: 'e2e-checks-2', number: 2, url: 'https://github.com/acme/checks/issues/2', state: 'open', labels: ['bauherr:stage:release'], stage: 'release', releaseChecksState: 'failed', product: checksProduct, workspace, rank: '000026' })
 await run(t5, 'review', 'succeeded', {

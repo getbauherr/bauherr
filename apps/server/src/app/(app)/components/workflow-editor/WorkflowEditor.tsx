@@ -190,7 +190,7 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
 
   const a = data.active
   const status = a ? `Version ${a.version}${a.shipped ? ' (the shipped default)' : ''}, applied ${a.at.slice(0, 10)}${a.via === 'boot' ? ' from the boot file' : a.via === 'seed' ? ' by the seed' : a.by ? ` by ${a.by}` : ''}` : 'Shipped default'
-  const panelFor = pick && doc ? <StepPanel key={pick} yaml={yaml} doc={doc} findings={findings} name={pick} roles={roles} skills={data.skills} mutate={mutate} onBack={() => setSelected(null)} /> : null
+  const panelFor = pick && doc ? <StepPanel key={pick} yaml={yaml} doc={doc} findings={findings} name={pick} roles={roles} skills={data.skills} pathSets={data.pathSets} mutate={mutate} onBack={() => setSelected(null)} /> : null
 
   return (
     <div className="@container flex min-w-0 flex-col gap-4">
@@ -311,7 +311,7 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
         </div>
       )}
 
-      <AddStep adding={adding} roles={roles} skills={data.skills} onClose={() => setAdding(null)} onAdd={onAdd} />
+      <AddStep adding={adding} roles={roles} skills={data.skills} pathSets={data.pathSets} onClose={() => setAdding(null)} onAdd={onAdd} />
       {doc && base.ok && (
         <ReviewDialog
           open={reviewing}

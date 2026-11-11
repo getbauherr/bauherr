@@ -111,7 +111,7 @@ export const forgeKinds = async (payload: Payload, workspace: number): Promise<M
 
 /** The newest stage-change event of each Ticket: when it entered its current stage. */
 const stageEntries = async (payload: Payload, tickets: number[]): Promise<Map<number, string>> =>
-  !tickets.length ? new Map() : new Map((await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "ticket_id" AS ticket, "at" FROM "ticket_events" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) AND "stage" IS NOT NULL AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "ticket_id", "at" DESC, "id" DESC`)).rows.map((r) => [r.ticket as number, new Date(r.at as string).toISOString()]))
+  !tickets.length ? new Map() : new Map((await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "ticket_id" AS ticket, "at" FROM "ticket_events" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) AND "stage" IS NOT NULL AND COALESCE("cause", '') NOT LIKE 'skip:%' AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "ticket_id", "at" DESC, "id" DESC`)).rows.map((r) => [r.ticket as number, new Date(r.at as string).toISOString()]))
 
 /** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
 const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null }[], wip: Base['wip']): Promise<TicketRow[]> => {

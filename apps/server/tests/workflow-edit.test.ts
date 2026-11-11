@@ -97,7 +97,7 @@ describe('removeStep and moveStep', () => {
     const r = e.removeStep(yaml, 'security')
     valid(r)
     expect(stage(r, 'build').outcomes.done).toBe(name)
-    expect(e.removeStep(careful, 'security')).toSatisfy((y: string) => lint(doc(y)).length === 0 && stage(y, 'build').outcomes.done === 'review')
+    expect(e.removeStep(careful, 'security-review')).toSatisfy((y: string) => lint(doc(y)).length === 0 && stage(y, 'build').outcomes.done === 'ux-review')
   })
   it('move down and up swap two custom steps', () => {
     const { yaml, name } = withTwo()
@@ -112,7 +112,7 @@ describe('removeStep and moveStep', () => {
     expect(() => e.moveStep(base, 'plan', 1)).not.toThrow()
   })
   it('a swap the rules forbid fails lint', () => {
-    expect(lint(doc(e.moveStep(careful, 'security', 1))).length).toBeGreaterThan(0)
+    expect(lint(doc(e.moveStep(careful, 'test-review', 1))).length).toBeGreaterThan(0)
   })
 })
 
@@ -171,7 +171,7 @@ describe('describeChanges', () => {
   })
   it('names removed steps, split and moved steps', () => {
     const a = e.addStep(careful, { after: 'build', kind: 'human', title: 'Look', choices: ['Fine'] })
-    expect(describeChanges(doc(careful), doc(e.removeStep(careful, 'security')))).toContain('Removed step Security review')
+    expect(describeChanges(doc(careful), doc(e.removeStep(careful, 'security-review')))).toContain('Removed step Security review')
     expect(describeChanges(doc(base), doc(e.setSplit(base, false)))).toEqual(['Plan: large tickets can no longer be split into sub-tickets'])
     expect(describeChanges(doc(a.yaml), doc(e.moveStep(a.yaml, a.name, 1)))).toContain('Step moved: Look now comes after Security review')
   })

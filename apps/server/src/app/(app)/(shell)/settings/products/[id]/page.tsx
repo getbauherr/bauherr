@@ -11,13 +11,13 @@ import { Tab, Tabs } from '../../../../components/ui/tabs'
 import { RadioCards, SettingsSection, SetupChecklist, ToggleRow } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
-import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode, saveOverlapIgnore, saveSecurityScan, startScan, suggestOverlapPaths } from '../../actions'
+import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode, saveOverlapIgnore, savePathSets, saveSecurityScan, startScan, suggestOverlapPaths } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
 const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
 /** Section anchor -> tab, for the setup checklist and for links that name a section (`#production`). */
-const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
+const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', 'path-sets': 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 
@@ -170,6 +170,36 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
               </>
             ) : (
               <p className="small mono">{p.overlap.ignore.join(', ') || 'None'}</p>
+            )}
+          </SettingsSection>
+          <SettingsSection id="path-sets" title="Path sets" purpose="Named groups of paths that steps of the workflow refer to, for example a security review that runs only when a change touches security paths. A step that names a set this Product has not declared never runs for it.">
+            {p.pathSets.never.length > 0 && (
+              <ul className="small m-0 flex list-none flex-col gap-1 p-0" data-testid="path-sets-never">
+                {p.pathSets.never.map((x) => (
+                  <li key={x.stage} className="rounded-md border border-warn px-3 py-2">{x.title} never runs for this Product: no {x.names.map((n, i) => <span key={n}>{i > 0 && ' or '}<code className="mono">{n}</code></span>)} paths declared.</li>
+                ))}
+              </ul>
+            )}
+            {admin ? (
+              <>
+                <SettingsForm action={savePathSets}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <Field name="sets" label="Path sets" hint="One set per line: its name, a colon, then paths separated by commas. A path may use * and **. A set without paths never matches." rows={5} defaultValue={p.pathSets.text} example="security: src/auth/**, src/api/**" />
+                </SettingsForm>
+                {p.pathSets.missing.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="small text-muted-foreground">Suggested names:</span>
+                    {p.pathSets.missing.map((n) => (
+                      <SettingsForm key={n} action={savePathSets} submit={`Add ${n}`} inline>
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="add" value={n} />
+                      </SettingsForm>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="small mono whitespace-pre-line">{p.pathSets.text || 'None'}</p>
             )}
           </SettingsSection>
         </>

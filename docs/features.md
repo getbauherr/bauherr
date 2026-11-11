@@ -20,6 +20,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Run mode per stage | Autonomous (the Runner) or session (your Claude Code) | Settings › Factory › Models & budget (`/settings/models`) | Live |
 | One factory file per Workspace | Edit visually or as YAML in a draft, review the changes in words, apply (versioned), history with restore, download; stages can be added, renamed, removed and reordered, with exactly one build, review, release chain | `/workflow/edit`; `bauherr apply -f <file> --workspace <slug> [--dry-run]`, `bauherr export`; `GET`/`PUT /api/workspaces/<slug>/factory`; `BAUHERR_FACTORY_FILE` at boot | Live |
 | Custom `agent` and `human` stages | A role works the Ticket and reports an outcome, or a person picks one; outcomes route Tickets; shown in the graph, Inbox, Path and Steps, Insights | Factory file | Live |
+| Conditional steps | A specialist step (security, UX, tests) runs only when the change touches a path set of the Product, has a label or is of a request type; otherwise it is skipped and the Steps list says why | Workflow editor, "When does this step run?" (`/workflow/edit`); Product › Checks & merging › Path sets; presets Standard and Careful | Live |
 | Approve plan on by default | Every plan waits for the owner; remove the gate in the factory file to let plans through | Factory file | Live |
 
 ## Tickets
