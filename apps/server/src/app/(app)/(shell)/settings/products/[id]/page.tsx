@@ -11,13 +11,13 @@ import { Tab, Tabs } from '../../../../components/ui/tabs'
 import { RadioCards, SettingsSection, SetupChecklist, ToggleRow } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
-import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode, saveSecurityScan, startScan } from '../../actions'
+import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode, saveOverlapIgnore, saveSecurityScan, startScan, suggestOverlapPaths } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
 const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
 /** Section anchor -> tab, for the setup checklist and for links that name a section (`#production`). */
-const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', merging: 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
+const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', merging: 'checks', overlap: 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 
@@ -135,6 +135,38 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                   <input type="hidden" name="id" value={p.id} />
                 </SettingsForm>
               </>
+            )}
+          </SettingsSection>
+          <SettingsSection id="overlap" title="Paths that never hold a Build" purpose="A Build does not start while an earlier Ticket in Build or Review changes the same paths (from the plan's Files section, then the pull request). Paths listed here never hold anything.">
+            {admin ? (
+              <>
+                <SettingsForm action={saveOverlapIgnore}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <Field name="ignore" label="Paths that never hold a Build" hint="One path glob per line." rows={4} defaultValue={p.overlap.ignore.join('\n')} example="pnpm-lock.yaml" />
+                </SettingsForm>
+                <SettingsForm action={suggestOverlapPaths} submit="Suggest paths" inline>
+                  <input type="hidden" name="id" value={p.id} />
+                  <span className="small text-muted-foreground">{p.overlap.suggestedAt ? `Suggested ${when(p.overlap.suggestedAt)} from the last 100 merged pull requests.` : 'Not suggested yet. Reads the last 100 merged pull requests from the forge.'}</span>
+                </SettingsForm>
+                {p.overlap.suggestions.length > 0 && (
+                  <>
+                    <p className="small text-muted-foreground">Changed in at least 25% of the last 100 merged pull requests. Nothing is applied until you add it.</p>
+                    <ul>
+                      {p.overlap.suggestions.map((x) => (
+                        <li key={x.path}>
+                          <SettingsForm action={saveOverlapIgnore} submit="Add" inline>
+                            <input type="hidden" name="id" value={p.id} />
+                            <input type="hidden" name="add" value={x.path} />
+                            <span className="mono">{x.path}</span> <span className="small text-muted-foreground">{x.percent}%</span>
+                          </SettingsForm>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="small mono">{p.overlap.ignore.join(', ') || 'None'}</p>
             )}
           </SettingsSection>
         </>

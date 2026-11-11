@@ -15,7 +15,7 @@ export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admi
 ]
 
 /** The sidebar Settings link opens the first page everyone may open. */
-export const settingsItem = (): NavItem => ({ href: '/settings/profile', label: 'Settings', Icon: Settings, match: (p) => p.startsWith('/settings') })
+export const settingsItem = (): NavItem => ({ href: '/settings/profile', label: 'Settings', Icon: Settings, match: (p) => p.startsWith('/settings') || p.startsWith('/workflow/edit') })
 
 type Entry = [label: string, href: string]
 export type SettingsGroup = { heading: string; entries: Entry[] }
@@ -23,7 +23,7 @@ export type SettingsGroup = { heading: string; entries: Entry[] }
 /** Settings pages by scope (Account, Factory, Workspace, Admin) that this person may open. */
 export const settingsGroups = (admin: boolean): SettingsGroup[] => [
   { heading: 'Account', entries: [['Profile', '/settings/profile'], ['API keys', '/settings/api-key']] },
-  { heading: 'Factory', entries: [...(admin ? [['Workflow', '/settings/workflow'] as Entry] : []), ['Templates', '/settings/templates'], ...(admin ? [['Models & budget', '/settings/models'] as Entry] : []), ['AI usage', '/settings/usage']] },
+  { heading: 'Factory', entries: [...(admin ? [['Workflow', '/workflow/edit'] as Entry] : []), ['Templates', '/settings/templates'], ...(admin ? [['Models & budget', '/settings/models'] as Entry] : []), ['AI usage', '/settings/usage']] },
   { heading: 'Workspace', entries: [['General', '/settings/workspace'], ['Products', '/settings/products'], ...(admin ? [['Connections', '/settings/connections'] as Entry] : []), ['People', '/settings/bauherren'], ...(admin ? [['Knowledge', '/settings/knowledge'] as Entry] : [])] },
   ...(admin ? [{ heading: 'Admin', entries: [['Health', '/settings/health'], ['Audit', '/settings/audit'], ['Chat feedback', '/settings/chat-feedback']] as Entry[] }] : []),
 ]

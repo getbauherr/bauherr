@@ -13,12 +13,12 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Workflow graph | The stages as a graph with open Tickets, who waits on whom, medians and the human checkpoints; the home page | `/` | Live |
 | Graph and Epics views | The Ticket dependency graph, and parent Tickets with their sub-tickets | `/?view=graph`, `/?view=epics` | Live |
 | Stage table and ranking | Tickets per stage; drag, Alt+arrows or the row menu rank them | `/` | Live |
-| Stages from the factory file | Stage kinds (triage, plan, build, review, release, container, done, agent, human), roles, outcomes and WIP in one file; [`pack/factory.yaml`](../pack/factory.yaml) is the default | `/settings/workflow#factory-file`; "Edit workflow" on `/` (Admin) | Live |
-| WIP limits | A cap on open Tickets per stage | `/settings/workflow` (Admin) | Live |
+| Stages from the factory file | Stage kinds (triage, plan, build, review, release, container, done, agent, human), roles, outcomes and WIP in one file; [`pack/factory.yaml`](../pack/factory.yaml) is the default | `/workflow/edit`; "Edit workflow" on `/` (Admin) | Live |
+| WIP limits | A cap on open Tickets per stage | Workflow editor, "at most N tickets at a time" on a step (`/workflow/edit`, Admin) | Live |
 | Overlap hold | A Build waits while another Ticket touches the same paths; paths that never hold, with suggestions | Settings › Factory › Workflow (Admin) | Live |
-| Expedite lane | A hotfix skips the queue and, per Product, staging approval | Ticket page "Expedite"; toggle on `/settings/workflow` | Live |
+| Expedite lane | A hotfix skips the queue and, per Product, staging approval | Ticket page "Expedite"; switch in the workflow editor | Live |
 | Run mode per stage | Autonomous (the Runner) or session (your Claude Code) | Settings › Factory › Models & budget (`/settings/models`) | Live |
-| One factory file per Workspace | Edit, check, apply (versioned), download and reset; stages can be added, renamed, removed and reordered, with exactly one build, review, release chain | `/settings/workflow#factory-file`; `bauherr apply -f <file> --workspace <slug> [--dry-run]`, `bauherr export`; `GET`/`PUT /api/workspaces/<slug>/factory`; `BAUHERR_FACTORY_FILE` at boot | Live |
+| One factory file per Workspace | Edit visually or as YAML in a draft, review the changes in words, apply (versioned), history with restore, download; stages can be added, renamed, removed and reordered, with exactly one build, review, release chain | `/workflow/edit`; `bauherr apply -f <file> --workspace <slug> [--dry-run]`, `bauherr export`; `GET`/`PUT /api/workspaces/<slug>/factory`; `BAUHERR_FACTORY_FILE` at boot | Live |
 | Custom `agent` and `human` stages | A role works the Ticket and reports an outcome, or a person picks one; outcomes route Tickets; shown in the graph, Inbox, Path and Steps, Insights | Factory file | Live |
 | Approve plan on by default | Every plan waits for the owner; remove the gate in the factory file to let plans through | Factory file | Live |
 

@@ -21,7 +21,7 @@ const o = { depth: 0, overrideAccess: true } as const
 const PAGES: Record<string, string> = {
   '/': 'Workflow', '/inbox': 'Inbox', '/insights': 'Insights', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
   '/settings': 'Settings', '/settings/api-key': 'Settings: API keys', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
-  '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/settings/workflow': 'Settings: Workflow', '/settings/workspace': 'Settings: Workspace', '/settings/models': 'Settings: Models & budget', '/settings/profile': 'Settings: Profile', '/settings/knowledge': 'Settings: Knowledge repo', '/settings/health': 'Settings: Health',
+  '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/workflow/edit': 'Workflow editor', '/settings/workspace': 'Settings: Workspace', '/settings/models': 'Settings: Models & budget', '/settings/profile': 'Settings: Profile', '/settings/knowledge': 'Settings: Knowledge repo', '/settings/health': 'Settings: Health',
 }
 /** One line of text others wrote: no line breaks or markup that could pose as page structure. */
 const line = (s: unknown, n = 120): string => String(s ?? '').replace(/\s+/g, ' ').replace(/[<>`]/g, '').trim().slice(0, n)
@@ -167,6 +167,7 @@ export const resolveContext = async (payload: Payload, user: Doc, workspace: num
   }
   if (section === 'settings' && id === 'products' && more.length === 1 && numeric(more[0]!) !== null) return productPage(payload, ws, numeric(more[0]!)!)
   if (section === 'settings' && id && !more.length && PAGES[path]) return settingsPage(payload, ws, id, PAGES[path])
+  if (path === '/workflow/edit') return settingsPage(payload, ws, 'workflow', PAGES[path])
   if (path === '/inbox') return inboxPage(payload, user, ws)
   if (path === '/') return workflowPage(ws, a.path)
   if (path === '/insights') return insightsPage(payload, ws, a.path)

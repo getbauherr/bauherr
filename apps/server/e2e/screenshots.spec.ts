@@ -94,6 +94,15 @@ for (const theme of ['light', 'dark'] as const) {
   })
 }
 
+for (const theme of ['light', 'dark'] as const) {
+  test(`workflow editor ${theme}`, async ({ page }) => {
+    await signIn(page, theme)
+    await page.goto('/workflow/edit')
+    await expect(page.getByTestId('step').first()).toBeVisible()
+    await shoot(page, theme === 'light' ? 'screenshot-workflow-editor' : 'screenshot-workflow-editor-dark')
+  })
+}
+
 test('inbox', async ({ page }) => {
   await signIn(page, 'light')
   await page.goto('/inbox?checkpoint=Approve+plan')

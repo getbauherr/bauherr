@@ -94,7 +94,7 @@ export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; wo
   </Card>
 )
 
-/** The human gates in flow order. The last row (production) is passed in: a switch on the Product page, a state word on /settings/workflow. */
+/** The human gates in flow order. The last row (production) is passed in: a switch on the Product page, a state word on the workflow editor. */
 export function GateLadder({ plan, staging, children }: { plan: boolean; staging: boolean; children: ReactNode }) {
   const word = (on: boolean) => (on ? 'On' : 'Off')
   return (

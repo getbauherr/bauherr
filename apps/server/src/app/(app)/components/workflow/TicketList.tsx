@@ -34,7 +34,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
         const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}</span> : <span className="text-muted-foreground">{rows.length}</span>
         return (
           <section key={stage} data-stage={stage} className="col flex flex-col gap-2" aria-label={stageTitle(wf, stage)}>
-            <h2 className={cn('m-0 flex items-baseline gap-2 py-1 text-[13px] font-semibold capitalize', sticky && 'sticky top-0 z-10 bg-background')} data-testid="group-heading">{stageTitle(wf, stage)} {limit != null && admin ? <Link href="/settings/workflow#wip" className="hover:underline">{count}</Link> : count}</h2>
+            <h2 className={cn('m-0 flex items-baseline gap-2 py-1 text-[13px] font-semibold capitalize', sticky && 'sticky top-0 z-10 bg-background')} data-testid="group-heading">{stageTitle(wf, stage)} {limit != null && admin ? <Link href="/workflow/edit" className="hover:underline">{count}</Link> : count}</h2>
             {stage === collapsed ? (
               <Link href={expandHref!} scroll={false} className="small rounded-md border border-border bg-card px-3 py-2 text-primary hover:bg-accent" data-testid="show-done-group">Show {rows.length} done</Link>
             ) : (

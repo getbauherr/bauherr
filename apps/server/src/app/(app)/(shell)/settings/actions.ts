@@ -24,10 +24,8 @@ import { isTemplateName, lintTemplate } from '../../../../lib/template-text'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
-import { modeStages, wipStages } from '../../../../lib/workflow'
-import { parse } from 'yaml'
-import { applyFactory, packSource, workflowFor, type ApplyResult } from '../../../../lib/factory'
-import { personOf } from '../../../../lib/person'
+import { modeStages } from '../../../../lib/workflow'
+import { workflowFor } from '../../../../lib/factory'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -87,26 +85,6 @@ export const saveKnowledge = act({}, async ({ user, workspace, payload, w }, fd)
   const conn = Number(s(fd, 'knowledgeConnection')) || undefined
   await assertInWorkspace(payload, 'connections', [conn], wsId)
   await payload.update({ collection: 'workspaces', id: wsId, data: { knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null }, ...w } as never)
-})
-
-/** WIP limits per Board column: a whole number of at least 1, empty for no limit. */
-export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd) => {
-  only(user)
-  const wsId = inWorkspace({ workspace })
-  const limits: Record<string, number> = {}
-  for (const stage of wipStages(workflowFor(wsId))) {
-    const v = s(fd, `wip_${stage}`)
-    if (v === '') continue
-    if (!/^[1-9]\d*$/.test(v)) throw Object.assign(new Error('Invalid limit.'), { data: { errors: [{ path: `wip_${stage}`, message: 'A whole number of at least 1, or empty for no limit' }] } })
-    limits[stage] = Number(v)
-  }
-  await payload.update({ collection: 'workspaces', id: wsId, data: { wipLimits: limits }, ...w } as never)
-})
-
-/** Settings > Factory > Workflow "Expedite lane": off makes the Workspace ignore the `bauherr:expedite` label. */
-export const saveExpediteLane = act({}, async ({ user, workspace, payload, w }, fd) => {
-  only(user)
-  await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { expediteLane: fd.get('expediteLane') === 'on' }, ...w } as never)
 })
 
 /** Paths that never hold a Build for overlap: the textarea (one glob per line) replaces the list; `add` appends one suggested path. */
@@ -413,36 +391,6 @@ export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revoke
 export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))
-
-export type FactoryAnswer = ApplyResult & { note?: string; source?: string }
-
-const factoryAs = async (yaml: string, base: number | null, opts: { dryRun?: boolean }): Promise<FactoryAnswer> => {
-  const { user, workspace } = await currentWorkspace()
-  only(user)
-  const wsId = inWorkspace({ workspace })
-  const payload = await payloadClient()
-  const r = await applyFactory(payload, wsId, yaml, { by: personOf(user), via: 'ui', ...(base !== null && { baseVersion: base }), ...opts })
-  if (!r.ok) return r
-  const doc = parse(yaml) as { workflow: { stages: unknown[] }; team: { roles: object } }
-  const shape = `${doc.workflow.stages.length} stages, ${Object.keys(doc.team.roles).length} roles`
-  if (!opts.dryRun && r.changed) {
-    revalidatePath('/settings', 'layout')
-    revalidatePath('/')
-  }
-  return { ...r, note: opts.dryRun ? (r.changed ? `Valid: ${shape}.` : `Valid: ${shape}. Identical to the active version.`) : r.changed ? `Applied: version ${r.version}.` : 'No change: this version is already active.' }
-}
-
-/** Dry run of the edited file against the Workspace (Admin only). */
-export const checkFactoryFile = async (yaml: string, base: number): Promise<FactoryAnswer> => factoryAs(yaml, base, { dryRun: true })
-
-/** Applies the edited file; refused when the active version moved since it was loaded. */
-export const applyFactoryFile = async (yaml: string, base: number): Promise<FactoryAnswer> => ({ ...(await factoryAs(yaml, base, {})), source: yaml })
-
-/** Applies the factory file shipped with Bauherr. */
-export const resetFactoryFile = async (): Promise<FactoryAnswer> => {
-  const yaml = packSource()
-  return { ...(await factoryAs(yaml, null, {})), source: yaml }
-}
 
 /** Admin: saves the Workspace's version of a template; refused while the linter finds an error (the factory depends on those parts). */
 export const saveTemplate = act({}, async ({ user, workspace, payload }, fd) => {

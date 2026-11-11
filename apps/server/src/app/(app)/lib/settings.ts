@@ -3,16 +3,13 @@ import { formatReviewChecks } from '@bauherr/runner'
 import { ValidationError } from 'payload'
 import { type Cause, FINDING_FRESH_MS } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
-import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../../../lib/mode'
+import { gateOn, productionGateOn } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
-import { wipLimit } from '../../../lib/wip-limits'
-import { wipStages } from '../../../lib/workflow'
-import { activeVersion, defaultHash, exportFactory, workflowFor } from '../../../lib/factory'
+import { workflowFor } from '../../../lib/factory'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
-import { wipCount } from '../../../lib/wip'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -82,6 +79,13 @@ export async function loadWorkspaceSettings(id: number) {
   }
 }
 
+/** The paths that never hold a Build for this Product and the stored suggestions that are not listed yet. */
+const overlapOf = (p: Record<string, any>) => {
+  const ignore = (p.overlapIgnore ?? []) as string[]
+  const stored = p.overlapSuggestions as { at: string; items: { path: string; percent: number }[] } | null
+  return { ignore, suggestions: (stored?.items ?? []).filter((x) => !ignore.includes(x.path)), suggestedAt: stored?.at ?? null }
+}
+
 export async function loadProducts(workspace: number) {
   const payload = await payloadClient()
   const where = { workspace: { equals: workspace } }
@@ -98,6 +102,7 @@ export async function loadProducts(workspace: number) {
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
+          overlap: overlapOf(p),
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
@@ -279,31 +284,6 @@ export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: 
     }
   })
   return { rows, errors }
-}
-
-/** The Workspace's workflow with the mode each stage resolves to, its WIP columns and the active factory file version. */
-export async function loadWorkflow(workspace: number) {
-  const payload = await payloadClient()
-  const wf = workflowFor(workspace)
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true, expediteLane: true }, ...o } as never)) as Doc
-  const stages = packed(wf).map((s) => ({ name: s.name, mode: resolveMode(wf, ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
-  const products = await payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, sort: 'name', pagination: false, ...o } as never)
-  const wip = await Promise.all(wipStages(wf).map(async (s) => ({ stage: s, limit: wipLimit(ws, s, wf), count: await wipCount(payload, workspace, s) })))
-  const overlap = (products.docs as unknown as Doc[]).map((p) => {
-    const ignore = (p.overlapIgnore ?? []) as string[]
-    const stored = p.overlapSuggestions as { at: string; items: { path: string; percent: number }[] } | null
-    return { id: p.id as number, name: p.name as string, ignore, suggestions: (stored?.items ?? []).filter((x) => !ignore.includes(x.path)), suggestedAt: stored?.at ?? null }
-  })
-  const active = await activeVersion(payload, workspace)
-  return {
-    stages,
-    wip,
-    expediteLane: ws.expediteLane !== false,
-    overlap,
-    gates: humanGates(wf),
-    ladder: { plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), production: productionGateOn(wf) },
-    factory: { active, custom: !!active && active.hash !== defaultHash(), source: await exportFactory(payload, workspace), stageCount: wf.stages.length, roleCount: wf.roles.length },
-  }
 }
 
 /** Factory health: instance-wide job counts of the last 24 h, the oldest queued job (within 7 days), last poll and error per Ticket source of the Workspace, and the top 5 flaky checks (passed after a retry) of the last 30 days. */

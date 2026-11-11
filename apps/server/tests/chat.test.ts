@@ -328,7 +328,7 @@ it('context: ticket, run, home and settings pages from the path; a foreign id is
   const ins = await c('/insights?range=7')
   expect(ins.label).toBe('Insights')
   expect(ins.markdown).toMatch(/last 7 days\.\nDone: \d+; lead time median .*\nShare of time: .*\nBottleneck: /)
-  expect((await c('/settings/workflow')).markdown).toMatch(/Stages: .*Plan.*\n.*Human gates/)
+  expect((await c('/workflow/edit')).markdown).toMatch(/Stages: .*Plan.*\n.*Human gates/)
   expect((await c('/settings/models')).markdown).toContain('Model tiers: cheap=')
   expect(await c('/releases')).toMatchObject({ label: 'Releases' })
   expect((await c('/nope/at/all')).label).toBe('Unknown page')
