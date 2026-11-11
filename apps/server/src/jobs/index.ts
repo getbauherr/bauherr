@@ -16,7 +16,7 @@ import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { runTrains } from '../lib/train'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
@@ -696,7 +696,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', role: roleOf(wf, run.stage)?.id, model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
       const r = await exec(ctx)
       await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
-      const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
+      const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review, { round: reviewRoundOf(ticket), demote: true }) : null
       let agent: { outcome: string; comment?: string } | null = null
       let agentError: string | undefined
       if (kind === 'agent' && r.status === 'succeeded') {
@@ -727,7 +727,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         id: run.id,
         data: {
           status: agentError ? 'failed' : r.status,
-          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
+          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, open: review.open, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
           error: agentError ?? (r.status === 'succeeded' ? null : r.reason),
           ...(r.status === 'needs_human' && { reasonKind: r.reasonKind ?? 'decision' }),
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null, reviewedPatchId: r.artifacts.reviewedPatchId || null }),

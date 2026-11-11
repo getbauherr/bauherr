@@ -43,6 +43,9 @@ export type RunCtx = {
   product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
+  /** Review Run: the review round (1 = first), and from round 2 the head the previous review covered; review only the diff from it to the new head (the fix). */
+  reviewRound?: number;
+  fixBase?: string;
   /** Build Run on an existing MR: the Runner merges the base branch in before the agent (and skips the agent when the merge is clean). */
   mergeBase?: boolean;
   /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */

@@ -13,7 +13,7 @@ let mergeMode: typeof import('../src/lib/merge-mode')
 const o = { overrideAccess: true } as const
 const repo = 'acme/queue'
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
-const clean = { verdict: 'clean' as const, findings: [], markdown: '**Verdict**: clean' }
+const clean = { verdict: 'clean' as const, findings: [], open: [], markdown: '**Verdict**: clean' }
 const minutes = (n: number) => Date.now() + n * 60_000
 
 let testDb: TestDb

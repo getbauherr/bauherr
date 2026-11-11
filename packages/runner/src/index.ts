@@ -108,7 +108,8 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     if (ctx.run.kind === 'review') {
       const remote = `origin/${base}`;
       artifacts.reviewedPatchId = await patchId(clone, clone.env, base).catch(() => '');
-      if (ctx.conflictBase) await interdiff(clone, clone.env, base, ctx.conflictBase, join(clone.dir, DIFF_FILE));
+      const since = ctx.conflictBase ?? ctx.fixBase;
+      if (since) await interdiff(clone, clone.env, base, since, join(clone.dir, DIFF_FILE));
       else await git(clone.dir, clone.env, 'diff', `--output=${DIFF_FILE}`, `${remote}...HEAD`).catch(() => git(clone!.dir, clone!.env, 'diff', `--output=${DIFF_FILE}`, remote, 'HEAD'));
     }
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,

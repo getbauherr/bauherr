@@ -7,6 +7,7 @@ import { moveStage } from './stage-move'
 import { enterStage } from './wip'
 import { backendFor } from './adapters'
 import { prOf } from './release'
+import { fixBaseOf, reviewRoundOf } from './actions'
 import { dequeueBeforeChange } from './merge-mode'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, scanCaps } from './investigation'
 import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
@@ -111,6 +112,7 @@ export const buildRunCtx = async (
   const def = stageOf(wf, run.stage)
   const roleModel = !escalated && role?.provider && role.model ? `ws-${ws.slug}/${role.provider}/${role.model}` : undefined
   const tier = escalated ? 'strong' : role?.tier ?? (kind === 'review' || kind === 'scan' ? 'standard' : 'cheap')
+  const fixBase = kind === 'review' ? await fixBaseOf(payload, ticket) : null
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
@@ -124,6 +126,7 @@ export const buildRunCtx = async (
       ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
     ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
+    ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
     product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
       ...(kind === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },

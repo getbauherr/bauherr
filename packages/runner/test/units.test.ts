@@ -210,6 +210,16 @@ test('conflictBase scopes the review prompt, not the triage prompt', () => {
   assert.doesNotMatch(promptFor(triage), /abc123/);
 });
 
+test('a later review round is told it sees only the fix and which findings count', () => {
+  const review = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'http://y' });
+  review.run.stage = review.run.kind = 'review';
+  assert.doesNotMatch(promptFor(review), /review round/);
+  review.reviewRound = 2;
+  review.fixBase = 'def456';
+  assert.match(promptFor(review), /review round 2: the diff above is only what changed since the reviewed head def456 \(the fix\); only security, correctness, wrong-results and data-loss findings/);
+  assert.match(promptFor(review), /needs test .*without test it is moved to open/);
+});
+
 const rows = (n: number) => Array.from({ length: n }, (_, i) => `| ${i + 1} | done | x |`).join('\n');
 const check = (config: ReviewChecks | null, files: string[], evidence = '', planSteps = 0, exists: string[] = []) =>
   preReviewChecks({ files, evidence, planSteps, exists: (p) => exists.includes(p), config });

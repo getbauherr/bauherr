@@ -14,7 +14,7 @@ const repo = 'acme/train'
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 const redRun = 'https://github.com/acme/train/actions/runs/9'
 const red = [{ name: 'ci', status: 'completed', conclusion: 'failure', url: redRun }]
-const clean = { verdict: 'clean' as const, findings: [], markdown: '**Verdict**: clean' }
+const clean = { verdict: 'clean' as const, findings: [], open: [], markdown: '**Verdict**: clean' }
 
 let testDb: TestDb
 beforeAll(async () => {

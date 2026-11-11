@@ -122,12 +122,12 @@ const submit = (r: { runId: number; leaseToken: string }, findings: any[] = [], 
 const comments = async (n: string) => (await fake.tickets(repo).listComments(n)).map((c) => c.body)
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
 const prState = async (n: number) => (await fake.forge.getPullRequest(repo, n)).state
-const medium = { severity: 'medium', file: 'a.ts', line: 3, msg: 'off by one', scenario: 'when n is 0, then it returns -1' }
+const medium = { severity: 'medium', class: 'security', file: 'a.ts', line: 3, msg: 'off by one', scenario: 'when n is 0, then it returns -1' }
 
 it('clean review + green checks merges with no human touch; watch-release then releases', async () => {
   const { id, pr, branch } = await seed({ checks: green })
   const r = await review(id)
-  expect(await submit(r, [{ severity: 'low', file: 'a.ts', line: 1, msg: 'nit', scenario: 's' }])).toMatchObject({ verdict: 'clean', outcome: 'merged' })
+  expect(await submit(r, [{ severity: 'low', class: 'low', file: 'a.ts', line: 1, msg: 'nit', scenario: 's' }])).toMatchObject({ verdict: 'clean', outcome: 'merged' })
   expect(await prState(pr.number)).toBe('merged')
   expect((await fake.forge.listBranches(repo)).some((b) => b.name === branch)).toBe(false)
   expect((await reload(id)).reviewState).toBe('merged')
@@ -159,7 +159,7 @@ it('clean + pending checks waits, then merges once on the next tick', async () =
 it('a medium finding goes back to Build on the same MR branch with the findings in the worklog', async () => {
   const { id, pr, n, branch } = await seed({ checks: green })
   const r = await review(id)
-  expect(await submit(r, [medium, { severity: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }], 'the review')).toMatchObject({ verdict: 'changes', outcome: 'build' })
+  expect(await submit(r, [medium, { severity: 'low', class: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }], 'the review')).toMatchObject({ verdict: 'changes', outcome: 'build' })
   expect(await prState(pr.number)).toBe('open')
   expect(await reload(id)).toMatchObject({ stage: 'build', reviewState: null, reviewRounds: 1 })
   const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).docs
@@ -180,7 +180,7 @@ it('a review round only touches Current instructions, Unfinished work and Open; 
   const rest = '**Owners**\n| Item / lane | Owner (Run or person) | Paths |\n| lane | Run 5 | a.ts |\n\n'
   const tail = '**Decisions**\n- 2026-11-01 Use X. Consequence: Y. By: plan.\n\n**Affected Tickets**\n- #9 blocked'
   await fake.tickets(repo).comment(n, `<!-- bauherr:worklog -->\n## Worklog\n${kept}**Current instructions**\nold\n\n${rest}**Unfinished work**\n- item\n\n**Open**\n-\n\n${tail}`)
-  const low = { severity: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }
+  const low = { severity: 'low', class: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }
   for (const round of [1, 2]) {
     expect(await submit(await review(id), [medium, low])).toMatchObject({ outcome: 'build' })
     await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
@@ -252,7 +252,7 @@ it('submit_review is refused without the lease and on a non-review Run', async (
   await expect(submit(r)).rejects.toThrow('lease lost')
 })
 
-const blocker = (n: number) => ({ severity: 'high', file: 'a.ts', line: n, msg: 'x', scenario: 'y' })
+const blocker = (n: number) => ({ severity: 'high', class: 'security', file: 'a.ts', line: n, msg: 'x', scenario: 'y' })
 /** A claimed build Run on a fresh Ticket, for finish_run. */
 const buildRun = async () => {
   const { t } = await seed()
@@ -1057,4 +1057,86 @@ it('restart-parked: a same-diff main merge is rebound, no new review Run', async
   await actions.restartParkedReviews(payload)
   expect(await reviewRuns(s.id)).toBe(1)
   expect((await comments(s.n)).some((c) => c.includes('review restarted'))).toBe(false)
+})
+
+const test = { command: 'pnpm vitest run tests/n.test.ts', failure: 'expected 0 received -1', patch: 'it("n 0", () => expect(f(0)).toBe(0))' }
+const correctness = { severity: 'high', class: 'correctness', file: 'a.ts', line: 3, msg: 'off by one', scenario: 'when n is 0, then -1' }
+const afterReturn = async (id: number) => {
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  const started = await jobs.startRunIfNeeded(payload, (await reload(id)) as any, 'review')
+  return { claim: await claimOnly(payload, call, member, ws, started!.run.id), runId: started!.run.id as number }
+}
+
+it('a correctness finding without a failing test is refused; with one it goes back to Build with the test named and its code on the MR', async () => {
+  const { id, n, pr } = await seed({ checks: green })
+  const r = await review(id)
+  await expect(submit(r, [correctness])).rejects.toThrow(/finding 0 \(correctness, a\.ts:3\) has no failing test.*move it to open with reason no-failing-test/)
+  expect((await payload.findByID({ collection: 'runs', id: r.runId, ...o })).status).toBe('running')
+  expect(await submit(r, [{ ...correctness, test }])).toMatchObject({ verdict: 'changes', outcome: 'build' })
+  const worklog = await actions.readWorklog(payload, member, { ticket: id })
+  expect(worklog).toContain('Failing test: `pnpm vitest run tests/n.test.ts` fails with: expected 0 received -1.')
+  expect(worklog).toContain('first add that test')
+  const comment = (await fake.forge.listPullRequestComments(repo, pr.number)).find((c) => c.body.startsWith(actions.REVIEW_MARKER))!.body
+  expect(comment).toContain('## Failing tests')
+  expect(comment).toContain(test.patch)
+  expect(n).toBeTruthy()
+})
+
+it('open items are stored, shown in the comment, kept for the Bauherr and never change the outcome', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const r = await review(id)
+  const open = [{ text: 'a.ts:3 might fail for n=0', reason: 'no-failing-test' }, { text: 'b.ts:1 needs a null row', reason: 'constructed-input' }]
+  expect(await submit(r, [], '**Verdict**: clean', { open })).toMatchObject({ verdict: 'clean', outcome: 'merged' })
+  expect((await payload.findByID({ collection: 'runs', id: r.runId, ...o })).artifacts.review.open).toEqual(open)
+  const comment = (await fake.forge.listPullRequestComments(repo, pr.number)).find((c) => c.body.startsWith(actions.REVIEW_MARKER))!.body
+  expect(comment).toContain('## Noted, not sent back\n- [no failing test] a.ts:3 might fail for n=0\n- [needs an input no real path produces] b.ts:1 needs a null row')
+})
+
+it('open items next to a counted finding land under Open in the worklog, not under Unfinished work', async () => {
+  const { id } = await seed({ checks: green })
+  expect(await submit(await review(id), [medium], 'm', { open: [{ text: 'scenario only', reason: 'no-failing-test' }] })).toMatchObject({ outcome: 'build' })
+  const w = await actions.readWorklog(payload, member, { ticket: id })
+  expect(w).toMatch(/\*\*Open\*\*\n- \[no failing test\] scenario only/)
+})
+
+it('a bad open item and the old shape without class are refused with a clear message', async () => {
+  const { id } = await seed({ checks: green })
+  const r = await review(id)
+  await expect(submit(r, [], 'm', { open: [{ text: 'x', reason: 'because' }] })).rejects.toThrow('open 0 needs text')
+  await expect(submit(r, [{ severity: 'medium', file: 'a.ts', line: 1, msg: 'x', scenario: 'y' }])).rejects.toThrow(/finding 0 needs class \(correctness\|wrong-results/)
+  await expect(submit(r, [{ ...medium, class: 'low' }])).rejects.toThrow('class low goes with severity low')
+})
+
+it('round 2: the claim names the round and the reviewed head, rule findings are refused, severe ones count', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const first = await review(id)
+  expect(await submit(first, [{ ...medium, class: 'rule' }])).toMatchObject({ outcome: 'build' })
+  const { claim, runId } = await afterReturn(id)
+  expect(claim.ticket).toMatchObject({ reviewRound: 2, fixReviewBase: pr.headSha })
+  const r = { runId, leaseToken: claim.leaseToken as string }
+  await expect(submit(r, [{ ...medium, class: 'rule' }])).rejects.toThrow(/outside round 2.*move it to open with reason out-of-round-scope/)
+  await expect(submit(r, [{ ...medium, class: 'plan' }])).rejects.toThrow('outside round 2')
+  expect(await submit(r, [{ severity: 'low', class: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }], 'm', { open: [{ text: 'rule thing', reason: 'out-of-round-scope' }] })).toMatchObject({ verdict: 'clean', outcome: 'merged' })
+})
+
+it('round 2 counts a security finding and a tested correctness finding', async () => {
+  const { id } = await seed({ checks: green })
+  expect(await submit(await review(id), [{ ...medium, class: 'rule' }])).toMatchObject({ outcome: 'build' })
+  const { claim, runId } = await afterReturn(id)
+  const r = { runId, leaseToken: claim.leaseToken as string }
+  expect(await submit(r, [medium, { ...correctness, test }])).toMatchObject({ verdict: 'changes', outcome: 'build' })
+})
+
+it('the autonomous path moves a refused finding to open instead of failing the Run', () => {
+  const raw = { verdict: 'changes', findings: [correctness, { ...medium, class: 'rule' }], checked, markdown: 'm' }
+  expect(actions.normalizeReview(raw, { round: 1, demote: true })).toMatchObject({
+    verdict: 'changes',
+    findings: [{ class: 'rule' }],
+    open: [{ reason: 'no-failing-test', text: expect.stringContaining('a.ts:3 off by one') }],
+  })
+  const later = actions.normalizeReview({ ...raw, findings: [{ ...correctness, test }, { ...medium, class: 'rule' }] }, { round: 2, demote: true })
+  expect(later).toMatchObject({ verdict: 'changes', findings: [{ class: 'correctness' }], open: [{ reason: 'out-of-round-scope' }] })
+  expect(later.problem).toBeUndefined()
+  expect(actions.normalizeReview({ ...raw, findings: [correctness] }, { round: 1, demote: true })).toMatchObject({ verdict: 'clean' })
+  expect(actions.normalizeReview({ ...raw, findings: [] , verdict: 'changes' }, { demote: true }).problem).toMatch(/contradicts/)
 })
