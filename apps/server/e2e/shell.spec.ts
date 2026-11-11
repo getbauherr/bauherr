@@ -92,7 +92,7 @@ const signIn = async (page: Page, who: string) => {
 }
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Main' })
 
-test('Knowledge link and Workspace switcher are absent for one Workspace without a knowledge repo', async ({ page }) => {
+test('Knowledge link and Workspace switcher are absent for a member with one Workspace without a knowledge repo', async ({ page }) => {
   await signIn(page, 'solo@example.com')
   await expect(nav(page).getByRole('link', { name: 'Workflow' })).toBeVisible()
   await expect(nav(page).getByRole('link', { name: 'Knowledge' })).toHaveCount(0)
@@ -103,6 +103,15 @@ test('Knowledge link and Workspace switcher are absent for one Workspace without
   await expect(page.getByLabel('Product')).toHaveCount(0)
   await expect(page.getByTestId('workspace-switcher')).toHaveCount(0)
   await expect(page.getByTestId('workspace-name')).toContainText('Zeta')
+})
+
+test('An Admin always gets the Workspace menu, with settings and New Workspace', async ({ page }) => {
+  await signIn(page, email)
+  await page.getByTestId('workspace-switcher').click()
+  const m = page.getByRole('menu')
+  await expect(m.getByRole('menuitem', { name: 'Workspace settings' })).toBeVisible()
+  await m.getByRole('menuitem', { name: 'New Workspace' }).click()
+  await expect(page).toHaveURL(/\/settings\/workspace#new-workspace$/)
 })
 
 test('Workspace switcher shows with 2+ Workspaces; selecting one switches and drops Knowledge', async ({ page }) => {

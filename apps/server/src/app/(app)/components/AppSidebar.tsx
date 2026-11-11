@@ -40,7 +40,7 @@ export function AppSidebar({ email, admin, version, workspaces, current, needsYo
           </svg>
           <span className="heading group-data-[collapsible=icon]:hidden">Bauherr</span>
         </Link>
-        <WorkspaceSwitcher workspaces={workspaces} current={current} selectWorkspace={selectWorkspace} />
+        <WorkspaceSwitcher workspaces={workspaces} current={current} admin={admin} selectWorkspace={selectWorkspace} />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
