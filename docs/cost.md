@@ -52,4 +52,6 @@ Claude Code on the owner's machine sends its calls through the bundled gateway w
 
 ## Coverage and limits
 
+Every breakdown table (model, role, session, stage) adds up to the total: usage without a role is its own row ("Runner, no role", "CI, no role", "Session, no role", "Chat"), usage without a stage is "Chat" or "No stage", and a missing model is "Not recorded" (Runs from before models were recorded). `cost_summary` uses the same labels.
+
 Every number on the page shows how many finished Runs have usage ("82 % of session Runs (reported)"); a Run without usage counts as 0, not as unknown cost. Tokens without a catalog price add to the "unpriced" count and not to the cost. Subagent transcripts of Claude Code are separate files and are not summed by the hook. Chat cost covers answers stored with `answer.costUsd`. Runs from before this table are backfilled only when the gateway priced them.

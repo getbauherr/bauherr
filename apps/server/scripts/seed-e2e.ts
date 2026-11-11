@@ -230,6 +230,9 @@ await session('ses_e2e_idle', 'reviewer', 'reviewer-1@laptop', { connectedAt: mi
 await session('ses_e2e_offline', 'engineer', 'engineer-2@devbox', { disconnectedAt: minutesAgo(8), lastSeenAt: minutesAgo(8) })
 const teamRun = await ensure('runs', { ticket: teamTicket, stage: 'triage', status: 'running' }, { ticket: teamTicket, stage: 'triage', status: 'running', mode: 'session', executor: 'session', role: 'orchestrator', session: working.id, sessionLabel: 'orchestrator-1@laptop', clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', workspace, heartbeatAt: minutesAgo(0), startedAt: minutesAgo(40) })
 await ensure('session_spans', { session: working.id, run: teamRun.id }, { session: working.id, run: teamRun.id, ticket: teamTicket, startedAt: minutesAgo(40), lastAt: minutesAgo(0), workspace })
+// ticket.spec.ts: #130, a Build whose session Run waits for an agent (the only engineer session above is disconnected).
+const waitTicket = await ticket(130, 'Wait for an engineer agent', 'build', product)
+await ensure('runs', { ticket: waitTicket, stage: 'build', status: 'awaiting_session' }, { ticket: waitTicket, stage: 'build', status: 'awaiting_session', mode: 'session', workspace })
 // insights.spec.ts, team.spec.ts: usage for "Cost & tokens". A done Ticket with a reviewer Run priced by the gateway (Opus), a session Build Run that reported usage (Sonnet; the session's own cost is $0.40) and one more session-reported row that the gateway-priced Run must drop.
 const costTicket = await ticket(129, 'Cost: usage seeded', 'done', product, { state: 'closed', labels: [] })
 await ensure('ticket_events', { ticket: costTicket, cause: 'e2e:cost' }, { ticket: costTicket, workspace, at: minutesAgo(30), stage: 'done', stageKind: 'done', phase: 'closed', cause: 'e2e:cost' })

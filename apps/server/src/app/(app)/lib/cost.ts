@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { title as stageTitle, type Workflow } from '../../../lib/workflow'
 
 export type Row = { run: number | null; group: string; executor: string; ticket: number | null; number: number | null; ticketTitle: string | null; stage: string | null; role: string | null; model: string; source: string; tokens: number; cache: number; cost: number | null; at: string }
-export type Line = { key: string; label: string; costUsd: number; tokens: number; cache: number; runs: number; unpriced: number; number?: number; id?: number }
+export type Line = { key: string; label: string; costUsd: number; tokens: number; cache: number; runs: number; unpriced: number; number?: number; id?: number; /** Help text of the label (shown as a tooltip). */ hint?: string }
 export type Quantiles = { n: number; median: number; p85: number }
 export type Cost = {
   totalUsd: number
@@ -53,6 +53,8 @@ const perTicket = (rows: Row[]): Map<number, number> => {
   return m
 }
 
+const NO_ROLE: Record<string, string> = { runner: 'Runner, no role', ci: 'CI, no role', session: 'Session, no role' }
+
 /** Pure aggregation of effective usage rows into the Insights breakdowns. `done` is the whole history of the Tickets that reached done in the range. */
 export const aggregate = (wf: Workflow, rows: Row[], done: { ids: number[]; rows: Row[] }, coverage: Cost['coverage']): Cost => {
   const doneCost = perTicket(done.rows)
@@ -70,10 +72,10 @@ export const aggregate = (wf: Workflow, rows: Row[], done: { ids: number[]; rows
     tokens: rows.reduce((a, r) => a + r.tokens, 0),
     cache: rows.reduce((a, r) => a + r.cache, 0),
     unpriced: rows.filter((r) => r.cost == null && r.tokens > 0).length,
-    byModel: group(rows, (r) => r.model),
-    byRole: group(rows, (r) => r.role ?? '', (r) => (r.source === 'chat' ? 'Chat' : (wf.roles.find((x) => x.id === r.role)?.title ?? r.role ?? ''))).filter((l) => l.key),
+    byModel: group(rows, (r) => r.model, (r) => (r.model === 'unknown' ? 'Not recorded' : r.model)).map((l) => (l.key === 'unknown' ? { ...l, hint: 'Runs from before models were recorded' } : l)),
+    byRole: group(rows, (r) => r.role ?? `-${r.executor}`, (r) => (r.source === 'chat' ? 'Chat' : r.role ? (wf.roles.find((x) => x.id === r.role)?.title ?? r.role) : NO_ROLE[r.executor] ?? NO_ROLE.runner!)),
     bySession: group(rows, (r) => r.group),
-    byStage: group(rows, (r) => r.stage, (r) => stageTitle(wf, r.stage!)).map((l) => ({ ...l, perTicket: quantiles(stageCost.get(l.key) ?? []) })),
+    byStage: group(rows, (r) => r.stage ?? (r.source === 'chat' ? '-chat' : '-none'), (r) => (r.stage ? stageTitle(wf, r.stage) : r.source === 'chat' ? 'Chat' : 'No stage')).map((l) => ({ ...l, perTicket: quantiles(stageCost.get(l.key) ?? []) })),
     topTickets: group(rows, (r) => (r.ticket == null ? null : String(r.ticket)), (r) => r.ticketTitle ?? '').slice(0, 10).map((l) => {
       const r = rows.find((x) => String(x.ticket) === l.key)!
       return { ...l, id: r.ticket!, number: r.number ?? undefined }

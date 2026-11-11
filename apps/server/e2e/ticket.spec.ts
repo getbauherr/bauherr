@@ -184,6 +184,13 @@ test('a Ticket with a live Run shows a disabled button naming the Run', async ({
   await expect(await reasonOf(page, step)).toHaveText(/\(Run \d+\)/)
 })
 
+test('a Run waiting for a session says it waits for an agent and links to the Team page', async ({ page }) => {
+  const { bar } = await nextStepOf(page, 'Wait for an engineer agent')
+  await expect(bar).toContainText(/No Software engineer agent is connected \(Run \d+\)\./)
+  await expect(bar).not.toContainText('The factory is working')
+  await expect(bar.getByRole('link', { name: 'Connect an agent' })).toHaveAttribute('href', '/team')
+})
+
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
 test('the path highlights the stages a Ticket visited and the steps name who ran them', async ({ page }) => {

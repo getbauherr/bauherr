@@ -124,6 +124,7 @@ test('the model drafts a comment, the person confirms it on a card, and a declin
   await expect(card).toContainText('Please add a test for the total')
   await card.getByRole('button', { name: 'Approve' }).click()
   await expect(dock(page).getByTestId('confirm-outcome')).toHaveText('Done.', { timeout: 30_000 })
+  await expect(dock(page)).toContainText('[fake] tool result', { timeout: 30_000 }) // the turn ends with the model's answer to the tool result; a message sent before that is not accepted
   await composer(page).fill('comment #27: A second one')
   await composer(page).press('Enter')
   const second = dock(page).getByTestId('confirm-card').last()

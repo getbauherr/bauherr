@@ -26,7 +26,7 @@ export const fakeChatModel: ModelCall = async function* ({ messages }) {
   const comment = /comment #(\d+): (.+)/.exec(said)
   if (comment) {
     yield { type: 'text', text: 'Drafting the comment. ' }
-    yield { type: 'tool_use', id: `toolu_fake_comment_${comment[1]}`, name: 'post_comment', input: { ticket: Number(comment[1]), body: comment[2] } }
+    yield { type: 'tool_use', id: `toolu_fake_comment_${comment[1]}_${messages.length}`, name: 'post_comment', input: { ticket: Number(comment[1]), body: comment[2] } }
     yield usage('comment')
     return
   }

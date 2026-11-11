@@ -135,7 +135,7 @@ export const costSummary = async (c: Ctx, a: Doc) => {
   const days = Math.min(90, Math.max(1, Number(a.days) || 7))
   const cost = await loadCost(c.payload, workflowFor(c.workspace!), c.workspace as number, { days, product: null })
   const usd = (n: number) => Math.round(n * 1000) / 1000
-  const line = (l: { label: string; costUsd: number; tokens: number; runs: number }) => ({ name: l.label, costUsd: usd(l.costUsd), tokens: Math.round(l.tokens), runs: l.runs })
+  const line = (l: { label: string; costUsd: number; tokens: number; runs: number; hint?: string }) => ({ name: l.label, ...(l.hint && { note: l.hint }), costUsd: usd(l.costUsd), tokens: Math.round(l.tokens), runs: l.runs })
   const per = (q: { n: number; median: number; p85: number } | null) => q && { tickets: q.n, medianUsd: usd(q.median), p85Usd: usd(q.p85) }
   return {
     days,

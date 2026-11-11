@@ -21,6 +21,20 @@ describe('nextStep', () => {
     expect(member.reason).toBe('The factory is working on this.')
     expect(member.links).toEqual([])
   })
+  it('a Run waiting for a session says it waits for an agent of the stage role, not that the factory works', () => {
+    const run = { id: 1001, stage: 'build', status: 'awaiting_session' }
+    const s = nextStep({ ...base, run })
+    expect(s).toMatchObject({ label: 'Connect an agent', href: '/team', enabled: false, reason: 'Waiting for a Software engineer agent to pick this up (Run 1001).', links: [{ text: 'Run 1001', href: '/runs/1001' }] })
+    expect(nextStep({ ...base, run, admin: false }).reason).toBe('Waiting for a Software engineer agent to pick this up.')
+  })
+  it('no connected agent of the role is said so', () => {
+    expect(nextStep({ ...base, run: { id: 1001, stage: 'build', status: 'awaiting_session' }, connected: false })).toMatchObject({ href: '/team', reason: 'No Software engineer agent is connected (Run 1001).' })
+  })
+  it('a Run queued for the Runner says so', () => {
+    const s = nextStep({ ...base, run: { id: 12, stage: 'build', status: 'queued' } })
+    expect(s).toMatchObject({ label: 'Queued', enabled: false, reason: 'Queued for the Runner (Run 12).', links: [{ text: 'Run 12', href: '/runs/12' }] })
+    expect(s.href).toBeUndefined()
+  })
   it('an overlap hold names the holder', () => {
     const s = nextStep({ ...base, ticket: { stage: 'build', waitingFor: 'build', waitingReason: 'overlaps #356' }, waiting: 'Waiting: overlaps #356' })
     expect(s).toMatchObject({ enabled: false, reason: 'Queued for Build: waits for #356, which changes the same files. Starts by itself.' })
@@ -73,6 +87,8 @@ describe('every Ticket or Run the reason names is linked', () => {
     overlap: { ticket: { stage: 'build', waitingFor: 'build', waitingReason: 'overlaps #356' }, waiting: 'Waiting: overlaps #356', holders: [{ id: 9, number: 356 }] },
     escalated: { run: run('running', { escalation: { step: 2, reason: 'x' } }) },
     working: { run: run('running') },
+    awaiting: { run: run('awaiting_session') },
+    runner: { run: run('queued') },
     escalating: { run: run('failed') },
     checks: { ticket: { stage: 'review', waitingFor: 'checks' }, waiting: 'Waiting for checks' },
     full: { ticket: { stage: 'plan', waitingFor: 'build' }, waiting: 'Waiting: Build is full (2/2)' },
