@@ -16,6 +16,7 @@ let agentKey = ''
 let dev: ChildProcess | undefined
 let stub: ReturnType<typeof createServer> | undefined
 let runId: number | string
+const runs: Record<string, number | string> = {}
 let mcpDb: TestDb | undefined
 const assigned: string[] = []
 
@@ -60,6 +61,10 @@ before(async () => {
   await payload.create({ collection: 'ticket_sources', data: { repo: 'o/r', product, connection, workspace }, ...o })
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: '1', number: 1, state: 'open', stage: 'plan', product, workspace }, ...o })
   runId = (await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'plan', mode: 'session', status: 'awaiting_session', workspace }, ...o })).id
+  for (const [n, stage] of [[2, 'build'], [3, 'review']] as const) {
+    const t = await payload.create({ collection: 'tickets', data: { title: stage, externalId: String(n), number: n, state: 'open', stage, product, workspace }, ...o })
+    runs[stage] = (await payload.create({ collection: 'runs', data: { ticket: t.id, stage, mode: 'session', status: 'awaiting_session', workspace }, ...o })).id
+  }
   const dev0 = await payload.create({
     collection: 'bauherren',
     data: { email: 'dev@e2e.test', password: 'pw-dev-12345', role: 'bauherr', githubLogin: 'bot', tenants: [{ tenant: workspace }], enableAPIKey: true, apiKey: API_KEY },
@@ -92,11 +97,12 @@ test('list_frontier and claim_run over HTTP', { skip: !base }, async () => {
   assert.ok(list.body.result.tools.some((t: { name: string }) => t.name === 'claim_run'))
 
   const frontier = (await call('list_frontier', {})).json
-  assert.equal(frontier.length, 1)
-  assert.deepEqual(frontier[0].run, { id: runId, stage: 'plan', status: 'awaiting_session', mode: 'session' })
-  assert.equal(frontier[0].claimable, true)
+  assert.equal(frontier.length, 3)
+  const plan = frontier.find((t: { stage: string }) => t.stage === 'plan')
+  assert.deepEqual(plan.run, { id: runId, stage: 'plan', status: 'awaiting_session', mode: 'session' })
+  assert.equal(plan.claimable, true)
 
-  const claimed = await call('claim_run', { runId })
+  const claimed = await call('claim_run', { runId, stages: ['plan'] })
   assert.equal(claimed.json.run.status, 'running')
   assert.deepEqual(claimed.json.goal, ['tests pass'])
   assert.equal(assigned.length, 1)
@@ -104,7 +110,7 @@ test('list_frontier and claim_run over HTTP', { skip: !base }, async () => {
   assert.equal((await call('claim_run', { runId })).isError, true)
   assert.equal((await call('heartbeat', { runId })).isError, true)
   assert.equal((await call('heartbeat', { runId, leaseToken: claimed.json.leaseToken })).json.ok, true)
-  assert.equal((await call('list_frontier', {})).json[0].run.status, 'running')
+  assert.equal((await call('list_frontier', {})).json.find((t: { stage: string }) => t.stage === 'plan').run.status, 'running')
 })
 
 test('an agent key cannot use gate tools; the personal key reaches them', { skip: !base }, async () => {
@@ -113,4 +119,27 @@ test('an agent key cannot use gate tools; the personal key reaches them', { skip
   assert.match(agent.text, /^forbidden: approve needs a human/)
   const human = await call('approve', { ticket: 1, gate: 'plan' }, API_KEY)
   assert.doesNotMatch(human.text, /needs a human/)
+})
+
+test('connect, next_work, heartbeat and finish_run as two roles', { skip: !base }, async () => {
+  const init = await rpc('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'e2e', version: '1' } })
+  assert.match(init.body.result.instructions, /engineer: Software engineer.*Call connect first/)
+
+  assert.equal((await call('connect', { role: 'wizard' })).isError, true)
+  const eng = (await call('connect', { role: 'engineer', session: 'e2e-engineer', model: 'm-e' })).json
+  const rev = (await call('connect', { role: 'reviewer', session: 'e2e-reviewer', model: 'm-r' })).json
+  assert.match(eng.sessionId, /^ses_/)
+  assert.match(eng.role.profile, /Mission: turn a Ticket into a plan/)
+  assert.equal(rev.role.stages[0].name, 'review')
+
+  for (const [session, stage] of [[eng, 'build'], [rev, 'review']] as const) {
+    const { work } = (await call('next_work', { sessionId: session.sessionId })).json
+    assert.equal(work.run.id, runs[stage])
+    assert.equal(work.run.stage, stage)
+    assert.equal((await call('heartbeat', { runId: work.run.id, leaseToken: work.leaseToken, sessionId: session.sessionId })).json.ok, true)
+    assert.equal((await call('finish_run', { runId: work.run.id, leaseToken: work.leaseToken, status: 'failed', reason: 'e2e', sessionId: session.sessionId })).json.status, 'failed')
+  }
+  assert.equal((await call('next_work', { sessionId: rev.sessionId })).json.work, null)
+  assert.equal((await call('disconnect', { sessionId: eng.sessionId })).json.disconnected, true)
+  assert.equal((await call('next_work', { sessionId: eng.sessionId })).isError, true)
 })

@@ -86,6 +86,18 @@ describe('lint', () => {
     expect(w.board(c)).toEqual(['triage', 'plan', 'build', 'security', 'signoff', 'review', 'release', 'done'])
     expect(w.graph(c).nodes.find((n) => n.id === 'signoff')?.checkpoint).toBe(true)
   })
+  it('the default team has the specialists, unused by any stage, and one exceptions role', () => {
+    const c = w.compile(defaultDoc())
+    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
+    expect(c.roles.filter((r) => r.exceptions).map((r) => r.id)).toEqual(['orchestrator'])
+    expect(w.stagesOfRole(c, 'security')).toEqual([])
+    expect(c.roles.every((r) => r.profile_file && r.profile_file.startsWith('roles/'))).toBe(true)
+  })
+  it('compile keeps avatar and an explicit provider and model', () => {
+    const d = defaultDoc()
+    Object.assign(d.team.roles.ux, { skills: ['Flows'], avatar: 'fox', tier: undefined, provider: 'p', model: 'm', agents: 2 })
+    expect(w.compile(d).roles.find((r) => r.id === 'ux')).toMatchObject({ skills: ['Flows'], avatar: 'fox', provider: 'p', model: 'm', agents: 2 })
+  })
   it('compile throws listing the findings', () => {
     expect(() => w.compile({ ...defaultDoc(), version: 2 })).toThrow(/version must be 1/)
   })
@@ -111,6 +123,15 @@ describe('lint', () => {
     ['6 role forbidden', (d) => (stageOf(d, 'release').role = 'engineer'), 'role is not allowed'],
     ['6 tier xor provider', (d) => Object.assign(d.team.roles.engineer, { provider: 'a', model: 'b' }), 'exactly one of tier or (provider and model)'],
     ['6 agents', (d) => (d.team.roles.engineer.agents = 0), 'agents must be a positive integer'],
+    ['6 provider without model', (d) => Object.assign(d.team.roles.engineer, { tier: undefined, provider: 'a' }), 'exactly one of tier or (provider and model)'],
+    ['6 model without provider', (d) => Object.assign(d.team.roles.engineer, { tier: undefined, model: 'b' }), 'exactly one of tier or (provider and model)'],
+    ['6 a second exceptions role', (d) => (d.team.roles.engineer.exceptions = true), 'at most one role may have exceptions: true (found orchestrator, engineer)'],
+    ['6 exceptions is a boolean', (d) => (d.team.roles.engineer.exceptions = 'yes'), 'exceptions must be true or false'],
+    ['6 skills empty', (d) => (d.team.roles.engineer.skills = []), 'skills must be a list of 1 to 6 strings'],
+    ['6 skills too many', (d) => (d.team.roles.engineer.skills = ['a', 'b', 'c', 'd', 'e', 'f', 'g']), 'skills must be a list of 1 to 6 strings'],
+    ['6 skills too long', (d) => (d.team.roles.engineer.skills = ['x'.repeat(25)]), 'skills must be a list of 1 to 6 strings'],
+    ['6 skills not strings', (d) => (d.team.roles.engineer.skills = [1]), 'skills must be a list of 1 to 6 strings'],
+    ['6 avatar', (d) => (d.team.roles.engineer.avatar = 5), 'avatar must be a non-empty string'],
     ['7 gate', (d) => (stageOf(d, 'build').gate = 'human'), 'gate: human is only allowed'],
     ['7 production_gate', (d) => (stageOf(d, 'plan').production_gate = 'human'), 'production_gate: human is only allowed'],
     ['7 wip', (d) => (stageOf(d, 'build').wip = 0), 'wip must be a positive integer'],

@@ -45,7 +45,7 @@ test('Admin checks a broken factory file, applies a stage title, downloads it an
   const title = `Construction ${Date.now() % 1000}`
   await editor.fill(original.replace(/(- name: build\n)(\s+)/, `$1$2title: ${title}\n$2`))
   await page.getByRole('button', { name: 'Check' }).click()
-  await expect(page.getByRole('status').filter({ hasText: /Valid: \d+ stages, 3 roles/ })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /Valid: \d+ stages, \d+ roles/ })).toBeVisible()
   await page.getByRole('button', { name: 'Apply' }).click()
   const dialog = page.getByRole('dialog', { name: 'Apply this factory file?' })
   await expect(dialog).toBeVisible()

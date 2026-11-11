@@ -45,6 +45,27 @@ pnpm --filter server session:deactivate   # restores the backup
 
 Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEADERS="x-agw-key: <session key>"` and maps the model tiers to `sub/claude-{haiku,sonnet,opus}-5-5`. Restart Claude Code afterwards. Claude Code keeps sending your own `Authorization`; the gateway forwards it to Anthropic and strips `x-agw-key`.
 
+## Connect as a role
+
+A session can join the factory's team instead of claiming by hand. The Workspace's factory file declares the roles (`team.roles`: title, profile, model tier or provider and model, optional `agents` cap, one optional `exceptions` role); the factory rules assign work: a role receives the Runs of the stages that name it. Start a Claude Code session with the MCP line above and give it this prompt (replace `engineer` with a role id of your factory file):
+
+```text
+Connect to the factory as engineer and work until told to stop.
+```
+
+The server instructions tell the session the rest:
+
+1. `connect {role, session?, label?, workspace?, client?, model?, provider?}` registers an agent session and returns `sessionId`, the role's `profile` and `stages` (name, kind, skill, outcomes), the model the role runs on (`role.model`, plus a one-sentence `modelHint` when the role names a model and you report another), and `pollAfterSeconds`. An unknown role is refused with the list of valid roles. `session` is your stable key (max 64 chars): connecting again with it revives the same session and puts back any Run the old process still held. `label` is the name the Team view shows.
+2. Loop `next_work {sessionId}`. It checks in and claims through the same path as `claim_next`, limited to the stages of your role: you get `{work: {...claim_next payload, skill, outcomes, roleReminder}}` or `{work: null, reason, pollAfterSeconds}` ("Nothing queued for Reviewer", "Reviewer is at its limit of 2 agents", "plan is at its WIP limit", "You still hold Run N"). Work the Run as in the Loop below (`load_skill`, `heartbeat`, `finish_run` ...).
+3. Pass `sessionId` on every call (every agent tool takes it, optional): it keeps the session present and attributes the Run to it. Without it nothing changes: `claim_next`, `claim_run` and `heartbeat` work as before and the Run has no session.
+4. `disconnect {sessionId}` when you stop; Runs you still hold go back to the queue.
+
+A role that does not run on your model: do each Run's work in one subagent on the role's model if your client can, otherwise continue; the Run records the model you reported (`runs.model`, `runs.provider`, `runs.role`, `runs.session`).
+
+The **exceptions role** (`exceptions: true`, the Orchestrator in the default file) also receives stuck Tickets: when nothing normal is claimable `next_work` (reading the sweep's stored findings, no forge call) answers `{work: null, exception: {ticket, problem, since, allowed}}`. `allowed` lists the repairs an agent may do today: `return_to_build {ticket, reason}` when the Ticket is dead for a mechanical cause (its MR is missing or its checks are red); for every other cause it is empty and the Ticket is the owner's decision or the factory repairs it itself. Human gate tools are never offered.
+
+Presence: each call refreshes `lastSeenAt` (written at most every 15 s). A session with no running Run and no call for `BAUHERR_SESSION_TIMEOUT_S` (default 600) is ended as `timeout` by the 5-minute sweep; a session whose Run lease expired is handled by the lease expiry first. The lease rules below are unchanged (heartbeat at least every 10 minutes). Active time is the sum of the session's spans (one per Run it holds, from the claim to its last call); `loadTeam` (`lib/sessions.ts`) reads sessions and active time for the Team page, `sessionTime` per session and role for Insights.
+
 ## Loop
 
 1. `claim_next {product?, session?}` takes the top claimable Run in the owner's order (right to left: Release, Review, Build, Plan, Triage, then the Board rank; blocked and leased Tickets are skipped) and returns the `claim_run` payload, or `null`. Several sessions calling at once get different Runs. `list_frontier` shows the same order. Pass a stable `session` name (max 64 chars) to `claim_next`, `claim_run` and `list_frontier`: a Review of a build with the same name is skipped ("your own build"); without a name nothing is skipped. Then `load_skill run-contract`, `read_worklog`.

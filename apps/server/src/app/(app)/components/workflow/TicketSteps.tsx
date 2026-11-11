@@ -26,6 +26,7 @@ function StepRow({ s, open }: { s: Step; open?: { ticket: number; ask: string } 
       {r && (
         <dl className="small m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5" data-testid="step-run">
           <Meta k="Executor" v={r.executor} />
+          <Meta k="Role" v={r.role} />
           <Meta k="Session" v={r.sessionLabel} />
           <Meta k="Client" v={r.client} />
           <Meta k="Model" v={r.model} />

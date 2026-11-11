@@ -11,6 +11,9 @@ const at = (r: StatusRow) => ticketStatus(wf, r, now)
 describe('ticketStatus', () => {
   const table: [string, StatusRow, { phase: string; label: string; detail: string | null; who: string | null }][] = [
     ['closed', row({ open: false }), { phase: 'done', label: 'Done', detail: null, who: null }],
+    ['session Run names label and role title', row({ run: run({ mode: 'session', executor: 'session', sessionLabel: 'laptop', role: 'engineer', clientName: 'claude-code', model: 'opus' }) }), { phase: 'working', label: 'In progress', detail: 'building for 5 min', who: 'laptop (Software engineer) · claude-code · opus' }],
+    ['runner Run with a role', row({ run: run({ role: 'engineer', executor: 'runner' }) }), { phase: 'working', label: 'In progress', detail: 'building for 5 min', who: 'Runner (Software engineer)' }],
+    ['CI Run with a role', row({ run: run({ role: 'engineer', executor: 'ci' }) }), { phase: 'working', label: 'In progress', detail: 'building for 5 min', who: 'CI (Software engineer)' }],
     ['runner Run', row({ run: run({ model: 'sonnet' }) }), { phase: 'working', label: 'In progress', detail: 'building for 5 min', who: 'Bauherr runner · sonnet' }],
     ['session Run with label, client, model', row({ run: run({ mode: 'session', sessionLabel: 'ada-laptop', clientName: 'claude-code', clientVersion: '2.1', model: 'opus' }), owner: 'ada' }), { phase: 'working', label: 'In progress', detail: 'building for 5 min', who: 'ada-laptop · claude-code 2.1 · opus' }],
     ['session Run without metadata falls back to the owner', row({ run: run({ mode: 'session' }), owner: 'ada' }), { phase: 'working', label: 'In progress', detail: 'building for 5 min', who: 'ada' }],

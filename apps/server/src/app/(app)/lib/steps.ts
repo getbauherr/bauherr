@@ -7,7 +7,9 @@ type Doc = Record<string, any>
 
 export type StepRun = {
   id: number
-  executor: 'Session' | 'Runner' | null
+  executor: 'Session' | 'Runner' | 'CI' | null
+  /** Title of the role that worked the Run. */
+  role: string | null
   sessionLabel: string | null
   client: string | null
   model: string | null
@@ -46,7 +48,7 @@ export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Do
     const touch = gate ? touches.find((t) => t.kind === gate) : null
     const step: Step = {
       id: s.id, phase: s.phase, label: phaseLabel(s.phase, s.stageKind), at: s.at, seconds: s.seconds,
-      run: r ? { id: r.id, executor: r.executor === 'session' || r.mode === 'session' ? 'Session' : r.executor || r.mode ? 'Runner' : null, sessionLabel: r.sessionLabel ?? null, client: [r.clientName, r.clientVersion].filter(Boolean).join(' ') || null, model: r.model ?? null, provider: r.provider ?? null, mode: r.mode, status: r.status, outcome: r.outcome ?? s.outcome, verdict: r.verdict ?? null, reason: first(r.error), cost: o.admin ? cost(r) : null } : null,
+      run: r ? { id: r.id, executor: r.executor === 'session' || r.mode === 'session' ? 'Session' : r.executor === 'ci' ? 'CI' : r.executor || r.mode ? 'Runner' : null, role: wf.roles.find((x) => x.id === r.role)?.title ?? null, sessionLabel: r.sessionLabel ?? null, client: [r.clientName, r.clientVersion].filter(Boolean).join(' ') || null, model: r.model ?? null, provider: r.provider ?? null, mode: r.mode, status: r.status, outcome: r.outcome ?? s.outcome, verdict: r.verdict ?? null, reason: first(r.error), cost: o.admin ? cost(r) : null } : null,
       ci: s.phase === 'ci' ? { provider: o.provider, url: prUrl } : null,
       decision: gate ? { what: gate.replace(/:/g, ' '), actor: next?.actor ?? touch?.actor ?? null } : null,
     }

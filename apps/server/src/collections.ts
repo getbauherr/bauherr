@@ -614,6 +614,7 @@ export const collections: CollectionConfig[] = [
     text('clientVersion'),
     text('provider', { admin: { description: 'The provider preset behind the model.' } }),
     text('outcome'),
+    rel('session', 'agent_sessions', { admin: { description: 'The connected agent session that works the Run (`next_work`); empty for a legacy claim and for autonomous Runs.' } }),
   ], {
     indexes: [{ fields: ['mode', 'status', 'heartbeatAt'] }],
     hooks: {
@@ -750,5 +751,28 @@ export const collections: CollectionConfig[] = [
     num('workflowVersion'),
     { name: 'backfilled', type: 'checkbox', defaultValue: false },
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['ticket', 'at'] }, { fields: ['workspace', 'at'] }] }),
+  col('agent_sessions', [
+    { name: 'publicId', type: 'text', required: true, unique: true },
+    rel('owner', 'bauherren'),
+    rel('agentKey', 'agent_keys'),
+    text('role', { required: true, admin: { description: 'A role id of the Workspace workflow.' } }),
+    text('label'),
+    text('clientKey', { admin: { description: 'Stable id the client supplies; the same key reconnects the same row.' } }),
+    text('clientName'),
+    text('clientVersion'),
+    text('provider'),
+    text('model'),
+    date('connectedAt'),
+    date('lastSeenAt'),
+    date('disconnectedAt'),
+    select('endReason', ['disconnect', 'timeout', 'replaced']),
+  ], { indexes: [{ fields: ['workspace', 'disconnectedAt'] }, { fields: ['lastSeenAt'] }, { fields: ['workspace', 'owner', 'clientKey'], unique: true }] }),
+  col('session_spans', [
+    rel('session', 'agent_sessions'),
+    rel('run', 'runs'),
+    rel('ticket', 'tickets'),
+    date('startedAt'),
+    date('lastAt'),
+  ], { indexes: [{ fields: ['session', 'startedAt'] }] }),
   ...chatCollections,
 ]
