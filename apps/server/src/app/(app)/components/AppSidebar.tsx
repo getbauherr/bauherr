@@ -8,9 +8,9 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, Si
 import { UserMenu } from './UserMenu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
-type Props = { email: string; admin: boolean; version: string; workspaces: { slug: string; name: string }[]; current?: string; needsYou: number; drafts: number; hasKnowledge: boolean; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
+type Props = { email: string; admin: boolean; version: string; workspaces: { slug: string; name: string }[]; current?: string; needsYou: number; drafts: number; setup?: { done: number; total: number; complete: boolean }; hasKnowledge: boolean; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
 
-export function AppSidebar({ email, admin, version, workspaces, current, needsYou, drafts, hasKnowledge, logout, selectWorkspace }: Props) {
+export function AppSidebar({ email, admin, version, workspaces, current, needsYou, drafts, setup, hasKnowledge, logout, selectWorkspace }: Props) {
   const path = usePathname()
   const { setOpenMobile } = useSidebar()
   useEffect(() => setOpenMobile(false), [path, setOpenMobile])
@@ -50,6 +50,13 @@ export function AppSidebar({ email, admin, version, workspaces, current, needsYo
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
+        {setup && !setup.complete && (
+          <Link href="/setup" className="small flex h-8 items-center justify-between gap-2 rounded-md border border-border px-2 outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:hidden">
+            <span>Setup {setup.done}/{setup.total}</span>
+            <span className="text-primary">Continue</span>
+            <LinkPending />
+          </Link>
+        )}
         <nav aria-label="Account">
           <SidebarMenu>{item(settingsItem())}</SidebarMenu>
         </nav>

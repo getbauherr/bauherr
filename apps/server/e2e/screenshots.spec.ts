@@ -78,11 +78,11 @@ const signIn = async (page: Page, theme: 'light' | 'dark') => {
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
 }
-const shoot = async (page: Page, name: string) => {
+const shoot = async (page: Page, name: string, opts: { fullPage?: boolean } = {}) => {
   await page.addStyleTag({ content: 'nextjs-portal{display:none!important}*{caret-color:transparent!important}' })
   await page.waitForLoadState('networkidle')
   await page.mouse.move(1, 1)
-  await page.screenshot({ path: `${out}/${name}.png`, animations: 'disabled' })
+  await page.screenshot({ path: `${out}/${name}.png`, animations: 'disabled', ...opts })
 }
 
 for (const theme of ['light', 'dark'] as const) {
@@ -138,15 +138,13 @@ test('templates', async ({ page }) => {
   await shoot(page, 'screenshot-templates')
 })
 
-test('command palette', async ({ page }) => {
+test('team', async ({ page }) => {
   await signIn(page, 'light')
-  await page.goto('/')
-  await page.waitForLoadState('networkidle')
-  await expect(async () => {
-    await page.keyboard.press('Control+k')
-    await expect(page.getByRole('option', { name: 'Ask the factory' })).toBeVisible({ timeout: 2000 })
-  }).toPass()
-  await page.getByPlaceholder(/Go to a page/).fill('retry')
-  await expect(page.getByRole('option', { name: /Stop the export retry loop/ })).toBeVisible()
-  await shoot(page, 'screenshot-command')
+  await page.goto('/team')
+  await page.getByRole('radiogroup', { name: 'Roles' }).locator('[data-role=reviewer]').click()
+  await expect(page.locator('#ses_e2e_working')).toContainText('Working')
+  await expect(page.locator('#ses_e2e_idle')).toContainText('Idle')
+  await page.addStyleTag({ content: '[data-testid=connect]{display:none!important}section[aria-labelledby=role-title]{min-height:0!important}section[aria-labelledby=sessions-engineer]{display:none!important}' }) // roster, role, a working and an idle session in one view
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await shoot(page, 'screenshot-team')
 })

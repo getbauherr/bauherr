@@ -1,23 +1,40 @@
-import { loadConnections, loadProducts } from './settings'
+import { activeVersion } from '../../../lib/factory'
+import { loadConnections } from './settings'
 import { payloadClient } from './session'
+import { SKIP_SESSION, stepsOf, type SetupFacts } from './setup-steps'
 
-export const SETUP_STEPS = [
-  ['connect', 'Connect GitHub'],
-  ['product', 'Add the first Product'],
-  ['deploy', 'Staging and gates'],
-  ['request', 'First request'],
-] as const
-export type SetupStepId = (typeof SETUP_STEPS)[number][0]
+export * from './setup-steps'
 
-/** Where the Workspace stands on /setup, computed from existing data: a verified GitHub Connection, the first Product with repository and ticket source, a saved or skipped staging/gates form (staging site set, or the Product saved at least a second after it was created), a Ticket or submitted request of that Product. */
+type Doc = Record<string, any>
+const o = { depth: 0, overrideAccess: true, pagination: false } as const
+
+/** Database-only facts of a Workspace's setup, a handful of small queries: the page and the sidebar chip both use it. */
 export async function loadSetup(workspace: number) {
-  const [connections, { products, connections: forges }] = await Promise.all([loadConnections(workspace), loadProducts(workspace)])
-  const github = connections.filter((c) => c.kind === 'github')
-  const product = products.find((p) => p.repositories.length && p.sources.length)
   const payload = await payloadClient()
-  const count = async (collection: string, where: object) => (await payload.count({ collection, where, overrideAccess: true } as never)).totalDocs
-  const requested = !!product && (await count('tickets', { product: { equals: product.id } })) + (await count('intake_sessions', { product: { equals: product.id }, status: { equals: 'submitted' } })) > 0
-  const done: Record<SetupStepId, boolean> = { connect: github.some((c) => c.status === 'ok'), product: !!product, deploy: !!product && (!!product.deploy.stagingUrl || product.touched), request: requested }
-  const steps = SETUP_STEPS.map(([id, label]) => ({ id, label, done: done[id] }))
-  return { steps, current: steps.find((s) => !s.done)?.id, github, forges, product }
+  const where = { workspace: { equals: workspace } }
+  const find = async (collection: string, extra: object) => (await payload.find({ collection, where, ...o, ...extra } as never)).docs as unknown as Doc[]
+  const count = async (collection: string, w: object) => (await payload.count({ collection, where: w, overrideAccess: true } as never)).totalDocs
+  const [connections, products, repositories, sources, sessions, skips, version] = await Promise.all([
+    loadConnections(workspace),
+    find('products', { select: { name: true } }),
+    find('repositories', { select: { product: true } }),
+    find('ticket_sources', { select: { product: true } }),
+    count('agent_sessions', where),
+    count('human_touches', { and: [where, { kind: { equals: SKIP_SESSION } }] }),
+    activeVersion(payload, workspace),
+  ])
+  const ref = (v: unknown) => (v && typeof v === 'object' ? (v as Doc).id : v)
+  const ready = products.find((p) => repositories.some((r) => ref(r.product) === p.id) && sources.some((s) => ref(s.product) === p.id))
+  const requested = ready ? (await count('tickets', { product: { equals: ready.id } })) + (await count('intake_sessions', { and: [{ product: { equals: ready.id } }, { status: { equals: 'submitted' } }] })) > 0 : false
+  const forges = connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab')
+  const facts: SetupFacts = {
+    forgeVerified: forges.some((c) => c.status === 'ok'),
+    product: !!ready,
+    teamApplied: !!version,
+    sessionEver: sessions > 0,
+    llmConnection: connections.some((c) => c.kind === 'llm-provider'),
+    sessionSkipped: skips > 0,
+    ticket: requested,
+  }
+  return { facts, ...stepsOf(facts), connections, forges, product: ready ? { id: ready.id as number, name: ready.name as string } : undefined, products: products.length }
 }

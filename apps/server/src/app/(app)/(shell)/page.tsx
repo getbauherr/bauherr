@@ -12,6 +12,7 @@ import { resolveMode } from '../../../lib/mode'
 import { epicNamed, epicRestoreUrl, epicsToShow, inEpic } from '../lib/epics'
 import { loadOverview } from '../lib/overview'
 import { isAdmin } from '../lib/settings'
+import { needsSetup } from '../lib/setup'
 import { currentWorkspace, payloadClient, rememberEpic, requireBauherr } from '../lib/session'
 import { releaseReminders } from '../../../lib/ship-release'
 import { workflowFor } from '../../../lib/factory'
@@ -32,6 +33,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const { workspace } = await currentWorkspace()
   const data = workspace ? await loadOverview(workspace.id, sp.state === 'all' && !graph) : { tickets: [], products: [], epics: [], wip: {} }
   const user = await requireBauherr()
+  if (workspace && needsSetup(isAdmin(user), data.products.length)) redirect('/setup')
   const named = list ? undefined : epicNamed(sp.epic, data.epics)
   if (named !== undefined && named !== (user.uiPrefs?.epic ?? null)) await rememberEpic(user, named)
   const restore = list ? null : epicRestoreUrl('/', all, user.uiPrefs?.epic, data.epics)

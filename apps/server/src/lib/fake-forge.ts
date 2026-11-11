@@ -78,6 +78,11 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
   void gated.comment('1', WORKLOG)
   void gated.comment('1', summary(1))
+  // newco/shop: the repository and open issues the setup wizard's e2e picks on the Workspace `newco`.
+  fake.commit('newco/shop', 'main', 'README.md', '# Shop\n')
+  const shop = fake.tickets('newco/shop')
+  void shop.create({ title: 'The invoice total is wrong' })
+  void shop.create({ title: 'Add a CSV export' })
   // acme/checks: a Product whose production deploy check `deploy-production` shows up in the Settings check picker.
   const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
   fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])

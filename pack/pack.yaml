@@ -17,6 +17,7 @@ skills:
   - {path: skills/manager, purpose: Manager thread over a queue of similar items (Review in v0.1)}
   - {path: skills/decision-sheet, purpose: Human-interaction protocol}
   - {path: skills/security-scan, purpose: Read-only security scan Run - procedure, root-cause grouping, severity rubric, findings.json}
+  - {path: skills/mr-security-review, purpose: Security review of a factory MR between Build and Review - checklist, pass or findings (the Careful setup preset)}
   - {path: skills/effort-policy, purpose: Model and effort selection}
 rules:
   - {path: rules/team-policy.md, purpose: One agent per Run; patterns only via stage config; forbidden patterns}

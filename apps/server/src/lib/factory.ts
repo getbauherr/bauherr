@@ -39,7 +39,7 @@ const canonical = (v: unknown): unknown => (Array.isArray(v) ? v.map(canonical) 
 const hashOf = (wf: Workflow) => createHash('sha256').update(JSON.stringify(canonical(wf))).digest('hex')
 
 /** Inlines `profile_file` of every role as `profile`, reading relative to `dir`; a path that leaves `dir` is a finding. */
-const inlineProfiles = (doc: Doc, dir: string, findings: string[]): void => {
+export const inlineProfiles = (doc: Doc, dir: string, findings: string[]): void => {
   for (const [id, r] of Object.entries((doc?.team?.roles ?? {}) as Record<string, Doc>)) {
     if (!r || typeof r !== 'object' || !r.profile_file) continue
     const path = resolve(dir, String(r.profile_file))
