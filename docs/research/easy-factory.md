@@ -131,10 +131,9 @@ connect, select repo, Deploy, with the framework detected (S23). Cursor's agent-
 
 Presets, sketch:
 
-- Solo: engineer only; no plan gate.
-- Standard: orchestrator, engineer, reviewer; plan gate off, production gate on.
-- Careful: adds a human plan gate and staging acceptance, and a security-scan role. Today only
-  `pack/workflow-security.yaml` exists, no security role file under `pack/roles/`.
+- Solo: engineer only; plans pass without approval.
+- Standard: orchestrator, engineer, reviewer; Approve plan on, Approve production on (the owner's decided default).
+- Careful: adds staging acceptance and a security review stage worked by the security role.
 
 Staging URL, deploy checks and production approval leave the wizard. The "Configure production checks" gate already
 asks for them when a Ticket first reaches release (`README.md`). Factory ties its autonomy preset to a level and a
