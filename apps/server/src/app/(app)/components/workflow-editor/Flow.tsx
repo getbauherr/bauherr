@@ -91,7 +91,7 @@ function StageCard({ s, p, order, bad }: { s: Doc; p: FlowProps; order: string[]
       data-kind={kind}
       data-selected={selected}
       onClick={() => p.onSelect(s.name)}
-      onDragOver={(e) => p.dragRole && e.preventDefault()}
+      onDragOver={(e) => (p.dragRole || e.dataTransfer.types.includes('text/plain')) && e.preventDefault()} // not only the state: the first dragover can precede the re-render
       onDrop={(e) => {
         e.preventDefault()
         const id = e.dataTransfer.getData('text/plain') || p.dragRole
