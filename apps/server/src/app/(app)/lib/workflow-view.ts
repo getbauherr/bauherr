@@ -3,6 +3,8 @@ import type { Need } from '../../../lib/needs-you'
 import { NEED_NODE } from '../../../lib/checkpoints'
 import { flow } from '../../../lib/history'
 import { byKind, type Kind, type Workflow } from '../../../lib/workflow'
+import type { Mode } from '../../../lib/mode'
+import type { TeamRole } from '../../../lib/sessions'
 import type { TicketRow } from './overview'
 import { ticketStatus } from './status'
 
@@ -62,4 +64,27 @@ export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, {
     n.state = n.bar.human ? 'attention' : n.bar.working ? 'active' : 'idle'
   }
   return { stages, checkpoints }
+}
+
+export type StageAgents = { role: { id: string; title: string; avatar: string }; working: number; idle: number; runner: number; ci: number; text: string | null; missing: boolean }
+
+/**
+ * Who is stationed at each stage that names a role: the role's sessions working a Ticket in the stage, its idle sessions, and the Runner or CI Runs working there.
+ * `text` is "2 working · 1 idle", "Runner working" or, for a session-mode stage nobody serves, "No agent connected" (`missing`); null for an autonomous stage at rest.
+ */
+export const stageAgents = (wf: Workflow, roles: TeamRole[], modeOf: (stage: string) => Mode): Map<string, StageAgents> => {
+  const out = new Map<string, StageAgents>()
+  for (const s of wf.stages) {
+    const role = s.role ? roles.find((r) => r.id === s.role) : undefined
+    if (!role) continue
+    const working = role.sessions.filter((x) => x.status === 'working' && x.ticket?.stage === s.name).length
+    const idle = role.sessions.filter((x) => x.status === 'idle').length
+    const runs = role.autonomous.filter((a) => a.ticket.stage === s.name)
+    const ci = runs.filter((a) => a.executor === 'ci').length
+    const runner = runs.length - ci
+    const parts = [working && `${working} working`, idle && `${idle} idle`, runner && 'Runner working', ci && 'CI working'].filter(Boolean) as string[]
+    const missing = !parts.length && modeOf(s.name) === 'session' && !role.sessions.some((x) => x.status !== 'offline')
+    out.set(s.name, { role: { id: role.id, title: role.title, avatar: role.avatar }, working, idle, runner, ci, text: missing ? 'No agent connected' : parts.join(' · ') || null, missing })
+  }
+  return out
 }

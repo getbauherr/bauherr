@@ -128,7 +128,7 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
       title: role.title,
       skills: role.skills ?? [],
       profile: profileOf(role),
-      stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, skill: s.skill, outcomes: Object.keys(s.outcomes) })),
+      stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, skill: s.skill, outcomes: s.outcomeOrder ?? Object.keys(s.outcomes) })),
       model: { ...(role.tier && { tier: role.tier }), ...(role.provider && { provider: role.provider }), ...(role.model && { model: role.model }) },
     },
     ...(modelHint && { modelHint }),
@@ -196,7 +196,7 @@ export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[] }) => P
   if (claimed) {
     const def = stageDef(wf, claimed.run.stage)
     const mission = missionOf(profileOf(role))
-    return { work: { ...claimed, skill: def?.skill, outcomes: Object.keys(def?.outcomes ?? {}), roleReminder: `You work as ${role.title} (${role.id}).${mission ? ` Mission: ${mission}` : ''} Stay in this role.` } }
+    return { work: { ...claimed, skill: def?.skill, outcomes: def?.outcomeOrder ?? Object.keys(def?.outcomes ?? {}), roleReminder: `You work as ${role.title} (${role.id}).${mission ? ` Mission: ${mission}` : ''} Stay in this role.` } }
   }
   if (role.exceptions) {
     const found = await exception(c, wsId)

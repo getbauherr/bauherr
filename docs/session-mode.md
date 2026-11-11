@@ -64,6 +64,8 @@ A role that does not run on your model: do each Run's work in one subagent on th
 
 The **exceptions role** (`exceptions: true`, the Orchestrator in the default file) also receives stuck Tickets: when nothing normal is claimable `next_work` (reading the sweep's stored findings, no forge call) answers `{work: null, exception: {ticket, problem, since, allowed}}`. `allowed` lists the repairs an agent may do today: `return_to_build {ticket, reason}` when the Ticket is dead for a mechanical cause (its MR is missing or its checks are red); for every other cause it is empty and the Ticket is the owner's decision or the factory repairs it itself. Human gate tools are never offered.
 
+The **Team page** (`/team`, see [UI](ui.md#team)) shows the roles, who is connected and what each session works on; it carries the same three connect steps (add the server, the prompt, the session appears as Idle).
+
 Presence: each call refreshes `lastSeenAt` (written at most every 15 s). A session with no running Run and no call for `BAUHERR_SESSION_TIMEOUT_S` (default 600) is ended as `timeout` by the 5-minute sweep; a session whose Run lease expired is handled by the lease expiry first. The lease rules below are unchanged (heartbeat at least every 10 minutes). Active time is the sum of the session's spans (one per Run it holds, from the claim to its last call); `loadTeam` (`lib/sessions.ts`) reads sessions and active time for the Team page, `sessionTime` per session and role for Insights.
 
 ## Loop

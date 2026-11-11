@@ -1,4 +1,4 @@
-import { Activity, BookOpen, ChartColumn, Inbox, MessageSquare, Package, Settings, Ticket } from './icons'
+import { Activity, BookOpen, ChartColumn, Inbox, MessageSquare, Package, Settings, Ticket, Users } from './icons'
 
 export type NavItem = { href: string; label: string; Icon: typeof Ticket; match: (path: string) => boolean }
 
@@ -6,6 +6,7 @@ export type NavItem = { href: string; label: string; Icon: typeof Ticket; match:
 export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admin: boolean }): NavItem[] => [
   { href: '/inbox', label: 'Inbox', Icon: Inbox, match: (p) => p.startsWith('/inbox') },
   { href: '/', label: 'Workflow', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') },
+  { href: '/team', label: 'Team', Icon: Users, match: (p) => p.startsWith('/team') },
   { href: '/requests', label: 'Requests', Icon: MessageSquare, match: (p) => p.startsWith('/requests') },
   { href: '/releases', label: 'Releases', Icon: Package, match: (p) => p.startsWith('/releases') },
   ...(hasKnowledge ? [{ href: '/knowledge', label: 'Knowledge', Icon: BookOpen, match: (p: string) => p.startsWith('/knowledge') }] : []),

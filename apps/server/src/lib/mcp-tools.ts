@@ -159,7 +159,7 @@ const stagesOf = (a: { stages?: unknown }, c: Ctx): string[] | null => {
 const agentBrief = (wf: Workflow, run: Doc) => {
   const def = stageDef(wf, run.stage)!
   const role = wf.roles.find((r) => r.id === def.role)
-  return { stage: def.name, title: def.title, skill: def.skill, role: role && { id: role.id, title: role.title, profile: role.profile ?? '' }, outcomes: Object.keys(def.outcomes), reads: 'get_ticket, read_worklog, load_skill; no push, no MR, no approval tools' }
+  return { stage: def.name, title: def.title, skill: def.skill, role: role && { id: role.id, title: role.title, profile: role.profile ?? '' }, outcomes: def.outcomeOrder ?? Object.keys(def.outcomes), reads: 'get_ticket, read_worklog, load_skill; no push, no MR, no approval tools' }
 }
 
 /** The GitHub login a session Run assigns on the Ticket. */

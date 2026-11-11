@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import s from './avatars.module.css'
 
-const PX = { sm: 32, md: 48, xl: 128 } as const
+const PX = { sm: 32, md: 48, lg: 64, xl: 128 } as const
 const TONES = [s.acc, s.ok, s.warn, s.bad] as const
 const FILLS = ['var(--accent)', 'var(--ok)', 'var(--warn)', 'var(--danger)'] as const
 const hash = (id: string) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)

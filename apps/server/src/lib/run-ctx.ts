@@ -117,7 +117,7 @@ export const buildRunCtx = async (
     stageNames: { review: byKind(wf, 'review')?.name },
     templates: Object.fromEntries(await Promise.all(Object.entries(SKILL_TEMPLATES).filter(([skill]) => skill !== 'intake').map(async ([skill, names]) => [skill, await Promise.all(names.map(async (n) => { const t = await template(payload, workspace, n); return { title: t.title, body: forAgent(t.body) } }))] as const))),
     run: { id: String(run.id), stage: run.stage, kind: kind as RunCtx['run']['kind'], goal: { statements }, ...caps, tier, ...(roleModel && { model: roleModel }) },
-    ...(kind === 'agent' && def?.skill && { agent: { stage: def.name, title: def.title, skill: def.skill, roleProfile: role?.profile ?? '', outcomes: Object.keys(def.outcomes) } }),
+    ...(kind === 'agent' && def?.skill && { agent: { stage: def.name, title: def.title, skill: def.skill, roleProfile: role?.profile ?? '', outcomes: def.outcomeOrder ?? Object.keys(def.outcomes) } }),
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),

@@ -1,8 +1,8 @@
 'use client'
 import * as SelectPrimitive from '@radix-ui/react-select'
+import Link from 'next/link'
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { cn } from '@/lib/utils'
-import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -10,9 +10,10 @@ import { Markdown } from '../Markdown'
 import { SubmitButton } from '../SubmitButton'
 import { renderMarkdown } from '../../lib/markdown'
 import { CopyButton } from './CopyButton'
-import { defaultConnectPrompt, groupOptions, live, tagline } from './helpers'
+import { Chip } from './Chip'
+import { agentsLabel, connectPrompt, groupOptions, live, modelName, modelValue, profileMarkdown, tagline } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
-import type { ConnectPrompt, ModelOption, RoleSettings, TeamRole } from './types'
+import type { ModelOption, RoleSettings, SaveResult, TeamRole } from './types'
 
 const MAX_AGENTS = 10
 
@@ -20,10 +21,10 @@ type Props = {
   roles: TeamRole[]
   modelOptions: ModelOption[]
   canEdit: boolean
-  onSave: (roleId: string, settings: RoleSettings) => void | Promise<void>
+  onSave: (roleId: string, settings: RoleSettings) => SaveResult | Promise<SaveResult>
   docsHref: string
-  /** A function cannot cross from a server page: omit it there to get the default text. */
-  connectPrompt?: ConnectPrompt
+  /** The `claude mcp add` line with the factory URL and a key placeholder. */
+  mcpLine: string
 }
 
 function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: boolean; hot: boolean; onPick: () => void; onHot: (on: boolean) => void }) {
@@ -46,13 +47,14 @@ function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: bo
         chosen ? '-translate-y-0.5 border-primary bg-accent ring-2 ring-primary' : 'border-border hover:bg-secondary',
       )}
     >
-      <RoleAvatar avatar={role.avatar} size="md" animate={chosen || hot} />
+      <RoleAvatar avatar={role.avatar} size="lg" animate={chosen || hot} />
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="heading truncate">{role.title}</span>
         <span className="small line-clamp-2 text-muted-foreground">{tagline(role.profile)}</span>
+        {role.skills.length > 0 && <span className="flex flex-wrap gap-1">{role.skills.slice(0, 3).map((k) => <Chip key={k} muted>{k}</Chip>)}</span>}
         <span className="small flex flex-wrap items-center gap-x-2 gap-y-1">
-          {(role.model ?? role.tier) && <Badge className="max-w-full truncate normal-case tracking-normal">{role.model ?? role.tier}</Badge>}
-          {role.agents ? <span className="text-muted-foreground">×{role.agents} agents</span> : null}
+          {modelName(role) && <Chip>{modelName(role)}</Chip>}
+          <span className="text-muted-foreground">{agentsLabel(role.agents)}</span>
           {connected > 0 && (
             <span className="inline-flex items-center gap-1">
               <span className={cn('size-2 rounded-full', working ? 'bg-primary' : 'bg-muted-foreground')} aria-hidden />
@@ -66,18 +68,25 @@ function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: bo
 }
 
 function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, 'modelOptions' | 'canEdit' | 'onSave'> & { role: TeamRole }) {
-  const [model, setModel] = useState(role.model)
+  const current = modelValue(role)
+  const [model, setModel] = useState(current)
   const [limited, setLimited] = useState(role.agents !== undefined)
   const [agents, setAgents] = useState(role.agents ?? 1)
   const [saved, setSaved] = useState(false)
-  const touch = () => setSaved(false)
+  const [error, setError] = useState<string>()
+  const touch = () => {
+    setSaved(false)
+    setError(undefined)
+  }
   const known = modelOptions.some((o) => o.value === model)
+  const dirty = model !== current || (limited ? agents : undefined) !== role.agents
   return (
     <form
       className="flex flex-col gap-4"
       action={async () => {
-        await onSave(role.id, { model, agents: limited ? agents : undefined })
-        setSaved(true)
+        const r = await onSave(role.id, { model, agents: limited ? agents : undefined })
+        setError(r?.error)
+        setSaved(!r?.error)
       }}
     >
       <div className="grid gap-4 sm:grid-cols-2">
@@ -110,15 +119,16 @@ function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, '
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <SubmitButton variant="default" disabled={!canEdit || !model}>Save</SubmitButton>
+        <SubmitButton variant="default" disabled={!canEdit || !model || !dirty}>Save</SubmitButton>
         {!canEdit && <span className="small text-muted-foreground">Only the owner can change a role.</span>}
         {saved && <span className="small text-ok" role="status">Saved</span>}
       </div>
+      {error && <p className="small m-0 whitespace-pre-line text-destructive" role="alert">{error}</p>}
     </form>
   )
 }
 
-export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, connectPrompt = defaultConnectPrompt }: Props) {
+export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcpLine }: Props) {
   const [id, setId] = useState(roles[0]?.id)
   const [hot, setHot] = useState<string>()
   const group = useRef<HTMLDivElement>(null)
@@ -140,8 +150,8 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, con
   const prompt = connectPrompt(role)
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
-      <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
+    <div className="grid gap-6 lg:grid-cols-[24rem_minmax(0,1fr)]">
+      <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:sticky lg:top-4 lg:mx-0 lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:self-start lg:overflow-y-auto lg:px-1">
         {roles.map((r) => <Card key={r.id} role={r} chosen={r.id === id} hot={hot === r.id} onPick={() => setId(r.id)} onHot={(on) => setHot(on ? r.id : undefined)} />)}
       </div>
       <section aria-labelledby="role-title" className="flex min-h-[40rem] flex-col gap-6 rounded-md border border-border bg-card p-6">
@@ -149,25 +159,35 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, con
           <RoleAvatar avatar={role.avatar} size="xl" animate />
           <div className="flex flex-col gap-2">
             <h2 id="role-title" className="title">{role.title}</h2>
-            <p className="small text-muted-foreground">{[role.tier, role.provider, role.model].filter(Boolean).join(' · ') || 'No model set'}</p>
+            <p className="small m-0 text-muted-foreground">{[modelName(role), agentsLabel(role.agents)].filter(Boolean).join(' · ')}</p>
+            {role.skills.length > 0 && <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label="Skills">{role.skills.map((k) => <li key={k}><Chip muted>{k}</Chip></li>)}</ul>}
           </div>
         </div>
-        <Markdown html={renderMarkdown(role.profile)} />
+        <Markdown html={renderMarkdown(profileMarkdown(role.profile))} />
         <div className="flex flex-col gap-2">
           <span className="label text-muted-foreground">Works on</span>
           <div className="flex flex-wrap gap-2">
-            {role.stages.length ? role.stages.map((s) => <Badge key={s.name} title={s.kind}>{s.title}</Badge>) : <span className="small text-muted-foreground">No stage</span>}
+            {role.stages.length ? role.stages.map((s) => <Chip key={s.name} title={s.kind} className="capitalize">{s.title}</Chip>) : <span className="small text-muted-foreground">No stage</span>}
           </div>
-          {role.exceptions && <p className="small text-muted-foreground">Handles stuck tickets.</p>}
+          {role.exceptions && <p className="small m-0 text-muted-foreground">Handles stuck tickets.</p>}
         </div>
         <RoleSettingsForm key={role.id} role={role} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />
-        <div className="flex flex-col gap-2 border-t border-border pt-4">
+        <div className="flex flex-col gap-3 border-t border-border pt-4" data-testid="connect">
           <h3 className="heading">Connect a session</h3>
-          <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{prompt}</pre>
-          <div className="flex items-center gap-3">
-            <CopyButton text={prompt} />
-            <a className="small text-primary" href={docsHref}>How sessions connect</a>
-          </div>
+          <ol className="m-0 flex list-none flex-col gap-3 p-0">
+            <li className="flex flex-col gap-2">
+              <span className="small">1. Add the factory to Claude Code once. <Link className="text-primary" href="/settings/api-key">Create an agent key</Link> and put it in place of the placeholder.</span>
+              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{mcpLine}</pre>
+              <div><CopyButton text={mcpLine} label="Copy command" /></div>
+            </li>
+            <li className="flex flex-col gap-2">
+              <span className="small">2. Start a session and give it this prompt.</span>
+              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{prompt}</pre>
+              <div><CopyButton text={prompt} label="Copy prompt" /></div>
+            </li>
+            <li className="small">3. The session appears here as Idle within seconds, and as Working while it holds a Run.</li>
+          </ol>
+          <a className="small text-primary" href={docsHref}>How sessions connect</a>
         </div>
       </section>
     </div>
