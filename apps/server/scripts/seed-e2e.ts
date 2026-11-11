@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
+import { deflateSync } from 'node:zlib'
 import { getPayload } from 'payload'
 import { hasProductionChecks } from '../src/lib/mode'
 import { workflowFor } from '../src/lib/factory'
+import { attachProof } from '../src/lib/artifacts'
 import { prepareDecision } from '../src/lib/decision'
 import { needsOf } from '../src/lib/needs-you'
 import { kindOf } from '../src/lib/workflow'
@@ -225,6 +227,29 @@ for (const [slug, name, repo, titles, releaseAt] of [
 // team.spec.ts: an orchestrator session working on #128 (in Triage, where no other spec reads the executors), an idle reviewer session and a disconnected engineer. A fresh clock each seed; `BAUHERR_SESSION_TIMEOUT_S` keeps them present for the spec.
 const teamTicket = await ticket(128, 'Team: triage in a session', 'triage', product)
 const now = Date.now()
+// proof.spec.ts: a Product of its own with an artifact rule (an image rule on `src/ui/**`) and one Ticket on staging with a before/after pair, a terminal session and a preview link; the request lists three acceptance criteria, the third has no proof. Twin in `src/lib/fake-forge.ts` (acme/proof #1).
+const proofProduct = (await ensure('products', { slug: 'acme-proof' }, { name: 'Acme Proof', slug: 'acme-proof', workspace, stagingUrl: 'https://staging.example.com/proof', reviewChecks: { artifacts: [{ name: 'UI screenshots', globs: ['src/ui/**'], kind: 'image', command: 'pnpm screenshots', before: true }] } })).id
+await ensure('ticket_sources', { repo: 'acme/proof' }, { repo: 'acme/proof', product: proofProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+const proofTicket = (await ensure('tickets', { externalId: 'e2e-proof-1' }, { title: 'Ship the proof export', externalId: 'e2e-proof-1', number: 1, url: 'https://github.com/acme/proof/issues/1', state: 'open', labels: ['bauherr:stage:release'], ...rel, stagingTldr: { whatYouGet: '- The export page has a Download button', found: '- Nothing recorded.' }, product: proofProduct, workspace, rank: '000330' })).id
+await ensure('intake_sessions', { 'draft.problem': 'Download the proof export' }, { product: proofProduct, workspace, status: 'submitted', persona: 'product-user', messages: [], ticketNumber: 1, draft: { problem: 'Download the proof export', context: '', acceptance_criteria: ['The export page shows a Download button', 'Clicking it saves a CSV file', 'Existing exports keep working'], type: 'feature', links: [] } })
+/** A flat PNG of a mock page: `button` adds the green Download button the change introduces. */
+const mockPage = (button: boolean): string => {
+  const [w, h] = [320, 200]
+  const px = (x: number, y: number): number[] => (y < 28 ? [31, 41, 55] : button && x >= 24 && x < 124 && y >= 90 && y < 118 ? [22, 163, 74] : x >= 24 && x < 200 && y >= 52 && y < 60 ? [156, 163, 175] : [249, 250, 251])
+  const raw = Buffer.concat(Array.from({ length: h }, (_, y) => Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: w }, (_, x) => px(x, y)).flat())])))
+  const crc = (b: Buffer) => { let c = ~0; for (const v of b) { c ^= v; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)) } return ~c >>> 0 }
+  const chunk = (type: string, data: Buffer) => { const body = Buffer.concat([Buffer.from(type), data]); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(body)); return Buffer.concat([len, body, sum]) }
+  const head = Buffer.alloc(13); head.writeUInt32BE(w, 0); head.writeUInt32BE(h, 4); head.set([8, 2, 0, 0, 0], 8)
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', head), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64')
+}
+const proofDoc = (await payload.findByID({ collection: 'tickets', id: proofTicket, depth: 0, ...o })) as Record<string, any>
+const proofSha = 'e2e0000proof'
+for (const item of [
+  { kind: 'image', title: 'Export page before the change', pair: 'before', rule: 'UI screenshots', criterion: 'The export page shows a Download button', file: { name: 'before.png', base64: mockPage(false) } },
+  { kind: 'image', title: 'Export page with the Download button', pair: 'after', rule: 'UI screenshots', criterion: 'The export page shows a Download button', file: { name: 'after.png', base64: mockPage(true) } },
+  { kind: 'transcript', title: 'Download from a terminal', criterion: 'Clicking it saves a CSV file', text: '$ curl -sO https://staging.example.com/proof/export.csv\n$ head -2 export.csv\ninvoice,total\nINV-1001,120.00' },
+  { kind: 'preview', title: 'Try the export page', criterion: 'Clicking it saves a CSV file', url: 'https://preview.example.com/proof/1' },
+] as const) await attachProof(payload, proofDoc, { sha: proofSha, item: item as never })
 const minutesAgo = (m: number) => new Date(now - m * 6e4).toISOString()
 const session = (publicId: string, role: string, label: string, extra: Record<string, unknown> = {}) =>
   ensure('agent_sessions', { publicId }, { publicId, role, label, clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', connectedAt: minutesAgo(95), lastSeenAt: minutesAgo(0), workspace, ...extra })

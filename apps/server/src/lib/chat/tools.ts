@@ -3,6 +3,7 @@ import { untrustedBlock } from '@bauherr/runner'
 import { loadOverviewRows } from '../../app/(app)/lib/overview'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
+import { loadProof, type ProofData } from '../../app/(app)/lib/proof'
 import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
 import { NotInWorkspace, postComment, submitIntake } from '../actions'
@@ -13,7 +14,7 @@ type Doc = Record<string, any>
 export type ToolKind = 'read' | 'confirm'
 export type ChatTool = { name: string; description: string; input_schema: Record<string, unknown>; kind: ToolKind }
 /** `approve` / `decline` replace the button labels; `noReason`: declining needs no reason. */
-export type Card = { title: string; details: { label: string; value: string }[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean }
+export type Card = { title: string; details: { label: string; value: string }[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean; /** Accept / approve cards: the proof table of the Ticket. */ proof?: ProofData }
 /** `reply` answers the model without running anything (unknown or ambiguous Ticket number). */
 export type Resolved = { input: Doc } | { reply: string; ok: boolean }
 
@@ -64,15 +65,16 @@ const stageOf = (t: Doc): string => {
   return t.state === 'closed' ? nameOf(wf, 'done') : (t.stage ?? nameOf(wf, 'triage'))
 }
 const stageOfTicket = (t: Doc) => stageTitle(workflowFor(t.workspace), stageOf(t))
-const gateCard = (heading: (t: Doc) => string, next: string, o: { kind?: Kind; destructive?: boolean; extra?: (i: Doc) => { label: string; value: string }[] } = {}) =>
+const gateCard = (heading: (t: Doc) => string, next: string, o: { kind?: Kind; destructive?: boolean; proof?: boolean; extra?: (i: Doc) => { label: string; value: string }[] } = {}) =>
   async (c: Ctx, input: Doc): Promise<Card> => {
-    const { kind, destructive = false, extra = () => [] } = o
+    const { kind, destructive = false, extra = () => [], proof } = o
     const t = await ticketOf(c, input.ticket)
     if (!t) throw new Error('Ticket not found in this Workspace')
     const wf = workflowFor(t.workspace)
     const stage = kind && byKind(wf, kind)?.name
     if (stage && stageOf(t) !== stage) throw new Error(`${ticketLine(t)} is in ${stageTitle(wf, stageOf(t))}, not ${stageTitle(wf, stage)}`)
-    return { title: heading(t), details: [{ label: 'Ticket', value: ticketLine(t) }, { label: 'Stage', value: stageOfTicket(t) }, ...extra(input), { label: 'What happens next', value: next }], ...(destructive && { destructive }) }
+    const shown = proof ? (await loadProof(c.payload, [t], new Map([[id(t.product) as number, (await c.payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc]]))).get(t.id) : undefined
+    return { title: heading(t), details: [{ label: 'Ticket', value: ticketLine(t) }, { label: 'Stage', value: stageOfTicket(t) }, ...extra(input), { label: 'What happens next', value: next }], ...(destructive && { destructive }), ...(shown && { proof: shown }) }
   }
 const note = (i: Doc) => (typeof i.note === 'string' && i.note.trim() ? [{ label: 'Note', value: i.note.trim() }] : [])
 
@@ -191,14 +193,14 @@ const ENTRIES: Record<string, Entry> = {
     schema: withTicket(),
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, workspaceId: c.workspace }),
-    describe: gateCard((t) => `Accept ${ticketLine(t)} on staging`, 'The Ticket moves to Done; a production approval may follow', { kind: 'release' }),
+    describe: gateCard((t) => `Accept ${ticketLine(t)} on staging`, 'The Ticket moves to Done; a production approval may follow', { kind: 'release', proof: true }),
   },
   approve_production: {
     description: 'Approve the production deploy of a Ticket accepted on staging, or retry a failed deploy.',
     schema: withTicket(),
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, workspaceId: c.workspace }),
-    describe: gateCard((t) => `Deploy ${ticketLine(t)} to production`, "The Product's own pipeline deploys; Bauherr observes the result", { kind: 'release', destructive: true }),
+    describe: gateCard((t) => `Deploy ${ticketLine(t)} to production`, "The Product's own pipeline deploys; Bauherr observes the result", { kind: 'release', destructive: true, proof: true }),
   },
   decide: {
     description: 'Decide a Ticket waiting in a human stage of the workflow: outcome is one of that stage\'s outcome keys.',

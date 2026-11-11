@@ -10,6 +10,9 @@ import { bullets, section } from './summary'
 import { type Tpl, packTemplate, renderTemplate } from './templates'
 import { parseTldr, type PlanTldr } from './tldr'
 
+/** The decisions that show the proof: accepting on staging and approving production. */
+export const PROOF_NEEDS: readonly string[] = ['Accept on staging', 'Staging not confirmed', 'Approve production', 'Production deploy failed']
+
 export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
 export type DecisionOption = { label: string; action: DecisionAction; primary?: boolean; destructive?: boolean; /** The option takes a one-line note first. */ note?: 'required' | 'optional'; /** `open` only: where it is done. */ href?: string; /** `decide` only: the outcome of the `human` stage it takes. */ outcome?: string; effect: string }
 export type Decision = {
@@ -300,11 +303,12 @@ export const storeStagingTldr = (payload: Payload, ticket: number | string, tldr
 }
 
 /** The decision as the markdown of the `decision` template: the Comment that notifies a person, and what the chat reads. */
-export const decisionMarkdown = (d: Decision, tpl: Tpl = packTemplate('decision')): string =>
+export const decisionMarkdown = (d: Decision, tpl: Tpl = packTemplate('decision'), proof?: string): string =>
   renderTemplate(tpl, {
     decision: d.ask,
     ...(d.recommendation ? { recommendation: d.recommendation } : {}),
     ...(d.why.length ? { why: d.why.map((w) => `- ${w}`).join('\n') } : {}),
+    ...(proof ? { proof } : {}),
     options: d.options.map((o) => `- **${o.label}**: ${o.effect}`).join('\n'),
     next: d.next,
   })

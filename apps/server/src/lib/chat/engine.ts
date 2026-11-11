@@ -20,7 +20,7 @@ export type ChatEvent =
   | { type: 'tool-call'; id: string; name: string; kind: string; input: unknown; summary: string }
   | { type: 'tool-result'; id: string; ok: boolean; result: string; /** Where the outcome can be opened (a sent request). */ href?: string }
   | { type: 'options'; id: string; options: { label: string; recommended: boolean }[] }
-  | { type: 'confirm'; id: string; name: string; title: string; details: Card['details']; destructive: boolean; approve?: string; decline?: string; noReason?: boolean }
+  | { type: 'confirm'; id: string; name: string; title: string; details: Card['details']; destructive: boolean; approve?: string; decline?: string; noReason?: boolean; proof?: Card['proof'] }
   | { type: 'done'; answerId: string; requiresAction?: boolean; usage: { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number } }
   | { type: 'error'; message: string }
 
@@ -170,7 +170,7 @@ async function* loop(env: Env, s: State, answerId: string, t0: number, tally: An
           return
         }
         yield { type: 'tool-call', id, name, kind: 'confirm', input: canonical, summary: card.title }
-        yield { type: 'confirm', id, name, title: card.title, details: card.details, destructive: !!card.destructive }
+        yield { type: 'confirm', id, name, title: card.title, details: card.details, destructive: !!card.destructive, ...(card.proof && { proof: card.proof }) }
         const { toolCalls: _t, ...u } = await finish()
         yield { type: 'done', answerId, requiresAction: true, usage: { model: u.model, tokensIn: u.tokensIn, tokensOut: u.tokensOut, costUsd: u.costUsd, ms: u.ms } }
         return

@@ -14,9 +14,10 @@ You work in your own checkout with your own credentials; the factory keeps the r
 
 ## Before `request_review` (Build)
 1. If the MR-only diff (`git diff origin/<base>...HEAD --numstat`) has 30 or more changed lines, run a self-review in a subagent on the cheapest model tier (`review` skill, Self-review mode) and fix its high and medium findings once. Under 30 lines, skip this.
-2. `attach_evidence` the plan-step table (`rules/evidence.md`) and a line `Self-review: <n> findings, <m> fixed` (or `skipped, <30 lines`).
-3. Call `run_checks` and fix its `failures`, re-attach the Evidence and call it again.
-4. Then `request_review`. Its answer is the truth: fix and push on `refused`, wait on `waiting`. A Product may require commands (`ran: <command>` rules): run them on the pushed commit and write each with its exit code and the commit SHA.
+2. `attach_artifact` the proof your Product's rules ask for (each with its `rule`, and the `criterion` it proves), made on the pushed commit; `run_checks` lists what is missing. A rule that cannot apply gets the Evidence line `No artifact: <rule>: <reason>`.
+3. `attach_evidence` the plan-step table (`rules/evidence.md`) and a line `Self-review: <n> findings, <m> fixed` (or `skipped, <30 lines`).
+4. Call `run_checks` and fix its `failures`, re-attach the Evidence and call it again.
+5. Then `request_review`. Its answer is the truth: fix and push on `refused`, wait on `waiting`. A Product may require commands (`ran: <command>` rules): run them on the pushed commit and write each with its exit code and the commit SHA.
 
 ## Exit rule
 | Run | May end only with |

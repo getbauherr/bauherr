@@ -14,6 +14,7 @@ import { mergeMainIntoMr } from '../lib/merge-main'
 import { distillSkill } from '../lib/skill-distill'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
+import { ingestProof } from '../lib/artifacts'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
 import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
@@ -694,7 +695,9 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const model = ctx.run.model ?? ctx.connection.modelByTier[ctx.run.tier]
       await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', role: roleOf(wf, run.stage)?.id, model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
-      const r = await exec(ctx)
+      const ran = await exec(ctx)
+      const { proof, ...stored } = ran.artifacts
+      const r = { ...ran, artifacts: stored }
       await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review, { round: reviewRoundOf(ticket), demote: true }) : null
       let agent: { outcome: string; comment?: string } | null = null
@@ -739,6 +742,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         },
         ...opts,
       })
+      if (kind === 'build' && r.artifacts.pushedSha && ctx.product.reviewChecks?.artifacts?.length) await ingestProof(payload, ticket, { run: run.id, sha: r.artifacts.pushedSha, items: proof ?? [], evidence: r.artifacts.evidence, config: ctx.product.reviewChecks })
       if (untriageAfter) await untriageLogged(payload, ticket.id)
       await record(payload, ticket.id, { run: run.id, outcome: agentError ? 'failed' : r.status, cause: 'run:finished' })
       await queueReconcile(payload, run.id)

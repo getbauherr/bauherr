@@ -9,6 +9,8 @@ import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillP
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
+import { ARTIFACT_KINDS } from '@bauherr/runner'
+import { ArtifactRejected, attachProof, headShaOf } from './artifacts'
 import { logins, ownsGate } from './gates'
 import { record } from './history'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
@@ -451,6 +453,25 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'attach_artifact',
+    access: 'agent',
+    description: 'Attach one piece of proof (a review artifact) to the Ticket for the human who accepts the result: image (a screenshot; pair before|after for a before/after), recording (webm/mp4), preview (a URL to try), transcript (a terminal session as text), sample (request/response or output as text) or report (test or contract summary as text). Give `url` for a preview, `text` for text, `file {name, base64}` for an image or recording (images png/jpeg/webp up to 5 MB, recordings up to 25 MB, text up to 200 KB; the type is checked by content). `rule` is the name of the Product\'s "Proof for review" rule it satisfies (request_review is refused while a matching rule has no proof on the pushed head; run_checks shows which); `criterion` is the acceptance criterion it proves. Needs the pushed MR head; idempotent per (run, rule or title, pair, commit).',
+    inputSchema: obj({ ...runId, ...leaseToken, kind: { enum: [...ARTIFACT_KINDS] }, title: str('Plain-language caption, also the image alt text'), criterion: str('The acceptance criterion this proves'), rule: str('Name of the Product rule this satisfies'), pair: { enum: ['before', 'after'], description: 'Images only' }, url: str('preview: an http(s) address'), text: str('transcript, sample, report: the text'), file: { type: 'object', description: 'image, recording: the file', properties: { name: str('File name, only a label'), base64: str('Base64 of the bytes') }, required: ['base64'] } }, ['runId', 'leaseToken', 'kind', 'title']),
+    async run(a, c) {
+      const run = await getRun(c, a.runId, a)
+      if (kindOfRun(workflowFor(run.workspace), run) !== 'build') throw new Error(`run ${run.id} is a ${run.stage} Run: only a Build Run attaches proof`)
+      const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
+      const ticket = await getTicket(c, id(run.ticket))
+      try {
+        const { id: artifact, created } = await attachProof(c.payload, ticket, { run: run.id, sha: await headShaOf(c.payload, ticket), item: { kind: a.kind, title: a.title, criterion: a.criterion, rule: a.rule, pair: a.pair, url: a.url, text: a.text, file: a.file } })
+        return { ok: true, artifact, created, leaseExpiresAt }
+      } catch (e) {
+        if (e instanceof ArtifactRejected) throw new Error(e.message)
+        throw e
+      }
+    },
+  },
+  {
     name: 'submit_plan',
     access: 'agent',
     description: 'Post or update the Ticket\'s plan comment (one per Ticket, marked <!-- bauherr:plan -->) Plan Runs only. The plan must start with a ## TL;DR section (lines Decision:, Recommendation:, Why: 1-3 bullets, Risk:); a hotfix plan is exempt.',
@@ -495,7 +516,7 @@ export const tools: Tool[] = [
       const run = await getRun(c, a.runId, a)
       if (kindOfRun(workflowFor(run.workspace), run) === 'agent') throw new Error(`run ${run.id} is an agent stage Run: it cannot request a review`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
-      return { ...(await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })), leaseExpiresAt }
+      return { ...(await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '', run: run.id })), leaseExpiresAt }
     },
   },
   {
@@ -537,7 +558,7 @@ export const tools: Tool[] = [
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
       if (a.status === 'succeeded' && a.prUrl && kind === 'build' && !replan) {
-        const asked = await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
+        const asked = await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '', run: run.id })
         if ('refused' in asked) throw new Error(`${asked.refused}: fix them on the MR, push, run the required checks, then finish again`)
       }
       await ownerWrite(

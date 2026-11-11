@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { EmptyState } from '../../../../components/EmptyState'
 import { Table } from '../../../../components/ui/table'
-import { Field, SettingsForm } from '../../../../components/SettingsForm'
+import { Field, ProofRules, SettingsForm } from '../../../../components/SettingsForm'
 import { ApprovalsSection, CheckRetriesField, ProductionSection, RepositoryFields, StagingSection } from '../../../../components/ProductForms'
 import { TabAnchors } from '../../../../components/TabAnchors'
 import { Tab, Tabs } from '../../../../components/ui/tabs'
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
 
 const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
 /** Section anchor -> tab, for the setup checklist and for links that name a section (`#production`). */
-const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', merging: 'checks', overlap: 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
+const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 
@@ -117,6 +117,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
               <SettingsSection id="pre-review" title="Pre-review checks" purpose="Checks on the changed file paths that a change must pass before it goes to review. Empty: off.">
                 <Field name="reviewChecks" label="Rules" hint="One rule per line. Globs are comma-separated. Start a line with schema: for a changed schema file that needs a changed migration file; the line evidence needs a done or deferred row per plan step." example="src/**, apps/** => tests/**" rows={4} defaultValue={p.reviewChecks} />
                 <CheckRetriesField value={d.checkRetries} />
+              </SettingsSection>
+              <SettingsSection id="proof" title="Proof for review" purpose="What the person who accepts a result sees: screenshots, recordings, sessions or reports that show each requested change works. Needed when the changed paths match; empty: off.">
+                <ProofRules rows={p.proofRules} />
               </SettingsSection>
             </>
           ))}

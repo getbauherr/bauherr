@@ -8,6 +8,7 @@ import { artifactOf, type Decision, type Outcome } from './adapter'
 import { ChevronRight, Shield } from './icons'
 import { Questions } from './questions'
 import { Options, ProductCard } from './request'
+import { ProofList } from '../ProofList'
 
 /** One line per read tool: what it looked up and whether it worked; the result is one click away. */
 const Receipt: FC<{ summary: string; result?: Outcome }> = ({ summary, result }) => (
@@ -51,6 +52,7 @@ const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => 
           ))}
         </dl>
       )}
+      {a.proof && <ProofList data={a.proof} />}
       {decision ? (
         <p className="text-[13px] leading-5 text-muted-foreground">{decision.approved ? (status === 'running' ? 'Approved, running...' : 'Approved') : a.decline ? 'Kept as a draft' : `Declined${decision.reason ? `: ${decision.reason}` : ''}`}</p>
       ) : status !== 'requires-action' ? (

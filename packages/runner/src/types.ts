@@ -1,4 +1,4 @@
-import type { ReviewChecks } from './pre-review.js';
+import type { ProofItem, ReviewChecks } from './pre-review.js';
 
 export type StepRecord = {
   runId: string;
@@ -84,7 +84,7 @@ export type RunResult = {
   reason?: string;
   /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; agentOutcome?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; agentOutcome?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean; /** Build Run: the proof the Product's artifact rules asked for, with file bytes; the server stores it and drops the field from the Run. */ proof?: ProofItem[] };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

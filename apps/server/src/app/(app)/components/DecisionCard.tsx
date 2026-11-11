@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from './ui/textarea'
 import { DockOpen } from './chat/DockOpen'
 import { Markdown } from './Markdown'
+import { ProofList } from './ProofList'
+import type { ProofData } from '../lib/proof'
 
-export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string }
+export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData }
 
 const external = (url: string) => /^https?:\/\//.test(url)
 
@@ -73,6 +75,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
             {d.why.map((w) => <li key={w}>{w}</li>)}
           </ul>
         )}
+        {item.proof && !compact && <ProofList data={item.proof} />}
         {(evidence.length > 0) && (
           <div className="small flex flex-wrap items-center gap-x-4 gap-y-1">
             {evidence.map((e) => <a key={e.url} className="text-primary" href={e.url} {...(external(e.url) ? { target: '_blank', rel: 'noreferrer' } : {})}>{e.label}</a>)}

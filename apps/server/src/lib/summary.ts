@@ -14,6 +14,8 @@ export interface SummaryInput {
   stagingUrl: string | null
   /** Merge commit; makes a re-release (after requested changes) a new summary. */
   mergeSha: string | null
+  /** The review artifacts as markdown (`proofMarkdown`), when the Ticket has any. */
+  proof?: string
 }
 
 /** Body of a `## Name` heading or a `**Name**` line, up to the next one. */
@@ -35,7 +37,7 @@ export const bullets = (md: string): string[] =>
 const list = (items: string[], empty: string): string => (items.length ? items.map((i) => `- ${i}`).join('\n') : empty)
 
 /** Markdown staging summary from structured data; no model call. Starts with {@link SUMMARY_MARKER}. */
-export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stagingUrl, mergeSha }: SummaryInput, tpl: Tpl = packTemplate('staging-summary')): string => {
+export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stagingUrl, mergeSha, proof: proofText }: SummaryInput, tpl: Tpl = packTemplate('staging-summary')): string => {
   const outcomes = bullets(section(plan ?? '', 'Goal'))
   const goals = bullets(section(worklog ?? '', 'Goal')).map((g) => g.replace(/^\[( |x)\]\s*/i, (_, m) => (m === ' ' ? '(open) ' : '(done) ')).trim())
   const decisions = bullets(section(worklog ?? '', 'Decisions'))
@@ -52,6 +54,7 @@ export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stag
         `**Merge requests**\n${list(mrs.map((m) => `[#${m.number} ${m.title}](${m.url})`), 'None linked.')}`,
         ...(proof ? [`**Evidence**\n${proof}`] : []),
       ].join('\n\n'),
+      ...(proofText ? { proof: proofText } : {}),
       found: list(findings, 'Nothing recorded.'),
       decisions: list(decisions, 'None.'),
       open: list(open, 'Nothing.'),

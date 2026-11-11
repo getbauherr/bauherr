@@ -2,12 +2,13 @@ import { createHash } from 'node:crypto'
 import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../app/(app)/lib/plan'
 import type { TicketSource } from '@bauherr/adapters'
-import { decisionMarkdown, justDecided, prepareDecision, sameDecision } from './decision'
+import { PROOF_NEEDS, decisionMarkdown, justDecided, prepareDecision, sameDecision } from './decision'
 import { template } from './templates'
 import { record } from './history'
 import { hasProductionChecks } from './mode'
 import { type Need, needsOf } from './needs-you'
 import { publicUrl } from './oidc'
+import { proofMarkdown } from './artifacts'
 import { startRunIfNeeded } from '../jobs'
 import { holdOverlap } from './overlap'
 import { cas, forgeOf, id } from './release'
@@ -125,7 +126,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
       const claim = marker
       if (await cas(payload, t.id, sql`"gate_notice_claim" = ${claim}`, sql`"gate_notice_claim" IS DISTINCT FROM ${claim}`)) {
         try {
-          await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${t.expedite ? 'Hotfix, ' : ''}${want} — ${publicUrl()}/tickets/${t.id}${decision && decision.need === want ? `\n\n${decisionMarkdown(decision, await template(payload, id(t.workspace), 'decision'))}` : ''}`)
+          await ts.comment(n, `${marker}\n${mentioned.map((l) => `@${l}`).join(' ')}: ${t.expedite ? 'Hotfix, ' : ''}${want} — ${publicUrl()}/tickets/${t.id}${decision && decision.need === want ? `\n\n${decisionMarkdown(decision, await template(payload, id(t.workspace), 'decision'), PROOF_NEEDS.includes(want) ? await proofMarkdown(payload, t, `${publicUrl()}/tickets/${t.id}`) : undefined)}` : ''}`)
         } catch (e) {
           await cas(payload, t.id, sql`"gate_notice_claim" = NULL`, sql`"gate_notice_claim" = ${claim}`)
           throw e

@@ -15,6 +15,8 @@ import { inKindStage } from './stage-scope'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
+import { proofMarkdown } from './artifacts'
+import { publicUrl } from './oidc'
 import { workflowFor } from './factory'
 import { stagingTldrOf, storeStagingTldr } from './decision'
 import { headingOf, noteTemplates, template } from './templates'
@@ -80,6 +82,7 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
         evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
         stagingUrl: product.stagingUrl || null,
         mergeSha,
+        proof: await proofMarkdown(payload, t, `${publicUrl()}/tickets/${t.id}`),
       }, tpl)
     await ts.comment(n, summary)
     await storeStagingTldr(payload, t.id, stagingTldrOf(summary, { whatYouGet: headingOf(tpl, 'what-you-get'), found: headingOf(tpl, 'found') }))
