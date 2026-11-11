@@ -3,6 +3,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import config from '@payload-config'
 import { getPayload } from 'payload'
+import { loadWorkflows } from '../../lib/factory'
 import { resolveAgentKey } from '../../lib/api-key'
 import { ACCOUNT_LOCKED, lockedRequests } from '../../lib/oidc-session'
 import { callTool, tools, type Ctx } from '../../lib/mcp-tools'
@@ -17,6 +18,7 @@ export const dynamic = 'force-dynamic'
 const handle = async (req: Request): Promise<Response> => {
   const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
   const payload = await getPayload({ config })
+  await loadWorkflows(payload)
   const headers = new Headers({ authorization: `bauherren API-Key ${token}` })
   let locked = false
   let agent: Awaited<ReturnType<typeof resolveAgentKey>> = null

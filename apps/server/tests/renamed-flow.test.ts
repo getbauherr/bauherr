@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { DEFAULT } from '../src/lib/workflow'
 import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
@@ -75,7 +76,7 @@ it('a built Ticket in check merges into ship, staging confirms and it closes as 
   expect((await fake.tickets(repo).get(String(issue.number))).labels).toContain('bauherr:stage:ship')
   expect(await wip.wipCount(payload, ws, 'ship')).toBe(1)
   expect(await wip.wipCount(payload, ws, 'check')).toBe(0)
-  expect(needs.releaseWord(await reload(t.id as number))).toBe('waiting')
+  expect(needs.releaseWord(DEFAULT(), await reload(t.id as number))).toBe('waiting')
 
   fake.setChecks(repo, sha, [{ name: 'ci', status: 'completed', conclusion: 'success' }])
   await release.watchRelease(payload)

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import { executionOrder } from '../../../../lib/frontier'
-import { DEFAULT, title as stageTitle } from '../../../../lib/workflow'
+import { title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { epicHue, epicShortTitle } from '../../lib/epics'
 import { duration, heartbeatAge } from '../../lib/format'
 import type { TicketRow } from '../../lib/overview'
@@ -23,8 +23,7 @@ export type Group = { stage: string; rows: TicketRow[] }
 
 /** The Tickets of the Workflow view, one ranked table per stage in workflow order. */
 /** `collapsed`: the stage whose rows hide behind a "Show N done" link to `expandHref`; `sticky`: headings stay under the shell header while their group is on screen. */
-export function TicketList({ groups, showProduct, admin, wip, now, collapsed, expandHref, sticky }: { groups: Group[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
-  const wf = DEFAULT()
+export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed, expandHref, sticky }: { wf: Workflow; groups: Group[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
   return (
     <div className="@container flex flex-col gap-6" data-testid="ticket-list">
       {groups.map(({ stage, rows }, g) => {

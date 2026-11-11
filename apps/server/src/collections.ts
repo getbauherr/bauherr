@@ -8,11 +8,18 @@ import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { wipLimitsError } from './lib/wip-limits'
 import { runKind, runStageError, waitingForError } from './lib/stage-text'
-import { DEFAULT, defaultWip } from './lib/workflow'
 import { chatCollections } from './lib/chat/collections'
+import { workflowFor } from './lib/factory'
 import { TEMPLATE_NAMES } from './lib/template-text'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
+
+type Doc = Record<string, any>
+/** The workflow of the Workspace a document belongs to, or undefined when the document does not say. */
+const wfOfDoc = (data?: Doc, sibling?: Doc) => {
+  const w = sibling?.workspace ?? data?.workspace
+  return w ? workflowFor(w) : undefined
+}
 
 const AMBIENT_LOCK = 143
 
@@ -160,11 +167,11 @@ const workspaces = col(
     {
       name: 'wipLimits',
       type: 'json',
-      defaultValue: defaultWip(DEFAULT()),
-      validate: (v: unknown) => wipLimitsError(v) ?? true,
+      validate: (v: unknown, { id }: { id?: number | string }) => wipLimitsError(v, id ? workflowFor(id) : undefined) ?? true,
       access: { update: ({ req }) => req.user?.role === 'admin' },
-      admin: { description: 'Tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit.' },
+      admin: { description: 'Override of the factory file: tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit; empty = the `wip` of each stage in the factory file (applying a file clears it).' },
     },
+    rel('workflowVersion', 'workflow_versions', { admin: { description: 'The active factory file version; empty = the pack default. Set by applyFactory.' } }),
     { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Board & WIP: off ignores the bauherr:expedite label.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
@@ -420,7 +427,7 @@ const tickets = col('tickets', [
   { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
   text('stage', { index: true }),
   text('needsYou', { index: true, admin: { readOnly: true, description: 'What the Ticket needs from the owner (needsOf), written by the gate sweep; the top bar counts it. Null = nothing.' } }),
-  text('waitingFor', { validate: (v: unknown) => waitingForError(DEFAULT(), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
+  text('waitingFor', { validate: (v: unknown, { data, siblingData }: { data?: Doc; siblingData?: Doc }) => waitingForError(wfOfDoc(data, siblingData), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
   date('expediteAt'),
   text('gateNoticeClaim'),
   { name: 'expedite', type: 'checkbox', defaultValue: false, admin: { description: 'Carries the bauherr:expedite label while the Workspace has the Expedite lane on: skips Triage, bypasses WIP and the overlap hold, no plan gate.' } },
@@ -558,7 +565,7 @@ export const collections: CollectionConfig[] = [
   tickets,
   col('runs', [
     rel('ticket', 'tickets', { required: true }),
-    text('stage', { required: true, index: true, validate: (v: unknown) => runStageError(DEFAULT(), v) }),
+    text('stage', { required: true, index: true, validate: (v: unknown, { data, siblingData }: { data?: Doc; siblingData?: Doc }) => runStageError(wfOfDoc(data, siblingData), v) }),
     text('kind', { index: true, admin: { description: 'The stage kind the Run ran for (or scan / distill); filled from `stage` on create.' } }),
     select('status', runStatuses, { required: true, defaultValue: 'queued', index: true }),
     select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
@@ -612,7 +619,7 @@ export const collections: CollectionConfig[] = [
     hooks: {
       beforeValidate: [
         ({ data, operation }) => {
-          if (operation === 'create' && data && !data.kind && typeof data.stage === 'string') data.kind = runKind(DEFAULT(), data.stage)
+          if (operation === 'create' && data && !data.kind && typeof data.stage === 'string') data.kind = runKind(wfOfDoc(data, data) ?? workflowFor(null), data.stage)
           return data
         },
       ],
@@ -719,8 +726,13 @@ export const collections: CollectionConfig[] = [
   ], { upload: { staticDir: process.env.MEDIA_DIR ?? '/data/media', mimeTypes: ['image/png', 'image/jpeg', 'image/webp'] } }),
   col('workflow_versions', [
     num('version'),
-    rel('product', 'products', { required: true }),
+    rel('product', 'products', { admin: { description: 'Reserved.' } }),
+    { name: 'source', type: 'textarea', admin: { description: 'The factory file with role profiles inlined.' } },
     json('compiled'),
+    text('hash', { index: true, admin: { description: 'sha256 of the canonical compiled workflow.' } }),
+    text('appliedBy'),
+    text('appliedVia', { admin: { description: 'ui | api | cli | boot | seed' } }),
+    text('note'),
   ]),
   col('ticket_events', [
     // Not `required`: a NOT NULL column with ON DELETE SET NULL would make deleting a Ticket fail; `record` always sets it.

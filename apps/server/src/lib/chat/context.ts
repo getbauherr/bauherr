@@ -1,10 +1,11 @@
+import { workflowFor } from '../factory'
 import type { Payload } from 'payload'
 import { unansweredCriticalCount } from '../../app/(app)/lib/plan'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadOverviewRows, within, FORGE_TIMEOUT_MS } from '../../app/(app)/lib/overview'
 import { ticketsOf, tenantsOf } from '../actions'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
-import { board, DEFAULT, gates, is, nameOf, title as stageTitle } from '../workflow'
+import { board, gates, is, nameOf, title as stageTitle } from '../workflow'
 import { loadInsights, RANGES } from '../../app/(app)/lib/insights'
 import { nodeStats } from '../../app/(app)/lib/workflow-view'
 import { ticketStatus } from '../../app/(app)/lib/status'
@@ -55,14 +56,14 @@ const decisionsOpen = async (payload: Payload, t: Doc): Promise<number | null> =
 const ticketPage = async (payload: Payload, user: Doc, ws: number, id: number): Promise<PageContext> => {
   const t = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: ws } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
   if (!t) return gone()
-  const wf = DEFAULT()
+  const wf = workflowFor(ws)
   const row = (await loadOverviewRows(ws, true)).tickets.find((r) => r.id === id)
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: id } }, sort: '-createdAt', limit: 4, select: { stage: true, status: true, mode: true, createdAt: true }, ...o })).docs as Doc[]
   const open = row?.needsYou === 'Approve plan' || row?.needsYou === 'Answer decisions' ? await decisionsOpen(payload, t) : null
   const admin = user.role === 'admin'
   return make(`Ticket #${t.number} ${line(t.title, 60)}`, [
     `Ticket #${t.number}: ${line(t.title)}`,
-    `Stage: ${stageTitle(wf, t.state === 'closed' ? nameOf(wf, 'done') : (t.stage ?? nameOf(wf, 'triage')))}; status: ${row ? plainStatus(row) : t.state === 'closed' ? 'Done' : 'Open'}`,
+    `Stage: ${stageTitle(wf, t.state === 'closed' ? nameOf(wf, 'done') : (t.stage ?? nameOf(wf, 'triage')))}; status: ${row ? plainStatus(wf, row) : t.state === 'closed' ? 'Done' : 'Open'}`,
     `Needs the person: ${row?.needsYou ?? 'nothing'}${open != null ? `; open decisions: ${open}` : ''}`,
     ...(t.decision && t.decision.need === t.needsYou ? decisionText(t.decision) : []),
     ...(row?.blockedBy.length ? [`Blocked by: ${row.blockedBy.map((b) => `#${b.number}`).join(', ')}`] : []),
@@ -77,7 +78,7 @@ const runPage = async (payload: Payload, user: Doc, ws: number, id: number): Pro
   if (!r || !t) return gone()
   return make(`Run ${r.id} of #${t.number}`, [
     `Run ${r.id} for Ticket #${t.number}: ${line(t.title)}`,
-    `Stage: ${stageTitle(DEFAULT(), r.stage)}; status: ${r.status}`,
+    `Stage: ${stageTitle(workflowFor(ws), r.stage)}; status: ${r.status}`,
     `Started: ${day(r.startedAt)}; finished: ${day(r.finishedAt)}`,
     ...(user.role === 'admin' ? [`Mode: ${r.mode}; cost: ${r.costUsd ?? '-'} USD`] : []),
     ...(r.error ? [`Error: ${line(r.error, 300)}`] : []),
@@ -98,7 +99,7 @@ const productPage = async (payload: Payload, ws: number, id: number): Promise<Pa
 
 const settingsPage = async (payload: Payload, ws: number, page: string, name: string): Promise<PageContext> => {
   const w = (await payload.findByID({ collection: 'workspaces', id: ws, ...o })) as Doc
-  const wf = DEFAULT()
+  const wf = workflowFor(ws)
   if (page === 'workflow') {
     const g = gates(wf)
     return make(name, [`${name}: the workflow stages, WIP limits and human gates.`, `Stages: ${wf.stages.map((s) => `${s.title}${w.wipLimits?.[s.name] ? ` (WIP ${w.wipLimits[s.name]})` : ''}`).join(' > ')}`, `Human gates: ${[g.plan && 'plan', g.staging && 'staging', g.production && 'production'].filter(Boolean).join(', ') || 'none'}`, `Expedite lane: ${w.expediteLane === false ? 'off' : 'on'}`])
@@ -114,7 +115,7 @@ const query = (path: string) => new URLSearchParams(path.split('#')[0]!.split('?
 
 /** The Workflow view: the selected `?stage=` and, per stage, the open Tickets with their status (stage and status counts only; the Tickets are in `list_tickets`). */
 const workflowPage = async (ws: number, path: string): Promise<PageContext> => {
-  const wf = DEFAULT()
+  const wf = workflowFor(ws)
   const { tickets, wip } = await loadOverviewRows(ws, false)
   const open = tickets.filter((t) => t.open && !is(wf, t.stage, 'container'))
   const stats = nodeStats(wf, open, wip, {})
@@ -139,9 +140,10 @@ const workflowPage = async (ws: number, path: string): Promise<PageContext> => {
 
 /** Insights: the range, the tiles and the bottleneck sentence as text. */
 const insightsPage = async (payload: Payload, ws: number, path: string): Promise<PageContext> => {
+  const wf = workflowFor(ws)
   const q = query(path)
   const days = RANGES.find((r) => String(r) === q.get('range')) ?? 30
-  const d = await loadInsights(payload, DEFAULT(), ws, { days, product: numeric(q.get('product') ?? '') })
+  const d = await loadInsights(payload, wf, ws, { days, product: numeric(q.get('product') ?? '') })
   const t = (s: number | null) => (s == null ? '-' : duration(s))
   return make('Insights', [
     `Insights: time to market of the Tickets that started in the last ${days} days.`,

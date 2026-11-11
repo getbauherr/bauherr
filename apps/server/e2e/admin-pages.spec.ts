@@ -67,7 +67,6 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeHidden()
   await page.getByText('Details', { exact: true }).click()
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Acme Web' })).toBeVisible()
   await expect(page.getByText('workflow.yaml')).toHaveCount(0)
 
   await page.goto('/settings/workspace')

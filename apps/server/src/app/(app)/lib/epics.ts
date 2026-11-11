@@ -1,6 +1,6 @@
 import type { Where } from 'payload'
 import type { Stage } from './needs-you'
-import { board, byKind, DEFAULT } from '../../../lib/workflow'
+import { board, byKind, type Workflow } from '../../../lib/workflow'
 
 export type EpicChild = { id: number; number: number; title: string; stage: Stage; open: boolean; status: string }
 export type Epic = { id: number; number: number; title: string; open: boolean; rank: string | null; product: number | null; children: EpicChild[] }
@@ -14,10 +14,10 @@ export const epicShortTitle = (title: string): string => (title.length > 18 ? `$
 export { statusLine as plainStatus } from './status'
 
 /** `done`: closed sub-tickets of `total`; `stages`: open sub-tickets per Board column, in column order. */
-export const epicProgress = (e: Pick<Epic, 'children'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => ({
+export const epicProgress = (wf: Workflow, e: Pick<Epic, 'children'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => ({
   done: e.children.filter((c) => !c.open).length,
   total: e.children.length,
-  stages: board(DEFAULT()).map((stage) => ({ stage, count: e.children.filter((c) => c.open && c.stage === stage).length })).filter((s) => s.count),
+  stages: board(wf).map((stage) => ({ stage, count: e.children.filter((c) => c.open && c.stage === stage).length })).filter((s) => s.count),
 })
 
 /** Epics in rank order (then number); done ones (closed) only with `showDone`; `product` narrows when set. */
@@ -27,7 +27,7 @@ export const epicsToShow = (epics: Epic[], showDone: boolean, product: number | 
     .sort((a, b) => Number((a.rank ?? '') > (b.rank ?? '')) - Number((a.rank ?? '') < (b.rank ?? '')) || a.number - b.number)
 
 /** Epics are structural: stage `parent` (just split) or any Ticket with sub-tickets, so a done epic (stage `done`, closed) stays one. */
-export const epicWhere = (parentIds: number[]): Where => ({ or: [{ stage: { equals: byKind(DEFAULT(), 'container')?.name ?? '' } }, ...(parentIds.length ? [{ id: { in: parentIds } }] : [])] })
+export const epicWhere = (wf: Workflow, parentIds: number[]): Where => ({ or: [{ stage: { equals: byKind(wf, 'container')?.name ?? '' } }, ...(parentIds.length ? [{ id: { in: parentIds } }] : [])] })
 
 /** Where to send a Board/Runs request that names no epic when one is remembered and still open; null otherwise (stale and finished epics restore to All). */
 export const epicRestoreUrl = (path: string, sp: Record<string, string | undefined>, stored: unknown, epics: { id: number; open: boolean }[]): string | null =>

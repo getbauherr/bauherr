@@ -1,5 +1,5 @@
 import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
-import { DEFAULT, is, liveStages, title } from './workflow'
+import { is, liveStages, title, type Workflow } from './workflow'
 
 /** The one button of the Ticket page: the owner's turn (`enabled`) or, disabled, who has the turn and why (`reason`, plain words). `links` has one entry per Ticket (`#N`) or Run (`Run N`) the reason names, `text` being the token as written. */
 export type NextStep = { label: string; enabled: boolean; reason: string; links: { text: string; href: string }[] }
@@ -13,8 +13,7 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
  * agent-side owner, first match: open blocker, live Run, waiting state (overlap, full column, checks), release/review wait, idle.
  * `waiting` is `waitingText` of a waiting Ticket; `admin` gates the Run number and link (Runs are an Admin view).
  */
-export const nextStep = ({ ticket, need, run, waiting, blockers, holders = [], admin }: { ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean }): NextStep => {
-  const wf = DEFAULT()
+export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean }): NextStep => {
   const runLink = run && admin ? [{ text: `Run ${run.id}`, href: `/runs/${run.id}` }] : []
   if (need) return { label: need, enabled: true, reason: '', links: [] }
   if (blockers.length) return { label: 'Blocked', enabled: false, reason: `Blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}.`, links: blockers.map((b) => ({ text: `#${b.number}`, href: `/tickets/${b.id}` })) }
@@ -44,6 +43,7 @@ export type ActionCtx = { run: number | null; open: number; product: number; rel
 export const actionFor = (need: Need, { run, open, product, releaseRunUrl }: ActionCtx): Action | null => {
   switch (need) {
     case 'Expedite?': return { kind: 'expedite' }
+    case 'Decision needed': return null
     case 'Approve plan': return { kind: 'approvePlan' }
     case 'Accept on staging':
     case 'Staging not confirmed': return { kind: 'acceptStaging' }

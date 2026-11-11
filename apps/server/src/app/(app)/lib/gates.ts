@@ -1,8 +1,8 @@
 import { GATE_NAMES, type Need } from './needs-you'
 
 /** `reason`: why the factory stopped (the Run's error or the latest escalation Comment), shown as the bar's sentence. */
-export type GateCtx = { stage: string; missing: string[]; open: number; reason?: string | null }
-type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun' | 'release-failed' | 'back-to-build' | 'cancelled' | 'expedite'
+export type GateCtx = { stage: string; missing: string[]; open: number; reason?: string | null; title?: string }
+type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun' | 'release-failed' | 'back-to-build' | 'cancelled' | 'expedite' | 'decision'
 export type GateConfig = {
   kind: Kind
   title: string
@@ -32,5 +32,6 @@ export const GATES: Record<Need, GateConfig> = {
   Cancelled: { kind: 'cancelled', title: 'Cancelled', sentence: (c) => `The ${c.stage} Run was cancelled${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun, secondary: 'Back to backlog' },
   'Run needs you': { kind: 'rerun', title: 'Run needs you', sentence: (c) => `The ${c.stage} Run needs you${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },
   'Expedite?': { kind: 'expedite', title: 'Expedite?', sentence: () => 'Triage proposes the Expedite lane: no Triage queue and no WIP wait.', verb: () => 'Expedite' },
+  'Decision needed': { kind: 'decision', title: 'Decision needed', sentence: (c) => `${c.title ?? c.stage}: decide how this goes on.`, verb: () => 'Decide' },
   'Run failed': { kind: 'rerun', title: 'Run failed', sentence: (c) => `The ${c.stage} Run failed${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },
 }

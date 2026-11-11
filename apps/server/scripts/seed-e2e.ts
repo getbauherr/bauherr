@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import { hasProductionChecks } from '../src/lib/mode'
+import { workflowFor } from '../src/lib/factory'
 import { prepareDecision } from '../src/lib/decision'
 import { needsOf } from '../src/lib/needs-you'
 import { DEFAULT, kindOf } from '../src/lib/workflow'
@@ -202,7 +203,7 @@ await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, t
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>
-  const need = needsOf(t, latest ?? null, !hasProductionChecks(productDoc))
+  const need = needsOf(workflowFor(t.workspace), t, latest ?? null, !hasProductionChecks(productDoc))
   // Plans awaiting approval carry the TL;DR their Plan Run would have posted; every need gets the Decision the sweep would prepare.
   const planTldr = need === 'Approve plan' || need === 'Answer decisions' ? { decision: `Approve the plan for ${t.title}`, recommendation: 'Approve; the change is small and has a test.', why: ['Two small steps', 'No data is touched', 'A regression test is added'], risk: 'none', options: [] } : t.planTldr
   const row = { ...t, planTldr }

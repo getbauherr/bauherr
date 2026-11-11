@@ -9,7 +9,8 @@ import { modeFor } from './mode'
 import { id } from './release'
 import { tierModels } from './run-ctx'
 import { kindOfRun } from './stage-text'
-import { DEFAULT, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { nameOf } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
@@ -26,7 +27,7 @@ export type Next = 'retry-strong' | 'investigate' | 'owner'
 export const nextStep = (run: Doc, prevFailed: boolean): Next => {
   if (run.reasonKind === 'decision' || run.reasonKind === 'access' || run.stage === 'scan') return 'owner'
   if (run.investigation) return prevFailed ? 'owner' : 'retry-strong'
-  return prevFailed || run.escalation ? (kindOfRun(DEFAULT(), run) === 'build' ? 'investigate' : 'owner') : 'retry-strong'
+  return prevFailed || run.escalation ? (kindOfRun(workflowFor(run.workspace), run) === 'build' ? 'investigate' : 'owner') : 'retry-strong'
 }
 
 const cost = (r: Doc): string => {
@@ -79,7 +80,7 @@ const toOwner = async (payload: Payload, t: Doc, run: Doc, why: string): Promise
 /** The step-2 line for the Run a strong retry replaced; skipped when it is already in the Comment. */
 export const noteRetry = async (payload: Payload, t: Doc, stopped: Doc, reason: string): Promise<void> => {
   const mode = await modeFor(payload, id(t.workspace), stopped.stage)
-  const kind = kindOfRun(DEFAULT(), stopped)
+  const kind = kindOfRun(workflowFor(t.workspace), stopped)
   const caps = escalatedCaps(kind, baseCaps(kind))
   const key = `after ${stopped.stage} Run #${stopped.id} (`
   await note(payload, t, key, `- Step 2 of ${LADDER_STEPS} ${key}${stopped.status}, ${cost(stopped)}): ${reason.split('\n')[0]!.slice(0, 300)}. Retry on strong (${await strongModel(payload, t, mode)}), ${caps.maxTurns} turns, $${caps.maxBudgetUsd}.`)
@@ -135,7 +136,7 @@ export const escalate = async (payload: Payload, t: Doc, run: Doc, reason: strin
 export const escalateReviewCap = async (payload: Payload, t: Doc): Promise<string | false> => {
   const builds = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, pagination: false, ...o })).docs as Doc[]
   if (builds.some((r) => r.escalation?.reason === REVIEW_CAP_REASON)) return false
-  const mode = await modeFor(payload, id(t.workspace), nameOf(DEFAULT(), 'build'))
+  const mode = await modeFor(payload, id(t.workspace), nameOf(workflowFor(t.workspace), 'build'))
   const key = 'after the review round cap'
   if (mode === 'autonomous' && (await budgetOut(payload, id(t.workspace)))) {
     await note(payload, t, key, `- Step ${LADDER_STEPS} of ${LADDER_STEPS} ${key}: to the owner (budget).`)
@@ -150,7 +151,7 @@ export const escalateReviewCap = async (payload: Payload, t: Doc): Promise<strin
 
 /** A review whose output was rejected as invalid (`problem`) parked the Ticket `ready_for_human`: the successor review runs on strong, once. */
 export const escalateInvalidReview = async (payload: Payload, t: Doc, run: Doc): Promise<string | false> => {
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   const review = nameOf(wf, 'review')
   const mode = await modeFor(payload, id(t.workspace), review)
   const key = `after review Run #${run.id} (`

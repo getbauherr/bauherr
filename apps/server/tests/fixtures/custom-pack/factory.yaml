@@ -1,0 +1,19 @@
+# The default factory plus a custom `agent` stage (security) and a `human` stage (signoff) between build and review; no production gate. Used by tests/custom-flow.test.ts and tests/custom-apply.test.ts.
+version: 1
+team:
+  roles:
+    orchestrator: {title: Orchestrator, tier: cheap, profile: "Triage the Ticket."}
+    engineer:     {title: Software engineer, tier: cheap, profile: "Plan and build."}
+    reviewer:     {title: Reviewer, tier: standard, profile: "Review the MR."}
+    security:     {title: Security reviewer, tier: standard, profile: "Mission: look for security problems in the open MR.\nNever: push, merge or approve."}
+workflow:
+  stages:
+    - {name: triage, kind: triage, role: orchestrator, skill: triage, outcomes: {plan: plan, refine: triage, skip: backlog}}
+    - {name: plan, kind: plan, role: engineer, skill: run-contract, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
+    - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: security, stuck: escalate, replan: plan}}
+    - {name: security, kind: agent, title: Security review, role: security, skill: security-review, wip: 1, outcomes: {pass: signoff, findings: build, unclear: escalate}}
+    - {name: signoff, kind: human, title: Architecture sign-off, outcomes: {approve: review, reject: build}}
+    - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
+    - {name: release, kind: release, title: Staging, wip: 5, outcomes: {accepted: done, changes: build}}
+    - {name: done, kind: done}

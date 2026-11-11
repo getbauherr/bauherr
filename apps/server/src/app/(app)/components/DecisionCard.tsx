@@ -33,7 +33,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
     setGone(true)
     onDecided?.(item.id)
     start(async () => {
-      const r = await decideAction(item.id, d.need, o.action, text)
+      const r = await decideAction(item.id, d.need, o.action, text, o.outcome)
       if (r.error) {
         setError(r.error)
         setGone(false)

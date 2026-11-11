@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -19,6 +20,8 @@ const repo = 'acme/web'
 
 let testDb: TestDb
 beforeAll(async () => {
+  // The plan gate is on in the default pack; this test runs a Ticket through without an approval.
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
   testDb = await createTestDb('history')
   process.env.DATABASE_URL = testDb.url
   process.env.PAYLOAD_SECRET ??= 'test-secret'

@@ -1,9 +1,12 @@
+import { advance } from '../lib/advance'
+import { assertOutcome, finishAgentRun } from '../lib/agent-stage'
 import { sql } from '@payloadcms/db-postgres'
 import { Cron } from 'croner'
-import type { Payload, PayloadRequest, TaskConfig } from 'payload'
+import type { Payload, PayloadRequest, TaskConfig, Where } from 'payload'
 import { APPROVED_PLAN, setStage, stageLabel, type TicketSource } from '@bauherr/adapters'
 import { runStage as exec } from '@bauherr/runner'
 import { backendFor } from '../lib/adapters'
+import { loadWorkflows, workflowFor } from '../lib/factory'
 import { connectionInput } from '../lib/connection'
 import { buildRunCtx, providerOf } from '../lib/run-ctx'
 import { REVIEW_CAP_REASON, submitInvestigation, type InvestigationInput } from '../lib/investigation'
@@ -31,7 +34,7 @@ import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { budgetOut } from '../lib/escalation'
 import { kindOfRun } from '../lib/stage-text'
-import { byKind, DEFAULT, is, nameOf, type Kind } from '../lib/workflow'
+import { byKind, is, nameOf, type Kind, type Workflow } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -40,14 +43,14 @@ export { stageOf }
 
 /** Decision D2. Fallback only: pack/factory.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
 const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
-export const excludedLabels = (stages: { name?: string; kind?: string; exclude_labels?: string[] }[] = packed()): string[] => {
+export const excludedLabels = (wf: Workflow, stages: { name?: string; kind?: string; exclude_labels?: string[] }[] = packed(wf)): string[] => {
   const list = stages.find((s) => s.kind === 'triage')?.exclude_labels
   return list?.length ? list : D2_EXCLUDED
 }
 
 /** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/factory.yaml. */
-export const triageable = (t: { state: string; labels: string[]; assignee?: string | null }, exclude = excludedLabels()): boolean =>
-  t.state === 'open' && !t.assignee && !stageOf(t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
+export const triageable = (wf: Workflow, t: { state: string; labels: string[]; assignee?: string | null }, exclude = excludedLabels(wf)): boolean =>
+  t.state === 'open' && !t.assignee && !stageOf(wf, t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
 
@@ -124,11 +127,10 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
  */
 /** Returns how many Tickets it acted on (Runs started plus Tickets given up on). */
 export const triageSweep = async (payload: Payload): Promise<number> => {
-  const wf = DEFAULT()
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
-    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && !t.expedite && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
+    .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && !t.expedite && triageable(workflowFor(t.workspace), { state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
     .sort((a, b) => last(a) - last(b))
   const per = new Map<string, number>()
   let started = 0
@@ -141,7 +143,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
       started++
       continue
     }
-    const { created } = await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, nameOf(wf, 'triage'))
+    const { created } = await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, nameOf(workflowFor(t.workspace), 'triage'))
     await payload.update({
       collection: 'tickets',
       id: t.id,
@@ -155,7 +157,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
 
 /** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
 export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'review') || t.state !== 'open' || t.reviewState || t.waitingFor) return null
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open') return null
@@ -191,7 +193,7 @@ export const abandonRun = async (
   const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
   // The successor is the strong retry (ladder step 2); an investigation Run stays one.
-  const escalation = run.escalation ?? (run.investigation || ['triage', 'scan'].includes(kindOfRun(DEFAULT(), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
+  const escalation = run.escalation ?? (run.investigation || ['triage', 'scan'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
@@ -201,7 +203,7 @@ export const abandonRun = async (
     // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
       await tx.execute(
-        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${kindOfRun(DEFAULT(), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb)`,
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb)`,
       )
     }
     return true
@@ -300,10 +302,10 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     depth: 0,
     overrideAccess: true,
   })
-  const wf = DEFAULT()
   let handled = 0
   for (const run of stale.docs) {
     try {
+      const wf = workflowFor(run.workspace)
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
       if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before })) handled++
     } catch (e) {
@@ -318,7 +320,10 @@ export const reclaimJobs: TaskConfig<{ input: Record<string, never>; output: { r
   slug: 'reclaim-jobs',
   schedule: scheduled('0 * * * * *'),
   retries: 0,
-  handler: async ({ req }) => ({ output: { reclaimed: await reclaimStaleJobs(req.payload) } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { reclaimed: await reclaimStaleJobs(req.payload) } }
+  },
 }
 
 export const expireSessions: TaskConfig<{ input: Record<string, never>; output: { expired: number } }> = {
@@ -326,6 +331,7 @@ export const expireSessions: TaskConfig<{ input: Record<string, never>; output: 
   schedule: scheduled('0 * * * * *'),
   retries: 0,
   handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
     await reclaimStaleJobs(req.payload)
     return { output: { expired: await expireStaleSessions(req.payload) } }
   },
@@ -338,6 +344,7 @@ const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): Tas
   retries: 0,
   concurrency: () => slug,
   handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
     await run(req.payload)
     await syncGates(req.payload, true) // a Hotfix's gate notice goes out in the same pass, not on the next sweep
     return { output: {} }
@@ -363,7 +370,10 @@ export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; outpu
   schedule: scheduled('0 */5 * * * *'),
   retries: 0,
   concurrency: () => 'watch-liveness',
-  handler: async ({ req }) => ({ output: { repaired: await (await import('../lib/liveness')).sweepLiveness(req.payload) } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { repaired: await (await import('../lib/liveness')).sweepLiveness(req.payload) } }
+  },
 }
 
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
@@ -372,6 +382,7 @@ export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; outp
   retries: 0,
   concurrency: () => 'publish-release',
   handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
     const published = await publishReleases(req.payload)
     await watchReleaseChecks(req.payload)
     return { output: { published } }
@@ -383,7 +394,10 @@ export const notifyGatesTask: TaskConfig<{ input: Record<string, never>; output:
   schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'notify-gates',
-  handler: async ({ req }) => ({ output: { changed: await syncGates(req.payload) } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { changed: await syncGates(req.payload) } }
+  },
 }
 
 export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output: { indexed: number } }> = {
@@ -392,6 +406,7 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
   retries: 0,
   concurrency: () => 'resync-knowledge',
   handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
     const { payload } = req
     let indexed = 0
     for (const w of (await payload.find({ collection: 'workspaces', limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
@@ -410,9 +425,13 @@ const MAX_GATE_ATTEMPTS = 30
 
 /** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
-  const plan = byKind(DEFAULT(), 'plan')?.name
-  if (!plan) return
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { equals: plan } }, { state: { equals: 'open' } }, ...(gateOn('plan') ? [{ expedite: { equals: true } }] : [])] }, pagination: false, depth: 0, overrideAccess: true })
+  const or: Where[] = (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
+    const wf = workflowFor(w.id)
+    const plan = byKind(wf, 'plan')?.name
+    return plan ? [{ and: [{ workspace: { equals: w.id } }, { stage: { equals: plan } }, ...(gateOn(wf, 'plan') ? [{ expedite: { equals: true } }] : [])] as Where[] }] : []
+  })
+  if (!or.length) return
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
@@ -421,13 +440,17 @@ const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { s
 
 /** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
-  const wf = DEFAULT()
-  const plan = byKind(wf, 'plan')?.name ?? ''
-  const build = byKind(wf, 'build')?.name ?? ''
-  const startable = [plan, build]
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ stage: { in: startable } }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
+  const or: Where[] = (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.map((w) => {
+    const wf = workflowFor(w.id)
+    const plan = byKind(wf, 'plan')?.name ?? ''
+    const build = byKind(wf, 'build')?.name ?? ''
+    return { and: [{ workspace: { equals: w.id } }, { stage: { in: [plan, build] } }] as Where[] }
+  })
+  if (!or.length) return
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
   for (const t of tickets.docs) {
     try {
+      const wf = workflowFor(t.workspace)
       if (t.waitingFor || hasOpenBlocker(t)) continue
       if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
       if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
@@ -445,7 +468,10 @@ export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; o
   schedule: scheduled('0 * * * * *'),
   retries: 0,
   concurrency: () => 'watch-knowledge-prs',
-  handler: async ({ req }) => ({ output: { merged: await watchKnowledgePrs(req.payload) } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { merged: await watchKnowledgePrs(req.payload) } }
+  },
 }
 
 /** The forge is the truth for dependencies: the full `blockedBy` set (Ticket ids of the Product; a blocker not polled yet is ignored). A Ticket naming itself is ignored. Empty object on a read error, which keeps the stored set (the Ticket is read again the next time it changes on the forge). */
@@ -465,13 +491,15 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
   schedule: scheduled('0 * * * * *'),
   retries: 0,
   handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
     const { payload } = req
-    const wf = DEFAULT()
-    const triage = nameOf(wf, 'triage')
-    const at = (n: string | null | undefined, ...k: Kind[]) => !!n && is(wf, n, ...k)
+    let aliasFixes = 0
     const sources = await payload.find({ collection: 'ticket_sources', limit: 1000, pagination: false, depth: 0, overrideAccess: true })
     for (const src of sources.docs) {
       try {
+        const wf = workflowFor(src.workspace)
+        const triage = nameOf(wf, 'triage')
+        const at = (n: string | null | undefined, ...k: Kind[]) => !!n && is(wf, n, ...k)
         const conn = await connectionInput(payload, src.connection)
         const { changes, next } = await backendFor(conn).tickets(src.repo).poll(src.cursor ?? null)
         // Tickets whose gate label could not be verified yet are re-read on every poll, a bounded number of times.
@@ -522,7 +550,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (!lane && t.labels.includes(EXPEDITE_LABEL)) await noteIgnored(payload, backendFor(conn).tickets(src.repo), t.number)
           let labels = t.labels
           if (GATE_LABELS.some((g) => labels.includes(g.label))) {
-            prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
+            prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage: stageOf(wf, labels), rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             const { rejected, pending } = await verifyGateLabels(payload, prev, labels, backendFor(conn).tickets(src.repo))
             labels = labels.filter((l) => !rejected.includes(l) && !pending.includes(l))
             base.labels = labels
@@ -530,7 +558,18 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             base.gatePendingAttempts = pending.length ? (prev.gatePendingAttempts ?? 0) + 1 : 0
           }
           if (base.expedite && !prev?.expediteAt) base.expediteAt = new Date().toISOString()
-          let stage = stageOf(labels)
+          let stage = stageOf(wf, labels)
+          if (stage && t.state === 'open' && aliasFixes < 20 && Object.keys(wf.aliases).some((a) => labels.includes(stageLabel(a)))) {
+            aliasFixes++
+            try {
+              await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, stage, 'alias')
+              if (prev) prev.factoryStage = stage
+              labels = [...labels.filter((l) => stageOf(wf, [l]) === null), stageLabel(stage)]
+              base.labels = labels
+            } catch (e) {
+              payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage alias label repair failed')
+            }
+          }
           if (prev?.stage && t.state === 'open' && (stage === null && prev.stage !== triage || (at(prev.stage, 'release') && prev.mergeSha && at(stage, 'review')))) {
             stage = prev.stage
             payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
@@ -540,18 +579,18 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           let clearFactoryStage = false
           if (prev && stage && stage !== (prev.stage ?? triage)) {
             clearFactoryStage = true
-            if (stage !== prev.factoryStage && isForward(prev.stage ?? triage, stage)) {
+            if (stage !== prev.factoryStage && isForward(wf, prev.stage ?? triage, stage)) {
               const from = prev.stage
               const back = from ? `to \`${from}\`` : 'to untriaged'
               const marker = `<!-- bauherr:stage-rejected:${stage}:${t.updatedAt} -->`
               const forge = backendFor(conn).tickets(src.repo)
               try {
                 if (from) await setStage(forge, String(t.number), from)
-                else await forge.removeLabels(String(t.number), labels.filter((l) => stageOf([l]) !== null))
+                else await forge.removeLabels(String(t.number), labels.filter((l) => stageOf(wf, [l]) !== null))
                 if (!(await forge.listComments(String(t.number))).some((c) => c.body.startsWith(marker))) {
                   await forge.comment(String(t.number), `${marker}\nBauherr moved the stage back ${back}: a forward move to \`${stage}\` counts only when the factory made it. Use the buttons on the Ticket page.`)
                 }
-                labels = [...labels.filter((l) => stageOf([l]) === null), ...(from ? [stageLabel(from)] : [])]
+                labels = [...labels.filter((l) => stageOf(wf, [l]) === null), ...(from ? [stageLabel(from)] : [])]
                 base.labels = labels
                 stage = from
               } catch (e) {
@@ -566,12 +605,8 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = nameOf(wf, 'container')
             else {
-              const build = nameOf(wf, 'build')
-              const entered = await enterStage(payload, prev, build, async () => {
-                await moveStage(payload, backendFor(conn).tickets(src.repo), { product: src.product, number: t.number }, build, 'plan_approved')
-                await payload.update({ collection: 'tickets', id: prev!.id, data: { stage: build }, depth: 0, overrideAccess: true })
-              })
-              if (entered === 'moved') stage = build
+              const moved = await advance(payload, backendFor(conn).tickets(src.repo), { ...prev, product: src.product }, 'done', { by: 'factory', why: 'plan_approved' })
+              if (moved.entered === 'moved') stage = moved.stage!
             }
           }
           // Guard: unchanged pointers are not rewritten.
@@ -620,10 +655,11 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
   concurrency: ({ input }) => `run:${input.runId}`,
   inputSchema: [{ name: 'runId', type: 'number', required: true }],
   handler: async ({ input, req }) => {
+    await loadWorkflows(req.payload)
     const { payload } = req
-    const wf = DEFAULT()
     const opts = { overrideAccess: true, depth: 0 } as const
     const run = await payload.findByID({ collection: 'runs', id: input.runId, ...opts })
+    const wf = workflowFor(run.workspace)
     const kind = kindOfRun(wf, run)
     if (run.status !== 'queued') return { output: { status: run.status } }
     const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...opts })
@@ -641,11 +677,23 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const ws = (await payload.findByID({ collection: 'workspaces', id: id(run.workspace), ...opts, showHiddenFields: true })) as { gatewayKey?: string }
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
-      const model = ctx.connection.modelByTier[ctx.run.tier]
+      const model = ctx.run.model ?? ctx.connection.modelByTier[ctx.run.tier]
       await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
       const r = await exec(ctx)
       await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null
+      let agent: { outcome: string; comment?: string } | null = null
+      let agentError: string | undefined
+      if (kind === 'agent' && r.status === 'succeeded') {
+        const reported = r.artifacts.agentOutcome as { outcome?: unknown; comment?: unknown } | undefined
+        try {
+          if (!reported) throw new Error('no outcome reported')
+          agent = { outcome: assertOutcome(run, reported.outcome), ...(typeof reported.comment === 'string' && { comment: reported.comment }) }
+        } catch (e) {
+          agentError = e instanceof Error ? e.message : String(e)
+        }
+      }
+      const replanned = kind === 'build' && r.status === 'succeeded' && (r.artifacts.agentOutcome as { outcome?: unknown } | undefined)?.outcome === 'replan' ? (r.artifacts.agentOutcome as { comment?: unknown }) : null
       let triage = null
       // The Ticket is untriaged only after the Run's terminal update, so the next poll cannot start a Triage Run while this one is still active.
       let untriageAfter = kind === 'triage' && r.status === 'failed' && !!r.reason?.includes('triage.json')
@@ -663,9 +711,9 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         collection: 'runs',
         id: run.id,
         data: {
-          status: r.status,
+          status: agentError ? 'failed' : r.status,
           artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
-          error: r.status === 'succeeded' ? null : r.reason,
+          error: agentError ?? (r.status === 'succeeded' ? null : r.reason),
           ...(r.status === 'needs_human' && { reasonKind: r.reasonKind ?? 'decision' }),
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null, reviewedPatchId: r.artifacts.reviewedPatchId || null }),
           tokensIn: r.usage.inputTokens,
@@ -677,11 +725,18 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         ...opts,
       })
       if (untriageAfter) await untriageLogged(payload, ticket.id)
-      await record(payload, ticket.id, { run: run.id, outcome: r.status, cause: 'run:finished' })
+      await record(payload, ticket.id, { run: run.id, outcome: agentError ? 'failed' : r.status, cause: 'run:finished' })
       await queueReconcile(payload, run.id)
       if (run.stage === 'scan' && (r.status === 'succeeded' || r.status === 'budget_exhausted') && r.artifacts.scan) await fileFindings(payload, { ...run, artifacts: r.artifacts })
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
+      if (agent) await finishAgentRun(payload, run, ticket, agent.outcome, agent.comment)
+      if (replanned) {
+        await payload.db.drizzle.execute(sql`UPDATE "runs" SET "outcome" = 'replan' WHERE "id" = ${run.id}`)
+        const note = typeof replanned.comment === 'string' ? replanned.comment.trim() : ''
+        if (note) await (await forgeOf(payload, id(ticket.product))).tickets.comment(String(ticket.number), `<!-- bauherr:stage:${run.stage} -->\n${note}`)
+        await advance(payload, null, { ...ticket, stage: run.stage }, 'replan', { by: 'factory', run, note: note || undefined })
+      }
       if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
       if (kind === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
@@ -730,6 +785,7 @@ export const mergeMainTask: TaskConfig<{ input: { ticketId: number; reviewedSha?
   concurrency: { key: ({ input }) => `merge-main:${input.ticketId}`, exclusive: true, supersedes: true },
   inputSchema: [{ name: 'ticketId', type: 'number', required: true }, { name: 'reviewedSha', type: 'text' }],
   handler: async ({ input, req }) => {
+    await loadWorkflows(req.payload)
     await mergeMainIntoMr(req.payload, input.ticketId, input.reviewedSha ?? null)
     return { output: {} }
   },
@@ -740,7 +796,10 @@ export const distillSkillTask: TaskConfig<{ input: { ticketId: number }; output:
   retries: 0,
   concurrency: { key: ({ input }) => `distill:${input.ticketId}`, exclusive: true },
   inputSchema: [{ name: 'ticketId', type: 'number', required: true }],
-  handler: async ({ input, req }) => ({ output: { outcome: await distillSkill(req.payload, input.ticketId) } }),
+  handler: async ({ input, req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { outcome: await distillSkill(req.payload, input.ticketId) } }
+  },
 }
 
 export const reconcileCosts: TaskConfig<{ input: { runId: number; attempt?: number }; output: { status: string } }> = {
@@ -751,6 +810,7 @@ export const reconcileCosts: TaskConfig<{ input: { runId: number; attempt?: numb
     { name: 'attempt', type: 'number' },
   ],
   handler: async ({ input, req }) => {
+    await loadWorkflows(req.payload)
     if (!gatewayDbEnabled()) return { output: { status: 'skipped' } }
     return { output: { status: await reconcileRun(req.payload, input.runId, input.attempt ?? 1) } }
   },
@@ -761,6 +821,7 @@ export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; ou
   schedule: scheduled('0 0 3 * * *'),
   retries: 0,
   handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
     if (!gatewayDbEnabled()) return { output: { deleted: 0 } }
     const deleted = await pruneRequestLogs()
     req.payload.logger.info({ deleted, retentionDays: retentionDays() }, 'prune-request-logs')
@@ -772,7 +833,10 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   slug: 'prune-comment-media',
   schedule: scheduled('0 30 3 * * *'),
   retries: 0,
-  handler: async ({ req }) => ({ output: { deleted: await pruneCommentMedia(req.payload) } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { deleted: await pruneCommentMedia(req.payload) } }
+  },
 }
 
 /** Products scanned per tick; the rest wait for the next hour. */
@@ -815,7 +879,10 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   slug: 'security-scan-tick',
   schedule: scheduled('0 0 * * * *'),
   retries: 0,
-  handler: async ({ req }) => ({ output: { started: await securityScanSweep(req.payload) } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { started: await securityScanSweep(req.payload) } }
+  },
 }
 
 export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]

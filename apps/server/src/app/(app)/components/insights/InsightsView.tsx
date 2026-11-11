@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { title as stageTitle, DEFAULT } from '../../../../lib/workflow'
+import { title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { duration } from '../../lib/format'
 import { PHASES, type Insights, type PhaseKey, type WipAge } from '../../lib/insights'
 import { cn } from '@/lib/utils'
@@ -25,8 +25,7 @@ const Legend = () => (
 )
 
 /** Time to market of the Tickets that started in the range: tiles, where time goes per stage, throughput and WIP age. Plain markup, no chart library. */
-export function InsightsView({ data, wip, days }: { data: Insights; wip: WipAge[]; days: number }) {
-  const wf = DEFAULT()
+export function InsightsView({ wf, data, wip, days }: { wf: Workflow; data: Insights; wip: WipAge[]; days: number }) {
   const max = Math.max(1, ...data.stages.map((s) => s.total))
   const weeks = Math.max(1, ...data.throughput.map((w) => w.tickets))
   return (

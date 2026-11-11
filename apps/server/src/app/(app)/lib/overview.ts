@@ -8,7 +8,8 @@ import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere } from './epics'
 import { wipCounts } from '../../../lib/wip'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
-import { byKind, DEFAULT, is, wipStages } from '../../../lib/workflow'
+import { workflowFor } from '../../../lib/factory'
+import { byKind, is, wipStages, type Workflow } from '../../../lib/workflow'
 import { statusLine, type Track } from './status'
 
 export type RunRow = {
@@ -114,12 +115,13 @@ const stageEntries = async (payload: Payload, tickets: number[]): Promise<Map<nu
 /** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
 const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null }[], wip: Base['wip']): Promise<TicketRow[]> => {
   const ws = { workspace: { equals: workspace } }
-  const buildStage = byKind(DEFAULT(), 'build')?.name
+  const wf = workflowFor(workspace)
+  const buildStage = byKind(wf, 'build')?.name
   const blockerIds = [...new Set(ticketDocs.flatMap((t) => (t.blockedBy ?? []) as number[]))]
   const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
   const tickets = (ids: number[]) => (ids.length ? docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: ids } }] } }) : [])
   const ids = ticketDocs.map((t) => t.id as number)
-  const containerIds = ticketDocs.filter((t) => is(DEFAULT(), stageOf(t), 'container')).map((t) => t.id as number)
+  const containerIds = ticketDocs.filter((t) => is(wf, stageOf(wf, t), 'container')).map((t) => t.id as number)
   const [blockerDocs, parentDocs, [latest, owners], forges, entered, kids] = await Promise.all([
     tickets(blockerIds),
     tickets(parentIds),
@@ -139,16 +141,16 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
     const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
-    const need = needsOf(t, run, !hasProductionChecks(byId.get(t.product) ?? {}))
+    const need = needsOf(wf, t, run, !hasProductionChecks(byId.get(t.product) ?? {}))
     const overlap = isOpen && t.waitingFor === buildStage ? /^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1] : undefined
-    const hold = isOpen && t.waitingFor && !blockedBy.length ? waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason).replace(/^Waiting: /, '') : null
+    const hold = isOpen && t.waitingFor && !blockedBy.length ? waitingText(wf, t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason).replace(/^Waiting: /, '') : null
     return {
       id: t.id,
       number: t.number,
       title: t.title,
       url: t.url ?? null,
       open: isOpen,
-      stage: stageOf(t),
+      stage: stageOf(wf, t),
       rank: t.rank ?? null,
       reviewRounds: t.reviewRounds ?? 0,
       expedite: isOpen && !!t.expedite,
@@ -157,7 +159,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       run,
       owner: run?.sessionOwner ? (owners.get(run.sessionOwner) ?? null) : null,
       needsYou: need,
-      waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ ticket: t, need: null, run: null, waiting: waitingText(t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
+      waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ wf, ticket: t, need: null, run: null, waiting: waitingText(wf, t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: overlap ? Number(overlap) || null : null,
       queuedWhy: overlap ? `waits for #${overlap}, which changes the same files` : t.waitingFor === 'checks' ? null : hold,
       forge: forges.get(t.product) ?? null,
@@ -172,13 +174,14 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
   })
 }
 
-const epicOf = (e: Doc, subs: Doc[], byRow: Map<number, TicketRow>): Epic => ({
+const epicOf = (wf: Workflow, e: Doc, subs: Doc[], byRow: Map<number, TicketRow>): Epic => ({
   id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null,
-  children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(c), open: c.state !== 'closed', status: r ? statusLine(r) : 'Done' } }),
+  children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(wf, c), open: c.state !== 'closed', status: r ? statusLine(wf, r) : 'Done' } }),
 })
 
 /** Everything the Board, Runs and the top bar need, from the database only (no forge call). */
 export const loadOverviewRows = cache(async (workspace: number, all: boolean): Promise<Base> => {
+  const wf = workflowFor(workspace)
   const payload = await payloadClient()
   const ws = { workspace: { equals: workspace } }
   const [open, closed, recent, products, wsDoc, subs, counts] = await Promise.all([
@@ -195,11 +198,11 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
   const known = new Set(ticketDocs.map((t) => t.id))
   const missing = [...new Set(runRows.map((r) => r.ticket))].filter((id) => !known.has(id))
   if (missing.length) ticketDocs.push(...(await docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: missing } }] } })))
-  const wip = Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }]))
+  const wip = Object.fromEntries(wipStages(wf).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s, wf) }]))
   const productRows = products.docs as unknown as { id: number; name: string; productionChecks?: string | null }[]
-  const [rows, epicDocs] = await Promise.all([rowsOf(payload, workspace, ticketDocs, productRows, wip), docsOf(payload, 'tickets', { where: { and: [ws, epicWhere([...new Set(subs.map((c) => c.parent as number))])] } })])
+  const [rows, epicDocs] = await Promise.all([rowsOf(payload, workspace, ticketDocs, productRows, wip), docsOf(payload, 'tickets', { where: { and: [ws, epicWhere(wf, [...new Set(subs.map((c) => c.parent as number))])] } })])
   const byRow = new Map(rows.map((r) => [r.id, r]))
-  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics: epicDocs.map((e) => epicOf(e, subs, byRow)), wip }
+  return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics: epicDocs.map((e) => epicOf(wf, e, subs, byRow)), wip }
 })
 
 /** Same data as `loadOverviewRows`; the name the Board and Runs pages use. */
@@ -207,6 +210,7 @@ export const loadOverview = loadOverviewRows
 
 /** The epic a Ticket is (its sub-tickets with their status), else null; reads only that Ticket's children. */
 export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | null> => {
+  const wf = workflowFor(workspace)
   const payload = await payloadClient()
   const ws = { workspace: { equals: workspace } }
   const [subs, products, wsDoc, counts] = await Promise.all([
@@ -215,7 +219,7 @@ export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | n
     payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
     wipCounts(payload, workspace),
   ])
-  if (!subs.length && !is(DEFAULT(), ticket.stage, 'container')) return null
-  const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(DEFAULT()).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s) }])))
-  return epicOf(ticket, subs, new Map(rows.map((r) => [r.id, r])))
+  if (!subs.length && !is(wf, ticket.stage, 'container')) return null
+  const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(wf).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s, wf) }])))
+  return epicOf(wf, ticket, subs, new Map(rows.map((r) => [r.id, r])))
 }

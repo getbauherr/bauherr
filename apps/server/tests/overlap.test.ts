@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -26,7 +27,8 @@ beforeAll(async () => {
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
   delete process.env.GATEWAY_ADMIN_URL
-  delete process.env.BAUHERR_PACK_DIR
+  // The plan gate is on in the default pack; these Tickets go from plan to build without an approval.
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   actions = await import('../src/lib/actions')
@@ -46,7 +48,7 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
-  delete process.env.BAUHERR_PACK_DIR
+  process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
   await payload.update({ collection: 'products', id: product, data: { overlapIgnore: [] }, ...o })
   await payload.delete({ collection: 'runs', where: { workspace: { equals: ws } }, ...o })
   await payload.delete({ collection: 'tickets', where: { workspace: { equals: ws } }, ...o })

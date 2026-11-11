@@ -3,6 +3,7 @@ import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
+import { DEFAULT } from '../src/lib/workflow'
 
 let payload: Payload
 let fake: FakeBackend
@@ -80,15 +81,15 @@ const releaseTicket = async (title: string) => {
   return { id: t.id as number, n: String(issue.number) }
 }
 
-describe('default workflow (plan and release gates off)', () => {
-  it('lists refine and production as the default human gates', () => {
+describe('plan gate off (bare-pack: no optional gates; the default pack has the plan gate on)', () => {
+  it('the default pack lists refine, plan and production as the human gates; staging is off', () => {
     usePack()
-    expect(mode.humanGates()).toEqual(['refine', 'production'])
-    expect([mode.gateOn('plan'), mode.gateOn('release')]).toEqual([false, false])
+    expect(mode.humanGates(DEFAULT())).toEqual(['refine', 'plan', 'production'])
+    expect([mode.gateOn(DEFAULT(), 'plan'), mode.gateOn(DEFAULT(), 'release')]).toEqual([true, false])
   })
 
   it('moves a posted plan to build without a label or human touch, and starts the Build Run', async () => {
-    usePack()
+    usePack('bare-pack')
     const { id, n } = await planTicket('auto')
     await poll()
     expect(await reload(id)).toMatchObject({ stage: 'build' })
@@ -97,20 +98,20 @@ describe('default workflow (plan and release gates off)', () => {
     expect(labels).not.toContain('bauherr:approved:plan')
     expect(await runs(id, 'build')).toHaveLength(1)
     expect(await touches()).toBe(0)
-    expect(needs.needsYou({ stage: 'plan', labels: [] }, { stage: 'plan', status: 'succeeded' })).toBeNull()
+    expect(needs.needsYou(DEFAULT(), { stage: 'plan', labels: [] }, { stage: 'plan', status: 'succeeded' })).toBeNull()
     await poll()
     expect(await runs(id, 'build')).toHaveLength(1)
   })
 
   it('sends a plan with an open critical decision back to the refine hold; answering re-plans, then builds', async () => {
-    usePack()
+    usePack('bare-pack')
     const { id, n } = await planTicket('critical', CRITICAL)
     await poll()
     expect(await reload(id)).toMatchObject({ stage: 'triage' })
     const labels = await labelsOf(n)
     expect(labels).toContain('bauherr:needs-refinement')
     expect(labels.some((l) => l.startsWith('bauherr:stage:'))).toBe(false)
-    expect(needs.needsYou({ stage: 'triage', labels }, null)).toBe('Answer questions')
+    expect(needs.needsYou(DEFAULT(), { stage: 'triage', labels }, null)).toBe('Answer questions')
     await poll()
     expect((await reload(id)).labels).toEqual(expect.arrayContaining(['bauherr:needs-refinement']))
     expect((await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith('<!-- bauherr:plan-refine:'))).toHaveLength(1)
@@ -130,7 +131,7 @@ describe('default workflow (plan and release gates off)', () => {
   })
 
   it('sends the Sub-tickets of an auto plan straight to Build, without the approval label', async () => {
-    usePack()
+    usePack('bare-pack')
     const { id, n } = await planTicket('parent', SUBS)
     await poll()
     expect(await reload(id)).toMatchObject({ stage: 'parent' })
@@ -148,7 +149,7 @@ describe('default workflow (plan and release gates off)', () => {
     expect(await reload(id)).toMatchObject({ stage: 'release', state: 'open', releaseState: 'on_staging', productionState: 'awaiting_approval' })
     expect(await labelsOf(n)).toContain('bauherr:approved:staging')
     const t = await reload(id)
-    expect(needs.needsYou({ stage: t.stage, labels: await labelsOf(n), releaseState: t.releaseState, productionState: t.productionState }, null)).toBe('Approve production')
+    expect(needs.needsYou(DEFAULT(), { stage: t.stage, labels: await labelsOf(n), releaseState: t.releaseState, productionState: t.productionState }, null)).toBe('Approve production')
     expect(await touches()).toBe(0)
     await release.watchRelease(payload)
     expect(await reload(id)).toMatchObject({ productionState: 'awaiting_approval' })
@@ -188,11 +189,11 @@ describe('staging gate off: the approved:staging label approves nothing', () => 
 
   it('decides on production state, not on the label', () => {
     const t = { stage: 'release', labels: ['bauherr:approved:staging'], releaseState: 'on_staging' }
-    expect(needs.needsYou(t, null, 0, ['refine', 'production'])).toBeNull()
-    expect(needs.needsYou({ ...t, productionState: 'failed' }, null, 0, ['refine', 'production'])).toBe('Production deploy failed')
-    expect(needs.needsYou({ ...t, labels: [], productionState: 'awaiting_approval' }, null, 0, ['refine', 'production'])).toBe('Approve production')
-    expect(needs.needsYou({ ...t, labels: [] }, null, 0, ['refine', 'staging', 'production'])).toBe('Accept on staging')
-    expect(needs.needsYou(t, null, 0, ['refine', 'staging', 'production'])).toBeNull()
+    expect(needs.needsYou(DEFAULT(), t, null, 0, ['refine', 'production'])).toBeNull()
+    expect(needs.needsYou(DEFAULT(), { ...t, productionState: 'failed' }, null, 0, ['refine', 'production'])).toBe('Production deploy failed')
+    expect(needs.needsYou(DEFAULT(), { ...t, labels: [], productionState: 'awaiting_approval' }, null, 0, ['refine', 'production'])).toBe('Approve production')
+    expect(needs.needsYou(DEFAULT(), { ...t, labels: [] }, null, 0, ['refine', 'staging', 'production'])).toBe('Accept on staging')
+    expect(needs.needsYou(DEFAULT(), t, null, 0, ['refine', 'staging', 'production'])).toBeNull()
   })
 })
 
@@ -209,14 +210,14 @@ describe('production gate off or unconfigured', () => {
     const t = await reload(id)
     expect(t).toMatchObject({ stage: 'release', state: 'open', productionState: 'awaiting_approval' })
     const ticket = { stage: t.stage, labels: await labelsOf(n), releaseState: t.releaseState, productionState: t.productionState }
-    expect(needs.needsYou({ ...ticket, productionChecksMissing: true }, null)).toBe('Configure production checks')
+    expect(needs.needsYou(DEFAULT(), { ...ticket, productionChecksMissing: true }, null)).toBe('Configure production checks')
     await expect(actions.approveProduction(payload, user, { ticket: id })).rejects.toThrow('configure productionChecks')
     expect(await touches()).toBe(0)
   })
 
   it('gate turned off in the workflow: a Ticket confirmed on staging is done and closed, no touch', async () => {
     usePack('bare-pack')
-    expect(mode.humanGates()).toEqual(['refine'])
+    expect(mode.humanGates(DEFAULT())).toEqual(['refine'])
     const { id, n } = await releaseTicket('done')
     await release.watchRelease(payload)
     expect(await reload(id)).toMatchObject({ stage: 'done', state: 'closed' })
@@ -237,20 +238,20 @@ describe('production gate off or unconfigured', () => {
 describe('gate: human on plan and release', () => {
   it('keeps the approval gates', async () => {
     usePack('gated-pack')
-    expect(mode.humanGates()).toEqual(['refine', 'plan', 'staging'])
+    expect(mode.humanGates(DEFAULT())).toEqual(['refine', 'plan', 'staging'])
     const { id, n } = await planTicket('gated')
     await poll()
     expect(await reload(id)).toMatchObject({ stage: 'plan' })
     expect(await labelsOf(n)).toContain('bauherr:stage:plan')
-    expect(needs.needsYou({ stage: 'plan', labels: [] }, { stage: 'plan', status: 'succeeded' })).toBe('Approve plan')
-    expect(needs.needsYou({ stage: 'plan', labels: [] }, { stage: 'plan', status: 'succeeded' }, 1)).toBe('Answer decisions')
+    expect(needs.needsYou(DEFAULT(), { stage: 'plan', labels: [] }, { stage: 'plan', status: 'succeeded' })).toBe('Approve plan')
+    expect(needs.needsYou(DEFAULT(), { stage: 'plan', labels: [] }, { stage: 'plan', status: 'succeeded' }, 1)).toBe('Answer decisions')
 
     const rel = await releaseTicket('gated release')
     await release.watchRelease(payload)
     const t = await reload(rel.id)
     expect(t).toMatchObject({ stage: 'release', releaseState: 'on_staging' })
     expect(await labelsOf(rel.n)).not.toContain('bauherr:approved:staging')
-    expect(needs.needsYou({ stage: 'release', labels: [], releaseState: 'on_staging' }, null)).toBe('Accept on staging')
+    expect(needs.needsYou(DEFAULT(), { stage: 'release', labels: [], releaseState: 'on_staging' }, null)).toBe('Accept on staging')
   })
 })
 
@@ -263,15 +264,15 @@ describe('needsYou by gates', () => {
     [['refine', 'plan'], 'Approve plan', 'Answer decisions', null],
     [['refine', 'staging'], null, null, 'Accept on staging'],
   ] as const)('%j', (gates, approve, decisions, accept) => {
-    expect(needs.needsYou(plan, succeeded, 0, gates)).toBe(approve)
-    expect(needs.needsYou(plan, succeeded, 1, gates)).toBe(decisions)
-    expect(needs.needsYou(rel, null, 0, gates)).toBe(accept)
+    expect(needs.needsYou(DEFAULT(), plan, succeeded, 0, gates)).toBe(approve)
+    expect(needs.needsYou(DEFAULT(), plan, succeeded, 1, gates)).toBe(decisions)
+    expect(needs.needsYou(DEFAULT(), rel, null, 0, gates)).toBe(accept)
   })
 
   it('keeps declared blockers on whatever the gates', () => {
-    expect(needs.needsYou({ stage: 'release', labels: [], releaseState: 'timed_out' }, null, 0, ['refine'])).toBe('Staging not confirmed')
-    expect(needs.needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human' }, 0, ['refine'])).toBe('Run needs you')
-    expect(needs.needsYou({ stage: 'triage', labels: ['bauherr:needs-refinement'] }, null, 0, ['refine'])).toBe('Answer questions')
+    expect(needs.needsYou(DEFAULT(), { stage: 'release', labels: [], releaseState: 'timed_out' }, null, 0, ['refine'])).toBe('Staging not confirmed')
+    expect(needs.needsYou(DEFAULT(), { stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human' }, 0, ['refine'])).toBe('Run needs you')
+    expect(needs.needsYou(DEFAULT(), { stage: 'triage', labels: ['bauherr:needs-refinement'] }, null, 0, ['refine'])).toBe('Answer questions')
   })
 })
 

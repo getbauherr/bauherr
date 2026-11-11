@@ -1,5 +1,6 @@
 import type { Where } from 'payload'
-import { DEFAULT, kindOf } from '../../../lib/workflow'
+import { kindOf, type Workflow } from '../../../lib/workflow'
+import { workflowFor } from '../../../lib/factory'
 import { needsYou, type Need } from './needs-you'
 import { payloadClient } from './session'
 
@@ -84,7 +85,7 @@ export async function openSessions(userId: number, workspaceId: number | undefin
 
 /** Plain-language stage of a Ticket; the Board's stage names stay out of the Request page. */
 const LIFECYCLE: Record<string, string> = { triage: 'Being looked at', plan: 'Being planned', build: 'Being built', review: 'Being reviewed', release: 'On staging', container: 'Split into smaller tickets', done: 'Done' }
-export const lifecycleOf = (t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[(t.stage && kindOf(DEFAULT(), t.stage)) || 'triage'] ?? LIFECYCLE.triage!)
+export const lifecycleOf = (wf: Workflow, t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[(t.stage && kindOf(wf, t.stage)) || 'triage'] ?? LIFECYCLE.triage!)
 
 export type RequestTicket = { id: number; number: number; title: string; status: string; need: Need | null }
 export type RequestPage = {
@@ -105,6 +106,7 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
   const o = { overrideAccess: true, pagination: false, depth: 0 } as const
   const [s] = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, { 'product.workspace': { equals: workspaceId } }, { persona: { not_equals: 'owner' } }, { status: { in: ['open', 'submitted'] } }] }, limit: 1, depth: 1, overrideAccess: true })).docs as unknown as (Session & { draft?: { problem?: string; context?: string; acceptance_criteria?: string[] }; ticketNumbers?: number[] | null })[]
   if (!s) return null
+  const wf = workflowFor(workspaceId)
   const numbers = s.ticketNumbers?.length ? s.ticketNumbers : s.ticketNumber != null ? [s.ticketNumber] : []
   const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }[] : []
   const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, kind: true, status: true, reasonKind: true }, ...o })).docs as unknown as { ticket: number; stage: string; kind?: string | null; status: string; reasonKind?: string | null }[] : []
@@ -117,8 +119,8 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
     context: s.draft?.context?.trim() ?? '',
     criteria: (s.draft?.acceptance_criteria ?? []).filter((c) => c.trim()),
     tickets: docs.map((t) => ({
-      id: t.id, number: t.number, title: t.title, status: lifecycleOf(t),
-      need: t.state === 'closed' ? null : needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, runs.find((r) => r.ticket === t.id) ?? null),
+      id: t.id, number: t.number, title: t.title, status: lifecycleOf(wf, t),
+      need: t.state === 'closed' ? null : needsYou(wf, { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, runs.find((r) => r.ticket === t.id) ?? null),
     })),
   }
 }

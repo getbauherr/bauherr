@@ -2,7 +2,8 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Forge } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { wipLimit } from './wip-limits'
-import { DEFAULT, defaultWip, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { defaultWip, nameOf } from './workflow'
 
 type Doc = Record<string, any>
 
@@ -21,8 +22,8 @@ export const isQueue = (product: Doc): boolean => mergeModeOf(product) === 'queu
 export const isTrain = (product: Doc): boolean => mergeModeOf(product) === 'train'
 
 /** PRs the factory train tests together at most: the Workspace's Review WIP limit. */
-export const trainConcurrency = (workspace: { wipLimits?: unknown } | null | undefined): number => {
-  const wf = DEFAULT()
+export const trainConcurrency = (workspace: { id?: number | string; wipLimits?: unknown } | null | undefined): number => {
+  const wf = workflowFor(workspace as { id: number } | null | undefined)
   const review = nameOf(wf, 'review')
   return wipLimit(workspace, review) ?? defaultWip(wf)[review]!
 }

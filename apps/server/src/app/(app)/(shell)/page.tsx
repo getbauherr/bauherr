@@ -12,7 +12,8 @@ import { loadOverview } from '../lib/overview'
 import { isAdmin } from '../lib/settings'
 import { currentWorkspace, payloadClient, rememberEpic, requireBauherr } from '../lib/session'
 import { releaseReminders } from '../../../lib/ship-release'
-import { board, byKind, DEFAULT, graph as workflowGraph } from '../../../lib/workflow'
+import { workflowFor } from '../../../lib/factory'
+import { board, byKind, graph as workflowGraph } from '../../../lib/workflow'
 import { checkpointOf, nodeStats, stageMedians } from '../lib/workflow-view'
 import { BAR_LEGEND } from '../components/workflow/legend'
 
@@ -39,7 +40,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const epics = epicsToShow(data.epics, sp.done === '1', product)
   const reminders = workspace && !graph && !list ? await releaseReminders(await payloadClient(), workspace.id) : []
   const shown = sp.state === 'all' && !graph ? inProduct : inProduct.filter((t) => t.open)
-  const wf = DEFAULT()
+  const wf = workflowFor(workspace?.id)
   const nodes = workflowGraph(wf).nodes
   const picked = list || graph ? undefined : nodes.find((n) => n.id === sp.stage)?.id
   const hrefOf = (id: string) => {
@@ -57,7 +58,10 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   return (
     <>
       <AutoRefresh />
-      <h1 className="title">Workflow</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="title">Workflow</h1>
+        {isAdmin(user) && <Link className="small text-primary" href="/settings/workflow#factory-file">Edit workflow</Link>}
+      </div>
       {reminders.map((r) => (
         <p key={r.product.id} role="status" data-testid="release-reminder" className="small text-warn">
           {r.product.name}: {r.count} done {r.count === 1 ? 'Ticket has' : 'Tickets have'} waited {r.days} days for a release. <Link className="text-primary" href={`/releases?product=${r.product.id}`}>Open Releases</Link>
@@ -65,9 +69,9 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       ))}
       <TicketControls products={data.products} epics={data.epics} />
       {list ? (
-        epics.length ? <EpicsView epics={epics} /> : <EmptyState text="No open epics." />
+        epics.length ? <EpicsView wf={wf} epics={epics} /> : <EmptyState text="No open epics." />
       ) : shown.length ? (
-        graph ? <TicketGraph tickets={shown} /> : (
+        graph ? <TicketGraph wf={wf} tickets={shown} /> : (
           <div className="flex flex-col gap-4" data-testid="workflow">
             <WorkflowGraph wf={wf} variant="full" hrefOf={hrefOf} selected={picked} stats={stats!} />
             <p className="small flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground" aria-label="Legend">
@@ -75,7 +79,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               <span>Dashed lines go back to an earlier stage; dashed pills wait for you.</span>
             </p>
             {picked && <p className="small" data-testid="stage-filter">Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link>{picked.includes(':') && !!stats?.checkpoints.get(picked) && <> · <Link className="text-primary" href={`/inbox?checkpoint=${encodeURIComponent(nodes.find((n) => n.id === picked)?.title ?? '')}`} data-testid="decide-in-inbox">Decide in Inbox ({stats.checkpoints.get(picked)})</Link></>}</p>}
-            {groups.length ? <TicketList groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
+            {groups.length ? <TicketList wf={wf} groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
           </div>
         )
       ) : sp.epic ? (

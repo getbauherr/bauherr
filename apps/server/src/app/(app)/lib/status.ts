@@ -1,6 +1,6 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 import { kindOfRun } from '../../../lib/stage-text'
-import { DEFAULT, is, type Workflow } from '../../../lib/workflow'
+import { is, type Workflow } from '../../../lib/workflow'
 import { duration } from './format'
 
 export type StatusPhase = 'working' | 'queued' | 'human' | 'ci' | 'blocked' | 'failed' | 'done'
@@ -99,8 +99,8 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
 }
 
 /** `ticketStatus` against the current workflow, as one line: "In progress: building for 4 min". */
-export const statusLine = (r: StatusRow): string => {
-  const s = ticketStatus(DEFAULT(), r)
+export const statusLine = (wf: Workflow, r: StatusRow): string => {
+  const s = ticketStatus(wf, r)
   return s.detail ? `${s.label}: ${s.detail}` : s.label
 }
 

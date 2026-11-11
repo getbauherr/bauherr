@@ -4,6 +4,7 @@ import { s3Storage } from '@payloadcms/storage-s3'
 import { buildConfig } from 'payload'
 import { collections, isAdmin } from './collections'
 import { TASKS, syncJobEnums } from './jobs'
+import { bootFactory } from './lib/factory'
 import { migrations } from './migrations'
 import { poolOptions } from './lib/db-pool'
 import { loginLimits } from './lib/login-lock'
@@ -29,7 +30,10 @@ export default buildConfig({
   typescript: { autoGenerate: false },
   db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() }, push: !process.env.BAUHERR_TEST_SCHEMA_READY, prodMigrations: migrations }),
   collections,
-  onInit: syncJobEnums,
+  onInit: async (payload) => {
+    await syncJobEnums(payload)
+    await bootFactory(payload)
+  },
   plugins: [
     multiTenantPlugin({
       tenantsSlug: 'workspaces',

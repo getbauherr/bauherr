@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { getPayload } from 'payload'
 import config from '../src/payload.config'
 import { replaceAgentKey } from '../src/lib/api-key'
 import { ensureSessionKey, gatewayEnabled, writeSecretFile } from '../src/lib/gateway'
-import { compile, parseFactory } from '../src/lib/workflow'
+import { activeVersion, applyFactory, packSource } from '../src/lib/factory'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -56,15 +55,14 @@ if (!product.productionChecks) await payload.update({ collection: 'products', id
 if (!product.releaseChecks) await payload.update({ collection: 'products', id: product.id, data: { releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
-const compiled = compile(parseFactory(readFileSync(fileURLToPath(new URL('../../../pack/factory.yaml', import.meta.url)), 'utf8')))
-await scoped('workflow_versions', { product: product.id, version: 1 }, { compiled })
+// The shipped factory file is the Workspace's first version; a re-seed never overwrites an applied one.
+if (!(await activeVersion(payload, Number(workspace)))) await applyFactory(payload, Number(workspace), packSource(), { by: 'seed', via: 'seed' })
 
 const smoke = process.env.BAUHERR_SMOKE_REPO
 if (smoke) {
   const sandbox = await scoped('products', { slug: 'sandbox' }, { name: 'sandbox' })
   await scoped('repositories', { fullName: smoke }, { product: sandbox.id })
   await scoped('ticket_sources', { repo: smoke, product: sandbox.id }, { connection: github.id })
-  await scoped('workflow_versions', { product: sandbox.id, version: 1 }, { compiled })
 }
 
 payload.logger.info(`seeded workspace ${workspace}`)

@@ -2,15 +2,20 @@ import { setStage, stageOf as labelStage, type TicketSource } from '@bauherr/ada
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { record } from './history'
-import { board, DEFAULT, isForward as forward } from './workflow'
+import { workflowFor } from './factory'
+import { board, isForward as forward, type Workflow } from './workflow'
 
 const idOf = (v: unknown) => (typeof v === 'object' && v ? (v as { id: number }).id : (v as number))
 
 /** Forward order of the workflow's stages; unknown names are never "forward". */
-export const isForward = (from: string, to: string) => forward(DEFAULT(), from, to)
+export const isForward = (wf: Workflow, from: string, to: string) => forward(wf, from, to)
 
-/** The stage label's name among `labels`, ordered by the workflow's Board. */
-export const stageOf = (labels: string[]) => labelStage(labels, board(DEFAULT()))
+/** The canonical stage among `labels`, ordered by the workflow's Board; an alias label (an old stage name) reads as its new stage. */
+export const stageOf = (wf: Workflow, labels: string[]) => {
+  const names = [...board(wf), ...Object.keys(wf.aliases)]
+  const found = labelStage(labels, names)
+  return found && (wf.aliases[found] ?? found)
+}
 
 /** The factory's own stage move: records it on the Ticket row first, so the poller can tell it from a hand-set forge label (#196), then sets the label and records the move in the Ticket's history (`why`: the machine reason). */
 export const moveStage = async (payload: Payload, ts: TicketSource, t: Record<string, any>, name: string, why = ''): Promise<void> => {

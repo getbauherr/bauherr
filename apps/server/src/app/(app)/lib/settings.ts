@@ -7,7 +7,8 @@ import { gateOn, humanGates, packed, productionGateOn, resolveMode } from '../..
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
 import { wipLimit } from '../../../lib/wip-limits'
-import { DEFAULT, wipStages } from '../../../lib/workflow'
+import { wipStages } from '../../../lib/workflow'
+import { activeVersion, defaultHash, exportFactory, workflowFor } from '../../../lib/factory'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
@@ -108,7 +109,7 @@ export async function loadProducts(workspace: number) {
             .filter((s) => (s.product?.id ?? s.product) === p.id)
             .map((s) => ({ id: s.id as number, repo: s.repo as string, connection: (s.connection?.name ?? '') as string, cursor: (s.cursor ?? '') as string, polledAt: s.updatedAt as string })),
         }
-        const productionOn = productionGateOn({ productionGate: product.deploy.productionGate })
+        const productionOn = productionGateOn(workflowFor(workspace), { productionGate: product.deploy.productionGate })
         return { ...product, productionOn, setup: setupOf(product, productionOn) }
       }),
     ),
@@ -118,13 +119,14 @@ export async function loadProducts(workspace: number) {
 /** One Product of the Workspace with the workflow facts and the people who can be gate owners (Members with a GitHub login); undefined when it belongs to another Workspace. */
 export async function loadProduct(workspace: number, id: number, viewerIsAdmin = false) {
   const { products, connections } = await loadProducts(workspace)
+  const wf = workflowFor(workspace)
   const product = products.find((p) => p.id === id)
   if (!product) return undefined
   const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, { or: [{ role: { equals: 'admin' } }, { 'tenants.tenant': { equals: workspace } }] }] }, sort: 'email', pagination: false, ...o } as never)
   const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
   // Admins are not tenant-scoped: only an Admin sees other Admins' emails; for everyone the callout still knows whether an Admin can be notified.
   const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
-  return { product, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(), plan: gateOn('plan'), staging: gateOn('release') } }
+  return { product, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
@@ -266,35 +268,28 @@ export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: 
   return { rows, errors }
 }
 
-/** Base workflow with the mode each stage resolves to in this Workspace, plus the latest compiled version per Product. */
+/** The Workspace's workflow with the mode each stage resolves to, its WIP columns and the active factory file version. */
 export async function loadWorkflow(workspace: number) {
   const payload = await payloadClient()
-  const base = packed()
+  const wf = workflowFor(workspace)
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { defaultMode: true, modeByStage: true, wipLimits: true, expediteLane: true }, ...o } as never)) as Doc
-  const stages = base.map((s) => ({ name: s.name, mode: resolveMode(ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
-  const where = { workspace: { equals: workspace } }
-  const [products, versions] = await Promise.all([
-    payload.find({ collection: 'products', where, sort: 'name', pagination: false, ...o } as never),
-    payload.find({ collection: 'workflow_versions', where, sort: '-version', pagination: false, ...o } as never),
-  ])
-  const baseJson = JSON.stringify(DEFAULT())
-  const wip = await Promise.all(wipStages(DEFAULT()).map(async (s) => ({ stage: s, limit: wipLimit(ws, s), count: await wipCount(payload, workspace, s) })))
+  const stages = packed(wf).map((s) => ({ name: s.name, mode: resolveMode(wf, ws, s.name), gate: [s.gate && `gate: ${s.gate}`].filter(Boolean).join(', '), steps: (s.steps ?? []).map((x) => (x.skill ? `${x.kind}: ${x.skill}` : x.kind)) }))
+  const products = await payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, sort: 'name', pagination: false, ...o } as never)
+  const wip = await Promise.all(wipStages(wf).map(async (s) => ({ stage: s, limit: wipLimit(ws, s, wf), count: await wipCount(payload, workspace, s) })))
   const overlap = (products.docs as unknown as Doc[]).map((p) => {
     const ignore = (p.overlapIgnore ?? []) as string[]
     const stored = p.overlapSuggestions as { at: string; items: { path: string; percent: number }[] } | null
     return { id: p.id as number, name: p.name as string, ignore, suggestions: (stored?.items ?? []).filter((x) => !ignore.includes(x.path)), suggestedAt: stored?.at ?? null }
   })
+  const active = await activeVersion(payload, workspace)
   return {
     stages,
     wip,
     expediteLane: ws.expediteLane !== false,
     overlap,
-    gates: humanGates(),
-    ladder: { plan: gateOn('plan'), staging: gateOn('release'), production: productionGateOn() },
-    versions: (products.docs as unknown as Doc[]).map((p) => {
-      const v = (versions.docs as unknown as Doc[]).find((x) => (ref(x.product)?.id ?? x.product) === p.id)
-      return { product: p.name as string, version: (v?.version ?? null) as number | null, at: (v?.createdAt ?? null) as string | null, overlay: v ? JSON.stringify(v.compiled) !== baseJson : false }
-    }),
+    gates: humanGates(wf),
+    ladder: { plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), production: productionGateOn(wf) },
+    factory: { active, custom: !!active && active.hash !== defaultHash(), source: await exportFactory(payload, workspace), stageCount: wf.stages.length, roleCount: wf.roles.length },
   }
 }
 

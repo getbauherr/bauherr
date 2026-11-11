@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { NEEDS } from '../src/lib/needs-you'
 import { actionFor, fallbackFor, nextStep } from '../src/lib/next-step'
+import { DEFAULT } from '../src/lib/workflow'
 
-const base = { ticket: { state: 'open', stage: 'build' }, need: null, run: null, waiting: null, blockers: [], admin: true }
+const base = { wf: DEFAULT(), ticket: { state: 'open', stage: 'build' }, need: null, run: null, waiting: null, blockers: [], admin: true }
 
 describe('nextStep', () => {
   it('is enabled on the owner\'s turn, labelled with the need', () => {

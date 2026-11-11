@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { buildStagingSummary } from '../src/lib/summary'
 import { createTestDb, type TestDb } from './helpers/test-db'
+import { DEFAULT } from '../src/lib/workflow'
 
 let payload: Payload
 let fake: FakeBackend
@@ -180,7 +181,7 @@ it('pre-release Product: tags the next rc as a pre-release, opens no CHANGELOG M
   expect(await reload(t.id)).toMatchObject({ releaseChecksState: 'failed', releaseRunUrl: 'https://fake/run/2' })
   expect((await comments()).at(-1)).toContain('failed (npm)')
   const { needsYou } = await import('../src/lib/needs-you')
-  expect(needsYou({ stage: 'done', labels: [], releaseChecksState: 'failed' }, null)).toBe('Release failed')
+  expect(needsYou(DEFAULT(), { stage: 'done', labels: [], releaseChecksState: 'failed' }, null)).toBe('Release failed')
 
   fake.setChecks('acme/rc', 'sha-r', [{ id: 1, name: 'image', status: 'completed', conclusion: 'success', startedAt: at }, { id: 3, name: 'npm', status: 'completed', conclusion: 'success', startedAt: at }])
   expect(await release.watchReleaseChecks(payload)).toBe(1)

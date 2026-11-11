@@ -161,6 +161,10 @@ importers:
         version: 5.9.3
 
   packages/cli:
+    dependencies:
+      yaml:
+        specifier: ^2.8.0
+        version: 2.9.1
     devDependencies:
       '@bauherr/eval':
         specifier: workspace:*

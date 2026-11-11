@@ -29,12 +29,16 @@ export type RunCtx = {
     id: string;
     /** The Run's stage name in the workflow (display, gateway header); behaviour follows `kind`. */
     stage: string;
-    kind: 'triage' | 'plan' | 'build' | 'review' | 'scan';
+    kind: 'triage' | 'plan' | 'build' | 'review' | 'scan' | 'agent';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
     tier: 'cheap' | 'standard' | 'strong' | 'auto';
+    /** Gateway model id of a role that pins provider and model; wins over `tier`. */
+    model?: string;
   };
+  /** Agent Run: the workflow stage, its skill, the role profile and the outcome keys the agent may report. */
+  agent?: { stage: string; title: string; skill: string; roleProfile: string; outcomes: string[] };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
   product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
@@ -77,7 +81,7 @@ export type RunResult = {
   reason?: string;
   /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; agentOutcome?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

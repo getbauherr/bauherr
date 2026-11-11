@@ -4,7 +4,8 @@ import { startRunIfNeeded } from '../jobs'
 import { upsertTicket } from './actions'
 import { createHash } from 'node:crypto'
 import { stageLabel } from '@bauherr/adapters'
-import { DEFAULT, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { nameOf } from './workflow'
 import { SECURITY_FINDING_MARKER } from '../app/(app)/lib/plan'
 import { forgeOf, id } from './release'
 
@@ -145,7 +146,7 @@ export const fileFindings = async (payload: Payload, run: Doc): Promise<{ create
       `## Evidence\n${scrub(f.evidence)}`,
       `## Fix\n${scrub(f.fix)}`,
     ].join('\n\n')
-    await tickets.create({ title: scrub(f.title), body, labels: [SECURITY_LABEL, sevLabel(f.severity), ...(rank(f.severity) >= rank('high') ? [stageLabel(nameOf(DEFAULT(), 'triage'))] : [])] })
+    await tickets.create({ title: scrub(f.title), body, labels: [SECURITY_LABEL, sevLabel(f.severity), ...(rank(f.severity) >= rank('high') ? [stageLabel(nameOf(workflowFor(run.workspace), 'triage'))] : [])] })
     created++
   }
   if (overflow.length) await tickets.comment(String(ticket.number), `Scan Run #${run.id} found more than ${FINDING_CAP} new findings; not filed this time:\n${overflow.join('\n')}`)

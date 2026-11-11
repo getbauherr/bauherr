@@ -4,7 +4,8 @@ import { PLAN_MARKER, latestWith, planFiles } from '../app/(app)/lib/plan'
 import { executionOrder } from './frontier'
 import { isExpediting } from './expedite'
 import { forgeOf, id, prOf } from './release'
-import { DEFAULT, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { nameOf } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -60,13 +61,13 @@ export const overlappingTicket = async (payload: Payload, t: Doc): Promise<Doc |
   const ignore = (product.overlapIgnore ?? []) as string[]
   const mine = await ticketPaths(payload, t, ignore)
   if (!mine.length) return null
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   const build = nameOf(wf, 'build')
   const holdsDiff = [build, nameOf(wf, 'review')]
   const me = { id: t.id, number: t.number, rank: t.rank, stage: build }
   const earlier = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(t.product) } }, { state: { equals: 'open' } }, { stage: { in: holdsDiff } }, { id: { not_equals: t.id } }] }, pagination: false, ...o })).docs as Doc[])
-    .filter((e) => e.expedite || executionOrder(e as never, me) < 0 || (!isBug(t) && isBug(e)))
-    .sort((a, b) => executionOrder(a as never, b as never))
+    .filter((e) => e.expedite || executionOrder(e as never, me, wf) < 0 || (!isBug(t) && isBug(e)))
+    .sort((a, b) => executionOrder(a as never, b as never, wf))
   for (const e of earlier) {
     const flight = await inFlight(payload, e)
     if (!flight || (isBug(t) && !isBug(e) && !flight.started)) continue
@@ -82,7 +83,7 @@ export const holdOverlap = async (payload: Payload, t: Doc): Promise<boolean> =>
   const other = await overlappingTicket(payload, t)
   if (!other) return false
   const waitingReason = `overlaps #${other.number}`
-  const build = nameOf(DEFAULT(), 'build')
+  const build = nameOf(workflowFor(t.workspace), 'build')
   if (t.waitingFor !== build || t.waitingReason !== waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: build, waitingReason }, ...o })
   return true
 }

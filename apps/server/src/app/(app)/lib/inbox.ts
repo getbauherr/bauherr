@@ -1,4 +1,4 @@
-import { type Checkpoint, CHECKPOINTS, type Decision, buildDecision, canDecide, isNeed } from '../../../lib/decision'
+import { type Checkpoint, CHECKPOINTS, type Decision, buildDecision, canDecide, humanStage, isNeed } from '../../../lib/decision'
 import { payloadClient } from './session'
 import { renderMarkdown } from './markdown'
 import { waited } from './format'
@@ -12,7 +12,7 @@ export type InboxGroup = { checkpoint: Checkpoint; items: InboxItem[] }
 /** The view of a stored Decision (or one built from the row when the sweep has not reached the Ticket yet) that cards render. */
 export const cardOf = (t: Doc, product: { id: number; name: string; stagingUrl?: string | null }): InboxItem | null => {
   if (!isNeed(t.needsYou)) return null
-  const decision: Decision = t.decision?.need === t.needsYou ? t.decision : buildDecision(t.needsYou, { ticket: t as never, product, planTldr: t.planTldr, stagingTldr: t.stagingTldr })
+  const decision: Decision = t.decision?.need === t.needsYou ? t.decision : buildDecision(t.needsYou, { ticket: t as never, product, planTldr: t.planTldr, stagingTldr: t.stagingTldr, human: humanStage(t) })
   return { id: t.id, number: t.number, product: { id: product.id, name: product.name }, decision, detailsHtml: decision.details ? renderMarkdown(decision.details) : null, waiting: waited(decision.openSince) }
 }
 
@@ -24,7 +24,7 @@ export const loadInbox = async (workspace: number, user: { role?: string | null 
   const payload = await payloadClient()
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const [rows, products, working] = await Promise.all([
-    payload.find({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: true }, ...(opts.product ? { product: { equals: opts.product } } : {}) }, select: { number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
+    payload.find({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: true }, ...(opts.product ? { product: { equals: opts.product } } : {}) }, select: { workspace: true, number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
     payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, select: { name: true, stagingUrl: true }, sort: 'name', ...o }),
     payload.count({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: false } }, overrideAccess: true }),
   ])

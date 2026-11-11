@@ -25,5 +25,6 @@ const TITLE: Record<string, string> = { 'triage:refine': GRAPH_CHECKPOINT.refine
 export const checkpointOfNeed = (need: Need): string => {
   const n = NEED_NODE[need]
   if (n) return TITLE[`${n[0]}:${n[1]}`]!
+  if (need === 'Decision needed') return 'Decision'
   return need === 'Expedite?' ? 'Triage' : need === 'Round cap reached' || need === 'Needs you' ? 'Review' : 'Stuck'
 }

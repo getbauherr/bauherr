@@ -1,4 +1,5 @@
-import { DEFAULT, pullRank } from './workflow'
+import { workflowFor } from './factory'
+import { pullRank, type Workflow } from './workflow'
 
 const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const digit = (s: string, i: number): number => (i < s.length ? ALPHABET.indexOf(s[i]) : 0)
@@ -33,7 +34,7 @@ export const evenRanks = (n: number): string[] => {
   })
 }
 
-export type FrontierTicket = { id: number | string; number: number; stage?: string | null; rank?: string | null; blocked?: boolean; expediting?: boolean; reviewRounds?: number | null }
+export type FrontierTicket = { id: number | string; number: number; workspace?: number | string | { id: number | string } | null; stage?: string | null; rank?: string | null; blocked?: boolean; expediting?: boolean; reviewRounds?: number | null }
 export type FrontierRun = { stage: string; status: string; mode?: string; previousRun?: unknown }
 
 /** Expedite first, then right to left (release, review, build, plan, triage), then the owner's rank, then number; blocked and leased Tickets last. Pure; `latest` maps Ticket id to its latest Run. */
@@ -46,11 +47,11 @@ export const frontierOrder = <T extends FrontierTicket>(tickets: T[], latest: Ma
 export const cmp = (a?: string | null, b?: string | null): number => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0)
 
 /** Execution-order group of a stage: its index in the pull order (release 0, review 1, build 2, plan 3, triage 4), anything else after them. */
-export const stageGroup = (stage?: string | null): number => {
-  const rank = pullRank(DEFAULT())
+export const stageGroup = (wf: Workflow, stage?: string | null): number => {
+  const rank = pullRank(wf)
   const i = rank.indexOf(stage ?? '')
   return i < 0 ? rank.length : i
 }
 
 /** Comparator for the order work is done in: Tickets served by the expedite lane first, then stage group, the owner's rank, number. */
-export const executionOrder = (a: FrontierTicket, b: FrontierTicket): number => Number(!!b.expediting) - Number(!!a.expediting) || stageGroup(a.stage) - stageGroup(b.stage) || cmp(a.rank, b.rank) || a.number - b.number
+export const executionOrder = (a: FrontierTicket, b: FrontierTicket, wf: Workflow = workflowFor(a.workspace)): number => Number(!!b.expediting) - Number(!!a.expediting) || stageGroup(wf, a.stage) - stageGroup(wf, b.stage) || cmp(a.rank, b.rank) || a.number - b.number

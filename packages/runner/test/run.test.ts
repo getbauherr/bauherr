@@ -195,3 +195,18 @@ test('runStage investigation: a fix-ticket file needs no plan.md and ends succee
   assert.deepEqual(res.artifacts.investigation, investigation);
   assert.equal(ctx.comments.length, 0, 'no plan Comment is posted');
 });
+
+test('runStage build: an outcome.json with replan ends succeeded without commits or an MR, the Goal stays unverified', { timeout: 120_000 }, async () => {
+  const body = JSON.stringify({ outcome: 'replan', comment: 'step 2 needs a table that does not exist' });
+  const command = `printf '%s' '${body}' > .bauherr/outcome.json`;
+  const gw = await startStubGateway('done', 0, false, () => ({ name: 'Bash', input: { command, description: 'write the outcome' } }));
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'build' });
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.deepEqual(res.artifacts.agentOutcome, { outcome: 'replan', comment: 'step 2 needs a table that does not exist' });
+    assert.equal(res.artifacts.prUrl, undefined);
+  } finally {
+    await gw.close();
+  }
+});

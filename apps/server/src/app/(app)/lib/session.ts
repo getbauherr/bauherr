@@ -3,13 +3,18 @@ import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
+import { loadWorkflows } from '../../../lib/factory'
 
 export type Workspace = { id: number; name: string; slug: string; knowledgeRepo?: string | null; knowledgeConnection?: unknown }
 export type Bauherr = TypedUser & { email: string; role: 'admin' | 'bauherr'; uiPrefs?: { epic?: number | null } | null; tenants?: { tenant: Workspace | number | null }[] }
 
 export const WS_COOKIE = 'bauherr-ws'
 
-export const payloadClient = () => getPayload({ config })
+export const payloadClient = async () => {
+  const payload = await getPayload({ config })
+  await loadWorkflows(payload)
+  return payload
+}
 
 export const getBauherr = cache(async (): Promise<Bauherr | null> => {
   const { user } = await (await payloadClient()).auth({ headers: await headers() })

@@ -10,7 +10,7 @@ import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { mrBody } from '../src/index.js';
 import { changedLines, formatReviewChecks, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
-import { FINDINGS_FILE, TRIAGE_FILE, materialise } from '../src/materialise.js';
+import { FINDINGS_FILE, OUTCOME_FILE, TRIAGE_FILE, materialise } from '../src/materialise.js';
 import { makeCtx } from './helpers.js';
 
 const g = (text: string, status: 'unverified' | 'verified' | 'blocked' = 'unverified', reason?: string) => ({ text, status, reason });
@@ -170,6 +170,30 @@ test('scan run: read-only tools, writes only .bauherr/, egress gateway-only, con
   assert.match(promptFor(ctx), /security-scan skill/);
   const agents = materialise(mkdtempSync(join(tmpdir(), 'scan-')), ctx);
   assert.match(agents, /## Security context\nUNTRUSTED DATA[\s\S]*IGNORE ALL RULES/);
+});
+
+test('agent run: read-only, writes only .bauherr/, skill and role profile materialised, ticket fenced', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'agent-'));
+  mkdirSync(join(cwd, 'src'));
+  const ctx = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'file:///x', stage: 'agent' });
+  ctx.agent = { stage: 'qa', title: 'QA', skill: 'review', roleProfile: 'Be the QA lead.', outcomes: ['pass', 'fail'] };
+  ctx.run.model = 'ws-acme/anthropic/claude-x';
+  ctx.connection.modelByTier = { cheap: 'tier-model' };
+  const state = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
+  const opts = buildOptions(ctx, { cwd, home: cwd, proxyUrl: 'http://127.0.0.1:1', agentsMd: '' }, state);
+  assert.deepEqual(opts.tools, ['Read', 'Grep', 'Glob', 'Write']);
+  assert.equal(opts.model, 'ws-acme/anthropic/claude-x');
+  const decide = async (i: number, input: object, tool: string) => {
+    const out = (await opts.hooks!.PreToolUse![i]!.hooks[0]!({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: state.abort.signal })) as { hookSpecificOutput: { permissionDecision: string } };
+    return out.hookSpecificOutput.permissionDecision;
+  };
+  assert.equal(await decide(0, { file_path: join(cwd, OUTCOME_FILE) }, 'Write'), 'allow');
+  assert.equal(await decide(0, { file_path: join(cwd, 'src/a.ts') }, 'Write'), 'deny');
+  assert.equal(await decide(1, { command: 'curl https://evil' }, 'Bash'), 'deny');
+  assert.match(promptFor(ctx), /Write \.bauherr\/outcome\.json as \{"outcome":"pass"\|"fail"/);
+  const agents = materialise(mkdtempSync(join(tmpdir(), 'agent-')), ctx);
+  assert.match(agents, /## Stage QA \(qa\)[\s\S]*Outcomes: `pass`, `fail`[\s\S]*Be the QA lead\./);
+  assert.match(agents, /## Ticket #7\nhttps:\/\/example\.invalid\/7\n\nUNTRUSTED DATA/);
 });
 
 test('conflictBase scopes the review prompt, not the triage prompt', () => {

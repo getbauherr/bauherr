@@ -6,7 +6,8 @@ import { APPROVED_PLAN } from './needs-you'
 import { id } from './release'
 import { moveStage } from './stage-move'
 import { kindOfRun } from './stage-text'
-import { DEFAULT, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { nameOf } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
@@ -41,7 +42,7 @@ const investigationRuns = async (payload: Payload, ticket: number | string): Pro
 /** Whether the Run is an escalated one: it carries `escalation`, is an investigation Plan Run, or is the first Build Run started after the Ticket's latest investigation. */
 export const isEscalated = async (payload: Payload, run: Doc): Promise<boolean> => {
   if (run.escalation) return true
-  const kind = kindOfRun(DEFAULT(), run)
+  const kind = kindOfRun(workflowFor(run.workspace), run)
   if (kind === 'plan') return !!run.investigation
   if (kind !== 'build') return false
   const last = (await investigationRuns(payload, id(run.ticket))).filter((r) => r.id < run.id).pop()
@@ -79,7 +80,7 @@ const describeFailure = async (payload: Payload, r: Doc): Promise<string> => {
 const completeInvestigation = async (payload: Payload, t: Doc, run: Doc): Promise<boolean> => {
   const ts = await ticketsOf(payload, id(t.product))
   const fresh = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc
-  const plan = nameOf(DEFAULT(), 'plan')
+  const plan = nameOf(workflowFor(t.workspace), 'plan')
   if (fresh.stage !== plan && fresh.stage !== run.investigation.stage) return false
   let did = false
   if (fresh.stage !== plan) {
@@ -102,7 +103,7 @@ const completeInvestigation = async (payload: Payload, t: Doc, run: Doc): Promis
  */
 export const startInvestigation = async (payload: Payload, t: Doc, failed: Doc[]): Promise<boolean> => {
   if ((await investigationRuns(payload, t.id)).length >= MAX_INVESTIGATIONS) return false
-  const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, nameOf(DEFAULT(), 'plan'), { investigation: { failedRuns: failed.map((r) => r.id), stage: failed[0]!.stage } })
+  const { run, created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, nameOf(workflowFor(t.workspace), 'plan'), { investigation: { failedRuns: failed.map((r) => r.id), stage: failed[0]!.stage } })
   if (!run.investigation) return false
   await completeInvestigation(payload, t, run)
   return created
@@ -143,7 +144,7 @@ export const submitInvestigation = async (payload: Payload, run: Doc, a: Investi
     const fix = await ts.create({ title: a.fix!.title.trim(), body: `${a.fix!.body?.trim() ?? ''}\n\nFound while investigating #${n}.`.trim(), labels: ['type:bug'] })
     await ts.addBlockedBy(n, fix.id)
     const local = await upsertTicket(payload, { workspace: id(t.workspace), product: id(t.product), externalId: fix.id, number: fix.number, url: fix.url, title: fix.title, state: 'open', labels: fix.labels }, null)
-    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: nameOf(DEFAULT(), 'build'), waitingReason: `waiting for #${fix.number}`, blockedBy: [...new Set([...((t.blockedBy as (number | string)[]) ?? []).map(id), local.id])] }, overrideAccess: true })
+    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: nameOf(workflowFor(t.workspace), 'build'), waitingReason: `waiting for #${fix.number}`, blockedBy: [...new Set([...((t.blockedBy as (number | string)[]) ?? []).map(id), local.id])] }, overrideAccess: true })
     fixed = { number: fix.number, url: fix.url }
     lines.push(`Decision: fix first. Filed ${fix.url} (#${fix.number}) as blocked-by; Build starts again once it is closed.`)
   } else if (a.decision === 'revise') {
