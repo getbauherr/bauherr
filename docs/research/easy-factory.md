@@ -1,6 +1,6 @@
 # An easy software factory for every developer
 
-Research note, 2026-11-11. Proposal, nothing built. Sources are numbered `S1`..`S26` and listed at the end; every
+Research note, 2026-11-11. Written as a proposal; the "Has" lines and section 9 record what Bauherr shipped from it the same week. Sources are numbered `S1`..`S26` and listed at the end; every
 claim about another product cites one. `not verified` = the page I opened did not say it, or I did not open a page.
 Repo facts: `README.md`, `docs/ui.md`, `docs/session-mode.md`, `pack/factory.yaml`, `pack/roles/`.
 
@@ -18,8 +18,8 @@ Repo facts: `README.md`, `docs/ui.md`, `docs/session-mode.md`, `pack/factory.yam
 - Product owner: hears only when needed. A question for them, something to accept, done. Not every step.
 - Both: one place that says what waits for me. Bauherr has this (Inbox); the compared tools mostly have a session list.
 - Setup is short when it asks for nothing it can detect and defers the rest (Vercel S23, Cursor S15).
-- Gap in Bauherr today: roles and gates are in `factory.yaml`, not a choice at setup. The `/setup` wizard asks for
-  deploy config before the first request.
+- Gap when this was written: roles and gates were only in `factory.yaml`, not a choice at setup, and `/setup` asked
+  for deploy config before the first request. Both are closed (section 9).
 
 ## 2. Comparison
 
@@ -43,15 +43,18 @@ model, not as a dependency.
 
 1. **Delegate, do not reassign.** Who: Linear keeps the human as assignee and sets the agent as delegate (S12).
    Bauherr: show "Delegate: engineer role" on the ticket next to the human owner, never replace the owner. Has:
-   partly. A claimed Ticket gets `githubLogin` as assignee (`docs/session-mode.md`); no delegate field.
+   partly. A claimed Ticket gets `githubLogin` as assignee; the Ticket names the session and its role as who works on
+   it (`docs/session-mode.md`). No separate delegate field.
 2. **Typed activity feed per agent session.** Who: Linear (thought, action, elicitation, response, error; S12).
    Bauherr: Steps already record what a Run did. Has: yes, Run page timeline and Ticket "Steps" (`docs/ui.md`).
 3. **Roles as files in the repo.** Who: Factory S1, Copilot S9, Claude S17; project beats personal on a name clash
    (S1, S17). Bauherr: `profile_file` per role exists in `pack/roles/`. Add a product-repo override directory, and have
-   the setup picker write these files. Has: partly. Three role files ship (`engineer`, `orchestrator`, `reviewer`).
+   the setup picker write these files. Has: yes. Six role files ship
+   (`orchestrator`, `engineer`, `reviewer`, `security`, `ux`, `test`); the Team page and the setup presets write the
+   Workspace's factory file. Not yet: a product-repo override directory.
 4. **Autonomy as one ladder with an org cap.** Who: Factory (Off, Low, Medium, High; Maximum Autonomy Level; S2).
-   Bauherr: name three presets that set `gate: human` on `plan`, `release`, `production_gate`. Has: partly. Gates are
-   individual toggles on `/settings/workflow`.
+   Bauherr: name three presets that set `gate: human` on `plan`, `release`, `production_gate`. Has: yes. Setup offers
+   Solo, Standard and Careful; each is a factory file in `pack/presets/`. No Workspace-wide cap.
 5. **Admin connects once and chooses the scope.** Who: Linear S11, Devin S5 (choose teams), Cursor S14. Bauherr:
    the connect step stays one Connection, then Products picked from a list. Has: yes (`/setup` step 1, Product form).
 6. **Environment set up by the agent, committed as a file.** Who: Cursor (agent-led setup, commit
@@ -60,14 +63,16 @@ model, not as a dependency.
 7. **Take over a running session.** Who: Cursor (remote desktop, S14), Claude (`--teleport`, S19), Devin (S4).
    Bauherr: connected sessions are the take-over path. Has: yes (session mode, agent keys on `/settings/api-key`).
 8. **One list of every agent's work.** Who: Agent HQ mission control (S10), Copilot Agents tab (S8). Bauherr: Workflow
-   graph home plus `/runs`. Add a "working now, for how long" strip from `tickets.liveness`. Has: partly.
+   graph home plus `/runs`. Has: yes. The Team page lists every session and Runner with its ticket and active time; stage cards on the Workflow
+   show who is stationed there.
 9. **Decision cards that tell you what to do.** Who: Copilot requests review when done (S8). Bauherr: Inbox with TL;DR
    cards by checkpoint. Has: yes (`/inbox`).
 10. **Request types that pick the skill.** Who: Devin skill labels such as `@skills:implement` and a default skill (S5);
     macros (S6). Bauherr: intake offers Bug, Feature, Chore; each maps to a skill and role. Has: no. Intake is
     one chat (`IntakeChat`).
 11. **Metrics split by agent.** Who: Linear Insights by Delegate (S11), Claude PRs with Claude and adoption (S20),
-    Copilot time to merge (S7). Bauherr: split Insights time per stage by role and show cost. Has: partly (Insights).
+    Copilot time to merge (S7). Bauherr: Insights has a Team section with active time per role and session. Has: partly. Cost per role is
+    not shown.
 12. **Layered guidance, team over workspace.** Who: Linear (team guidance wins; S11). Bauherr: Workspace Knowledge, a
     Product's `repo-docs` layer on top. Has: yes (`/knowledge`).
 
@@ -78,8 +83,8 @@ model, not as a dependency.
   states duties, tools, tier and gates.
 - **Agent teams that talk to each other by default.** Claude's version is experimental, costs more tokens, allows one
   team per session and does not resume (S18). Bauherr's stages already hand over by Ticket.
-- **Setup that needs infrastructure before the first result.** Cursor needs a built environment first (S15). Bauherr
-  `/setup` step 3 does the same for staging. Move it behind the first release gate.
+- **Setup that needs infrastructure before the first result.** Cursor needs a built environment first (S15). Bauherr's
+  old `/setup` step 3 did the same for staging. It moved behind the first release gate.
 - **Config only in a UI.** Devin playbooks are created in Settings (S6); a repo-file path is not verified. UI-only
   config cannot be reviewed in a PR.
 - **Depending on a sunsetting project.** Vibe Kanban (S22).
@@ -92,6 +97,9 @@ Scopes follow the common three: personal, organisation, repository. GitHub split
 settings, and an organisation's settings are owner-only (S24, S25). Linear splits workspace and team (S13). Bauherr
 maps them to Account, Workspace and Product. "Factory" is new and holds what the factory does. Linear's Account page
 holds profile, preferences, notifications (search snippet only; S26, not verified on the page).
+
+The tree as proposed; the right column is the state before the rework. The shipped map is in `docs/ui.md`
+(Settings): Models & budget and Knowledge ended up as their own pages, and there is no Notifications page yet.
 
 ```text
 Account            every user, own record only
@@ -158,10 +166,11 @@ activity feed and todo list into Linear (S5). Linear keeps delegated issues in t
 requests a review, which notifies (S8). Cursor lets team members view an agent read-only, and follow-ups need an
 admin to enable them (S14). Claude shares sessions with Team visibility (S19).
 
-Bauherr has `/requests/[id]` with one "Next step" and the Ticket Path with a timeline (`docs/ui.md`). Missing:
-the plain-word status comment on the forge issue, and notification settings.
+Bauherr has `/requests/[id]` with the progress path and "What happens next", and one plain-word progress Comment on
+the issue, edited in place, with a new Comment only for a question, ready on staging, released and stuck
+(`docs/spec/workflow.md`). Missing: per-person notification settings.
 
-## 7. Open questions
+## 7. Open questions (answered in section 8)
 
 1. Does a product owner get a Bauherr login, or is the forge issue plus email enough?
 2. Three named presets, or free role picking with the preset as a shortcut? Do the cards get names beyond the role
@@ -170,7 +179,32 @@ the plain-word status comment on the forge issue, and notification settings.
 4. Default notification channel: email, forge comment, or both?
 5. May a product owner see cost and time per role, or is that Admin only?
 
-## 8. Sources
+## 8. Decisions on the open questions
+
+1. No login needed: the forge issue carries the progress. People with a login also get the Requests pages.
+2. Three presets as shortcuts; roles stay freely editable in the factory file and on the Team page.
+3. Yes. Staging and production config left the wizard; the "Configure production checks" gate asks at first release.
+4. Forge comment only. No email.
+5. Admin only.
+
+## 9. What Bauherr adopted
+
+| Pattern | Where it is |
+|---|---|
+| Roles as files, picked at setup | `pack/roles/`, `pack/presets/`, `/setup` step 3, `/team` |
+| Sessions with live presence | MCP `connect` and `next_work`; Team page; stage cards on the Workflow |
+| One place for what waits for me | Inbox with prepared decision cards |
+| Autonomy as named presets | Solo, Standard, Careful |
+| Progress for non-developers on the issue | Progress Comment, Requests path, editable `progress` template |
+| Settings by scope | Account, Factory, Workspace, Admin; Product page in tabs |
+| Short setup that defers infrastructure | Five steps; deploy config asked at first release |
+| Config as code | One `factory.yaml` per Workspace: apply, version, export |
+| Metrics split by agent | Insights Team section |
+
+Not adopted yet: request types that pick a skill (pattern 10), an agent that proposes the deploy config as a PR
+(pattern 6), a Workspace-wide autonomy cap, per-person notification settings.
+
+## 10. Sources
 
 All accessed 2026-11-11.
 
