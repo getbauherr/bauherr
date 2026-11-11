@@ -95,8 +95,8 @@ describe('lint', () => {
   })
   it('compile keeps avatar and an explicit provider and model', () => {
     const d = defaultDoc()
-    Object.assign(d.team.roles.ux, { avatar: 'fox', tier: undefined, provider: 'p', model: 'm', agents: 2 })
-    expect(w.compile(d).roles.find((r) => r.id === 'ux')).toMatchObject({ avatar: 'fox', provider: 'p', model: 'm', agents: 2 })
+    Object.assign(d.team.roles.ux, { skills: ['Flows'], avatar: 'fox', tier: undefined, provider: 'p', model: 'm', agents: 2 })
+    expect(w.compile(d).roles.find((r) => r.id === 'ux')).toMatchObject({ skills: ['Flows'], avatar: 'fox', provider: 'p', model: 'm', agents: 2 })
   })
   it('compile throws listing the findings', () => {
     expect(() => w.compile({ ...defaultDoc(), version: 2 })).toThrow(/version must be 1/)
@@ -127,6 +127,10 @@ describe('lint', () => {
     ['6 model without provider', (d) => Object.assign(d.team.roles.engineer, { tier: undefined, model: 'b' }), 'exactly one of tier or (provider and model)'],
     ['6 a second exceptions role', (d) => (d.team.roles.engineer.exceptions = true), 'at most one role may have exceptions: true (found orchestrator, engineer)'],
     ['6 exceptions is a boolean', (d) => (d.team.roles.engineer.exceptions = 'yes'), 'exceptions must be true or false'],
+    ['6 skills empty', (d) => (d.team.roles.engineer.skills = []), 'skills must be a list of 1 to 6 strings'],
+    ['6 skills too many', (d) => (d.team.roles.engineer.skills = ['a', 'b', 'c', 'd', 'e', 'f', 'g']), 'skills must be a list of 1 to 6 strings'],
+    ['6 skills too long', (d) => (d.team.roles.engineer.skills = ['x'.repeat(25)]), 'skills must be a list of 1 to 6 strings'],
+    ['6 skills not strings', (d) => (d.team.roles.engineer.skills = [1]), 'skills must be a list of 1 to 6 strings'],
     ['6 avatar', (d) => (d.team.roles.engineer.avatar = 5), 'avatar must be a non-empty string'],
     ['7 gate', (d) => (stageOf(d, 'build').gate = 'human'), 'gate: human is only allowed'],
     ['7 production_gate', (d) => (stageOf(d, 'plan').production_gate = 'human'), 'production_gate: human is only allowed'],

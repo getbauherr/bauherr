@@ -8,7 +8,7 @@ import { workflowFor } from './factory'
 import { ownsGate } from './gates'
 import { tierModels } from './gateway'
 import { record } from './history'
-import { AGENT_REPAIRED, deadTickets, type Cause } from './liveness'
+import { AGENT_REPAIRED, FINDING_FRESH_MS, type Cause } from './liveness'
 import type { Ctx } from './mcp-tools'
 import { id } from './release'
 import { corePack, packDir, stage as stageDef, stagesOfRole, title as stageTitle, type Role, type Workflow } from './workflow'
@@ -19,8 +19,6 @@ const o = { depth: 0, overrideAccess: true } as const
 export const POLL_AFTER_SECONDS = 30
 /** `lastSeenAt` is rewritten at most this often. */
 const TOUCH_EVERY_S = 15
-/** A silent gap longer than this ends a span. */
-const SPAN_GAP_MIN = 10
 /** Disconnected sessions stay in `loadTeam` this long. */
 const OFFLINE_KEEP_H = 24
 
@@ -70,20 +68,19 @@ export const resolve = async (c: Ctx, sessionId: unknown, allowEnded = false): P
 }
 
 /**
- * Presence: bumps `lastSeenAt` (skipped while it is younger than 15 s) and, with a `run` this session holds, extends that Run's open span or opens one (a gap over 10 minutes starts a new span).
- * `force` writes the span's end even inside the throttle window (the Run just ended).
+ * Presence: bumps `lastSeenAt` (skipped while it is younger than 15 s) and, with a `run` this session holds, keeps that Run's span: one span per (session, Run), opened at the claim (`startedAt` = the Run's start), `lastAt` extended by every touch for the Run.
+ * `force` writes `lastAt` even inside the throttle window (the Run just ended). A Run that lost its lease keeps its last signal: nothing but a touch of the session extends a span.
  */
 export const touch = async (payload: Payload, session: Doc, a: { run?: number | string; force?: boolean } = {}): Promise<void> => {
   const db = payload.db.drizzle
   const fresh = session.lastSeenAt && Date.now() - new Date(session.lastSeenAt).getTime() < TOUCH_EVERY_S * 1000
   if (!fresh) await db.execute(sql`UPDATE "agent_sessions" SET "last_seen_at" = now(), "updated_at" = now() WHERE "id" = ${session.id} AND "disconnected_at" IS NULL AND ("last_seen_at" IS NULL OR "last_seen_at" < now() - make_interval(secs => ${TOUCH_EVERY_S}))`)
   if (a.run == null) return
-  const gap = sql`make_interval(mins => ${SPAN_GAP_MIN})`
-  const open = sql`SELECT "id" FROM "session_spans" WHERE "session_id" = ${session.id} AND "run_id" = ${a.run} AND "last_at" > now() - ${gap} ORDER BY "started_at" DESC LIMIT 1`
+  const mine = sql`SELECT "id" FROM "session_spans" WHERE "session_id" = ${session.id} AND "run_id" = ${a.run}`
   await db.execute(sql`
-    WITH ext AS (UPDATE "session_spans" SET "last_at" = now(), "updated_at" = now() WHERE "id" = (${open}) AND (${!!a.force} OR "last_at" < now() - make_interval(secs => ${TOUCH_EVERY_S})) RETURNING "id")
+    WITH ext AS (UPDATE "session_spans" SET "last_at" = now(), "updated_at" = now() WHERE "id" = (${mine} ORDER BY "started_at" DESC LIMIT 1) AND (${!!a.force} OR "last_at" < now() - make_interval(secs => ${TOUCH_EVERY_S})) RETURNING "id")
     INSERT INTO "session_spans" ("workspace_id", "session_id", "run_id", "ticket_id", "started_at", "last_at")
-    SELECT "workspace_id", ${session.id}, "id", "ticket_id", now(), now() FROM "runs" WHERE "id" = ${a.run} AND "session_id" = ${session.id} AND NOT EXISTS (${open})`)
+    SELECT "workspace_id", ${session.id}, "id", "ticket_id", COALESCE("started_at", now()), now() FROM "runs" WHERE "id" = ${a.run} AND "session_id" = ${session.id} AND NOT EXISTS (${mine})`)
 }
 
 /** Stamps a Run the session holds but did not claim with it (a legacy claim that now carries `sessionId`). */
@@ -129,6 +126,7 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
     role: {
       id: role.id,
       title: role.title,
+      skills: role.skills ?? [],
       profile: profileOf(role),
       stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, skill: s.skill, outcomes: Object.keys(s.outcomes) })),
       model: { ...(role.tier && { tier: role.tier }), ...(role.provider && { provider: role.provider }), ...(role.model && { model: role.model }) },
@@ -155,16 +153,21 @@ const PROBLEMS: Partial<Record<Cause, string>> = {
   'triage-expired': 'the only Triage Run ended unclaimed',
 }
 
-/** The next stuck Ticket of the Workspace for the exceptions role: one an agent can repair first, else the first one (shown so the owner's need is visible). */
+/**
+ * The next stuck Ticket of the Workspace for the exceptions role, from the findings the liveness sweep stores in `tickets.liveness` ({cause, need, at}; DB only, no forge call): one an agent can repair first, else the first one.
+ * A finding older than `FINDING_FRESH_MS` means the sweep is not keeping up and is ignored. The finding has no time the Ticket got stuck, so `since` is the Ticket's last update.
+ */
 const exception = async (c: Ctx, wsId: number | string) => {
-  const dead = await deadTickets(c.payload, wsId)
-  const d = dead.find((x) => AGENT_REPAIRED.includes(x.cause)) ?? dead[0]
+  const found = (await c.payload.db.drizzle.execute(sql`SELECT "id", "number", "title", "stage", "url", "updated_at", "liveness" FROM "tickets" WHERE "workspace_id" = ${wsId} AND "state" = 'open' AND "liveness" IS NOT NULL ORDER BY "id"`)).rows as Doc[]
+  const fresh = found.filter((t) => Date.now() - Date.parse(t.liveness.at) < FINDING_FRESH_MS)
+  const d = fresh.find((t) => AGENT_REPAIRED.includes(t.liveness.cause)) ?? fresh[0]
   if (!d) return null
-  const allowed = allowedFor(d.cause)
+  const cause = d.liveness.cause as Cause
+  const allowed = allowedFor(cause)
   return {
-    ticket: { id: d.ticket.id, number: d.ticket.number, title: d.ticket.title, stage: d.ticket.stage, url: d.ticket.url },
-    problem: `${PROBLEMS[d.cause] ?? d.cause} (${d.cause})`,
-    since: d.run?.finishedAt ?? d.run?.updatedAt ?? d.ticket.updatedAt,
+    ticket: { id: d.id, number: Number(d.number), title: d.title, stage: d.stage, url: d.url },
+    problem: `${PROBLEMS[cause] ?? cause} (${cause})`,
+    since: new Date(d.updated_at).toISOString(),
     allowed,
     ...(!allowed.length && { note: 'No agent repair exists for this cause: it is the owner\'s to decide or the factory repairs it itself. Do not work around it.' }),
   }
@@ -208,6 +211,7 @@ export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[] }) => P
 const releaseRuns = async (c: Ctx, session: Doc): Promise<number> => {
   const rows = (await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'awaiting_session', "session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, "session_id" = NULL, "updated_at" = now() WHERE "session_id" = ${session.id} AND "status" = 'running' RETURNING "id", "ticket_id"`)).rows as { id: number; ticket_id: number }[]
   const login = (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
+  if (rows.length) await c.payload.db.drizzle.execute(sql`UPDATE "session_spans" SET "last_at" = now(), "updated_at" = now() WHERE "session_id" = ${session.id} AND "run_id" IN (${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)})`)
   for (const r of rows) {
     try {
       const ticket = (await c.payload.findByID({ collection: 'tickets', id: r.ticket_id, ...o })) as Doc
@@ -252,6 +256,7 @@ export type TeamRole = {
   id: string
   title: string
   avatar: string
+  skills: string[]
   profile: string
   tier?: string
   provider?: string
@@ -260,7 +265,7 @@ export type TeamRole = {
   exceptions: boolean
   stages: { name: string; title: string; kind: string }[]
   sessions: TeamSession[]
-  autonomous: { run: number; ticket: { number: number; title: string; stage: string }; startedAt: string | null; model: string | null }[]
+  autonomous: { run: number; executor: 'runner' | 'ci' | null; ticket: { number: number; title: string; stage: string }; startedAt: string | null; model: string | null }[]
 }
 
 /** DB-only read for the Team page: every role of the Workspace workflow with its sessions (connected ones and those disconnected in the last 24 h) and the autonomous Runs working for it right now. Sessions whose role left the workflow are in `orphans`. */
@@ -282,7 +287,7 @@ export const loadTeam = async (payload: Payload, workspace: number | string): Pr
       WHERE s."workspace_id" = ${workspace} AND (s."disconnected_at" IS NULL OR s."disconnected_at" > now() - make_interval(hours => ${OFFLINE_KEEP_H}))
       ORDER BY s."connected_at"`)
   ).rows as Doc[]
-  const auto = (await db.execute(sql`SELECT r."id", r."stage", r."started_at", r."model", t."number", t."title", t."stage" AS "ticket_stage" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."workspace_id" = ${workspace} AND r."status" = 'running' AND r."mode" = 'autonomous' ORDER BY r."started_at"`)).rows as Doc[]
+  const auto = (await db.execute(sql`SELECT r."id", r."stage", r."started_at", r."model", r."executor", t."number", t."title", t."stage" AS "ticket_stage" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."workspace_id" = ${workspace} AND r."status" = 'running' AND r."mode" = 'autonomous' ORDER BY r."started_at"`)).rows as Doc[]
   const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null)
   const silent = Date.now() - sessionTimeoutS() * 1000
   const toSession = (r: Doc): TeamSession => ({
@@ -305,6 +310,7 @@ export const loadTeam = async (payload: Payload, workspace: number | string): Pr
       id: role.id,
       title: role.title,
       avatar: role.avatar ?? role.id,
+      skills: role.skills ?? [],
       profile: profileOf(role),
       ...(role.tier && { tier: role.tier }),
       ...(role.provider && { provider: role.provider }),
@@ -313,7 +319,7 @@ export const loadTeam = async (payload: Payload, workspace: number | string): Pr
       exceptions: !!role.exceptions,
       stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind })),
       sessions: rows.filter((r) => r.role === role.id).map(toSession),
-      autonomous: auto.filter((r) => stageDef(wf, r.stage)?.role === role.id).map((r) => ({ run: r.id, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, startedAt: iso(r.started_at), model: r.model })),
+      autonomous: auto.filter((r) => stageDef(wf, r.stage)?.role === role.id).map((r) => ({ run: r.id, executor: r.executor === 'ci' ? 'ci' : r.executor === 'runner' ? 'runner' : null, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, startedAt: iso(r.started_at), model: r.model })),
     })),
     orphans: rows.filter((r) => !roleIds.includes(r.role)).map((r) => ({ ...toSession(r), role: r.role })),
   }

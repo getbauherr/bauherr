@@ -94,6 +94,7 @@ describe('connect', () => {
     expect(r.sessionId).toMatch(/^ses_/)
     expect(r.role).toMatchObject({ id: 'engineer', title: 'Software engineer', model: { tier: 'cheap' } })
     expect(r.role.profile).toContain('Mission: turn a Ticket into a plan')
+    expect(r.role.skills).toEqual(['TypeScript', 'Small diffs', 'Tests first', 'Refactoring'])
     expect(r.role.stages.map((s: Doc) => [s.name, s.kind, s.skill])).toEqual([['plan', 'plan', 'run-contract'], ['build', 'build', 'run-contract']])
     expect(r.role.stages[1].outcomes).toEqual(['done', 'stuck', 'replan'])
     expect(r.pollAfterSeconds).toBeGreaterThan(0)
@@ -148,6 +149,19 @@ it('a role of the pack default (profile_file, never applied) still gets its prof
   expect(engineer.profile).toBeUndefined()
   expect(sessions.profileOf(engineer)).toContain('Mission: turn a Ticket into a plan')
   expect(sessions.profileOf({ id: 'x', title: 'X', tier: 'cheap' })).toBe('')
+})
+
+it('role skills survive apply and export, and reach connect and loadTeam (default empty)', async () => {
+  await editRoles((roles) => {
+    roles.ux.skills = ['Flows', 'Copy']
+    delete roles.test.skills
+  })
+  expect((parse(await factory.exportFactory(payload, ws)) as Doc).team.roles.ux.skills).toEqual(['Flows', 'Copy'])
+  expect((await connect('ux')).role.skills).toEqual(['Flows', 'Copy'])
+  expect((await connect('test')).role.skills).toEqual([])
+  const team = await sessions.loadTeam(payload, ws)
+  expect(team.roles.find((r) => r.id === 'ux')!.skills).toEqual(['Flows', 'Copy'])
+  expect(team.roles.find((r) => r.id === 'test')!.skills).toEqual([])
 })
 
 describe('next_work', () => {
@@ -227,8 +241,33 @@ describe('next_work', () => {
 })
 
 describe('exceptions role', () => {
-  it('receives a stuck Ticket only when nothing normal is claimable, never a human gate', async () => {
+  /** What the liveness sweep stores for a stuck Ticket. */
+  const finding = (id: number, cause: string, ageMs = 0) => db().execute(sql`UPDATE "tickets" SET "liveness" = ${JSON.stringify({ cause, need: null, at: new Date(Date.now() - ageMs).toISOString() })}::jsonb WHERE "id" = ${id}`)
+  /** Counts every call into the fake forge while `fn` runs. */
+  const forgeCalls = async (fn: () => Promise<unknown>): Promise<number> => {
+    let n = 0
+    const restore: (() => void)[] = []
+    const wrap = (obj: any, keys: string[]) => {
+      for (const k of keys) {
+        const orig = obj[k]
+        if (typeof orig !== 'function') continue
+        obj[k] = (...a: unknown[]) => (n++, orig.apply(obj, a))
+        restore.push(() => delete obj[k])
+      }
+    }
+    wrap(fake.forge, [...Object.getOwnPropertyNames(Object.getPrototypeOf(fake.forge)), ...Object.keys(fake.forge)].filter((k) => k !== 'constructor'))
+    wrap(fake, ['tickets'])
+    try {
+      await fn()
+    } finally {
+      restore.forEach((r) => r())
+    }
+    return n
+  }
+
+  it('receives a stuck Ticket only when nothing normal is claimable, never a human gate, and reads no forge', async () => {
     const dead = await ticket('stuck', 'build', { runStatus: 'failed' })
+    await finding(dead.id, 'run-failed')
     const triage = await ticket('fresh', null, { run: 'triage' })
     const orch = await connect('orchestrator')
     const first = await call('next_work', { sessionId: orch.sessionId })
@@ -237,14 +276,19 @@ describe('exceptions role', () => {
     await call('finish_run', { runId: triage.run!.id, leaseToken: first.work.leaseToken, status: 'failed', reason: 'x', sessionId: orch.sessionId })
     await payload.update({ collection: 'runs', id: triage.run!.id, data: { status: 'succeeded' }, ...o })
     await db().execute(sql`UPDATE "tickets" SET "state" = 'closed' WHERE "id" = ${triage.id}`)
-    const second = await call('next_work', { sessionId: orch.sessionId })
+    let second: Doc = {}
+    expect(await forgeCalls(async () => void (second = await call('next_work', { sessionId: orch.sessionId })))).toBe(0)
     expect(second.work).toBeNull()
     expect(second.exception).toMatchObject({ ticket: { number: dead.number, stage: 'build' }, problem: expect.stringContaining('run-failed'), allowed: [] })
+    expect(second.exception.since).toEqual(expect.any(String))
     expect(second.exception.note).toContain('No agent repair')
   })
 
-  it('offers return_to_build for a mechanical cause and nothing from the human gates', async () => {
+  it('offers return_to_build for a mechanical cause first, and nothing from the human gates', async () => {
+    const other = await ticket('failed run', 'build', { runStatus: 'failed' })
     const review = await ticket('no mr', 'review', { run: false })
+    await finding(other.id, 'run-failed')
+    await finding(review.id, 'mr-missing')
     const orch = await connect('orchestrator')
     const r = await call('next_work', { sessionId: orch.sessionId })
     expect(r.exception.ticket.number).toBe(review.number)
@@ -254,8 +298,19 @@ describe('exceptions role', () => {
     expect(r.exception.allowed.map((a: Doc) => a.tool).filter((t: string) => human.includes(t))).toEqual([])
   })
 
+  it('ignores a finding the sweep left stale, and a Ticket without one', async () => {
+    const stale = await ticket('stale', 'review', { run: false })
+    await ticket('unswept', 'build', { runStatus: 'failed' })
+    await finding(stale.id, 'mr-missing', 20 * 60_000)
+    const orch = await connect('orchestrator')
+    const r = await call('next_work', { sessionId: orch.sessionId })
+    expect(r.exception).toBeUndefined()
+    expect(r.reason).toBe('Nothing queued for Orchestrator')
+  })
+
   it('a role without the exceptions flag never receives one', async () => {
-    await ticket('no mr', 'review', { run: false })
+    const t = await ticket('no mr', 'review', { run: false })
+    await finding(t.id, 'mr-missing')
     const eng = await connect('engineer')
     expect((await call('next_work', { sessionId: eng.sessionId })).exception).toBeUndefined()
   })
@@ -293,7 +348,7 @@ describe('presence and spans', () => {
     expect((await row(session.publicId)).lastSeenAt).toBe(first)
   })
 
-  it('a touch inside 15 seconds leaves the span alone, a later one extends it, a gap over 10 minutes starts a new span; active time is the sum', async () => {
+  it('a span is the whole time the session holds the Run: touches extend it, a long silence does not split it, active time counts it all', async () => {
     const { t, session } = await claim()
     const touch = async (force = false) => sessions.touch(payload, await row(session.publicId), { run: t.run!.id, force })
     await touch()
@@ -301,24 +356,30 @@ describe('presence and spans', () => {
     const before = (await spans(session.id))[0].last_at
     await touch()
     expect((await spans(session.id))[0].last_at).toEqual(before)
-    await db().execute(sql`UPDATE "session_spans" SET "started_at" = now() - interval '60 minutes', "last_at" = now() - interval '50 minutes'`)
-    await touch()
-    expect((await spans(session.id))).toHaveLength(2)
-    await db().execute(sql`UPDATE "session_spans" SET "started_at" = now() - interval '10 minutes', "last_at" = now() - interval '5 minutes' WHERE "id" = (SELECT max("id") FROM "session_spans")`)
+    await db().execute(sql`UPDATE "session_spans" SET "started_at" = now() - interval '25 minutes', "last_at" = now() - interval '25 minutes'`)
     await touch()
     const all = await spans(session.id)
-    expect(all).toHaveLength(2)
-    expect(new Date(all[1].last_at).getTime()).toBeGreaterThan(Date.now() - 5000)
-    const team = await sessions.loadTeam(payload, ws)
-    const s = team.roles.find((r) => r.id === 'engineer')!.sessions[0]
-    expect(s.activeSecondsTotal).toBeGreaterThan(1190)
-    expect(s.activeSecondsTotal).toBeLessThan(1220)
-    const hour = await sessions.sessionTime(payload, ws, new Date(Date.now() - 55 * 60_000))
-    expect(hour.roles).toHaveLength(1)
-    expect(hour.roles[0].role).toBe('engineer')
-    expect(hour.roles[0].seconds).toBeGreaterThan(890)
-    expect(hour.roles[0].seconds).toBeLessThan(920)
-    expect(hour.sessions[0]).toMatchObject({ sessionId: session.publicId, role: 'engineer' })
+    expect(all).toHaveLength(1)
+    expect(new Date(all[0].last_at).getTime()).toBeGreaterThan(Date.now() - 5000)
+    const s = (await sessions.loadTeam(payload, ws)).roles.find((r) => r.id === 'engineer')!.sessions[0]
+    expect(s.activeSecondsTotal).toBeGreaterThan(1490)
+    expect(s.activeSecondsTotal).toBeLessThan(1510)
+    const window = await sessions.sessionTime(payload, ws, new Date(Date.now() - 20 * 60_000))
+    expect(window.roles).toHaveLength(1)
+    expect(window.roles[0].seconds).toBeGreaterThan(1190)
+    expect(window.roles[0].seconds).toBeLessThan(1210)
+    expect(window.sessions[0]).toMatchObject({ sessionId: session.publicId, role: 'engineer' })
+  })
+
+  it('disconnect ends the span of the Run it releases; a lapsed lease leaves the span at its last signal', async () => {
+    const { t, eng, session } = await claim()
+    await db().execute(sql`UPDATE "session_spans" SET "started_at" = now() - interval '30 minutes', "last_at" = now() - interval '20 minutes'`)
+    await db().execute(sql`UPDATE "runs" SET "status" = 'abandoned' WHERE "id" = ${t.run!.id}`)
+    await sessions.sweepSessions(payload)
+    expect(Date.now() - new Date((await spans(session.id))[0].last_at).getTime()).toBeGreaterThan(19 * 60_000)
+    await db().execute(sql`UPDATE "runs" SET "status" = 'running' WHERE "id" = ${t.run!.id}`)
+    await call('disconnect', { sessionId: eng.sessionId })
+    expect(Date.now() - new Date((await spans(session.id))[0].last_at).getTime()).toBeLessThan(5000)
   })
 
   it('a call on a Run the session does not hold opens no span', async () => {
@@ -368,12 +429,12 @@ describe('loadTeam', () => {
     const team = await sessions.loadTeam(payload, ws)
     expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
     const eng = team.roles.find((r) => r.id === 'engineer')!
-    expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'plan', kind: 'plan' }, { name: 'build', title: 'build', kind: 'build' }] })
+    expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['TypeScript', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'plan', kind: 'plan' }, { name: 'build', title: 'build', kind: 'build' }] })
     expect(eng.profile).toContain('Mission:')
     expect(eng.sessions.map((s) => [s.label, s.status])).toEqual([['w', 'working'], ['i', 'idle']])
     expect(eng.sessions[0]).toMatchObject({ run: expect.any(Number), ticket: { number: expect.any(Number), title: expect.any(String), stage: 'build' }, publicId: working.sessionId })
     expect(eng.sessions[1].ticket).toBeUndefined()
-    expect(eng.autonomous).toEqual([{ run: auto.run!.id, ticket: { number: auto.number, title: 'auto', stage: 'plan' }, startedAt: expect.any(String), model: null }])
+    expect(eng.autonomous).toEqual([{ run: auto.run!.id, executor: 'runner', ticket: { number: auto.number, title: 'auto', stage: 'plan' }, startedAt: expect.any(String), model: null }])
     expect(team.roles.find((r) => r.id === 'reviewer')!.sessions.map((s) => [s.label, s.status])).toEqual([['g', 'offline'], ['s', 'offline']])
     expect(team.roles.find((r) => r.id === 'orchestrator')!.exceptions).toBe(true)
     expect(team.orphans).toEqual([])

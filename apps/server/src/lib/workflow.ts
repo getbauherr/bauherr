@@ -5,7 +5,7 @@ import { parse } from 'yaml'
 
 export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'release' | 'done' | 'agent' | 'human'
 export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage follow it. */ outcomeOrder?: string[] }
-export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; exceptions?: boolean; profile?: string; profile_file?: string }
+export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; skills?: string[]; exceptions?: boolean; profile?: string; profile_file?: string }
 /** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
 export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
@@ -45,6 +45,7 @@ export const lint = (doc: unknown): string[] => {
     if (!(x.tier ? !x.provider && !x.model : !!x.provider && !!x.model)) out.push(`role "${id}": declare exactly one of tier or (provider and model)`)
     if (x.agents !== undefined && !posInt(x.agents)) out.push(`role "${id}": agents must be a positive integer`)
     if (x.avatar !== undefined && (typeof x.avatar !== 'string' || !x.avatar)) out.push(`role "${id}": avatar must be a non-empty string`)
+    if (x.skills !== undefined && !(Array.isArray(x.skills) && x.skills.length >= 1 && x.skills.length <= 6 && x.skills.every((k: unknown) => typeof k === 'string' && k.length >= 1 && k.length <= 24))) out.push(`role "${id}": skills must be a list of 1 to 6 strings of at most 24 characters`)
     if (x.exceptions !== undefined && typeof x.exceptions !== 'boolean') out.push(`role "${id}": exceptions must be true or false`)
   }
   const handlers = Object.entries(roles).filter(([, r]) => obj(r)?.exceptions === true).map(([id]) => id)
