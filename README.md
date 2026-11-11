@@ -212,7 +212,6 @@ pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 
 Pre-release. The factory builds Bauherr itself. Every feature with its page: [docs/features.md](docs/features.md).
 - **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, expedite lane, WIP limits, AI gateway with budgets, audit, OIDC.
-- **Next:** the intake and decision chats move into the docked chat.
 - **Planned:** a GitLab driver, notifications at checkpoints ([#77](https://github.com/getbauherr/bauherr/issues/77)), provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
 Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: [docs/releasing.md](docs/releasing.md).
