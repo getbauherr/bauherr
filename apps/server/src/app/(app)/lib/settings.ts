@@ -184,9 +184,17 @@ export async function recentChecks(productId: number): Promise<RecentCheck[] | n
   }
 }
 
+/** `inUse` marks a Connection whose ticket source polled successfully (`lastPolledAt` set, no `lastError`): the factory already works with it, verified or not. */
 export async function loadConnections(workspace: number) {
-  const { docs } = await (await payloadClient()).find({ collection: 'connections', where: { workspace: { equals: workspace } }, sort: 'id', select: { secret: false }, ...o, pagination: false } as never)
+  const payload = await payloadClient()
+  const where = { workspace: { equals: workspace } }
+  const [{ docs }, sources] = await Promise.all([
+    payload.find({ collection: 'connections', where, sort: 'id', select: { secret: false }, ...o, pagination: false } as never),
+    payload.find({ collection: 'ticket_sources', where: { and: [where, { lastPolledAt: { exists: true } }, { lastError: { exists: false } }] }, select: { connection: true, lastError: true }, ...o, pagination: false } as never),
+  ])
+  const polled = new Set((sources.docs as unknown as Record<string, any>[]).filter((s) => !s.lastError).map((s) => s.connection?.id ?? s.connection))
   return (docs as unknown as Record<string, any>[]).map((c) => ({
+      inUse: polled.has(c.id),
       id: c.id as number,
       name: c.name as string,
       kind: c.kind as string,

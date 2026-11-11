@@ -49,7 +49,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           {pending && (
             <SettingsForm action={verifyConnection} submit="Verify" primary>
               <input type="hidden" name="id" value={pending.id} />
-              <p>{pending.name}: {pending.status === 'failed' ? pending.detail : 'Not verified yet.'}</p>
+              <p>{pending.name}: {pending.status === 'failed' ? pending.detail : pending.inUse ? 'In use: its tickets are being read. Verify to confirm the token.' : 'Not verified yet.'}</p>
             </SettingsForm>
           )}
           <ConnectionForm presets={connectionPresets} submit={pending ? 'Add another Connection' : 'Add Connection'} reset primary={!pending} />

@@ -160,3 +160,18 @@ it('"Other..." posts the typed repository; an empty choice is a field error and 
   expect(await actions.createProductWithRepo({}, form({ name: 'Typed', fullName: '__other', repoOther: 'acme/typed', connection }))).toMatchObject({ saved: true })
   expect((await payload.find({ collection: 'repositories', where: { fullName: { equals: 'acme/typed' } }, ...o })).totalDocs).toBe(1)
 })
+
+it('a forge Connection whose ticket source polled successfully counts as connected without Verify; never polled or a poll error does not', async () => {
+  const { loadSetup } = await import('../src/app/(app)/lib/setup')
+  const w = (await payload.create({ collection: 'workspaces', data: { name: 'inuse', slug: 'inuse' }, ...o })).id as number
+  const connection = (await payload.create({ collection: 'connections', data: { name: 'Seeded', kind: 'github', secret: 'ghp_x', workspace: w }, ...o })).id as number
+  const product = (await payload.create({ collection: 'products', data: { name: 'App', slug: 'app', workspace: w }, ...o })).id as number
+  const source = (await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/app', product, connection, workspace: w }, ...o })).id as number
+  const forge = async () => (await loadSetup(w)).steps.find((s) => s.id === 'forge')!.done
+  expect(await forge()).toBe(false)
+  await payload.update({ collection: 'ticket_sources', id: source, data: { lastPolledAt: new Date().toISOString(), lastError: 'HTTP 401' }, ...o })
+  expect(await forge()).toBe(false)
+  await payload.update({ collection: 'ticket_sources', id: source, data: { lastError: null }, ...o })
+  expect(await forge()).toBe(true)
+  expect((await loadSetup(w)).forges[0]).toMatchObject({ status: 'none', inUse: true })
+})

@@ -28,7 +28,7 @@ export async function loadSetup(workspace: number) {
   const requested = ready ? (await count('tickets', { product: { equals: ready.id } })) + (await count('intake_sessions', { and: [{ product: { equals: ready.id } }, { status: { equals: 'submitted' } }] })) > 0 : false
   const forges = connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab')
   const facts: SetupFacts = {
-    forgeVerified: forges.some((c) => c.status === 'ok'),
+    forgeConnected: forges.some((c) => c.status === 'ok' || c.inUse),
     product: !!ready,
     teamApplied: !!version,
     sessionEver: sessions > 0,
