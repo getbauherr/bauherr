@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 600" width="1800" height="600" role="img" aria-label="Bauherr: an open-source AI software factory. A ticket moves from Triage through Plan to a checkpoint where you decide, then Build, Review, Staging and Done.">
+<rect width="1800" height="600" fill="#121417"/>
+<g transform="translate(95 105)"><rect x="3" y="3" width="66" height="66" fill="none" stroke="#e9ebee" stroke-width="6"/><rect x="3" y="39" width="30" height="30" fill="#8db1ff"/></g>
+<text x="190" y="162" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="76" font-weight="600" letter-spacing="-1" fill="#e9ebee">Bauherr</text>
+<text x="95" y="258" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="36" fill="#e9ebee">Agents take your tickets through gated stages.</text>
+<text x="95" y="306" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="36" fill="#9aa1a9">You approve the plan, not every keystroke.</text>
+<line x1="265" y1="458.0" x2="326" y2="458.0" stroke="#9aa1a9" stroke-width="2"/><path d="M325 452.0L335 458.0L325 464.0z" fill="#9aa1a9"/>
+<line x1="505" y1="458.0" x2="566" y2="458.0" stroke="#9aa1a9" stroke-width="2"/><path d="M565 452.0L575 458.0L565 464.0z" fill="#9aa1a9"/>
+<line x1="745" y1="458.0" x2="806" y2="458.0" stroke="#9aa1a9" stroke-width="2"/><path d="M805 452.0L815 458.0L805 464.0z" fill="#9aa1a9"/>
+<line x1="985" y1="458.0" x2="1046" y2="458.0" stroke="#9aa1a9" stroke-width="2"/><path d="M1045 452.0L1055 458.0L1045 464.0z" fill="#9aa1a9"/>
+<line x1="1225" y1="458.0" x2="1286" y2="458.0" stroke="#9aa1a9" stroke-width="2"/><path d="M1285 452.0L1295 458.0L1285 464.0z" fill="#9aa1a9"/>
+<line x1="1465" y1="458.0" x2="1526" y2="458.0" stroke="#9aa1a9" stroke-width="2"/><path d="M1525 452.0L1535 458.0L1525 464.0z" fill="#9aa1a9"/>
+<rect x="95" y="420" width="170" height="76" rx="4" fill="#1b1e23" stroke="#2b3036" stroke-width="2"/><text x="180.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" fill="#e9ebee">Triage</text>
+<rect x="335" y="420" width="170" height="76" rx="4" fill="#1b1e23" stroke="#2b3036" stroke-width="2"/><text x="420.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" fill="#e9ebee">Plan</text>
+<rect x="575" y="420" width="170" height="76" rx="38.0" fill="#1b1e23" stroke="#e3b04b" stroke-width="3"/><text x="660.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#e3b04b">You decide</text>
+<text x="660.0" y="536" text-anchor="middle" font-family="'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace" font-size="18" fill="#e3b04b">checkpoint</text>
+<rect x="815" y="420" width="170" height="76" rx="4" fill="#1f2d4d" stroke="#8db1ff" stroke-width="3"/><circle cx="841" cy="458.0" r="7" fill="#8db1ff"/><text x="914.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" fill="#e9ebee">Build</text>
+<text x="900.0" y="536" text-anchor="middle" font-family="'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace" font-size="18" fill="#8db1ff">in progress</text>
+<rect x="1055" y="420" width="170" height="76" rx="4" fill="#1b1e23" stroke="#2b3036" stroke-width="2"/><text x="1140.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" fill="#e9ebee">Review</text>
+<rect x="1295" y="420" width="170" height="76" rx="4" fill="#1b1e23" stroke="#2b3036" stroke-width="2"/><text x="1380.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" fill="#e9ebee">Staging</text>
+<rect x="1535" y="420" width="170" height="76" rx="4" fill="#1b1e23" stroke="#2b3036" stroke-width="2"/><text x="1620.0" y="466.0" text-anchor="middle" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" fill="#e9ebee">Done</text>
+</svg>

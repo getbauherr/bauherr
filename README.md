@@ -1,83 +1,129 @@
-<p align="center">
-  <img src="docs/design/assets/bauherr-wordmark.svg" alt="Bauherr" height="40">
-</p>
+<div align="center">
 
-**An open-source AI software factory. Agents take your tickets through gated stages; you approve the plan, not every keystroke.**
+<h1>Bauherr: an open-source AI software factory</h1>
 
-*Bauherr* is German for the person who commissions a building and signs off on the work, not the one who lays the bricks. That is the role Bauherr gives you: you decide what gets built and approve at the gates, and the factory does the work, with an audit trail and a cost per Workspace.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+  <img src="docs/assets/banner.svg" alt="Bauherr: a ticket moves from Triage through Plan to a checkpoint where you decide, then Build, Review, Staging and Done" width="900">
+</picture>
 
-![Bauherr Tickets overview in the dark theme](docs/assets/screenshot-tickets.png)
+**Agents take your tickets through gated stages. You approve the plan, not every keystroke.**<br>
+Bauherr connects to the issue tracker and repositories you already use. Agents plan, build, review and release; you decide
+at the checkpoints. Self-hosted, with an audit trail and a budget per Workspace.
 
-## What it does
+![Status: pre-release](https://img.shields.io/badge/Status-pre--release-orange)
+[![CI](https://github.com/getbauherr/bauherr/actions/workflows/ci.yml/badge.svg)](https://github.com/getbauherr/bauherr/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/getbauherr/bauherr?logo=github&label=release)](https://github.com/getbauherr/bauherr/releases/latest)
+[![npm](https://img.shields.io/npm/v/bauherr?logo=npm)](https://www.npmjs.com/package/bauherr)
+[![Licence: Apache-2.0](https://img.shields.io/github/license/getbauherr/bauherr)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
+[![Payload](https://img.shields.io/badge/Payload-3-000?logo=payloadcms)](https://payloadcms.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker image](https://img.shields.io/badge/ghcr.io-getbauherr%2Fbauherr-2496ed?logo=docker&logoColor=white)](https://github.com/getbauherr/bauherr/pkgs/container/bauherr)
+[![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-lightgrey)](https://github.com/getbauherr/bauherr/pkgs/container/bauherr)
+[![MCP](https://img.shields.io/badge/MCP-server-6b4fbb)](docs/session-mode.md)
+[![Claude Agent SDK](https://img.shields.io/badge/Claude_Agent_SDK-d97757)](https://docs.claude.com/en/docs/agent-sdk/overview)
 
-Bauherr connects to the issue tracker and repositories you already use. A Ticket moves through fixed stages; at each stage an agent does the work and records what it did, and a person approves at the gates.
+[Why?](#-why-bauherr) •
+[How it works](#-how-it-works) •
+[Features](#-features) •
+[Quick start](#-quick-start) •
+[Status](#-status-and-roadmap) •
+[FAQ](#-faq) •
+[Contributing](#-contributing)
 
-- Your Tickets stay in GitHub (GitLab is planned). Bauherr never owns a Ticket; it keeps a pointer and what it derives, and writes stages as labels.
-- Agents run Claude Code through the Claude Agent SDK, in a fresh clone, and open a merge request with an evidence section (commands, exit codes, test results).
-- Every request goes through a bundled LLM gateway with the Workspace's own provider credential and a budget.
-- Everything is audited: Runs, Steps, tool calls, human touches, cost.
-- It is self-hosted and needs only Docker and Postgres. No Redis, no external services.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-workflow-dark.png">
+  <img src="docs/assets/screenshot-workflow.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints" width="900">
+</picture>
 
-## How it works
+</div>
+
+> [!WARNING]
+> **Pre-release.** Bauherr builds itself, but the data model and the workflow can still change between versions. Back up
+> the database before you upgrade, and read what an agent proposes before you approve it.
+
+## 💡 Why Bauherr?
+
+*Bauherr* is German for the person who commissions a building and signs off on the work, not the one who lays the bricks.
+That is the role you get.
+
+- **You decide, the factory works.** Tickets move through stages by themselves. You are asked at a few checkpoints, and the Inbox shows each one as a prepared card: the ask, a recommendation, the facts and the real options.
+- **Your tickets stay yours.** They live in GitHub. Bauherr keeps a pointer and what it derives, and writes the stage as a label.
+- **Everything is on the record.** Runs, steps, tool calls, human touches and cost are stored. Every step of a Ticket shows who or what did it, with which model, for how much.
+- **Cost is capped.** Each Workspace has its own provider key and a rolling 30-day budget in a bundled gateway. An exhausted budget ends the Run.
+- **Use your own session.** A stage can wait for your Claude Code to claim it, so you work in your own worktree with your own credentials.
+- **Small to run.** Docker and Postgres 17. No Redis, no external service.
+
+## 🔧 How it works
+
+A Ticket moves through the stages in [`pack/factory.yaml`](pack/factory.yaml). Each stage has a kind and named outcomes: a failed review sends the Ticket back to Build, and a split plan turns it into a parent with sub-tickets.
 
 ```mermaid
 flowchart LR
   T[Triage] --> P[Plan]
-  P -->|plan approval| B[Build]
+  P --> B[Build]
   B --> R[Review]
-  R --> Rel[Release]
-  Rel --> D[Done]
+  R --> S[Staging]
+  S --> D[Done]
+  T -. "answer questions" .-> You((You))
+  P -. "approve plan" .-> You
+  S -. "accept, approve production" .-> You
 ```
 
-| Stage | Work |
+| Kind | What happens |
 |---|---|
-| Triage | Dedupe hints; Bauherr moves the Ticket to Plan or closes it |
-| Plan | An agent writes the plan and a decision sheet (defaults, `critical` flags) as a Comment and sets the Goal in the worklog |
-| Build | An agent implements the Goal on a branch and opens a merge request with evidence |
-| Review | Reviewer agent without memory of the change (planned, [#82](https://github.com/getbauherr/bauherr/issues/82)); today the merge request is reviewed in your forge |
-| Release | The Product's own CI |
-| Done | Ticket closed on merge |
+| Triage | An agent checks the Ticket and asks what is unclear. You answer in a short chat with recommended defaults. |
+| Plan | An agent writes the plan and a decision sheet. |
+| Build | An agent implements the plan on a branch and opens a merge request with evidence: commands, exit codes, test results. |
+| Review | A reviewer agent without memory of the change reads the diff. The factory merges when it is clean. |
+| Staging | The Product's own CI deploys. The factory merges directly, through a queue or in a train. |
+| Done | The Ticket is closed on merge. Release notes group done Tickets per release. |
 
-Human gates (configured in [`pack/factory.yaml`](pack/factory.yaml)):
+You are asked at **Answer questions**, **Approve plan** and **Approve production** by default. **Accept on staging** is an optional gate. Failed runs, failed releases and reviews at their round cap also land in the Inbox.
 
-- **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
-- **Approve plan** (on by default, `gate: human` on `plan`; remove it in the Workspace's factory file to let plans through): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
-- **Accept on staging** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
-- **Approve production** (on by default: `production_gate: human` on `release`, or "Ask me before deploying to production" on a Product; a Product without `productionChecks` shows the "Configure production checks" gate, linking to Settings > Products, until they are set; removing `production_gate` from the workflow sends a staging-confirmed Ticket to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
-- **Merge request review**: the factory reviews and merges ([#82](https://github.com/getbauherr/bauherr/issues/82)); no human.
+Each Workspace has one factory file (`factory.yaml`) for its team and workflow. You can add custom `agent` stages (a role works the Ticket and reports an outcome) and `human` stages (a person picks an outcome), and rename, remove or reorder stages. The outcomes route Tickets, and the custom stages show in the graph, the Inbox, Path and Steps and Insights. There is exactly one build, review and release chain. Stages, labels, triggers, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
 
-By default a Ticket needs the owner only for Refine questions, Approve production and declared blockers.
+## ✨ Features
 
-Stages, labels, triggers, run states, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
+One row per area. The full list, with the page of each feature, is in [docs/features.md](docs/features.md).
 
-## Key concepts
-
-Full glossary: [CONTEXT.md](CONTEXT.md).
-
-| Term | Meaning |
+| Area | What Bauherr does |
 |---|---|
-| Workspace | Isolation boundary for one client or organisation; owns its Connections, budget and provider credential |
-| Product | A deliverable inside a Workspace, with its own Repositories, Ticket source and workflow |
-| Bauherr / Admin | A Workspace member who configures the factory and approves at gates / one who runs the instance |
-| Ticket | One issue in the Product's Ticket source; the source of truth |
-| Run | One agent execution on exactly one Ticket; its Steps are recorded for audit and cost |
-| Tier | `cheap`, `standard` or `strong`; stages pick a Tier, the Workspace maps it to a model |
-| Pack | Skills, rules and hooks materialised into each Run's worktree, never committed; the open-source core pack is in [`pack/`](pack/README.md), a Workspace can layer its own Knowledge repo on top |
-| Worklog | One pinned Comment per Ticket that agents read first and update last |
+| 🗺️ [Workflow](docs/features.md#workflow) | The stages as a graph on the home page, one editable factory file per Workspace with custom agent and human stages, WIP limits, an expedite lane for hotfixes, overlap hold between Builds |
+| 🎫 [Tickets](docs/features.md#tickets) | One status vocabulary, a Path through the stages, a Steps timeline with executor, model and cost, epics and sub-tickets |
+| 📥 [Decisions](docs/features.md#decisions) | An Inbox of prepared decision cards for plans, staging, production and review round caps |
+| 💬 [Chat](docs/chat.md) | A chat on every page that knows the page, stored threads, confirm cards for actions, pasted screenshots, answer feedback |
+| 📝 [Requests](docs/intake-embed.md) | A request assistant in the app and an embeddable website widget that turn a wish into a Ticket |
+| 🚀 [Releases](docs/features.md#releases) | Merge direct, through the forge's queue or in a train; release notes and shipping per Product |
+| 🛡️ [Quality and security](docs/features.md#quality-and-security) | A review stage, pre-review checks, flaky-check tracking, a scheduled security scan, evidence on every merge request |
+| 👥 [Team and sessions](docs/session-mode.md) | Agent roles with profiles and models, sessions that connect as a role and pull work, presence, agent keys, people, OIDC sign-in |
+| 📚 [Knowledge](docs/features.md#knowledge) | A repository of your documents and skills that agents search, and a pack of skills, rules and hooks per Run |
+| 💶 [Models and cost](docs/features.md#models-and-cost) | A bundled AI gateway, budgets, model tiers, cost per Product, Ticket and stage |
+| 📈 [Insights](docs/features.md#models-and-cost) | Lead time, cycle time, time per stage with the bottleneck, throughput per week |
+| 🧾 [Audit](docs/observability.md) | Human touches and tool calls in the UI, metrics and traces in Prometheus and Jaeger |
+| ⚙️ [Administration](docs/features.md#administration) | Workspaces, Products, Connections, editable text templates, a command palette |
+| 🔌 [CLI and API](docs/features.md#cli-and-api) | `npx bauherr`, an MCP server, Payload's REST API, a Runner built on the Claude Agent SDK |
 
-Runs have two modes. In **autonomous** mode the Runner spawns an agent. In **session** mode the Run waits until your own Claude Code session claims it over the factory MCP server, so you work in your local worktree with your own credentials and the factory keeps the record. The mode is set per stage and Workspace: [docs/session-mode.md](docs/session-mode.md).
+## 📸 Screenshots
 
-## Features
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshot-inbox.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts"><br><sub><b>Inbox</b>: each decision as a card with a recommendation</sub></td>
+    <td width="50%"><img src="docs/assets/screenshot-ticket.png" alt="Ticket page with the Path through the stages and the Steps timeline"><br><sub><b>Ticket</b>: the path it took and who did each step</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshot-insights.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck"><br><sub><b>Insights</b>: where time goes, and the bottleneck</sub></td>
+    <td width="50%"><img src="docs/assets/screenshot-chat.png" alt="Docked chat with an answer and a confirm card for approving a plan"><br><sub><b>Chat</b>: ask, then confirm an action on a card</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshot-templates.png" alt="Template editor with the text on the left and a live preview on the right"><br><sub><b>Templates</b>: edit the texts the factory writes, with a preview</sub></td>
+    <td width="50%"><img src="docs/assets/screenshot-command.png" alt="Command palette searching Tickets for retry"><br><sub><b>Command palette</b>: pages, Tickets and actions on Ctrl+K</sub></td>
+  </tr>
+</table>
 
-- **Ticket sources**: GitHub Issues today. GitLab is designed ([#14](https://github.com/getbauherr/bauherr/issues/14)) but has no driver yet.
-- **Bundled LLM gateway**: [agentgateway](https://agentgateway.dev) runs in the compose stack; each Workspace gets its own consumer key, provider credential and rolling 30-day budget in USD or tokens. An exhausted budget ends the Run.
-- **Factory UI**: Tickets overview (list, board, runs) with a "Needs you" queue, Ticket page with decision sheet and plan gate, Run page with graph, timeline and list views, and settings for Workspaces, Products, Connections, Bauherren, API key, audit and workflow. [docs/ui.md](docs/ui.md)
-- **MCP server for your own Claude Code**: `/mcp` exposes tools to list the frontier, claim and finish Runs, update the worklog, attach evidence and approve the plan gate. [docs/session-mode.md](docs/session-mode.md)
-- **Audit and cost**: Runs, Steps, tool calls (argument names and hash, never payloads) and human touches are stored; cost is reconciled against the gateway's request log. The gateway stores no prompts.
-- **Sign-in**: email and password out of the box, optional OIDC with role and Workspace mapping. [docs/auth.md](docs/auth.md)
-- **Postgres only**: application data, job queue and gateway state live in one Postgres 17.
-
-## Quick start
+## 🚀 Quick start
 
 Requires Docker with Compose and Node 22.14+. No clone, no build:
 
@@ -85,18 +131,18 @@ Requires Docker with Compose and Node 22.14+. No clone, no build:
 npx bauherr init
 ```
 
-It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is installed and reachable and that the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`. A localhost public URL means polling mode, a public URL enables webhooks.
+It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is reachable and the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`, `eval`. A localhost public URL means polling mode, a public URL enables webhooks.
 
-From a source checkout, with Local development needing Node 24 and pnpm 10:
+From a source checkout (Node 24 and pnpm 10 for local development):
 
 ```bash
 git clone https://github.com/getbauherr/bauherr.git && cd bauherr
 docker compose build && docker compose up -d
 ```
 
-Both start `db` (Postgres 17), `gateway`, `app` (UI, API and MCP on `http://localhost:3000`), `worker` (agent Runs) and `poller` (Ticket source polling). Secrets are generated on first start into a volume.
+Both start `db` (Postgres 17), `gateway`, `app` (UI, API and MCP on `http://localhost:3000`), `worker` (agent Runs) and `poller` (Ticket polling); secrets are generated on first start.
 
-Create the Admin user, the first Workspace and its Connections. The seed script currently creates Workspace `getbauherr` for the repository `getbauherr/bauherr` (workspace #0); further Workspaces, Products and Connections are edited under Settings in the UI. A setup wizard is planned.
+Create the Admin user, the first Workspace and its Connections. The seed script creates Workspace `getbauherr` for the repository `getbauherr/bauherr`; further Workspaces, Products and Connections are added under Settings.
 
 ```bash
 export GITHUB_TOKEN="$(gh auth token)" BAUHERR_ADMIN_EMAIL=<email>
@@ -106,36 +152,52 @@ docker compose run --rm --no-deps -T \
   -e BAUHERR_ADMIN_EMAIL -e GITHUB_TOKEN app sh -c 'cd /repo/apps/server && pnpm seed'
 ```
 
-Open `http://localhost:3000` and sign in. To start a Ticket, label it `bauherr:stage:plan` in the forge; the poller picks it up, a plan Run posts the plan, and setting `bauherr:approved:plan` (or approving in the UI) queues the Build Run. A worked example with costs: [docs/first-run.md](docs/first-run.md).
+Open `http://localhost:3000` and sign in. To start a Ticket, label it `bauherr:stage:plan` in the forge, or send a request from the app. A worked example with costs: [docs/first-run.md](docs/first-run.md).
 
-To work on tickets from your own Claude Code session instead, create an API key in the UI (user menu, API key) and follow [docs/session-mode.md](docs/session-mode.md).
+## 🔌 Connect your own Claude Code session
 
-## Configuration
+Run stages from your laptop instead of the Runner. Create an agent key under **API key** in the user menu, then add the MCP server:
+
+```bash
+claude mcp add --transport http bauherr http://localhost:3000/mcp --header "Authorization: Bearer $(cat ~/.config/bauherr/mcp-key)"
+```
+
+The session lists the frontier, claims a Run, works in your worktree and finishes it with evidence. Agent keys cannot pass a human gate. Set the mode per stage and Workspace: [docs/session-mode.md](docs/session-mode.md).
+
+## 🧑‍💻 Connect a session as a role
+
+The factory file declares the roles (orchestrator, engineer, reviewer, security, UX, test): each has a profile, skills, a model or tier and an optional agent limit. A session joins as one role and pulls the Runs of the stages that name it. With the MCP line above in place, start Claude Code and say:
+
+```text
+Connect to the factory as engineer and work until told to stop.
+```
+
+The session calls `connect {role}`, then loops on `next_work` until nothing is queued for its role. It shows as Working, Idle or Offline with its active time. The orchestrator also receives stuck Tickets. The Ticket status and Steps name who works ("<session> (<role>)", "Runner" or "CI"), and the chat can answer who is working. Details: [docs/session-mode.md](docs/session-mode.md#connect-as-a-role).
+
+## ⚙️ Configuration
 
 | What | Where |
 |---|---|
 | `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
-| Stages, steps, gates: one factory file per Workspace, edited in Settings > Workflow, applied with `bauherr apply -f factory.yaml --workspace <slug>` or `BAUHERR_FACTORY_FILE` (+ `BAUHERR_FACTORY_WORKSPACE`) at boot | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default; [docs/spec/workflow.md](docs/spec/workflow.md#factoryyaml-the-file) |
+| Stages, roles, gates: one factory file per Workspace, edited under Settings, Board & WIP, Factory file, or applied with `bauherr apply -f factory.yaml --workspace <slug> [--dry-run]` (`bauherr export` prints the active file; `BAUHERR_FACTORY_FILE` applies one at boot; `GET`/`PUT /api/workspaces/<slug>/factory`) | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default, [docs/spec/workflow.md](docs/spec/workflow.md) |
 | Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
-| Budgets, model Tiers, Connections | Settings in the UI |
+| Budgets, model tiers, Connections | Settings in the UI |
 | Provider credentials and data flows | [docs/legal.md](docs/legal.md) |
 
-Payload's `/admin` is a developer escape hatch and off by default (it redirects to `/settings`); set `BAUHERR_ENABLE_ADMIN=1` to switch it on for Admins. `/api` is unaffected.
+## 🏗️ Architecture
 
-## Architecture
-
-TypeScript monorepo (pnpm workspaces, Node 24).
+TypeScript monorepo (pnpm workspaces, Node 24). Glossary: [CONTEXT.md](CONTEXT.md).
 
 | Path | Content |
 |---|---|
-| [`apps/server`](apps/server) | Payload 3 on Next.js: UI at `/`, API at `/api`, MCP at `/mcp`, Payload jobs for the worker and poller, migrations, seeds, e2e tests |
+| [`apps/server`](apps/server) | Payload 3 on Next.js: UI at `/`, API at `/api`, MCP at `/mcp`, jobs for the worker and poller, migrations, seeds, e2e tests |
 | [`packages/adapters`](packages/adapters) | Forge and Ticket source contracts with the GitHub driver |
-| [`packages/runner`](packages/runner) | Runs one Plan or Build stage with the Claude Agent SDK: shallow clone, localhost credential proxy, hooks, evidence |
-| [`packages/cli`](packages/cli) | The `bauherr` npm package: `npx bauherr init` writes the compose project and starts the stack |
-| [`pack`](pack) | Open-source core pack: skills, rules, hooks and the base workflow |
+| [`packages/runner`](packages/runner) | Runs one stage with the Claude Agent SDK: shallow clone, localhost credential proxy, hooks, evidence |
+| [`packages/cli`](packages/cli) | The `bauherr` npm package |
+| [`pack`](pack) | Open-source core pack: skills, rules, hooks and the workflow |
 | [`deploy`](deploy) | Gateway config template, model catalogs, database init |
 | [`docs`](docs) | Spec, UI, auth, legal notes, research, design system |
 
@@ -145,28 +207,63 @@ pnpm typecheck   # builds the packages, then type-checks all of them
 pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 ```
 
-Each suite uses its own database `bauherr_test_<suite>_<suffix>` and drops it afterwards. The suffix is `$VITEST_DB_SUFFIX`, else a hash of the worktree path (empty under `CI`), so `pnpm test` can run in several worktrees at once.
+## 🧭 Status and roadmap
 
-## Releasing
+Pre-release. The factory builds Bauherr itself. Every feature with its page: [docs/features.md](docs/features.md).
+- **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, expedite lane, WIP limits, AI gateway with budgets, audit, OIDC.
+- **In progress:** a Team page (character select, live session list, agents on the Workflow graph, team use in Insights); a new setup wizard and regrouped settings; plain-word progress comments for product owners on the issue.
+- **Planned:** a GitLab driver, notifications at checkpoints ([#77](https://github.com/getbauherr/bauherr/issues/77)), provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
-One git tag publishes everything. From `main`:
+Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: [docs/releasing.md](docs/releasing.md).
 
-```bash
-git tag v0.1.0-rc.1 && git push origin v0.1.0-rc.1
-```
+## ❓ FAQ
 
-[`release.yml`](.github/workflows/release.yml) (environment `release`, tag must be on `main`) first pushes the multi-arch image `ghcr.io/getbauherr/bauherr:<version>` (`latest` only for versions without a `-pre` suffix), then stages npm `bauherr@<version>` from `packages/cli` with provenance via trusted publishing (`npm stage publish`; no token stored, so setup-node has no `registry-url` (it would write a token placeholder into `.npmrc` and break OIDC; `NODE_AUTH_TOKEN` is unset before publish); the npm package settings name this repository and workflow and allow staged publishing only). Pre-releases get the npm tag `next`. A maintainer approves the staged version (`npm stage approve <stage-id>` or on npmjs.com) to make it installable. The CLI pins the image tag to its own version.
+<details>
+<summary><b>What does it cost?</b></summary>
 
-## Status and roadmap
+The software is free (Apache-2.0). You pay your model provider. Every Workspace has a budget per 30 days in the gateway, and a Run that exhausts it ends. Cost per Product, Ticket and stage is under Settings, AI usage.
+</details>
 
-Pre-release. The walking skeleton works: on 2026-10-29 a Ticket went from plan to an approved Build Run and a merge request with evidence on a real model through the bundled gateway ([docs/first-run.md](docs/first-run.md)). The factory now builds Bauherr itself.
+<details>
+<summary><b>Which models and providers can it use?</b></summary>
 
-Not yet shipped: GitLab driver, setup wizard, requirements intake for Product users, the later gates above, notifications at human gates ([#77](https://github.com/getbauherr/bauherr/issues/77)), release notes on GitHub and GitLab ([#106](https://github.com/getbauherr/bauherr/issues/106)), provider auth modes beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)). The roadmap and every decision are tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1).
+Stages pick a tier (`cheap`, `standard`, `strong`); the Workspace maps each tier to a model. The Runner uses Claude Code through the Claude Agent SDK. The gateway fronts the provider you configure under Connections. Credentials must be API keys, see [docs/legal.md](docs/legal.md).
+</details>
 
-## Contributing
+<details>
+<summary><b>Where do my code and tickets live?</b></summary>
+
+In your forge. Agents work in a fresh shallow clone and open a merge request. Bauherr stores pointers, derived state, the audit trail and cost in its own Postgres. It never owns a Ticket.
+</details>
+
+<details>
+<summary><b>What leaves my server?</b></summary>
+
+Prompts and the code an agent reads go to the model provider you configured, and requests go to your forge. The gateway stores no prompts. Tool calls are stored as argument names and a hash, never payloads. Details: [docs/legal.md](docs/legal.md).
+</details>
+
+<details>
+<summary><b>Does it work with GitLab?</b></summary>
+
+Not yet. GitHub Issues and GitHub repositories are the supported forge. The GitLab driver is designed ([research](docs/research/gitlab-driver.md)) and not built.
+</details>
+
+<details>
+<summary><b>How do I stay in control?</b></summary>
+
+By default you answer the questions Triage cannot settle, approve every plan and approve production. Staging acceptance is optional, and the factory file can drop a gate. Agent keys cannot pass a human gate, and every human decision is recorded with your email.
+</details>
+
+<details>
+<summary><b>How do I stop a Run?</b></summary>
+
+Open the Run under Runs (Admin) and release its lock. A review that hits its round cap waits in the Inbox: give one more round, or stop. An exhausted budget also ends a Run.
+</details>
+
+## 🤝 Contributing
 
 Open an issue before large changes. No CLA and no sign-off; contributions are Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities as described in [SECURITY.md](SECURITY.md), not in public issues.
 
-## Licence and legal
+## 📄 Licence
 
 [Apache-2.0](LICENSE); third-party notices in [NOTICE](NOTICE). Bauherr runs Claude Code via the Claude Agent SDK, which is under Anthropic's Commercial Terms. Every Workspace must bring its own provider credential and API keys only; operators should read [docs/legal.md](docs/legal.md). Not legal advice.
