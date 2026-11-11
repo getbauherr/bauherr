@@ -9,7 +9,7 @@ import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
   number: number; title: string; body: string; state: 'open' | 'closed'; labels: string[];
-  assignees: string[]; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[]; events: LabelEvent[];
+  assignees: string[]; author: string; updatedAt: string; closeReason: CloseReason | null; rel: Relations; comments: Comment[]; events: LabelEvent[];
 }
 interface FakeRepo {
   defaultBranch: string;
@@ -412,7 +412,7 @@ class FakeTickets implements TicketSource {
   private full(t: FakeTicket): Ticket {
     const r = this.rel(t);
     const closeReason = t.state === 'closed' ? (t.closeReason ?? 'completed') : null;
-    return { ...this.summary(t), body: parseRelations(t.body).body, parent: r.parent, blockedBy: [...r.blockedBy], links: [...r.links], closeReason };
+    return { ...this.summary(t), body: parseRelations(t.body).body, parent: r.parent, blockedBy: [...r.blockedBy], links: [...r.links], closeReason, author: t.author };
   }
 
   async list(opts: ListOptions = {}) {
@@ -434,7 +434,7 @@ class FakeTickets implements TicketSource {
   async create(n: NewTicket) {
     const number = this.items.size + 1;
     const t: FakeTicket = {
-      number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignees: [],
+      number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignees: [], author: n.author ?? this.b.opts.user ?? 'fake',
       updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] }, comments: [], events: [],
     };
     this.record(t, 'labeled', t.labels);

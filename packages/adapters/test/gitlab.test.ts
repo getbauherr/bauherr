@@ -35,7 +35,7 @@ describe('gitlab tickets', () => {
       id: '7', number: 7, url: 'https://gitlab.test/g/p/-/issues/7', title: 'Dark theme', state: 'closed',
       labels: ['bauherr:stage:build', 'bauherr:close-reason:not_planned'], assignee: 'bauherr-bot', assignees: ['bauherr-bot', 'sebastian'],
       updatedAt: '2026-10-30T10:00:00Z', body: 'Body text', parent: '1', blockedBy: ['3'], links: ['https://gitlab.test/g/p/-/merge_requests/2'],
-      closeReason: 'not_planned',
+      closeReason: 'not_planned', author: 'carol',
     });
   });
 

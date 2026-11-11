@@ -1,5 +1,5 @@
 /** The texts the factory or its agents write for people; one markdown file each in `pack/templates/`. */
-export const TEMPLATE_NAMES = ['request', 'plan', 'decision', ...['review'], 'staging-summary', 'release-note', 'worklog', 'triage-questions'] as const
+export const TEMPLATE_NAMES = ['request', 'plan', 'decision', ...['review'], 'staging-summary', 'release-note', 'worklog', 'triage-questions', 'progress'] as const
 export type TemplateName = (typeof TEMPLATE_NAMES)[number]
 export const isTemplateName = (v: string): v is TemplateName => (TEMPLATE_NAMES as readonly string[]).includes(v)
 
@@ -50,6 +50,13 @@ export const headingOf = (tpl: Pick<Parsed, 'parsed' | 'fallback'>, id: string):
 
 export type Finding = { level: 'error' | 'warn'; message: string }
 
+/** Progress texts, one section per key (`progressOf`); the placeholders a line may use, each with the sample the editor's preview shows. */
+export const PROGRESS_KEYS = ['received', 'question', 'planning', 'approval', 'building', 'reviewing', 'agent', 'human', 'staging', 'waiting', 'released', 'stuck', 'closed', 'split', 'blocked'] as const
+export const PLACEHOLDERS: Record<string, string> = { stage_title: 'Security review', staging_url: 'https://staging.example.com', waiting: 'Waiting for the automated checks to pass.', release_note: 'Download invoices as CSV.', reason: 'the automated checks keep failing', blockers: '#12', children: '2 of 3 are done.' }
+/** Fills `{{name}}` from `vars`; a line whose placeholder has no value is dropped. */
+export const fillPlaceholders = (text: string, vars: Record<string, string | undefined>): string =>
+  text.split('\n').filter((l) => ![...l.matchAll(/\{\{(\w+)\}\}/g)].some((m) => !vars[m[1]!])).map((l) => l.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k]!)).join('\n')
+
 /** Per template: the anchors the code fills, headings its parsers locate by text, and literal lines it edits. */
 const RULES: Record<TemplateName, { ids: string[]; exact?: Record<string, string>; contains?: string[] }> = {
   request: { ids: ['problem', 'context', 'acceptance-criteria'], exact: { 'acceptance-criteria': 'Acceptance criteria' } },
@@ -60,6 +67,7 @@ const RULES: Record<TemplateName, { ids: string[]; exact?: Record<string, string
   'release-note': { ids: [] },
   worklog: { ids: [], contains: ['**Goal**', '**Current instructions**', '**Unfinished work**', '**Open**', '**Decisions**'] },
   'triage-questions': { ids: ['questions', 'decisions'], exact: { decisions: 'Decisions' } },
+  progress: { ids: [...PROGRESS_KEYS] },
 }
 
 /** Findings that make a body unfit to save (`error`) or worth a look (`warn`). */
@@ -80,6 +88,7 @@ export const lintTemplate = (name: TemplateName, body: string): Finding[] => {
   }
   const text = stripComments(body)
   for (const c of rule.contains ?? []) if (!text.includes(c)) f.push({ level: 'error', message: `The text "${c}" is missing: the factory or its agents rely on it.` })
+  if (name === 'progress') for (const k of new Set([...text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))) if (!(k in PLACEHOLDERS)) f.push({ level: 'error', message: `The placeholder {{${k}}} is unknown; use ${Object.keys(PLACEHOLDERS).map((x) => `{{${x}}}`).join(', ')}.` })
   if (!parsed.length) f.push({ level: 'warn', message: 'No "## Heading" sections found.' })
   return f
 }
@@ -94,5 +103,6 @@ export const SAMPLES: Record<TemplateName, Record<string, string>> = {
   'staging-summary': { 'what-you-get': '- Users can switch to a dark theme\n\n**Merge requests**\n- [#7 Dark theme](https://example.com/7)', found: '- Toggle lacked a label (MR #7)', decisions: '- Use CSS custom properties', open: 'Nothing.', accept: 'Check it on staging, then accept or request changes.' },
   'release-note': { features: '- CSV export ([#7](https://example.com/7))\n  - Download invoices as CSV', fixes: '- Totals wrong ([#8](https://example.com/8))' },
   worklog: {},
+  progress: {},
   'triage-questions': { questions: 'Triage needs your answers before this Ticket can be planned: the export scope is open', decisions: '- **D1 Scope, critical**. Default: all invoices. Alternatives: paid only.' },
 }

@@ -1,6 +1,6 @@
 'use client'
 import { startTransition, useActionState, useMemo, useState } from 'react'
-import { SAMPLES, type TemplateName, lintTemplate, parseSections, renderTemplate } from '../../../lib/template-text'
+import { PLACEHOLDERS, SAMPLES, fillPlaceholders, type TemplateName, lintTemplate, parseSections, renderTemplate } from '../../../lib/template-text'
 import type { FormState } from '../lib/settings'
 import { renderMarkdown } from '../lib/markdown'
 import { Markdown } from './Markdown'
@@ -19,7 +19,10 @@ export function TemplateEditor({ name, initial, packBody, layout, custom, canEdi
   const [resetState, resetAction, resetting] = useActionState(reset, {})
   const findings = useMemo(() => lintTemplate(name, body), [name, body])
   const errors = findings.filter((f) => f.level === 'error')
-  const preview = useMemo(() => renderMarkdown(renderTemplate({ parsed: parseSections(body), layout, fallback: {} }, SAMPLES[name])), [name, body, layout])
+  const preview = useMemo(() => {
+    const md = renderTemplate({ parsed: parseSections(body), layout, fallback: {} }, SAMPLES[name])
+    return renderMarkdown(name === 'progress' ? fillPlaceholders(md, PLACEHOLDERS) : md)
+  }, [name, body, layout])
   const post = (action: (fd: FormData) => void) => () => {
     const fd = new FormData()
     fd.set('name', name)

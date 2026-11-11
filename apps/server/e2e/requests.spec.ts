@@ -25,16 +25,31 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
   const linked = page.locator('tbody tr').filter({ hasText: 'Dark theme for the dashboard' })
   await expect(linked).toContainText('Sent')
   await expect(page.locator('tbody')).not.toContainText(/Linked|Triage|↳|No Ticket yet/)
+  await expect(linked.getByTestId('request-progress')).toContainText('Questions for you.')
+  await expect(linked.getByTestId('request-progress')).toContainText(/since/)
+  await expect(linked.getByTestId('progress-path')).toHaveAttribute('data-step', '1')
+  await expect(linked.getByTestId('progress-path').locator('[data-state=current]')).toHaveText('Planned')
   const shots = process.env.SHOTS_DIR
-  if (shots) {
+  const shoot = async (name: string) => {
+    if (!shots) return
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {
       await page.setViewportSize({ width: w, height: h })
       for (const scheme of ['light', 'dark'] as const) {
         await page.emulateMedia({ colorScheme: scheme })
-        await page.screenshot({ path: `${shots}/requests-${scheme}-${w}x${h}.png` })
+        await page.screenshot({ path: `${shots}/${name}-${scheme}-${w}x${h}.png` })
       }
     }
   }
+  await shoot('requests')
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await linked.getByRole('link', { name: 'Dark theme for the dashboard' }).click()
+  await expect(page).toHaveURL(/\/requests\/\d+$/)
+  await expect(page.getByTestId('request-headline')).toContainText('Questions for you.')
+  await expect(page.getByTestId('request-next')).toContainText('What happens next')
+  await expect(page.getByTestId('progress-path').locator('[data-state=done]')).toHaveText(['Received'])
+  await expect(page.getByRole('link', { name: 'Open the issue' })).toHaveAttribute('href', /github\.com\/acme\/web\/issues\/1$/)
+  await shoot('request-detail')
+  await page.goBack()
   await linked.getByRole('link', { name: /#1/ }).click()
   await expect(page).toHaveURL(/\/tickets\/\d+/)
 })

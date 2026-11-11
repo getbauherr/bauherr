@@ -30,6 +30,8 @@ export interface Ticket extends TicketSummary {
   blockedBy: string[];
   links: string[];
   closeReason?: CloseReason | null;
+  /** Login of whoever opened the ticket; null when the forge does not say. */
+  author?: string | null;
 }
 
 export interface Comment {
@@ -48,6 +50,8 @@ export interface NewTicket {
   title: string;
   body?: string;
   labels?: string[];
+  /** Only the fake honours it (a forge sets the author from the credential). */
+  author?: string;
 }
 
 /** A label change on a ticket, oldest first from `labelEvents`. */

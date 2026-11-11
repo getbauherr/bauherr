@@ -6,6 +6,7 @@ import { sourceOf } from '../../../../../lib/actions'
 import { mediaLimits } from '../../../../../lib/intake/media'
 import { Markdown } from '../../../components/Markdown'
 import { RequestComposer } from '../../../components/RequestComposer'
+import { ProgressPath } from '../../../components/ProgressPath'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ago } from '../../../lib/format'
@@ -55,10 +56,18 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
           {request.tickets.length ? (
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {request.tickets.map((t) => (
-                <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card p-3" data-testid="request-ticket">
-                  <Link className="text-primary" href={`/tickets/${t.id}`}>#{t.number} {t.title}</Link>
-                  <Badge variant={t.status === 'Done' ? 'ok' : 'neutral'}>{t.status}</Badge>
-                  {t.need && <Badge variant="warn">{t.need}</Badge>}
+                <li key={t.id} className="flex flex-col gap-3 rounded-md border border-border bg-card p-3" data-testid="request-ticket">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link className="text-primary" href={`/tickets/${t.id}`}>#{t.number} {t.title}</Link>
+                    <Badge variant={t.status === 'Done' ? 'ok' : 'neutral'}>{t.status}</Badge>
+                    {t.need && <Badge variant="warn">{t.need}</Badge>}
+                    {t.url && <a className="small text-primary" href={t.url}>Open the issue</a>}
+                  </div>
+                  <p className="body m-0 font-medium" data-testid="request-headline">{t.progress.headline}{t.progress.since && <span className="small font-normal text-muted-foreground"> · since {ago(t.progress.since).replace(/ ago$/, '')}</span>}</p>
+                  <ProgressPath step={t.progress.step} large />
+                  {t.progress.detail && <p className="m-0 text-muted-foreground">{t.progress.detail}</p>}
+                  {t.progress.next && <p className="m-0" data-testid="request-next"><span className="font-medium">What happens next: </span>{t.progress.next}</p>}
+                  {t.progress.link && <Link className="small self-start text-primary" href={t.progress.link}>Open the Ticket</Link>}
                 </li>
               ))}
             </ul>

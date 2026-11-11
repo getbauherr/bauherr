@@ -152,3 +152,11 @@ describe('fake: train branch', () => {
     assert.deepEqual((await b.forge.listFiles('o/r', 'train')).paths, []);
   });
 });
+
+describe('fake: author', () => {
+  it('is the credential user unless the test names one', async () => {
+    const ts = new FakeBackend({ native: true, user: 'octo' }).tickets('o/r');
+    assert.equal((await ts.get((await ts.create({ title: 'a' })).id)).author, 'octo');
+    assert.equal((await ts.get((await ts.create({ title: 'b', author: 'requester' })).id)).author, 'requester');
+  });
+});

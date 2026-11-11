@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ProgressPath } from '../../components/ProgressPath'
 import { Badge } from '../../components/ui/badge'
 import { Table } from '../../components/ui/table'
 import { EmptyState } from '../../components/EmptyState'
@@ -18,7 +19,7 @@ export default async function Requests() {
         <>
           <Table>
               <thead>
-                <tr className="label">{['Request', ...(multiProduct ? ['Product'] : []), 'Status', 'Updated'].map((h) => <th key={h}>{h}</th>)}</tr>
+                <tr className="label">{['Request', ...(multiProduct ? ['Product'] : []), 'Status', 'Progress'].map((h) => <th key={h}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
@@ -29,7 +30,14 @@ export default async function Requests() {
                     </td>
                     {multiProduct && <td>{r.product}</td>}
                     <td><Badge variant={r.linked ? 'ok' : 'neutral'}>{r.linked ? 'Sent' : 'Draft'}</Badge></td>
-                    <td className="text-muted-foreground">{ago(r.updatedAt)}</td>
+                    <td>
+                      {r.progress ? (
+                        <div className="flex flex-col gap-1" data-testid="request-progress">
+                          <span>{r.progress.headline}{r.progress.since && <span className="small text-muted-foreground"> · since {ago(r.progress.since).replace(/ ago$/, '')}</span>}</span>
+                          <ProgressPath step={r.progress.step} />
+                        </div>
+                      ) : <span className="text-muted-foreground">{ago(r.updatedAt)}</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -68,6 +68,8 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
       },
       ...o,
     })
+    // The sweep (`notify-gates`) handles its own transitions in the same pass; every other cause queues the Comment update so no request path waits for the forge.
+    if (opts.cause !== 'sweep') await payload.jobs.queue({ task: 'sync-progress', queue: 'poll', input: { ticketId: Number(ticketId) } })
   } catch (e) {
     payload.logger.warn({ err: e, ticket: ticketId, cause: opts.cause }, 'recording ticket history failed')
   }

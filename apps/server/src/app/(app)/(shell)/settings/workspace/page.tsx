@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { EmptyState } from '../../../components/EmptyState'
 import { Field, PickField, SettingsForm } from '../../../components/SettingsForm'
+import { ToggleRow } from '../../../components/SettingsParts'
 import { Table } from '../../../components/ui/table'
 import { shareOf } from '../../../../../lib/gateway'
 import { workflowFor } from '../../../../../lib/factory'
@@ -91,6 +92,10 @@ export default async function WorkspaceSettings() {
               <Field key={t} name={`mode_${t}`} label={`Stage ${t}`} options={['session', 'autonomous']} empty="default" defaultValue={w.modeByStage[t] ?? ''} />
             ))}
           </div>
+        </section>
+        <section id="progress" className={SECTION}>
+          <h2 className="heading">Progress on the issue</h2>
+          <ToggleRow name="progressComments" label="Post progress on the issue in plain words" help="One Comment on each issue, edited as the request moves, plus a short mention of the author when a question is open, a change is ready on staging, it is released or stuck. The texts are in Settings > Templates." defaultChecked={w.progressComments} />
         </section>
         <section id="knowledge" className={SECTION}>
           <h2 className="heading">Knowledge repo</h2>

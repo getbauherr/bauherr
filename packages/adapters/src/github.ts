@@ -183,7 +183,7 @@ class GithubTickets implements TicketSource {
     const [i, blockers] = await Promise.all([this.issue(id), this.blockers(id)]);
     const { body, relations } = parseRelations(i.body ?? '');
     return {
-      ...summary(i), body,
+      ...summary(i), body, author: i.user?.login ?? null,
       parent: i.parent_issue_url ? String(i.parent_issue_url).split('/').at(-1)! : null,
       blockedBy: [...new Set([...blockers.map((b) => String(b.number)), ...relations.blockedBy])],
       links: relations.links,

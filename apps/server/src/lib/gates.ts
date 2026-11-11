@@ -12,6 +12,7 @@ import { startRunIfNeeded } from '../jobs'
 import { holdOverlap } from './overlap'
 import { cas, forgeOf, id } from './release'
 import { sql } from '@payloadcms/db-postgres'
+import { syncProgress } from './progress'
 import { workflowFor } from './factory'
 import { is } from './workflow'
 
@@ -152,7 +153,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
 
 /** Syncs the gate of every open Ticket and of closed ones still holding one; a failing Ticket does not stop the others. */
 export const syncGates = async (payload: Payload, expediteOnly = false): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', sort: '-expedite', where: { and: [...(expediteOnly ? [{ expedite: { equals: true } }] : []), { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }] }] }, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', sort: '-expedite', where: { and: [...(expediteOnly ? [{ expedite: { equals: true } }] : []), { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }, { and: [{ state: { equals: 'closed' } }, { progressHash: { exists: true } }, { updatedAt: { greater_than: new Date(Date.now() - 2 * 864e5).toISOString() } }] }] }] }, pagination: false, ...o })).docs as Doc[]
   if (!tickets.length) return 0
   const latest = new Map<number, Doc>()
   for (const r of (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]) {
@@ -166,5 +167,8 @@ export const syncGates = async (payload: Payload, expediteOnly = false): Promise
       payload.logger.error({ err: e, ticket: t.id }, 'syncGate failed')
     }
   }
+  // The reconciling sweep of the progress Comments: after the gates, so each Ticket's `needsYou` is current; a closed Ticket stays in for 2 days so its "Released" lands.
+  // It only heals a Ticket that already has a progress Comment; the first one is written by the `sync-progress` job queued on a real transition, so an upgrade posts nothing on untouched issues.
+  await syncProgress(payload, tickets.filter((t) => t.progressHash || t.progressCommentId).map((t) => t.id))
   return changed
 }

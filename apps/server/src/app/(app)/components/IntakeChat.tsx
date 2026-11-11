@@ -85,7 +85,7 @@ export function IntakeChat({ products, initial, others = [], userId }: { userId:
     setBusy(false)
   }
 
-  if (sent) return <Card className="gap-4" role="status"><p className="body">{sent.length > 1 ? `Requests ${sent.map((n) => `#${n}`).join(', ')} sent. We'll ask if anything is unclear.` : `Request #${sent[0]} sent. We'll ask if anything is unclear.`}</p><Button asChild variant="outline" className="self-start"><a href="/">Back to tickets</a></Button></Card>
+  if (sent) return <Card className="gap-4" role="status"><p className="body">{sent.length > 1 ? `Requests ${sent.map((n) => `#${n}`).join(', ')} sent. We'll ask if anything is unclear.` : `Request #${sent[0]} sent. We'll ask if anything is unclear.`} Follow its progress under <a className="text-primary" href="/requests">Requests</a>.</p><Button asChild variant="outline" className="self-start"><a href="/">Back to tickets</a></Button></Card>
 
   const draft = turn?.draft
   return (
