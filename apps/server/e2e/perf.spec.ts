@@ -47,7 +47,6 @@ const targets: Target[] = [
       ['Products', '/settings/products'],
       ['AI usage', '/settings/usage'],
       ['Models & budget', '/settings/models'],
-      ['Workflow', '/settings/workflow'],
       ['Templates', '/settings/templates'],
       ['Connections', '/settings/connections'],
       ['Knowledge', '/settings/knowledge'],
@@ -56,6 +55,7 @@ const targets: Target[] = [
       ['Audit', '/settings/audit'],
     ] as const
   ).map(([link, route]): Target => ({ route, from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: link, exact: true }).click(), content: h2(link) })),
+  { route: '/workflow/edit', from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: 'Workflow', exact: true }).click(), content: h1('Workflow') },
   { route: '/tickets/[id]', from: '/', click: (p) => p.locator('[data-testid=workflow] a[href^="/tickets/"]').first().click(), content: { sel: '[data-testid=action-bar]' } },
   { route: '/runs/[id]', from: '/runs', click: (p) => p.locator('main a[href^="/runs/"]').first().click(), content: { sel: 'h1.title', text: '^#\\d+ ' } },
 ]

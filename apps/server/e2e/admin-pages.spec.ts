@@ -63,14 +63,11 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('link', { name: 'acme/web#2' }).first()).toBeVisible()
 
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Workflow', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Where you are asked' })).toBeVisible()
-  for (const name of ['Answer questions', 'Approve the plan', 'Accept on staging', 'Ask me before production']) await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: name })).toBeVisible()
-  await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: 'Answer questions' })).toContainText('Always on')
-  await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: 'Ask me before production' })).toContainText(/On for every Product|Per Product/)
-  await expect(page.getByRole('cell', { name: /^build$/i })).toBeHidden()
-  await page.getByText('Details', { exact: true }).click()
-  await expect(page.getByRole('cell', { name: /^build$/i })).toBeVisible()
+  await expect(page).toHaveURL(/\/workflow\/edit$/)
+  await expect(page.getByRole('heading', { name: 'Workflow', exact: true, level: 1 })).toBeVisible()
+  await expect(page.getByTestId('checkpoint-strip')).toContainText('Open questions')
   await expect(page.getByText('workflow.yaml')).toHaveCount(0)
+  await page.goto('/settings/health')
 
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Health' }).click()
   await expect(page).toHaveURL(/\/settings\/health$/)
@@ -86,6 +83,7 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
 test('a Bauherr gets 404 on the Admin pages, sees only their own groups and no technical settings', async ({ page }) => {
   await signIn(page, 'member@example.com')
   for (const path of ['audit', 'workflow', 'connections', 'health', 'knowledge', 'chat-feedback', 'models']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
+  expect((await page.goto('/workflow/edit'))?.status()).toBe(404)
   await page.goto('/settings/usage')
   await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['Profile', 'API keys', 'Templates', 'AI usage', 'General', 'Products', 'People'])
   await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('group')).toHaveCount(3)
@@ -152,11 +150,13 @@ test('the Ticket page Runs table shows Run and Duration to an Admin only and nev
   }
 })
 
-test('Paths that never hold a Build: saved per Product in Settings > Factory > Workflow', async ({ page }) => {
+test('Paths that never hold a Build: saved per Product in the Checks & merging tab', async ({ page }) => {
   await signIn(page, email)
-  await page.goto('/settings/workflow')
+  await page.goto('/settings/products')
+  await page.getByRole('link', { name: 'Acme Web' }).first().click()
+  await page.getByRole('link', { name: 'Checks & merging' }).click()
   await expect(page.getByRole('heading', { name: 'Paths that never hold a Build' })).toBeVisible()
-  const field = page.getByLabel('Paths that never hold a Build (Acme Web)')
+  const field = page.getByLabel('Paths that never hold a Build', { exact: true })
   const glob = `e2e-${Date.now()}/**`
   await field.fill(`CHANGELOG.md\n${glob}`)
   await page.locator('form', { has: field }).getByRole('button', { name: 'Save' }).click()

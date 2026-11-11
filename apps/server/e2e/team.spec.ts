@@ -5,7 +5,7 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// Read-only: the test that saves a role lives in factory-file.spec.ts (both write the Workspace's factory file, so they share one worker). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
+// Read-only: the test that saves a role lives in workflow-editor.spec.ts (both write the Workspace's factory file, so they share one worker). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
 
 const signIn = async (page: Page, who = email) => {
   await page.goto('/login')

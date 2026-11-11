@@ -67,7 +67,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       <AutoRefresh />
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="title">Workflow</h1>
-        {isAdmin(user) && <Link className="small text-primary" href="/settings/workflow#factory-file">Edit workflow</Link>}
+        {isAdmin(user) && <Link className="small text-primary" href="/workflow/edit">Edit workflow</Link>}
       </div>
       {reminders.map((r) => (
         <p key={r.product.id} role="status" data-testid="release-reminder" className="small text-warn">

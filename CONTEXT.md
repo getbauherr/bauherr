@@ -88,7 +88,7 @@ _Avoid_: Agent, worker
 The one Role (`exceptions: true`) that also receives stuck Tickets when nothing normal is claimable; it can only use the repairs agents already have, never a human gate.
 
 **Factory file**:
-The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edited in Settings > Workflow or applied from the CLI, the API or at boot; the shipped `pack/factory.yaml` is the default.
+The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edited in the workflow editor (`/workflow/edit`) or applied from the CLI, the API or at boot; the shipped `pack/factory.yaml` is the default.
 
 **Workflow version**:
 One applied state of a Workspace's Factory file (`workflow_versions`): the file with its profiles inlined, the compiled workflow and its hash. The newest applied one is active; an identical file adds no version.

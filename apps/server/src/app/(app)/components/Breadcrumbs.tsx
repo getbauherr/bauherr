@@ -17,6 +17,7 @@ const sections: Record<string, { label: string; one: string }> = {
   settings: { label: 'Settings', one: 'Settings' },
   'release-notes': { label: 'Release notes', one: 'Release notes' },
   setup: { label: 'Set up', one: 'Set up' },
+  workflow: { label: 'Workflow', one: 'Workflow' },
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const settingsPage: Record<string, string> = { profile: 'Profile', workspace: 'General', products: 'Products', bauherren: 'People', usage: 'AI usage', workflow: 'Workflow', models: 'Models & budget', knowledge: 'Knowledge', health: 'Health', connections: 'Connections', 'api-key': 'API keys', audit: 'Audit', templates: 'Templates', 'chat-feedback': 'Chat feedback' }
@@ -29,7 +30,7 @@ export function Breadcrumbs() {
   const title = usePageTitle()
   const [first, second, third] = path.split('/').filter(Boolean)
   const section = first ? (sections[first] ?? { label: first, one: first }) : sections.tickets
-  const crumbs: Crumb[] = [{ label: section.label, href: first === 'settings' ? undefined : first && first !== 'tickets' ? `/${first}` : '/' }]
+  const crumbs: Crumb[] = [{ label: section.label, href: first === 'settings' ? undefined : first && first !== 'tickets' && first !== 'workflow' ? `/${first}` : '/' }]
   if (first === 'settings' && second) crumbs.push({ label: settingsPage[second] ?? cap(second), href: third ? `/settings/${second}` : undefined })
   else if (second) crumbs.push({ label: /^\d+$/.test(second) ? section.one : cap(second) })
   if (third) crumbs.push({ label: /^\d+$/.test(third) ? 'Product' : cap(third) })

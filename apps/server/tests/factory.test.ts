@@ -113,6 +113,7 @@ it('a rename with migrate rewrites Tickets and Runs, the Run continues, the alia
   const refused = await factory.applyFactory(payload, a, await edit(a, (d) => renameStage(d, 'build', 'code')), by)
   expect(refused.ok).toBe(false)
   expect(refused.findings.join()).toMatch(/stage "build" is removed but holds 1 Ticket\(s\) and 1 active Run\(s\)/)
+  expect(refused.held).toEqual([{ stage: 'build', tickets: 1, runs: 1 }])
   expect(await factory.applyFactory(payload, a, yaml, { ...by, dryRun: true })).toMatchObject({ ok: true, migrated: [{ from: 'build', to: 'code', tickets: 2, runs: 1 }] })
   expect(await versions(a)).toBe(1)
 

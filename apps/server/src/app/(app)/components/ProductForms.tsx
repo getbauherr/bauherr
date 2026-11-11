@@ -79,7 +79,7 @@ export function ApprovalsSection({ data: { product: p, workflow, members, adminA
       <div className="[form:has(input[name=productionGate]:checked)_&]:hidden">
         <StatusCallout tone="muted" lead={off!.lead}>{off!.text}</StatusCallout>
       </div>
-      <p className="small text-muted-foreground">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/settings/workflow">See the workflow</Link>.</>}</p>
+      <p className="small text-muted-foreground">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/workflow/edit">See the workflow</Link>.</>}</p>
       <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
       {workflow.staging && <ToggleRow name="expediteSkipStaging" label="Skip staging approval for Hotfixes" help="A Hotfix Ticket moves on from staging without your Accept. The production approval still waits for you." defaultChecked={d.expediteSkipStaging} />}
       {retries && <CheckRetriesField value={d.checkRetries} />}

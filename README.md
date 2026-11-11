@@ -182,7 +182,7 @@ The session calls `connect {role}`, then loops on `next_work` until nothing is q
 | `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
-| Stages, roles, gates: one factory file per Workspace, edited under Settings, Factory, Workflow, Factory file, or applied with `bauherr apply -f factory.yaml --workspace <slug> [--dry-run]` (`bauherr export` prints the active file; `BAUHERR_FACTORY_FILE` applies one at boot; `GET`/`PUT /api/workspaces/<slug>/factory`) | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default, [docs/spec/workflow.md](docs/spec/workflow.md) |
+| Stages, roles, gates: one factory file per Workspace, edited in the workflow editor (Settings, Factory, Workflow), or applied with `bauherr apply -f factory.yaml --workspace <slug> [--dry-run]` (`bauherr export` prints the active file; `BAUHERR_FACTORY_FILE` applies one at boot; `GET`/`PUT /api/workspaces/<slug>/factory`) | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default, [docs/spec/workflow.md](docs/spec/workflow.md) |
 | Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
 | Budgets, model tiers, Connections | Settings in the UI (Factory › Models & budget, Workspace › Connections) |

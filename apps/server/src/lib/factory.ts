@@ -5,6 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { parseDocument, stringify } from 'yaml'
 import { personOf } from './person'
+import { STALE } from './workflow-labels'
 import { compile, corePack, DEFAULT, kindOf, lint, packDir, wipStages, type Workflow } from './workflow'
 
 type Doc = Record<string, any>
@@ -71,9 +72,8 @@ export const packSource = (): string => {
 }
 
 export type FactoryOpts = { by: string; via: 'ui' | 'api' | 'cli' | 'boot' | 'seed'; note?: string; baseVersion?: number | null; dryRun?: boolean }
-export type ApplyResult = { ok: boolean; findings: string[]; version?: number; changed: boolean; migrated: { from: string; to: string; tickets: number; runs: number }[] }
+export type ApplyResult = { ok: boolean; findings: string[]; version?: number; changed: boolean; migrated: { from: string; to: string; tickets: number; runs: number }[]; /** Removed stages that still hold Tickets or active Runs and have no `workflow.migrate` entry (set with the findings). */ held?: { stage: string; tickets: number; runs: number }[] }
 
-const STALE = 'the workflow changed since you loaded it'
 const LIVE_RUNS = sql`('queued', 'awaiting_session', 'running')`
 class Stale extends Error {}
 
@@ -131,18 +131,22 @@ export const applyFactory = async (payload: Payload, workspaceId: number, yaml: 
     const count = async (query: ReturnType<typeof sql>) => Number(((await q.execute(query)).rows[0] as { n: string }).n)
     const out: Row['migrated'] = []
     const problems: string[] = []
+    const held: NonNullable<ApplyResult['held']> = []
     for (const s of old.stages) {
       if (names.has(s.name) || migrate[s.name]) continue
       const tickets = await count(sql`SELECT count(*) AS n FROM "tickets" WHERE "workspace_id" = ${workspaceId} AND "stage" = ${s.name}`)
       const runs = await count(sql`SELECT count(*) AS n FROM "runs" WHERE "workspace_id" = ${workspaceId} AND "stage" = ${s.name} AND "status" IN ${LIVE_RUNS}`)
-      if (tickets || runs) problems.push(`stage "${s.name}" is removed but holds ${tickets} Ticket(s) and ${runs} active Run(s): add workflow.migrate: {${s.name}: <stage>}`)
+      if (tickets || runs) {
+        problems.push(`stage "${s.name}" is removed but holds ${tickets} Ticket(s) and ${runs} active Run(s): add workflow.migrate: {${s.name}: <stage>}`)
+        held.push({ stage: s.name, tickets, runs })
+      }
     }
     for (const [from, to] of Object.entries(migrate)) {
       const tickets = await count(sql`SELECT count(*) AS n FROM "tickets" WHERE "workspace_id" = ${workspaceId} AND ("stage" = ${from} OR "waiting_for" = ${from} OR "factory_stage" = ${from})`)
       const runs = await count(sql`SELECT count(*) AS n FROM "runs" WHERE "workspace_id" = ${workspaceId} AND "stage" = ${from}${kindOf(old, from) === kindOf(wf, to) ? sql`` : sql` AND "status" IN ${LIVE_RUNS}`}`)
       out.push({ from, to, tickets, runs })
     }
-    if (problems.length) return fail(problems)
+    if (problems.length) return { ...fail(problems), held }
     if (!write) return { ok: true, findings: [], changed: true, migrated: out }
 
     for (const m of out) {
