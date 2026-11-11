@@ -19,11 +19,11 @@ All under `/api/chat`, JSON unless noted.
 | Route | Body | Answer |
 |---|---|---|
 | `GET /threads?archived=1` | | `{threads: Meta[]}` own, newest message first, at most 200; archived only with `archived=1` |
-| `POST /threads` | `{path?}` | `201 Meta`; `path` sets the starting context |
+| `POST /threads` | `{path?}` or `{ticket}` | `201 Meta`; `path` sets the starting context. `{ticket: <Ticket id>}`: the person's one thread of that Ticket, `200` (created on first use, an archived one comes back), `404` for a Ticket of another Workspace |
 | `GET /threads/:id` | | `Meta` |
 | `PATCH /threads/:id` | `{title?: string \| null, archived?: boolean}` | `Meta` |
 | `DELETE /threads/:id` | | `204`; messages go with it |
-| `GET /threads/:id/messages` | | `{context, pending, messages: [{parentId, message, answer, feedback}]}` oldest first |
+| `GET /threads/:id/messages` | | `{context, ticket, pending, messages: [{parentId, message, answer, feedback}]}` oldest first |
 | `PUT /threads/:id/messages` | `{parentId?, message, answerId?}` | `204`; upsert by `message.id` |
 | `POST /threads/:id/run` | `{messages, context: {path}}` | NDJSON stream |
 | `POST /threads/:id/confirm` | `{toolCallId, approved, reason?}` | NDJSON stream; `409` nothing matching to confirm |
@@ -31,7 +31,7 @@ All under `/api/chat`, JSON unless noted.
 | `POST /media` | multipart `file` (png, jpeg, webp) | `201 {id, url}` |
 | `GET /context?path=/tickets/12` | | `{label, markdown}` |
 
-`Meta` = `{id, title, archived, lastMessageAt, createdAt, context: {path, label} | null}`. `pending` (in `GET messages`) = `{toolCallId, name, kind, input, summary, title, details, destructive}` or `null`: restore the card after a reload.
+`Meta` = `{id, title, archived, lastMessageAt, createdAt, context: {path, label} | null, ticket: <Ticket id> | null}`. `pending` (in `GET messages`) = `{toolCallId, name, kind, input, summary, title, details, destructive}` or `null`: restore the card after a reload.
 
 Errors: `400` malformed body or a broken cap, `404` thread/image/answer not found, `409` see above, `415` not an image, `429` more than 60 runs per person per hour.
 
@@ -76,11 +76,18 @@ Feedback: `messageId` is the client's message id (before the PUT, the `answerId`
 
 ## Tools
 
-`kind` is fixed per tool; the model never sees it. Reads (`read`): `factory_status`, `team_status` (roles with their agent sessions, status, Ticket and active time: "who is working right now?"), `list_tickets`, `get_run`, `list_frontier`, `get_ticket`, `read_worklog`, `read_knowledge`, `search_knowledge`. Owner decisions (`confirm`): `approve`, `accept_staging`, `approve_production`, `grant_review_round`, `stop_review`, `request_changes`, `approve_skill_proposal`. Session-run tools (claim, heartbeat, report, submit, finish ...) are not exposed (`tests/chat-guard.test.ts`). Every call, read or write, writes a `tool_calls` row. A gate for a Ticket that is not at that gate is refused before any card.
+`kind` is fixed per tool; the model never sees it. Reads (`read`): `factory_status`, `team_status` (roles with their agent sessions, status, Ticket and active time: "who is working right now?"), `list_tickets`, `get_run`, `list_frontier`, `get_ticket`, `read_worklog`, `read_knowledge`, `search_knowledge`. Owner decisions (`confirm`): `approve`, `accept_staging`, `approve_production`, `grant_review_round`, `stop_review`, `request_changes`, `approve_skill_proposal`, and `post_comment` (chat only, no MCP twin: drafts a comment `{ticket, body}`; confirmed, it runs `postComment` as the person, text only). Session-run tools (claim, heartbeat, report, submit, finish ...) are not exposed (`tests/chat-guard.test.ts`). Every call, read or write, writes a `tool_calls` row. A gate for a Ticket that is not at that gate is refused before any card.
+
+## Ticket threads
+
+A thread with `ticket` set is the person's conversation about that Ticket: one per person and Ticket (unique index `owner` + `ticket`; `ticketThread()` finds or creates it, named `#<number> <title>` in the thread list, and brings it back from the archive). The server always uses the Ticket's page context for its runs and confirmations, whatever `context.path` the client sends, so "this ticket" is right from the Inbox or the Workflow view too.
+
+- **Question card**: the client puts the card first in the loaded thread (`GET messages` returns `ticket`; the card is a tool part with `artifact.kind: 'questions'`, never stored, the first stored message hangs off it). The card calls the owner-intake server actions `startOwnerChat` / `askOwnerChat` (the functions the old answer box used: `startOwnerIntake` / `askOwnerIntake`), so Decisions, worklog, gates and `needsYou` change exactly as before; it shows "Question i of n", the full question and its `Why:` line when the row has one, hides when no row is open and keeps the summary after the last answer. An option click never calls a model; "Why does this matter?" is sent to the thread as a message; free text is `/answer <text>`.
+- **Comments**: two ways, both end in `postComment` (text plus one `![name](url)` line per image, images marked sent before the forge call and released on failure). (1) The model drafts: `post_comment` is a `confirm` tool, the person approves a card showing the Ticket, stage and the text, only the stored call runs. (2) Direct, no model: `/comment <text>` in the composer of a Ticket thread (`postDockComment` over `postCommentFromChat`); images pasted into the composer are chat uploads (`/api/chat/media`), and the action adopts the unused ones of the Workspace as this Ticket's comment images (same limits as the comment box: `mediaLimits()`, at most `maxPerSession` per comment). Comment mode is the dock opened by the Ticket page's "Comment" button with `/comment ` already in the composer.
 
 ## Stored shapes
 
-- `chat_threads`: `workspace`, `owner`, `title`, `context` `{path, label}`, `pending` `{toolCallId, name, kind, input, summary, issuedAt, card, state}` or null (`state` = the model conversation to resume, images as references), `archivedAt`, `lastMessageAt`. The pending slot is set and cleared by single conditional UPDATEs.
+- `chat_threads`: `workspace`, `owner`, `ticket` (nullable; unique with `owner`), `title`, `context` `{path, label}`, `pending` `{toolCallId, name, kind, input, summary, issuedAt, card, state}` or null (`state` = the model conversation to resume, images as references), `archivedAt`, `lastMessageAt`. The pending slot is set and cleared by single conditional UPDATEs.
 - `chat_messages`: `thread`, `messageId` (unique per thread), `parentId`, `message`, `role`, `answer`, `feedback` (`up`/`down`), `feedbackReasons`, `feedbackNote`, `feedbackAt`.
 - Admin read model: `chatFeedback(payload, workspace, {limit})` in `lib/chat/insights.ts`: rated answers with question, answer excerpt, tools, usage, thread and rater.
 
@@ -90,4 +97,4 @@ The assistant skill is read from `skills/assistant/SKILL.md` of `BAUHERR_PACK_DI
 
 ## Testing without a gateway
 
-`CHAT_FAKE=1` (or `INTAKE_FAKE=1`; refused in production builds like the other fakes) answers with a scripted model: any text is echoed as `[fake] you said: <text>`, a message containing `status` calls `factory_status`, `approve #<n>` calls `approve` for Ticket `<n>`, and a tool result is acknowledged as `[fake] tool result: ...`.
+`CHAT_FAKE=1` (or `INTAKE_FAKE=1`; refused in production builds like the other fakes) answers with a scripted model: any text is echoed as `[fake] you said: <text>`, a message containing `status` calls `factory_status`, `approve #<n>` calls `approve` for Ticket `<n>`, `comment #<n>: <text>` calls `post_comment`, and a tool result is acknowledged as `[fake] tool result: ...`.

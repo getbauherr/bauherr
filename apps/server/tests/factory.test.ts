@@ -82,7 +82,7 @@ it('apply stores a version, moves the pointer, and a re-apply of the same conten
   expect(row.compiled.roles[0].profile).toContain('Mission')
   expect(await pointer(a)).toBe(row.id)
   expect(wfLib.title(factory.workflowFor(a), 'build')).toBe('Construction')
-  expect(wfLib.title(factory.workflowFor(b), 'build')).toBe('build')
+  expect(wfLib.title(factory.workflowFor(b), 'build')).toBe('Build')
   expect(await factory.applyFactory(payload, a, yaml, by)).toMatchObject({ ok: true, version: 1, changed: false })
   expect(await versions(a)).toBe(1)
   expect((await payload.find({ collection: 'human_touches', where: { kind: { equals: 'apply:factory' } }, ...o })).docs).toHaveLength(1)

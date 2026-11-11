@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { artifactOf, type Decision, type Outcome } from './adapter'
 import { ChevronRight, Shield } from './icons'
+import { Questions } from './questions'
 
 /** One line per read tool: what it looked up and whether it worked; the result is one click away. */
 const Receipt: FC<{ summary: string; result?: Outcome }> = ({ summary, result }) => (
@@ -67,6 +68,7 @@ const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => 
 /** Tool widgets are picked by the `kind` the server sent, never by tool name. */
 export const ToolPart: FC<ToolCallMessagePartProps> = (props) => {
   const a = artifactOf(props)
+  if (a?.kind === 'questions') return <Questions ticket={a.ticket} />
   if (a?.kind === 'confirm') return <Card {...props} />
   if (a?.kind === 'outcome') return <OutcomeLine result={props.result as Outcome | undefined} />
   return <Receipt summary={(a as { summary?: string } | undefined)?.summary ?? props.toolName} result={props.result as Outcome | undefined} />

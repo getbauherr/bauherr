@@ -211,7 +211,7 @@ describe('next_work', () => {
     const t = await ticket('held', 'plan', { run: false })
     await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: 'build' }, ...o })
     const eng = await connect('engineer')
-    expect((await call('next_work', { sessionId: eng.sessionId })).reason).toBe('build is at its WIP limit')
+    expect((await call('next_work', { sessionId: eng.sessionId })).reason).toBe('Build is at its WIP limit')
   })
 
   it('claim_next without a sessionId behaves as before and leaves the Run unattached', async () => {
@@ -454,7 +454,7 @@ describe('loadTeam', () => {
     const team = await sessions.loadTeam(payload, ws)
     expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
     const eng = team.roles.find((r) => r.id === 'engineer')!
-    expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['TypeScript', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'plan', kind: 'plan' }, { name: 'build', title: 'build', kind: 'build' }] })
+    expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['TypeScript', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'Plan', kind: 'plan' }, { name: 'build', title: 'Build', kind: 'build' }] })
     expect(eng.profile).toContain('Mission:')
     expect(eng.sessions.map((s) => [s.label, s.status])).toEqual([['w', 'working'], ['i', 'idle']])
     expect(eng.sessions[0]).toMatchObject({ run: expect.any(Number), ticket: { number: expect.any(Number), title: expect.any(String), stage: 'build' }, publicId: working.sessionId })

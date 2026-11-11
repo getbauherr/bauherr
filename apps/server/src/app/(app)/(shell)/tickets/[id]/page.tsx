@@ -5,18 +5,17 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { sourceOf } from '../../../../../lib/actions'
-import { mediaLimits } from '../../../../../lib/intake/media'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
-import { CommentComposer } from '../../../components/CommentComposer'
-import { OwnerChat } from '../../../components/OwnerChat'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { TicketSteps } from '../../../components/workflow/TicketSteps'
 import { WorkflowGraph } from '../../../components/workflow/WorkflowGraph'
 import { StatusChip } from '../../../components/StatusChip'
+import { TicketFacts } from '../../../components/TicketFacts'
+import { Badge } from '../../../components/ui/badge'
 import { TicketDetails } from '../../../components/TicketDetails'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
@@ -29,10 +28,11 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { is, nameOf, type Workflow } from '../../../../../lib/workflow'
+import { is, nameOf, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
 import { activeVersion, workflowFor } from '../../../../../lib/factory'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
+import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
@@ -92,7 +92,6 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const q = { depth: 0, overrideAccess: true } as const
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
   const idle = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
-  // OwnerChat hides itself when nothing is open on load; it stays mounted while decisions exist, so the refresh after the last answer keeps its summary.
   const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   return { forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
@@ -102,7 +101,7 @@ type Derived = Awaited<ReturnType<typeof derive>>
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !is(P.wf, stageOf(P.wf, ticket), 'release', 'container')} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} answerable={x.decisionsShown ? x.decisions.length - x.answered : 0} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !is(P.wf, stageOf(P.wf, ticket), 'release', 'container')} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -113,7 +112,6 @@ async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
       {x.history && <p className="small text-muted-foreground">{x.history}</p>}
       {x.forgeError && <p className="small text-muted-foreground">The forge could not be reached; plan and worklog are unavailable.</p>}
       {x.gate?.kind === 'release' && <ReleaseGate ticket={ticket.id} timedOut={x.todo === 'Staging not confirmed'} summaryHtml={x.stagingSummary ? renderMarkdown(strip(x.stagingSummary, SUMMARY_MARKER)) : null} />}
-      {x.decisionsShown && <OwnerChat ticket={ticket.id} open={x.decisions.length - x.answered} />}
     </>
   )
 }
@@ -141,11 +139,6 @@ async function Sections({ d }: { d: Promise<Derived> }) {
       {x.worklog && <Section id="worklog" title="Worklog"><Markdown html={renderMarkdown(withoutWorklogHeading(strip(x.worklog, WORKLOG_MARKER)))} /></Section>}
     </>
   )
-}
-
-async function Composer({ ticket, d }: { ticket: number; d: Promise<Derived> }) {
-  const x = await d
-  return !x.forgeError ? <CommentComposer ticket={ticket} maxBytes={mediaLimits().maxBytes} maxImages={mediaLimits().maxPerSession} /> : null
 }
 
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
@@ -179,88 +172,125 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const d = derive(payload, P)
   const card = cardOf(ticket, product as never)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
+  const latest = runs[0] as Doc | undefined
+  const status = ticketStatus(wf, {
+    open: ticket.state === 'open',
+    stage: stageOf(wf, ticket),
+    needsYou: ticket.needsYou ?? null,
+    blockedBy: blockers.filter((b) => b.state !== 'closed').map((b) => ({ number: b.number as number })),
+    queuedWhy: ticket.waitingReason ?? null,
+    run: (latest as StatusRun | undefined) ?? null,
+    owner: null,
+    forge: forge === 'gitlab' || forge === 'github' ? forge : null,
+    gate: null,
+    children: epic ? { total: epic.children.length, done: epic.children.filter((c) => !c.open).length } : null,
+    track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
+  } satisfies StatusRow)
+  const roleOf = (r: Doc) => wf.roles.find((x) => x.id === r.role)?.title
+  const executor = latest ? runWho(latest as StatusRun, null, roleOf(latest)) : null
+  const prUrl = runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined
+  const links = [
+    ...(isWebUrl(ticket.url) ? [{ label: 'Issue', href: ticket.url as string }] : []),
+    ...(isWebUrl(prUrl) ? [{ label: 'Merge request', href: prUrl! }] : []),
+    ...(latest ? [{ label: `Run #${latest.id}`, href: `/runs/${latest.id}` }] : []),
+  ]
+  const budget = ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : '$' + ws.budgetUsd30d + ' / 30 days'
 
   return (
     <div className="flex flex-col gap-4">
       <Suspense fallback={<Pulse h="h-12" />}><Top P={P} d={d} /></Suspense>
       <PageTitle>{`#${ticket.number}`}</PageTitle>
-      <h1 className="title">#{ticket.number} {ticket.title}</h1>
-      <p className="small text-muted-foreground">{product.name}</p>
-      {epic ? (
-        <section className="flex flex-col gap-4" aria-labelledby="subtickets">
-          <h2 className="heading" id="subtickets">Sub-tickets</h2>
-          <EpicProgress wf={wf} epic={epic} />
-          <EpicChildren wf={wf} epic={epic} />
-        </section>
-      ) : (
-        <section className="flex flex-col gap-2" aria-labelledby="path">
-          <h2 className="heading flex flex-wrap items-baseline gap-x-3" id="path">Path{steps.rounds.map((r) => <span key={r.stage} className="small font-normal text-muted-foreground" data-testid="path-rounds">{r.title}: {r.n} rounds</span>)}</h2>
-          <WorkflowGraph wf={wf} variant="path" path={steps.path} />
-        </section>
-      )}
-      {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
-      <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
+      <div className="@container">
+        <div className="grid items-start gap-6 @3xl:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="flex min-w-0 flex-col gap-6">
+            <header className="flex flex-col gap-2">
+              <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
+              <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
+                <Badge variant={status.tone}>{status.label}</Badge>
+                {status.detail && <span>{status.detail}</span>}
+                {(status.who ?? executor) && <span className="small text-muted-foreground">{status.who ?? `Last: ${executor}`}</span>}
+              </p>
+            </header>
+            {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
+            <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
+            {epic ? (
+              <section className="flex flex-col gap-4" aria-labelledby="subtickets">
+                <h2 className="heading" id="subtickets">Sub-tickets</h2>
+                <EpicProgress wf={wf} epic={epic} />
+                <EpicChildren wf={wf} epic={epic} />
+              </section>
+            ) : (
+              <>
+                <section className="flex flex-col gap-2" aria-labelledby="path">
+                  <h2 className="heading flex flex-wrap items-baseline gap-x-3" id="path">Path{steps.rounds.map((r) => <span key={r.stage} className="small font-normal text-muted-foreground" data-testid="path-rounds">{r.title}: {r.n} rounds</span>)}</h2>
+                  <WorkflowGraph wf={wf} variant="path" path={steps.path} />
+                </section>
+                <Section id="steps" title="Steps"><TicketSteps steps={steps} decision={card ? { ticket: ticket.id, ask: card.decision.ask } : null} /></Section>
+              </>
+            )}
 
-      {!epic && <Section id="steps" title="Steps"><TicketSteps steps={steps} decision={card ? { ticket: ticket.id, ask: card.decision.ask } : null} /></Section>}
+            <TicketDetails key={ticket.id}>
+              <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
+                {admin && <><dt>Budget</dt><dd className="mono">{budget}</dd></>}
+                {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
+                {ticket.releasedAt && <><dt>Released</dt><dd>{ago(ticket.releasedAt)}</dd></>}
+                {inherited && <><dt>Plan</dt><dd>Approved with parent <Link className="text-primary" href={`/tickets/${inherited.id}`}>#{inherited.number}</Link></dd></>}
+                {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
+                <Suspense fallback={null}><DecisionRow d={d} /></Suspense>
+              </dl>
+              <Suspense fallback={<Pulse h="h-24" />}><Sections d={d} /></Suspense>
+              {shots.length > 0 && (
+                <section className="flex flex-col gap-4" aria-labelledby="attachments">
+                  <h2 className="heading" id="attachments">Attachments</h2>
+                  <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+                    {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
+                  </ul>
+                </section>
+              )}
+              <section className="flex flex-col gap-4" aria-labelledby="runs">
+                <h2 className="heading" id="runs">Runs</h2>
+                {runs.length ? (
+                  <Table>
+                    <thead>
+                      <tr className="label">{(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence']).map((h) => <th key={h}>{h}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {runs.map((r) => (
+                        <tr key={r.id}>
+                          {admin ? (
+                            <>
+                              <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
+                              <td>{r.stage}</td>
+                            </>
+                          ) : (
+                            <td><Link className="text-primary" href={`/runs/${r.id}`}>{r.stage}</Link></td>
+                          )}
+                          <td><StatusChip status={r.status} /></td>
+                          {admin ? <td className="mono">{duration(r)}</td> : <td className="text-muted-foreground">{ago(r.createdAt)}</td>}
+                          <td className="small max-w-[32ch] truncate text-muted-foreground" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                ) : (
+                  <p className="text-muted-foreground">No Runs yet.</p>
+                )}
+              </section>
+            </TicketDetails>
+          </div>
 
-      <TicketDetails key={ticket.id}>
-        <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
-          {isWebUrl(ticket.url) && <><dt>Forge</dt><dd><a className="text-primary" href={ticket.url}>Open on the forge</a></dd></>}
-          {admin && <><dt>Budget</dt><dd className="mono">{ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}</dd></>}
-          {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
-          {ticket.releasedAt && <><dt>Released</dt><dd>{ago(ticket.releasedAt)}</dd></>}
-          {inherited && <><dt>Plan</dt><dd>Approved with parent <Link className="text-primary" href={`/tickets/${inherited.id}`}>#{inherited.number}</Link></dd></>}
-          {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
-          <Suspense fallback={null}><DecisionRow d={d} /></Suspense>
-        </dl>
-        {(blockers.length > 0 || blocks.length > 0) && (
-          <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
-            {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
-            {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
-          </ul>
-        )}
-        <Suspense fallback={<Pulse h="h-24" />}><Sections d={d} /></Suspense>
-        {shots.length > 0 && (
-          <section className="flex flex-col gap-4" aria-labelledby="attachments">
-            <h2 className="heading" id="attachments">Attachments</h2>
-            <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
-              {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
-            </ul>
-          </section>
-        )}
-        <section className="flex flex-col gap-4" aria-labelledby="runs">
-          <h2 className="heading" id="runs">Runs</h2>
-          {runs.length ? (
-            <Table>
-              <thead>
-                <tr className="label">{(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence']).map((h) => <th key={h}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {runs.map((r) => (
-                  <tr key={r.id}>
-                    {admin ? (
-                      <>
-                        <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
-                        <td>{r.stage}</td>
-                      </>
-                    ) : (
-                      <td><Link className="text-primary" href={`/runs/${r.id}`}>{r.stage}</Link></td>
-                    )}
-                    <td><StatusChip status={r.status} /></td>
-                    {admin ? <td className="mono">{duration(r)}</td> : <td className="text-muted-foreground">{ago(r.createdAt)}</td>}
-                    <td className="small max-w-[32ch] truncate text-muted-foreground" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          ) : (
-            <p className="text-muted-foreground">No Runs yet.</p>
-          )}
-        </section>
-        {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} counters={(['reviewRounds', 'gatePendingAttempts', 'triageAttempts', 'mergeFailures', 'trainFailures', 'conflictReturns', 'mainMergeNoops', 'releaseAttempts'] as const).map((c) => [c, Number(ticket[c] ?? 0)] as [string, number])} />}
-      </TicketDetails>
-
-      <Suspense fallback={null}><Composer ticket={ticket.id} d={d} /></Suspense>
+          <aside className="flex min-w-0 flex-col gap-6 @3xl:sticky @3xl:top-[calc(var(--next-step-h,0px)+var(--space-4))]" aria-label="About this Ticket">
+            <TicketFacts product={product.name} stage={stageTitle(wf, stageOf(wf, ticket))} totals={steps.totals} runs={runs.length} models={[...new Set(runs.map((r) => r.model as string | null).filter((m): m is string => !!m))]} executor={executor} links={links} />
+            {(blockers.length > 0 || blocks.length > 0) && (
+              <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
+                {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
+                {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
+              </ul>
+            )}
+            {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} counters={(['reviewRounds', 'gatePendingAttempts', 'triageAttempts', 'mergeFailures', 'trainFailures', 'conflictReturns', 'mainMergeNoops', 'releaseAttempts'] as const).map((c) => [c, Number(ticket[c] ?? 0)] as [string, number])} />}
+          </aside>
+        </div>
+      </div>
     </div>
   )
 }

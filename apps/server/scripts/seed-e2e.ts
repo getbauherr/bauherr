@@ -116,6 +116,8 @@ await ticket(39, 'Check the new header on staging', 'release', product, { ...rel
 await run(t37, 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
 const t40 = await ticket(40, 'Hand over the export notes', 'plan', product)
 await run(t40, 'plan', 'succeeded', { startedAt: '2026-10-30T09:53:00Z', finishedAt: '2026-10-30T09:54:00Z' })
+// #41: ticket-dock.spec.ts's own Ticket, held by Triage with one question (twin in `src/lib/fake-forge.ts`).
+await ticket(41, 'Name the export file', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
 await run(t38, 'review', 'succeeded', { startedAt: '2026-10-30T09:55:00Z', finishedAt: '2026-10-30T09:58:00Z', verdict: 'changes', findings: [{ severity: 'medium', file: 'src/export.ts', line: 21, msg: 'The retry loop never stops on a permanent error.', scenario: 'when the export answers 402, then it is retried forever.' }] })
 await ensure('runs', { ticket: t27, stage: 'review', status: 'running' }, { ticket: t27, stage: 'review', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 // Hotfix (#373): a card in the Hotfix lane of Build, and a merged one 12 minutes after its flag for the lead time in Factory health.

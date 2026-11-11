@@ -254,6 +254,15 @@ export const postComment = async (payload: Payload, user: Doc, a: { ticket: Tick
   return links.map((l) => l.url)
 }
 
+/** The docked chat's direct comment path: images the person pasted into the chat composer (stored without a Ticket by `/api/chat/media`, not yet used) become this Ticket's comment images, then `postComment` posts text and images as it does for the comment box. */
+export const postCommentFromChat = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (a.mediaIds.length) {
+    for (const m of (await payload.find({ collection: 'media', where: { and: [{ id: { in: a.mediaIds } }, { workspace: { equals: id(t.workspace) } }, { product: { exists: false } }, { session: { exists: false } }, { attached: { equals: false } }] }, pagination: false, depth: 0, overrideAccess: true })).docs) await payload.update({ collection: 'media', id: m.id, data: { product: id(t.product), ticketNumber: t.number }, overrideAccess: true })
+  }
+  return postComment(payload, user, a)
+}
+
 /** Moves the Ticket to review. The Product's pre-review checks run first and block the move; `evidence` is the calling Run's Evidence. */
 export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; evidence: string }) => {
   const t = await loadTicket(payload, user, a.ticket)
@@ -1433,15 +1442,15 @@ export const abandonIntake = async (payload: Payload, user: Doc, sessionId: Tick
   await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'abandoned' }, overrideAccess: true })
 }
 
-export type OwnerQuestion = { decision: string; question: string; options: { label: string; recommended: boolean }[]; left: number }
+export type OwnerQuestion = { decision: string; question: string; why?: string; options: { label: string; recommended: boolean }[]; left: number }
 export type OwnerDone = { done: true; summary: string }
 /** Fixed last chip of every owner question; it sends this text, which is always an explain request. */
 export const WHY = 'Why does this matter?'
 const CANT_EXPLAIN = "I can't explain right now, pick an option or use your text as the answer."
 const MAX_ANSWER = 500
 
-const ownerQuestion = (queue: { id: string; title: string; options: string[] }[]): OwnerQuestion | null =>
-  queue[0] ? { decision: queue[0].id, question: queue[0].title, options: [...queue[0].options.map((label, i) => ({ label, recommended: i === 0 })), { label: WHY, recommended: false }], left: queue.length } : null
+const ownerQuestion = (queue: { id: string; title: string; options: string[]; why?: string }[]): OwnerQuestion | null =>
+  queue[0] ? { decision: queue[0].id, question: queue[0].title, ...(queue[0].why && { why: queue[0].why }), options: [...queue[0].options.map((label, i) => ({ label, recommended: i === 0 })), { label: WHY, recommended: false }], left: queue.length } : null
 
 const openQueue = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId?: TicketId) => {
   const { ts, n } = await sourceOf(payload, await loadIn(payload, user, ticket, workspaceId))

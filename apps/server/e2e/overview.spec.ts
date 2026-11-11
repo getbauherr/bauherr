@@ -278,7 +278,7 @@ test('Epic filter narrows Board, Graph and Runs; Epics view lists open epics wit
   await expect(rows).toHaveCount(2)
   await expect(rows.filter({ hasText: 'Overhaul invoicing' })).toContainText('1/2 done')
   await expect(rows.filter({ hasText: 'Revamp onboarding' })).toContainText('1/3 done')
-  await expect(rows.filter({ hasText: 'Revamp onboarding' })).toContainText('plan 1 · build 1')
+  await expect(rows.filter({ hasText: 'Revamp onboarding' })).toContainText('Plan 1 · Build 1')
   await expect(page.getByRole('combobox', { name: 'Epic' })).toHaveCount(0)
   await rows.filter({ hasText: 'Revamp onboarding' }).locator('summary').click()
   await expect(rows.filter({ hasText: 'Revamp onboarding' }).getByRole('link', { name: 'Signup form validation' })).toBeVisible()

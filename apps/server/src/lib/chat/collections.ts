@@ -9,11 +9,13 @@ export const chatCollections: CollectionConfig[] = [
     slug: 'chat_threads',
     admin: { useAsTitle: 'title' },
     access: closed,
+    indexes: [{ fields: ['owner', 'ticket'], unique: true }],
     fields: [
       { name: 'owner', type: 'relationship', relationTo: 'bauherren', required: true, index: true },
       { name: 'title', type: 'text' },
       { name: 'context', type: 'json', admin: { description: 'Page context of the last message: { path, label }.' } },
       { name: 'pending', type: 'json', admin: { description: 'The one tool call awaiting confirmation, with the model state to resume: { toolCallId, name, kind, input, summary, issuedAt, card, state }.' } },
+      { name: 'ticket', type: 'relationship', relationTo: 'tickets', index: true, admin: { description: 'Set on the Ticket thread: one per person and Ticket (unique owner + ticket; a plain thread has no Ticket and is not limited).' } },
       { name: 'archivedAt', type: 'date' },
       { name: 'lastMessageAt', type: 'date', index: true },
     ],

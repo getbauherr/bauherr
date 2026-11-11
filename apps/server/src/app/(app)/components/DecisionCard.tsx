@@ -9,6 +9,7 @@ import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Textarea } from './ui/textarea'
+import { DockOpen } from './chat/DockOpen'
 import { Markdown } from './Markdown'
 
 export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string }
@@ -88,7 +89,9 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
           <footer className="mt-1 flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               {d.options.map((o) =>
-                o.action === 'open' ? (
+                o.action === 'open' && o.href?.endsWith('#answer') ? (
+                  <DockOpen key={o.label} ticket={item.id} mode="answer" variant={o.primary ? 'default' : 'outline'} title={o.effect}>{o.label}</DockOpen>
+                ) : o.action === 'open' ? (
                   <Button key={o.label} asChild variant={o.primary ? 'default' : 'outline'} title={o.effect}>
                     <a href={o.href} {...(o.href && external(o.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{o.label}</a>
                   </Button>

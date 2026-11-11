@@ -87,7 +87,7 @@ test('phone: the graph is a column of the same cards with the transitions as tex
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await expect(page.getByTestId('stage-node').first()).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Transitions of build' })).toContainText('replan → plan (back)')
+  await expect(page.getByRole('list', { name: 'Transitions of build' })).toContainText('replan → Plan (back)')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 

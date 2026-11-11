@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ArrowUp, X } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { wrongTypeMessage } from '../../../../lib/intake/media-check'
-import type { Custom } from './adapter'
+import { mediaIdOf, type Custom } from './adapter'
 import { FeedbackButtons } from './feedback'
 import { ArrowDown, Check, Copy, Paperclip, Refresh, Stop } from './icons'
 import { MarkdownText } from './markdown'
@@ -22,7 +22,10 @@ const suggestions: Record<Kind, string[]> = {
   other: ['What needs me right now?', 'Explain this page'],
 }
 
-export type Command = { name: string; help: string; run(): void }
+/** `arg`: the command takes the rest of the line (`/comment <text>`); `run` gets it and the ids of the images in the composer, and answers false to keep the composer as it is (a failure). */
+export type Command = { name: string; help: string; arg?: boolean; run(arg: string, mediaIds: number[]): void | boolean | Promise<void | boolean> }
+
+const isSynthetic = (m: { metadata?: { custom?: unknown } }): boolean => !!(m.metadata?.custom as Custom | undefined)?.synthetic
 
 const imageOf = (a: { content?: readonly { type: string; image?: string }[] | undefined }): string | undefined => a.content?.find((c) => c.type === 'image')?.image
 
@@ -107,6 +110,10 @@ const Retry: FC = () => {
   return <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => aui.message().reload()}>Retry</Button>
 }
 
+const QuestionsMessage: FC = () => (
+  <MessagePrimitive.Root className="empty:hidden" data-role="questions"><MessagePrimitive.Parts components={{ tools: { Fallback: ToolPart } }} /></MessagePrimitive.Root>
+)
+
 const AssistantMessage: FC = () => (
   <MessagePrimitive.Root className="flex flex-col gap-1" data-role="assistant">
     <MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolPart } }} />
@@ -134,7 +141,7 @@ const AssistantMessage: FC = () => (
 )
 
 const Welcome: FC<{ kind: Kind }> = ({ kind }) => (
-  <div className="my-auto flex flex-col gap-3 py-6" data-testid="welcome">
+  <div className={cn('flex flex-col gap-3 py-6', useAuiState((s) => s.thread.messages.length) ? 'mt-2' : 'my-auto')} data-testid="welcome">
     <p className="text-[15px] font-semibold">Ask the factory</p>
     <p className="text-[14px] text-muted-foreground">I can see the page you are on. Ask about it, or tell me what to approve.</p>
     <div className="flex flex-wrap gap-2">
@@ -167,27 +174,28 @@ const Composer: FC<{ commands: Command[] }> = ({ commands }) => {
   const aui = useAui()
   const text = useAuiState((s) => s.composer.text)
   const count = useAuiState((s) => s.composer.attachments.length)
-  const typed = /^\/(\w*)$/.exec(text.trim())
+  const typed = /^\/(\w*)$/.exec(text)
   const matches = typed ? commands.filter((c) => c.name.startsWith(typed[1]!)) : []
-  const run = (c: Command) => {
-    aui.composer().setText('')
-    c.run()
+  const run = async (c: Command, arg: string) => {
+    const ids = aui.composer().getState().attachments.flatMap((a) => (a.content ?? []).flatMap((p) => (p.type === 'image' ? [mediaIdOf(p.image)] : []))).filter((id): id is number => id !== null)
+    if ((await c.run(arg, ids)) !== false) void aui.composer().reset()
   }
   return (
     <ComposerPrimitive.Root
       className="flex flex-col gap-2"
       onSubmit={(e) => {
-        const c = commands.find((x) => text.trim() === `/${x.name}`)
+        const m = /^\/(\w+)(?:\s+([\s\S]*))?$/.exec(text.trim())
+        const c = m && commands.find((x) => x.name === m[1] && (x.arg || !m[2]))
         if (!c) return
         e.preventDefault()
-        run(c)
+        void run(c, m[2]?.trim() ?? '')
       }}
     >
       <ComposerPrimitive.AttachmentDropzone className="flex flex-col gap-2 rounded-md border bg-card p-2 focus-within:ring-2 focus-within:ring-ring data-[dragging=true]:ring-2 data-[dragging=true]:ring-ring">
         {!!matches.length && (
           <ul className="flex flex-col rounded-md border bg-popover text-[13px]" role="listbox" aria-label="Commands">
             {matches.map((c) => (
-              <li key={c.name}><button type="button" role="option" className="flex w-full gap-2 px-2 py-1.5 text-left hover:bg-secondary" onClick={() => run(c)}><span className="font-mono">/{c.name}</span><span className="text-muted-foreground">{c.help}</span></button></li>
+              <li key={c.name}><button type="button" role="option" className="flex w-full gap-2 px-2 py-1.5 text-left hover:bg-secondary" onClick={() => (c.arg ? aui.composer().setText(`/${c.name} `) : void run(c, ''))}><span className="font-mono">/{c.name}</span><span className="text-muted-foreground">{c.help}</span></button></li>
             ))}
           </ul>
         )}
@@ -214,8 +222,8 @@ const Composer: FC<{ commands: Command[] }> = ({ commands }) => {
 export const DockThread: FC<{ kind: Kind; commands: Command[]; above: ReactNode }> = ({ kind, commands, above }) => (
   <ThreadPrimitive.Root className="aui-root flex min-h-0 flex-1 flex-col text-foreground">
     <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3" aria-live="polite">
-      <ThreadPrimitive.Empty><Welcome kind={kind} /></ThreadPrimitive.Empty>
-      <ThreadPrimitive.Messages>{({ message }) => (message.role === 'user' ? <UserMessage /> : <AssistantMessage />)}</ThreadPrimitive.Messages>
+      <ThreadPrimitive.Messages>{({ message }) => (message.role === 'user' ? <UserMessage /> : isSynthetic(message) ? <QuestionsMessage /> : <AssistantMessage />)}</ThreadPrimitive.Messages>
+      <AuiIf condition={(s) => s.thread.messages.every(isSynthetic)}><Welcome kind={kind} /></AuiIf>
     </ThreadPrimitive.Viewport>
     <div className="relative flex flex-col gap-2 border-t p-3">
       <ThreadPrimitive.ScrollToBottom asChild>

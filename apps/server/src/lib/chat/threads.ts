@@ -5,7 +5,7 @@ import type { Payload } from 'payload'
 type Doc = Record<string, any>
 /** The acting person in their current Workspace; every function below treats a thread of anyone else as not found. */
 export type Who = { payload: Payload; user: Doc; workspace: number }
-export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null }
+export type Meta = { id: number; title: string | null; archived: boolean; lastMessageAt: string | null; createdAt: string; context: { path: string; label: string } | null; /** Ticket id of a Ticket thread. */ ticket: number | null }
 export type Answer = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number; toolCalls: { name: string; kind: string; ok: boolean }[] }
 
 export const LIST_LIMIT = 200
@@ -17,7 +17,7 @@ const o = { depth: 0, overrideAccess: true } as const
 const run = (w: { payload: Payload }, q: ReturnType<typeof sql>) => w.payload.db.drizzle.execute(q)
 const json = (v: unknown) => sql`${JSON.stringify(v)}::jsonb`
 
-const meta = (t: Doc): Meta => ({ id: t.id, title: t.title ?? null, archived: !!t.archivedAt, lastMessageAt: t.lastMessageAt ?? null, createdAt: t.createdAt, context: t.context ? { path: t.context.path, label: t.context.label } : null })
+const meta = (t: Doc): Meta => ({ id: t.id, title: t.title ?? null, archived: !!t.archivedAt, lastMessageAt: t.lastMessageAt ?? null, createdAt: t.createdAt, context: t.context ? { path: t.context.path, label: t.context.label } : null, ticket: t.ticket ? (typeof t.ticket === 'object' ? t.ticket.id : t.ticket) : null })
 
 /** The thread when it belongs to this person in this Workspace, else null (never a hint that it exists). */
 export const ownThread = async (w: Who, id: string | number): Promise<Doc | null> => {
@@ -31,6 +31,19 @@ export const listThreads = async (w: Who, { archived = false }: { archived?: boo
 
 export const createThread = async (w: Who, context?: { path: string; label: string }): Promise<Meta> =>
   meta(await w.payload.create({ collection: 'chat_threads', data: { owner: w.user.id, workspace: w.workspace, context, lastMessageAt: new Date().toISOString() }, ...o }))
+
+/** The person's one thread of a Ticket of this Workspace, created (named "#<number> <title>") or brought back from the archive; null when the Ticket is not in the Workspace. */
+export const ticketThread = async (w: Who, ticketId: number | string): Promise<Meta | null> => {
+  if (!/^\d+$/.test(String(ticketId))) return null
+  const t = (await w.payload.find({ collection: 'tickets', where: { and: [{ id: { equals: Number(ticketId) } }, { workspace: { equals: w.workspace } }] }, limit: 1, select: { number: true, title: true }, ...o })).docs[0] as Doc | undefined
+  if (!t) return null
+  const find = async () => (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { ticket: { equals: t.id } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
+  const found = (await find()) ?? (await w.payload
+    .create({ collection: 'chat_threads', data: { owner: w.user.id, workspace: w.workspace, ticket: t.id, title: `#${t.number} ${t.title}`.slice(0, 120), context: { path: `/tickets/${t.id}`, label: `Ticket #${t.number} ${t.title}` }, lastMessageAt: new Date().toISOString() }, ...o })
+    .catch(find))
+  if (!found) return null
+  return meta(found.archivedAt ? await w.payload.update({ collection: 'chat_threads', id: found.id, data: { archivedAt: null }, ...o }) : found)
+}
 
 export const updateThread = async (w: Who, id: string, patch: { title?: string | null; archived?: boolean }): Promise<Meta | null> => {
   const t = await ownThread(w, id)
@@ -56,6 +69,7 @@ export const loadMessages = async (w: Who, id: string) => {
   const { docs } = await w.payload.find({ collection: 'chat_messages', where: { and: [{ thread: { equals: t.id } }, { message: { exists: true } }] }, sort: 'createdAt', pagination: false, ...o })
   return {
     context: t.context ?? null,
+    ticket: meta(t).ticket,
     pending: t.pending ? { toolCallId: t.pending.toolCallId, name: t.pending.name, kind: t.pending.kind, input: t.pending.input, summary: t.pending.summary, ...t.pending.card } : null,
     messages: docs.map((m: Doc) => ({ parentId: m.parentId ?? null, message: m.message, answer: m.answer ?? null, feedback: m.feedback ? { value: m.feedback, reasons: m.feedbackReasons ?? [], note: m.feedbackNote ?? null } : null })),
   }
