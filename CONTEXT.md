@@ -1,6 +1,6 @@
 # Bauherr
 
-An AI software factory: agents take tickets through gated stages for products their owners have connected, with human approval at the gates.
+An AI software factory: agents take tickets through gated stages for products their Bauherren have connected, with human approval at the gates.
 
 ## Language
 
@@ -17,15 +17,19 @@ _Avoid_: Project (a repository in GitLab, a board container in Planka, a board i
 ### People
 
 **Bauherr** (plural Bauherren):
-A person who is a member of a Workspace and owns all its Products: configures the factory for them and approves work at gates.
-_Avoid_: Product owner, operator
+A person who is a member of a Workspace and owns all its Products: configures the factory for them and approves work at gates; owns the factory, risk, spend and production. Only a Bauherr can pass a gate today.
+_Avoid_: Operator, project owner, owner (bare; say Bauherr, Product owner or Product user)
+
+**Product owner**:
+The person accountable for a Product's requirements: files requests for it and answers product questions about it. Defined by what the person does; the factory has no account type for it yet, so everything that needs a decision at a gate still goes to a Bauherr.
+_Avoid_: Project owner, owner (bare)
 
 **Admin**:
 A Bauherr who runs the Bauherr instance: creates Workspaces and is a member of all of them.
 _Avoid_: Superadmin, instance owner, root
 
 **Product user**:
-A person who uses a Product and talks to the factory through intake and Tickets, without access to the factory's configuration.
+The wider group of people who use a Product and can only send a request to the factory (through intake or the widget), without access to the factory's configuration.
 _Avoid_: User (bare), requester, client, customer
 
 ### External systems
@@ -94,7 +98,7 @@ The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edi
 One applied state of a Workspace's Factory file (`workflow_versions`): the file with its profiles inlined, the compiled workflow and its hash. The newest applied one is active; an identical file adds no version.
 
 **Decision**:
-The owner's choice in a `human` Stage: one of the Stage's Outcomes, recorded as a human touch `decide:<stage>:<outcome>`; the Ticket then follows that Outcome.
+The Bauherr's choice in a `human` Stage: one of the Stage's Outcomes, recorded as a human touch `decide:<stage>:<outcome>`; the Ticket then follows that Outcome.
 
 **Checkpoint**:
 A point where the workflow waits for a human (Triage's questions, a `gate: human`, the production gate, a `human` Stage).
@@ -153,11 +157,11 @@ One row of a Ticket's append-only history: the moment its stage or phase changed
 _Avoid_: Audit entry, transition
 
 **Phase**:
-What a Ticket's time is spent on while in a stage: working (a Run runs), queued (waiting for the factory), human (waiting for the owner), ci (waiting for checks, the merge queue or a deploy), closed.
+What a Ticket's time is spent on while in a stage: working (a Run runs), queued (waiting for the factory), human (waiting for the Bauherr), ci (waiting for checks, the merge queue or a deploy), closed.
 _Avoid_: State
 
 **Status**:
-The one label the owner reads for an open Ticket (`ticketStatus`): In progress, Queued, Waiting for you, Waiting on CI / merge queue / deploy, Blocked, Failed or Done, with a detail line and who is doing it. A Phase refined by blockers and failed Runs; "Working" is not a Status.
+The one label the Bauherr reads for an open Ticket (`ticketStatus`): In progress, Queued, Waiting for you, Waiting on CI / merge queue / deploy, Blocked, Failed or Done, with a detail line and who is doing it. A Phase refined by blockers and failed Runs; "Working" is not a Status.
 
 **Lead time**:
 From a Ticket's first event to its first closed event.

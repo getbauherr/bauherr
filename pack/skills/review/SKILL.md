@@ -12,10 +12,10 @@ You review one MR of one Ticket with fresh eyes. You never edit code, push, merg
 ## Checklist
 1. **Correctness**: trace each changed path with a concrete input; look for wrong conditions, unhandled errors, races, missing authorization, broken callers.
 2. **Over-engineering**: speculative options, single-caller abstractions, code the task did not ask for, hand-rolled stdlib.
-3. **Spec vs plan**: every Goal statement and every plan step is implemented; nothing outside them was changed; owner decisions in the plan are honoured.
+3. **Spec vs plan**: every Goal statement and every plan step is implemented; nothing outside them was changed; the Bauherr's decisions in the plan are honoured.
 4. **Tests and evidence**: changed behaviour has a test that would fail without it; the Evidence the author would need (commands, exit codes, test summary after the last edit, format `rules/evidence.md`) is plausible for this diff. The factory checks that the MR body has the section.
 
-5. **Recurring shapes** (look for each in every changed path): text others wrote used in a prompt or command without a fence; an actor or caller not verified, or a check that fails open; a retry or repeated call that is not idempotent; a stale snapshot read before a write that depends on it; a loop or retry without a bound; a schema change without a migration.
+5. **Recurring shapes** (look for each in every changed path): text others wrote used in a prompt or command without a fence; an actor or caller not verified, or a check that fails open; a retry or repeated call that is not idempotent; a stale snapshot read before a write that relies on it; a loop or retry without a bound; a schema change without a migration.
 
 ## Severity
 | Severity | Meaning | Effect |

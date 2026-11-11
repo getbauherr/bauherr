@@ -34,7 +34,7 @@ describe('progressOf: one plain state per key, by stage kind', () => {
   it('staging names the link and how to accept; waiting is one plain line per cause', () => {
     const staging = of({ stage: 'release', releaseState: 'on_staging' }, { needsYou: 'Accept on staging', stagingUrl: 'https://staging.example', link: '/tickets/1' })
     expect(staging).toMatchObject({ key: 'staging', headline: 'Ready to try on staging.', detail: 'Try it here: https://staging.example', step: 4 })
-    expect(staging.next).toContain('project owner')
+    expect(staging.next).toContain('the Bauherr')
     expect(of({ stage: 'release', releaseState: 'on_staging' }, { needsYou: 'Accept on staging' }).detail).toBeUndefined()
     expect(of({ stage: 'review', reviewState: 'waiting_checks' }).headline).toBe('Waiting for the automated checks to pass.')
     expect(of({ stage: 'review', reviewState: 'queued' }).headline).toBe('Waiting in the merge queue.')

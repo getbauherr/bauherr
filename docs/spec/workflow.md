@@ -90,9 +90,9 @@ A Run starts when a Ticket enters a stage with an agent and has no human assigne
 ## 4. Run contract (summary)
 A Run reads its Goal, reads the worklog first, ends only with an MR or a declared blocker, updates the worklog last.
 - Goal = the Ticket's `## Acceptance criteria`, or a Goal the Plan Run writes and the Bauherr approves.
-- Skill: [run-contract](../../pack/skills/run-contract/SKILL.md) · [worklog](../../pack/skills/worklog/SKILL.md)
+- Skill: [run-contract](../../pack/skills/run-contract/SKILL.md) · [worklog](../../pack/skills/worklog/SKILL.md). `run-contract` has a shared `SKILL.md` and two mode parts next to it, `session.md` and `autonomous.md`: `load_skill` (MCP, the session channel) serves `SKILL.md` + `session.md`, the Runner appends `autonomous.md` to the skill it materialises, and neither mode ever sees the other's part.
 - Rule: [evidence](../../pack/rules/evidence.md)
-- Hook: [stop-goal-check](../../pack/hooks/stop-goal-check.ts)
+- Enforcement: autonomous Runs, the Runner's Stop hook (`packages/runner/src/agent.ts`, `checkGoal`); session Runs, not enforced (by convention); `request_review` only runs the Product's `reviewChecks`. `pack/hooks/stop-goal-check.ts` is a reference stub, not active.
 
 ## 5. Run states and retries
 `queued → running → succeeded | failed | cancelled | needs_human | budget_exhausted | abandoned`.
@@ -155,19 +155,23 @@ One agent per Run by default; a session may hand a Run's work to one subagent on
 | Plan (research) | parallel lanes with owners | [coordinate](../../pack/skills/coordinate/SKILL.md) |
 | any | pair threads | not in v0.1 |
 
-Enforcement: [write-scope-guard](../../pack/hooks/write-scope-guard.ts).
+Enforcement: autonomous Runs, the Runner's write-scope guard (`packages/runner/src/guards.ts`, `agent.ts`); session Runs, not enforced (by convention). `pack/hooks/write-scope-guard.ts` is a reference stub, not active.
 
 ## 9. Model and effort policy
 Tiers, resolved to model names from the Workspace's tiers. A fourth tier `auto` exists only while the Workspace has a `router` Connection: it names the vLLM Semantic Router, which picks one of the three per request ([router](../router.md)). How to apply: [effort-policy](../../pack/skills/effort-policy/SKILL.md).
 
-| Stage / step | Tier | Effort |
-|---|---|---|
-| Plan | standard (strong adviser on request) | medium |
-| Build | standard | medium |
-| Build: search, formatting, test runs | cheap | low |
-| Review | strong, fresh context | medium |
-| Manager thread | cheap | low |
-| Research lane | standard | medium |
+Role tiers, as `pack/factory.yaml` sets them. This table is what runs: `bauherr pack lint` fails when it differs from the factory file or any preset (so a change goes to the factory file and to this table together). Escalated Runs use `strong` whatever the table says.
+
+| Role | Tier |
+|---|---|
+| orchestrator | cheap |
+| engineer | cheap |
+| reviewer | standard |
+| security | standard |
+| ux | standard |
+| test | standard |
+
+Inside a Run, the Run's role delegates search, formatting and test runs to `cheap` at low effort; a strong adviser is consulted on request. Manager and research threads follow the role of the stage that starts them.
 
 Max effort is never the default. Raising effort is recorded in the worklog.
 
@@ -179,7 +183,7 @@ Max effort is never the default. Raising effort is recorded in the worklog.
 - Defaults are config values per stage, not fixed here.
 
 ## 11. Egress and security context
-- Code and context leave only via the gateway: [egress](../../pack/rules/egress.md), [egress-guard](../../pack/hooks/egress-guard.sh).
+- Code and context leave only via the gateway: [egress](../../pack/rules/egress.md). Enforcement: autonomous Runs, the Runner's egress guard (`packages/runner/src/guards.ts`) and the gateway; session Runs, not enforced (by convention). `pack/hooks/egress-guard.sh` is a reference stub, not active.
 - The gateway is part of the instance, and the Workspace's provider credential never reaches an agent. Operator notes: [legal](../legal.md).
 - Each Product keeps a `SECURITY-CONTEXT.md` at `products/<slug>/` in the Knowledge repo; the `scan` stage of `pack/workflow-security.yaml` reads it: [security-context](../../pack/rules/security-context.md).
 - The `distill` stage is a job-driven Run (no agent session) queued when a review merges a Ticket that went back to Build or that a later fix names. It proposes one skill as a Knowledge-repo PR on `bauherr/<run-id>`, replayed against its own eval cases (baseline without the skill must fail, with it >= 0.9, per case >= 0.8). Caps: 1 extraction call (60 KB in, 2k out), 20 eval calls per suite, $1 per distillation, 5 per Workspace per day. The factory never merges the PR; `skill_proposals` holds its status. Approval is a human gate like `approve`: `approveSkillProposal` (Admin only; MCP tool `approve_skill_proposal` is `access: 'human'`, so an agent key is refused) merges the PR with `expectSha` (the head the owner saw; a moved head is refused, nothing merges), records an `approve:skill` human touch and sets the status to `accepted`. Only `proposed` or `replayed` proposals can be approved. `watchKnowledgePrs` stays limited to `bauherr/edit-*` and never touches these PRs.

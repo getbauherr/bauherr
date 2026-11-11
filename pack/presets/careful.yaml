@@ -4,7 +4,7 @@ version: 1
 team:
   roles:
     orchestrator: {title: Orchestrator, skills: [Triage, Routing, Unblocking], tier: cheap, exceptions: true, profile_file: roles/orchestrator.md}
-    engineer:     {title: Software engineer, skills: [TypeScript, Small diffs, Tests first, Refactoring], tier: cheap, profile_file: roles/engineer.md}
+    engineer:     {title: Software engineer, skills: [Implementation, Small diffs, Tests first, Refactoring], tier: cheap, profile_file: roles/engineer.md}
     reviewer:     {title: Reviewer, skills: [Diff reading, Plan conformance, Repo rules], tier: standard, profile_file: roles/reviewer.md}
     security:     {title: Security specialist, skills: [Threat modelling, AuthZ, Secrets, Injection, Dependencies], tier: standard, profile_file: roles/security.md}
     ux:           {title: UX specialist, skills: [Flows, States, Copy, Accessibility], tier: standard, profile_file: roles/ux.md}

@@ -1,3 +1,4 @@
+// NOT ACTIVE: reference stub. The Runner enforces this itself for autonomous Runs (packages/runner/src/goal.ts); nothing loads this file.
 // Stop hook: the turn may end only if every Goal statement is verified or a blocker is declared.
 // Input: Stop event JSON on stdin. Output: decision JSON on stdout.
 import { readFileSync } from "node:fs";

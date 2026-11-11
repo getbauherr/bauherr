@@ -1,6 +1,6 @@
 ---
 name: plan-investigation
-description: Plan Run on a Ticket whose Build failed twice. Find the cause, then decide: revise the plan, file a fix Ticket, or ask the owner. Never re-run without a named fix.
+description: Plan Run on a Ticket whose Build failed twice. Find the cause, then decide: revise the plan, file a fix Ticket, or ask the Bauherr. Never re-run without a named fix.
 ---
 
 # Investigation
@@ -14,8 +14,8 @@ You run on the strong tier. The Ticket's Build failed twice; the `<!-- bauherr:i
 
 ## Decide (exactly one)
 - **revise**: the plan was wrong (too large, a missing step, a wrong file). Post a revised plan (with its leading `## TL;DR`, see run-contract); it goes through the normal plan gate.
-- **fix-ticket**: the cause is in the factory or the repo (a turn or budget limit, a broken check, infra, a bug in code the Ticket depends on). File one fix Ticket with a title and a body that states the cause and the acceptance; Build restarts by itself once it is closed.
-- **needs-human**: not fixable without the owner. Ask one concrete question with your recommended default.
+- **fix-ticket**: the cause is in the factory or the repo (a turn or budget limit, a broken check, infra, a bug in code the Ticket relies on). File one fix Ticket with a title and a body that states the cause and the acceptance; Build restarts by itself once it is closed.
+- **needs-human**: not fixable without the Bauherr. Ask one concrete question with your recommended default.
 
 "Try again" is never a decision. If you cannot name the cause, say what you checked and choose needs-human.
 

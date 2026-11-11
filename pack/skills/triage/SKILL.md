@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Use in a Triage Run on a Ticket without a stage. Decides whether the Ticket is ready to plan, needs the owner's answers first, or is not for the factory. Never writes code.
+description: Use in a Triage Run on a Ticket without a stage. Decides whether the Ticket is ready to plan, needs the Bauherr's answers first, or is not for the factory. Never writes code.
 ---
 
 # Triage
@@ -13,13 +13,13 @@ You judge one Ticket cheaply and record one outcome. You never edit code, push, 
 | Outcome | When |
 |---|---|
 | `plan` | a clear goal; acceptance criteria stated or derivable from the text; no open product decision (data, security, public API, spend, scope) |
-| `refine` | the goal is clear enough to ask, but a decision only the owner can take is open. 1 to 10 questions, each with a recommended default and alternatives; every question is critical, so ask only what a wrong default would make costly |
+| `refine` | the goal is clear enough to ask, but a decision only the Bauherr can take is open. 1 to 10 questions, each with a recommended default and alternatives; every question is critical, so ask only what a wrong default would make costly |
 | `skip` | not work for the factory: a question, discussion, duplicate (name the original in the reason), or something that cannot be built from the repository |
 
 Prefer `plan` when a default plus a later correction fixes it cheaply. Do not ask what the repository answers. Ask once, all questions together ([decision-sheet](../decision-sheet/SKILL.md)).
 
 ## Expedite proposal
-Set `expedite: true` only when production is down or broken for users, or a factory-blocking bug stops all other work. Never for a feature, a nuisance or "important". It is a proposal: the owner sees an "Expedite?" and decides with one click; it changes nothing by itself. Give the reason in `reason`.
+Set `expedite: true` only when production is down or broken for users, or a factory-blocking bug stops all other work. Never for a feature, a nuisance or "important". It is a proposal: the Bauherr sees an "Expedite?" and decides with one click; it changes nothing by itself. Give the reason in `reason`.
 
 ## Output
 Session Run: call `submit_triage {runId, leaseToken, outcome, reason, questions?, expedite?}`.

@@ -94,7 +94,7 @@ describe('connect', () => {
     expect(r.sessionId).toMatch(/^ses_/)
     expect(r.role).toMatchObject({ id: 'engineer', title: 'Software engineer', model: { tier: 'cheap' } })
     expect(r.role.profile).toContain('Mission: turn a Ticket into a plan')
-    expect(r.role.skills).toEqual(['TypeScript', 'Small diffs', 'Tests first', 'Refactoring'])
+    expect(r.role.skills).toEqual(['Implementation', 'Small diffs', 'Tests first', 'Refactoring'])
     expect(r.role.stages.map((s: Doc) => [s.name, s.kind, s.skill])).toEqual([['plan', 'plan', 'run-contract'], ['build', 'build', 'run-contract']])
     expect(r.role.stages[1].outcomes).toEqual(['done', 'stuck', 'replan'])
     expect(r.pollAfterSeconds).toBeGreaterThan(0)
@@ -454,7 +454,7 @@ describe('loadTeam', () => {
     const team = await sessions.loadTeam(payload, ws)
     expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
     const eng = team.roles.find((r) => r.id === 'engineer')!
-    expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['TypeScript', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'Plan', kind: 'plan' }, { name: 'build', title: 'Build', kind: 'build' }] })
+    expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['Implementation', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'Plan', kind: 'plan' }, { name: 'build', title: 'Build', kind: 'build' }] })
     expect(eng.profile).toContain('Mission:')
     expect(eng.sessions.map((s) => [s.label, s.status])).toEqual([['w', 'working'], ['i', 'idle']])
     expect(eng.sessions[0]).toMatchObject({ run: expect.any(Number), ticket: { number: expect.any(Number), title: expect.any(String), stage: 'build' }, publicId: working.sessionId })

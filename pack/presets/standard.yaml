@@ -3,13 +3,13 @@
 # env BAUHERR_DEFAULT_MODE override it (apps/server/src/lib/mode.ts).
 # Human gates: refine (Triage questions) is always on; production is on by default (`production_gate: human` on `release`;
 # a Product without productionChecks shows the "Configure production checks" gate until they are set).
-# Approve plan (`gate: human` on `plan`) is on by default: every plan waits for the owner. Remove it in your own factory file to let plans through.
+# Approve plan (`gate: human` on `plan`) is on by default: every plan waits for the Bauherr. Remove it in your own factory file to let plans through.
 # Optional, off by default: `gate: human` on `release` (Accept on staging).
 version: 1
 team:
   roles:
     orchestrator: {title: Orchestrator, skills: [Triage, Routing, Unblocking], tier: cheap, exceptions: true, profile_file: roles/orchestrator.md}
-    engineer:     {title: Software engineer, skills: [TypeScript, Small diffs, Tests first, Refactoring], tier: cheap, profile_file: roles/engineer.md}
+    engineer:     {title: Software engineer, skills: [Implementation, Small diffs, Tests first, Refactoring], tier: cheap, profile_file: roles/engineer.md}
     reviewer:     {title: Reviewer, skills: [Diff reading, Plan conformance, Repo rules], tier: standard, profile_file: roles/reviewer.md}
     security:     {title: Security specialist, skills: [Threat modelling, AuthZ, Secrets, Injection, Dependencies], tier: standard, profile_file: roles/security.md}
     ux:           {title: UX specialist, skills: [Flows, States, Copy, Accessibility], tier: standard, profile_file: roles/ux.md}

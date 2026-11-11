@@ -2,7 +2,7 @@
 name: staging-summary
 title: Staging summary
 used_by: The staging summary Comment the factory posts when a change is on staging; the Accept on staging card shows its first two sections
-description: What the owner reads before accepting a change on staging.
+description: What the Bauherr reads before accepting a change on staging.
 ---
 ## What you get {#what-you-get}
 <!-- The outcomes of the change in plain words (from the plan's Goal); progress, merge requests and evidence follow. -->

@@ -39,7 +39,14 @@ export function materialise(cwd: string, ctx: RunCtx): string {
   const skills = join(packDir, 'skills');
   const own = (skill: string) => existsSync(join(cwd, '.claude/skills', skill, 'SKILL.md'));
   const repoOwned = Object.keys(ctx.templates ?? {}).filter(own);
-  if (existsSync(skills)) cpSync(skills, join(cwd, '.claude/skills'), { recursive: true, force: false }); // repo's own config wins
+  const names = existsSync(skills) ? readdirSync(skills) : [];
+  const owned = new Set(names.filter(own));
+  // The mode parts (`session.md`, `autonomous.md`) are never copied: an autonomous Run gets `autonomous.md` appended to the skill, never both.
+  if (existsSync(skills)) cpSync(skills, join(cwd, '.claude/skills'), { recursive: true, force: false, filter: (src) => !/[\\/](session|autonomous)\.md$/.test(src) }); // repo's own config wins
+  for (const skill of names) {
+    const part = join(skills, skill, 'autonomous.md');
+    if (!owned.has(skill) && existsSync(part)) appendFileSync(join(cwd, '.claude/skills', skill, 'SKILL.md'), `\n\n${readFileSync(part, 'utf8').trim()}\n`);
+  }
   for (const [skill, list] of Object.entries(ctx.templates ?? {})) {
     const file = join(cwd, '.claude/skills', skill, 'SKILL.md');
     if (repoOwned.includes(skill) || !existsSync(file)) continue;

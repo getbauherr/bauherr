@@ -20,7 +20,7 @@ The factory is working out the steps.
 
 ## Plan waiting for approval {#approval}
 The plan is waiting for approval.
-A project owner reads the plan and approves it before building starts.
+The Bauherr reads the plan and approves it before building starts.
 
 ## Being built {#building}
 Being built.
@@ -38,7 +38,7 @@ Waiting for a decision: {{stage_title}}.
 ## Ready on staging {#staging}
 Ready to try on staging.
 Try it here: {{staging_url}}
-Next: Tell a project owner whether it works. They accept it or send it back for changes.
+Next: Tell the Bauherr whether it works. They accept it or send it back for changes.
 
 ## Waiting {#waiting}
 {{waiting}}

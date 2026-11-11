@@ -147,7 +147,8 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 
 | Feature | What it does | Where | Status |
 |---|---|---|---|
-| `bauherr` CLI | `init`, `up`, `down`, `status`, `seed`, `eval`, `apply`, `export` | CLI only: `npx bauherr`; [`packages/cli`](../packages/cli) | No UI |
+| `bauherr` CLI | `init`, `up`, `down`, `status`, `seed`, `eval`, `apply`, `export`, `pack lint` | CLI only: `npx bauherr`; [`packages/cli`](../packages/cli) | No UI |
+| Pack lint | Checks the pack: size caps, cited paths, glossary terms, tiers vs the spec, no stack names in core, hook citations; red in CI on a finding | CI job `cli`; `bauherr pack lint` | No UI |
 | Skill eval | Replays a skill against cases and scores it | CLI only: `bauherr eval` | No UI |
 | MCP server | Frontier, claim, finish, worklog, evidence, knowledge; human gates refused for agent keys | MCP only: `/mcp` | No UI |
 | REST API | Payload's API; chat and intake endpoints | API only: `/api`, [chat.md](chat.md), [intake-embed.md](intake-embed.md) | No UI |
