@@ -13,6 +13,9 @@ description: One decision, prepared the same way everywhere.
 ## Why {#why}
 <!-- At most three short facts: what changed, what was checked, what is at risk. -->
 
+## Proof {#proof}
+<!-- Accept and approve decisions only: the review artifacts by title with a link to the Ticket page; the card shows them as a table. -->
+
 ## Options {#options}
 <!-- Each real action with what it does. -->
 

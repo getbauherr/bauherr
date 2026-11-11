@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,7 +9,8 @@ import { buildEvidence } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { mrBody } from '../src/index.js';
-import { changedLines, formatReviewChecks, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
+import { artifactRules, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
+import { makeProof, readManifest } from '../src/artifacts.js';
 import { FINDINGS_FILE, OUTCOME_FILE, TRIAGE_FILE, materialise } from '../src/materialise.js';
 import { makeCtx } from './helpers.js';
 
@@ -315,4 +316,51 @@ test('tier auto picks the router model and fails without one', () => {
   assert.equal(buildOptions(ctx, o, state).model, 'ws-w/router/auto');
   ctx.connection.modelByTier = { cheap: 'cheap-m' };
   assert.throws(() => buildOptions(ctx, o, state), /no model configured for tier auto/);
+});
+
+const RULE = { name: 'UI shots', globs: ['src/ui/**'], kind: 'image' as const, command: 'make shots' };
+
+test('artifact rules: validated, matched by changed path, a missing proof refuses with the command, a waiver or proof passes', () => {
+  assert.deepEqual(artifactRules([{ name: ' UI shots ', globs: 'src/ui/**, a/**', kind: 'image', command: 'make shots', before: true }]), [{ name: 'UI shots', globs: ['src/ui/**', 'a/**'], kind: 'image', command: 'make shots', before: true }]);
+  assert.deepEqual(artifactRules([{ name: 'Run', globs: ['x'], kind: 'transcript', command: 'c', before: true }])[0], { name: 'Run', globs: ['x'], kind: 'transcript', command: 'c' });
+  assert.throws(() => artifactRules([{ name: 'a:b', globs: ['x'], kind: 'image', command: 'c' }]), /rule 1: name it/);
+  assert.throws(() => artifactRules([{ name: 'a', globs: [], kind: 'image', command: 'c' }]), /glob/);
+  assert.throws(() => artifactRules([{ name: 'a', globs: ['x'], kind: 'movie', command: 'c' }]), /pick a kind/);
+  assert.throws(() => artifactRules([{ name: 'a', globs: ['x'], kind: 'image', command: ' ' }]), /command/);
+  const config: ReviewChecks = { artifacts: [RULE] };
+  assert.deepEqual(matchingArtifactRules(config, ['src/api/a.ts']), []);
+  const run = (files: string[], evidence = '', artifacts?: string[]) => preReviewChecks({ files, evidence, planSteps: 0, artifacts, exists: () => true, config });
+  assert.deepEqual(run(['src/api/a.ts']), []);
+  assert.match(run(['src/ui/a.tsx'])[0]!, /No proof "UI shots" \(image\).*`make shots`.*No artifact: UI shots: <reason>/);
+  assert.deepEqual(run(['src/ui/a.tsx'], '', ['UI shots']), []);
+  assert.deepEqual(run(['src/ui/a.tsx'], 'No artifact: UI shots: hidden flag'), []);
+  assert.equal(run(['src/ui/a.tsx'], 'No artifact: Other: nope').length, 1);
+  assert.deepEqual([...artifactWaivers('x\nNo artifact: A b: c: d\nNo artifact: E:')], [['A b', 'c: d']]);
+});
+
+test('proof manifest: files must lie inside .bauherr/artifacts, malformed entries are skipped, rules are run with the egress guard and no forge credentials', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bauherr-proof-'));
+  mkdirSync(join(dir, '.bauherr/artifacts'), { recursive: true });
+  writeFileSync(join(dir, '.bauherr/artifacts/a.png'), 'png-bytes');
+  writeFileSync(join(dir, 'secret.txt'), 'nope');
+  symlinkSync(join(dir, 'secret.txt'), join(dir, '.bauherr/artifacts/link.png'));
+  writeFileSync(join(dir, '.bauherr/artifacts.json'), JSON.stringify([
+    { file: 'a.png', kind: 'image', title: 'A', rule: 'UI shots' },
+    { file: '../../secret.txt', kind: 'image', title: 'Escape', rule: 'UI shots' },
+    { file: 'link.png', kind: 'image', title: 'Link', rule: 'UI shots' },
+    { text: 'hi', kind: 'movie', title: 'Bad kind' },
+    { url: 'https://x.test/p', kind: 'preview', title: 'Try', rule: 'UI shots' },
+    { kind: 'report', title: 'No payload' },
+  ]));
+  const items = readManifest(dir);
+  assert.deepEqual(items.map((i) => i.title), ['A', 'Try']);
+  assert.equal(Buffer.from(items[0]!.file!.base64, 'base64').toString(), 'png-bytes');
+  const fresh = mkdtempSync(join(tmpdir(), 'bauherr-proof-'));
+  const logs: string[] = [];
+  const cmd = `mkdir -p .bauherr/artifacts && printf shot > .bauherr/artifacts/s.png && printf '[{"file":"s.png","kind":"image","title":"S","rule":"UI shots"}]' > .bauherr/artifacts.json && test -z "$GIT_CONFIG_VALUE_0" && test -n "$BAUHERR_ARTIFACTS_DIR"`;
+  const made = await makeProof({ dir: fresh, env: {}, base: 'main', rules: [{ ...RULE, command: cmd }], gatewayHost: 'gw:1', log: (m) => logs.push(m) });
+  assert.deepEqual(made.map((i) => i.title), ['S'], logs.join());
+  const blocked = await makeProof({ dir: fresh, env: {}, base: 'main', rules: [{ ...RULE, name: 'Net', command: 'curl https://evil.test' }], gatewayHost: 'gw:1', log: (m) => logs.push(m) });
+  assert.deepEqual(blocked, []);
+  assert.match(logs.join(), /network access only to the gateway/);
 });

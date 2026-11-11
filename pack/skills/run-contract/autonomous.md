@@ -11,6 +11,8 @@ You run in a worktree prepared by the Runner. You have no lease, no factory tool
 
 After you exit, the Runner posts the plan file as the plan Comment (first line `<!-- bauherr:plan -->`), writes the Ticket's Goal statements into the worklog Comment (`<!-- bauherr:worklog -->`) and ends the Run `succeeded`. For Build it commits what is left, pushes, opens the MR with the `## Evidence` section, Links it on the Ticket and sets the stage to review. Record each Goal statement in `.bauherr/goal.json` as `verified` or `blocked` (with a reason and, for a blocker, its `kind`).
 
+**Proof**: after your last edit the Runner runs the command of each artifact rule of the Product that matches a changed path, then reads `.bauherr/artifacts.json` (`[{"file"|"url"|"text", "kind", "title", "criterion", "rule", "pair"}]`; a file lies inside `.bauherr/artifacts/`) and stores what it finds. A missing proof is sent back to you once as a failing check; the Evidence line `No artifact: <rule>: <reason>` is the only way around it.
+
 **Replan**: when the plan cannot be built as written, change nothing and write `.bauherr/outcome.json` as `{"outcome":"replan","comment":"why, and what the plan must say instead"}`. The Ticket goes back to Plan with your comment.
 
 ## Stop check

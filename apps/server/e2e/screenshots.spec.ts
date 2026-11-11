@@ -17,7 +17,7 @@ const email = 'maria@acme.dev'
 const out = resolve(process.cwd(), '../../docs/assets')
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-const products: [string, string][] = [['Acme Gated', 'Acme Mobile'], ['Acme Checks', 'Acme API'], ['Acme Merge', 'Acme Docs'], ['Acme Relist', 'Acme Admin'], ['Acme Reship', 'Acme Billing'], ['Acme Widget', 'Acme Website']]
+const products: [string, string][] = [['Acme Gated', 'Acme Mobile'], ['Acme Checks', 'Acme API'], ['Acme Merge', 'Acme Docs'], ['Acme Relist', 'Acme Admin'], ['Acme Reship', 'Acme Billing'], ['Acme Widget', 'Acme Website'], ['Acme Proof', 'Acme Portal']]
 const titles: [string, string][] = [
   ['Blocker: migrate the invoice table', 'Migrate the invoice table to the new schema'], ['Blocked: add the invoice filter', 'Add a status filter to the invoice list'],
   ['Awaiting close', 'Update the privacy policy link'], ['Awaiting archive', 'Fix the typo on the pricing page'],
@@ -25,7 +25,7 @@ const titles: [string, string][] = [
   ['Chat: cache the export totals', 'Cache the export totals'], ['Chat: rename the export columns', 'Rename the export columns'],
   ['Live build in progress', 'Add two-factor sign-in'], ['Waiting for a Build slot', 'Send invoices by email'],
   ['Hotfix: checkout crash', 'Hotfix: checkout crashes without an address'], ['Hotfix: login loop', 'Hotfix: sign-in loops after a password reset'],
-  ['Ship the gated export', 'Ship the offline mode'], ['Ship the gated header', 'Ship the new app icon'],
+  ['Ship the proof export', 'Ship the invoice download'], ['Ship the gated export', 'Ship the offline mode'], ['Ship the gated header', 'Ship the new app icon'],
   ['Recover the stalled import', 'Recover the stalled import job'], ['Release the CSV checks', 'Release the rate limit headers'],
   ['Relist the export totals', 'Show the export totals on the admin start page'], ['Relist the invoice filter', 'Add a filter to the admin user list'], ['Relist the CSV header', 'Fix the CSV header in the admin export'], ['Relist the earlier release', 'Add audit logs to the admin area'],
   ['Reship the export totals', 'Round invoice totals to two decimals'], ['Reship the invoice filter', 'Show the tax rate on each invoice line'],

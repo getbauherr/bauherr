@@ -1,6 +1,7 @@
 import { generateId, type AttachmentAdapter, type ChatModelAdapter, type ChatModelRunResult, type ThreadAssistantMessagePart, type ThreadMessage } from '@assistant-ui/react'
 import { errorOf, currentPath, jsonRequest } from './api'
 import { MEDIA_TYPES } from '../../../../lib/intake/media-check'
+import type { ProofData } from '../../lib/proof'
 
 type Part = ThreadAssistantMessagePart
 type Tool = Extract<Part, { type: 'tool-call' }>
@@ -10,7 +11,7 @@ type Detail = { label: string; value: string }
 /** Read from `part.artifact`, set by the adapter from the stream: the widget is picked by `kind`, never by tool name. */
 export type Artifact =
   | { kind: 'read'; summary: string }
-  | { kind: 'confirm'; summary: string; title?: string; details?: Detail[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean }
+  | { kind: 'confirm'; summary: string; title?: string; details?: Detail[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean; proof?: ProofData }
   | { kind: 'outcome'; href?: string }
   /** The Products to choose from at the start of a request thread (first message; the card asks the server itself). */
   | { kind: 'product'; thread: number; products: { id: number; name: string }[]; current: number | null }
@@ -29,7 +30,7 @@ type Ev =
   | { type: 'tool-call'; id: string; name: string; kind: 'read' | 'confirm'; input: Json; summary: string }
   | { type: 'tool-result'; id: string; ok: boolean; result: string; href?: string }
   | { type: 'options'; id: string; options: { label: string; recommended: boolean }[] }
-  | { type: 'confirm'; id: string; name: string; title: string; details: Detail[]; destructive: boolean; approve?: string; decline?: string; noReason?: boolean }
+  | { type: 'confirm'; id: string; name: string; title: string; details: Detail[]; destructive: boolean; approve?: string; decline?: string; noReason?: boolean; proof?: ProofData }
   | { type: 'done'; answerId: string; requiresAction?: boolean; usage: Usage }
   | { type: 'error'; message: string }
 
@@ -118,7 +119,7 @@ export function makeChatAdapter({ threadId, onWrite }: Options): ChatModelAdapte
           parts.push({ type: 'tool-call', toolCallId: ev.id, toolName: 'request_options', args: {}, argsText: '{}', artifact: { kind: 'options', options: ev.options } satisfies Artifact, result: { ok: true, text: '' } satisfies Outcome }) // answered at once, so a confirm card in the same message is the only call left open
         } else if (ev.type === 'confirm') {
           const p = tool(ev.id)
-          if (p) set(p, { artifact: { kind: 'confirm', summary: (p.artifact as Artifact & { summary: string }).summary, title: ev.title, details: ev.details, destructive: ev.destructive, approve: ev.approve, decline: ev.decline, noReason: ev.noReason } satisfies Artifact })
+          if (p) set(p, { artifact: { kind: 'confirm', summary: (p.artifact as Artifact & { summary: string }).summary, title: ev.title, details: ev.details, destructive: ev.destructive, approve: ev.approve, decline: ev.decline, noReason: ev.noReason, proof: ev.proof } satisfies Artifact })
         } else if (ev.type === 'done') {
           custom = { answerId: ev.answerId, usage: ev.usage }
           yield out(ev.requiresAction ? { status: { type: 'requires-action', reason: 'tool-calls' } } : undefined)

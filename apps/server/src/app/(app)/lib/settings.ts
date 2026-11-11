@@ -103,6 +103,7 @@ export async function loadProducts(workspace: number) {
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           overlap: overlapOf(p),
+          proofRules: ((p.reviewChecks?.artifacts ?? []) as { name: string; globs: string[]; kind: string; command: string; before?: boolean }[]).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before })),
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens

@@ -17,7 +17,9 @@ A statement is verified only by a recorded result, never by your assertion:
 - command run + exit code (tests, build, lint)
 - lint diff against the baseline
 - MR exists and is Linked on the Ticket (via the forge adapter)
-- screenshot or Link, where UI is involved
+- proof for a person who never reads code: an artifact (screenshot, recording, preview link, terminal session, sample, report) per acceptance criterion
+
+Produce the artifacts your Product's rules ask for, and map each acceptance criterion to one artifact (`criterion`) or to a named check in the Evidence; a criterion without either shows as "No proof" to the person who accepts.
 
 Re-run the check after the last edit; evidence from before the last edit is stale. Format of the MR section: `rules/evidence.md`.
 

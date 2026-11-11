@@ -256,9 +256,9 @@ export const postCommentFromChat = async (payload: Payload, user: Doc, a: { tick
 }
 
 /** Moves the Ticket to review. The Product's pre-review checks run first and block the move; `evidence` is the calling Run's Evidence. */
-export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; evidence: string }) => {
+export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; evidence: string; run?: TicketId }) => {
   const t = await loadTicket(payload, user, a.ticket)
-  const failures = await preReviewFailures(payload, t, a.evidence)
+  const failures = await preReviewFailures(payload, t, a.evidence, { run: a.run })
   if (failures.length) throw new Error(`Pre-review checks failed:\n- ${failures.join('\n- ')}`)
   // Review only green heads: the required checks of the MR head decide before a reviewer is involved.
   const mr = await prOf(payload, t)

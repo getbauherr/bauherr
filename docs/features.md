@@ -90,6 +90,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Flaky-check tracking | Retries a failing check once and records flakes | Product page; Settings › Admin › Health | Live |
 | Security scan | An hourly tick starts a scan Run per Product that has one enabled; the last scan links its Run and the finding Tickets | Product page, tab Security scan | Live |
 | Evidence | Commands, exit codes and test results attached to a Run and its merge request | `/runs/[id]`, merge request | Live |
+| Review artifacts | Proof a person can judge (screenshots with before/after, recordings, preview links, terminal sessions, samples, reports) per acceptance criterion; a Product's rules require it before review, a waiver line is shown as "No proof" | Product page, tab Checks & merging (Proof for review); proof table on the Ticket page, Inbox cards and chat cards for accept and approve | Live |
 | Skill proposals | The factory proposes a skill from a solved Ticket; an Admin approves or rejects it; skipped and rejected ones show their reason and results | Inbox card (Admin); `/knowledge` (Admin, needs a Knowledge repo) | Live |
 | Audit | Human touches and tool calls (argument names and hash, never payloads) | `/settings/audit` (Admin) | Live |
 

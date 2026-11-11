@@ -1,13 +1,14 @@
-import { type Checkpoint, CHECKPOINTS, type Decision, buildDecision, canDecide, humanStage, isNeed } from '../../../lib/decision'
+import { type Checkpoint, CHECKPOINTS, type Decision, PROOF_NEEDS, buildDecision, canDecide, humanStage, isNeed } from '../../../lib/decision'
 import { SKILL_NEED } from '../../../lib/checkpoints'
 import { payloadClient } from './session'
 import { renderMarkdown } from './markdown'
 import { waited } from './format'
+import { loadProof, type ProofData } from './proof'
 
 type Doc = Record<string, any>
 
 /** One card of the Inbox, as the client component needs it. */
-export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string }
+export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData }
 export type InboxGroup = { checkpoint: Checkpoint; items: InboxItem[] }
 
 /** The view of a stored Decision (or one built from the row when the sweep has not reached the Ticket yet) that cards render. */
@@ -33,7 +34,7 @@ export const loadInbox = async (workspace: number, user: { role?: string | null 
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const [rows, products, working] = await Promise.all([
     payload.find({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: true }, ...(opts.product ? { product: { equals: opts.product } } : {}) }, select: { workspace: true, number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
-    payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, select: { name: true, stagingUrl: true }, sort: 'name', ...o }),
+    payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, select: { name: true, stagingUrl: true, reviewChecks: true }, sort: 'name', ...o }),
     payload.count({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: false } }, overrideAccess: true }),
   ])
   const byId = new Map((products.docs as Doc[]).map((p) => [p.id as number, p]))
@@ -50,6 +51,15 @@ export const loadInbox = async (workspace: number, user: { role?: string | null 
       return t && p && (!opts.product || p.id === opts.product) ? [skillCard(sp, t, p as never)] : []
     }),
   ].filter((card) => canDecide(user, card.decision.need) && (!opts.checkpoint || card.decision.checkpoint === opts.checkpoint))
+  const forProof = items.filter((i) => PROOF_NEEDS.includes(i.decision.need))
+  if (forProof.length) {
+    const rowsById = new Map((rows.docs as Doc[]).map((t) => [t.id as number, t]))
+    const proof = await loadProof(payload, forProof.map((i) => rowsById.get(i.id)!), new Map([...byId].map(([k, p]) => [k, p as Doc])))
+    for (const i of forProof) {
+      const p = proof.get(i.id)
+      if (p) i.proof = p
+    }
+  }
   const groups = CHECKPOINTS.map((checkpoint) => ({ checkpoint, items: items.filter((i) => i.decision.checkpoint === checkpoint).sort((a, b) => a.decision.openSince.localeCompare(b.decision.openSince) || a.number - b.number) })).filter((g) => g.items.length)
   return { groups, products: (products.docs as Doc[]).map((p) => ({ id: p.id, name: p.name })), working: working.totalDocs }
 }

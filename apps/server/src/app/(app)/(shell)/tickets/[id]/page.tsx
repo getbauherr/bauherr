@@ -11,6 +11,8 @@ import { ActionBar } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
+import { ProofList } from '../../../components/ProofList'
+import { loadProof } from '../../../lib/proof'
 import { TicketSteps } from '../../../components/workflow/TicketSteps'
 import { WorkflowGraph } from '../../../components/workflow/WorkflowGraph'
 import { StatusChip } from '../../../components/StatusChip'
@@ -19,7 +21,7 @@ import { Badge } from '../../../components/ui/badge'
 import { TicketDetails } from '../../../components/TicketDetails'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
-import { SUMMARY_MARKER } from '../../../../../lib/summary'
+import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../../lib/summary'
 import { cardOf } from '../../../lib/inbox'
 import { forgeKinds, loadEpic, within } from '../../../lib/overview'
 import { buildSteps } from '../../../lib/steps'
@@ -118,6 +120,13 @@ async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
       {x.gate?.kind === 'release' && <ReleaseGate ticket={ticket.id} timedOut={x.todo === 'Staging not confirmed'} summaryHtml={x.stagingSummary ? renderMarkdown(strip(x.stagingSummary, SUMMARY_MARKER)) : null} />}
     </>
   )
+}
+
+/** The proof table of the Ticket: its request's acceptance criteria, else the plan's Goal statements. */
+async function Proof({ P, d }: { P: Page; d: Promise<Derived> }) {
+  const { plan } = await d
+  const proof = (await loadProof(await payloadClient(), [P.ticket], new Map([[P.product.id as number, P.product]]), () => bullets(summarySection(plan ?? '', 'Goal')))).get(P.ticket.id)
+  return proof ? <div className="max-w-[860px]"><ProofList data={proof} /></div> : null
 }
 
 async function DecisionRow({ d }: { d: Promise<Derived> }) {
@@ -228,6 +237,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </header>
             {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
             <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
+            <Suspense fallback={null}><Proof P={P} d={d} /></Suspense>
             {epic ? (
               <section className="flex flex-col gap-4" aria-labelledby="subtickets">
                 <h2 className="heading" id="subtickets">Sub-tickets</h2>

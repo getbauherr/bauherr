@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } from './agent.js';
 import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
+import { makeProof } from './artifacts.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
 import { DIFF_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
-import { SELF_REVIEW_MIN_LINES, changedLines, planStepCount, preReviewChecks } from './pre-review.js';
+import { SELF_REVIEW_MIN_LINES, changedLines, matchingArtifactRules, planStepCount, preReviewChecks, type ProofItem } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
 
@@ -15,7 +16,8 @@ export { checkGoal } from './goal.js';
 export { materialise, readRules, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
-export { SELF_REVIEW_MIN_LINES, changedLines, formatReviewChecks, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from './pre-review.js';
+export { ARTIFACTS_DIR, ARTIFACTS_MANIFEST, makeProof, readManifest, type ProofItem } from './artifacts.js';
+export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, artifactRules, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ArtifactKind, type ArtifactRule, type ReviewChecks } from './pre-review.js';
 export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
@@ -231,9 +233,12 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       extra.push(`**Self-review**: ${findings.length} findings, ${blocking.length} fixed`, ...findings.filter((f) => f.severity === 'low').map((f) => `- low ${f.file ?? ''}:${f.line ?? 0} ${f.msg}`), '');
     }
     const evidence = () => buildEvidence(goal, state.toolCalls, ctx.ticket.plan, extra);
+    let proof: ProofItem[] = [];
     const failures = async () => {
       const files = (await diff('--name-only')).split('\n').filter(Boolean);
-      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
+      const rules = matchingArtifactRules(ctx.product.reviewChecks, files);
+      if (rules.length) proof = await makeProof({ dir, env, base, rules, gatewayHost: new URL(proxy!.url).host, log: (m) => ctx.recorder.log(m) });
+      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
     };
     let failed = await failures();
     if (failed.length) {
@@ -247,6 +252,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
     }
     await commitAndPush(clone, env, message);
+    if (proof.length) artifacts.proof = proof;
     artifacts.evidence = evidence();
     if (conflicted) artifacts.patchId = await patchId(clone, clone.env, base);
     artifacts.pushedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');

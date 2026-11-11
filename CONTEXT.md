@@ -175,6 +175,10 @@ _Avoid_: Agent (it names the model or client, not who executed)
 
 ### Work
 
+**Review artifact**:
+A typed piece of proof attached to a Ticket for a person to judge: a screenshot (alone or before and after), a recording, a preview link, a terminal session, a sample or a test or contract report. A Product's rules say which changes need which proof; the acceptance card shows it next to each acceptance criterion.
+_Avoid_: Attachment (a file a person adds to a request), screenshot (one kind of it)
+
 **Run**:
 One agent execution on exactly one Ticket. Work that starts without a Ticket first creates one.
 _Avoid_: Job, execution, session

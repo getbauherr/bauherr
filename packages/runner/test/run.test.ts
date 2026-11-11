@@ -210,3 +210,30 @@ test('runStage build: an outcome.json with replan ends succeeded without commits
     await gw.close();
   }
 });
+
+const SHOT_RULE = (command: string) => ({ artifacts: [{ name: 'UI shots', globs: ['src/**'], kind: 'image', command, before: true }] });
+const MAKE_SHOT = `mkdir -p .bauherr/artifacts && printf "$BAUHERR_ARTIFACT_PAIR" > .bauherr/artifacts/s.png && printf '[{"file":"s.png","kind":"image","title":"Page","rule":"UI shots"}]' > .bauherr/artifacts.json`;
+
+test('runStage build: the Runner makes the proof of a matching artifact rule, before and after, and hands it to the server', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(2, [], SHOT_RULE(MAKE_SHOT));
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    const proof = res.artifacts.proof ?? [];
+    assert.deepEqual(proof.map((p) => [p.rule, p.pair, Buffer.from(p.file!.base64, 'base64').toString()]), [['UI shots', 'after', 'after'], ['UI shots', 'before', 'before']]);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: a rule whose command makes no proof ends needs_human naming the rule', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(2, [], SHOT_RULE('true'));
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
+    assert.match(res.reason ?? '', /No proof "UI shots" \(image\)/);
+    assert.equal(res.artifacts.proof, undefined);
+  } finally {
+    await gw.close();
+  }
+});

@@ -155,6 +155,11 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))
+  // acme/proof #1: proof.spec.ts's Ticket on staging.
+  const proof = fake.tickets('acme/proof')
+  void proof.create({ title: 'Ship the proof export', labels: ['bauherr:stage:release'] })
+  void proof.comment('1', WORKLOG)
+  void proof.comment('1', summary(1))
   // releases.spec.ts: done Tickets (#1..) of two manual Products, merged as `<slug>-sha-<n>` in order, so the newest merge contains the others.
   for (const [repo, slug, titles] of [['acme/relist', 'acme-relist', ['Relist the export totals', 'Relist the invoice filter', 'Relist the CSV header']], ['acme/reship', 'acme-reship', ['Reship the export totals', 'Reship the invoice filter']]] as const) {
     const t = fake.tickets(repo)
