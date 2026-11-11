@@ -19,8 +19,11 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   test.setTimeout(90_000)
   await signIn(page, email)
   await page.getByRole('button', { name: 'User menu' }).click()
-  await expect(page.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
+  const menu = page.getByRole('menu') // assert on the opened menu: a count of 0 passes before it renders, and an Escape sent before it opens leaves it open over the page (its overlay blocks the Settings click)
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
   await page.keyboard.press('Escape')
+  await expect(menu).toBeHidden()
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'API keys' }).click()
   await expect(page).toHaveURL(/\/settings\/api-key$/)
@@ -149,28 +152,6 @@ test('the Ticket page Runs table shows Run and Duration to an Admin only and nev
   }
 })
 
-test('WIP limits: set in Settings > Factory > Workflow, shown in the Workflow list heading, a waiting Ticket says why', async ({ page }) => {
-  await signIn(page, email)
-  await page.goto('/settings/workflow')
-  await page.getByLabel(/^Build/).fill('1')
-  await page.getByRole('button', { name: 'Save' }).first().click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-
-  await page.goto('/')
-  await expect(page.locator('section.col[data-stage="build"] h2')).toContainText(/\d+ \/ 1/)
-  const waiting = page.locator('section.col[data-stage="plan"] .card', { hasText: 'Waiting for a Build slot' })
-  await expect(waiting.locator('[data-status=queued]')).toHaveText('Queued')
-  await expect(waiting.getByTestId('status-detail')).toHaveText(/Build is full \(\d+\/1\)/)
-  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/workflow-waiting-1280x800.png` })
-  await page.getByRole('link', { name: 'Waiting for a Build slot' }).click()
-  await expect(page.getByTestId('action-bar').getByTitle(/Queued for Build: Build is full/)).toHaveCount(1)
-
-  await page.goto('/settings/workflow')
-  await page.getByLabel(/^Build/).fill('')
-  await page.getByRole('button', { name: 'Save' }).first().click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-})
-
 test('Paths that never hold a Build: saved per Product in Settings > Factory > Workflow', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
@@ -216,18 +197,6 @@ test('every Settings nav link opens a page whose heading matches, none is an anc
     await page.goto(href)
     await expect(page.getByRole('heading', { name: label, exact: true }).first()).toBeVisible()
   }
-})
-
-test('the Workflow list WIP count links to the WIP limits section', async ({ page }) => {
-  await signIn(page, email)
-  await page.goto('/settings/workflow')
-  await page.getByLabel(/^Build/).fill('1')
-  await page.getByRole('button', { name: 'Save' }).first().click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-  await page.goto('/')
-  await page.locator('section.col[data-stage="build"] h2 a').click()
-  await expect(page).toHaveURL(/\/settings\/workflow#wip$/)
-  await expect(page.getByRole('heading', { name: 'WIP limits' })).toBeVisible()
 })
 
 test('Settings > Product > Merging: Re-detect finds the queue but not the merge_group trigger, and queue mode is refused', async ({ page }) => {

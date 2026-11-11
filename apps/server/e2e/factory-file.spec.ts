@@ -17,6 +17,14 @@ const shot = async (page: Page, name: string) => {
   await page.emulateMedia({ colorScheme: null })
 }
 
+const signIn = async (page: Page) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('banner')).toBeVisible()
+}
+
 test('Admin checks a broken factory file, applies a stage title, downloads it and resets to the default', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/login')
@@ -111,4 +119,39 @@ test('Admin changes the agent cap of a role on the Team page; it lands in a new 
   for (const [name, value] of wipBefore) await page.locator(`input[name="${name}"]`).fill(value)
   await page.getByRole('button', { name: 'Save' }).first().click()
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})
+
+// Both write the Workspace's WIP overrides, which an apply of the factory file clears: they live here, in the one worker that writes this Workspace's factory file.
+test('WIP limits: set in Settings > Factory > Workflow, shown in the Workflow list heading, a waiting Ticket says why', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('1')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+
+  await page.goto('/')
+  await expect(page.locator('section.col[data-stage="build"] h2')).toContainText(/\d+ \/ 1/)
+  const waiting = page.locator('section.col[data-stage="plan"] .card', { hasText: 'Waiting for a Build slot' })
+  await expect(waiting.locator('[data-status=queued]')).toHaveText('Queued')
+  await expect(waiting.getByTestId('status-detail')).toHaveText(/Build is full \(\d+\/1\)/)
+  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/workflow-waiting-1280x800.png` })
+  await page.getByRole('link', { name: 'Waiting for a Build slot' }).click()
+  await expect(page.getByTestId('action-bar').getByTitle(/Queued for Build: Build is full/)).toHaveCount(1)
+
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+})
+
+test('the Workflow list WIP count links to the WIP limits section', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/settings/workflow')
+  await page.getByLabel(/^Build/).fill('1')
+  await page.getByRole('button', { name: 'Save' }).first().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.goto('/')
+  await page.locator('section.col[data-stage="build"] h2 a').click()
+  await expect(page).toHaveURL(/\/settings\/workflow#wip$/)
+  await expect(page.getByRole('heading', { name: 'WIP limits' })).toBeVisible()
 })
