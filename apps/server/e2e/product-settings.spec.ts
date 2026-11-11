@@ -103,8 +103,10 @@ test('list, Product page, save, validation and the single Delete section', async
   await saved(page)
   await page.reload()
   await expect(page.getByRole('textbox', { name: 'Staging site' })).toHaveValue('https://staging.e2e.example.com')
-  // With the fake forge the new repository is readable but has no check runs yet ("Almost ready"); when the 3 s forge read is slow (three workers) or fails, the names are unconfirmed and the callout says "Ready". Both are right; the old assertion picked one and flaked.
-  await expect(page.locator('#production').getByRole('status').first()).toContainText(/Almost ready|Ready/)
+  // The forge read streams in (3 s cap): with the fake forge it answers "Almost ready" (the new repository has no check runs yet), when it is slow or fails the callout says "Ready" with a note. Wait until the read has settled, then require the saved check in the callout (an unsaved one reads "Not ready").
+  const production = page.locator('#production')
+  await expect(production.getByText('Loading recent checks from the forge…')).toHaveCount(0)
+  await expect(production.getByRole('status').first()).toContainText(/^(Almost ready|Ready).*deploy-production/)
 
   await tab(page, 'Releases')
   const prerelease = page.getByRole('switch', { name: /Publish releases as pre-release/ })

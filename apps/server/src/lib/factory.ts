@@ -13,17 +13,21 @@ const o = { overrideAccess: true, depth: 0 } as const
 const TTL_MS = 5000
 type Cache = { map: Map<number, Workflow>; at: number }
 /** On globalThis: Next bundles pages and server actions as separate module instances of one process, and an apply in one must reach the others. */
-const shared = globalThis as { __bauherrWorkflows?: Cache }
+const shared = globalThis as { __bauherrWorkflows?: Cache; __bauherrWorkflowsGen?: number }
 
 /** Loads the active workflow of every Workspace that has an applied factory file; at most once per 5 s per process (the app, worker and poller each keep their own copy, so a change reaches them within that time). */
 export const loadWorkflows = async (payload: Payload): Promise<void> => {
   if (shared.__bauherrWorkflows && Date.now() - shared.__bauherrWorkflows.at < TTL_MS) return
+  const gen = shared.__bauherrWorkflowsGen ?? 0
   const rows = (await payload.db.drizzle.execute(sql`SELECT w."id", v."compiled" FROM "workspaces" w JOIN "workflow_versions" v ON v."id" = w."workflow_version_id"`)).rows as { id: number; compiled: Workflow }[]
-  shared.__bauherrWorkflows = { map: new Map(rows.map((r) => [Number(r.id), r.compiled])), at: Date.now() }
+  const stale = (shared.__bauherrWorkflowsGen ?? 0) !== gen // an apply landed while this read was in flight: its answer may predate it, so it must not replace the apply's entry nor be trusted for the TTL
+  if (stale && shared.__bauherrWorkflows) return
+  shared.__bauherrWorkflows = { map: new Map(rows.map((r) => [Number(r.id), r.compiled])), at: stale ? 0 : Date.now() }
 }
 
 /** Makes the next `loadWorkflows` read the database. */
 export const invalidateWorkflows = (): void => {
+  shared.__bauherrWorkflowsGen = (shared.__bauherrWorkflowsGen ?? 0) + 1
   if (shared.__bauherrWorkflows) shared.__bauherrWorkflows.at = 0
 }
 
