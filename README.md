@@ -102,7 +102,7 @@ One row per area. The full list, with the page of each feature, is in [docs/feat
 | 👥 [Team and sessions](docs/session-mode.md) | A Team page to pick roles with profiles, skills and models; sessions that connect as a role and pull work; who is working, on what, for how long; agent keys, people, OIDC sign-in |
 | 📚 [Knowledge](docs/features.md#knowledge) | A repository of your documents and skills that agents search, and a pack of skills, rules and hooks per Run |
 | 💶 [Models and cost](docs/features.md#models-and-cost) | A bundled AI gateway, budgets, model tiers, cost per Product, Ticket and stage |
-| 📈 [Insights](docs/features.md#models-and-cost) | Lead time, cycle time, time per stage with the bottleneck, throughput per week |
+| 📈 [Insights](docs/features.md#models-and-cost) | Lead time, cycle time, time per stage with the bottleneck, throughput per week; [tokens and cost](docs/cost.md) per model, role, session, stage and Ticket |
 | 🧾 [Audit](docs/observability.md) | Human touches and tool calls in the UI, metrics and traces in Prometheus and Jaeger |
 | ⚙️ [Administration](docs/features.md#administration) | Workspaces, Products, Connections, editable text templates, a command palette |
 | 🔌 [CLI and API](docs/features.md#cli-and-api) | `npx bauherr`, an MCP server, Payload's REST API, a Runner built on the Claude Agent SDK |

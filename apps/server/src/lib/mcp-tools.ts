@@ -24,6 +24,7 @@ import { untrustedBlock } from '@bauherr/runner'
 import { goalFor, type GoalStage } from './run-ctx'
 import * as knowledge from './knowledge'
 import * as sessions from './sessions'
+import { reportRunUsage } from './cost'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -49,6 +50,8 @@ export interface Tool {
   access: 'agent' | 'human'
   run: (a: any, c: Ctx) => Promise<unknown>
 }
+
+const USAGE_ARG = { usage: { type: 'object', description: 'Optional: your token usage and cost for this Run so far (cumulative, repeat reports are safe).', properties: { tokensIn: { type: 'number' }, tokensOut: { type: 'number' }, cacheRead: { type: 'number' }, cacheWrite: { type: 'number' }, costUsd: { type: 'number' }, model: { type: 'string' } } } }
 
 const PACK = () => resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'))
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
@@ -383,14 +386,15 @@ export const tools: Tool[] = [
     name: 'heartbeat',
     access: 'agent',
     description: 'Keep a session Run alive; `expedite: {ticket, run}` in the answer names an unclaimed expedite Run that beats yours. Send at least every 10 minutes; 30 minutes of silence ends your lease: the Run is abandoned and a new claimable Run takes over.',
-    inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
+    inputSchema: obj({ ...runId, ...leaseToken, ...USAGE_ARG }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
+      const usage = a.usage === undefined ? undefined : await reportRunUsage(c.payload, run.id, c.session, a.usage)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       const f = await frontier(c)
       const label = (run.sessionLabel as string | null) ?? null
       const next = f?.open.find((t) => t.expediting && t.id !== id(run.ticket) && isClaimable(f.latest.get(t.id)) && !isOwnBuild(t, f, label))
-      return { ok: true, leaseExpiresAt, ...(next && { expedite: { ticket: next.id, run: f!.latest.get(next.id)!.id } }) }
+      return { ok: true, leaseExpiresAt, ...(usage?.note && { note: usage.note }), ...(next && { expedite: { ticket: next.id, run: f!.latest.get(next.id)!.id } }) }
     },
   },
   {
@@ -509,7 +513,7 @@ export const tools: Tool[] = [
     name: 'finish_run',
     access: 'agent',
     description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output (an agent stage: outcome, optionally one comment; a Build Run that cannot go on: outcome replan); otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
-    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket'), outcome: str('agent stages (required with succeeded): one of the outcome keys of the claim\'s agent.outcomes; a Build Run may report replan'), comment: str('agent stages: one markdown comment posted on the Ticket') }, ['runId', 'leaseToken', 'status']),
+    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket'), outcome: str('agent stages (required with succeeded): one of the outcome keys of the claim\'s agent.outcomes; a Build Run may report replan'), comment: str('agent stages: one markdown comment posted on the Ticket'), ...USAGE_ARG }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
       if (a.status !== 'succeeded' && !a.reason) throw new Error('reason is required unless succeeded')
@@ -517,6 +521,7 @@ export const tools: Tool[] = [
       const defaulted = a.status === 'needs_human' && !a.reasonKind
       const reasonKind = a.status === 'succeeded' ? null : (a.reasonKind ?? (a.status === 'needs_human' ? 'decision' : null))
       const run = await getRun(c, a.runId, a)
+      const usage = a.usage === undefined ? undefined : await reportRunUsage(c.payload, run.id, c.session, a.usage)
       const ticket = await getTicket(c, id(run.ticket))
       const kind = kindOfRun(workflowFor(run.workspace), run)
       const replan = kind === 'build' && a.status === 'succeeded' && a.outcome === 'replan'
@@ -547,7 +552,7 @@ export const tools: Tool[] = [
         if (replan) await advance(c.payload, ts, ticket, 'replan', { by: 'factory', run, note: a.comment })
         else await finishAgentRun(c.payload, run, ticket, a.outcome, a.comment)
       }
-      return { status: a.status, ...(defaulted && { note: 'reasonKind was missing: treated as decision, so the owner gets this. Pass stuck when a stronger model could solve it.' }) }
+      return { status: a.status, ...(usage?.note && { usageNote: usage.note }), ...(defaulted && { note: 'reasonKind was missing: treated as decision, so the owner gets this. Pass stuck when a stronger model could solve it.' }) }
     },
   },
   {
@@ -580,11 +585,13 @@ export const tools: Tool[] = [
         },
         checked: { type: 'array', description: 'One entry per area: correctness, over-engineering, spec-vs-plan, evidence. A review without all four goes to a human.', items: { type: 'object', properties: { area: { enum: ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'] }, note: { type: 'string', maxLength: 1000, description: 'One-line justification' } }, required: ['area', 'note'] } },
         markdown: { type: 'string', maxLength: 60000, description: 'Review comment: verdict, findings, Open (low findings)' },
+        ...USAGE_ARG,
       },
       ['runId', 'leaseToken', 'verdict', 'findings', 'checked', 'markdown'],
     ),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
+      if (a.usage !== undefined) await reportRunUsage(c.payload, run.id, c.session, a.usage)
       if (kindOfRun(workflowFor(run.workspace), run) !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
       const review = normalizeReview(a)
       const reviewedSha = (await prOf(c.payload, await getTicket(c, id(run.ticket))))?.pr.headSha ?? null
@@ -608,12 +615,14 @@ export const tools: Tool[] = [
         outcome: { enum: ['plan', 'refine', 'skip'] },
         reason: str('One line'),
         expedite: { type: 'boolean', description: 'Propose the expedite lane (production down or factory blocked); the owner decides' },
+        ...USAGE_ARG,
         questions: { type: 'array', maxItems: 10, description: 'refine only', items: { type: 'object', properties: { title: str('The question'), default: str('Recommended answer'), alternatives: { type: 'array', maxItems: 5, items: { type: 'string' } } }, required: ['title', 'default'] } },
       },
       ['runId', 'leaseToken', 'outcome', 'reason'],
     ),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
+      if (a.usage !== undefined) await reportRunUsage(c.payload, run.id, c.session, a.usage)
       if (kindOfRun(workflowFor(run.workspace), run) !== 'triage') throw new Error(`run ${run.id} is a ${run.stage} Run, not a triage Run`)
       const triage = normalizeTriage(a)
       await ownerWrite(

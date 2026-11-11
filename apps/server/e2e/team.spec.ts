@@ -57,6 +57,14 @@ test('session rows say who is working on which ticket, who is idle and who is go
   await expect(row('ses_e2e_offline')).toContainText(/last seen \d+ min ago/)
 })
 
+test('sessions and roles show their cost next to the active time', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/team')
+  await expect(page.locator('#ses_e2e_working').getByTestId('session-cost')).toContainText(/\$0\.400 30 d/)
+  await expect(page.locator('#sessions-reviewer').getByTestId('role-cost')).toContainText(/· \$2\.50 30 d/)
+  await expect(page.locator('#sessions-engineer').getByTestId('role-cost')).toContainText(/· \$0\.400 30 d/)
+})
+
 test('the Workflow graph shows the agents stationed at a stage', async ({ page }) => {
   await signIn(page)
   await page.goto('/')

@@ -9,7 +9,7 @@ const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }
 /** Render path: pages, layouts and the loaders they call. A render reads only the database; forge calls belong to a job, a server action or a component streamed through <Suspense>. */
 const rendered = [
   ...walk(app).filter((f) => /\/(page|layout)\.tsx$/.test(f)),
-  ...['overview', 'settings', 'run', 'requests', 'setup', 'team'].map((n) => join(app, `lib/${n}.ts`)),
+  ...['overview', 'settings', 'run', 'requests', 'setup', 'team', 'cost', 'usage'].map((n) => join(app, `lib/${n}.ts`)),
   ...walk(join(app, 'components/setup')),
 ]
 

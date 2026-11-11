@@ -1,5 +1,6 @@
 import pg from 'pg'
 import type { Payload } from 'payload'
+import { saveGatewayUsage } from './cost'
 import { PRESETS, presetOf } from './providers'
 
 export const RECONCILE_DELAY_MS = 5 * 60_000
@@ -55,8 +56,15 @@ const unpriced = async (payload: Payload, workspace: number | { id: number }, mo
  */
 export const reconcileRun = async (payload: Payload, runId: number | string, attempt: number): Promise<string> => {
   const o = { overrideAccess: true, depth: 0 } as const
-  const row = await withGateway(async (db) =>
-    (
+  const { row, byModel } = await withGateway(async (db) => ({
+    byModel: (
+      await db.query(
+        `SELECT gen_ai_request_model AS model, COALESCE(sum(cost), 0) AS cost, COALESCE(sum(input_tokens), 0) AS tin, COALESCE(sum(output_tokens), 0) AS tout
+         FROM request_logs WHERE attributes_json->>'run' = $1 GROUP BY gen_ai_request_model`,
+        [String(runId)],
+      )
+    ).rows as { model: string | null; cost: string; tin: string; tout: string }[],
+    row: (
       await db.query(
         `SELECT count(*)::int AS n, COALESCE(sum(cost), 0) AS cost, COALESCE(sum(input_tokens), 0) AS tin,
                 COALESCE(sum(output_tokens), 0) AS tout, COALESCE(sum(total_tokens), 0) AS ttotal,
@@ -65,7 +73,7 @@ export const reconcileRun = async (payload: Payload, runId: number | string, att
         [String(runId)],
       )
     ).rows[0],
-  )
+  }))
   if (!row.n) {
     if (attempt < 2) {
       await queueReconcile(payload, runId, 2, RECONCILE_RETRY_MS)
@@ -77,7 +85,9 @@ export const reconcileRun = async (payload: Payload, runId: number | string, att
   const run = await payload.findByID({ collection: 'runs', id: runId, ...o })
   const gateway = Number(row.cost)
   const tokens = { gatewayTokensIn: Number(row.tin), gatewayTokensOut: Number(row.tout), gatewayTokensTotal: Number(row.ttotal) }
-  if (gateway === 0 && tokens.gatewayTokensTotal > 0 && (await unpriced(payload, run.workspace, row.models))) {
+  const isUnpriced = gateway === 0 && tokens.gatewayTokensTotal > 0 && (await unpriced(payload, run.workspace, row.models))
+  await saveGatewayUsage(payload, runId, byModel.map((m) => ({ model: m.model, tokensIn: Number(m.tin), tokensOut: Number(m.tout), costUsd: isUnpriced ? null : Number(m.cost) })))
+  if (isUnpriced) {
     await payload.update({ collection: 'runs', id: runId, data: { ...tokens, costSource: 'sdk-estimate', reconcileStatus: 'unpriced' }, ...o })
     return 'unpriced'
   }

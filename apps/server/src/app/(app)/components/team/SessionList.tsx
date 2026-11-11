@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import type { TeamCost } from '../../lib/cost'
 import { ago, durationHm } from '../../lib/format'
+import { usd } from '../insights/CostSection'
 import { CopyButton } from './CopyButton'
 import { connectPrompt } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
@@ -19,7 +21,9 @@ const Ticket = ({ number, title, stage }: { number: number; title: string; stage
   </span>
 )
 
-function Row({ avatar, s, role, titles }: { avatar?: string; s: TeamSession; role?: string; titles: Record<string, string> }) {
+const Spend = ({ c }: { c?: { today: number; d30: number } }) => (c ? <span className="mono block whitespace-nowrap" data-testid="session-cost">cost {usd(c.today)} today · {usd(c.d30)} 30 d</span> : null)
+
+function Row({ avatar, s, role, titles, cost }: { avatar?: string; s: TeamSession; role?: string; titles: Record<string, string>; cost?: { today: number; d30: number } }) {
   const client = [s.clientName, s.clientVersion].filter(Boolean).join(' ')
   return (
     <li id={s.publicId} className="flex scroll-mt-20 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-3 target:bg-accent last:border-b-0" data-testid="session-row" data-status={s.status}>
@@ -32,8 +36,9 @@ function Row({ avatar, s, role, titles }: { avatar?: string; s: TeamSession; rol
         <span className="small truncate text-muted-foreground">{[client, s.model].filter(Boolean).join(' · ')}</span>
       </span>
       {s.ticket ? <Ticket number={s.ticket.number} title={s.ticket.title} stage={titles[s.ticket.stage]} /> : <span className="small min-w-0 basis-64 text-muted-foreground">No ticket</span>}
-      <span className="small w-44 text-right text-muted-foreground">
+      <span className="small w-64 shrink-0 text-right text-muted-foreground">
         {s.activeSecondsToday > 0 && <span className="mono block">active today {durationHm(s.activeSecondsToday)}</span>}
+        <Spend c={cost} />
         {s.status === 'offline' ? s.lastSeenAt && <span className="block" title={s.lastSeenAt}>last seen {ago(s.lastSeenAt)}</span> : s.connectedAt && <span className="block" title={s.connectedAt}>connected {ago(s.connectedAt)}</span>}
       </span>
     </li>
@@ -59,16 +64,16 @@ function Autonomous({ role, a, now, titles }: { role: TeamRole; a: TeamRole['aut
 
 const List = ({ children }: { children: React.ReactNode }) => <ul className="m-0 list-none rounded-md border border-border bg-card p-0">{children}</ul>
 
-export function SessionList({ roles, orphans = [], now = Date.now() }: { roles: TeamRole[]; orphans?: (TeamSession & { role: string })[]; now?: number }) {
+export function SessionList({ roles, orphans = [], now = Date.now(), cost }: { roles: TeamRole[]; orphans?: (TeamSession & { role: string })[]; now?: number; cost?: TeamCost }) {
   const titles = Object.fromEntries(roles.flatMap((r) => r.stages.map((x) => [x.name, x.title])))
   return (
     <div className="flex flex-col gap-6">
       {roles.map((role) => (
         <section key={role.id} aria-labelledby={`sessions-${role.id}`} className="flex flex-col gap-2">
-          <h3 id={`sessions-${role.id}`} className="heading">{role.title}</h3>
+          <h3 id={`sessions-${role.id}`} className="heading">{role.title}{cost?.roles[role.id] && <span className="small mono ml-3 font-normal text-muted-foreground" data-testid="role-cost">cost {usd(cost.roles[role.id]!.today)} today · {usd(cost.roles[role.id]!.d30)} 30 d</span>}</h3>
           {role.sessions.length || role.autonomous.length ? (
             <List>
-              {role.sessions.map((s) => <Row key={s.publicId} avatar={role.avatar} s={s} titles={titles} />)}
+              {role.sessions.map((s) => <Row key={s.publicId} avatar={role.avatar} s={s} titles={titles} cost={cost?.sessions[s.publicId]} />)}
               {role.autonomous.map((a) => <Autonomous key={a.run} role={role} a={a} now={now} titles={titles} />)}
             </List>
           ) : (
@@ -83,7 +88,7 @@ export function SessionList({ roles, orphans = [], now = Date.now() }: { roles: 
         <section aria-labelledby="sessions-orphans" className="flex flex-col gap-2" data-testid="orphans">
           <h3 id="sessions-orphans" className="heading">Sessions without a role</h3>
           <p className="small m-0 text-muted-foreground">Their role is no longer in the workflow. They receive no work.</p>
-          <List>{orphans.map((s) => <Row key={s.publicId} s={s} role={s.role} titles={titles} />)}</List>
+          <List>{orphans.map((s) => <Row key={s.publicId} s={s} role={s.role} titles={titles} cost={cost?.sessions[s.publicId]} />)}</List>
         </section>
       )}
     </div>

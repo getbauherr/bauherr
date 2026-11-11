@@ -3,6 +3,7 @@ import { untrustedBlock } from '@bauherr/runner'
 import { loadOverviewRows } from '../../app/(app)/lib/overview'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
+import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
 import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
@@ -128,6 +129,26 @@ export const teamStatus = async (c: Ctx) => {
   }
 }
 
+/** Tokens and cost of the last `days` days by model, role, stage and session, with how many Runs report usage (the Insights "Cost & tokens" numbers). DB only. */
+export const costSummary = async (c: Ctx, a: Doc) => {
+  const days = Math.min(90, Math.max(1, Number(a.days) || 7))
+  const cost = await loadCost(c.payload, workflowFor(c.workspace!), c.workspace as number, { days, product: null })
+  const usd = (n: number) => Math.round(n * 1000) / 1000
+  const line = (l: { label: string; costUsd: number; tokens: number; runs: number }) => ({ name: l.label, costUsd: usd(l.costUsd), tokens: Math.round(l.tokens), runs: l.runs })
+  const per = (q: { n: number; median: number; p85: number } | null) => q && { tickets: q.n, medianUsd: usd(q.median), p85Usd: usd(q.p85) }
+  return {
+    days,
+    totalUsd: usd(cost.totalUsd),
+    tokens: Math.round(cost.tokens),
+    perFinishedTicket: per(cost.perTicket),
+    byModel: cost.byModel.map(line),
+    byRole: cost.byRole.map(line),
+    byStage: cost.byStage.map((l) => ({ ...line(l), perTicket: per(l.perTicket) })),
+    bySession: cost.bySession.map(line),
+    coverage: cost.coverage.map((x) => `${x.covered} of ${x.runs} ${x.label}`),
+  }
+}
+
 /** list_frontier spans every Workspace of the caller; keep this one's Tickets. */
 const frontierIn = async (c: Ctx, a: Doc) => {
   const rows = (await callTool(c, 'list_frontier', { product: a.product })) as Doc[]
@@ -145,6 +166,7 @@ const ENTRIES: Record<string, Entry> = {
     local: listTickets,
   },
   team_status: { description: 'Who is working right now: every role of the team with its agent sessions (working, idle or offline, on which Ticket, client, model, active minutes today and in total) and the autonomous Runs working for it.', schema: schema({}), kind: 'read', local: teamStatus },
+  cost_summary: { description: 'Tokens and cost of the last days (default 7, at most 90) by model, role, stage and session, cost per finished Ticket (median, p85) and how many Runs report usage. Use it for "what did reviews cost this week?".', schema: schema({ days: { type: 'integer', maximum: 90 } }), kind: 'read', local: costSummary },
   get_run: { description: 'What the Run page shows: stage, status, started/finished, error or reason, evidence excerpt (Admins also see mode, model and cost).', schema: schema({ run: { type: 'integer', description: 'Run id, as in /runs/<id>' } }, ['run']), kind: 'read', local: getRun },
   list_frontier: { description: 'Open, unblocked Tickets with stage and latest Run state, in pull order.', schema: schema({ product: prop('Product slug') }), kind: 'read', local: frontierIn },
   get_ticket: { schema: withTicket(), kind: 'read', ticket: (t) => ({ ticket: t }), fence: true },
