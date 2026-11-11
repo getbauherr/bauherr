@@ -132,6 +132,7 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
       model: { ...(role.tier && { tier: role.tier }), ...(role.provider && { provider: role.provider }), ...(role.model && { model: role.model }) },
     },
     ...(modelHint && { modelHint }),
+    usage: 'Report your token usage and cost: pass usage {tokensIn, tokensOut, cacheRead, cacheWrite, costUsd, model} (cumulative for the Run so far) to heartbeat and finish_run, unless the Bauherr usage hook is installed in your client (it reports for you).',
     pollAfterSeconds: POLL_AFTER_SECONDS,
     next: 'Call next_work with this sessionId.',
   }

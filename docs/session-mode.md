@@ -85,6 +85,10 @@ Switch away: `release_run {runId, leaseToken}` puts the Run back to `awaiting_se
 
 Polls the Ticket source, keeps Ticket state and labels current, records every tool call (argument names and hash, never payloads) in `tool_calls`, shows Steps, evidence and the worklog on the Run page. It queues no agent for a session Run.
 
+## Report usage
+
+`heartbeat`, `finish_run`, `submit_review` and `submit_triage` take an optional `usage {tokensIn, tokensOut, cacheRead?, cacheWrite?, costUsd?, model?}`: your token usage and cost for this Run so far (cumulative; a repeat or an older report never double counts). `connect` reminds you. With the usage hook installed in the client it is automatic and the argument is ignored. Details and install: [cost.md](cost.md).
+
 ## Heartbeat rule
 
 Call `heartbeat` at least every 10 minutes; only that tool counts. A running session Run without a heartbeat for 30 minutes is `abandoned` and a new claimable Run takes over (a second one in a row: `needs_human`); an `awaiting_session` Run nobody claims goes `needs_human` 30 minutes after it was created or released. Migration `20261030_170000_ticket_lease` moves session Runs that were `running` without a lease back to `awaiting_session` (claimable again). A person can release the lock on the Run page.

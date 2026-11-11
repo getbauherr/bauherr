@@ -88,8 +88,7 @@ export default async function UsageSettings() {
         </Table>
       </section>
       <Costs title="Cost per Product" head="Product" rows={u.costs.product} />
-      <Costs title="Cost per Ticket (top 20)" head="Ticket" rows={u.costs.ticket} />
-      <Costs title="Cost per stage" head="Stage" rows={u.costs.stage} />
+      <p className="small m-0 text-muted-foreground">Tokens and cost per model, role, session, stage and Ticket, cost per finished Ticket and how many Runs report usage: <Link className="underline" href="/insights#cost">Insights, Cost &amp; tokens</Link>.</p>
       {admin && (
         <div className="flex gap-3">
           <Button asChild variant="outline"><a href="/-/gateway/config_dump" target="_blank" rel="noreferrer">Open gateway config</a></Button>

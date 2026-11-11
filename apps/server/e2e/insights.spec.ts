@@ -56,3 +56,23 @@ test('WIP age lists the longest waiting open Tickets first and links to them', a
   await expect(page).toHaveURL(/\/tickets\/\d+$/)
   await expect(page.getByRole('heading', { level: 1 })).toContainText('#5 Upgrade the payment SDK')
 })
+
+test('Cost & tokens breaks the seeded usage down and says how much of it is covered', async ({ page }) => {
+  // seed: a gateway-priced Opus review ($2.50), a session-reported Sonnet build ($0.40); a $40 session row of the gateway-priced Run must not count
+  const section = page.getByTestId('cost-section')
+  await expect(section.getByRole('heading', { name: 'Cost & tokens' })).toBeVisible()
+  await expect(page.getByTestId('cost-total').locator('dd').first()).toHaveText('$2.90')
+  await expect(page.getByTestId('cost-per-ticket').locator('dd').first()).toHaveText('$2.90 / $2.90')
+  await expect(page.getByTestId('cost-done').locator('dd').first()).toHaveText(/^1 of \d+$/)
+  const key = (table: string, k: string) => page.getByTestId(table).locator(`tr[data-key="${k}"]`)
+  await expect(key('cost-models', 'claude-opus-5-5')).toContainText('$2.50')
+  await expect(key('cost-models', 'claude-sonnet-5-5')).toContainText('$0.400')
+  await expect(key('cost-roles', 'reviewer')).toContainText('$2.50')
+  await expect(key('cost-roles', 'engineer')).toContainText('$0.400')
+  await expect(key('cost-sessions', 'Runner')).toContainText('$2.50')
+  await expect(key('cost-sessions', 'orchestrator-1@laptop')).toContainText('$0.400')
+  await expect(key('cost-stages', 'review')).toContainText('$2.50 / $2.50')
+  await expect(page.getByTestId('cost-tickets')).toContainText('Cost: usage seeded')
+  await expect(page.getByTestId('cost-coverage')).toContainText(/\d+ %.*Runner and CI Runs \(gateway\).*finished Runs have usage/)
+  await expect(page.getByTestId('cost-coverage')).toContainText(/Session Runs \(reported\): \d+ of \d+ finished/)
+})

@@ -228,6 +228,17 @@ await session('ses_e2e_idle', 'reviewer', 'reviewer-1@laptop', { connectedAt: mi
 await session('ses_e2e_offline', 'engineer', 'engineer-2@devbox', { disconnectedAt: minutesAgo(8), lastSeenAt: minutesAgo(8) })
 const teamRun = await ensure('runs', { ticket: teamTicket, stage: 'triage', status: 'running' }, { ticket: teamTicket, stage: 'triage', status: 'running', mode: 'session', executor: 'session', role: 'orchestrator', session: working.id, sessionLabel: 'orchestrator-1@laptop', clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', workspace, heartbeatAt: minutesAgo(0), startedAt: minutesAgo(40) })
 await ensure('session_spans', { session: working.id, run: teamRun.id }, { session: working.id, run: teamRun.id, ticket: teamTicket, startedAt: minutesAgo(40), lastAt: minutesAgo(0), workspace })
+// insights.spec.ts, team.spec.ts: usage for "Cost & tokens". A done Ticket with a reviewer Run priced by the gateway (Opus), a session Build Run that reported usage (Sonnet; the session's own cost is $0.40) and one more session-reported row that the gateway-priced Run must drop.
+const costTicket = await ticket(129, 'Cost: usage seeded', 'done', product, { state: 'closed', labels: [] })
+await ensure('ticket_events', { ticket: costTicket, cause: 'e2e:cost' }, { ticket: costTicket, workspace, at: minutesAgo(30), stage: 'done', stageKind: 'done', phase: 'closed', cause: 'e2e:cost' })
+const costRun = (stage: string, extra: Record<string, unknown>) => ensure('runs', { ticket: costTicket, stage }, { ticket: costTicket, stage, status: 'succeeded', workspace, startedAt: minutesAgo(50), finishedAt: minutesAgo(35), ...extra })
+const costReview = await costRun('review', { mode: 'autonomous', executor: 'runner', role: 'reviewer', model: 'claude-opus-5-5' })
+const costBuild = await costRun('build', { status: 'failed', mode: 'session', executor: 'session', role: 'engineer', session: working.id, sessionLabel: 'orchestrator-1@laptop' })
+const usage = (run: { id: number | string }, stage: string, role: string, model: string, source: string, costUsd: number | null, sessionId?: number | string) =>
+  ensure('usage_entries', { run: run.id, source, model }, { run: run.id, ticket: costTicket, workspace, stage, role, model, source, tokensIn: 12000, tokensOut: 3000, costUsd, at: minutesAgo(35), ...(sessionId && { session: sessionId }) })
+await usage(costReview, 'review', 'reviewer', 'claude-opus-5-5', 'gateway', 2.5)
+await usage(costBuild, 'build', 'engineer', 'claude-sonnet-5-5', 'session-reported', 0.4, working.id)
+await usage(costReview, 'review', 'reviewer', 'claude-opus-5-5', 'session-reported', 40, working.id)
 const request = async (key: string, status: string, extra: Record<string, unknown>) =>
   ensure('intake_sessions', { 'draft.problem': key }, { product, workspace, status, persona: 'product-user', messages: [], draft: { problem: key, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ...extra })
 await request('Export totals drift', 'open', { user: draftOwner })

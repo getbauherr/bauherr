@@ -600,7 +600,7 @@ export const collections: CollectionConfig[] = [
     num('gatewayTokensIn'),
     num('gatewayTokensOut'),
     num('gatewayTokensTotal'),
-    select('costSource', ['sdk-estimate', 'gateway'], { defaultValue: 'sdk-estimate' }),
+    select('costSource', ['sdk-estimate', 'gateway', 'session-reported'], { defaultValue: 'sdk-estimate' }),
     select('reconcileStatus', ['pending', 'matched', 'mismatch', 'unavailable', 'unpriced'], { defaultValue: 'pending' }),
     // The money figure the UI shows: gateway cost when reconciled, else the SDK estimate.
     {
@@ -779,5 +779,26 @@ export const collections: CollectionConfig[] = [
     date('startedAt'),
     date('lastAt'),
   ], { indexes: [{ fields: ['session', 'startedAt'] }] }),
+  col('usage_entries', [
+    rel('run', 'runs'),
+    rel('session', 'agent_sessions'),
+    rel('ticket', 'tickets'),
+    text('stage'),
+    text('role'),
+    text('model', { required: true, defaultValue: 'unknown' }),
+    text('provider'),
+    num('tokensIn'),
+    num('tokensOut'),
+    num('cacheRead'),
+    num('cacheWrite'),
+    num('costUsd'),
+    select('source', ['gateway', 'session-reported', 'chat'], { required: true }),
+    { name: 'at', type: 'date', required: true },
+  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['run', 'source', 'model'], unique: true }, { fields: ['workspace', 'source', 'at'] }] }),
+  col('usage_cursors', [
+    rel('session', 'agent_sessions', { required: true }),
+    text('claudeSession', { required: true, admin: { description: "The client's own session id (Claude Code `session_id`)." } }),
+    json('totals'),
+  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['session', 'claudeSession'], unique: true }] }),
   ...chatCollections,
 ]

@@ -125,10 +125,11 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 |---|---|---|---|
 | AI gateway with budgets | Every request goes through the bundled gateway with the Workspace's own key and a rolling 30-day budget | Settings › Factory › Models & budget, AI usage (`/settings/models`, `/settings/usage`) | Live |
 | Model tiers | `cheap`, `standard`, `strong` per Workspace mapped to models | Settings › Factory › Models & budget | Live |
-| Cost per Product, Ticket and stage | Spend of the last 30 days | `/settings/usage` | Live |
+| Cost per Product | Spend of the last 30 days; per Ticket and stage see Tokens and cost | `/settings/usage` | Live |
 | Connections | Forge and model provider credentials, verified | `/settings/connections` (Admin) | Live |
 | Gateway key rotation | Rotate the Workspace's consumer key | Settings › Workspace › General | Live |
 | Insights | Lead time, cycle time, time per stage with the bottleneck, throughput per week | `/insights` | Live |
+| Tokens and cost | Tokens and cost per model, role, session, stage and Ticket, cost per finished Ticket, source coverage; sessions report usage by tool argument or a Claude Code hook; cost per session and role on the Team page; `cost_summary` in the chat | `/insights#cost`, `/team`, [cost.md](cost.md) | Live |
 | Health | Jobs, oldest queued, dead Tickets, last poll, expedite lead time, gateway budget, flaky checks | Settings › Admin › Health (`/settings/health`) | Live |
 
 ## Administration
