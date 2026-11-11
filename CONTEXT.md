@@ -78,7 +78,14 @@ What a Stage is for in the workflow (`triage`, `plan`, `container`, `build`, `re
 A named result of a Stage (`plan`, `clean`, `changes`, ...) that maps to the Stage a Ticket moves to next; declared per Stage in `factory.yaml`.
 
 **Role**:
-A member of the factory's team (`team.roles` in `factory.yaml`): a title, a model tier or provider/model, and a profile; a Stage names the Role that works it.
+A member of the factory's team (`team.roles` in `factory.yaml`): a title, a model tier or provider/model, a profile and optionally an `agents` cap; a Stage names the Role that works it. Roles are the only source of roles: an agent never invents one.
+
+**Agent session**:
+A connected client (e.g. Claude Code) working as one Role: it `connect`s, pulls Runs of its Role's Stages with `next_work`, and its presence (`working`, `idle`, `offline`) and active time are recorded.
+_Avoid_: Agent, worker
+
+**Exceptions role**:
+The one Role (`exceptions: true`) that also receives stuck Tickets when nothing normal is claimable; it can only use the repairs agents already have, never a human gate.
 
 **Factory file**:
 The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edited in Settings > Workflow or applied from the CLI, the API or at boot; the shipped `pack/factory.yaml` is the default.

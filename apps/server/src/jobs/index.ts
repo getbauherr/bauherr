@@ -34,7 +34,7 @@ import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { budgetOut } from '../lib/escalation'
 import { kindOfRun } from '../lib/stage-text'
-import { byKind, is, nameOf, type Kind, type Workflow } from '../lib/workflow'
+import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -372,6 +372,7 @@ export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; outpu
   concurrency: () => 'watch-liveness',
   handler: async ({ req }) => {
     await loadWorkflows(req.payload)
+    await (await import('../lib/sessions')).sweepSessions(req.payload)
     return { output: { repaired: await (await import('../lib/liveness')).sweepLiveness(req.payload) } }
   },
 }
@@ -678,7 +679,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
       const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
       const model = ctx.run.model ?? ctx.connection.modelByTier[ctx.run.tier]
-      await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
+      await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', role: roleOf(wf, run.stage)?.id, model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
       const r = await exec(ctx)
       await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review) : null

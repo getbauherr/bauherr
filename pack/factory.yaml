@@ -8,9 +8,12 @@
 version: 1
 team:
   roles:
-    orchestrator: {title: Orchestrator, tier: cheap, profile_file: roles/orchestrator.md}
+    orchestrator: {title: Orchestrator, tier: cheap, exceptions: true, profile_file: roles/orchestrator.md}
     engineer:     {title: Software engineer, tier: cheap, profile_file: roles/engineer.md}
     reviewer:     {title: Reviewer, tier: standard, profile_file: roles/reviewer.md}
+    security:     {title: Security specialist, tier: standard, profile_file: roles/security.md}
+    ux:           {title: UX specialist, tier: standard, profile_file: roles/ux.md}
+    test:         {title: Test specialist, tier: standard, profile_file: roles/test.md}
 workflow:
   stages:
     # Tickets with any `exclude_labels` label (or an assignee) are not triaged.

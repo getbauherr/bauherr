@@ -23,6 +23,7 @@ import { assertOutcome, finishAgentRun } from './agent-stage'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor, type GoalStage } from './run-ctx'
 import * as knowledge from './knowledge'
+import * as sessions from './sessions'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -37,6 +38,8 @@ export interface Ctx {
   userAgent?: string
   /** Name of the tool being called; recorded as the Run's `last_lease_call`. */
   tool?: string
+  /** The connected agent session of the call (its `sessionId` argument), resolved by `callTool`. */
+  session?: Doc
 }
 export interface Tool {
   name: string
@@ -128,8 +131,9 @@ const clientArgs = { client: str('What you are: client name/version, e.g. claude
 /** Who claims: client name and version from `client` (else the `User-Agent`), model and provider as told. */
 const clientOf = (a: { client?: unknown; model?: unknown; provider?: unknown }, c: Ctx) => {
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 100) : null)
-  const [, name = null, version = null] = /^([^\s/]+)(?:[/\s]+(\S+))?/.exec(text(a.client) ?? text(c.userAgent) ?? '') ?? []
-  return { name, version, model: text(a.model), provider: text(a.provider) }
+  const s = c.session
+  const [, name = null, version = null] = /^([^\s/]+)(?:[/\s]+(\S+))?/.exec(text(a.client) ?? (s?.clientName ? `${s.clientName}/${s.clientVersion ?? ''}` : null) ?? text(c.userAgent) ?? '') ?? []
+  return { name, version, model: text(a.model) ?? (s?.model as string | null) ?? null, provider: text(a.provider) ?? (s?.provider as string | null) ?? null }
 }
 
 class ClaimLost extends Error {}
@@ -179,7 +183,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "executor" = 'session', "client_name" = ${who.name}, "client_version" = ${who.version}, "model" = COALESCE(${who.model}, "model"), "provider" = COALESCE(${who.provider}, "provider"), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "executor" = 'session', "client_name" = ${who.name}, "client_version" = ${who.version}, "model" = COALESCE(${who.model}, "model"), "provider" = COALESCE(${who.provider}, "provider"), "session_id" = ${c.session?.id ?? null}, "role" = COALESCE(${c.session?.role ?? null}, "role"), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -192,7 +196,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
       throw e
     }
   }
-  await record(c.payload, id(run.ticket), { run: run.id, actor: label ?? c.user.email, cause: 'run:claimed' })
+  await record(c.payload, id(run.ticket), { run: run.id, actor: c.session ? `${label} (${c.session.role})` : (label ?? c.user.email), cause: 'run:claimed' })
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = kind === 'triage' || kind === 'review' || kind === 'agent'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
@@ -789,10 +793,48 @@ export const tools: Tool[] = [
       return (await knowledge.search(c.payload, ws, String(a.query), 20, a.product)).map((h) => (h.source === 'core' ? h : { ...h, source: knowledge.repoOf(h.source), text: untrustedBlock(h.text) }))
     },
   },
+  {
+    name: 'connect',
+    access: 'agent',
+    description: 'Start an agent session for a role of the Workspace workflow. Returns your sessionId (pass it on every later call), the role\'s profile and stages, the model the role should run on (modelHint) and how often to poll. Call first, then loop next_work. The same `session` key reconnects the same session.',
+    inputSchema: obj({ role: str('Role id you were started for'), workspace: str('Workspace slug; omit when you have one'), session: str('Stable key of this session (max 64 chars): connecting again with it revives the session'), label: str('Name shown in the Team view (max 64 chars)'), ...clientArgs }, ['role']),
+    async run(a, c) {
+      return sessions.connect(c, a, clientOf(a, c))
+    },
+  },
+  {
+    name: 'next_work',
+    access: 'agent',
+    description: 'Check in and pull work for your role: the next Run of a stage your role works, as claim_next returns it plus skill, outcomes and roleReminder; or {work: null, reason, pollAfterSeconds}. The exceptions role may instead get {exception: {ticket, problem, since, allowed}}.',
+    inputSchema: obj({ sessionId: str('From connect') }, ['sessionId']),
+    async run(a, c) {
+      const claimNext = tools.find((t) => t.name === 'claim_next')!
+      return sessions.nextWork(c, ({ stages }) => claimNext.run({ stages, session: c.session!.label }, c) as Promise<Doc | null>)
+    },
+  },
+  {
+    name: 'disconnect',
+    access: 'agent',
+    description: 'End your session when you stop. Runs you still hold go back to the queue.',
+    inputSchema: obj({ sessionId: str('From connect') }, ['sessionId']),
+    async run(_a, c) {
+      return sessions.disconnect(c, c.session!)
+    },
+  },
 ]
 
 /** Tools of a human decision on one Ticket. */
 const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'grant_review_round', 'stop_review', 'request_changes'])
+
+const SESSION_ID_ARG = { type: 'string', description: 'Your sessionId from connect: keeps your session present and attributes the Run to it.' }
+// Every agent tool but connect takes an optional sessionId; wrapping the schema keeps the tools above untouched.
+for (const t of tools.filter((x) => x.access === 'agent' && x.name !== 'connect')) {
+  const d = Object.getOwnPropertyDescriptor(t, 'inputSchema')!
+  Object.defineProperty(t, 'inputSchema', { enumerable: true, configurable: true, get: () => { const base = d.get ? d.get.call(t) : d.value; return { ...base, properties: { sessionId: SESSION_ID_ARG, ...base.properties } } } })
+}
+
+/** Tools after which the Run is over: the session's span ends at this call. */
+const RUN_ENDING = ['finish_run', 'submit_review', 'submit_triage', 'release_run']
 
 /** Input digest: argument names plus a hash; raw payloads are never stored. */
 export const digest = (input: unknown): string =>
@@ -807,6 +849,8 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
   let ok = false
   try {
     if (tool.access !== 'agent' && c.actor.kind !== 'human') throw new Error(`forbidden: ${name} needs a human; this session uses an agent key. Use the UI or ask the owner.`)
+    const sessionId = (input as { sessionId?: unknown } | null)?.sessionId
+    if (sessionId !== undefined && name !== 'connect') c.session = await sessions.resolve(c, sessionId, name === 'disconnect')
     const out = await tool.run(input ?? {}, c)
     ok = true
     // A decision taken here (chat, MCP) closes the Ticket's Inbox card at once, as in the UI.
@@ -814,6 +858,14 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
     if (DECIDES.has(name) && ticket !== undefined) await settleDecision(c.payload, ticket)
     return out
   } finally {
+    if (c.session && name !== 'disconnect') {
+      try {
+        if (ok && name === 'heartbeat' && c.run != null) await sessions.stampRun(c.payload, c.session, c.run)
+        await sessions.touch(c.payload, c.session, { run: ok ? c.run : undefined, force: ok && RUN_ENDING.includes(name) })
+      } catch (e) {
+        c.payload.logger.warn({ err: e, tool: name }, 'session presence not recorded')
+      }
+    }
     const workspace = c.workspace ?? tenantsOf(c.user)[0]
     if (workspace !== undefined) {
       await c.payload.create({
