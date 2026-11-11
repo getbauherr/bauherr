@@ -55,25 +55,38 @@ const inWorkspace = (c: { workspace: { id: number } | null }) => {
   return c.workspace.id
 }
 
-export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount', routerBudgetShare: 'routerBudgetShare' }, async ({ user, workspace, payload, w }, fd) => {
+/** Settings > General: the Workspace name and the progress-comment switch. */
+export const saveGeneral = act({}, async ({ user, workspace, payload, w }, fd) => {
+  only(user)
+  await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { name: s(fd, 'name'), progressComments: fd.get('progressComments') === 'on' }, ...w } as never)
+})
+
+/** Settings > Models & budget (Admin only): budget unit, amount and auto share, model tiers and run modes. */
+export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount', routerBudgetShare: 'routerBudgetShare' }, async ({ user, workspace, payload, w }, fd) => {
+  only(user)
   const wsId = inWorkspace({ workspace })
   const unit = s(fd, 'budgetUnit') === 'tokens' ? 'tokens' : 'usd'
   const amount = s(fd, 'budgetAmount')
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount) }
   if (s(fd, 'routerBudgetShare')) data.routerBudgetShare = Number(s(fd, 'routerBudgetShare'))
-  if (isAdmin(user)) {
-    const { defaultModels: defaults, slugs } = await presetFor(wsId)
-    const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
-    if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })
-    // Tiers are `<connection>/<model>`; a bare model id goes to the first Connection.
-    const qualify = (v: string) => (!slugs.length || slugs.some((c) => v.startsWith(`${c}/`)) ? v : `${slugs[0]}/${v}`)
-    const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
-    const conn = Number(s(fd, 'knowledgeConnection')) || undefined
-    await assertInWorkspace(payload, 'connections', [conn], wsId)
-    const stages = Object.fromEntries(modeStages(workflowFor(wsId)).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
-    Object.assign(data, { modelByTier: tiers, name: s(fd, 'name'), defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null, knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null, progressComments: fd.get('progressComments') === 'on' })
-  } else if (!(await workspacesOf(user)).some((x) => x.id === wsId)) throw new Error('Not your Workspace.')
+  const { defaultModels: defaults, slugs } = await presetFor(wsId)
+  const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
+  if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })
+  // Tiers are `<connection>/<model>`; a bare model id goes to the first Connection.
+  const qualify = (v: string) => (!slugs.length || slugs.some((c) => v.startsWith(`${c}/`)) ? v : `${slugs[0]}/${v}`)
+  const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
+  const stages = Object.fromEntries(modeStages(workflowFor(wsId)).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
+  Object.assign(data, { modelByTier: tiers, defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null })
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)
+})
+
+/** Settings > Knowledge: the Connection and repository of the Knowledge repo. */
+export const saveKnowledge = act({}, async ({ user, workspace, payload, w }, fd) => {
+  only(user)
+  const wsId = inWorkspace({ workspace })
+  const conn = Number(s(fd, 'knowledgeConnection')) || undefined
+  await assertInWorkspace(payload, 'connections', [conn], wsId)
+  await payload.update({ collection: 'workspaces', id: wsId, data: { knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null }, ...w } as never)
 })
 
 /** WIP limits per Board column: a whole number of at least 1, empty for no limit. */
@@ -90,7 +103,7 @@ export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd)
   await payload.update({ collection: 'workspaces', id: wsId, data: { wipLimits: limits }, ...w } as never)
 })
 
-/** Settings > Board & WIP "Expedite lane": off makes the Workspace ignore the `bauherr:expedite` label. */
+/** Settings > Factory > Workflow "Expedite lane": off makes the Workspace ignore the `bauherr:expedite` label. */
 export const saveExpediteLane = act({}, async ({ user, workspace, payload, w }, fd) => {
   only(user)
   await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { expediteLane: fd.get('expediteLane') === 'on' }, ...w } as never)
@@ -133,27 +146,46 @@ const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => 
   return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
 }
 
+const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'gateOwners', 'productionWebhookUrl', 'productionChecks', 'releaseMode'] as const
+
+/**
+ * Saves the fields of one Product tab (`section`: deploy, approvals, checks or releases); only the fields the form posted are written, so a tab never resets another one.
+ * Without `section` (step 3 of /setup) it saves the Deploy and Approvals fields.
+ */
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const checkRetries = Number(s(fd, 'checkRetries') || 1)
-  const data = { checkRetries, stagingUrl: s(fd, 'stagingUrl'), deployMode: s(fd, 'deployMode'), deployWebhookUrl: s(fd, 'deployWebhookUrl'), deployChecks: s(fd, 'deployChecks'), gateOwners: s(fd, 'gateOwners'), autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on', productionWebhookUrl: s(fd, 'productionWebhookUrl'), productionChecks: s(fd, 'productionChecks'), releaseMode: s(fd, 'releaseMode'), releaseReminderDays: Number(s(fd, 'releaseReminderDays') || 7) }
-  const errors = Object.entries(deployErrors(data)).map(([path, message]) => ({ path, message }))
-  if (!Number.isInteger(data.releaseReminderDays) || data.releaseReminderDays < 1) errors.push({ path: 'releaseReminderDays', message: 'Enter a whole number of days, 1 or more.' })
-  if (!Number.isInteger(checkRetries) || checkRetries < 0 || checkRetries > 1) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
-  const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
-  if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
-  let reviewChecks = null
-  try {
-    reviewChecks = parseReviewChecks(s(fd, 'reviewChecks'))
-  } catch (e) {
-    errors.push({ path: 'reviewChecks', message: (e as Error).message })
+  const section = s(fd, 'section')
+  const sec = (g: string) => (section ? section === g : g === 'deploy' || g === 'approvals')
+  const data: Record<string, unknown> = Object.fromEntries(TEXT_FIELDS.filter((k) => fd.has(k)).map((k) => [k, s(fd, k)]))
+  if (fd.has('checkRetries')) data.checkRetries = Number(s(fd, 'checkRetries') || 1)
+  if (fd.has('releaseReminderDays')) data.releaseReminderDays = Number(s(fd, 'releaseReminderDays') || 7)
+  if (sec('approvals')) Object.assign(data, { autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on' })
+  if (sec('releases')) data.releasePrerelease = fd.get('releasePrerelease') === 'on'
+  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { stagingUrl: true, deployMode: true, deployWebhookUrl: true, productionWebhookUrl: true, productionGate: true, productionChecks: true, expediteSkipStaging: true }, ...c.w } as never)) as Record<string, any>
+  const merged = { stagingUrl: '', deployWebhookUrl: '', productionWebhookUrl: '', productionChecks: '', deployMode: 'observe-ci', productionGate: false, ...before, ...data } as Parameters<typeof deployErrors>[0]
+  const errors = Object.entries(deployErrors(merged)).filter(([path]) => path in data).map(([path, message]) => ({ path, message }))
+  const days = data.releaseReminderDays as number | undefined
+  if (days !== undefined && (!Number.isInteger(days) || days < 1)) errors.push({ path: 'releaseReminderDays', message: 'Enter a whole number of days, 1 or more.' })
+  const retries = data.checkRetries as number | undefined
+  if (retries !== undefined && (!Number.isInteger(retries) || retries < 0 || retries > 1)) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
+  if (typeof data.gateOwners === 'string') {
+    const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
+    if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
+  }
+  if (fd.has('reviewChecks')) {
+    try {
+      data.reviewChecks = parseReviewChecks(s(fd, 'reviewChecks'))
+    } catch (e) {
+      errors.push({ path: 'reviewChecks', message: (e as Error).message })
+    }
   }
   if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
-  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { expediteSkipStaging: true }, ...c.w } as never)) as { expediteSkipStaging?: boolean | null }
-  const flipped = data.expediteSkipStaging !== !!before.expediteSkipStaging
-  const who = flipped ? { expediteSkipStagingBy: data.expediteSkipStaging ? c.user.email : null, expediteSkipStagingAt: data.expediteSkipStaging ? new Date().toISOString() : null } : {}
-  await c.payload.update({ collection: 'products', id: id(fd), data: { ...data, ...who, reviewChecks }, ...c.w } as never)
+  if ('expediteSkipStaging' in data) {
+    const flipped = data.expediteSkipStaging !== !!before.expediteSkipStaging
+    if (flipped) Object.assign(data, { expediteSkipStagingBy: data.expediteSkipStaging ? c.user.email : null, expediteSkipStagingAt: data.expediteSkipStaging ? new Date().toISOString() : null })
+  }
+  await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
 })
 
 /** Merge mode of a Product. Switching to `queue` or `train` re-runs the repo preflight and refuses while it has problems. */
@@ -242,7 +274,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
     throw e
   }
   await redetectMergeMode(c.payload, product)
-  if (fd.get('open') === '1') redirect(`/settings/products/${product}#staging`)
+  if (fd.get('open') === '1') redirect(`/settings/products/${product}?tab=deploy#staging`)
 })
 
 /** "Skip, use defaults" on /setup: a save without changes, which marks the Product's staging and gates as seen. */
@@ -259,7 +291,9 @@ export const mintEmbedToken = act({}, async (c, fd) => {
   const allowedOrigins = s(fd, 'origins').split(/[\s,]+/).filter(Boolean)
   if (!allowedOrigins.length) throw Object.assign(new Error('Origins missing.'), { data: { errors: [{ path: 'origins', message: 'Add at least one origin' }] } })
   if (!allowedOrigins.every(isWebUrl)) throw Object.assign(new Error('Origins invalid.'), { data: { errors: [{ path: 'origins', message: 'Each origin must be an http(s) URL' }] } })
-  const token = await createEmbedToken(c.payload, { product: id(fd), name: s(fd, 'name'), allowedOrigins })
+  const perHour = s(fd, 'maxSessionsPerHour')
+  if (perHour && !(Number.isInteger(Number(perHour)) && Number(perHour) >= 1)) throw fieldError('maxSessionsPerHour', 'Enter a whole number, 1 or more.')
+  const token = await createEmbedToken(c.payload, { product: id(fd), name: s(fd, 'name'), allowedOrigins, ...(perHour && { maxSessionsPerHour: Number(perHour) }) })
   return `<script src="${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/intake/widget.js" data-token="${token}"></script>`
 })
 export const revokeEmbedToken = act({}, async (c, fd) => {

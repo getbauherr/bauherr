@@ -17,7 +17,9 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(page.getByRole('banner')).toBeVisible()
 
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
-  await expect(page).toHaveURL(/\/settings\/workspace$/)
+  await expect(page).toHaveURL(/\/settings\/profile$/)
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Models & budget' }).click()
+  await expect(page).toHaveURL(/\/settings\/models$/)
   const amount = String(40 + (Date.now() % 50))
   const next = page.getByRole('region', { name: 'Next step' })
   await expect(next.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
@@ -37,14 +39,8 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   const nav = page.getByRole('navigation', { name: 'Settings' })
   await expect(nav.getByRole('link', { name: 'General' })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'People' })).toBeVisible()
-  const advanced = nav.locator('details')
-  await expect(advanced).not.toHaveAttribute('open', /.*/)
-  await nav.getByText('Advanced', { exact: true }).click()
-  await expect(advanced).toHaveAttribute('open', '')
-  for (const name of ['Board & WIP', 'Connections', 'Agent keys', 'Audit']) await expect(advanced.getByRole('link', { name, exact: true })).toBeVisible()
-  await advanced.getByRole('link', { name: 'Connections' }).click()
+  await nav.getByRole('link', { name: 'Connections' }).click()
   await expect(page).toHaveURL(/\/settings\/connections$/)
-  await expect(advanced).toHaveAttribute('open', '')
   const form = page.locator('section', { hasText: 'Add Connection' })
   const name = `Foundry ${Date.now()}`
   await form.getByLabel('Name').fill(name)
@@ -83,14 +79,14 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(page.getByRole('menu').getByRole('menuitem', { name: created })).toBeVisible()
 })
 
-test('at 390 px the Next step bar does not cover the last field of the Workspace page', async ({ page }) => {
+test('at 390 px the Next step bar does not cover the last field of the Models & budget page', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/settings/workspace')
+  await page.goto('/settings/models')
   const bar = page.getByRole('region', { name: 'Next step' })
   await expect(bar).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
@@ -99,14 +95,14 @@ test('at 390 px the Next step bar does not cover the last field of the Workspace
   expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
 })
 
-// Lives in this file (not selects.spec.ts): it saves the whole Workspace form, so it must not run in parallel with the budget test above.
-test('Workspace: model tiers are selects with Other..., the Knowledge repo is a select or, with a failing forge, text', async ({ page }) => {
+// Lives in this file (not selects.spec.ts): it saves the whole Models & budget form and the Knowledge form, so it must not run in parallel with the budget test above.
+test('Models & budget: model tiers are selects with Other...; Knowledge: the repository is a select or, with a failing forge, text', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/settings/workspace')
+  await page.goto('/settings/models')
   const tier = page.getByLabel('Standard', { exact: true })
   await expect(tier).toHaveRole('combobox')
   await tier.click()
@@ -115,12 +111,14 @@ test('Workspace: model tiers are selects with Other..., the Knowledge repo is a 
   await expect(page.getByLabel('Standard, other')).toBeVisible()
   await page.reload()
 
+  await page.goto('/settings/knowledge')
   const repo = page.getByLabel('Repository', { exact: true })
   if (fake) {
     await expect(repo).toHaveRole('combobox')
     await expect(repo).toHaveText('acme/knowledge')
     await repo.click()
-    await page.getByRole('option', { name: 'Other...' }).click()
+    await page.getByRole('option', { name: 'Other...' }).focus() // by keyboard: the pointer click can land outside the viewport
+    await page.keyboard.press('Enter')
     await page.getByLabel('Repository, other').fill('acme/knowledge') // the typed value must post under the field name
   } else {
     await expect(page.getByText('Could not list repositories; type owner/name.')).toBeVisible()
@@ -133,4 +131,38 @@ test('Workspace: model tiers are selects with Other..., the Knowledge repo is a 
   const saved = page.getByLabel('Repository', { exact: true })
   if (fake) await expect(saved).toHaveText('acme/knowledge')
   else await expect(saved).toHaveValue('acme/knowledge')
+})
+
+test('the Settings nav is grouped by scope, the sidebar link opens Profile, and the old URLs and anchors still land', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('banner')).toBeVisible()
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page).toHaveURL(/\/settings\/profile$/)
+  const nav = page.getByRole('navigation', { name: 'Settings' })
+  await expect(nav.getByRole('group')).toHaveCount(4)
+  for (const [group, links] of [['Account', ['Profile', 'API keys']], ['Factory', ['Team', 'Workflow', 'Templates', 'Models & budget', 'AI usage']], ['Workspace', ['General', 'Products', 'Connections', 'People', 'Knowledge']], ['Admin', ['Health', 'Audit', 'Chat feedback']]] as const) {
+    await expect(nav.getByRole('group', { name: group }).getByRole('link')).toHaveText([...links])
+  }
+  await expect(nav.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('cell', { name: email, exact: true })).toBeVisible()
+
+  await page.goto('/settings')
+  await expect(page).toHaveURL(/\/settings\/profile$/)
+  await page.goto('/settings/workspace#tiers')
+  await expect(page).toHaveURL(/\/settings\/models#tiers$/)
+  await page.goto('/settings/workspace#health')
+  await expect(page).toHaveURL(/\/settings\/health$/)
+  await page.goto('/settings/workspace#knowledge')
+  await expect(page).toHaveURL(/\/settings\/knowledge$/)
+  await page.goto('/settings/workspace#new-workspace')
+  await expect(page).toHaveURL(/\/settings\/workspace#new-workspace$/)
+  await expect(page.locator('section#new-workspace')).toBeVisible()
+
+  await page.keyboard.press('Control+k')
+  const dialog = page.getByRole('dialog', { name: 'Command palette' })
+  await expect(dialog.getByRole('option', { name: 'Settings: Factory › Workflow' })).toBeVisible()
+  await expect(dialog.getByRole('option', { name: 'Settings: Admin › Health' })).toBeVisible()
 })

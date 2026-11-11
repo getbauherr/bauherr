@@ -39,19 +39,23 @@ const targets: Target[] = [
   { route: '/knowledge', from: '/', click: (p) => main(p).getByRole('link', { name: 'Knowledge' }).click(), content: h1('Knowledge') },
   { route: '/insights', from: '/', click: (p) => main(p).getByRole('link', { name: 'Insights' }).click(), content: h1('Insights') },
   { route: '/runs', from: '/', click: (p) => main(p).getByRole('link', { name: 'Runs' }).click(), content: h1('Runs') },
-  { route: '/settings/workspace', from: '/', click: (p) => p.getByRole('link', { name: 'Settings', exact: true }).click(), content: h2('General') },
+  { route: '/settings/profile', from: '/', click: (p) => p.getByRole('link', { name: 'Settings', exact: true }).click(), content: h2('Profile') },
   ...(
     [
-      ['People', '/settings/bauherren', 'People'],
-      ['Products', '/settings/products', 'Products'],
-      ['AI usage', '/settings/usage', 'AI usage'],
-      ['Board & WIP', '/settings/workflow', 'Board & WIP'],
-      ['Templates', '/settings/templates', 'Templates'],
-      ['Connections', '/settings/connections', 'Connections'],
-      ['Agent keys', '/settings/api-key', 'Agent keys'],
-      ['Audit', '/settings/audit', 'Audit'],
+      ['General', '/settings/workspace'],
+      ['People', '/settings/bauherren'],
+      ['Products', '/settings/products'],
+      ['AI usage', '/settings/usage'],
+      ['Models & budget', '/settings/models'],
+      ['Workflow', '/settings/workflow'],
+      ['Templates', '/settings/templates'],
+      ['Connections', '/settings/connections'],
+      ['Knowledge', '/settings/knowledge'],
+      ['Health', '/settings/health'],
+      ['API keys', '/settings/api-key'],
+      ['Audit', '/settings/audit'],
     ] as const
-  ).map(([link, route, heading]): Target => ({ route, from: '/settings/workspace', click: (p) => settings(p).getByRole('link', { name: link }).click(), content: h2(heading) })),
+  ).map(([link, route]): Target => ({ route, from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: link, exact: true }).click(), content: h2(link) })),
   { route: '/tickets/[id]', from: '/', click: (p) => p.locator('[data-testid=workflow] a[href^="/tickets/"]').first().click(), content: { sel: '[data-testid=action-bar]' } },
   { route: '/runs/[id]', from: '/runs', click: (p) => p.locator('main a[href^="/runs/"]').first().click(), content: { sel: 'h1.title', text: '^#\\d+ ' } },
 ]
@@ -79,7 +83,6 @@ for (const t of targets) {
     if (t.route === '/knowledge') await page.goto('/knowledge') // the first view of a Workspace builds its index (about a second, once)
     await page.goto(t.from)
     await page.waitForLoadState('networkidle')
-    if (t.route.startsWith('/settings/') && t.route !== '/settings/workspace') await settings(page).getByText('Advanced', { exact: true }).click()
     test.skip(t.route === '/knowledge' && !(await main(page).getByRole('link', { name: 'Knowledge' }).count()), 'the seed has no Knowledge repo')
     await page.evaluate(observe, t.content)
     await t.click(page)

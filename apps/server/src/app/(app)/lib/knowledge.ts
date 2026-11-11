@@ -8,7 +8,9 @@ import { payloadClient } from './session'
 
 export type KnowledgeDoc = { source: string; path: string; title: string }
 export type WriteBack = { number: number; title: string; url: string; head: string; checks: 'green' | 'pending' | 'red'; failed: string[] }
-export type SkillProposalRow = { id: number; ticket: string; status: string; skill: string; score: number | null; baseline: number | null; prUrl: string | null; prNumber: number | null; headSha: string | null }
+export type SkillProposalRow = { id: number; ticket: string; status: string; skill: string; score: number | null; baseline: number | null; prUrl: string | null; prNumber: number | null; headSha: string | null; reason: string | null; results: ProposalResults | null }
+/** Pass or fail per eval case without and with the skill, and what the replay cost. */
+export type ProposalResults = { cases: { id: string; baseline: boolean | null; withSkill: boolean | null }[]; calls: number | null; cost: number | null }
 export type KnowledgePage = {
   sources: { name: string; label: string; docs: KnowledgeDoc[] }[]
   repo: string | null
@@ -55,8 +57,17 @@ const loadWriteBacks = async (payload: Awaited<ReturnType<typeof payloadClient>>
 }
 
 /** Distilled skill proposals of the Workspace, newest first; the head of an open PR is read from the forge (null when it does not answer) so the approval can name the head it saw. */
+/** The replay results the distill job stored (`results`), reduced to what the Knowledge page shows; null when there are none. */
+export const resultsOf = (r: unknown): ProposalResults | null => {
+  const v = r as { baseline?: { id: string; pass: boolean }[]; withSkill?: { id: string; pass: boolean }[]; calls?: number; cost?: number } | null
+  if (!v || (!Array.isArray(v.withSkill) && !Array.isArray(v.baseline))) return null
+  const ids = [...new Set([...(v.withSkill ?? []), ...(v.baseline ?? [])].map((x) => x.id))]
+  const pass = (rows: { id: string; pass: boolean }[] | undefined, id: string) => rows?.find((x) => x.id === id)?.pass ?? null
+  return { cases: ids.map((id) => ({ id, baseline: pass(v.baseline, id), withSkill: pass(v.withSkill, id) })), calls: v.calls ?? null, cost: v.cost ?? null }
+}
+
 const loadProposals = async (payload: Awaited<ReturnType<typeof payloadClient>>, workspace: number, connection: unknown, repo: string): Promise<SkillProposalRow[]> => {
-  const docs = (await payload.find({ collection: 'skill_proposals', where: { and: [{ workspace: { equals: workspace } }, { status: { in: ['proposed', 'replayed', 'accepted', 'rejected'] } }] }, sort: '-createdAt', limit: 20, depth: 1, overrideAccess: true })).docs as Record<string, any>[]
+  const docs = (await payload.find({ collection: 'skill_proposals', where: { and: [{ workspace: { equals: workspace } }, { status: { in: ['proposed', 'replayed', 'accepted', 'rejected', 'skipped'] } }] }, sort: '-createdAt', limit: 20, depth: 1, overrideAccess: true })).docs as Record<string, any>[]
   const forge = backendFor(await connectionInput(payload, connection)).forge
   return Promise.all(
     docs.map(async (d) => {
@@ -71,6 +82,8 @@ const loadProposals = async (payload: Awaited<ReturnType<typeof payloadClient>>,
         prUrl: pr?.state === 'open' ? pr.url : null,
         prNumber: d.pr ?? null,
         headSha: pr?.state === 'open' ? pr.headSha : null,
+        reason: d.reason ?? null,
+        results: resultsOf(d.results),
       }
     }),
   )

@@ -20,7 +20,7 @@ const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
 /** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `access: 'human'` on the tool. */
-const GATES = ['approve', 'decide', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'approve_production', 'approve_skill_proposal']
+const GATES = ['approve', 'decide', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'approve_production', 'approve_skill_proposal', 'reject_skill_proposal']
 
 let testDb: TestDb
 beforeAll(async () => {

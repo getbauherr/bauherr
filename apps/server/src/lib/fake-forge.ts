@@ -171,6 +171,12 @@ const build = (): FakeBackend => {
   void fake.forge.createBranch(kb, 'bauherr/9001')
   fake.commit(kb, 'bauherr/9001', 'workspace/skills/tdd-first/SKILL.md', '---\nname: tdd-first\ndescription: Write the failing test first.\n---\nWrite a failing test before the fix.\n')
   void fake.forge.openPullRequest(kb, { title: 'Skill proposal: tdd-first (from #127)', head: 'bauherr/9001', base: 'main' })
+  // Further skill proposals (seed-e2e: PRs 3 to 5 of 128, 130 and 131) for the reject and Inbox cases.
+  for (const [n, name] of [[3, 'report-caching'], [4, 'retry-limits'], [5, 'naming']] as const) {
+    void fake.forge.createBranch(kb, `bauherr/900${n}`)
+    fake.commit(kb, `bauherr/900${n}`, `workspace/skills/${name}/SKILL.md`, `---\nname: ${name}\ndescription: ${name}.\n---\nFollow ${name}.\n`)
+    void fake.forge.openPullRequest(kb, { title: `Skill proposal: ${name}`, head: `bauherr/900${n}`, base: 'main' })
+  }
   return fake
 }
 

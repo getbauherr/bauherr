@@ -236,7 +236,34 @@ describe('distillSkill', () => {
       expect(await approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).toEqual({ approved: 'accepted' })
       expect((await forge().getPullRequest(REPO, pr.number)).state).toBe('merged')
       expect((await proposals(Number(p.ticket)))[0]!.status).toBe('accepted')
-      await expect(approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).rejects.toThrow('is accepted')
+      const calls = vi.spyOn(forge(), 'mergePullRequest')
+      expect(await approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).toEqual({ approved: 'accepted' }) // idempotent
+      expect(calls).not.toHaveBeenCalled()
+    })
+
+    it('rejectSkillProposal closes the PR, records the reason and the touch, and refuses a non-admin and a second call', async () => {
+      const { p, pr, user, ws } = await proposed()
+      const lib = await import('../src/lib/actions')
+      const member = (await payload.create({ collection: 'bauherren', data: { email: `m${++seq}@x.io`, password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o } as never)) as Record<string, unknown>
+      await expect(lib.rejectSkillProposal(payload, member, { proposal: p.id })).rejects.toThrow('Only an Admin')
+      expect(await lib.rejectSkillProposal(payload, user, { proposal: p.id, note: 'too narrow' })).toEqual({ rejected: 'rejected' })
+      expect((await forge().getPullRequest(REPO, pr.number)).state).toBe('closed')
+      expect((await proposals(Number(p.ticket)))[0]).toMatchObject({ status: 'rejected', reason: 'too narrow' })
+      const touches = await payload.find({ collection: 'human_touches', where: { kind: { equals: 'reject:skill' } }, ...o })
+      expect(touches.totalDocs).toBe(1)
+      const closes = vi.spyOn(forge(), 'closePullRequest')
+      expect(await lib.rejectSkillProposal(payload, user, { proposal: p.id })).toEqual({ rejected: 'rejected' }) // idempotent
+      expect(closes).not.toHaveBeenCalled()
+      expect((await proposals(Number(p.ticket)))[0]!.reason).toBe('too narrow')
+      await expect(approveSkillProposal(payload, user, { proposal: p.id, expectSha: pr.headSha })).rejects.toThrow('is rejected')
+    })
+
+    it('approveSkillProposalOf merges the head the replay recorded in results.headSha', async () => {
+      const { p, pr, user } = await proposed()
+      const lib = await import('../src/lib/actions')
+      expect((p.results as { headSha?: string }).headSha).toBe(pr.headSha)
+      expect(await lib.approveSkillProposalOf(payload, user, { ticket: Number(p.ticket) })).toEqual({ approved: 'accepted' })
+      expect((await forge().getPullRequest(REPO, pr.number)).state).toBe('merged')
     })
   })
 })

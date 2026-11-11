@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function Settings() {
-  redirect('/settings/workspace')
+  redirect('/settings/profile')
 }

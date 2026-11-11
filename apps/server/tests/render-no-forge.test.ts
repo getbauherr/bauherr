@@ -20,7 +20,7 @@ const ALLOWED: Record<string, { ids: string[]; why: string }> = {
   'app/(app)/(shell)/requests/[id]/page.tsx': { ids: ['sourceOf', '.listComments'], why: 'only inside Comments(), under <Suspense> with a 5 s within()' },
   'app/(app)/lib/settings.ts': { ids: ['forgeOf', 'backendFor', '.listChecks', '.listRepositories'], why: 'recentChecks/collectChecks run in DeploySectionsStreamed (<Suspense>, 3 s); listRepos is called by a server action and the open exception below' },
   'app/(app)/(shell)/releases/page.tsx': { ids: ['releaseDraft'], why: 'only inside Draft(), under <Suspense> with an 8 s within()' },
-  'app/(app)/(shell)/settings/workspace/page.tsx': { ids: ['listRepos'], why: 'KNOWN OPEN: the knowledge repo picker still waits up to 3 s for the forge; to be streamed' },
+  'app/(app)/(shell)/settings/knowledge/page.tsx': { ids: ['listRepos'], why: 'only inside LoadedRepo(), under <Suspense> with a 3 s listRepos' },
 }
 
 it('no page, layout or render loader calls a forge client outside the documented allow-list', () => {

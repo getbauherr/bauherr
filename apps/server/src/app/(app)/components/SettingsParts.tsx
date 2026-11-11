@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { Tone } from '../lib/product-setup'
 import { Badge } from './ui/badge'
@@ -85,7 +86,7 @@ export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; wo
     <ul aria-label="Setup" className="list-none">
       {rows.map((r) => (
         <li key={r.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0">
-          <a href={r.href ?? `#${r.id}`}>{r.label}</a>
+          <Link href={r.href ?? `#${r.id}`}>{r.label}</Link>
           <StatusWord tone={r.tone}>{r.word}</StatusWord>
         </li>
       ))}

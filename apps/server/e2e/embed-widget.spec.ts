@@ -18,8 +18,10 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
 
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Web' }).click()
+  await page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Widget', exact: true }).click()
   const product = page.locator('#widget')
   await product.getByLabel('Name', { exact: true }).fill(name)
+  await product.getByLabel('Sessions per hour').fill('7')
   await product.getByLabel('Sites that may show the widget').fill(new URL(baseURL!).origin)
   await product.getByRole('button', { name: 'Add widget' }).click()
   const tag = product.getByRole('status').filter({ hasText: 'data-token' })
@@ -27,6 +29,7 @@ test('an Admin mints an embed token, the widget runs the interview from it, revo
   await page.reload()
   await expect(page.getByText(token)).toHaveCount(0)
   await expect(product.getByRole('cell', { name })).toBeVisible()
+  await expect(product.getByRole('row', { name }).getByRole('cell').nth(2)).toHaveText('7')
 
   const host = await page.context().newPage()
   await host.goto(`/intake-embed-test.html?token=${token}`)

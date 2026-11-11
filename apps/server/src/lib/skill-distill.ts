@@ -207,7 +207,7 @@ export const distillSkill = async (payload: Payload, ticketId: number | string):
       head: branch,
       base: base_,
     })
-    const data = { pr: pr.number, skillPath, score: withSkill.passRate, baselineScore: baseline.passRate, results }
+    const data = { pr: pr.number, skillPath, score: withSkill.passRate, baselineScore: baseline.passRate, results: { ...results, headSha: pr.headSha } }
     if (!ok) {
       await forge.commentOnPullRequest(repo, pr.number, `Rejected: ${verdict}. Closing.`)
       await forge.closePullRequest(repo, pr.number)

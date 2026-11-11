@@ -6,7 +6,7 @@ import { Field, PickField } from './SettingsForm'
 type Listing = string[] | null | 'loading'
 
 /** Connection select and Repository select of the Knowledge repo; the repositories are listed again when the Connection changes, and a typed `owner/name` stays possible. */
-export function KnowledgeRepo({ connections, connection, repos, repo }: { connections: [string, string][]; connection: string; repos: string[] | null; repo: string }) {
+export function KnowledgeRepo({ connections, connection, repos, repo }: { connections: [string, string][]; connection: string; repos: Listing; repo: string }) {
   const [conn, setConn] = useState(connection)
   const [listing, setListing] = useState<Listing>(repos)
   const first = useRef(true)

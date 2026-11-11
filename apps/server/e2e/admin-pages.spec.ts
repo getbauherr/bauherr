@@ -16,13 +16,13 @@ const signIn = async (page: Page, who: string) => {
 }
 
 test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', async ({ page }) => {
+  test.setTimeout(90_000)
   await signIn(page, email)
   await page.getByRole('button', { name: 'User menu' }).click()
   await expect(page.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
-  await page.getByRole('navigation', { name: 'Settings' }).getByText('Advanced', { exact: true }).click()
-  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Agent keys' }).click()
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'API keys' }).click()
   await expect(page).toHaveURL(/\/settings\/api-key$/)
 
   const label = `e2e ${Date.now()}`
@@ -59,7 +59,7 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await page.getByRole('button', { name: 'Filter' }).click()
   await expect(page.getByRole('link', { name: 'acme/web#2' }).first()).toBeVisible()
 
-  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Board & WIP' }).click()
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Workflow', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Where you are asked' })).toBeVisible()
   for (const name of ['Answer questions', 'Approve the plan', 'Accept on staging', 'Ask me before production']) await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: name })).toBeVisible()
   await expect(page.locator('[data-slot=toggle-row]').filter({ hasText: 'Answer questions' })).toContainText('Always on')
@@ -69,9 +69,9 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('cell', { name: 'build', exact: true })).toBeVisible()
   await expect(page.getByText('workflow.yaml')).toHaveCount(0)
 
-  await page.goto('/settings/workspace')
-  await page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: 'Factory health' }).click()
-  await expect(page.getByRole('heading', { name: 'Factory health' })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Health' }).click()
+  await expect(page).toHaveURL(/\/settings\/health$/)
+  await expect(page.getByRole('heading', { name: 'Health', exact: true })).toBeVisible()
   await expect(page.getByText('Last poll, acme/web')).toBeVisible()
   await expect(page.getByText('Gateway budget')).toBeVisible()
   await expect(page.getByRole('row', { name: /Expedite lead time \(last 5\)/ })).toContainText('12 min from flag to merge')
@@ -80,14 +80,18 @@ test('Admin: agent key shown once, Audit, Workflow, health; no /admin link', asy
   await expect(page.getByRole('row', { name: /^lint 1 / })).toBeVisible()
 })
 
-test('a Bauherr gets 404 on Audit, Workflow and Connections, no Advanced nav and no technical settings', async ({ page }) => {
+test('a Bauherr gets 404 on the Admin pages, sees only their own groups and no technical settings', async ({ page }) => {
   await signIn(page, 'member@example.com')
-  for (const path of ['audit', 'workflow', 'connections']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
+  for (const path of ['audit', 'workflow', 'connections', 'health', 'knowledge', 'chat-feedback', 'models']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
+  await page.goto('/settings/usage')
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['Profile', 'API keys', 'Team', 'Templates', 'AI usage', 'General', 'Products', 'People'])
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('group')).toHaveCount(3)
+  for (const text of ['Gateway key', 'Model tiers', 'Run mode']) await expect(page.getByText(text)).toHaveCount(0)
+  await expect(page.getByLabel('Budget per 30 days')).toHaveCount(0) // the budget is Admin-only: no page, no field
+  await expect(page.getByRole('heading', { name: 'Budget, last 30 days' })).toBeVisible() // the numbers stay readable on AI usage
   await page.goto('/settings/workspace')
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['General', 'Products', 'People', 'AI usage', 'Templates', 'API key'])
-  await expect(page.getByText('Advanced', { exact: true })).toHaveCount(0)
-  for (const text of ['Factory health', 'Gateway key', 'Model tiers', 'Run mode', 'Knowledge repo', 'read-only']) await expect(page.getByText(text)).toHaveCount(0)
-  await expect(page.getByLabel('Budget per 30 days')).toBeVisible()
+  await expect(page.getByText('Gateway key')).toHaveCount(0)
+  await expect(page.getByLabel('Name')).toHaveCount(0)
   await page.goto('/runs')
   await expect(page).toHaveURL(/\/$/)
   await page.goto('/settings/api-key')
@@ -145,7 +149,7 @@ test('the Ticket page Runs table shows Run and Duration to an Admin only and nev
   }
 })
 
-test('WIP limits: set in Settings > Board & WIP, shown in the Workflow list heading, a waiting Ticket says why', async ({ page }) => {
+test('WIP limits: set in Settings > Factory > Workflow, shown in the Workflow list heading, a waiting Ticket says why', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
   await page.getByLabel(/^Build/).fill('1')
@@ -167,7 +171,7 @@ test('WIP limits: set in Settings > Board & WIP, shown in the Workflow list head
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })
 
-test('Paths that never hold a Build: saved per Product in Settings > Board & WIP', async ({ page }) => {
+test('Paths that never hold a Build: saved per Product in Settings > Factory > Workflow', async ({ page }) => {
   await signIn(page, email)
   await page.goto('/settings/workflow')
   await expect(page.getByRole('heading', { name: 'Paths that never hold a Build' })).toBeVisible()
@@ -203,9 +207,8 @@ test('the Ticket page Repair disclosure is for an Admin only and resets counters
 
 test('every Settings nav link opens a page whose heading matches, none is an anchor', async ({ page }) => {
   await signIn(page, email)
-  await page.goto('/settings/workspace')
+  await page.goto('/settings/profile')
   const nav = page.getByRole('navigation', { name: 'Settings' })
-  await nav.getByText('Advanced', { exact: true }).click()
   const links = await nav.getByRole('link').evaluateAll((as) => as.map((a) => [a.textContent!, a.getAttribute('href')!]))
   expect(links.length).toBeGreaterThan(5)
   for (const [label, href] of links) {
@@ -232,6 +235,8 @@ test('Settings > Product > Merging: Re-detect finds the queue but not the merge_
   await signIn(page, email)
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Merge' }).click()
+  await page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Checks & merging' }).click()
+  await expect(page).toHaveURL(/\?tab=checks$/)
   const merging = page.locator('#merging')
   await merging.getByRole('button', { name: 'Re-detect' }).click()
   await expect(merging.getByTestId('merge-mode')).toContainText('train')

@@ -28,7 +28,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()
   const admin = user.role === 'admin'
-  const { run, ticket, steps, stepsTotal, callsByStep, owner, agentKeyLabel } = await loadRun(workspace.id, id, admin)
+  const { run, ticket, steps, stepsTotal, callsByStep, owner, agentKeyLabel, chain } = await loadRun(workspace.id, id, admin)
   const prUrl = run.artifacts?.prUrl
   const leased = run.mode === 'session' && run.status === 'running'
   const rerun = RERUNNABLE.includes(run.status)
@@ -41,12 +41,14 @@ export default async function RunPage({ params, searchParams }: { params: Promis
     ['Status', <StatusChip key="s" status={run.status} />],
     ['Kind', run.kind ?? kindOfRun(workflowFor(run.workspace), run) ?? '—'],
     ['Outcome', run.outcome ?? '—'],
+    ['Goal', Array.isArray(run.goal) && run.goal.length ? <ul key="goal" className="m-0 list-disc pl-4">{run.goal.map((g, i) => <li key={i}>{g}</li>)}</ul> : '—'],
     ['Executor', run.executor ?? run.mode],
     ['Session', run.sessionLabel ?? '—'],
     ['Client', [run.clientName, run.clientVersion].filter(Boolean).join(' ') || '—'],
     ['Model', run.model ?? '—'],
     ['Provider', run.provider ?? '—'],
     ['Tokens in/out/cache', `${run.tokensIn ?? 0} / ${run.tokensOut ?? 0} / ${run.tokensCache ?? 0}`],
+    ['Gateway tokens in/out', run.gatewayTokensIn == null && run.gatewayTokensOut == null ? '—' : `${run.gatewayTokensIn ?? 0} / ${run.gatewayTokensOut ?? 0}`],
     ['Cost', run.reconcileStatus === 'unpriced' ? `${run.gatewayTokensTotal ?? 0} tokens, unpriced` : run.costUsd != null ? `$${run.costUsd.toFixed(4)} (${run.costSource ?? 'sdk-estimate'})` : '—'],
   ]
   return (
@@ -103,6 +105,12 @@ export default async function RunPage({ params, searchParams }: { params: Promis
                 {details.map(([k, v]) => <div key={k}><dt className="label text-muted-foreground">{k}</dt><dd className="mono">{v}</dd></div>)}
               </dl>
             </details>
+          )}
+          {(chain.previous || chain.next.length > 0) && (
+            <ul aria-label="Run chain" className="small m-0 flex list-none flex-col gap-1 p-0">
+              {chain.previous && <li>Continues <Link className="text-primary" href={`/runs/${chain.previous}`}>Run #{chain.previous}</Link></li>}
+              {chain.next.map((n) => <li key={n}>Continued by <Link className="text-primary" href={`/runs/${n}`}>Run #{n}</Link></li>)}
+            </ul>
           )}
           {run.evidence && <div><h2 className="label text-muted-foreground">Evidence</h2><Markdown className="small" html={renderMarkdown(run.evidence)} /></div>}
           {run.error && <p className="text-destructive">{run.error}</p>}

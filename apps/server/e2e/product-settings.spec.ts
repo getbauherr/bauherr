@@ -15,6 +15,20 @@ const signIn = async (page: Page) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
+const tab = (page: Page, name: string) => page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name, exact: true }).click()
+const saved = (page: Page) => expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+
+/** The production section needs the production gate: with the default pack it is on for every Product, with the gated pack it is switched on (and saved) on the Approvals tab first. Ends on the Deploy tab. */
+const productionOn = async (page: Page) => {
+  if (!forced) {
+    await tab(page, 'Approvals')
+    await page.getByRole('switch', { name: /Ask me before production/ }).check()
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await saved(page)
+  }
+  await tab(page, 'Deploy')
+}
+
 const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
   // matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one; hydration can close the <details> again, so it is opened on every attempt
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
@@ -30,14 +44,19 @@ const confirmRemove = async (scope: Locator, label: string, done: (timeout: numb
 
 /** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
 const deleteProduct = async (page: Page) => {
+  await tab(page, 'Repository')
   const repository = page.locator('#repository')
+  await expect(repository).toBeVisible() // the removals below pass at once while the tab is still loading
   for (const label of ['Stop reading tickets', 'Remove repository']) {
     await confirmRemove(repository, label, (t) => expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: t }))
   }
+  await tab(page, 'Danger zone')
+  await expect(page.locator('#danger')).toBeVisible()
   await confirmRemove(page.locator('#danger'), 'Delete Product', (t) => expect(page).toHaveURL(/\/settings\/products$/, { timeout: t }))
 }
 
 test('list, Product page, save, validation and the single Delete section', async ({ page }) => {
+  test.setTimeout(120_000) // five tabs, six saves and the delete
   const name = `E2E Widgets ${Date.now()}`
   await signIn(page)
 
@@ -52,20 +71,11 @@ test('list, Product page, save, validation and the single Delete section', async
     await page.getByLabel('Other repository').fill('e2e/widgets')
   } else await page.getByLabel('Repository', { exact: true }).fill('e2e/widgets')
   await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page).toHaveURL(/\/settings\/products\/\d+#staging$/)
+  await expect(page).toHaveURL(/\/settings\/products\/\d+\?tab=deploy#staging$/)
   await expect(page.getByRole('heading', { name })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Setup' })).toContainText('Needs setup')
   await expect(page.getByRole('link', { name: 'Products', exact: true }).first()).toBeVisible()
-
-  const toggle = page.getByRole('switch', { name: /Ask me before production/ })
-  if (forced) {
-    await expect(toggle).toBeChecked()
-    await expect(toggle).toBeDisabled()
-    await expect(page.getByText('On for every Product by the workflow.')).toBeVisible()
-  } else {
-    await expect(toggle).not.toBeChecked()
-    await expect(page.locator('#production')).toBeHidden()
-  }
+  await expect(page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Deploy' })).toHaveAttribute('aria-current', 'page')
 
   await page.getByRole('radio', { name: /Bauherr calls my deploy hook/ }).check()
   await page.getByRole('button', { name: 'Save changes' }).click()
@@ -73,27 +83,50 @@ test('list, Product page, save, validation and the single Delete section', async
   await expect(page.getByText('Required when Bauherr calls your deploy hook.')).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Staging site' })).toBeFocused()
 
+  await tab(page, 'Approvals')
+  const toggle = page.getByRole('switch', { name: /Ask me before production/ })
+  if (forced) {
+    await expect(toggle).toBeChecked()
+    await expect(toggle).toBeDisabled()
+    await expect(page.getByText('On for every Product by the workflow.')).toBeVisible()
+  } else await expect(toggle).not.toBeChecked()
+  await tab(page, 'Deploy')
+
   await page.getByRole('radio', { name: /My CI deploys to staging/ }).check()
   await page.getByRole('textbox', { name: 'Staging site' }).fill('https://staging.e2e.example.com')
-  if (!forced) await toggle.check()
+  await productionOn(page)
+  await page.getByRole('textbox', { name: 'Staging site' }).fill('https://staging.e2e.example.com')
   await page.locator('#production').getByRole('textbox', { name: 'Add a check that has not run yet' }).fill('deploy-production')
   await page.locator('#production').getByRole('button', { name: 'Add' }).click()
   await expect(page.locator('#production').getByRole('checkbox', { name: /deploy-production/ })).toBeChecked()
-  await page.getByRole('radio', { name: /Bauherr makes the release/ }).check()
   await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await saved(page)
   await page.reload()
   await expect(page.getByRole('textbox', { name: 'Staging site' })).toHaveValue('https://staging.e2e.example.com')
-  await expect(page.getByRole('radio', { name: /Bauherr makes the release/ })).toBeChecked()
-  // With the fake forge the new repository is readable but has no check runs yet; without it the forge cannot be read.
-  await expect(page.locator('#production')).toContainText(process.env.E2E_FAKE_FORGE ? 'Almost ready' : 'Ready')
+  // With the fake forge the new repository is readable but has no check runs yet ("Almost ready"); when the 3 s forge read is slow (three workers) or fails, the names are unconfirmed and the callout says "Ready". Both are right; the old assertion picked one and flaked.
+  await expect(page.locator('#production').getByRole('status').first()).toContainText(/Almost ready|Ready/)
 
+  await tab(page, 'Releases')
+  const prerelease = page.getByRole('switch', { name: /Publish releases as pre-release/ })
+  await page.getByRole('radio', { name: /My tooling makes releases/ }).check()
+  await expect(prerelease).toBeHidden()
+  await page.getByRole('radio', { name: /Bauherr makes the release/ }).check()
+  await prerelease.check()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await saved(page)
+  await page.reload()
+  await expect(page.getByRole('radio', { name: /Bauherr makes the release/ })).toBeChecked()
+  await expect(prerelease).toBeChecked()
+  await tab(page, 'Deploy')
+  await expect(page.getByRole('textbox', { name: 'Staging site' })).toHaveValue('https://staging.e2e.example.com') // another tab's save never resets this one
+
+  await tab(page, 'Checks & merging')
   await page.getByLabel('Rules').fill('src/**')
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText('line 1: write')).toBeVisible()
   await page.getByLabel('Rules').fill('src/**, apps/** => tests/**\nschema: collections.ts => migrations/**')
   await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await saved(page)
   await page.reload()
   await expect(page.getByLabel('Rules')).toHaveValue('src/**, apps/** => tests/**\nschema: collections.ts => migrations/**')
 
@@ -115,7 +148,8 @@ test('add a Product: pick the repository from the forge, a taken short name is r
   await page.locator('#new summary', { hasText: 'Advanced' }).click()
   await expect(page.getByLabel('Short name')).toHaveValue(/^e2e-picker-\d+$/)
   await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page).toHaveURL(/\/settings\/products\/\d+#staging$/)
+  await expect(page).toHaveURL(/\/settings\/products\/\d+\?tab=deploy#staging$/)
+  await tab(page, 'Repository')
   await expect(page.locator('#repository')).toContainText('acme/knowledge')
 
   await page.goto('/settings/products/new')
@@ -134,12 +168,10 @@ test('the check picker offers the checks the forge reported and the callout turn
   await signIn(page)
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Checks' }).click()
+  await tab(page, 'Deploy')
   const production = page.locator('#production')
-  const toggle = page.getByRole('switch', { name: /Ask me before production/ })
-  if (!forced) {
-    await expect(production).toBeHidden()
-    await toggle.check()
-  }
+  if (!forced) await expect(production.getByRole('status')).toHaveCount(0) // the gate is off: the section only points at Approvals
+  await productionOn(page)
   await expect(production.getByRole('status').first()).toContainText('Not ready')
   await expect(production.getByRole('checkbox', { name: /deploy-production.*seen on 1 of 1 recent commits/ })).not.toBeChecked()
   await expect(production.getByRole('checkbox', { name: /lint/ })).not.toBeChecked()
@@ -170,8 +202,9 @@ test('typing a check name works without a forge, and the ticket link points at t
   await signIn(page)
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Widget' }).click()
+  await tab(page, 'Deploy')
+  await productionOn(page)
   const production = page.locator('#production')
-  if (!forced) await page.getByRole('switch', { name: /Ask me before production/ }).check()
   await expect(production.getByText('Could not read checks from GitHub right now. Type the check name instead.')).toBeVisible()
   await expect(production.getByRole('textbox', { name: 'Add a check that has not run yet' })).toBeVisible()
 })
@@ -194,6 +227,7 @@ test('Members: an unknown GitHub login is refused, a known one is saved', async 
   await expect(page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByLabel('GitHub login')).toHaveValue('e2e-admin')
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Checks' }).click()
+  await tab(page, 'Approvals')
   await expect(page.getByText(`${member} · @e2e-admin`)).toBeVisible()
 
   await page.goto('/settings/bauherren')
@@ -208,6 +242,7 @@ test('a Product with Tickets or a widget cannot be deleted', async ({ page }) =>
   for (const [name, why] of [['Acme Web', /tickets/], ['Acme Widget', /1 widget tokens/]] as const) {
     await page.goto('/settings/products')
     await page.getByRole('link', { name }).click()
+    await tab(page, 'Danger zone')
     await expect(page.locator('#danger')).toContainText('Cannot delete yet')
     await expect(page.locator('#danger')).toContainText(why)
     await expect(page.locator('#danger').getByRole('button', { name: 'Delete Product' })).toHaveCount(0)
@@ -227,5 +262,54 @@ test('screenshots of the list and a Product page', async ({ page }) => {
       await expect(page.getByRole('heading', { name: 'Acme Web' })).toBeVisible()
       await page.screenshot({ path: `${shots}/product-page-${scheme}-${w}.png`, fullPage: true })
     }
+  }
+})
+
+test('Product tabs: ?tab= addresses a tab, the setup checklist and the old #anchors land on the right one, the scan help is current', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/settings/products')
+  await page.getByRole('link', { name: 'Acme Web' }).click()
+  await expect(page).toHaveURL(/\/settings\/products\/\d+$/)
+  const id = /\/settings\/products\/(\d+)/.exec(page.url())![1]!
+  const tabs = page.getByRole('navigation', { name: 'Product' })
+  await expect(tabs.getByRole('link')).toHaveText(['Repository', 'Deploy', 'Approvals', 'Checks & merging', 'Releases', 'Security scan', 'Widget', 'Danger zone'])
+  await expect(tabs.getByRole('link', { name: 'Repository' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('#repository')).toBeVisible()
+
+  await page.getByRole('list', { name: 'Setup' }).getByRole('link', { name: 'Staging' }).click()
+  await expect(page).toHaveURL(new RegExp(`/settings/products/${id}\\?tab=deploy#staging$`))
+  await expect(page.locator('#staging')).toBeVisible()
+  await page.getByRole('list', { name: 'Setup' }).getByRole('link', { name: 'Approvals' }).click()
+  await expect(page).toHaveURL(/\?tab=approvals#approvals$/)
+  await expect(page.locator('#approvals')).toBeVisible()
+
+  await page.goto(`/settings/products/${id}#production`)
+  await expect(page).toHaveURL(new RegExp(`\\?tab=deploy#production$`))
+  await expect(page.locator('#production')).toBeVisible()
+  await page.goto(`/settings/products/${id}#merging`)
+  await expect(page).toHaveURL(/\?tab=checks#merging$/)
+  await expect(page.locator('#merging')).toBeVisible()
+  await page.goto(`/settings/products/${id}#release`)
+  await expect(page).toHaveURL(/\?tab=releases#release$/)
+  await page.goto(`/settings/products/${id}?tab=nope`)
+  await expect(page.locator('#repository')).toBeVisible()
+
+  await page.goto(`/settings/products/${id}?tab=security`)
+  await expect(page.getByTestId('last-scan')).toContainText('Last scan')
+  await expect(page.getByText('not active yet')).toHaveCount(0)
+  await expect(page.getByText('hourly security-scan tick')).toBeVisible()
+})
+
+test('screenshots of every Product tab', async ({ page }) => {
+  test.skip(!shots, 'set SHOTS_DIR')
+  await signIn(page)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/settings/products')
+  await page.getByRole('link', { name: 'Acme Web' }).click()
+  for (const [key, label] of [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const) {
+    await tab(page, label)
+    await expect(page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: label, exact: true })).toHaveAttribute('aria-current', 'page')
+    await page.screenshot({ path: `${shots}/product-tab-${key}-light.png`, fullPage: true })
   }
 })

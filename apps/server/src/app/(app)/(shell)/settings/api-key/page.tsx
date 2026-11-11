@@ -12,7 +12,7 @@ export default async function ApiKey() {
   const [has, keys] = await Promise.all([hasApiKey(payload, user.id), listAgentKeys(payload, user)])
   return (
     <>
-      <h2 className="heading">Agent keys</h2>
+      <h2 className="heading">API keys</h2>
       <p className="small text-muted-foreground">Connect a Claude Code session to the factory (<a className="text-primary" href="https://github.com/getbauherr/bauherr/blob/main/docs/session-mode.md">session mode</a>). It acts as you, inside your Workspaces only, but cannot approve gates: approve, accept, request changes, review cap. Those stay with you in the UI.</p>
       <SettingsForm action={mintOwnAgentKey} submit="Create agent key" primary reset>
         <Field name="label" label="Label" hint="Where it runs, e.g. laptop" />

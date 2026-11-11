@@ -7,6 +7,7 @@ import { renderMarkdown } from '../../lib/markdown'
 import { within } from '../../lib/overview'
 import { isAdmin } from '../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../lib/session'
+import { loadMergeStrip } from '../../lib/merge-strip'
 import { isFix } from '../../../../lib/release-notes'
 import { releaseDraft } from '../../../../lib/ship-release'
 
@@ -24,6 +25,7 @@ export default async function Releases({ searchParams }: { searchParams: Promise
   if (!products.length) return <EmptyState text="No Products yet." action={{ href: '/setup', label: 'Set up your Workspace' }} />
   const wanted = (await searchParams).product
   const product = products.find((p) => String(p.id) === wanted) ?? products[0]!
+  const strip = await loadMergeStrip(payload, product.id)
   return (
     <>
       <h1 className="title">Releases</h1>
@@ -32,6 +34,7 @@ export default async function Releases({ searchParams }: { searchParams: Promise
           {products.map((p) => <Tab key={p.id} href={`/releases?product=${p.id}`} aria-current={p.id === product.id ? 'page' : undefined}>{p.name}</Tab>)}
         </Tabs>
       )}
+      <p className="small text-muted-foreground" data-testid="merge-strip">{strip}</p>
       <Suspense key={product.id} fallback={<div className="flex flex-col gap-4" aria-busy="true"><div className="h-6 w-1/3 animate-pulse rounded-sm bg-secondary" /><div className="h-40 animate-pulse rounded-sm bg-secondary" /></div>}>
         <Draft payload={payload} product={product} admin={isAdmin(user)} />
       </Suspense>

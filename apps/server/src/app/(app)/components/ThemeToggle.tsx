@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { DropdownMenuRadioGroup, DropdownMenuRadioItem } from './ui/dropdown-menu'
 import { Monitor, Moon, Sun } from './icons'
+import { Button } from './ui/button'
 
 const modes = [
   { id: 'system', label: 'System', Icon: Monitor },
@@ -45,5 +46,21 @@ export function ThemeRow() {
         </DropdownMenuRadioItem>
       ))}
     </DropdownMenuRadioGroup>
+  )
+}
+
+/** The theme as three buttons on a page (Settings > Profile); stored in this browser only. */
+export function ThemePicker() {
+  const [mode, setMode] = useState<string>('system')
+  useEffect(() => setMode(storedTheme()), [])
+  return (
+    <div role="group" aria-label="Theme" className="flex gap-2">
+      {modes.map((m) => (
+        <Button key={m.id} type="button" variant="outline" aria-pressed={mode === m.id} className="aria-pressed:border-primary aria-pressed:bg-accent" onClick={() => (setMode(m.id), setTheme(m.id))}>
+          <m.Icon />
+          {m.label}
+        </Button>
+      ))}
+    </div>
   )
 }

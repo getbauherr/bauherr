@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { type Need, NEEDS } from './needs-you'
-import { GRAPH_CHECKPOINT, checkpointOfNeed } from './checkpoints'
+import { GRAPH_CHECKPOINT, SKILL_NEED, checkpointOfNeed } from './checkpoints'
 import { workflowFor } from './factory'
 import { productionGateOn } from './mode'
 import { stage } from './workflow'
@@ -10,10 +10,10 @@ import { bullets, section } from './summary'
 import { type Tpl, packTemplate, renderTemplate } from './templates'
 import { parseTldr, type PlanTldr } from './tldr'
 
-export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'decide' | 'open'
+export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
 export type DecisionOption = { label: string; action: DecisionAction; primary?: boolean; destructive?: boolean; /** The option takes a one-line note first. */ note?: 'required' | 'optional'; /** `open` only: where it is done. */ href?: string; /** `decide` only: the outcome of the `human` stage it takes. */ outcome?: string; effect: string }
 export type Decision = {
-  need: Need
+  need: Need | typeof SKILL_NEED
   checkpoint: Checkpoint
   title: string
   ask: string
@@ -29,7 +29,7 @@ export type Decision = {
 }
 
 /** The checkpoints in workflow order: the Workflow graph's checkpoint titles (`checkpoints.ts`) and the groups of the needs that are no graph node. */
-export const CHECKPOINTS = ['Triage', GRAPH_CHECKPOINT.refine, GRAPH_CHECKPOINT.plan, 'Review', GRAPH_CHECKPOINT.staging, GRAPH_CHECKPOINT.production, 'Decision', 'Stuck'] as const
+export const CHECKPOINTS = ['Triage', GRAPH_CHECKPOINT.refine, GRAPH_CHECKPOINT.plan, 'Review', GRAPH_CHECKPOINT.staging, GRAPH_CHECKPOINT.production, 'Decision', 'Skill proposal', 'Stuck'] as const
 export type Checkpoint = (typeof CHECKPOINTS)[number]
 
 /** What the sweep (or the Inbox, for a Ticket the sweep has not reached yet) knows without reading the forge. */
@@ -43,6 +43,8 @@ export type DecisionFacts = {
   productionGate?: boolean
   /** The custom `human` stage the Ticket waits in: its title and outcome keys (the options of a "Decision needed"). */
   human?: { title: string; outcomes: string[] } | null
+  /** The distilled skill a person is asked to merge (`Approve skill proposal`). */
+  skill?: { name: string; score: number | null; baseline: number | null; pr: number | null } | null
   now?: string
   /** The stored decision, so `openSince` survives a rebuild of the same need. */
   previous?: Pick<Decision, 'need' | 'openSince'> | null
@@ -56,7 +58,7 @@ const sentence = (prefix: string, title: string, suffix = ''): string => `${pref
 const SEVERITY = ['high', 'medium', 'low']
 
 /** The Decision of one need: a pure function of what is already stored, so the sweep needs no forge read and the Inbox and the Ticket page say the same. */
-export const buildDecision = (need: Need, f: DecisionFacts): Decision => {
+export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts): Decision => {
   const { ticket: t, product: p, run, planTldr: plan, stagingTldr: stg } = f
   const now = f.now ?? new Date().toISOString()
   const findings = (run?.findings ?? []).filter((x) => x.severity !== 'low')
@@ -126,7 +128,7 @@ export const buildDecision = (need: Need, f: DecisionFacts): Decision => {
           ask: `Configure the production checks of ${clip(one(p.name ?? 'this product'), 60)}`,
           recommendation: 'Add the names of the checks that report your production deploy.',
           why: ['Production approval is on, but this product has no production checks', 'Without them the factory cannot see whether a deploy worked'],
-          options: [open('Configure checks', `/settings/products/${p.id}#production`, 'Opens the product settings.')],
+          options: [open('Configure checks', `/settings/products/${p.id}?tab=deploy#production`, 'Opens the product settings.')],
           next: 'Then the production approval can be asked for.',
         }
       case 'Approve production':
@@ -207,6 +209,20 @@ export const buildDecision = (need: Need, f: DecisionFacts): Decision => {
           next: 'The ticket moves on by the outcome you pick.',
         }
       }
+      case SKILL_NEED: {
+        const k = f.skill
+        const pct = (n: number | null | undefined) => (n == null ? 'n/a' : `${Math.round(n * 100)}%`)
+        return {
+          ask: sentence('Merge the skill', k?.name ?? 'a new skill', ` learned from #${t.number ?? t.id}`),
+          recommendation: 'Approve if the replay score beats the baseline and the skill reads right.',
+          why: [`Replay score ${pct(k?.score)} against ${pct(k?.baseline)} without the skill`, ...(k?.pr != null ? [`Knowledge pull request #${k.pr}`] : [])],
+          options: [
+            { label: 'Approve skill proposal', action: 'approveSkill', primary: true, effect: 'Merges the Knowledge pull request; agents use the skill from their next Run.' },
+            { label: 'Reject', action: 'rejectSkill', destructive: true, note: 'optional', effect: 'Closes the pull request; nothing is merged.' },
+          ],
+          next: 'The skill is merged into the Knowledge repo, or the proposal is closed.',
+        }
+      }
       case 'Expedite?':
         return {
           ask: sentence('Move into the Expedite lane:', t.title),
@@ -246,7 +262,7 @@ export const settleDecision = (payload: Payload, ticket: number | string): Promi
   cas(payload, ticket, sql`"decided_need" = "needs_you", "decided_at" = now(), "needs_you" = NULL, "decision" = NULL`, sql`"needs_you" IS NOT NULL`)
 
 /** Whether the person may decide the need: an Expedite is an Admin's, every other checkpoint belongs to the Workspace's members (as the Ticket page's buttons). */
-export const canDecide = (user: { role?: string | null }, need: Need): boolean => need !== 'Expedite?' || user.role === 'admin'
+export const canDecide = (user: { role?: string | null }, need: Need | typeof SKILL_NEED): boolean => (need !== 'Expedite?' && need !== SKILL_NEED) || user.role === 'admin'
 
 export const isNeed = (v: unknown): v is Need => (NEEDS as readonly unknown[]).includes(v)
 
