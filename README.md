@@ -15,6 +15,7 @@ at the checkpoints. Self-hosted, with an audit trail and a budget per Workspace.
 [![CI](https://github.com/getbauherr/bauherr/actions/workflows/ci.yml/badge.svg)](https://github.com/getbauherr/bauherr/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/getbauherr/bauherr?logo=github&label=release)](https://github.com/getbauherr/bauherr/releases/latest)
 [![npm](https://img.shields.io/npm/v/bauherr?logo=npm)](https://www.npmjs.com/package/bauherr)
+[![Website](https://img.shields.io/badge/Website-getbauherr.dev-2552c4)](https://getbauherr.dev/)
 [![Licence: Apache-2.0](https://img.shields.io/github/license/getbauherr/bauherr)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
