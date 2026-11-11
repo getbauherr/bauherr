@@ -1,9 +1,10 @@
+import { workflowFor } from '../factory'
 import { untrustedBlock } from '@bauherr/runner'
 import { loadOverviewRows } from '../../app/(app)/lib/overview'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
-import { DEFAULT, type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
+import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
 type Doc = Record<string, any>
 export type ToolKind = 'read' | 'confirm'
@@ -50,14 +51,17 @@ const ticketOf = async (c: Ctx, ticketId: unknown): Promise<Doc | null> => {
 }
 
 const ticketLine = (t: Doc) => `#${t.number} ${t.title}`
-const stageOf = (t: Doc): string => (t.state === 'closed' ? nameOf(DEFAULT(), 'done') : (t.stage ?? nameOf(DEFAULT(), 'triage')))
-const stageOfTicket = (t: Doc) => stageTitle(DEFAULT(), stageOf(t))
+const stageOf = (t: Doc): string => {
+  const wf = workflowFor(t.workspace)
+  return t.state === 'closed' ? nameOf(wf, 'done') : (t.stage ?? nameOf(wf, 'triage'))
+}
+const stageOfTicket = (t: Doc) => stageTitle(workflowFor(t.workspace), stageOf(t))
 const gateCard = (heading: (t: Doc) => string, next: string, o: { kind?: Kind; destructive?: boolean; extra?: (i: Doc) => { label: string; value: string }[] } = {}) =>
   async (c: Ctx, input: Doc): Promise<Card> => {
     const { kind, destructive = false, extra = () => [] } = o
     const t = await ticketOf(c, input.ticket)
     if (!t) throw new Error('Ticket not found in this Workspace')
-    const wf = DEFAULT()
+    const wf = workflowFor(t.workspace)
     const stage = kind && byKind(wf, kind)?.name
     if (stage && stageOf(t) !== stage) throw new Error(`${ticketLine(t)} is in ${stageTitle(wf, stageOf(t))}, not ${stageTitle(wf, stage)}`)
     return { title: heading(t), details: [{ label: 'Ticket', value: ticketLine(t) }, { label: 'Stage', value: stageOfTicket(t) }, ...extra(input), { label: 'What happens next', value: next }], ...(destructive && { destructive }) }
@@ -70,7 +74,7 @@ const needLine = (t: Overview['tickets'][number]) => ({ number: t.number, title:
 /** Stages in workflow order with ticket counts and WIP limits, plus the open Tickets that need the person. */
 export const factoryStatus = async (workspace: number | string) => {
   const { tickets, wip } = await loadOverviewRows(Number(workspace), false)
-  const wf = DEFAULT()
+  const wf = workflowFor(workspace)
   return {
     stages: board(wf).map((s) => ({ stage: wf.stages.find((d) => d.name === s)!.title, tickets: tickets.filter((t) => t.open && t.stage === s).length, wipLimit: wip[s]?.limit ?? null })),
     needYou: tickets.filter((t) => t.open && t.needsYou).map(needLine),
@@ -78,7 +82,7 @@ export const factoryStatus = async (workspace: number | string) => {
 }
 
 const listTickets = async (c: Ctx, a: Doc) => {
-  const wf = DEFAULT()
+  const wf = workflowFor(c.workspace)
   const state = a.state === 'closed' || a.state === 'all' ? a.state : 'open'
   const limit = Math.min(Math.max(Number(a.limit) || 20, 1), 50)
   const q = typeof a.search === 'string' ? a.search.trim().toLowerCase() : ''
@@ -88,7 +92,7 @@ const listTickets = async (c: Ctx, a: Doc) => {
     .sort((x, y) => y.number - x.number)
   return {
     total: rows.length,
-    tickets: rows.slice(0, limit).map((t) => ({ number: t.number, title: t.title, product: t.product?.name ?? null, stage: stageTitle(wf, t.stage), status: plainStatus(t), need: t.needsYou, waiting: t.waiting, blockedBy: t.blockedBy.map((b) => b.number) })),
+    tickets: rows.slice(0, limit).map((t) => ({ number: t.number, title: t.title, product: t.product?.name ?? null, stage: stageTitle(wf, t.stage), status: plainStatus(wf, t), need: t.needsYou, waiting: t.waiting, blockedBy: t.blockedBy.map((b) => b.number) })),
   }
 }
 
@@ -98,7 +102,7 @@ const getRun = async (c: Ctx, a: Doc) => {
   const loaded = await loadRun(Number(c.workspace), String(a.run), false).catch(() => null)
   if (!loaded) return { error: `No Run ${a.run} in this Workspace.` }
   const { run, ticket } = loaded
-  const wf = DEFAULT()
+  const wf = workflowFor(c.workspace)
   return {
     run: run.id,
     ticket: { number: ticket.number, title: ticket.title },
@@ -154,6 +158,13 @@ const ENTRIES: Record<string, Entry> = {
     kind: 'confirm',
     ticket: (t, _i, c) => ({ ticket: t, workspaceId: c.workspace }),
     describe: gateCard((t) => `Deploy ${ticketLine(t)} to production`, "The Product's own pipeline deploys; Bauherr observes the result", { kind: 'release', destructive: true }),
+  },
+  decide: {
+    description: 'Decide a Ticket waiting in a human stage of the workflow: outcome is one of that stage\'s outcome keys.',
+    schema: withTicket({ outcome: prop('One of the stage\'s outcome keys'), note: prop('Optional note') }, ['outcome']),
+    kind: 'confirm',
+    ticket: (t, i, c) => ({ ticket: t, outcome: i.outcome, note: i.note, workspaceId: c.workspace }),
+    describe: async (c, input) => gateCard((t) => `Decide ${ticketLine(t)}: ${String(input.outcome)}`, 'The Ticket moves where the stage maps this outcome', { extra: (i) => [{ label: 'Outcome', value: String(i.outcome) }, ...note(i)] })(c, input),
   },
   grant_review_round: {
     description: 'At the review round cap, grant exactly one more review round.',

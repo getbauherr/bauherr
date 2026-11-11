@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { PLAN_MARKER } from '../src/app/(app)/lib/plan'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, needsYou } from '../src/lib/needs-you'
+import { DEFAULT } from '../src/lib/workflow'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -123,8 +124,8 @@ describe('entry', () => {
     await actions.submitPlan(payload, user, { ticket: t.id, markdown: '## Goal\n- x\n\n## Steps\n1. y' })
     await poll()
     expect(await reload(t.id)).toMatchObject({ stage: 'build' })
-    expect(needsYou({ stage: 'plan', labels: [], expedite: true }, { stage: 'plan', status: 'succeeded' }, 0, ['plan'])).toBeNull()
-    expect(needsYou({ stage: 'plan', labels: [], expedite: false }, { stage: 'plan', status: 'succeeded' }, 0, ['plan'])).toBe('Approve plan')
+    expect(needsYou(DEFAULT(), { stage: 'plan', labels: [], expedite: true }, { stage: 'plan', status: 'succeeded' }, 0, ['plan'])).toBeNull()
+    expect(needsYou(DEFAULT(), { stage: 'plan', labels: [], expedite: false }, { stage: 'plan', status: 'succeeded' }, 0, ['plan'])).toBe('Approve plan')
   })
 })
 
@@ -203,7 +204,7 @@ describe('Triage proposal', () => {
     expect(proposed).toMatchObject({ expedite: false, stage: 'plan' })
     expect(await labelsOf(i.number)).not.toContain(EXPEDITE_LABEL)
     expect(await labelsOf(i.number)).toContain(EXPEDITE_PROPOSED)
-    expect(needsYou({ stage: proposed.stage, labels: proposed.labels, expedite: proposed.expedite }, null)).toBe('Expedite?')
+    expect(needsYou(DEFAULT(), { stage: proposed.stage, labels: proposed.labels, expedite: proposed.expedite }, null)).toBe('Expedite?')
 
     await actions.expedite(payload, user, { ticket: t.id })
     expect(await labelsOf(i.number)).toContain(EXPEDITE_LABEL)
@@ -211,7 +212,7 @@ describe('Triage proposal', () => {
     await poll()
     const done = await reload(t.id)
     expect(done.expedite).toBe(true)
-    expect(needsYou({ stage: done.stage, labels: done.labels, expedite: done.expedite }, null)).toBeNull()
+    expect(needsYou(DEFAULT(), { stage: done.stage, labels: done.labels, expedite: done.expedite }, null)).toBeNull()
   })
 
   it('a label set by someone who is not a gate owner or Admin is stripped and the Ticket goes through Triage', async () => {

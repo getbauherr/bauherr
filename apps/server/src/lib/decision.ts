@@ -2,14 +2,16 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { type Need, NEEDS } from './needs-you'
 import { GRAPH_CHECKPOINT, checkpointOfNeed } from './checkpoints'
+import { workflowFor } from './factory'
 import { productionGateOn } from './mode'
+import { stage } from './workflow'
 import { cas, id } from './release'
 import { bullets, section } from './summary'
 import { type Tpl, packTemplate, renderTemplate } from './templates'
 import { parseTldr, type PlanTldr } from './tldr'
 
-export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'open'
-export type DecisionOption = { label: string; action: DecisionAction; primary?: boolean; destructive?: boolean; /** The option takes a one-line note first. */ note?: 'required' | 'optional'; /** `open` only: where it is done. */ href?: string; effect: string }
+export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'decide' | 'open'
+export type DecisionOption = { label: string; action: DecisionAction; primary?: boolean; destructive?: boolean; /** The option takes a one-line note first. */ note?: 'required' | 'optional'; /** `open` only: where it is done. */ href?: string; /** `decide` only: the outcome of the `human` stage it takes. */ outcome?: string; effect: string }
 export type Decision = {
   need: Need
   checkpoint: Checkpoint
@@ -27,7 +29,7 @@ export type Decision = {
 }
 
 /** The checkpoints in workflow order: the Workflow graph's checkpoint titles (`checkpoints.ts`) and the groups of the needs that are no graph node. */
-export const CHECKPOINTS = ['Triage', GRAPH_CHECKPOINT.refine, GRAPH_CHECKPOINT.plan, 'Review', GRAPH_CHECKPOINT.staging, GRAPH_CHECKPOINT.production, 'Stuck'] as const
+export const CHECKPOINTS = ['Triage', GRAPH_CHECKPOINT.refine, GRAPH_CHECKPOINT.plan, 'Review', GRAPH_CHECKPOINT.staging, GRAPH_CHECKPOINT.production, 'Decision', 'Stuck'] as const
 export type Checkpoint = (typeof CHECKPOINTS)[number]
 
 /** What the sweep (or the Inbox, for a Ticket the sweep has not reached yet) knows without reading the forge. */
@@ -39,6 +41,8 @@ export type DecisionFacts = {
   planTldr?: PlanTldr | null
   stagingTldr?: { whatYouGet: string; found: string } | null
   productionGate?: boolean
+  /** The custom `human` stage the Ticket waits in: its title and outcome keys (the options of a "Decision needed"). */
+  human?: { title: string; outcomes: string[] } | null
   now?: string
   /** The stored decision, so `openSince` survives a rebuild of the same need. */
   previous?: Pick<Decision, 'need' | 'openSince'> | null
@@ -192,6 +196,17 @@ export const buildDecision = (need: Need, f: DecisionFacts): Decision => {
           options: [rerun, { label: 'Back to backlog', action: 'backToBacklog', destructive: true, effect: 'The ticket is untriaged again and is planned from the start.' }],
           next: 'A new attempt starts.',
         }
+      case 'Decision needed': {
+        const h = f.human ?? { title: stage, outcomes: [] }
+        const label = (k: string) => k.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase())
+        return {
+          ask: sentence(`Decide the ${h.title} step of`, t.title),
+          recommendation: null,
+          why: [`The ticket waits in the "${h.title}" stage for a person`],
+          options: h.outcomes.map((o, i): DecisionOption => ({ label: label(o), action: 'decide' as const, outcome: o, primary: i === 0, effect: `The ticket follows the outcome "${o}" of this stage.` })).concat(h.outcomes.length ? [] : [open('Open the ticket', `/tickets/${tid}`, 'Decide on the ticket page.')]),
+          next: 'The ticket moves on by the outcome you pick.',
+        }
+      }
       case 'Expedite?':
         return {
           ask: sentence('Move into the Expedite lane:', t.title),
@@ -237,6 +252,12 @@ export const isNeed = (v: unknown): v is Need => (NEEDS as readonly unknown[]).i
 
 type Doc = Record<string, any>
 
+/** The `human` stage a Ticket row sits in (its Workspace's workflow), for the options of its "Decision needed". */
+export const humanStage = (t: Doc): { title: string; outcomes: string[] } | null => {
+  const def = t.stage ? stage(workflowFor(t.workspace), t.stage) : undefined
+  return def?.kind === 'human' ? { title: def.title, outcomes: def.outcomeOrder ?? Object.keys(def.outcomes) } : null
+}
+
 /** The Decision of a Ticket row for the sweep: the Product and the newest MR link are the only extra reads, none of them on the forge. */
 export const prepareDecision = async (payload: Payload, t: Doc, need: Need, run: Doc | null): Promise<Decision> => {
   const o = { overrideAccess: true, depth: 0 } as const
@@ -245,7 +266,7 @@ export const prepareDecision = async (payload: Payload, t: Doc, need: Need, run:
     payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 5, select: { artifacts: true }, ...o }),
   ])
   const mrUrl = (builds.docs as Doc[]).map((r) => r.artifacts?.prUrl as string | undefined).find(Boolean) ?? null
-  return buildDecision(need, { ticket: t as DecisionFacts['ticket'], product: product as DecisionFacts['product'], run: run as DecisionFacts['run'], mrUrl, planTldr: t.planTldr, stagingTldr: t.stagingTldr, productionGate: productionGateOn(product), previous: t.decision })
+  return buildDecision(need, { ticket: t as DecisionFacts['ticket'], product: product as DecisionFacts['product'], run: run as DecisionFacts['run'], mrUrl, planTldr: t.planTldr, stagingTldr: t.stagingTldr, productionGate: productionGateOn(workflowFor(t.workspace), product), human: humanStage(t), previous: t.decision })
 }
 
 /** Stores the plan's parsed TL;DR (null when it has none) so pages and the sweep read it from the Ticket row. */

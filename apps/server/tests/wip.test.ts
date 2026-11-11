@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { wipLimitsError } from '../src/lib/wip-limits'
+import { wipLimit, wipLimitsError } from '../src/lib/wip-limits'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -21,7 +21,8 @@ let repo = ''
 let connection: number
 let n = 0
 
-const usePack = (name?: 'gated-pack') => {
+/** No name = the default pack. Tests that move plans to build without an approval say `usePack('bare-pack')`: the default pack has the plan gate on. */
+const usePack = (name?: 'gated-pack' | 'bare-pack') => {
   if (name) process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
   else delete process.env.BAUHERR_PACK_DIR
 }
@@ -95,6 +96,7 @@ describe('Board data', () => {
 
 describe('the pull rule', () => {
   it('a third approved plan starts no Build Run while Build is full (gate off); a freed slot pulls it on the next poll', async () => {
+    usePack('bare-pack')
     await limits({ build: 2 })
     const [a] = [await ticket('a', 'build'), await ticket('b', 'build')]
     const c = await ticket('c', 'plan')
@@ -182,6 +184,7 @@ describe('the pull rule', () => {
 
 describe('counting and workspaces', () => {
   it('a Build Ticket waiting for a full Review still counts in Build, so no new Build Run starts', async () => {
+    usePack('bare-pack')
     await limits({ build: 2, review: 1 })
     await ticket('r', 'review')
     for (const title of ['a', 'b']) await ticket(title, 'build', { waitingFor: 'review' })
@@ -221,6 +224,7 @@ describe('counting and workspaces', () => {
 
 describe('sub-tickets and parents', () => {
   it('children over the limit wait in Plan for Build without a Run and are not counted; parents are not counted', async () => {
+    usePack('bare-pack')
     await limits({ build: 1 })
     const p = await ticket('p', 'plan', {}, SUBS)
     await poll()
@@ -288,6 +292,7 @@ describe('Board counts and waiting display', () => {
 
 describe('limits', () => {
   it('a raised or removed limit releases a waiting Ticket on the next poll; no limit means no hold', async () => {
+    usePack('bare-pack')
     await limits({ build: 1 })
     await ticket('a', 'build')
     const b = await ticket('b', 'plan')
@@ -296,7 +301,7 @@ describe('limits', () => {
     await limits({ build: 2 })
     await poll()
     expect(await reload(b.id)).toMatchObject({ stage: 'build', waitingFor: null })
-    await limits(null)
+    await limits({})
     const c = await ticket('c', 'plan')
     await poll()
     expect(await reload(c.id)).toMatchObject({ stage: 'build', waitingFor: null })
@@ -322,12 +327,13 @@ describe('limits', () => {
     expect(wipLimitsError([1])).toMatch(/object/)
   })
 
-  it('new Workspaces start with the default limits; only an Admin may change them', async () => {
+  it('new Workspaces have no override and get the limits of their factory file; only an Admin may change them', async () => {
     const w = await payload.create({ collection: 'workspaces', data: { name: 'new', slug: 'new' }, ...o })
-    expect(w.wipLimits).toEqual({ plan: 3, build: 2, review: 3, release: 5 })
+    expect(w.wipLimits).toBeNull()
+    expect(['plan', 'build', 'review', 'release'].map((s) => wipLimit(w, s))).toEqual([3, 2, 3, 5])
     const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: w.id }] }, ...o })
     await payload.update({ collection: 'workspaces', id: w.id, data: { wipLimits: { build: 9 } }, user: member, overrideAccess: false })
-    expect((await payload.findByID({ collection: 'workspaces', id: w.id, ...o })).wipLimits).toEqual({ plan: 3, build: 2, review: 3, release: 5 })
+    expect((await payload.findByID({ collection: 'workspaces', id: w.id, ...o })).wipLimits).toBeNull()
     await expect(payload.update({ collection: 'workspaces', id: w.id, data: { wipLimits: { build: 0 } }, ...o })).rejects.toThrow()
   })
 

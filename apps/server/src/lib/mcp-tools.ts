@@ -5,7 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, acceptStaging, approveSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -16,7 +16,10 @@ import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { kindOfRun } from './stage-text'
-import { DEFAULT, is, pullRank } from './workflow'
+import { advance } from './advance'
+import { workflowFor } from './factory'
+import { is, pullRank, stage as stageDef, type Workflow } from './workflow'
+import { assertOutcome, finishAgentRun } from './agent-stage'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor, type GoalStage } from './run-ctx'
 import * as knowledge from './knowledge'
@@ -117,7 +120,7 @@ const str = (description: string) => ({ type: 'string', description })
 const runId = { runId: { type: ['number', 'string'], description: 'Run id' } }
 const leaseToken = { leaseToken: str('Lease token returned by claim_run') }
 const sessionArg = { session: str('Stable name of this session (max 64 chars). Pass it on every claim_next, claim_run and list_frontier: a Review of a build you labelled the same is skipped as "your own build".') }
-const stagesArg = () => ({ stages: { type: 'array', items: { enum: pullRank(DEFAULT()) }, description: 'Only these stages; the pull order applies within them. Omit for all.' } })
+const stagesArg = () => ({ stages: { type: 'array', items: { type: 'string' }, description: 'Only these stages; the pull order applies within them. Omit for all.' } })
 const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id (Bauherr database id)' } }
 
 const clientArgs = { client: str('What you are: client name/version, e.g. claude-code/2.1'), model: str('What you are: model id'), provider: str('What you are: provider') }
@@ -139,13 +142,20 @@ const labelOf = (a: { session?: unknown }): string | null => {
 }
 
 /** The stages the caller works, or null for all (no or empty `stages`). */
-const stagesOf = (a: { stages?: unknown }): string[] | null => {
+const stagesOf = (a: { stages?: unknown }, c: Ctx): string[] | null => {
   if (a.stages == null) return null
   if (!Array.isArray(a.stages)) throw new Error('stages must be an array')
-  const known = pullRank(DEFAULT())
+  const known = [...new Set([c.workspace, ...tenantsOf(c.user), null].flatMap((w) => pullRank(workflowFor(w))))]
   const bad = a.stages.filter((s) => !known.includes(s))
   if (bad.length) throw new Error(`unknown stage ${bad.join(', ')}; use ${known.join(', ')}`)
   return a.stages.length ? a.stages : null
+}
+
+/** What a session needs to work an `agent` stage: its skill, the role's profile and the outcome keys it may report. */
+const agentBrief = (wf: Workflow, run: Doc) => {
+  const def = stageDef(wf, run.stage)!
+  const role = wf.roles.find((r) => r.id === def.role)
+  return { stage: def.name, title: def.title, skill: def.skill, role: role && { id: role.id, title: role.title, profile: role.profile ?? '' }, outcomes: Object.keys(def.outcomes), reads: 'get_ticket, read_worklog, load_skill; no push, no MR, no approval tools' }
 }
 
 /** The GitHub login a session Run assigns on the Ticket. */
@@ -153,8 +163,8 @@ const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as stri
 
 /** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string, label: string | null = null, stages: string[] | null = null, who: ReturnType<typeof clientOf> = clientOf({}, c)) => {
-  const wf = DEFAULT()
   const run = await getRun(c, runId)
+  const wf = workflowFor(run.workspace)
   const kind = kindOfRun(wf, run)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
   if (run.mode !== 'session' || run.stage === 'scan') throw new Error(notClaimable)
@@ -184,12 +194,12 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   }
   await record(c.payload, id(run.ticket), { run: run.id, actor: label ?? c.user.email, cause: 'run:claimed' })
   // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
-  const fence = kind === 'triage' || kind === 'review'
+  const fence = kind === 'triage' || kind === 'review' || kind === 'agent'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label, stages)
   const escalated = await isEscalated(c.payload, won)
   if (escalated && kind === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
-  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null }
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }) }, goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
@@ -207,8 +217,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
     depth: 1,
   })
-  const wf = DEFAULT()
-  const all = tickets.docs.filter((t: Doc) => !is(wf, t.stage, 'container'))
+  const all = tickets.docs.filter((t: Doc) => !is(workflowFor(t.workspace), t.stage, 'container'))
   for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
@@ -222,7 +231,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
   const builders = new Map<unknown, string | null>()
   for (const r of runs.docs as Doc[]) {
     if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
-    if (kindOfRun(wf, r) === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
+    if (kindOfRun(workflowFor(r.workspace), r) === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
   }
   const inStages = (t: Doc) => !stages || stages.includes((latest.get(t.id)?.stage ?? t.stage) as string)
   return { open: frontierOrder(unblocked.filter(inStages) as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all: all.filter(inStages), builders }
@@ -239,7 +248,7 @@ const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unkno
 }
 
 /** A Review Run on a Ticket whose latest Build Run came from the caller's own (non-empty) session label. */
-const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && (f.latest.has(t.id) && kindOfRun(DEFAULT(), f.latest.get(t.id)!)) === 'review' && f.builders.get(t.id) === label
+const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && (f.latest.has(t.id) && kindOfRun(workflowFor(t.workspace), f.latest.get(t.id)!)) === 'review' && f.builders.get(t.id) === label
 
 /** Why `t` cannot be claimed right now, or null when it can. */
 const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: string | null): string | null => {
@@ -283,7 +292,7 @@ export const tools: Tool[] = [
     },
     async run(a, c) {
       const label = labelOf(a)
-      const f = await frontier(c, a.product, stagesOf(a))
+      const f = await frontier(c, a.product, stagesOf(a, c))
       if (!f) return []
       const { open, latest } = f
       const leases = [...latest.values()].filter((r) => r.status === 'running' && r.mode === 'session')
@@ -312,7 +321,7 @@ export const tools: Tool[] = [
       const live = await ts.get(n)
       const mr = await prOf(c.payload, t)
       const pr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head } : null
-      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, is(DEFAULT(), t.stage, 'build') ? 'build' : 'plan'), pr }
+      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, is(workflowFor(t.workspace), t.stage, 'build') ? 'build' : 'plan'), pr }
     },
   },
   {
@@ -324,11 +333,11 @@ export const tools: Tool[] = [
     },
     async run(a, c) {
       const label = labelOf(a)
-      const stages = stagesOf(a)
+      const stages = stagesOf(a, c)
       const run = await getRun(c, a.runId)
       if (isClaimable(run)) {
         const ticket = await getTicket(c, id(run.ticket))
-        if (is(DEFAULT(), ticket.stage, 'container')) throw new Error('parents are not claimable')
+        if (is(workflowFor(ticket.workspace), ticket.stage, 'container')) throw new Error('parents are not claimable')
         if (stages && !stages.includes(run.stage as string)) throw new Error(`Run ${run.id} is a ${run.stage} Run, not in stages ${stages.join(', ')}`)
         const f = (await frontier(c, undefined, stages))!
         if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
@@ -348,7 +357,7 @@ export const tools: Tool[] = [
     },
     async run(a, c) {
       const label = labelOf(a)
-      const stages = stagesOf(a)
+      const stages = stagesOf(a, c)
       const f = await frontier(c, a.product, stages)
       const failed: { run: number | string; reason: string }[] = []
       for (const t of f?.open ?? []) {
@@ -439,7 +448,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, markdown: str('Full plan markdown') }, ['runId', 'leaseToken', 'markdown']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (kindOfRun(DEFAULT(), run) !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
+      if (kindOfRun(workflowFor(run.workspace), run) !== 'plan') throw new Error(`run ${run.id} is a ${run.stage} Run, not a plan Run`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       return { ...(await submitPlan(c.payload, c.user, { ticket: id(run.ticket), markdown: a.markdown, requireSummary: true })), leaseExpiresAt }
     },
@@ -475,6 +484,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
+      if (kindOfRun(workflowFor(run.workspace), run) === 'agent') throw new Error(`run ${run.id} is an agent stage Run: it cannot request a review`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       return { ...(await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })), leaseExpiresAt }
     },
@@ -494,8 +504,8 @@ export const tools: Tool[] = [
   {
     name: 'finish_run',
     access: 'agent',
-    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output; otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
-    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket') }, ['runId', 'leaseToken', 'status']),
+    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output (an agent stage: outcome, optionally one comment; a Build Run that cannot go on: outcome replan); otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
+    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket'), outcome: str('agent stages (required with succeeded): one of the outcome keys of the claim\'s agent.outcomes; a Build Run may report replan'), comment: str('agent stages: one markdown comment posted on the Ticket') }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
       if (a.status !== 'succeeded' && !a.reason) throw new Error('reason is required unless succeeded')
@@ -504,13 +514,19 @@ export const tools: Tool[] = [
       const reasonKind = a.status === 'succeeded' ? null : (a.reasonKind ?? (a.status === 'needs_human' ? 'decision' : null))
       const run = await getRun(c, a.runId, a)
       const ticket = await getTicket(c, id(run.ticket))
+      const kind = kindOfRun(workflowFor(run.workspace), run)
+      const replan = kind === 'build' && a.status === 'succeeded' && a.outcome === 'replan'
+      if (kind === 'agent') {
+        if (a.prUrl) throw new Error('an agent stage cannot link an MR')
+        if (a.status === 'succeeded') assertOutcome(run, a.outcome)
+      } else if (a.outcome !== undefined && !replan) throw new Error('outcome is for agent stages (and replan on a Build Run)')
       const { ts, n } = await sourceOf(c.payload, ticket)
       if (a.prUrl) {
         await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
         await ts.addLink(n, a.prUrl)
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
-      if (a.status === 'succeeded' && a.prUrl && kindOfRun(DEFAULT(), run) === 'build') {
+      if (a.status === 'succeeded' && a.prUrl && kind === 'build' && !replan) {
         const asked = await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '' })
         if ('refused' in asked) throw new Error(`${asked.refused}: fix them on the MR, push, run the required checks, then finish again`)
       }
@@ -521,7 +537,12 @@ export const tools: Tool[] = [
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
-      if (kindOfRun(DEFAULT(), run) === 'build' && a.status === 'succeeded' && a.prUrl) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
+      if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
+      if ((kind === 'agent' && a.status === 'succeeded') || replan) {
+        if (replan) await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET "outcome" = 'replan' WHERE "id" = ${run.id}`)
+        if (replan) await advance(c.payload, ts, ticket, 'replan', { by: 'factory', run, note: a.comment })
+        else await finishAgentRun(c.payload, run, ticket, a.outcome, a.comment)
+      }
       return { status: a.status, ...(defaulted && { note: 'reasonKind was missing: treated as decision, so the owner gets this. Pass stuck when a stronger model could solve it.' }) }
     },
   },
@@ -532,7 +553,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, prUrl: str('URL of the open replacement MR') }, ['runId', 'leaseToken', 'prUrl']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (kindOfRun(DEFAULT(), run) !== 'build') throw new Error('relink_mr is for Build Runs')
+      if (kindOfRun(workflowFor(run.workspace), run) !== 'build') throw new Error('relink_mr is for Build Runs')
       const ticket = await getTicket(c, id(run.ticket))
       await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
       const leaseExpiresAt = await ownerWrite(c, run, a.leaseToken, sql`"artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ prUrl: a.prUrl })}::jsonb, ${U}`)
@@ -560,7 +581,7 @@ export const tools: Tool[] = [
     ),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (kindOfRun(DEFAULT(), run) !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
+      if (kindOfRun(workflowFor(run.workspace), run) !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
       const review = normalizeReview(a)
       const reviewedSha = (await prOf(c.payload, await getTicket(c, id(run.ticket))))?.pr.headSha ?? null
       await ownerWrite(
@@ -589,7 +610,7 @@ export const tools: Tool[] = [
     ),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (kindOfRun(DEFAULT(), run) !== 'triage') throw new Error(`run ${run.id} is a ${run.stage} Run, not a triage Run`)
+      if (kindOfRun(workflowFor(run.workspace), run) !== 'triage') throw new Error(`run ${run.id} is a ${run.stage} Run, not a triage Run`)
       const triage = normalizeTriage(a)
       await ownerWrite(
         c,
@@ -656,6 +677,18 @@ export const tools: Tool[] = [
     async run(a, c) {
       await getTicket(c, a.ticket)
       return acceptStaging(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'decide',
+    access: 'human',
+    description: 'Human only: decide a Ticket waiting in a `human` stage of the workflow. outcome is one of the stage\'s outcome keys; the Ticket moves where the stage maps it and a human touch decide:<stage>:<outcome> is recorded. Refused for agent keys.',
+    inputSchema: obj({ ...ticketId, outcome: str('One of the stage\'s outcome keys'), note: str('Optional note posted on the Ticket') }, ['ticket', 'outcome']),
+    async run(a, c) {
+      await getTicket(c, a.ticket)
+      const r = await decide(c.payload, c.user, a)
+      await settleDecision(c.payload, a.ticket)
+      return r
     },
   },
   {

@@ -1,6 +1,7 @@
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import { tenantsOf } from '../actions'
+import { loadWorkflows } from '../factory'
 import type { ChatEvent } from './engine'
 import type { Who } from './threads'
 
@@ -19,6 +20,7 @@ const cookie = (req: Request, name: string): string | undefined =>
 /** The signed-in person and their current Workspace (the `bauherr-ws` cookie, checked against their memberships; the first one without it), or a 401/404 Response. */
 export const chatWho = async (req: Request): Promise<Who | Response> => {
   const payload = await getPayload({ config })
+  await loadWorkflows(payload)
   const { user } = await payload.auth({ headers: req.headers })
   if (!user) return fail('unauthorized', 401)
   const u = user as Doc

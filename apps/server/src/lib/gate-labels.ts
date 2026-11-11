@@ -3,7 +3,9 @@ import type { LabelEvent } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { gateOwnersOf, logins } from './gates'
 import { EXPEDITE_LABEL, EXPEDITE_SKIP_TOUCH } from './needs-you'
+import { workflowFor } from './factory'
 import { humanGates } from './mode'
+import type { Workflow } from './workflow'
 import { id } from './release'
 
 type Doc = Record<string, any>
@@ -20,7 +22,7 @@ export const GATE_LABELS = [
 ] as const
 
 /** Whether the workflow has the gate on (#175). */
-export const gateIsOn = (gate: (typeof GATE_LABELS)[number]['gate']) => gate === 'expedite' || humanGates().includes(gate)
+export const gateIsOn = (wf: Workflow, gate: (typeof GATE_LABELS)[number]['gate']) => gate === 'expedite' || humanGates(wf).includes(gate)
 
 /** A recorded touch legitimises a factory-login label only when it was recorded shortly before the label event. */
 export const TOUCH_WINDOW_MS = 10 * 60_000
@@ -46,9 +48,10 @@ export interface GateVerdict {
 /** Verifies every gate label in `labels` against the forge's label events (spec workflow.md, "Gate labels"). */
 export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: string[], ts: Forge, gates: readonly (typeof GATE_LABELS)[number][] = GATE_LABELS): Promise<GateVerdict> => {
   const verdict: GateVerdict = { accepted: [], rejected: [], pending: [] }
+  const wf = workflowFor(ticket.workspace)
   const inPlay = gates.filter((g) => labels.includes(g.label))
-  verdict.accepted.push(...inPlay.filter((g) => !g.strictWhenOff && !gateIsOn(g.gate)).map((g) => g.label))
-  const present = inPlay.filter((g) => g.strictWhenOff || gateIsOn(g.gate))
+  verdict.accepted.push(...inPlay.filter((g) => !g.strictWhenOff && !gateIsOn(wf, g.gate)).map((g) => g.label))
+  const present = inPlay.filter((g) => g.strictWhenOff || gateIsOn(wf, g.gate))
   if (!present.length) return verdict
   const n = String(ticket.number)
   let events: LabelEvent[]
@@ -77,7 +80,7 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
       where: { and: [{ ticket: { equals: ticket.id } }, { kind: { in: [...g.recorded] } }, { at: { greater_than_equal: new Date(at - TOUCH_WINDOW_MS).toISOString() } }, { at: { less_than_equal: new Date(at + SKEW_MS).toISOString() } }] },
       ...o,
     })).totalDocs > 0
-    const on = gateIsOn(g.gate)
+    const on = gateIsOn(wf, g.gate)
     if (factory ? touched : on && owners.has(actor)) {
       verdict.accepted.push(g.label)
       if (!factory && !touched) {

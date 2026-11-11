@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { stageGroup } from '../../../lib/frontier'
 import { layoutGraph } from '../lib/graph'
-import { DEFAULT, title } from '../../../lib/workflow'
+import { title, type Workflow } from '../../../lib/workflow'
 import type { TicketRow } from '../lib/overview'
 import { ticketStatus } from '../lib/status'
 
@@ -9,15 +9,15 @@ const DONE_LIMIT = 12
 const W = 220, H = 64, GX = 72, GY = 20, PAD = 4
 const x = (col: number) => PAD + col * (W + GX)
 const y = (row: number) => PAD + row * (H + GY)
-const doingOf = (t: TicketRow) => {
-  const s = ticketStatus(DEFAULT(), t)
+const doingOf = (wf: Workflow, t: TicketRow) => {
+  const s = ticketStatus(wf, t)
   return s.phase === 'working' ? s.detail : null
 }
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; critical: boolean }; x: number; y: number }) {
-  const doing = doingOf(t)
-  const label = `#${t.number} ${t.title}, stage ${title(DEFAULT(), t.stage)}${n.ready ? ', ready' : ''}${doing ? `, ${doing}` : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
+function Node({ wf, t, n, x: nx, y: ny }: { wf: Workflow; t: TicketRow; n: { ready: boolean; critical: boolean }; x: number; y: number }) {
+  const doing = doingOf(wf, t)
+  const label = `#${t.number} ${t.title}, stage ${title(wf, t.stage)}${n.ready ? ', ready' : ''}${doing ? `, ${doing}` : ''}${t.blockedBy.length ? `, blocked by ${t.blockedBy.map((b) => `#${b.number}`).join(', ')}` : ''}`
   return (
     <Link href={`/tickets/${t.id}`} aria-label={label} className="gnode group cursor-pointer outline-none [--stage:var(--ink-muted)] data-[stage=plan]:[--stage:var(--warn)] data-[stage=build]:[--stage:var(--accent)] data-[stage=review]:[--stage:var(--accent-strong)] data-[stage=release]:[--stage:var(--warn)] data-[stage=done]:[--stage:var(--ok)]" data-stage={t.stage} data-ready={n.ready || undefined} data-critical={n.critical || undefined} data-running={doing ? '' : undefined} data-ticket={t.number}>
       <rect className="box fill-card stroke-border group-hover:stroke-primary group-data-[critical]:fill-accent group-data-[ready]:stroke-ok group-data-[ready]:[stroke-width:2] group-data-[ready]:group-hover:stroke-primary group-data-[running]:motion-safe:animate-march group-data-[running]:stroke-primary group-data-[running]:motion-safe:[stroke-dasharray:6_4] group-data-[running]:[stroke-width:2] group-focus-visible:stroke-ring group-focus-visible:[stroke-width:2]" x={nx} y={ny} width={W} height={H} rx={4} />
@@ -32,13 +32,13 @@ function Node({ t, n, x: nx, y: ny }: { t: TicketRow; n: { ready: boolean; criti
   )
 }
 
-export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
-  const { nodes, edges, cycle } = layoutGraph(tickets)
+export function TicketGraph({ wf, tickets }: { wf: Workflow; tickets: TicketRow[] }) {
+  const { nodes, edges, cycle } = layoutGraph(wf, tickets)
   const byId = new Map(tickets.map((t) => [t.id, t]))
   const at = new Map(nodes.map((n) => [n.id, n]))
   const linked = nodes.filter((n) => !n.isolated)
   const isolated = nodes.filter((n) => n.isolated)
-  const running = isolated.filter((n) => doingOf(byId.get(n.id)!)).length
+  const running = isolated.filter((n) => doingOf(wf, byId.get(n.id)!)).length
   const cols = Math.max(0, ...linked.map((n) => n.col)) + 1
   const rows = Math.max(0, ...linked.map((n) => n.row)) + 1
   return (
@@ -61,7 +61,7 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
               const x1 = x(a.col) + W, y1 = y(a.row) + H / 2, x2 = x(b.col), y2 = y(b.row) + H / 2, dx = Math.max(GX, (x2 - x1) / 2)
               return <path key={`${e.from}-${e.to}`} className="gedge fill-none stroke-border [stroke-width:1.5] data-[implicit]:[stroke-dasharray:5_4] data-[critical]:stroke-primary data-[critical]:[stroke-width:2.5]" data-critical={e.critical || undefined} data-implicit={e.implicit || undefined} d={`M${x1} ${y1}C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`} markerEnd="url(#tg-arrow)" />
             })}
-            {linked.map((n) => <Node key={n.id} t={byId.get(n.id)!} n={n} x={x(n.col)} y={y(n.row)} />)}
+            {linked.map((n) => <Node wf={wf} key={n.id} t={byId.get(n.id)!} n={n} x={x(n.col)} y={y(n.row)} />)}
           </svg>
         </div>
       )}
@@ -69,14 +69,14 @@ export function TicketGraph({ tickets }: { tickets: TicketRow[] }) {
         <section aria-labelledby="tg-isolated">
           <h2 className="label" id="tg-isolated">Without dependencies ({isolated.length}{running ? `, ${running} running` : ''})</h2>
           {[...Array(6).keys()].map((g) => {
-            const all = isolated.filter((n) => stageGroup(byId.get(n.id)!.stage) === g)
+            const all = isolated.filter((n) => stageGroup(wf, byId.get(n.id)!.stage) === g)
             if (!all.length) return null
             const group = g === 5 ? [...all].sort((p, q) => byId.get(q.id)!.number - byId.get(p.id)!.number).slice(0, DONE_LIMIT) : all
             return (
               <section key={g} aria-labelledby={`tg-iso-${g}`}>
-                <h3 className="label" id={`tg-iso-${g}`}>{g === 5 ? 'done' : title(DEFAULT(), byId.get(group[0].id)!.stage)} ({all.length})</h3>
+                <h3 className="label" id={`tg-iso-${g}`}>{g === 5 ? 'done' : title(wf, byId.get(group[0].id)!.stage)} ({all.length})</h3>
                 <ul className="mt-2 mb-4 flex list-none flex-wrap gap-3 p-0">
-                  {group.map((n) => <li key={n.id}><svg className="block max-w-none" role="group" aria-label={`Ticket #${byId.get(n.id)!.number}`} width={W + PAD * 2} height={H + PAD * 2}><Node t={byId.get(n.id)!} n={n} x={PAD} y={PAD} /></svg></li>)}
+                  {group.map((n) => <li key={n.id}><svg className="block max-w-none" role="group" aria-label={`Ticket #${byId.get(n.id)!.number}`} width={W + PAD * 2} height={H + PAD * 2}><Node wf={wf} t={byId.get(n.id)!} n={n} x={PAD} y={PAD} /></svg></li>)}
                 </ul>
                 {all.length > group.length && <Link className="small" href="/?done=1">All done Tickets</Link>}
               </section>

@@ -24,7 +24,10 @@ import { isTemplateName, lintTemplate } from '../../../../lib/template-text'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
-import { DEFAULT, modeStages, wipStages } from '../../../../lib/workflow'
+import { modeStages, wipStages } from '../../../../lib/workflow'
+import { parse } from 'yaml'
+import { applyFactory, packSource, workflowFor, type ApplyResult } from '../../../../lib/factory'
+import { personOf } from '../../../../lib/person'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -67,7 +70,7 @@ export const saveWorkspace = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d
     const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
     const conn = Number(s(fd, 'knowledgeConnection')) || undefined
     await assertInWorkspace(payload, 'connections', [conn], wsId)
-    const stages = Object.fromEntries(modeStages(DEFAULT()).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
+    const stages = Object.fromEntries(modeStages(workflowFor(wsId)).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
     Object.assign(data, { modelByTier: tiers, name: s(fd, 'name'), defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null, knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null })
   } else if (!(await workspacesOf(user)).some((x) => x.id === wsId)) throw new Error('Not your Workspace.')
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)
@@ -78,7 +81,7 @@ export const saveWipLimits = act({}, async ({ user, workspace, payload, w }, fd)
   only(user)
   const wsId = inWorkspace({ workspace })
   const limits: Record<string, number> = {}
-  for (const stage of wipStages(DEFAULT())) {
+  for (const stage of wipStages(workflowFor(wsId))) {
     const v = s(fd, `wip_${stage}`)
     if (v === '') continue
     if (!/^[1-9]\d*$/.test(v)) throw Object.assign(new Error('Invalid limit.'), { data: { errors: [{ path: `wip_${stage}`, message: 'A whole number of at least 1, or empty for no limit' }] } })
@@ -383,6 +386,36 @@ export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revoke
 export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))
+
+export type FactoryAnswer = ApplyResult & { note?: string; source?: string }
+
+const factoryAs = async (yaml: string, base: number | null, opts: { dryRun?: boolean }): Promise<FactoryAnswer> => {
+  const { user, workspace } = await currentWorkspace()
+  only(user)
+  const wsId = inWorkspace({ workspace })
+  const payload = await payloadClient()
+  const r = await applyFactory(payload, wsId, yaml, { by: personOf(user), via: 'ui', ...(base !== null && { baseVersion: base }), ...opts })
+  if (!r.ok) return r
+  const doc = parse(yaml) as { workflow: { stages: unknown[] }; team: { roles: object } }
+  const shape = `${doc.workflow.stages.length} stages, ${Object.keys(doc.team.roles).length} roles`
+  if (!opts.dryRun && r.changed) {
+    revalidatePath('/settings', 'layout')
+    revalidatePath('/')
+  }
+  return { ...r, note: opts.dryRun ? (r.changed ? `Valid: ${shape}.` : `Valid: ${shape}. Identical to the active version.`) : r.changed ? `Applied: version ${r.version}.` : 'No change: this version is already active.' }
+}
+
+/** Dry run of the edited file against the Workspace (Admin only). */
+export const checkFactoryFile = async (yaml: string, base: number): Promise<FactoryAnswer> => factoryAs(yaml, base, { dryRun: true })
+
+/** Applies the edited file; refused when the active version moved since it was loaded. */
+export const applyFactoryFile = async (yaml: string, base: number): Promise<FactoryAnswer> => ({ ...(await factoryAs(yaml, base, {})), source: yaml })
+
+/** Applies the factory file shipped with Bauherr. */
+export const resetFactoryFile = async (): Promise<FactoryAnswer> => {
+  const yaml = packSource()
+  return { ...(await factoryAs(yaml, null, {})), source: yaml }
+}
 
 /** Admin: saves the Workspace's version of a template; refused while the linter finds an error (the factory depends on those parts). */
 export const saveTemplate = act({}, async ({ user, workspace, payload }, fd) => {

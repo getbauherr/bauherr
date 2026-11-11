@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { parse } from 'yaml'
 
 export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'release' | 'done' | 'agent' | 'human'
-export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; outcomes: Record<string, string> }
+export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage follow it. */ outcomeOrder?: string[] }
 export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; profile?: string; profile_file?: string }
 /** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
@@ -72,6 +72,28 @@ export const lint = (doc: unknown): string[] => {
     want(review, 'clean', release)
     want(release, 'accepted', done)
     want(release, 'changes', build)
+    const through = (n: string, seen = new Set<string>()): boolean => {
+      if (n === review.name) return true
+      const s = st.find((x) => x.name === n)
+      if (seen.has(n) || !s || !['agent', 'human'].includes(kindOf(s))) return false
+      seen.add(n)
+      return Object.values(obj(s.outcomes) ?? {}).some((t) => through(String(t), seen))
+    }
+    if (!through(String(obj(build.outcomes)?.done))) out.push(`stage "${build.name}": outcome done must lead to the review stage "${review.name}", passing only through agent and human stages`)
+    for (const s of st) if (s !== review && Object.values(obj(s.outcomes) ?? {}).includes(release.name)) out.push(`stage "${s.name}": only the review stage may target the release stage "${release.name}"`)
+  }
+  const wf = obj(d.workflow)
+  const nameOk = (n: string) => /^[a-z][a-z0-9-]*$/.test(n)
+  for (const key of ['migrate', 'aliases'] as const) {
+    if (wf?.[key] === undefined) continue
+    const m = obj(wf[key])
+    if (!m) out.push(`workflow.${key} must be a mapping of old stage names to current stage names`)
+    else
+      for (const [old, to] of Object.entries(m)) {
+        if (!nameOk(old)) out.push(`workflow.${key}: "${old}" is not a stage name`)
+        else if (names.includes(old)) out.push(`workflow.${key}: "${old}" is a current stage`)
+        if (!names.includes(String(to))) out.push(`workflow.${key}: "${old}" maps to unknown stage "${to}"`)
+      }
   }
   const targets = new Set([...names, 'escalate', 'backlog'])
   const edges: [string, string][] = []
@@ -92,6 +114,8 @@ export const lint = (doc: unknown): string[] => {
     }
     if (s.role !== undefined && !(s.role in roles)) out.push(`stage "${n}": role "${s.role}" is not in team.roles`)
     else if (NEEDS_ROLE.includes(k) && !s.role) out.push(`stage "${n}" (${k}): role is required`)
+    if (k === 'agent' && !s.skill) out.push(`stage "${n}" (agent): skill is required`)
+    if (k === 'human' && (keys.length > 4 || keys.some((x) => !/^[a-z][a-z0-9_-]*$/.test(x)))) out.push(`stage "${n}" (human): 1 to 4 outcome keys matching ^[a-z][a-z0-9_-]*$`)
     if (NO_ROLE.includes(k) && s.role) out.push(`stage "${n}" (${k}): role is not allowed`)
     if (s.gate !== undefined && !(s.gate === 'human' && (k === 'plan' || k === 'release'))) out.push(`stage "${n}": gate: human is only allowed on the plan and release stages`)
     if (s.production_gate !== undefined && !(s.production_gate === 'human' && k === 'release')) out.push(`stage "${n}": production_gate: human is only allowed on the release stage`)
@@ -126,15 +150,15 @@ export const compile = (doc: unknown): Workflow => {
   return {
     version: 1,
     roles: Object.entries(d.team.roles as Record<string, Omit<Role, 'id'>>).map(([id, r]) => ({ id, ...r })),
-    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? s.name, outcomes: s.outcomes ?? {} }) as StageDef),
+    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? s.name, outcomes: s.outcomes ?? {}, ...(s.kind === 'human' && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
     aliases: d.workflow.aliases ?? {},
   }
 }
 
-const packDir = () => process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
+export const packDir = () => process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 let cached: { path: string; wf: Workflow } | undefined
 
-const corePack = () => resolve(process.cwd(), '../../pack')
+export const corePack = () => resolve(process.cwd(), '../../pack')
 
 /** The workflow of `factory.yaml` in the pack dir, compiled once per path. A pack dir without the file (an overlay that only adds rules or skills) uses the core pack's; throws on first use when neither is readable or the file is invalid. */
 export const DEFAULT = (): Workflow => {

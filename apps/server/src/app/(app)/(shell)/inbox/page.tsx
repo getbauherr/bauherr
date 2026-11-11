@@ -3,7 +3,8 @@ import { EmptyState } from '../../components/EmptyState'
 import { InboxList } from '../../components/InboxList'
 import { Badge } from '../../components/ui/badge'
 import { CHECKPOINTS } from '../../../../lib/decision'
-import { byKind, DEFAULT, graph } from '../../../../lib/workflow'
+import { workflowFor } from '../../../../lib/factory'
+import { byKind, graph } from '../../../../lib/workflow'
 import { loadInbox } from '../../lib/inbox'
 import { currentWorkspace } from '../../lib/session'
 
@@ -16,7 +17,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const { groups, products, working } = await loadInbox(workspace.id, user, { product: /^\d+$/.test(product ?? '') ? Number(product) : undefined, checkpoint: CHECKPOINTS.find((c) => c === checkpoint) })
   const picked = CHECKPOINTS.find((c) => c === checkpoint)
   const query = (p?: string, c?: string) => { const q = new URLSearchParams(); if (p) q.set('product', p); if (c) q.set('checkpoint', c); return q.size ? `/inbox?${q}` : '/inbox' }
-  const wf = DEFAULT()
+  const wf = workflowFor(workspace.id)
   const nodes = graph(wf).nodes
   const workflowHref = Object.fromEntries(CHECKPOINTS.flatMap((c) => { const id = nodes.find((n) => n.checkpoint && n.id.includes(':') && n.title === c)?.id ?? (c === 'Review' ? byKind(wf, 'review')?.name : undefined); return id ? [[c, `/?stage=${encodeURIComponent(id)}`]] : [] }))
   const count = groups.reduce((n, g) => n + g.items.length, 0)

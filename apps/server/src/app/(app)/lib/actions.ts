@@ -3,10 +3,11 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
+import { workflowFor } from '../../../lib/factory'
 import { type DecisionAction, canDecide, settleDecision } from '../../../lib/decision'
-import { DEFAULT, repairable } from '../../../lib/workflow'
+import { repairable } from '../../../lib/workflow'
 import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
@@ -77,6 +78,13 @@ export async function expediteAction(form: FormData) {
   await settleDecision(payload, ticket)
   revalidatePath(`/tickets/${ticket}`)
   revalidatePath('/inbox')
+}
+
+export async function decideOutcomeAction(form: FormData) {
+  const ticket = Number(form.get('ticket'))
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(decide(payload, user, { ticket, outcome: String(form.get('outcome') ?? ''), workspaceId }))
+  revalidatePath(`/tickets/${ticket}`)
 }
 
 export async function acceptStagingAction(form: FormData) {
@@ -193,7 +201,7 @@ export async function rerunStage(runId: number) {
 }
 
 /** One decision of the Inbox card: runs the existing action of the option for the Ticket (a note goes where the action takes one), then closes the card at once. A card for a need the Ticket no longer has is refused. Answers an error text instead of throwing. */
-export async function decideAction(ticket: number, need: string, action: DecisionAction, note = ''): Promise<{ error?: string }> {
+export async function decideAction(ticket: number, need: string, action: DecisionAction, note = '', outcome = ''): Promise<{ error?: string }> {
   const { user, payload, workspaceId } = await acting()
   const a = { ticket, workspaceId }
   try {
@@ -210,6 +218,7 @@ export async function decideAction(ticket: number, need: string, action: Decisio
     else if (action === 'backToBuild') await backToBuild(payload, user, { ...a, note })
     else if (action === 'backToBacklog') await backToBacklog(payload, user, a)
     else if (action === 'expedite') await expedite(payload, user, a)
+    else if (action === 'decide') await decide(payload, user, { ...a, outcome, note })
     else if (action === 'rerun') {
       const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: ticket } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
       if (!latest || !(await startRerun(user, payload, latest.id as number))) return { error: 'The latest step cannot be re-run.' }
@@ -282,7 +291,7 @@ export async function repairTicketAction(ticket: number, _prev: { error?: string
   const { user, payload, workspaceId } = await acting()
   const kind = String(fd.get('kind'))
   const stage = String(fd.get('stage'))
-  const repair: Repair | null = kind === 'stage' && repairable(DEFAULT()).includes(stage) ? { kind, stage } : kind === 'clear-waiting' || kind === 'reset-counters' || kind === 'rank-top' ? { kind } : null
+  const repair: Repair | null = kind === 'stage' && repairable(workflowFor(workspaceId)).includes(stage) ? { kind, stage } : kind === 'clear-waiting' || kind === 'reset-counters' || kind === 'rank-top' ? { kind } : null
   if (!repair) return { error: 'Choose a repair.' }
   try {
     await inWorkspace(repairTicket(payload, user, { ticket, workspaceId, repair }))

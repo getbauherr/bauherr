@@ -2,7 +2,8 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { needsOf } from './needs-you'
 import { cas } from './release'
-import { DEFAULT, is, type Kind, kindOf, nameOf, stage as stageDef, type Workflow } from './workflow'
+import { workflowFor } from './factory'
+import { is, type Kind, kindOf, nameOf, stage as stageDef, type Workflow } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -18,7 +19,7 @@ export const phaseOf = (wf: Workflow, t: Doc, run: RunRow): Phase => {
   // Only a Run of the Ticket's own stage is its work: a Build Run still ending while the Ticket already sits in review is not.
   if (run && run.stage === stage && run.status === 'running') return 'working'
   if (run && run.stage === stage && (run.status === 'queued' || run.status === 'awaiting_session')) return 'queued'
-  if (needsOf({ ...t, stage }, run, false)) return 'human'
+  if (needsOf(wf, { ...t, stage }, run, false)) return 'human'
   const at = (...k: Kind[]) => is(wf, stage, ...k)
   if (t.waitingFor === 'checks' || (at('review') && ['waiting_checks', 'queued'].includes(t.reviewState)) || (at('release') && (t.releaseState === 'waiting' || t.productionState === 'deploying')) || t.releaseChecksState === 'waiting') return 'ci'
   return 'queued'
@@ -33,9 +34,10 @@ type Opts = { cause: string; outcome?: string; run?: number | string; actor?: st
  */
 export const record = async (payload: Payload, ticketId: number | string, opts: Opts, loaded?: { ticket: Doc; run: Doc | null }): Promise<void> => {
   try {
-    const wf = DEFAULT()
-    if (opts.stage && !stageDef(wf, opts.stage)) return
+    if (opts.stage && !loaded && ['scan', 'distill'].includes(opts.stage)) return
     const ticket = loaded?.ticket ?? ((await payload.findByID({ collection: 'tickets', id: ticketId, ...o })) as Doc)
+    const wf = workflowFor(ticket.workspace)
+    if (opts.stage && !stageDef(wf, opts.stage)) return
     const run = loaded ? loaded.run : (((await payload.find({ collection: 'runs', where: { ticket: { equals: ticketId } }, sort: '-createdAt', limit: 1, ...o })).docs[0] as Doc | undefined) ?? null)
     const stage = stageDef(wf, opts.stage ?? ticket.stage ?? '')?.name ?? nameOf(wf, 'triage')
     const phase = opts.phase ?? phaseOf(wf, { ...ticket, stage }, run as RunRow)

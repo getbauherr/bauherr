@@ -53,14 +53,14 @@ describe('derived lists reproduce the constants they replace', () => {
 
 describe('gates match tests/human-gates.test.ts', () => {
   it.each([
-    [undefined, { plan: false, staging: false, production: true }],
+    [undefined, { plan: true, staging: false, production: true }],
     ['gated-pack', { plan: true, staging: true, production: false }],
     ['bare-pack', { plan: false, staging: false, production: false }],
   ] as const)('%s', async (name, expected) => {
     if (name) process.env.BAUHERR_PACK_DIR = pack(name)
     expect(w.gates(w.DEFAULT())).toEqual(expected)
     const mode = await import('../src/lib/mode')
-    expect(mode.humanGates()).toEqual(['refine', ...(expected.plan ? ['plan'] : []), ...(expected.staging ? ['staging'] : []), ...(expected.production ? ['production'] : [])])
+    expect(mode.humanGates(w.DEFAULT())).toEqual(['refine', ...(expected.plan ? ['plan'] : []), ...(expected.staging ? ['staging'] : []), ...(expected.production ? ['production'] : [])])
   })
   it('DEFAULT uses the core pack factory.yaml for a pack dir without one', () => {
     process.env.BAUHERR_PACK_DIR = pack('does-not-exist')
@@ -115,6 +115,12 @@ describe('lint', () => {
     ['7 production_gate', (d) => (stageOf(d, 'plan').production_gate = 'human'), 'production_gate: human is only allowed'],
     ['7 wip', (d) => (stageOf(d, 'build').wip = 0), 'wip must be a positive integer'],
     ['7 wip kind', (d) => (stageOf(d, 'triage').wip = 2), 'wip must be a positive integer'],
+    ['8 agent needs a skill', (d) => d.workflow.stages.splice(3, 0, { name: 'x', kind: 'agent', role: 'engineer', outcomes: { ok: 'build' } }), 'stage "x" (agent): skill is required'],
+    ['8 human outcome count', (d) => d.workflow.stages.splice(3, 0, { name: 'h', kind: 'human', outcomes: { a: 'build', b: 'build', c: 'build', d: 'build', e: 'build' } }), '(human): 1 to 4 outcome keys'],
+    ['8 human outcome key', (d) => d.workflow.stages.splice(3, 0, { name: 'h', kind: 'human', outcomes: { 'Bad Key': 'build' } }), '(human): 1 to 4 outcome keys'],
+    ['8 review must follow build', (d) => (stageOf(d, 'build').outcomes.done = 'release'), 'must lead to the review stage "review", passing only through agent and human stages'],
+    ['8 only review targets release', (d) => d.workflow.stages.splice(4, 0, { name: 'fast', kind: 'human', outcomes: { ship: 'release', back: 'build' } }) && (stageOf(d, 'build').outcomes.done = 'fast'), 'only the review stage may target the release stage'],
+    ['9 migrate unknown target', (d) => (d.workflow.migrate = { old: 'ghost' }), 'workflow.migrate: "old" maps to unknown stage "ghost"'],
     ['7 mode', (d) => (stageOf(d, 'build').mode = 'manual'), 'mode must be session or autonomous'],
   ]
   it.each(cases)('rejects %s', (_n, mutate, message) => {
@@ -130,6 +136,7 @@ it('graph of the default file', () => {
       { id: 'triage', title: 'triage', kind: 'triage', role: 'orchestrator', checkpoint: false },
       { id: 'triage:refine', title: 'Answer questions', kind: 'human', checkpoint: true },
       { id: 'plan', title: 'plan', kind: 'plan', role: 'engineer', checkpoint: false },
+      { id: 'plan:gate', title: 'Approve plan', kind: 'human', checkpoint: true },
       { id: 'parent', title: 'Split', kind: 'container', checkpoint: false },
       { id: 'build', title: 'build', kind: 'build', role: 'engineer', checkpoint: false },
       { id: 'review', title: 'review', kind: 'review', role: 'reviewer', checkpoint: false },

@@ -29,7 +29,8 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { DEFAULT, is, nameOf } from '../../../../../lib/workflow'
+import { is, nameOf, type Workflow } from '../../../../../lib/workflow'
+import { workflowFor } from '../../../../../lib/factory'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { isAdmin } from '../../../lib/settings'
@@ -55,12 +56,11 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 const Pulse = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-sm bg-secondary`} aria-hidden />
 
 /** DB data of the page, passed to the streamed parts. */
-type Page = { ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean }
+type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean }
 
 /** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
-  const { ticket, product, runs, blockers, admin } = P
-  const wf = DEFAULT()
+  const { wf, ticket, product, runs, blockers, admin } = P
   const live = await within(
     (async () => {
       const { ts, n } = await sourceOf(payload, ticket)
@@ -78,7 +78,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const missing = unansweredCritical(decisions, answers)
-  const todo = needsYou({ stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
+  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
@@ -91,7 +91,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const holderNumbers = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
   const q = { depth: 0, overrideAccess: true } as const
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
-  const idle = nextStep({ ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
+  const idle = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
   // OwnerChat hides itself when nothing is open on load; it stays mounted while decisions exist, so the refresh after the last answer keeps its summary.
   const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
@@ -102,7 +102,7 @@ type Derived = Awaited<ReturnType<typeof derive>>
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !['release', 'parent'].includes(stageOf(ticket))} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !is(P.wf, stageOf(P.wf, ticket), 'release', 'container')} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -149,9 +149,9 @@ async function Composer({ ticket, d }: { ticket: number; d: Promise<Derived> }) 
 }
 
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
-  const wf = DEFAULT()
   const { id } = await params
   const { user, workspace } = await currentWorkspace()
+  const wf = workflowFor(workspace?.id)
   const admin = isAdmin(user)
   if (!workspace || !/^\d+$/.test(id)) notFound()
   const payload = await payloadClient()
@@ -170,9 +170,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     payload.find({ collection: 'human_touches', where: { ticket: { equals: ticket.id } }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     forgeKinds(payload, workspace.id),
   ])
-  const P: Page = { ticket, product, ws, runs, blockers, blocks, shots, admin }
+  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin }
   const forge = forges.get(ticket.product)
-  const steps = buildSteps(wf, spans, runs, touches, { current: stageOf(ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
+  const steps = buildSteps(wf, spans, runs, touches, { current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
   const d = derive(payload, P)
   const card = cardOf(ticket, product as never)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
@@ -186,8 +186,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {epic ? (
         <section className="flex flex-col gap-4" aria-labelledby="subtickets">
           <h2 className="heading" id="subtickets">Sub-tickets</h2>
-          <EpicProgress epic={epic} />
-          <EpicChildren epic={epic} />
+          <EpicProgress wf={wf} epic={epic} />
+          <EpicChildren wf={wf} epic={epic} />
         </section>
       ) : (
         <section className="flex flex-col gap-2" aria-labelledby="path">
@@ -252,7 +252,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <p className="text-muted-foreground">No Runs yet.</p>
           )}
         </section>
-        {admin && <FixState ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} />}
+        {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} />}
       </TicketDetails>
 
       <Suspense fallback={null}><Composer ticket={ticket.id} d={d} /></Suspense>

@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { needsYou } from '../src/app/(app)/lib/needs-you'
 import { createTestDb, type TestDb } from './helpers/test-db'
+import { DEFAULT } from '../src/lib/workflow'
 
 let payload: Payload
 let fake: FakeBackend
@@ -184,7 +185,7 @@ it('run-failed: one successor Run; the second failure in a row goes back for inv
   expect(await runs(id, 'build')).toHaveLength(2)
   expect(await reload(id)).toMatchObject({ stage: 'plan', waitingReason: 'failed twice: investigate' })
   expect((await runs(id, 'plan'))[0]!.investigation).toEqual({ failedRuns: [failed!.id, successor!.id], stage: 'build' })
-  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'failed' })).toBeNull()
+  expect(needsYou(DEFAULT(), { stage: 'build', labels: [] }, { stage: 'build', status: 'failed' })).toBeNull()
 })
 
 it('run-cancelled: not repaired, shown as "Cancelled" with its reason', async () => {

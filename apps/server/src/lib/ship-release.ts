@@ -4,7 +4,8 @@ import type { Payload } from 'payload'
 import { latestWith } from '../app/(app)/lib/plan'
 import { NotAdmin, NotInWorkspace } from './actions'
 import { cas, changelogPr, forgeOf, id, releaseMarker } from './release'
-import { DEFAULT, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { nameOf } from './workflow'
 import { completeCheap } from './gateway'
 import { noteTemplates } from './templates'
 import { collectItem, renderNotes as renderItems, summarizeRelease } from './release-notes'
@@ -42,9 +43,9 @@ const mapLimit = async <T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]
 
 /** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Once the Product has a `lastReleaseAt`, Tickets whose `releaseAt` is not after it are left out: they were merged before the latest release. Tickets without `releaseAt` still count until the Releases page records them. Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
-  const { lastReleaseAt } = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
+  const { lastReleaseAt, workspace } = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
   const afterLastRelease = lastReleaseAt ? [{ or: [{ releaseAt: { exists: false } }, { releaseAt: { greater_than: lastReleaseAt } }] }] : []
-  return (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: nameOf(DEFAULT(), 'done') } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }, ...afterLastRelease] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
+  return (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: nameOf(workflowFor(workspace), 'done') } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }, ...afterLastRelease] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
 }
 
 /** Records a Ticket found in the latest release as released in it. Conditional, so a value a ship wrote first stays; no comment, no touch, no `updatedAt`. */

@@ -4,6 +4,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { parse } from 'yaml'
 import { CliError, portFree, preflight } from '../src/preflight.js'
 import { projectName, readEnv, renderCompose, writeProject } from '../src/render.js'
 
@@ -114,4 +115,37 @@ test('eval runs pack skill evals through the gateway, writes eval-results.json a
   assert.equal(all.code, 1)
   assert.match(all.out, /bad: pass rate 0\.00 FAILED/)
   assert.equal(JSON.parse(readFileSync(join(root, 'all.json'), 'utf8')).length, 2)
+})
+
+test('apply inlines profile_file relative to the file, sends it with the key and reports findings', async () => {
+  const { applyFile, exportFile, inlineProfiles } = await import('../src/factory.js')
+  const dir = tmp()
+  writeFileSync(join(dir, 'engineer.md'), 'Mission: "build"\nNever: x\n')
+  writeFileSync(join(dir, 'factory.yaml'), 'team:\n  roles:\n    engineer: {title: E, tier: cheap, profile_file: engineer.md}\n')
+  const inlined = parse(inlineProfiles(readFileSync(join(dir, 'factory.yaml'), 'utf8'), dir)) as any
+  assert.equal(inlined.team.roles.engineer.profile, 'Mission: "build"\nNever: x\n')
+  assert.equal(inlined.team.roles.engineer.profile_file, undefined)
+  writeFileSync(join(dir, 'my notes, v2.md'), 'spaced')
+  writeFileSync(join(dir, 'spaced.yaml'), 'team:\n  roles:\n    a: {title: A, tier: cheap, profile_file: "my notes, v2.md"}\n')
+  assert.equal((parse(inlineProfiles(readFileSync(join(dir, 'spaced.yaml'), 'utf8'), dir)) as any).team.roles.a.profile, 'spaced')
+  writeFileSync(join(dir, 'escape.yaml'), 'team:\n  roles:\n    x: {title: X, tier: cheap, profile_file: ../x.md}\n')
+  assert.throws(() => inlineProfiles(readFileSync(join(dir, 'escape.yaml'), 'utf8'), dir), (e) => e instanceof CliError && /must stay inside/.test(e.message))
+
+  const seen: { url: string; method?: string; auth: string; via: string; body?: string }[] = []
+  const reply = (body: unknown, status = 200) => (async (url: string, init: RequestInit) => {
+    const h = init.headers as Record<string, string>
+    seen.push({ url, method: init.method, auth: h.authorization!, via: h['x-bauherr-via']!, body: init.body as string })
+    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status })
+  }) as unknown as typeof fetch
+  const call = { url: 'http://x/', workspace: 'acme', key: 'k1', file: join(dir, 'factory.yaml'), dryRun: false }
+
+  assert.equal(await applyFile({ ...call, fetch: reply({ ok: true, findings: [], version: 3, changed: true, migrated: [{ from: 'build', to: 'code', tickets: 2, runs: 1 }] }) }), 'applied: version 3\n  build -> code: 2 Ticket(s), 1 Run(s)')
+  assert.deepEqual({ ...seen[0], body: undefined }, { url: 'http://x/api/workspaces/acme/factory', method: 'PUT', auth: 'Bearer k1', via: 'cli', body: undefined })
+  assert.match(seen[0]!.body!, /profile: \|\n\s+Mission/)
+  assert.equal(await applyFile({ ...call, dryRun: true, fetch: reply({ ok: true, findings: [], version: 3, changed: false, migrated: [] }) }), 'valid (no change)')
+  assert.equal(seen[1]!.url, 'http://x/api/workspaces/acme/factory?dryRun=1')
+  await assert.rejects(applyFile({ ...call, fetch: reply({ ok: false, findings: ['stage "a": bad'], changed: false, migrated: [] }, 422) }), (e) => e instanceof CliError && /apply failed:\n- stage "a": bad/.test(e.message))
+  await assert.rejects(applyFile({ ...call, key: undefined, fetch: reply({}) }), /BAUHERR_API_KEY/)
+  await assert.rejects(applyFile({ ...call, fetch: reply({ error: 'an agent key cannot change the workflow' }, 403) }), /403: an agent key/)
+  assert.equal(await exportFile({ url: 'http://x', workspace: 'acme', key: 'k1', fetch: reply('version: 1\n') }), 'version: 1\n')
 })

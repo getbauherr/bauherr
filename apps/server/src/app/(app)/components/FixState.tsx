@@ -1,5 +1,5 @@
 import { relinkRunAction, repairTicketAction } from '../lib/actions'
-import { DEFAULT, repairable, title } from '../../../lib/workflow'
+import { repairable, title, type Workflow } from '../../../lib/workflow'
 import { Reveal } from './Reveal'
 import { Field, SettingsForm } from './SettingsForm'
 
@@ -10,14 +10,14 @@ const REPAIRS: [kind: string, label: string, hint: string][] = [
 ]
 
 /** Admin-only repair disclosure on the Ticket page; every action is recorded as a `repair:*` human touch (Audit). */
-export function FixState({ ticket, stage }: { ticket: number; stage: string }) {
+export function FixState({ wf, ticket, stage }: { wf: Workflow; ticket: number; stage: string }) {
   const action = repairTicketAction.bind(null, ticket)
   return (
     <Reveal label="Repair">
       <p className="small text-muted-foreground">Admin only. Fixes a Ticket the factory left in a wrong state.</p>
       <SettingsForm action={action} submit="Set stage" confirm="Confirm set stage" inline>
         <input type="hidden" name="kind" value="stage" />
-        <Field name="stage" label="Stage" hint="Moves the forge label and the stage." options={repairable(DEFAULT()).map((s) => [s, title(DEFAULT(), s)] as [string, string])} defaultValue={stage} />
+        <Field name="stage" label="Stage" hint="Moves the forge label and the stage." options={repairable(wf).map((s) => [s, title(wf, s)] as [string, string])} defaultValue={stage} />
       </SettingsForm>
       {REPAIRS.map(([kind, label, hint]) => (
         <SettingsForm key={kind} action={action} submit={label} confirm={`Confirm ${label.toLowerCase()}`} inline>

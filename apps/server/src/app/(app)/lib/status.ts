@@ -1,6 +1,6 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 import { kindOfRun } from '../../../lib/stage-text'
-import { DEFAULT, is, type Workflow } from '../../../lib/workflow'
+import { is, title as stageTitle, type Workflow } from '../../../lib/workflow'
 import { duration } from './format'
 
 export type StatusPhase = 'working' | 'queued' | 'human' | 'ci' | 'blocked' | 'failed' | 'done'
@@ -43,7 +43,7 @@ export type StatusRow = {
   children?: { total: number; done: number } | null
 }
 
-const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying' }
+const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying', agent: 'working' }
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
 const RUN_PROBLEMS = ['Cancelled', 'Run failed', 'Run needs you']
 
@@ -89,7 +89,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   if (run?.status === 'queued') return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
   if (r.needsYou) {
     const why = RUN_PROBLEMS.includes(r.needsYou) ? first(r.run?.error) : null
-    return { phase: 'human', label: WAITING_FOR_YOU, detail: why ? `${r.needsYou}: ${why}` : r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
+    return { phase: 'human', label: WAITING_FOR_YOU, detail: why ? `${r.needsYou}: ${why}` : r.needsYou === 'Decision needed' ? stageTitle(wf, r.stage) : r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
   }
   const wait = ci(wf, r)
   if (wait) return { phase: 'ci', label: wait.label, detail: wait.detail, who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
@@ -99,8 +99,8 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
 }
 
 /** `ticketStatus` against the current workflow, as one line: "In progress: building for 4 min". */
-export const statusLine = (r: StatusRow): string => {
-  const s = ticketStatus(DEFAULT(), r)
+export const statusLine = (wf: Workflow, r: StatusRow): string => {
+  const s = ticketStatus(wf, r)
   return s.detail ? `${s.label}: ${s.detail}` : s.label
 }
 

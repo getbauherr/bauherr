@@ -6,7 +6,8 @@ import { escalate, escalateInvalidReview, escalateReviewCap, resumeEscalationNot
 import { resumeInvestigations } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { kindOfRun } from './stage-text'
-import { DEFAULT, is, liveStages, nameOf } from './workflow'
+import { workflowFor } from './factory'
+import { is, liveStages, nameOf } from './workflow'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
 type Doc = Record<string, any>
@@ -33,12 +34,12 @@ const replacementMr = async (payload: Payload, t: Doc) => {
 }
 
 const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Cause | null> => {
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   const latestIs = (kind: string) => !!latest && kindOfRun(wf, latest) === kind
   if (!t.stage) {
     // Untriaged and marked covered, but the only Triage Run ended unclaimed: nothing will ever look at it again.
     const covered = t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()
-    return covered && !t.mergeSha && triageable({ state: t.state, labels: t.labels ?? [], assignee: t.assignee }) && latestIs('triage') && latest?.status === 'abandoned' ? 'triage-expired' : null
+    return covered && !t.mergeSha && triageable(wf, { state: t.state, labels: t.labels ?? [], assignee: t.assignee }) && latestIs('triage') && latest?.status === 'abandoned' ? 'triage-expired' : null
   }
   if (is(wf, t.stage, 'review')) {
     if (t.reviewState === 'merged') return null
@@ -76,7 +77,9 @@ const runEnd = (latest: Doc): Cause | null => {
  * `need: null` means the owner sees nothing: the invariant is broken.
  */
 export const deadTickets = async (payload: Payload, workspace?: number | string): Promise<Dead[]> => {
-  const where: Where = { and: [{ state: { equals: 'open' } }, { or: [{ stage: { in: liveStages(DEFAULT()) } }, { stage: { exists: false } }] }, ...(workspace === undefined ? [] : [{ workspace: { equals: workspace } }])] }
+  const workspaces = workspace === undefined ? (await payload.find({ collection: 'workspaces', select: {}, pagination: false, ...o })).docs.map((w) => w.id) : [workspace]
+  const byWorkspace: Where[] = workspaces.map((w) => ({ and: [{ workspace: { equals: w } }, { or: [{ stage: { in: liveStages(workflowFor(w)) } }, { stage: { exists: false } }] }] as Where[] }))
+  const where: Where = { and: [{ state: { equals: 'open' } }, { or: byWorkspace }] }
   const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.waitingFor && !(t.blockedBy?.length ?? 0))
   if (!tickets.length) return []
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]
@@ -87,7 +90,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
     const latest = mine[0] ?? null
     const cause = (await causeOf(payload, t, latest)) ?? (latest && latest.stage === t.stage && ['failed', 'abandoned', 'cancelled', 'needs_human'].includes(latest.status) ? 'unknown' : null)
     if (!cause) continue
-    const need = needsYou({ stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
+    const need = needsYou(workflowFor(t.workspace), { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
     dead.push({ ticket: t, cause, run: latest, need })
   }
   return dead
@@ -108,7 +111,7 @@ const record = async (payload: Payload, d: Dead, what: string): Promise<true> =>
 /** Repairs one dead Ticket by its cause; returns whether it acted. The marker Comment is written only after the repair succeeded. */
 export const repair = async (payload: Payload, d: Dead): Promise<boolean> => {
   const t = d.ticket
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   if (!REPAIRED.includes(d.cause) || (await repaired(payload, d))) return false
   switch (d.cause) {
     case 'run-failed':

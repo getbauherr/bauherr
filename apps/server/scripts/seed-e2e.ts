@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import { hasProductionChecks } from '../src/lib/mode'
+import { workflowFor } from '../src/lib/factory'
 import { prepareDecision } from '../src/lib/decision'
 import { needsOf } from '../src/lib/needs-you'
-import { DEFAULT, kindOf } from '../src/lib/workflow'
+import { kindOf } from '../src/lib/workflow'
 import config from '../src/payload.config'
 
 /** Seeds what the Playwright smoke needs on an empty DB: one admin, one Workspace, one Product, one Ticket. Idempotent. */
@@ -142,7 +143,7 @@ for (const [i, [at, summary]] of steps.entries()) {
 for (const [checkName, sha] of [['e2e', 'sha-a'], ['e2e', 'sha-b'], ['lint', 'sha-a']] as const) await ensure('check_flakes', { ticket: t2, sha, checkName }, { ticket: t2, sha, checkName, outcome: 'flake', workspace })
 await ensure('human_touches', { kind: 'approve:plan', ticket: t2 }, { kind: 'approve:plan', ticket: t2, actor: email, at: '2026-10-30T09:05:00Z', workspace })
 // Ticket history (`ticket_events`) for the Workflow view, the Ticket page's path and Insights: `[stage, phase, hours ago, extra]`, written directly (relative to the seeding time, keyed by `e2e:<number>:<index>`).
-const wfSeed = DEFAULT()
+const wfSeed = workflowFor(workspace as number)
 const seedNow = Date.now()
 type Step = [stage: string, phase: string, hoursAgo: number, extra?: Record<string, unknown>]
 const history = async (number: number, steps: Step[]) => {
@@ -202,7 +203,7 @@ await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, t
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>
-  const need = needsOf(t, latest ?? null, !hasProductionChecks(productDoc))
+  const need = needsOf(workflowFor(t.workspace), t, latest ?? null, !hasProductionChecks(productDoc))
   // Plans awaiting approval carry the TL;DR their Plan Run would have posted; every need gets the Decision the sweep would prepare.
   const planTldr = need === 'Approve plan' || need === 'Answer decisions' ? { decision: `Approve the plan for ${t.title}`, recommendation: 'Approve; the change is small and has a test.', why: ['Two small steps', 'No data is touched', 'A regression test is added'], risk: 'none', options: [] } : t.planTldr
   const row = { ...t, planTldr }

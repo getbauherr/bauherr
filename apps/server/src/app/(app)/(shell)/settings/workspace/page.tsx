@@ -3,7 +3,8 @@ import { EmptyState } from '../../../components/EmptyState'
 import { Field, PickField, SettingsForm } from '../../../components/SettingsForm'
 import { Table } from '../../../components/ui/table'
 import { shareOf } from '../../../../../lib/gateway'
-import { DEFAULT, modeStages } from '../../../../../lib/workflow'
+import { workflowFor } from '../../../../../lib/factory'
+import { modeStages } from '../../../../../lib/workflow'
 import { isAdmin, listRepos, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { ago } from '../../../lib/format'
@@ -86,7 +87,7 @@ export default async function WorkspaceSettings() {
           <h2 className="heading">Run mode</h2>
           <div className={TRIPLE}>
             <Field name="defaultMode" label="Default" options={['session', 'autonomous']} empty="inherit" defaultValue={w.defaultMode} />
-            {modeStages(DEFAULT()).map((t) => (
+            {modeStages(workflowFor(workspace.id)).map((t) => (
               <Field key={t} name={`mode_${t}`} label={`Stage ${t}`} options={['session', 'autonomous']} empty="default" defaultValue={w.modeByStage[t] ?? ''} />
             ))}
           </div>

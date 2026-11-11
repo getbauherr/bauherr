@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { needsYou } from '../src/app/(app)/lib/needs-you'
 import { createTestDb, type TestDb } from './helpers/test-db'
+import { DEFAULT } from '../src/lib/workflow'
 
 const spend = vi.hoisted(() => ({ spentUsd: 0, limitUsd: null as number | null }))
 vi.mock('../src/lib/gateway', async (orig) => ({ ...(await orig<typeof import('../src/lib/gateway')>()), budgetStatus: async () => spend }))
@@ -141,10 +142,10 @@ it('needs_human: stuck escalates, decision and access reach the owner, a missing
   expect(await runs(stuck.id, 'build')).toHaveLength(2)
   expect((await runs(stuck.id, 'build'))[1]).toMatchObject({ escalation: { step: 2, reason: 'tests still red after 3 tries' } })
   for (const t of [decision, access]) expect(await runs(t.id, 'build')).toHaveLength(1)
-  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human', reasonKind: 'decision' })).toBe('Run needs you')
-  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human', reasonKind: 'access' })).toBe('Run needs you')
-  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human', reasonKind: 'stuck' })).toBeNull()
-  expect(needsYou({ stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human' })).toBe('Run needs you')
+  expect(needsYou(DEFAULT(), { stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human', reasonKind: 'decision' })).toBe('Run needs you')
+  expect(needsYou(DEFAULT(), { stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human', reasonKind: 'access' })).toBe('Run needs you')
+  expect(needsYou(DEFAULT(), { stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human', reasonKind: 'stuck' })).toBeNull()
+  expect(needsYou(DEFAULT(), { stage: 'build', labels: [] }, { stage: 'build', status: 'needs_human' })).toBe('Run needs you')
 })
 
 it('finish_run records reasonKind; a missing one on needs_human is stored as decision and says so', async () => {

@@ -5,6 +5,8 @@ One-command start for the [Bauherr](https://github.com/getbauherr/bauherr) AI so
 ```bash
 npx bauherr init [--dir bauherr] [--port 3000] [--url http://localhost:3000] [--yes]
 npx bauherr up | down [--volumes] | status | seed
+BAUHERR_API_KEY=<personal key> npx bauherr apply -f factory.yaml --workspace <slug> [--dry-run] [--url <instance>]
+BAUHERR_API_KEY=<personal key> npx bauherr export --workspace <slug> [--out factory.yaml]
 ```
 
-`init` writes `compose.yaml` (image pinned to this CLI's version) and a mode-600 env file with generated secrets, starts the stack and opens the UI. Re-running it keeps the secrets. Docs: https://github.com/getbauherr/bauherr#quick-start
+`init` writes `compose.yaml` (image pinned to this CLI's version) and a mode-600 env file with generated secrets, starts the stack and opens the UI. Re-running it keeps the secrets. `apply` sends a factory file to a Workspace (an Admin's personal key; `profile_file`s are inlined relative to the file; exit code 1 on findings), `export` prints the active one. Docs: https://github.com/getbauherr/bauherr#quick-start

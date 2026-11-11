@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT } from '../src/lib/workflow'
 import { NoRoom, executionOrder, frontierOrder, rankBetween, stageGroup } from '../src/lib/frontier'
+
+vi.mock('../src/lib/factory', async () => {
+  const { DEFAULT } = await import('../src/lib/workflow')
+  return { workflowFor: () => DEFAULT() }
+})
 
 describe('rankBetween', () => {
   it('starts in the middle and appends after the last key', () => {
@@ -91,7 +97,7 @@ describe('frontierOrder', () => {
 
 describe('executionOrder', () => {
   it('groups release, review, build, plan, triage, then the rest', () => {
-    expect(['release', 'review', 'build', 'plan', 'triage', 'done', null, 'parent'].map(stageGroup)).toEqual([0, 1, 2, 3, 4, 5, 5, 5])
+    expect(['release', 'review', 'build', 'plan', 'triage', 'done', null, 'parent'].map((s) => stageGroup(DEFAULT(), s))).toEqual([0, 1, 2, 3, 4, 5, 5, 5])
   })
   it('sorts by stage group, then rank, then number; a missing rank is last', () => {
     const t = (number: number, stage: string | null, rank: string | null = null) => ({ id: number, number, stage, rank })

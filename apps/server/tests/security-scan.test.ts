@@ -1,6 +1,7 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { DEFAULT } from '../src/lib/workflow'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -57,13 +58,13 @@ it('a stopped scan Run goes to the owner and never escalates', async () => {
   expect(nextStep({ stage: 'scan', status: 'failed' }, false)).toBe('owner')
 })
 
-it('pack/workflow-security.yaml loads: packed() has the scan stage with the security-scan skill, after the core stages', async () => {
+it('pack/workflow-security.yaml loads: packed(DEFAULT()) has the scan stage with the security-scan skill, after the core stages', async () => {
   delete process.env.BAUHERR_PACK_DIR
   const { packed } = await import('../src/lib/mode')
-  const scan = packed().find((s) => s.name === 'scan')
+  const scan = packed(DEFAULT()).find((s) => s.name === 'scan')
   expect(scan?.steps).toEqual([{ kind: 'agent-run', skill: 'security-scan' }])
-  expect(packed().map((s) => s.name)).toEqual(['triage', 'plan', 'build', 'review', 'release', 'done', 'scan'])
-  expect((await import('../src/jobs')).excludedLabels()).toContain('bauherr:security-scan')
+  expect(packed(DEFAULT()).map((s) => s.name)).toEqual(['triage', 'plan', 'build', 'review', 'release', 'done', 'scan'])
+  expect((await import('../src/jobs')).excludedLabels(DEFAULT())).toContain('bauherr:security-scan')
 })
 
 it('in a session-mode Workspace a scan Run is autonomous, records lastScanAt, and no session can claim it', async () => {

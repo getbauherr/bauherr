@@ -8,6 +8,7 @@ import { isAdmin, loadWorkflow } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import type { HumanGate } from '../../../../../lib/mode'
 import { GATE_NAMES } from '../../../../../lib/needs-you'
+import { FactoryFile } from '../../../components/FactoryFile'
 
 const TOUCH_POINTS: { id: HumanGate; when: string; what: string; where: string }[] = [
   { id: 'refine', when: 'Before planning', what: 'Answer the critical questions of a Triage or plan sheet.', where: 'Ticket page decision sheet or forge comment' },
@@ -75,6 +76,7 @@ export default async function Workflow() {
       <GateLadder plan={w.ladder.plan} staging={w.ladder.staging}>
         <GateRow label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. On the Ticket, after staging." state={w.ladder.production ? 'On for every Product' : 'Per Product'} />
       </GateLadder>
+      <FactoryFile key={w.factory.active?.version ?? 0} slug={workspace.slug} source={w.factory.source} active={w.factory.active} custom={w.factory.custom} />
       <details>
         <summary>Details</summary>
         <div className="flex flex-col gap-4">
@@ -97,24 +99,6 @@ export default async function Workflow() {
             ))}
           </tbody>
         </Table>
-      <h2 className="heading">Compiled per Product</h2>
-      {!w.versions.length ? (
-        <EmptyState text="No Products yet." />
-      ) : (
-        <Table>
-            <thead><tr className="label"><th>Product</th><th>Version</th><th>Compiled</th><th>Knowledge overlay</th></tr></thead>
-            <tbody>
-              {w.versions.map((v) => (
-                <tr key={v.product}>
-                  <td>{v.product}</td>
-                  <td>{v.version ?? <span className="text-muted-foreground">none</span>}</td>
-                  <td>{v.at ? new Date(v.at).toISOString().slice(0, 16).replace('T', ' ') : '—'}</td>
-                  <td>{v.version == null ? '—' : v.overlay ? 'differs from base' : 'none'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-      )}
         </div>
       </details>
     </>

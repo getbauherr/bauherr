@@ -1,5 +1,5 @@
 import { executionOrder } from '../../../lib/frontier'
-import { DEFAULT, is } from '../../../lib/workflow'
+import { is, type Workflow } from '../../../lib/workflow'
 
 export type GraphTicket = { id: number; number: number; rank: string | null; run: { status: string } | null; stage: string; blockedBy: { id: number }[]; overlaps?: number | null }
 export type GraphNode = { id: number; col: number; row: number; ready: boolean; critical: boolean; isolated: boolean }
@@ -14,7 +14,7 @@ const LEASED = ['running', 'awaiting_session']
  * A Build held for overlapping paths (`overlaps` = the holder's number) lays out like a blocked Ticket and gets an `implicit` edge from the holder (never critical).
  * Isolated Tickets (no edge between shown Tickets) get `isolated` and no row.
  */
-export function layoutGraph(tickets: GraphTicket[]): { nodes: GraphNode[]; edges: GraphEdge[]; cycle: boolean } {
+export function layoutGraph(wf: Workflow, tickets: GraphTicket[]): { nodes: GraphNode[]; edges: GraphEdge[]; cycle: boolean } {
   const byId = new Map(tickets.map((t) => [t.id, t]))
   const blockers = new Map<number, number[]>()
   for (const t of tickets) blockers.set(t.id, t.blockedBy.map((b) => b.id).filter((b) => byId.has(b) && b !== t.id))
@@ -56,9 +56,8 @@ export function layoutGraph(tickets: GraphTicket[]): { nodes: GraphNode[]; edges
     at = c ? blockers.get(at)!.filter((b) => col.get(b) === c - 1).sort((x, y) => num(x) - num(y))[0] : undefined
   }
 
-  const wf = DEFAULT()
   const rows = new Map<number, number>()
-  const nodes = [...tickets].sort(executionOrder).map((t): GraphNode => {
+  const nodes = [...tickets].sort((a, b) => executionOrder(a, b, wf)).map((t): GraphNode => {
     const isolated = !linked.has(t.id)
     const c = col.get(t.id)!
     const row = isolated ? 0 : (rows.set(c, (rows.get(c) ?? -1) + 1), rows.get(c)!)

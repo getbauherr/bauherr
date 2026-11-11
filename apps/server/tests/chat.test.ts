@@ -151,7 +151,8 @@ it('a read tool round: tool-call, tool-result, then the answer; both write a too
   expect(types(events)).toEqual(['context', 'tool-call', 'tool-result', 'delta', 'done'])
   expect(events[1]).toMatchObject({ name: 'factory_status', kind: 'read' })
   expect(events[2]).toMatchObject({ ok: true })
-  expect(JSON.parse(events[2].result).needYou).toEqual([{ number: 700, title: 'Export hangs', need: 'Run needs you' }])
+  // 'Fix login redirect' is the fake forge's seeded Ticket with a posted plan: the plan gate is on by default, so it waits for the owner.
+  expect(JSON.parse(events[2].result).needYou).toEqual([{ number: 700, title: 'Export hangs', need: 'Run needs you' }, { number: expect.any(Number), title: 'Fix login redirect', need: 'Approve plan' }])
   expect(JSON.parse(events[2].result).stages.map((s: Doc) => s.stage)).toContain('plan')
   expect(events.at(-1).usage.tokensOut).toBeGreaterThan(0)
   const calls = (await payload.find({ collection: 'tool_calls', where: { name: { equals: 'factory_status' } }, depth: 0, ...o })).docs as Doc[]
@@ -176,7 +177,7 @@ it('list_tickets, get_run and Ticket numbers shared by two Products', async () =
   expect(all.tickets.map((t: Doc) => t.number)).toEqual(expect.arrayContaining([700, ticket.number]))
   expect(all.tickets.map((t: Doc) => t.number)).not.toContain(900)
   expect(all.tickets.find((t: Doc) => t.number === 700)).toMatchObject({ title: 'Export hangs', stage: 'build', need: 'Run needs you', blockedBy: [] })
-  expect(((await run('list_tickets', { needsYouOnly: true })) as Doc).tickets.map((t: Doc) => t.number)).toEqual([700])
+  expect(((await run('list_tickets', { needsYouOnly: true })) as Doc).tickets.map((t: Doc) => t.number).sort((x: number, y: number) => x - y)).toEqual([ticket.number, 700].sort((x, y) => x - y))
   expect(((await run('list_tickets', { search: 'LOGIN' })) as Doc).tickets.map((t: Doc) => t.number)).toEqual([ticket.number])
   expect(((await run('list_tickets', { state: 'closed' })) as Doc).total).toBe(0)
   const runId = (await payload.find({ collection: 'runs', where: { ticket: { equals: stuck.id } }, limit: 1, depth: 0, ...o })).docs[0]!.id

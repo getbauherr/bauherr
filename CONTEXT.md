@@ -80,6 +80,15 @@ A named result of a Stage (`plan`, `clean`, `changes`, ...) that maps to the Sta
 **Role**:
 A member of the factory's team (`team.roles` in `factory.yaml`): a title, a model tier or provider/model, and a profile; a Stage names the Role that works it.
 
+**Factory file**:
+The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edited in Settings > Workflow or applied from the CLI, the API or at boot; the shipped `pack/factory.yaml` is the default.
+
+**Workflow version**:
+One applied state of a Workspace's Factory file (`workflow_versions`): the file with its profiles inlined, the compiled workflow and its hash. The newest applied one is active; an identical file adds no version.
+
+**Decision**:
+The owner's choice in a `human` Stage: one of the Stage's Outcomes, recorded as a human touch `decide:<stage>:<outcome>`; the Ticket then follows that Outcome.
+
 **Checkpoint**:
 A point where the workflow waits for a human (Triage's questions, a `gate: human`, the production gate, a `human` Stage).
 

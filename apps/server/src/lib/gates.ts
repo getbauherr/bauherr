@@ -12,7 +12,8 @@ import { startRunIfNeeded } from '../jobs'
 import { holdOverlap } from './overlap'
 import { cas, forgeOf, id } from './release'
 import { sql } from '@payloadcms/db-postgres'
-import { DEFAULT, is } from './workflow'
+import { workflowFor } from './factory'
+import { is } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -67,10 +68,10 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * Returns whether the Ticket row changed.
  */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   const productionChecksMissing = is(wf, t.stage, 'release') && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
   // A checkpoint the owner decided in the UI a moment ago stays closed until the forge side has caught up.
-  const raw = needsOf(t, run, productionChecksMissing)
+  const raw = needsOf(wf, t, run, productionChecksMissing)
   const candidate = justDecided(t, raw) ? null : raw
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)

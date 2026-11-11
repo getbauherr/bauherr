@@ -15,7 +15,7 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { currentWorkspace } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import { kindOfRun } from '../../../../../lib/stage-text'
-import { DEFAULT } from '../../../../../lib/workflow'
+import { workflowFor } from '../../../../../lib/factory'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +39,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
     ['Ended', run.finishedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
     ['Duration', fmtDuration(durationMs(run.startedAt, run.finishedAt))],
     ['Status', <StatusChip key="s" status={run.status} />],
-    ['Kind', run.kind ?? kindOfRun(DEFAULT(), run) ?? '—'],
+    ['Kind', run.kind ?? kindOfRun(workflowFor(run.workspace), run) ?? '—'],
     ['Outcome', run.outcome ?? '—'],
     ['Executor', run.executor ?? run.mode],
     ['Session', run.sessionLabel ?? '—'],
@@ -110,7 +110,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
             <Link className="text-primary" href={`/tickets/${ticket.id}#steps`}>Ticket #{ticket.number}, its steps</Link>
             {isWebUrl(prUrl) && <a className="text-primary" href={prUrl}>Merge request</a>}
           </p>
-          {admin && kindOfRun(DEFAULT(), run) === 'build' && <RelinkMr run={run.id} />}
+          {admin && kindOfRun(workflowFor(run.workspace), run) === 'build' && <RelinkMr run={run.id} />}
         </aside>
         </Card>
       </div>

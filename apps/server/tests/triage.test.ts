@@ -5,6 +5,7 @@ import { needsYou } from '../src/app/(app)/lib/needs-you'
 import { openCritical, parseDecisions } from '../src/app/(app)/lib/plan'
 import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
+import { DEFAULT } from '../src/lib/workflow'
 
 let payload: Payload
 let fake: FakeBackend
@@ -68,13 +69,13 @@ const refine = { outcome: 'refine', reason: 'scope unclear', questions: [{ title
 
 it('triageable: open, unassigned, no stage, not held, not excluded', () => {
   const base = { state: 'open', labels: [] as string[], assignee: null }
-  expect(jobs.triageable(base)).toBe(true)
-  expect(jobs.triageable({ ...base, state: 'closed' })).toBe(false)
-  expect(jobs.triageable({ ...base, assignee: 'sebastian' })).toBe(false)
-  expect(jobs.triageable({ ...base, labels: ['bauherr:stage:plan'] })).toBe(false)
-  expect(jobs.triageable({ ...base, labels: ['bauherr:needs-refinement'] })).toBe(false)
-  for (const l of ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']) expect(jobs.triageable({ ...base, labels: ['bug', l] }), l).toBe(false)
-  expect(jobs.triageable({ ...base, labels: ['wayfinder:ticket'] })).toBe(true)
+  expect(jobs.triageable(DEFAULT(), base)).toBe(true)
+  expect(jobs.triageable(DEFAULT(), { ...base, state: 'closed' })).toBe(false)
+  expect(jobs.triageable(DEFAULT(), { ...base, assignee: 'sebastian' })).toBe(false)
+  expect(jobs.triageable(DEFAULT(), { ...base, labels: ['bauherr:stage:plan'] })).toBe(false)
+  expect(jobs.triageable(DEFAULT(), { ...base, labels: ['bauherr:needs-refinement'] })).toBe(false)
+  for (const l of ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research']) expect(jobs.triageable(DEFAULT(), { ...base, labels: ['bug', l] }), l).toBe(false)
+  expect(jobs.triageable(DEFAULT(), { ...base, labels: ['wayfinder:ticket'] })).toBe(true)
 })
 
 it('an unlabeled Ticket gets one triage Run per poll cycle; excluded and staged Tickets get none', async () => {
@@ -108,7 +109,7 @@ it('refine holds the Ticket with a critical decision sheet; answering all of it 
   const all = (await comments(t.n)).map((body) => ({ body }))
   expect(parseDecisions(all.at(-1)!.body)).toMatchObject([{ id: 'D1', critical: true, default: 'CSV', options: ['CSV', 'XLSX', 'JSON'] }, { id: 'D2', critical: true, default: 'no' }])
   expect(openCritical(all).map((d) => d.id)).toEqual(['D1', 'D2'])
-  expect(needsYou({ stage: null, labels: ['bauherr:needs-refinement'] }, { stage: 'triage', status: 'succeeded' })).toBe('Answer questions')
+  expect(needsYou(DEFAULT(), { stage: null, labels: ['bauherr:needs-refinement'] }, { stage: 'triage', status: 'succeeded' })).toBe('Answer questions')
 
   await poll()
   expect(await triageRuns(t.id)).toHaveLength(1)
@@ -188,8 +189,8 @@ it('an unclaimed triage Run never expires: it waits for a session and costs no t
   await poll()
   expect(await triageRuns(t.id)).toHaveLength(1)
   expect((await payload.findByID({ collection: 'tickets', id: t.id, ...o })).triageAttempts).toBe(attempts)
-  expect(needsYou({ stage: null, labels: [] }, { stage: 'triage', status: 'needs_human' })).toBeNull()
-  expect(needsYou({ stage: null, labels: [] }, { stage: 'triage', status: 'failed' })).toBeNull()
+  expect(needsYou(DEFAULT(), { stage: null, labels: [] }, { stage: 'triage', status: 'needs_human' })).toBeNull()
+  expect(needsYou(DEFAULT(), { stage: null, labels: [] }, { stage: 'triage', status: 'failed' })).toBeNull()
 })
 
 it('starts at most 5 triage Runs per Workspace per poll; the rest follow on the next poll', async () => {
@@ -212,11 +213,11 @@ it('answers count only for the sheet they were posted after', () => {
 
 it('exclusions fail closed: a pack without exclude_labels falls back to the D2 list', () => {
   const d2 = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
-  expect(jobs.excludedLabels([])).toEqual(d2)
-  expect(jobs.excludedLabels([{ name: 'triage', kind: 'triage' }])).toEqual(d2)
-  expect(jobs.excludedLabels([{ name: 'triage', kind: 'triage', exclude_labels: [] }])).toEqual(d2)
-  expect(jobs.excludedLabels([{ name: 'triage', kind: 'triage', exclude_labels: ['x'] }])).toEqual(['x'])
-  expect(jobs.excludedLabels()).toEqual(d2)
+  expect(jobs.excludedLabels(DEFAULT(), [])).toEqual(d2)
+  expect(jobs.excludedLabels(DEFAULT(), [{ name: 'triage', kind: 'triage' }])).toEqual(d2)
+  expect(jobs.excludedLabels(DEFAULT(), [{ name: 'triage', kind: 'triage', exclude_labels: [] }])).toEqual(d2)
+  expect(jobs.excludedLabels(DEFAULT(), [{ name: 'triage', kind: 'triage', exclude_labels: ['x'] }])).toEqual(['x'])
+  expect(jobs.excludedLabels(DEFAULT())).toEqual(d2)
 })
 
 it('a session claim hands over title, body and goal fenced as data', async () => {

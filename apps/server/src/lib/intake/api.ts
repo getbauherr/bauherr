@@ -1,5 +1,6 @@
 import config from '@payload-config'
 import { getPayload, type Payload } from 'payload'
+import { loadWorkflows } from '../factory'
 import { tenantsOf } from '../actions'
 import { decrypt } from '../secrets'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
@@ -19,6 +20,7 @@ export type Who = { user: Doc | null; token: Doc | null }
 /** The caller (Bauherr session/API key, or `Authorization: Bearer bemb_...`), or a 401/403 Response. */
 export const actor = async (req: Request): Promise<({ payload: Payload } & Who) | Response> => {
   const payload = await getPayload({ config })
+  await loadWorkflows(payload)
   const token = await embedAuth(payload, req)
   if (token instanceof Response) return token
   if (token) return { payload, user: null, token }

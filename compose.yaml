@@ -21,6 +21,9 @@ x-app: &app
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
     BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
     BAUHERR_MAX_RUNS: ${BAUHERR_MAX_RUNS:-4}
+    # Factory file applied at boot (mount it into the app container), optionally to one Workspace slug; see docs/spec/workflow.md.
+    BAUHERR_FACTORY_FILE: ${BAUHERR_FACTORY_FILE:-}
+    BAUHERR_FACTORY_WORKSPACE: ${BAUHERR_FACTORY_WORKSPACE:-}
     # Postgres pool per container (app, worker, poller); see docs/first-run.md "Database connections".
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
     DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}

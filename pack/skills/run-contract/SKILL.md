@@ -43,8 +43,10 @@ Re-run the check after the last edit; evidence from before the last edit is stal
 | Run | May end only with |
 |---|---|
 | Plan | `.bauherr/plan.md` with a leading `## TL;DR` (the Runner posts the plan Comment and the worklog), or a blocker |
-| Build | MR Linked on the Ticket, or a blocker |
+| Build | MR Linked on the Ticket, or a blocker, or a replan |
 | Review | `submit_review` (session) or `.bauherr/review.json` (autonomous), or a blocker |
+
+**Replan**: when the plan cannot be built as written (it contradicts the code, a step is impossible), change nothing and say so instead of forcing an MR. Session: `finish_run {status: 'succeeded', outcome: 'replan', comment}`. Autonomous: write `.bauherr/outcome.json` as `{"outcome":"replan","comment":"why, and what the plan must say instead"}`. The Ticket goes back to Plan with your comment.
 
 The Stop hook (`hooks/stop-goal-check.ts`) refuses to end the turn while a statement is unverified and undeclared. It re-prompts once with the unmet list; a second miss ends the Run `needs_human`.
 

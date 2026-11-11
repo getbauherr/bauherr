@@ -41,7 +41,7 @@ flowchart LR
 Human gates (configured in [`pack/factory.yaml`](pack/factory.yaml)):
 
 - **Refine** (always on): Triage asks the owner its questions before a Ticket is planned.
-- **Approve plan** (optional, off by default, `gate: human` on `plan`): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
+- **Approve plan** (on by default, `gate: human` on `plan`; remove it in the Workspace's factory file to let plans through): approve in the Bauherr UI, or set the label `bauherr:approved:plan` in the forge. Refused while critical decisions are unanswered. Off: a posted plan without an open critical decision starts Build by itself; a critical decision reopens the refine hold.
 - **Accept on staging** (optional, off by default, `gate: human` on `release`): accept with the result summary. Off: a merge confirmed on staging moves on by itself.
 - **Approve production** (on by default: `production_gate: human` on `release`, or "Ask me before deploying to production" on a Product; a Product without `productionChecks` shows the "Configure production checks" gate, linking to Settings > Products, until they are set; removing `production_gate` from the workflow sends a staging-confirmed Ticket to done): approve in the Bauherr UI or MCP; the Product's own pipeline deploys.
 - **Merge request review**: the factory reviews and merges ([#82](https://github.com/getbauherr/bauherr/issues/82)); no human.
@@ -117,7 +117,7 @@ To work on tickets from your own Claude Code session instead, create an API key 
 | `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
 | Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
-| Stages, steps, gates | [`pack/factory.yaml`](pack/factory.yaml), [docs/spec/workflow.md](docs/spec/workflow.md) |
+| Stages, steps, gates: one factory file per Workspace, edited in Settings > Workflow, applied with `bauherr apply -f factory.yaml --workspace <slug>` or `BAUHERR_FACTORY_FILE` (+ `BAUHERR_FACTORY_WORKSPACE`) at boot | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default; [docs/spec/workflow.md](docs/spec/workflow.md#factoryyaml-the-file) |
 | Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
 | Budgets, model Tiers, Connections | Settings in the UI |

@@ -7,7 +7,7 @@ import { connectionInput } from './connection'
 import { tierModels } from './gateway'
 import { id, prOf } from './release'
 import { kindOfRun } from './stage-text'
-import { DEFAULT } from './workflow'
+import { workflowFor } from './factory'
 import { decrypt } from './secrets'
 
 type Doc = Record<string, any>
@@ -86,7 +86,7 @@ const check = (p: Proposal): string | null => {
 }
 
 const extractionInput = async (payload: Payload, t: Doc): Promise<string> => {
-  const wf = DEFAULT()
+  const wf = workflowFor(t.workspace)
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: 'createdAt', limit: 100, pagination: false, ...o })).docs as Doc[]
   const goal = runs.map((r) => r.goal?.statements).find((s) => Array.isArray(s)) as string[] | undefined
   const rounds = runs

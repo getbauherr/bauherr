@@ -10,7 +10,7 @@ const custom = (() => {
   const d = doc()
   const i = d.workflow.stages.findIndex((s: any) => s.name === 'build')
   d.workflow.stages[i].outcomes.done = 'qa'
-  d.workflow.stages.splice(i + 1, 0, { name: 'qa', kind: 'agent', role: 'engineer', outcomes: { done: 'review' } })
+  d.workflow.stages.splice(i + 1, 0, { name: 'qa', kind: 'agent', role: 'engineer', skill: 'review', outcomes: { done: 'review' } })
   return w.compile(d)
 })()
 
