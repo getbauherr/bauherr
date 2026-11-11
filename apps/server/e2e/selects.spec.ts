@@ -33,18 +33,3 @@ test('Members: Role defaults to bauherr and Workspaces are checkboxes, not ids',
   await expect(add.getByRole('checkbox', { name: 'Acme' })).toBeChecked()
   await expect(add.getByLabel(/workspace.*id/i)).toHaveCount(0)
 })
-
-test('New request: the Product select remembers the last used Product', async ({ page }) => {
-  await signIn(page)
-  await page.goto('/requests/new')
-  const product = page.getByLabel('Product')
-  await expect(product).toHaveRole('combobox')
-  await product.click()
-  const names = await page.getByRole('option').allInnerTexts()
-  test.skip(names.length < 2, 'seed has several Products')
-  const last = names[names.length - 1]!
-  await page.getByRole('option', { name: last }).click()
-  await page.reload()
-  await expect(product).toHaveText(last)
-  expect(await page.evaluate(() => localStorage.getItem('bauherr-product'))).toMatch(/^\d+$/)
-})

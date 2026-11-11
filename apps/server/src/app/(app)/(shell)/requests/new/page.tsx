@@ -1,26 +1,26 @@
-import { IntakeChat } from '../../../components/IntakeChat'
+import { OpenOnLoad, RequestOpen } from '../../../components/chat/DockOpen'
 import { EmptyState } from '../../../components/EmptyState'
-import { ago } from '../../../lib/format'
-import { openSessions } from '../../../lib/requests'
+import { ownsDraft } from '../../../lib/requests'
 import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
 
+/** The link people bookmark: it opens the docked chat on a new, empty request. `?session=<id>` (an older draft link) continues that draft of the caller's instead. */
 export default async function NewRequest({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
+  const { session } = await searchParams
   const { user, workspace } = await currentWorkspace()
   const payload = await payloadClient()
-  const products = workspace
-    ? (await payload.find({ collection: 'products', where: { workspace: { equals: workspace.id } }, sort: 'name', pagination: false, depth: 0, overrideAccess: true })).docs.map((p) => ({ id: p.id as number, name: p.name as string }))
-    : []
-  const wanted = (await searchParams).session
-  const { open, current } = await openSessions(user.id as number, workspace?.id as number | undefined, wanted)
-  const others = open.filter((s) => s !== current).map((s) => ({ id: s.id as number, product: (s.product as { name: string }).name, first: String((s.messages as { role: string; content: string }[]).find((m) => m.role === 'user')?.content ?? '').slice(0, 80), when: ago(s.updatedAt) }))
-  const initial = current && { id: String(current.id), product: (current.product as { id: number }).id, lines: (current.messages as { role: string; content: string }[]).map((m) => ({ who: m.role === 'user' ? ('you' as const) : ('bauherr' as const), text: m.content })), turn: current.turn ? { ...(current.turn as object), draft: current.draft, split: current.split ?? undefined } : null }
+  const products = workspace ? (await payload.count({ collection: 'products', where: { workspace: { equals: workspace.id } }, overrideAccess: true })).totalDocs : 0
+  if (!products) return <><h1 className="title">New request</h1><EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) ? '' : ' Ask an Admin to set up the Workspace.'}`} action={isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} /></>
+  const draft = workspace && session && /^\d{1,9}$/.test(session) && (await ownsDraft(user.id as number, workspace.id, Number(session))) ? Number(session) : 'new'
   return (
-    <>
+    <div className="flex flex-col gap-4">
       <h1 className="title">New request</h1>
-      {products.length ? <IntakeChat userId={user.id as number} key={initial?.id} products={products} initial={initial as never} others={others} /> : <EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) ? '' : ' Ask an Admin to set up the Workspace.'}`} action={isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} />}
-    </>
+      <p className="body m-0 max-w-[60ch]">{draft === 'new' ? 'Describe what you need in the chat on the right. I ask a few questions, then you check the request before it is sent.' : 'Your draft is open in the chat on the right.'}</p>
+      <RequestOpen request={draft} className="self-start">Open the chat</RequestOpen>
+      <p className="small m-0"><a className="text-primary" href="/requests">Your requests</a></p>
+      <OpenOnLoad request={draft} />
+    </div>
   )
 }

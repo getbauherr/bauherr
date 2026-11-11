@@ -7,6 +7,7 @@ import { decrypt } from '../secrets'
 import { mediaBytes } from '../intake/media'
 import { fakeChatModel } from './fake'
 import { gatewayChatModel, type Block, type ModelCall, type ModelMessage } from './stream'
+import { resumeRequest } from './request'
 import { chatTools, describe, kindOf, resolveInput, runChatTool, summarize, type Card } from './tools'
 import { claimPending, dropPending, finishAnswer, setContext, startAnswer, storePending, type Answer, type Who } from './threads'
 import type { PageContext } from './context'
@@ -17,8 +18,9 @@ export type ChatEvent =
   | { type: 'context'; label: string }
   | { type: 'delta'; text: string }
   | { type: 'tool-call'; id: string; name: string; kind: string; input: unknown; summary: string }
-  | { type: 'tool-result'; id: string; ok: boolean; result: string }
-  | { type: 'confirm'; id: string; name: string; title: string; details: Card['details']; destructive: boolean }
+  | { type: 'tool-result'; id: string; ok: boolean; result: string; /** Where the outcome can be opened (a sent request). */ href?: string }
+  | { type: 'options'; id: string; options: { label: string; recommended: boolean }[] }
+  | { type: 'confirm'; id: string; name: string; title: string; details: Card['details']; destructive: boolean; approve?: string; decline?: string; noReason?: boolean }
   | { type: 'done'; answerId: string; requiresAction?: boolean; usage: { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number } }
   | { type: 'error'; message: string }
 
@@ -76,7 +78,7 @@ const asText = (v: unknown): string => (typeof v === 'string' ? v : JSON.stringi
 
 /** Runs one tool call to a tool_result block plus the events the client sees. */
 async function* callTool(env: Env, use: { id: string; name: string; input: Record<string, unknown> }, tally: Answer['toolCalls']): AsyncGenerator<ChatEvent, Block> {
-  const kind = kindOf(use.name)
+  const kind = kindOf(use.name, env.ctx.user)
   const done = (ok: boolean, text: string): Block => ({ type: 'tool_result', tool_use_id: use.id, content: shorten(text, MODEL_RESULT_CHARS), ...(!ok && { is_error: true }) })
   const emit = function* (ok: boolean, text: string): Generator<ChatEvent> {
     tally.push({ name: use.name, kind: kind ?? 'unknown', ok })
@@ -108,7 +110,7 @@ async function* callTool(env: Env, use: { id: string; name: string; input: Recor
 async function* loop(env: Env, s: State, answerId: string, t0: number, tally: Answer['toolCalls']): AsyncGenerator<ChatEvent> {
   const usage = { model: '', tokensIn: 0, tokensOut: 0 }
   const system = await systemPrompt(env.page)
-  const tools = chatTools().map(({ name, description, input_schema }) => ({ name, description, input_schema }))
+  const tools = chatTools(env.ctx.user).map(({ name, description, input_schema }) => ({ name, description, input_schema }))
   let answered = false
   const finish = async (): Promise<Answer> => {
     answered = true
@@ -138,7 +140,7 @@ async function* loop(env: Env, s: State, answerId: string, t0: number, tally: An
       s.rounds++
       const results: Block[] = []
       for (const [i, use] of calls.entries()) {
-        if (kindOf(use.name) !== 'confirm') {
+        if (kindOf(use.name, env.ctx.user) !== 'confirm') {
           results.push(yield* callTool(env, use, tally))
           continue
         }
@@ -213,6 +215,7 @@ export const resumeChat = async (a: { payload: Payload; user: Doc; workspace: nu
   if (!pending) return null
   return (async function* () {
     yield { type: 'context', label: a.context.label }
+    if (a.thread.request) return yield* resumeRequest({ who: env.who, ctx: env.ctx, thread: a.thread, pending, approved: a.approved })
     const tally: Answer['toolCalls'] = []
     const t0 = Date.now()
     let result: Block

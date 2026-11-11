@@ -48,7 +48,7 @@ export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavIt
   const actions = [
     { label: 'Ask the factory', Icon: Chat, run: () => run(() => request('focus')) },
     { label: 'New chat', Icon: Chat, run: () => run(() => request('new')) },
-    { label: 'New request', Icon: Plus, run: () => go('/requests/new') },
+    { label: 'New request', Icon: Plus, run: () => run(() => request({ request: 'new' })) },
     { label: 'Toggle theme', Icon: Moon, run: () => run(toggleTheme) },
     { label: 'Sign out', Icon: LogOut, run: () => run(() => void logout()) },
   ].filter((a) => a.label.toLowerCase().includes(needle))

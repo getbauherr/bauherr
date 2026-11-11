@@ -35,6 +35,9 @@ const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
 await ensure('bauherren', { email: 'solo@example.com' }, { email: 'solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
 await ensure('bauherren', { email: 'duo@example.com' }, { email: 'duo@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }, { tenant: zeta }] })
 await ensure('products', { slug: 'zeta-app' }, { name: 'Zeta App', slug: 'zeta-app', workspace: zeta }) // the one Product of a single-Product Workspace
+// request-dock specs: a member of the several-Product Workspace and one of the single-Product Workspace, each with a user of their own (nothing else signs in as them)
+await ensure('bauherren', { email: 'intake-member@example.com' }, { email: 'intake-member@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })
+await ensure('bauherren', { email: 'intake-solo@example.com' }, { email: 'intake-solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
 const newco = (await ensure('workspaces', { slug: 'newco' }, { name: 'Newco', slug: 'newco' })).id // stays empty: /setup walks it
 await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup-member@example.com', password, role: 'bauherr', tenants: [{ tenant: newco }] })
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { AutoRefresh } from '../../components/AutoRefresh'
 import { EmptyState } from '../../components/EmptyState'
-import { IntakeStep } from '../../components/setup/IntakeStep'
+import { RequestOpen } from '../../components/chat/DockOpen'
 import { SettingsForm, Field } from '../../components/SettingsForm'
 import { ConnectionForm } from '../../components/SettingsConnectionForm'
 import { StatusCallout } from '../../components/SettingsParts'
@@ -76,7 +76,12 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
             <Tab href="/setup" aria-current={tab === 'new' ? undefined : 'page'}>Pick an open issue</Tab>
             <Tab href="/setup?tab=new" aria-current={tab === 'new' ? 'page' : undefined}>Describe something new</Tab>
           </Tabs>
-          {tab === 'new' ? <IntakeStep userId={user.id as number} products={[setup.product]} /> : <IssuePick product={setup.product.id} />}
+          {tab === 'new' ? (
+            <div className="flex flex-col gap-4">
+              <p className="body m-0">Describe what you want in the chat on the right. I ask a few questions, then you check the request before it is sent.</p>
+              <RequestOpen request="new" className="self-start">Open the chat</RequestOpen>
+            </div>
+          ) : <IssuePick product={setup.product.id} />}
         </StepCard>
       )}
     </>

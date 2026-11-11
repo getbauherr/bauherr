@@ -2,7 +2,7 @@ import { remember } from './api'
 
 const EVENT = 'chat-dock'
 let storageKey: string | null = null
-export type DockRequest = 'focus' | 'new' | { ticket: number; mode: 'answer' | 'comment' }
+export type DockRequest = 'focus' | 'new' | { ticket: number; mode: 'answer' | 'comment' } | { request: number | 'new' }
 let pending: DockRequest | null = null
 
 type Saved = { open?: boolean; w?: number }
@@ -31,7 +31,7 @@ export const subscribe = (cb: () => void) => {
   return () => removeEventListener(EVENT, cb)
 }
 
-/** Asks the (possibly not yet loaded) chat panel to do something once it is there: focus the composer, start a new chat, or open the Ticket's thread (`answer`: its question card; `comment`: the composer ready for `/comment`). */
+/** Asks the (possibly not yet loaded) chat panel to do something once it is there: focus the composer, start a new chat, open the Ticket's thread (`answer`: its question card; `comment`: the composer ready for `/comment`), or open request mode (`'new'`: a thread for a new request; an id: the thread of that request). */
 export function request(action: DockRequest) {
   pending = action
   setOpen(true)

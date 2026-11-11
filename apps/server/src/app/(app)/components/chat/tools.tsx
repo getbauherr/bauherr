@@ -1,11 +1,13 @@
 'use client'
 import { useAuiState, type ToolCallMessagePartProps } from '@assistant-ui/react'
+import Link from 'next/link'
 import { useState, type FC } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { artifactOf, type Decision, type Outcome } from './adapter'
 import { ChevronRight, Shield } from './icons'
 import { Questions } from './questions'
+import { Options, ProductCard } from './request'
 
 /** One line per read tool: what it looked up and whether it worked; the result is one click away. */
 const Receipt: FC<{ summary: string; result?: Outcome }> = ({ summary, result }) => (
@@ -20,9 +22,12 @@ const Receipt: FC<{ summary: string; result?: Outcome }> = ({ summary, result })
 )
 
 /** What running the approved call did: "Done." on success; a failure, a decline or "Already decided." in the server's words. */
-const OutcomeLine: FC<{ result?: Outcome }> = ({ result }) =>
+const OutcomeLine: FC<{ result?: Outcome; href?: string }> = ({ result, href }) =>
   result ? (
-    <p role="status" data-testid="confirm-outcome" className={cn('my-1 text-[13px] leading-5', result.ok ? 'text-ok' : 'text-muted-foreground')}>{result.ok ? 'Done.' : result.text}</p>
+    <p role="status" data-testid="confirm-outcome" className={cn('my-1 text-[13px] leading-5', result.ok ? 'text-ok' : 'text-muted-foreground')}>
+      {result.ok ? (href ? result.text : 'Done.') : result.text}
+      {href && <> <Link href={href} className="text-primary underline underline-offset-2">Open the request</Link></>}
+    </p>
   ) : null
 
 /** The approval card of a `confirm` tool: the TL;DR rows, Approve / Decline (with an optional reason), then its outcome. Nothing runs before the person decides. */
@@ -41,13 +46,13 @@ const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => 
           {a.details.map((d) => (
             <div key={d.label} className="contents">
               <dt className="text-muted-foreground">{d.label}</dt>
-              <dd className="min-w-0 wrap-anywhere">{d.value}</dd>
+              <dd className="min-w-0 wrap-anywhere whitespace-pre-line">{d.value}</dd>
             </div>
           ))}
         </dl>
       )}
       {decision ? (
-        <p className="text-[13px] leading-5 text-muted-foreground">{decision.approved ? (status === 'running' ? 'Approved, running...' : 'Approved') : `Declined${decision.reason ? `: ${decision.reason}` : ''}`}</p>
+        <p className="text-[13px] leading-5 text-muted-foreground">{decision.approved ? (status === 'running' ? 'Approved, running...' : 'Approved') : a.decline ? 'Kept as a draft' : `Declined${decision.reason ? `: ${decision.reason}` : ''}`}</p>
       ) : status !== 'requires-action' ? (
         <p className="text-[13px] leading-5 text-muted-foreground">Not decided</p>
       ) : declining ? (
@@ -57,8 +62,8 @@ const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => 
         </form>
       ) : (
         <div className="flex gap-2">
-          <Button type="button" size="sm" variant={a.destructive ? 'destructive' : 'default'} onClick={() => answer({ approved: true })}>Approve</Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => setDeclining(true)}>Decline</Button>
+          <Button type="button" size="sm" variant={a.destructive ? 'destructive' : 'default'} onClick={() => answer({ approved: true })}>{a.approve ?? 'Approve'}</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => (a.noReason ? answer({ approved: false }) : setDeclining(true))}>{a.decline ?? 'Decline'}</Button>
         </div>
       )}
     </section>
@@ -70,6 +75,8 @@ export const ToolPart: FC<ToolCallMessagePartProps> = (props) => {
   const a = artifactOf(props)
   if (a?.kind === 'questions') return <Questions ticket={a.ticket} />
   if (a?.kind === 'confirm') return <Card {...props} />
-  if (a?.kind === 'outcome') return <OutcomeLine result={props.result as Outcome | undefined} />
+  if (a?.kind === 'outcome') return <OutcomeLine result={props.result as Outcome | undefined} href={a.href} />
+  if (a?.kind === 'product') return <ProductCard thread={a.thread} products={a.products} current={a.current} />
+  if (a?.kind === 'options') return <Options options={a.options} />
   return <Receipt summary={(a as { summary?: string } | undefined)?.summary ?? props.toolName} result={props.result as Outcome | undefined} />
 }

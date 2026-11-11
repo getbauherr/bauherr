@@ -3,9 +3,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { sourceOf } from '../../../../../lib/actions'
-import { mediaLimits } from '../../../../../lib/intake/media'
 import { Markdown } from '../../../components/Markdown'
-import { RequestComposer } from '../../../components/RequestComposer'
+import { DockOpen, RequestOpen } from '../../../components/chat/DockOpen'
+import { DiscardDraft } from '../../../components/DiscardDraft'
 import { ProgressPath } from '../../../components/ProgressPath'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
@@ -43,12 +43,16 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
       <section className="flex flex-col gap-2" aria-labelledby="next">
         <h2 className="heading" id="next">Next step</h2>
         {request.own ? (
-          <Button asChild className="self-start"><Link href={`/requests/new?session=${request.id}`}>Continue draft</Link></Button>
+          <div className="flex flex-wrap gap-2">
+            <RequestOpen request={request.id}>Continue draft</RequestOpen>
+            <DiscardDraft session={request.id} title={request.problem || 'Untitled request'} />
+          </div>
         ) : next ? (
           <Button asChild className="self-start"><Link href={`/tickets/${next.id}`}>{next.need} on #{next.number}</Link></Button>
         ) : (
           <p className="text-muted-foreground">{request.sent ? 'Nothing for you to do.' : 'Only its author can continue this draft.'}</p>
         )}
+        {request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
       </section>
       {request.sent && (
         <section className="flex flex-col gap-2" aria-labelledby="tickets">
@@ -62,6 +66,10 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                     <Badge variant={t.status === 'Done' ? 'ok' : 'neutral'}>{t.status}</Badge>
                     {t.need && <Badge variant="warn">{t.need}</Badge>}
                     {t.url && <a className="small text-primary" href={t.url}>Open the issue</a>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(t.need === 'Answer questions' || t.need === 'Answer decisions') && <DockOpen ticket={t.id} mode="answer" size="sm">{t.need}</DockOpen>}
+                    <DockOpen ticket={t.id} mode="comment" size="sm" variant="outline">Comment on #{t.number}</DockOpen>
                   </div>
                   <p className="body m-0 font-medium" data-testid="request-headline">{t.progress.headline}{t.progress.since && <span className="small font-normal text-muted-foreground"> · since {ago(t.progress.since).replace(/ ago$/, '')}</span>}</p>
                   <ProgressPath step={t.progress.step} large />
@@ -89,7 +97,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
 }
 
 /** The forge-backed Comments, streamed after the page; 5 s per Ticket, then "could not be reached". */
-async function Comments({ tickets }: { tickets: Parameters<typeof RequestComposer>[0]['tickets'] }) {
+async function Comments({ tickets }: { tickets: { id: number; number: number }[] }) {
   const payload = await payloadClient()
   let forgeError = false
   const comments = (
@@ -105,7 +113,6 @@ async function Comments({ tickets }: { tickets: Parameters<typeof RequestCompose
       }),
     )
   ).flat().sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  const { maxBytes, maxPerSession } = mediaLimits()
   return (
     <>
       {forgeError && <p className="small text-muted-foreground">The forge could not be reached; some comments are unavailable.</p>}
@@ -121,7 +128,6 @@ async function Comments({ tickets }: { tickets: Parameters<typeof RequestCompose
       ) : (
         <p className="text-muted-foreground">No comments yet.</p>
       )}
-      {!forgeError && <RequestComposer tickets={tickets} maxBytes={maxBytes} maxImages={maxPerSession} />}
     </>
   )
 }

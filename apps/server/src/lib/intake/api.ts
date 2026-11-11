@@ -40,7 +40,7 @@ export const ownSession = async (payload: Payload, { user, token }: Who, session
 
 /** Model call as the session's Workspace (standard tier, D5). */
 export const modelFor = async (payload: Payload, session: Doc): Promise<ModelCall> => {
-  if (process.env.INTAKE_FAKE === '1') return fakeModel
+  if (process.env.INTAKE_FAKE === '1' || process.env.CHAT_FAKE === '1') return fakeModel
   const w = (await payload.findByID({ collection: 'workspaces', id: ws(session), depth: 0, overrideAccess: true })) as Doc
   const model = { ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier }.standard
   return gatewayModel({ slug: w.slug, key: decrypt(w.gatewayKey), model })

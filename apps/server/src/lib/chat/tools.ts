@@ -5,14 +5,15 @@ import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadRun } from '../../app/(app)/lib/run'
 import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
-import { postComment } from '../actions'
+import { NotInWorkspace, postComment, submitIntake } from '../actions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
 import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
 type Doc = Record<string, any>
 export type ToolKind = 'read' | 'confirm'
 export type ChatTool = { name: string; description: string; input_schema: Record<string, unknown>; kind: ToolKind }
-export type Card = { title: string; details: { label: string; value: string }[]; destructive?: boolean }
+/** `approve` / `decline` replace the button labels; `noReason`: declining needs no reason. */
+export type Card = { title: string; details: { label: string; value: string }[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean }
 /** `reply` answers the model without running anything (unknown or ambiguous Ticket number). */
 export type Resolved = { input: Doc } | { reply: string; ok: boolean }
 
@@ -35,6 +36,10 @@ type Entry = {
   /** Ticket number (and optional Product slug) in the model's input to the id the MCP tool takes. */
   ticket?: (ticketId: number | string, input: Doc, c: Ctx) => Doc
   fence?: boolean
+  /** Not offered to the model: only the server issues its call (the request intake's card). */
+  hidden?: boolean
+  /** Offered to Admins only. */
+  admin?: boolean
   describe?: (c: Ctx, input: Doc) => Promise<Card>
 }
 
@@ -234,7 +239,18 @@ const ENTRIES: Record<string, Entry> = {
     },
     describe: async (c, input) => gateCard((t) => `Comment on ${ticketLine(t)}`, 'The text is posted as a comment on the issue', { extra: (i) => [{ label: 'Comment', value: String(i.body ?? '').slice(0, 600) }] })(c, input),
   },
+  submit_request: {
+    schema: schema({ session: { type: 'integer' }, expect: { type: 'integer' } }, ['session']),
+    kind: 'confirm',
+    hidden: true,
+    local: async (c, i) => {
+      const s = (await c.payload.findByID({ collection: 'intake_sessions', id: i.session, ...o }).catch(() => null)) as Doc | null
+      if (!s || s.persona !== 'product-user' || String(id(s.user)) !== String(c.user.id) || String(id(s.workspace)) !== String(c.workspace)) throw new NotInWorkspace()
+      return submitIntake(c.payload, s.id, i.expect)
+    },
+  },
   approve_skill_proposal: {
+    admin: true,
     description: 'Approve a distilled skill proposal (Admin only): merges its Knowledge PR if the PR head is still expectSha.',
     schema: schema({ proposal: { type: 'integer', description: 'Skill proposal id' }, expectSha: prop('Head sha of the PR as reviewed') }, ['proposal', 'expectSha']),
     kind: 'confirm',
@@ -250,6 +266,7 @@ const ENTRIES: Record<string, Entry> = {
     },
   },
   reject_skill_proposal: {
+    admin: true,
     description: 'Reject a distilled skill proposal (Admin only): closes its Knowledge PR.',
     schema: schema({ proposal: { type: 'integer', description: 'Skill proposal id' }, note: prop('Why it is rejected (optional)') }, ['proposal']),
     kind: 'confirm',
@@ -268,11 +285,14 @@ const ENTRIES: Record<string, Entry> = {
 
 const mcp = (name: string) => mcpTools.find((t) => t.name === name)!
 
-/** The chat tool set; the client picks widgets by `kind`, never by name. */
-export const chatTools = (): ChatTool[] =>
-  Object.entries(ENTRIES).map(([name, e]) => ({ name, description: e.description ?? mcp(name).description, input_schema: e.schema, kind: e.kind }))
+const offered = (e: Entry | undefined, user: { role?: string | null }): e is Entry => !!e && !e.hidden && (!e.admin || user.role === 'admin')
 
-export const kindOf = (name: string): ToolKind | undefined => ENTRIES[name]?.kind
+/** The chat tool set this person may use (Admin-only tools only for Admins, server-issued ones never); the client picks widgets by `kind`, never by name. */
+export const chatTools = (user: { role?: string | null }): ChatTool[] =>
+  Object.entries(ENTRIES).filter(([, e]) => offered(e, user)).map(([name, e]) => ({ name, description: e.description ?? mcp(name).description, input_schema: e.schema, kind: e.kind }))
+
+/** The kind of a tool this person may call; undefined for an unknown one, one they have no right to and one only the server calls. */
+export const kindOf = (name: string, user: { role?: string | null }): ToolKind | undefined => (offered(ENTRIES[name], user) ? ENTRIES[name]!.kind : undefined)
 
 /** The canonical input the tool runs with: Ticket numbers become ids inside the Workspace. This exact value is what a confirmation stores and later runs. */
 export const resolveInput = async (c: Ctx, name: string, input: unknown): Promise<Resolved> => {
