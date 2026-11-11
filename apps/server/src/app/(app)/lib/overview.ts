@@ -164,7 +164,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       overlaps: overlap ? Number(overlap) || null : null,
       queuedWhy: overlap ? `waits for #${overlap}, which changes the same files` : t.waitingFor === 'checks' ? null : hold,
       forge: forges.get(t.product) ?? null,
-      track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState },
+      track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, releaseError: t.releaseError },
       children: containerIds.includes(t.id) ? { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length } : null,
       enteredAt: entered.get(t.id) ?? t.updatedAt,
       parent: parents.get(t.parent) ?? null,

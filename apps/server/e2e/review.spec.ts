@@ -32,6 +32,7 @@ test('Review Run page shows the verdict and findings; Product settings have the 
 
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Web' }).click()
+  await page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Approvals', exact: true }).click()
   await expect(page.getByRole('switch', { name: /Merge automatically/ })).toBeChecked()
 })
 

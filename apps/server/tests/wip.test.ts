@@ -197,7 +197,7 @@ describe('counting and workspaces', () => {
     expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
   })
 
-  it('counts the Release column too (Settings > Board & WIP shows it)', async () => {
+  it('counts the Release column too (Settings > Factory > Workflow shows it)', async () => {
     await ticket('rel', 'release')
     expect(await wip.wipCount(payload, ws, 'release')).toBe(1)
   })
@@ -332,7 +332,7 @@ describe('limits', () => {
     expect(w.wipLimits).toBeNull()
     expect(['plan', 'build', 'review', 'release'].map((s) => wipLimit(w, s))).toEqual([3, 2, 3, 5])
     const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: w.id }] }, ...o })
-    await payload.update({ collection: 'workspaces', id: w.id, data: { wipLimits: { build: 9 } }, user: member, overrideAccess: false })
+    await expect(payload.update({ collection: 'workspaces', id: w.id, data: { wipLimits: { build: 9 } }, user: member, overrideAccess: false })).rejects.toThrow()
     expect((await payload.findByID({ collection: 'workspaces', id: w.id, ...o })).wipLimits).toBeNull()
     await expect(payload.update({ collection: 'workspaces', id: w.id, data: { wipLimits: { build: 0 } }, ...o })).rejects.toThrow()
   })

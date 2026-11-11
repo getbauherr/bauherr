@@ -385,7 +385,7 @@ export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketI
   if (user.role !== 'admin') throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.state === 'closed' || is(workflowFor(t.workspace), t.stage, 'release', 'done', 'container')) throw new Error('the Ticket is past the stages the Expedite lane serves')
-  if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Board & WIP')
+  if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Factory > Workflow')
   const { ts, n } = await sourceOf(payload, t)
   await touch(payload, user, t, 'expedite') // before the label: a poll in between must find the touch that vouches for it
   await ts.addLabels(n, [EXPEDITE_LABEL])
@@ -683,6 +683,7 @@ export const approveSkillProposal = async (payload: Payload, user: Doc, a: { pro
   if (typeof a.expectSha !== 'string' || !a.expectSha) throw new Error('expectSha required')
   const p = (await payload.findByID({ collection: 'skill_proposals', id: a.proposal, ...scoped(user) }).catch(() => null)) as Doc | null
   if (!p || (a.workspaceId !== undefined && String(id(p.workspace)) !== String(a.workspaceId))) throw new NotInWorkspace()
+  if (p.status === 'accepted') return { approved: 'accepted' as const } // a second submit (double click, stale tab) is the same success, with no second forge call
   if (!['proposed', 'replayed'].includes(p.status) || p.pr == null) throw new Error(`proposal is ${p.status}; only a proposed or replayed proposal with a pull request can be approved`)
   const ws = (await payload.findByID({ collection: 'workspaces', id: id(p.workspace), depth: 0, overrideAccess: true })) as Doc
   if (!ws.knowledgeRepo || !ws.knowledgeConnection) throw new Error('the Workspace has no Knowledge repo')
@@ -691,6 +692,37 @@ export const approveSkillProposal = async (payload: Payload, user: Doc, a: { pro
   await payload.update({ collection: 'skill_proposals', id: p.id, data: { status: 'accepted' }, overrideAccess: true })
   await touch(payload, user, { id: id(p.ticket), workspace: p.workspace }, 'approve:skill')
   return { approved: 'accepted' as const }
+}
+
+/**
+ * Human gate of the distill stage, the other way: closes the proposal's Knowledge PR (with the owner's note as its comment) and marks the proposal `rejected`.
+ * Admin-only like the approval; a second call on a rejected proposal is the same success. Only a `proposed` or `replayed` proposal can be rejected. A forge that does not answer leaves the proposal as it was.
+ */
+export const rejectSkillProposal = async (payload: Payload, user: Doc, a: { proposal: TicketId; note?: string; workspaceId?: TicketId }) => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  const p = (await payload.findByID({ collection: 'skill_proposals', id: a.proposal, ...scoped(user) }).catch(() => null)) as Doc | null
+  if (!p || (a.workspaceId !== undefined && String(id(p.workspace)) !== String(a.workspaceId))) throw new NotInWorkspace()
+  if (p.status === 'rejected') return { rejected: 'rejected' as const } // idempotent like the approval: no second comment or close
+  if (!['proposed', 'replayed'].includes(p.status)) throw new Error(`proposal is ${p.status}; only a proposed or replayed proposal can be rejected`)
+  const note = (a.note ?? '').trim().slice(0, 500)
+  const ws = (await payload.findByID({ collection: 'workspaces', id: id(p.workspace), depth: 0, overrideAccess: true })) as Doc
+  if (p.pr != null && ws.knowledgeRepo && ws.knowledgeConnection) {
+    const forge = backendFor(await connectionInput(payload, ws.knowledgeConnection)).forge
+    await forge.commentOnPullRequest(ws.knowledgeRepo, Number(p.pr), `Rejected by ${personOf(user)}${note ? `: ${note}` : '.'} Closing.`)
+    await forge.closePullRequest(ws.knowledgeRepo, Number(p.pr))
+  }
+  await payload.update({ collection: 'skill_proposals', id: p.id, data: { status: 'rejected', reason: note || 'rejected by an owner' }, overrideAccess: true })
+  await touch(payload, user, { id: id(p.ticket), workspace: p.workspace }, 'reject:skill')
+  return { rejected: 'rejected' as const }
+}
+
+/** Approves the proposal of a Ticket's Inbox card: the head the factory replayed (`results.headSha`) is the one that gets merged, never a newer one. */
+export const approveSkillProposalOf = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const p = (await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: a.ticket } }, limit: 1, ...scoped(user) })).docs[0] as Doc | undefined
+  if (!p) throw new NotInWorkspace()
+  const expectSha = p.results?.headSha
+  if (typeof expectSha !== 'string') throw new Error('this proposal has no recorded head; approve it on the Knowledge page')
+  return approveSkillProposal(payload, user, { proposal: p.id, expectSha, workspaceId: a.workspaceId })
 }
 
 /** Writes `text` as the body of the worklog section headed `heading` (appended when missing). */

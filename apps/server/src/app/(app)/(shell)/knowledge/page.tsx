@@ -8,7 +8,7 @@ import { Input } from '../../components/ui/input'
 import { Skeleton } from '../../components/ui/skeleton'
 import { Table } from '../../components/ui/table'
 import { ConfirmButton } from '../../components/SettingsForm'
-import { approveSkillProposalAction } from '../../lib/actions'
+import { approveSkillProposalAction, rejectSkillProposalAction } from '../../lib/actions'
 import { docKey, loadKnowledge, title, type KnowledgePage } from '../../lib/knowledge'
 import { isAdmin } from '../../lib/settings'
 import { currentWorkspace } from '../../lib/session'
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
 
 const href = (params: Record<string, string>) => `/knowledge?${new URLSearchParams(params)}`
 const CHECKS = { green: ['ok', '✓ Checks passed'], pending: ['neutral', 'Checks running'], red: ['destructive', '× Checks failed'] } as const
-const PROPOSAL = { proposed: ['neutral', 'Proposed'], replayed: ['ok', 'Replayed'], accepted: ['ok', 'Accepted'], rejected: ['destructive', 'Rejected'] } as const
+const PROPOSAL = { proposed: ['neutral', 'Proposed'], replayed: ['ok', 'Replayed'], accepted: ['ok', 'Accepted'], rejected: ['destructive', 'Rejected'], skipped: ['neutral', 'Skipped'] } as const
 const pct = (n: number | null) => (n == null ? '–' : `${Math.round(n * 100)}%`)
 const STACK = 'flex flex-col gap-4'
 
@@ -55,13 +55,16 @@ async function WriteBacks({ data, repo }: { data: KnowledgePage['writeBacks']; r
 
 async function Proposals({ data }: { data: KnowledgePage['proposals'] }) {
   const proposals = await data
+  const pending = proposals.filter((p) => p.status === 'proposed' || p.status === 'replayed')
+  const accepted = proposals.filter((p) => p.status === 'accepted')
+  const closed = proposals.filter((p) => p.status === 'rejected' || p.status === 'skipped')
   return proposals.length > 0 ? (
     <section className={STACK} aria-label="Skill proposals">
       <h2 className="heading">Skill proposals</h2>
       <Table>
         <thead><tr className="label"><th>Skill</th><th>From</th><th>Status</th><th>Score vs baseline</th><th>Pull request</th><th><span className="sr-only">Action</span></th></tr></thead>
         <tbody>
-          {proposals.map((p) => {
+          {[...pending, ...accepted].map((p) => {
             const [variant, label] = PROPOSAL[p.status as keyof typeof PROPOSAL]
             return (
               <tr key={p.id}>
@@ -71,19 +74,49 @@ async function Proposals({ data }: { data: KnowledgePage['proposals'] }) {
                 <td>{pct(p.score)} vs {pct(p.baseline)}</td>
                 <td>{p.prUrl ? <a className="text-primary" href={p.prUrl} rel="noopener noreferrer">#{p.prNumber}</a> : p.prNumber != null && `#${p.prNumber}`}</td>
                 <td>
-                  {p.headSha && (
-                    <form action={approveSkillProposalAction} className="flex gap-2">
-                      <input type="hidden" name="proposal" value={p.id} />
-                      <input type="hidden" name="expectSha" value={p.headSha} />
-                      <ConfirmButton label="Approve" confirm="Confirm: merge this skill" primary />
-                    </form>
-                  )}
+                  <div className="flex gap-2">
+                    {p.headSha && (
+                      <form action={approveSkillProposalAction} className="flex gap-2">
+                        <input type="hidden" name="proposal" value={p.id} />
+                        <input type="hidden" name="expectSha" value={p.headSha} />
+                        <ConfirmButton label="Approve" confirm="Confirm: merge this skill" primary />
+                      </form>
+                    )}
+                    {pending.includes(p) && (
+                      <form action={rejectSkillProposalAction} className="flex gap-2">
+                        <input type="hidden" name="proposal" value={p.id} />
+                        <ConfirmButton label="Reject" confirm="Confirm: reject this skill" />
+                      </form>
+                    )}
+                  </div>
                 </td>
               </tr>
             )
           })}
         </tbody>
       </Table>
+      {closed.length > 0 && (
+        <details data-testid="closed-proposals">
+          <summary className="small cursor-pointer text-primary">Skipped and rejected ({closed.length})</summary>
+          <ul className="m-0 mt-3 flex list-none flex-col gap-4 p-0">
+            {closed.map((p) => {
+              const [variant, label] = PROPOSAL[p.status as keyof typeof PROPOSAL]
+              return (
+                <li key={p.id} className="small flex flex-col gap-1">
+                  <span><span className="mono">{p.skill || 'no skill'}</span> <Badge variant={variant}>{label}</Badge> <span className="text-muted-foreground">from {p.ticket}</span></span>
+                  {p.reason && <span>{p.reason}</span>}
+                  {p.results && (
+                    <span className="text-muted-foreground">
+                      {p.results.cases.map((c) => `${c.id}: ${c.baseline == null ? 'n/a' : c.baseline ? 'pass' : 'fail'} without, ${c.withSkill == null ? 'n/a' : c.withSkill ? 'pass' : 'fail'} with`).join(' · ')}
+                      {p.results.calls != null && ` · ${p.results.calls} calls`}{p.results.cost != null && ` · $${p.results.cost.toFixed(2)}`}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </details>
+      )}
     </section>
   ) : null
 }
@@ -106,7 +139,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         <Button type="submit">Search</Button>
       </form>
       {!repo && (admin
-        ? <EmptyState text="Only the built-in documents are available. Connect a Knowledge repo to add your own documents." action={{ href: '/settings/workspace', label: 'Open settings' }} />
+        ? <EmptyState text="Only the built-in documents are available. Connect a Knowledge repo to add your own documents." action={{ href: '/settings/knowledge', label: 'Open settings' }} />
         : !sources.length && <EmptyState text="No documents yet." />)}
       <div className="grid grid-cols-[260px_minmax(0,1fr)] items-start gap-8 max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-4">
         <nav className={STACK} aria-label="Documents">
@@ -139,6 +172,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
           )}
           {doc ? (
             <article className={STACK} aria-label={doc.title}>
+              {admin && repo && doc.source === repo && <Link className="small self-start text-primary" href={`/knowledge/edit?path=${encodeURIComponent(doc.path)}`}>Edit</Link>}
               <div className={PROSE} dangerouslySetInnerHTML={{ __html: doc.html }} />
             </article>
           ) : (

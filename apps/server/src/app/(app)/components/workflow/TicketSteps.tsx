@@ -18,6 +18,7 @@ function StepRow({ s, open }: { s: Step; open?: { ticket: number; ask: string } 
         <span className="mono small">{s.phase === 'closed' ? '' : duration(s.seconds)}</span>
         <span className="small text-muted-foreground" title={s.at}>{when(s.at)}</span>
         {r && <Link className="small text-primary" href={`/runs/${r.id}`}>Run #{r.id}</Link>}
+        {s.workflowVersion != null && <span className="small text-muted-foreground" data-testid="step-workflow">workflow v{s.workflowVersion}</span>}
         {s.ci?.url && <a className="small text-primary" href={s.ci.url}>Merge request and checks</a>}
       </div>
       {s.ci?.provider && <p className="small m-0 text-muted-foreground">Waiting on {s.ci.provider}</p>}

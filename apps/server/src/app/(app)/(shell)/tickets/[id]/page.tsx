@@ -30,7 +30,7 @@ import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { is, nameOf, type Workflow } from '../../../../../lib/workflow'
-import { workflowFor } from '../../../../../lib/factory'
+import { activeVersion, workflowFor } from '../../../../../lib/factory'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { isAdmin } from '../../../lib/settings'
@@ -170,11 +170,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     payload.find({ collection: 'human_touches', where: { ticket: { equals: ticket.id } }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     forgeKinds(payload, workspace.id),
   ])
+  const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true }, ...q }).catch(() => null)) as { id: number; number: number } | null) : null
   const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin }
   const forge = forges.get(ticket.product)
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
   const sessions = new Map<number, string>(sessionIds.length ? ((await payload.find({ collection: 'agent_sessions', where: { id: { in: sessionIds } }, select: { publicId: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; publicId: string }[]).map((x) => [x.id, x.publicId]) : [])
-  const steps = buildSteps(wf, spans, runs, touches, { sessions, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
+  const steps = buildSteps(wf, spans, runs, touches, { sessions, workflowVersion: (await activeVersion(payload, workspace.id))?.version ?? null, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
   const d = derive(payload, P)
   const card = cardOf(ticket, product as never)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
@@ -207,6 +208,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           {isWebUrl(ticket.url) && <><dt>Forge</dt><dd><a className="text-primary" href={ticket.url}>Open on the forge</a></dd></>}
           {admin && <><dt>Budget</dt><dd className="mono">{ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : `$${ws.budgetUsd30d} / 30 days`}</dd></>}
           {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
+          {ticket.releasedAt && <><dt>Released</dt><dd>{ago(ticket.releasedAt)}</dd></>}
+          {inherited && <><dt>Plan</dt><dd>Approved with parent <Link className="text-primary" href={`/tickets/${inherited.id}`}>#{inherited.number}</Link></dd></>}
           {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
           <Suspense fallback={null}><DecisionRow d={d} /></Suspense>
         </dl>
@@ -254,7 +257,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <p className="text-muted-foreground">No Runs yet.</p>
           )}
         </section>
-        {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} />}
+        {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} counters={(['reviewRounds', 'gatePendingAttempts', 'triageAttempts', 'mergeFailures', 'trainFailures', 'conflictReturns', 'mainMergeNoops', 'releaseAttempts'] as const).map((c) => [c, Number(ticket[c] ?? 0)] as [string, number])} />}
       </TicketDetails>
 
       <Suspense fallback={null}><Composer ticket={ticket.id} d={d} /></Suspense>

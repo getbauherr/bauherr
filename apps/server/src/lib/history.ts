@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { needsOf } from './needs-you'
 import { cas } from './release'
-import { workflowFor } from './factory'
+import { activeVersion, workflowFor } from './factory'
 import { is, type Kind, kindOf, nameOf, stage as stageDef, type Workflow } from './workflow'
 
 type Doc = Record<string, any>
@@ -65,6 +65,7 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
         executor: opts.executor ?? (phase === 'working' ? (run?.mode === 'session' ? 'session' : 'runner') : phase === 'human' ? 'human' : phase === 'ci' ? 'ci' : 'factory'),
         actor: opts.actor ?? (live ? run.sessionLabel ?? null : null),
         cause: opts.cause,
+        workflowVersion: (await activeVersion(payload, typeof ticket.workspace === 'object' ? ticket.workspace.id : ticket.workspace))?.version ?? null,
       },
       ...o,
     })
@@ -75,7 +76,7 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
   }
 }
 
-export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; backfilled: boolean }
+export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; backfilled: boolean; workflowVersion: number | null }
 
 /** The Ticket's events in order; `until` is the next event's `at` (now for the newest, which is its own `at` once closed). */
 export const timeline = async (payload: Payload, ticketId: number | string): Promise<Span[]> => {
@@ -85,7 +86,7 @@ export const timeline = async (payload: Payload, ticketId: number | string): Pro
     return {
       id: e.id, at: e.at, until, seconds: (new Date(until).getTime() - new Date(e.at).getTime()) / 1000,
       stage: e.stage, stageKind: e.stageKind, phase: e.phase, fromStage: e.fromStage, outcome: e.outcome, run: e.run ? (typeof e.run === 'object' ? e.run.id : e.run) : null,
-      executor: e.executor, actor: e.actor, cause: e.cause, backfilled: !!e.backfilled,
+      executor: e.executor, actor: e.actor, cause: e.cause, backfilled: !!e.backfilled, workflowVersion: e.workflowVersion ?? null,
     }
   })
 }

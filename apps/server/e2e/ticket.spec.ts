@@ -276,3 +276,23 @@ test('a failed release with no run link offers one details button', async ({ pag
   await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText('Release failed: see details')
   await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveAttribute('href', '#details')
 })
+
+const openTicket = async (page: Page, number: number, title: string) => {
+  await page.keyboard.press('Control+k')
+  await page.getByPlaceholder(/find a Ticket/).fill(`#${number}`)
+  await page.getByRole('option', { name: new RegExp(title) }).click()
+  await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^#${number} `) })).toBeVisible()
+  await page.getByText('Details', { exact: true }).first().click()
+}
+
+test('Repair shows the counters next to Reset counters; Details say when a Ticket was released and whose plan approval it inherited', async ({ page }) => {
+  await login(page)
+  await openTicket(page, 306, 'Counters: merge keeps failing')
+  await page.getByText('Repair', { exact: true }).click()
+  await expect(page.getByTestId('counters')).toHaveText('reviewRounds:0gatePendingAttempts:4triageAttempts:2mergeFailures:2trainFailures:1conflictReturns:3mainMergeNoops:1releaseAttempts:1')
+  await expect(page.getByRole('button', { name: 'Reset counters' })).toBeVisible()
+  await openTicket(page, 126, 'Hotfix: login loop')
+  await expect(page.getByText('Released', { exact: true })).toBeVisible()
+  await openTicket(page, 12, 'Invoice PDF layout')
+  await expect(page.getByText('Approved with parent #11')).toBeVisible()
+})

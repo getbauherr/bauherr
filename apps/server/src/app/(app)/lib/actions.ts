@@ -3,9 +3,10 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, postComment, CommentRefused, startOwnerIntake, askOwnerIntake, abandonIntake } from '../../../lib/actions'
 import { startRunIfNeeded } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
+import { SKILL_NEED } from '../../../lib/checkpoints'
 import { type DecisionAction, canDecide, settleDecision } from '../../../lib/decision'
 import { repairable } from '../../../lib/workflow'
 import { RERUNNABLE } from './run'
@@ -111,6 +112,13 @@ export async function approveSkillProposalAction(form: FormData) {
   revalidatePath('/knowledge')
 }
 
+export async function rejectSkillProposalAction(form: FormData) {
+  const { user, payload, workspaceId } = await acting()
+  await inWorkspace(rejectSkillProposal(payload, user, { proposal: Number(form.get('proposal')), note: String(form.get('note') ?? ''), workspaceId }))
+  revalidatePath('/knowledge')
+  revalidatePath('/inbox')
+}
+
 export async function grantReviewRoundAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
@@ -207,6 +215,17 @@ export async function decideAction(ticket: number, need: string, action: Decisio
   try {
     const row = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null; workspace: unknown } | null
     if (!row || String((row.workspace as { id?: number })?.id ?? row.workspace) !== String(workspaceId)) notFound()
+    if (need === SKILL_NEED) {
+      if (!canDecide(user, need)) return { error: 'Only an Admin can decide this.' }
+      const proposal = (await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: ticket } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+      if (!proposal || !['proposed', 'replayed'].includes(String(proposal.status))) return { error: 'This decision changed. Reload the Inbox.' }
+      if (action === 'approveSkill') await approveSkillProposalOf(payload, user, a)
+      else if (action === 'rejectSkill') await rejectSkillProposal(payload, user, { proposal: proposal.id as number, note, workspaceId })
+      else return { error: 'Open the Knowledge page to do this.' }
+      revalidatePath('/inbox')
+      revalidatePath('/knowledge')
+      return {}
+    }
     if (row.needsYou !== need) return { error: 'This decision changed. Reload the Inbox.' }
     if (!canDecide(user, need as never)) return { error: 'Only an Admin can decide this.' }
     if (action === 'approvePlan') await approvePlan(payload, user, a)

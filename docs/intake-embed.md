@@ -2,7 +2,7 @@
 
 A Product's users can report a problem from your own site; the answers become a Ticket in Triage.
 
-1. Settings > Products > **Embed tokens**: enter a name and the origins that may embed the widget (e.g. `https://shop.example.com`), then **Create token**. The script tag is shown once; only a hash is stored. **Revoke** ends a token at once.
+1. Settings > Workspace > Products > (the Product) > **Widget**: enter a name, the origins that may embed the widget (e.g. `https://shop.example.com`), optionally the sessions per hour (empty: 20), then **Add widget**. The script tag is shown once; only a hash is stored. **Revoke** ends a token at once.
 2. Paste the tag before `</body>` on the site:
 
 ```html

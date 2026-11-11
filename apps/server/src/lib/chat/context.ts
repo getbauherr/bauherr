@@ -20,8 +20,8 @@ export const CONTEXT_MAX_CHARS = 1500
 const o = { depth: 0, overrideAccess: true } as const
 const PAGES: Record<string, string> = {
   '/': 'Workflow', '/inbox': 'Inbox', '/insights': 'Insights', '/runs': 'Runs', '/requests': 'Requests', '/requests/new': 'New request', '/releases': 'Releases', '/release-notes': 'Release notes', '/knowledge': 'Knowledge', '/knowledge/edit': 'Knowledge editor', '/setup': 'Setup',
-  '/settings': 'Settings', '/settings/api-key': 'Settings: API key', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
-  '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/settings/workflow': 'Settings: Board & WIP', '/settings/workspace': 'Settings: Workspace',
+  '/settings': 'Settings', '/settings/api-key': 'Settings: API keys', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
+  '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/settings/workflow': 'Settings: Workflow', '/settings/workspace': 'Settings: Workspace', '/settings/models': 'Settings: Models & budget', '/settings/profile': 'Settings: Profile', '/settings/knowledge': 'Settings: Knowledge repo', '/settings/health': 'Settings: Health',
 }
 /** One line of text others wrote: no line breaks or markup that could pose as page structure. */
 const line = (s: unknown, n = 120): string => String(s ?? '').replace(/\s+/g, ' ').replace(/[<>`]/g, '').trim().slice(0, n)
@@ -104,7 +104,7 @@ const settingsPage = async (payload: Payload, ws: number, page: string, name: st
     const g = gates(wf)
     return make(name, [`${name}: the workflow stages, WIP limits and human gates.`, `Stages: ${wf.stages.map((s) => `${s.title}${w.wipLimits?.[s.name] ? ` (WIP ${w.wipLimits[s.name]})` : ''}`).join(' > ')}`, `Human gates: ${[g.plan && 'plan', g.staging && 'staging', g.production && 'production'].filter(Boolean).join(', ') || 'none'}`, `Expedite lane: ${w.expediteLane === false ? 'off' : 'on'}`])
   }
-  if (page === 'workspace') {
+  if (page === 'models') {
     const modes = { ...(w.defaultMode && { default: w.defaultMode }), ...w.modeByStage }
     return make(name, [`${name}: run mode and model tiers of Workspace ${line(w.name)}.`, `Run mode: ${Object.entries(modes).map(([k, v]) => `${k}=${v}`).join(', ') || 'factory default'}`, `Model tiers: ${Object.entries({ ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier }).map(([k, v]) => `${k}=${v}`).join(', ')}`])
   }

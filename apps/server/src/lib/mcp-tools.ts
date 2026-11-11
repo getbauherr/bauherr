@@ -5,7 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, normalizeReview, normalizeTriage, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -713,6 +713,15 @@ export const tools: Tool[] = [
     inputSchema: obj({ proposal: { type: ['number', 'string'], description: 'Skill proposal id' }, expectSha: str('Head sha of the PR as reviewed') }, ['proposal', 'expectSha']),
     async run(a, c) {
       return approveSkillProposal(c.payload, c.user, { proposal: a.proposal, expectSha: a.expectSha })
+    },
+  },
+  {
+    name: 'reject_skill_proposal',
+    access: 'human',
+    description: 'Human only: reject a distilled skill proposal. Closes its Knowledge PR and marks the proposal rejected. Only proposed or replayed proposals; refused for agent keys.',
+    inputSchema: obj({ proposal: { type: ['number', 'string'], description: 'Skill proposal id' }, note: str('Why it is rejected (optional)') }, ['proposal']),
+    async run(a, c) {
+      return rejectSkillProposal(c.payload, c.user, { proposal: a.proposal, note: a.note })
     },
   },
   {

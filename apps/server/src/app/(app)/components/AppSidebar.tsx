@@ -51,7 +51,7 @@ export function AppSidebar({ email, admin, version, workspaces, current, needsYo
       </SidebarContent>
       <SidebarFooter>
         <nav aria-label="Account">
-          <SidebarMenu>{item(settingsItem(admin))}</SidebarMenu>
+          <SidebarMenu>{item(settingsItem())}</SidebarMenu>
         </nav>
         <UserMenu email={email} version={version} logout={logout} />
       </SidebarFooter>

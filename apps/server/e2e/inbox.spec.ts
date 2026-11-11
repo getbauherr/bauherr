@@ -72,6 +72,30 @@ test('approving the plan on its card moves the ticket on, the card goes and the 
   expect(await badge(page)).toBe(before - 1)
 })
 
+test('a pending skill proposal is a card with approve and reject; rejecting it closes the card', async ({ page }) => {
+  test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (the proposal PR lives in acme/knowledge)')
+  await login(page)
+  await page.goto('/inbox')
+  const skill = card(page, 'retry-limits')
+  await expect(skill.getByRole('heading', { name: /Merge the skill "retry-limits" learned from #303/ })).toBeVisible()
+  await expect(skill.getByText('Skill proposal', { exact: true })).toBeVisible()
+  await expect(skill).toContainText('75% against 25%')
+  await expect(skill.getByRole('button', { name: 'Approve skill proposal' })).toBeVisible()
+  await skill.getByRole('button', { name: 'Reject' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Closes the pull request; nothing is merged.')
+  await dialog.getByRole('textbox').fill('too narrow')
+  const done = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/inbox') // the card leaves at once; wait for the action before reloading
+  await dialog.getByRole('button', { name: 'Reject' }).click()
+  await done
+  await expect(skill).toBeHidden()
+  await page.reload()
+  await expect(card(page, 'retry-limits')).toHaveCount(0)
+  await page.goto('/knowledge')
+  await page.getByTestId('closed-proposals').locator('summary').click()
+  await expect(page.getByTestId('closed-proposals')).toContainText('too narrow')
+})
+
 test('an Inbox with nothing in it says so in one line', async ({ page }) => {
   await login(page, 'solo@example.com')
   await page.goto('/inbox')

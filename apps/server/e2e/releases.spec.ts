@@ -34,6 +34,15 @@ test('lists the done Tickets of a manual Product, one ship button, notes preview
   await expect(page.getByLabel('Release notes')).not.toContainText('Relist the CSV header')
 })
 
+test('the merge strip says how a Product merges, who waits in the train and who was dropped', async ({ page }) => {
+  await page.goto('/releases')
+  const products = page.getByRole('navigation', { name: 'Product' })
+  await products.getByRole('link', { name: 'Acme Relist' }).click()
+  await expect(page.getByTestId('merge-strip')).toHaveText('Merges directly, no queue')
+  await products.getByRole('link', { name: 'Acme Train' }).click()
+  await expect(page.getByTestId('merge-strip')).toHaveText('Merge train: 2 queued, #311 building · dropped back to Build: #313 (1×)')
+})
+
 test('shipping marks the Tickets Released in the version', async ({ page }, testInfo) => {
   await page.goto('/releases')
   await page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Acme Reship' }).click()

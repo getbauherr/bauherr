@@ -120,11 +120,34 @@ await run(t38, 'review', 'succeeded', { startedAt: '2026-10-30T09:55:00Z', finis
 await ensure('runs', { ticket: t27, stage: 'review', status: 'running' }, { ticket: t27, stage: 'review', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 // Hotfix (#373): a card in the Hotfix lane of Build, and a merged one 12 minutes after its flag for the lead time in Factory health.
 await ticket(125, 'Hotfix: checkout crash', 'build', product, { expedite: true, expediteAt: '2026-11-05T08:00:00Z', rank: '999999' })
-await ticket(126, 'Hotfix: login loop', 'done', product, { state: 'closed', expedite: true, expediteAt: '2026-11-05T08:00:00Z', releaseAt: '2026-11-05T08:12:00Z' })
+await ticket(126, 'Hotfix: login loop', 'done', product, { state: 'closed', expedite: true, expediteAt: '2026-11-05T08:00:00Z', releaseAt: '2026-11-05T08:12:00Z', releasedAt: '2026-11-05T08:30:00Z' })
 await ticket(124, 'Waiting for a Build slot', 'plan', product, { waitingFor: 'build', rank: '000000' })
 const live = await ticket(123, 'Live build in progress', 'build', product, { rank: '900000' })
 const distilled = await ticket(127, 'Fix the flaky export test', 'done', product, { state: 'closed' })
 await ensure('skill_proposals', { ticket: distilled }, { ticket: distilled, workspace, status: 'replayed', pr: 2, skillPath: 'workspace/skills/tdd-first/SKILL.md', score: 1, baselineScore: 0.5 })
+// Own Product of the settings-rework cases, so no spec counting Tickets or Runs of the other Products changes. Proposals: #301 is rejected on the Knowledge page (knowledge.spec.ts), #303 on the Inbox card (inbox.spec.ts), #302 skipped and #304 rejected show reason and results (twins of PRs 3 to 5 in `src/lib/fake-forge.ts`).
+const extras = (await ensure('products', { slug: 'acme-extras' }, { name: 'Acme Extras', slug: 'acme-extras', workspace })).id
+const doneOn = (n: number, title: string, p: string | number, extra: Record<string, unknown> = {}) => ticket(n, title, 'done', p, { state: 'closed', ...extra })
+const proposal = async (n: number, title: string, data: Record<string, unknown>) => {
+  const t = await doneOn(n, title, extras)
+  return ensure('skill_proposals', { ticket: t }, { ticket: t, workspace, ...data })
+}
+await proposal(301, 'Cache the report totals', { status: 'replayed', pr: 3, skillPath: 'workspace/skills/report-caching/SKILL.md', score: 1, baselineScore: 0.25 })
+await proposal(302, 'Rename the export flag', { status: 'skipped', reason: 'one-off lesson' })
+await proposal(303, 'Bound the retry loop', { status: 'replayed', pr: 4, skillPath: 'workspace/skills/retry-limits/SKILL.md', score: 0.75, baselineScore: 0.25 })
+await proposal(304, 'Name the migration files', { status: 'rejected', pr: 5, reason: 'rejected, the baseline passes without the skill', skillPath: 'workspace/skills/naming/SKILL.md', score: 1, baselineScore: 1, results: { baseline: [{ id: 'names-file', pass: true }], withSkill: [{ id: 'names-file', pass: true }], calls: 4, cost: 0.12 } })
+// Merge strip (releases.spec.ts): a Product on a merge train with two queued Tickets (#311 in the running train) and one dropped back to Build once.
+const trainProduct = (await ensure('products', { slug: 'acme-train' }, { name: 'Acme Train', slug: 'acme-train', workspace, mergeMode: 'train' })).id
+const queued1 = await ticket(311, 'Train: first change', 'done', trainProduct, { reviewState: 'queued' })
+await ticket(312, 'Train: second change', 'done', trainProduct, { reviewState: 'queued' })
+await ticket(313, 'Train: dropped change', 'done', trainProduct, { trainFailures: 1 })
+await payload.update({ collection: 'products', id: trainProduct, data: { trainState: { baseSha: 'base', members: [{ ticket: queued1, pr: 1, headSha: 'h1' }], phase: 'testing', probe: null, results: {}, tip: 'tip', since: '2026-11-05T08:00:00Z' } }, ...o })
+// Run chain (run.spec.ts): the second Run of #305 continues the first.
+const chained = await doneOn(305, 'Chain: continue the build', extras)
+const firstRun = await run(chained, 'build', 'abandoned', { startedAt: '2026-10-30T08:00:00Z', finishedAt: '2026-10-30T08:10:00Z', goal: ['The export button downloads a CSV'] })
+await ensure('runs', { ticket: chained, stage: 'build', status: 'succeeded' }, { ticket: chained, stage: 'build', status: 'succeeded', mode: 'autonomous', workspace, previousRun: firstRun.id, startedAt: '2026-10-30T08:11:00Z', finishedAt: '2026-10-30T08:20:00Z', gatewayTokensIn: 1200, gatewayTokensOut: 340 })
+// Counters (ticket.spec.ts): #306 shows them next to Reset counters.
+await doneOn(306, 'Counters: merge keeps failing', extras, { mergeFailures: 2, trainFailures: 1, conflictReturns: 3, releaseAttempts: 1, triageAttempts: 2, gatePendingAttempts: 4, mainMergeNoops: 1 })
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', executor: 'runner', model: 'claude-sonnet-4-5', provider: 'anthropic', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'plan', 'succeeded', { startedAt: '2026-10-30T12:05:00Z', finishedAt: '2026-10-30T12:06:00Z' })

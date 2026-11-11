@@ -215,6 +215,21 @@ const ENTRIES: Record<string, Entry> = {
       }
     },
   },
+  reject_skill_proposal: {
+    description: 'Reject a distilled skill proposal (Admin only): closes its Knowledge PR.',
+    schema: schema({ proposal: { type: 'integer', description: 'Skill proposal id' }, note: prop('Why it is rejected (optional)') }, ['proposal']),
+    kind: 'confirm',
+    describe: async (c, i) => {
+      const p = (await c.payload.findByID({ collection: 'skill_proposals', id: i.proposal, ...o }).catch(() => null)) as Doc | null
+      if (!p || String(id(p.workspace)) !== String(c.workspace)) throw new Error('Skill proposal not found in this Workspace')
+      const t = await ticketOf(c, id(p.ticket))
+      return {
+        title: `Reject skill proposal ${p.id}${t ? ` from ${ticketLine(t)}` : ''}`,
+        details: [{ label: 'Skill', value: String(p.skillPath ?? '') }, { label: 'Pull request', value: `#${p.pr}` }, { label: 'What happens next', value: 'The Knowledge PR is closed and nothing is merged' }],
+        destructive: true,
+      }
+    },
+  },
 }
 
 const mcp = (name: string) => mcpTools.find((t) => t.name === name)!

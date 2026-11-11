@@ -66,7 +66,7 @@ export async function loadWorkspaceSettings(id: number) {
     budgetTokens30d: ws.budgetTokens30d as number | null,
     hasRouter: !!ws.routerKey,
     routerBudgetShare: (ws.routerBudgetShare ?? 20) as number,
-    // Tiers are stored as `<connection>/<model>`; the form shows the bare id of the first Connection, which `saveWorkspace` qualifies again.
+    // Tiers are stored as `<connection>/<model>`; the form shows the bare id of the first Connection, which `saveModels` qualifies again.
     modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
     modelChoices: preset.defaultModels ? [...new Set(Object.values(preset.defaultModels))] : null,
     defaultMode: (ws.defaultMode ?? '') as string,
@@ -97,14 +97,14 @@ export async function loadProducts(workspace: number) {
           touched: Date.parse(p.updatedAt) - Date.parse(p.createdAt) >= 1000,
           name: p.name as string,
           slug: p.slug as string,
-          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number },
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
             .filter((e) => (e.product?.id ?? e.product) === p.id)
-            .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string })),
+            .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string, maxSessionsPerHour: (e.maxSessionsPerHour ?? 20) as number })),
           repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
           sources: sources
             .filter((s) => (s.product?.id ?? s.product) === p.id)
@@ -127,7 +127,13 @@ export async function loadProduct(workspace: number, id: number, viewerIsAdmin =
   const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
   // Admins are not tenant-scoped: only an Admin sees other Admins' emails; for everyone the callout still knows whether an Admin can be notified.
   const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
-  return { product, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release') } }
+  const payload = await payloadClient()
+  const [lastRun, findings] = await Promise.all([
+    payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'scan' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
+    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security' } }] }, sort: '-number', limit: 5, select: { number: true }, ...o } as never),
+  ])
+  const scan = { run: ((lastRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (findings.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
+  return { product, scan, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }

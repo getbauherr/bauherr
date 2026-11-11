@@ -329,7 +329,7 @@ it('context: ticket, run, home and settings pages from the path; a foreign id is
   expect(ins.label).toBe('Insights')
   expect(ins.markdown).toMatch(/last 7 days\.\nDone: \d+; lead time median .*\nShare of time: .*\nBottleneck: /)
   expect((await c('/settings/workflow')).markdown).toMatch(/Stages: .*plan.*\n.*Human gates/)
-  expect((await c('/settings/workspace')).markdown).toContain('Model tiers: cheap=')
+  expect((await c('/settings/models')).markdown).toContain('Model tiers: cheap=')
   expect(await c('/releases')).toMatchObject({ label: 'Releases' })
   expect((await c('/nope/at/all')).label).toBe('Unknown page')
   const gone = { label: 'Not found', markdown: 'The page shows something that does not exist in this Workspace.' }

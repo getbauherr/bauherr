@@ -172,7 +172,7 @@ const workspaces = col(
       admin: { description: 'Override of the factory file: tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit; empty = the `wip` of each stage in the factory file (applying a file clears it).' },
     },
     rel('workflowVersion', 'workflow_versions', { admin: { description: 'The active factory file version; empty = the pack default. Set by applyFactory.' } }),
-    { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Board & WIP: off ignores the bauherr:expedite label.' } },
+    { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Factory > Workflow: off ignores the bauherr:expedite label.' } },
     { name: 'progressComments', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > General: keep one plain-word progress Comment on each issue and mention its author at the moments that matter.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
@@ -188,6 +188,7 @@ const workspaces = col(
   {
     access: {
       create: isAdmin,
+      update: isAdmin, // budget, model tiers, run modes and the rest of a Workspace are Admin settings, over /api as in the UI
       delete: isAdmin,
       read: ({ req }) =>
         req.user?.role === 'admin'

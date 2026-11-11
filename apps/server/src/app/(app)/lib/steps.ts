@@ -24,7 +24,7 @@ export type StepRun = {
   /** Admin only. */
   cost: string | null
 }
-export type Step = { id: number; phase: string; label: string; at: string; seconds: number; run: StepRun | null; ci: { provider: string | null; url: string | null } | null; decision: { what: string; actor: string | null } | null }
+export type Step = { id: number; phase: string; label: string; at: string; seconds: number; /** The workflow version the step ran under, only when it is not the one active now. */ workflowVersion: number | null; run: StepRun | null; ci: { provider: string | null; url: string | null } | null; decision: { what: string; actor: string | null } | null }
 export type Visit = { stage: string; title: string; at: string; seconds: number; steps: Step[] }
 export type Steps = { visits: Visit[]; path: TicketPath; totals: { lead: number; human: number; working: number; ci: number; queued: number }; rounds: { stage: string; title: string; n: number }[] }
 
@@ -37,7 +37,7 @@ const cost = (r: Doc): string | null =>
  * The Ticket's route and steps from its history: spans of one stage form a visit, a visit is entered from the previous one (the transitions taken), steps are the phases inside it.
  * Runs add who ran a step, a human step names who decided what (the event after it carries `gate:<what>` and the actor, else the matching `human_touches` row), a CI step names the provider and links the MR.
  */
-export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Doc[], o: { current: string; provider: string | null; admin: boolean; sessions?: Map<number, string> }): Steps => {
+export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Doc[], o: { current: string; provider: string | null; admin: boolean; sessions?: Map<number, string>; workflowVersion?: number | null }): Steps => {
   const byRun = new Map(runs.map((r) => [r.id as number, r]))
   const prUrl = runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl ?? null
   const visits: Visit[] = []
@@ -49,7 +49,7 @@ export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Do
     const gate = s.phase === 'human' && next?.cause?.startsWith('gate:') ? next.cause.slice(5) : null
     const touch = gate ? touches.find((t) => t.kind === gate) : null
     const step: Step = {
-      id: s.id, phase: s.phase, label: phaseLabel(s.phase, s.stageKind), at: s.at, seconds: s.seconds,
+      id: s.id, phase: s.phase, label: phaseLabel(s.phase, s.stageKind), at: s.at, seconds: s.seconds, workflowVersion: s.workflowVersion != null && s.workflowVersion !== (o.workflowVersion ?? null) ? s.workflowVersion : null,
       run: r ? { id: r.id, executor: r.executor === 'session' || r.mode === 'session' ? 'Session' : r.executor === 'ci' ? 'CI' : r.executor || r.mode ? 'Runner' : null, role: wf.roles.find((x) => x.id === r.role)?.title ?? null, sessionLabel: r.sessionLabel ?? null, sessionId: o.sessions?.get(typeof r.session === 'object' ? r.session?.id : r.session) ?? null, client: [r.clientName, r.clientVersion].filter(Boolean).join(' ') || null, model: r.model ?? null, provider: r.provider ?? null, mode: r.mode, status: r.status, outcome: r.outcome ?? s.outcome, verdict: r.verdict ?? null, reason: first(r.error), cost: o.admin ? cost(r) : null } : null,
       ci: s.phase === 'ci' ? { provider: o.provider, url: prUrl } : null,
       decision: gate ? { what: gate.replace(/:/g, ' '), actor: next?.actor ?? touch?.actor ?? null } : null,

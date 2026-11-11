@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { request } from './chat/dock-state'
 import { Chat } from './chat/icons'
-import { LogOut, Moon, Plus, Search, Ticket } from './icons'
+import { LogOut, Moon, Plus, Search, Settings, Ticket } from './icons'
 import { settingsPages, type NavItem } from './nav-items'
 import { toggleTheme } from './ThemeToggle'
 import { Button } from './ui/button'
@@ -13,7 +13,7 @@ import { searchTickets, type TicketHit } from '../lib/search'
 const SEARCH_DEBOUNCE_MS = 150
 
 /** Header search button plus the command palette it and Ctrl/Cmd+K open: pages, Tickets of the Workspace (searched on the server while typing), actions. */
-export function CommandMenu({ items, admin, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; logout: () => Promise<void> }) {
+export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; setup?: boolean; logout: () => Promise<void> }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -48,6 +48,7 @@ export function CommandMenu({ items, admin, logout }: { items: Pick<NavItem, 'hr
   const actions = [
     { label: 'Ask the factory', Icon: Chat, run: () => run(() => request('focus')) },
     { label: 'New chat', Icon: Chat, run: () => run(() => request('new')) },
+    ...(setup ? [{ label: 'Set up', Icon: Settings, run: () => go('/setup') }] : []),
     { label: 'New request', Icon: Plus, run: () => go('/requests/new') },
     { label: 'Toggle theme', Icon: Moon, run: () => run(toggleTheme) },
     { label: 'Sign out', Icon: LogOut, run: () => run(() => void logout()) },

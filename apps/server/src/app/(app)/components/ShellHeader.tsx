@@ -12,7 +12,7 @@ import { Separator } from './ui/separator'
 import { SidebarTrigger } from './ui/sidebar'
 
 /** Slim row above the page: sidebar trigger, breadcrumb, then the two actions that are the same on every page. */
-export function ShellHeader({ items, admin, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; logout: () => Promise<void> }) {
+export function ShellHeader({ items, admin, setup, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; setup?: boolean; logout: () => Promise<void> }) {
   const path = usePathname()
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4 max-sm:gap-1 max-sm:px-2">
@@ -29,7 +29,7 @@ export function ShellHeader({ items, admin, logout }: { items: Pick<NavItem, 'hr
             </Link>
           </Button>
         )}
-        <CommandMenu items={items} admin={admin} logout={logout} />
+        <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />
         <ChatButton />
       </div>
     </header>

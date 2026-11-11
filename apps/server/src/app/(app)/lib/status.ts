@@ -27,7 +27,7 @@ export type StatusRun = {
   escalation?: { step: number; reason: string } | null
 }
 /** Ticket fields that say what the factory waits for between Runs. */
-export type Track = { waitingFor?: string | null; reviewState?: string | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null }
+export type Track = { waitingFor?: string | null; reviewState?: string | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; releaseError?: string | null }
 export type StatusRow = {
   open: boolean
   stage: string
@@ -97,6 +97,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   }
   const wait = ci(wf, r)
   if (wait) return { phase: 'ci', label: wait.label, detail: wait.detail, who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
+  if (r.track.releaseError) return { phase: 'failed', label: 'Failed', detail: `Release not published: ${first(r.track.releaseError)}`, who: null, tone: 'destructive' }
   if (r.blockedBy.length) return { phase: 'blocked', label: 'Blocked', detail: `by ${r.blockedBy.map((b) => `#${b.number}`).join(', ')}`, who: null, tone: 'muted' }
   if (run && ['failed', 'budget_exhausted'].includes(run.status)) return { phase: 'failed', label: 'Failed', detail: first(run.error) ?? (run.status === 'budget_exhausted' ? 'budget exhausted' : 'the Run failed'), who: null, tone: 'destructive' }
   return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }

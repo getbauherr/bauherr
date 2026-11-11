@@ -57,7 +57,7 @@ export const actionFor = (need: Need, { run, open, product, releaseRunUrl }: Act
     case 'Run failed': return run ? { kind: 'rerun' } : null
     case 'Answer decisions':
     case 'Answer questions': return { kind: 'link', href: '#answer', label: `Answer ${open} question${open === 1 ? '' : 's'}` }
-    case 'Configure production checks': return { kind: 'link', href: `/settings/products/${product}#production` }
+    case 'Configure production checks': return { kind: 'link', href: `/settings/products/${product}?tab=deploy#production` }
   }
 }
 

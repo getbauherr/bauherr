@@ -10,7 +10,7 @@ const REPAIRS: [kind: string, label: string, hint: string][] = [
 ]
 
 /** Admin-only repair disclosure on the Ticket page; every action is recorded as a `repair:*` human touch (Audit). */
-export function FixState({ wf, ticket, stage }: { wf: Workflow; ticket: number; stage: string }) {
+export function FixState({ wf, ticket, stage, counters }: { wf: Workflow; ticket: number; stage: string; counters: [name: string, value: number][] }) {
   const action = repairTicketAction.bind(null, ticket)
   return (
     <Reveal label="Repair">
@@ -19,6 +19,9 @@ export function FixState({ wf, ticket, stage }: { wf: Workflow; ticket: number; 
         <input type="hidden" name="kind" value="stage" />
         <Field name="stage" label="Stage" hint="Moves the forge label and the stage." options={repairable(wf).map((s) => [s, title(wf, s)] as [string, string])} defaultValue={stage} />
       </SettingsForm>
+      <dl className="small m-0 flex flex-wrap gap-x-6 gap-y-1 [&_dd]:m-0" data-testid="counters" aria-label="Counters">
+        {counters.map(([name, value]) => <div key={name} className="flex gap-1"><dt className="text-muted-foreground">{name}:</dt><dd className="mono">{value}</dd></div>)}
+      </dl>
       {REPAIRS.map(([kind, label, hint]) => (
         <SettingsForm key={kind} action={action} submit={label} confirm={`Confirm ${label.toLowerCase()}`} inline>
           <input type="hidden" name="kind" value={kind} />
