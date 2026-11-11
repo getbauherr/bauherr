@@ -1,4 +1,5 @@
 #!/bin/sh
+# NOT ACTIVE: reference stub. The Runner enforces this itself for autonomous Runs (packages/runner/src/guards.ts); nothing loads this file.
 # PreToolUse(Bash|WebFetch|WebSearch): deny network tools unless the target is the gateway.
 # Not a security boundary (the worker container's egress rules are); this gives the agent a clear message.
 set -eu

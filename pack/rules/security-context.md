@@ -9,7 +9,7 @@ Every Product keeps a `SECURITY-CONTEXT.md` at `products/<slug>/SECURITY-CONTEXT
 
 ## Rules
 - Read it before editing anything named in it.
-- A change touching a protected path needs an explicit Goal statement covering it and a human-reviewed MR; otherwise declare a blocker.
+- A change touching a protected path needs an explicit Goal statement covering it, and the Review stage (plus the security review stage, where the workflow has one) checks it against this file; otherwise declare a blocker.
 - If the file is missing, propose it from the template as a Knowledge PR and ask the Bauherr to confirm it (`decision-sheet`). A scan Run without it still runs and files one Ticket asking for it.
 - Keep it short and factual: no secrets, no credentials, no incident detail.
 - Update it in the same MR when a change moves a trust boundary or adds an identity.

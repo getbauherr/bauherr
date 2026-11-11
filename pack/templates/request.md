@@ -1,7 +1,7 @@
 ---
 name: request
 title: Request
-used_by: The issue body made from a finished intake draft (New request page and widget), and what a product owner writes by hand on the forge
+used_by: The issue body made from a finished intake draft (New request page and widget), and what a Product owner writes by hand on the forge
 description: How a request is written so Triage can plan it without asking.
 layout: tight
 ---

@@ -1,7 +1,7 @@
 ---
 name: triage-questions
 title: Triage questions
-used_by: The question sheet Triage posts when a ticket needs the owner's answers before it can be planned
+used_by: The question sheet Triage posts when a ticket needs the Bauherr's answers before it can be planned
 description: Few questions, each with a default, so answering takes a minute.
 layout: tight
 ---

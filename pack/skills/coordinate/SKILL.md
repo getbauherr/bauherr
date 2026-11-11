@@ -27,6 +27,6 @@ Parallel lanes are a stage config choice with a declared problem (see `rules/tea
 7. Close lanes when their outcome is met; do not keep idle lanes.
 
 ## Guards
-- `hooks/write-scope-guard.ts` enforces owned paths per lane.
+- Owned paths per lane: not enforced, by convention (the Runner's write-scope guard covers autonomous Runs only, and only the Run's cwd and `BAUHERR_LANE_OWNED_PATHS`).
 - The coordinator is itself a lane owner or purely integrating, never a management layer between the Bauherr and the work.
 - Effort and model per lane: `effort-policy`.

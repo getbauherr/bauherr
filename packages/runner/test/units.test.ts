@@ -97,6 +97,10 @@ test('materialise: skills, AGENTS.md, goal.json, worklog, git-excluded', () => {
   ctx.ticket.worklog = 'WL-TEXT';
   const md = materialise(cwd, ctx);
   assert.ok(existsSync(join(cwd, '.claude/skills/run-contract/SKILL.md')));
+  const contract = readFileSync(join(cwd, '.claude/skills/run-contract/SKILL.md'), 'utf8');
+  assert.ok(contract.includes('Do not push or open the MR yourself'), 'autonomous part appended');
+  for (const sessionOnly of ['submit_plan', 'leaseToken', 'claim_next']) assert.ok(!contract.includes(sessionOnly), sessionOnly);
+  assert.ok(!existsSync(join(cwd, '.claude/skills/run-contract/session.md')) && !existsSync(join(cwd, '.claude/skills/run-contract/autonomous.md')));
   const agents = readFileSync(join(cwd, 'AGENTS.md'), 'utf8');
   assert.equal(agents, md);
   for (const s of ['plan posted', 'WL-TEXT', 'body', 'Egress']) assert.ok(agents.includes(s), s);

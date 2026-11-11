@@ -39,7 +39,7 @@ test('Agent team is in the sidebar after Workflow, not in Settings; the roster i
   await roster.locator('[data-role=engineer]').click()
   const sheet = page.getByRole('region', { name: 'Software engineer' })
   await expect(sheet.locator('#role-title')).toHaveText('Software engineer')
-  await expect(sheet.getByRole('list', { name: 'Skills' })).toContainText('TypeScript')
+  await expect(sheet.getByRole('list', { name: 'Skills' })).toContainText('Small diffs')
   await expect(sheet.getByText('Works on')).toBeVisible()
   await expect(sheet.getByTestId('connect')).toContainText('Connect to the factory as engineer and work until I tell you to stop.')
   await expect(sheet.getByRole('link', { name: 'How sessions connect' })).toHaveAttribute('href', /session-mode\.md/)

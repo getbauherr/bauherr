@@ -22,4 +22,4 @@ Write `.bauherr/plan.md` with exactly these sections (no `## TL;DR`: nobody deci
 ## Files
 - One path glob per line: the files the fix and the test change, nothing else.
 
-Do not add `## Sub-tickets`. Work that does not fit one small MR is not a hotfix: say so in `## Goal` and the owner removes the label.
+Do not add `## Sub-tickets`. Work that does not fit one small MR is not a hotfix: say so in `## Goal` and the Bauherr removes the label.

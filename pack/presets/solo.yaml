@@ -4,7 +4,7 @@ team:
   roles:
     engineer:
       title: Software engineer
-      skills: [TypeScript, Small diffs, Tests first, Refactoring]
+      skills: [Implementation, Small diffs, Tests first, Refactoring]
       tier: cheap
       exceptions: true
       profile: |
