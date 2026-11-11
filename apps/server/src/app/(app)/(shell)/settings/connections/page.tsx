@@ -33,7 +33,7 @@ export default async function ConnectionSettings() {
                   <td>{c.kind}</td>
                   <td>{c.provider || <span className="text-muted-foreground">n/a</span>}</td>
                   <td>
-                    <Badge variant={chip[c.status][0]}>{chip[c.status][1]}</Badge>{' '}
+                    <Badge variant={chip[c.status === 'none' && c.inUse ? 'ok' : c.status][0]}>{c.status === 'none' && c.inUse ? 'In use' : chip[c.status][1]}</Badge>{' '}
                     {c.detail && <span className="small text-muted-foreground">{c.status === 'ok' ? c.detail.slice(0, 16).replace('T', ' ') : c.detail}</span>}
                   </td>
                   <td>

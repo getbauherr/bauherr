@@ -14,7 +14,8 @@ export const REQUIRED: readonly SetupStepId[] = ['forge', 'product', 'request']
 export const SKIP_SESSION = 'setup:skip-session'
 
 export type SetupFacts = {
-  forgeVerified: boolean
+  /** A forge Connection is verified, or one that polled its ticket source successfully (in working use). */
+  forgeConnected: boolean
   product: boolean
   /** The Workspace has an applied factory file version: a picked preset, or Standard applied by skipping. */
   teamApplied: boolean
@@ -26,7 +27,7 @@ export type SetupFacts = {
 
 /** Done per step, from the facts. The session step is met by a session, a Runner (an LLM Connection) or a skip. */
 export const stepsOf = (f: SetupFacts) => {
-  const done: Record<SetupStepId, boolean> = { forge: f.forgeVerified, product: f.product, team: f.teamApplied, session: f.sessionEver || f.llmConnection || f.sessionSkipped, request: f.ticket }
+  const done: Record<SetupStepId, boolean> = { forge: f.forgeConnected, product: f.product, team: f.teamApplied, session: f.sessionEver || f.llmConnection || f.sessionSkipped, request: f.ticket }
   const steps = SETUP_STEPS.map(([id, label]) => ({ id, label, done: done[id], required: REQUIRED.includes(id) }))
   return { steps, count: steps.filter((s) => s.done).length, complete: steps.filter((s) => s.required).every((s) => s.done) }
 }
