@@ -67,10 +67,12 @@ test('the proof file is served to signed-in members only, with safe headers', as
   await page.goto('/')
   await page.locator('.card', { hasText: 'Ship the proof export' }).first().getByRole('link', { name: /Ship the proof export/ }).click()
   const src = await page.getByTestId('proof-pair').getByRole('img').first().getAttribute('src')
-  const signedIn = await page.request.get(src!)
-  expect(signedIn.status()).toBe(200)
-  expect(signedIn.headers()['content-type']).toBe('image/png')
-  expect(signedIn.headers()['x-content-type-options']).toBe('nosniff')
+  // Fetched from the page like the <img> does: a request without browser headers (Sec-Fetch-Site / Origin) is not a signed-in one for Payload's cookie check.
+  const signedIn = await page.evaluate(async (u) => {
+    const r = await fetch(u)
+    return { status: r.status, type: r.headers.get('content-type'), sniff: r.headers.get('x-content-type-options') }
+  }, src!)
+  expect(signedIn).toEqual({ status: 200, type: 'image/png', sniff: 'nosniff' })
   expect((await request.get(src!)).status()).toBe(401)
 })
 
