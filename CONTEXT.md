@@ -21,7 +21,7 @@ A person who is a member of a Workspace and owns all its Products: configures th
 _Avoid_: Operator, project owner, owner (bare; say Bauherr, Product owner or Product user)
 
 **Product owner**:
-The person accountable for a Product's requirements: files requests for it and answers product questions about it. Defined by what the person does; the factory has no account type for it yet, so everything that needs a decision at a gate still goes to a Bauherr.
+The person accountable for a Product's requirements: files requests for it and answers product questions about it. Has an account with a login (role `product-owner`, ranks below the Bauherr) that an Admin assigns to a Workspace or to single Products; until the pages for it are built it reaches only its own profile, and everything that needs a decision at a gate still goes to a Bauherr. See `docs/spec/people.md`.
 _Avoid_: Project owner, owner (bare)
 
 **Admin**:

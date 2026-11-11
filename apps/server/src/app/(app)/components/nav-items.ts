@@ -15,7 +15,7 @@ export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admi
 ]
 
 /** The sidebar Settings link opens the first page everyone may open. */
-export const settingsItem = (): NavItem => ({ href: '/settings/profile', label: 'Settings', Icon: Settings, match: (p) => p.startsWith('/settings') || p.startsWith('/workflow/edit') })
+export const settingsItem = (label = 'Settings'): NavItem => ({ href: '/settings/profile', label, Icon: Settings, match: (p) => p.startsWith('/settings') || p.startsWith('/workflow/edit') })
 
 type Entry = [label: string, href: string]
 export type SettingsGroup = { heading: string; entries: Entry[] }

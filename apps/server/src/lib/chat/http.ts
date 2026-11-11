@@ -2,6 +2,7 @@ import config from '@payload-config'
 import { getPayload } from 'payload'
 import { tenantsOf } from '../actions'
 import { loadWorkflows } from '../factory'
+import { isBauherr } from '../people'
 import type { ChatEvent } from './engine'
 import type { Who } from './threads'
 
@@ -23,6 +24,7 @@ export const chatWho = async (req: Request): Promise<Who | Response> => {
   await loadWorkflows(payload)
   const { user } = await payload.auth({ headers: req.headers })
   if (!user) return fail('unauthorized', 401)
+  if (!isBauherr(user)) return fail('forbidden', 403)
   const u = user as Doc
   const slug = cookie(req, WS_COOKIE)
   const { docs } = await payload.find({ collection: 'workspaces', where: u.role === 'admin' ? {} : { id: { in: tenantsOf(u) } }, sort: 'name', pagination: false, depth: 0, overrideAccess: true })

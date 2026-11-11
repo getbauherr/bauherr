@@ -2,6 +2,7 @@ import config from '@payload-config'
 import { getPayload, type Payload } from 'payload'
 import { loadWorkflows } from '../factory'
 import { tenantsOf } from '../actions'
+import { isBauherr } from '../people'
 import { decrypt } from '../secrets'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
 import { gatewayModel, type ModelCall } from './engine'
@@ -25,6 +26,7 @@ export const actor = async (req: Request): Promise<({ payload: Payload } & Who) 
   if (token instanceof Response) return token
   if (token) return { payload, user: null, token }
   const { user } = await payload.auth({ headers: req.headers })
+  if (user && !isBauherr(user)) return Response.json({ error: 'forbidden' }, { status: 403 })
   return user ? { payload, user, token: null } : Response.json({ error: 'unauthorized' }, { status: 401 })
 }
 

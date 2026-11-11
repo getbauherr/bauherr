@@ -15,14 +15,14 @@ export function AppShell({ defaultOpen, presence, version, dock, children, ...si
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
       <PageTitleProvider>
-        <PresenceProvider initial={presence}>
+        <PresenceProvider initial={presence} off={sidebar.minimal}>
           <NavProgress />
           <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:border focus:border-border focus:bg-card focus:px-3 focus:py-2">Skip to content</a>
           <AppSidebar {...sidebar} />
           <div className="group/col flex min-w-0 flex-1 flex-col">
-            <ShellHeader items={mainItems(sidebar).map(({ href, label }) => ({ href, label }))} admin={sidebar.admin} setup={sidebar.setup} logout={sidebar.logout} />
+            <ShellHeader items={mainItems(sidebar).map(({ href, label }) => ({ href, label }))} admin={sidebar.admin} setup={sidebar.setup} minimal={sidebar.minimal} logout={sidebar.logout} />
             <main id="main" tabIndex={-1} className="flex flex-col gap-6 p-8 outline-none max-sm:p-4">{children}</main>
-            <AppFooter version={version} />
+            <AppFooter version={version} minimal={sidebar.minimal} />
           </div>
           {dock}
         </PresenceProvider>

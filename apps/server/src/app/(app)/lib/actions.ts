@@ -14,14 +14,18 @@ import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock'
+import { homeOf } from '../../../lib/people'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
   let token: string | undefined
+  let home = '/'
   const email = String(form.get('email'))
   try {
-    token = (await signInWithPassword(payload, email, String(form.get('password')), clientIp(await headers()))).token
+    const result = await signInWithPassword(payload, email, String(form.get('password')), clientIp(await headers()))
+    token = result.token
+    home = homeOf(result.user)
   } catch (e) {
     // A wrong password and too many sign-ins at once get the same generic error: neither says whether the account exists.
     if (!(e instanceof LoginBusy) && (e as { status?: number }).status !== 401) throw e
@@ -29,7 +33,7 @@ export async function login(form: FormData) {
   if (!token) redirect('/login?error=1')
   const cookie = generatePayloadCookie({ collectionAuthConfig: payload.collections.bauherren.config.auth, cookiePrefix: payload.config.cookiePrefix, token, returnCookieAsObject: true })
   ;(await cookies()).set(cookie.name, cookie.value ?? token, { httpOnly: true, path: '/', sameSite: 'lax', secure: cookie.secure, expires: cookie.expires ? new Date(cookie.expires) : undefined })
-  redirect('/')
+  redirect(home)
 }
 
 export async function logout() {

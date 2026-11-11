@@ -5,7 +5,8 @@ import { ChatDock } from '../components/chat/ChatDock'
 import { SIDEBAR_COOKIE } from '../components/ui/sidebar-cookie'
 import { logout, selectWorkspace } from '../lib/actions'
 import { countOwnDrafts } from '../lib/requests'
-import { currentWorkspace, payloadClient } from '../lib/session'
+import { isProductOwner } from '../../../lib/people'
+import { currentWorkspace, payloadClient, requirePerson } from '../lib/session'
 import { isAdmin } from '../lib/settings'
 import { loadPresence } from '../../../lib/presence'
 import { loadSetup, SETUP_STEPS } from '../lib/setup'
@@ -29,7 +30,18 @@ const setupOf = async (workspace: number) => {
   return { done: s.count, total: SETUP_STEPS.length, complete: s.complete }
 }
 
+/** What a Product owner gets: the brand, Profile and the user menu. No Workspace data is read, no dock, no polling. */
+function ProductOwnerShell({ email, defaultOpen, children }: { email: string; defaultOpen: boolean; children: ReactNode }) {
+  return (
+    <AppShell defaultOpen={defaultOpen} minimal email={email} admin={false} workspaces={[]} presence={{ working: 0, idle: 0 }} version={appVersion()} needsYou={0} drafts={0} hasKnowledge={false} logout={logout} selectWorkspace={selectWorkspace}>
+      {children}
+    </AppShell>
+  )
+}
+
 export default async function Layout({ children }: { children: ReactNode }) {
+  const person = await requirePerson()
+  if (isProductOwner(person)) return <ProductOwnerShell email={person.email} defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'}>{children}</ProductOwnerShell>
   const { user, workspaces, workspace } = await currentWorkspace()
   const [needsYou, drafts, setup, presence] = workspace ? await Promise.all([countNeedsYou(workspace.id, user.role === 'admin'), countOwnDrafts(user.id as number, workspace.id), isAdmin(user) ? setupOf(workspace.id) : undefined, payloadClient().then((p) => loadPresence(p, workspace.id))]) : [0, 0, undefined, { working: 0, idle: 0 }]
   return (

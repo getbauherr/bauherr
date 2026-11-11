@@ -44,6 +44,7 @@ const newco = (await ensure('workspaces', { slug: 'newco' }, { name: 'Newco', sl
 await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup-member@example.com', password, role: 'bauherr', tenants: [{ tenant: newco }] })
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
+await ensure('bauherren', { email: 'owner@example.com' }, { email: 'owner@example.com', password, role: 'product-owner', assignments: [{ workspace, scope: 'products', products: [product] }] }) // the Product owner of Acme Web; people.spec and product-owner.spec sign in as this user
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
 await payload.update({ collection: 'workspaces', id: workspace, data: { knowledgeConnection: github, knowledgeRepo: 'acme/knowledge' }, ...o })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })

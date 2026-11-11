@@ -11,9 +11,10 @@ export const usePresence = () => useContext(Ctx)
 export const presenceText = ({ working, idle }: Presence, sep = ', ') => [working && `${working} working`, idle && `${idle} idle`].filter(Boolean).join(sep) || 'No agents connected'
 
 /** Holds the Workspace's agent presence for the shell: the layout's first read, then `/api/presence` every `ms` while the tab is visible. */
-export function PresenceProvider({ initial, ms = 5000, children }: { initial: Presence; ms?: number; children: ReactNode }) {
+export function PresenceProvider({ initial, ms = 5000, off, children }: { initial: Presence; ms?: number; off?: boolean; children: ReactNode }) {
   const [p, setP] = useState(initial)
   useEffect(() => {
+    if (off) return
     const poll = async () => {
       if (document.visibilityState !== 'visible') return
       try {
@@ -31,7 +32,7 @@ export function PresenceProvider({ initial, ms = 5000, children }: { initial: Pr
       clearInterval(id)
       document.removeEventListener('visibilitychange', poll)
     }
-  }, [ms])
+  }, [ms, off])
   return <Ctx.Provider value={p}>{children}</Ctx.Provider>
 }
 
