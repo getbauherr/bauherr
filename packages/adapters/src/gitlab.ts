@@ -143,7 +143,7 @@ class GitlabTickets implements TicketSource {
     const { body, relations } = parseRelations(i.description ?? '');
     const closed = i.state !== 'opened';
     return {
-      ...summary(i), body, parent: relations.parent, blockedBy: relations.blockedBy, links: relations.links,
+      ...summary(i), body, author: i.author?.username ?? null, parent: relations.parent, blockedBy: relations.blockedBy, links: relations.links,
       closeReason: closed ? (REASONS.find((r) => (i.labels as string[]).includes(closeReasonLabel(r))) ?? 'completed') : null,
     };
   }

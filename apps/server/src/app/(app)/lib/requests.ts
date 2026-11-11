@@ -1,12 +1,13 @@
 import type { Where } from 'payload'
 import { kindOf, type Workflow } from '../../../lib/workflow'
 import { workflowFor } from '../../../lib/factory'
-import { needsYou, type Need } from './needs-you'
+import { loadProgress, type Progress } from '../../../lib/progress'
+import type { Need } from './needs-you'
 import { payloadClient } from './session'
 
 type Ref = number | { id: number; name?: string }
 type Session = { id: number; product: Ref; user?: Ref | null; status: string; draft?: { problem?: string } | null; ticketNumber?: number | null; updatedAt: string }
-type TicketDoc = { id: number; number: number; product: Ref }
+type TicketDoc = Record<string, any> & { id: number; number: number; product: Ref }
 const idOf = (r: Ref | null | undefined) => (typeof r === 'object' ? r?.id : r)
 
 export const REQUESTS_LIMIT = 100
@@ -20,6 +21,8 @@ export type RequestRow = {
   resumable: boolean
   updatedAt: string
   ticket: { number: number; id?: number } | null
+  /** Where the request's first Ticket stands, in plain words; null while it is a Draft. */
+  progress: (Progress & { since: string | null }) | null
 }
 
 const cut = (s: string) => {
@@ -42,8 +45,9 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
   const docs = sessions.docs as unknown as Session[]
   const pairs = docs.filter((s) => s.ticketNumber != null).map((s) => ({ and: [{ product: { equals: idOf(s.product) } }, { number: { equals: s.ticketNumber } }] as Where[] }))
   const tickets = pairs.length
-    ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, or: pairs }, depth: 0, select: { number: true, product: true }, ...o })).docs as unknown as TicketDoc[]
+    ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, or: pairs }, depth: 0, ...o })).docs as unknown as TicketDoc[]
     : []
+  const progress = await loadProgress(payload, tickets)
   const rows = docs.map((s): RequestRow => {
     const productId = idOf(s.product)
     const problem = s.draft?.problem
@@ -57,6 +61,7 @@ export async function loadRequests(workspaceId: number, userId?: number): Promis
       resumable: s.status === 'open' && userId != null && idOf(s.user) === userId,
       updatedAt: s.updatedAt,
       ticket: s.ticketNumber == null ? null : { number: s.ticketNumber, id: t?.id },
+      progress: (t && progress.get(t.id)) || null,
     }
   })
   return { rows, total: sessions.totalDocs, multiProduct }
@@ -87,7 +92,7 @@ export async function openSessions(userId: number, workspaceId: number | undefin
 const LIFECYCLE: Record<string, string> = { triage: 'Being looked at', plan: 'Being planned', build: 'Being built', review: 'Being reviewed', release: 'On staging', container: 'Split into smaller tickets', done: 'Done' }
 export const lifecycleOf = (wf: Workflow, t: { state?: string | null; stage?: string | null }) => (t.state === 'closed' ? 'Done' : LIFECYCLE[(t.stage && kindOf(wf, t.stage)) || 'triage'] ?? LIFECYCLE.triage!)
 
-export type RequestTicket = { id: number; number: number; title: string; status: string; need: Need | null }
+export type RequestTicket = { id: number; number: number; title: string; status: string; need: Need | null; url: string | null; progress: Progress & { since: string | null } }
 export type RequestPage = {
   id: number
   product: string
@@ -108,8 +113,8 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
   if (!s) return null
   const wf = workflowFor(workspaceId)
   const numbers = s.ticketNumbers?.length ? s.ticketNumbers : s.ticketNumber != null ? [s.ticketNumber] : []
-  const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }[] : []
-  const runs = docs.length ? (await payload.find({ collection: 'runs', where: { ticket: { in: docs.map((t) => t.id) } }, sort: '-createdAt', select: { ticket: true, stage: true, kind: true, status: true, reasonKind: true }, ...o })).docs as unknown as { ticket: number; stage: string; kind?: string | null; status: string; reasonKind?: string | null }[] : []
+  const docs = numbers.length ? (await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, product: { equals: idOf(s.product) }, number: { in: numbers } }, sort: 'number', ...o })).docs as unknown as { id: number; number: number; title: string; url?: string | null; needsYou?: Need | null; state: string; stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null }[] : []
+  const progress = await loadProgress(payload, docs)
   return {
     id: s.id,
     product: (typeof s.product === 'object' && s.product.name) || '—',
@@ -119,8 +124,8 @@ export async function loadRequest(workspaceId: number, id: number, userId?: numb
     context: s.draft?.context?.trim() ?? '',
     criteria: (s.draft?.acceptance_criteria ?? []).filter((c) => c.trim()),
     tickets: docs.map((t) => ({
-      id: t.id, number: t.number, title: t.title, status: lifecycleOf(wf, t),
-      need: t.state === 'closed' ? null : needsYou(wf, { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, runs.find((r) => r.ticket === t.id) ?? null),
+      id: t.id, number: t.number, title: t.title, url: t.url ?? null, status: lifecycleOf(wf, t), progress: progress.get(t.id)!,
+      need: t.state === 'closed' ? null : t.needsYou ?? null,
     })),
   }
 }

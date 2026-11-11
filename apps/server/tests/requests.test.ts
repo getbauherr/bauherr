@@ -58,13 +58,15 @@ describe('loadRequest', () => {
   it('links a split request to both Tickets with plain status and a need, and hides foreign Workspaces and owner sessions', async () => {
     const mkTicket = (number: number, extra: Record<string, unknown>) => payload.create({ collection: 'tickets', data: { title: `T${number}`, externalId: `req-${number}`, number, url: `https://x/${number}`, state: 'open', labels: [], product, workspace: ws, rank: String(number), ...extra }, ...o } as never)
     await mkTicket(21, { stage: 'build', labels: ['bauherr:stage:build'] })
-    await mkTicket(22, { stage: 'release', releaseState: 'timed_out', labels: ['bauherr:stage:release'] })
+    await mkTicket(22, { stage: 'release', releaseState: 'timed_out', needsYou: 'Staging not confirmed', labels: ['bauherr:stage:release'] })
     const draft = { problem: 'Split request', context: 'ctx', acceptance_criteria: ['a', ' '], type: 'bug', links: [] }
     const mk = (extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'submitted', persona: 'product-user', messages: [], draft, ...extra }, ...o } as never).then((s) => Number(s.id))
     const split = await mk({ ticketNumber: 21, ticketNumbers: [21, 22] })
     const r = await requests.loadRequest(ws, split, me)
     expect(r).toMatchObject({ sent: true, own: false, problem: 'Split request', criteria: ['a'] })
     expect(r?.tickets.map((t) => [t.number, t.status, t.need])).toEqual([[21, 'Being built', null], [22, 'On staging', 'Staging not confirmed']])
+    expect(r?.tickets.map((t) => [t.progress.headline, t.progress.step])).toEqual([['Being built.', 2], ['Stuck: the change could not be confirmed on staging.', 4]])
+    expect((await requests.loadRequests(ws)).rows.find((x) => x.id === split)?.progress).toMatchObject({ headline: 'Being built.', step: 2 })
     expect((await requests.loadRequest(ws, await mk({ ticketNumber: 21 })))?.tickets).toHaveLength(1)
     const ws2 = Number((await payload.create({ collection: 'workspaces', data: { name: 'r3', slug: 'r3' }, ...o })).id)
     expect(await requests.loadRequest(ws2, split)).toBeNull()

@@ -173,6 +173,7 @@ const workspaces = col(
     },
     rel('workflowVersion', 'workflow_versions', { admin: { description: 'The active factory file version; empty = the pack default. Set by applyFactory.' } }),
     { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Board & WIP: off ignores the bauherr:expedite label.' } },
+    { name: 'progressComments', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > General: keep one plain-word progress Comment on each issue and mention its author at the moments that matter.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
@@ -479,6 +480,9 @@ const tickets = col('tickets', [
   { name: 'stagingTldr', type: 'json', admin: { readOnly: true, description: 'First two sections of the posted staging summary: {whatYouGet, found}.' } },
   { name: 'decidedAt', type: 'date', admin: { readOnly: true, description: 'When the owner last decided a checkpoint in the UI; the sweep does not reopen `decidedNeed` for 2 minutes.' } },
   { name: 'decidedNeed', type: 'text', admin: { readOnly: true } },
+  text('progressHash', { admin: { readOnly: true, description: 'Hash of the body of the progress Comment last written to the issue; unchanged = no forge call. Claimed before the write, released when it fails.' } }),
+  text('progressCommentId', { admin: { readOnly: true, description: 'The forge id of the progress Comment, so an update is one call.' } }),
+  text('progressNotified', { admin: { readOnly: true, description: 'The progress key (question, staging, released, stuck) whose notice Comment was posted for the current stretch in that state; cleared when the Ticket leaves it.' } }),
   text('historyKey', { admin: { readOnly: true, description: 'The `stage|phase` of the newest ticket_events row; `record` writes an event only when it changes.' } }),
 ], {
   indexes: [{ fields: ['product', 'externalId'], unique: true }, { fields: ['workspace', 'state'] }],

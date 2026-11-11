@@ -102,8 +102,11 @@ A point where the workflow waits for a human (Triage's questions, a `gate: human
 **Decision**:
 What one Checkpoint asks of a person, prepared the same way every time (ask, recommendation, at most three facts, options, what happens next) and stored on the Ticket; the Inbox lists exactly the Tickets that have one.
 
+**Progress comment**:
+The one Comment the factory keeps on a Ticket's issue, edited in place, saying in plain words where the request stands (headline, next step, a six-step path). A separate short Comment mentions the issue's author when a question is open, a change is ready on staging, it is released or stuck. Texts are the `progress` Template; switch `workspaces.progressComments`.
+
 **Template**:
-The markdown structure of one text written for people (request, plan, decision, review, staging summary, release note, worklog, triage questions): shipped in the pack, overridable per Workspace, handed to agents with their skill.
+The markdown structure of one text written for people (request, plan, decision, review, staging summary, release note, worklog, triage questions, progress): shipped in the pack, overridable per Workspace, handed to agents with their skill.
 
 **TL;DR**:
 The leading section of a plan (`Decision:`, `Recommendation:`, `Why:`, `Risk:`) the plan Checkpoint's Decision is made from.

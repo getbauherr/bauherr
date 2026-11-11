@@ -20,6 +20,7 @@ import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRan
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins, syncGates } from '../lib/gates'
+import { syncProgress } from '../lib/progress'
 import { record } from '../lib/history'
 import { isForward, moveStage, stageOf } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
@@ -387,6 +388,19 @@ export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; outp
     const published = await publishReleases(req.payload)
     await watchReleaseChecks(req.payload)
     return { output: { published } }
+  },
+}
+
+/** Writes the progress Comment of one Ticket right after its state changed (queued by `record`); the only writer of a first Comment. The every-minute `notify-gates` sweep heals existing ones. */
+export const syncProgressTask: TaskConfig<{ input: { ticketId: number }; output: Record<string, never> }> = {
+  slug: 'sync-progress',
+  retries: 3,
+  concurrency: { key: ({ input }) => `progress:${input.ticketId}`, exclusive: true, supersedes: true },
+  inputSchema: [{ name: 'ticketId', type: 'number', required: true }],
+  handler: async ({ input, req }) => {
+    await loadWorkflows(req.payload)
+    await syncProgress(req.payload, [input.ticketId], { strict: true })
+    return { output: {} }
   },
 }
 
@@ -886,4 +900,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]

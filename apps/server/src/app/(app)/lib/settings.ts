@@ -76,6 +76,7 @@ export async function loadWorkspaceSettings(id: number) {
     githubConnections: github.map((c) => [String(c.id), c.name] as [string, string]),
     knowledgeConnection: String(typeof ws.knowledgeConnection === 'object' ? ws.knowledgeConnection?.id ?? '' : ws.knowledgeConnection ?? ''),
     knowledgeRepo: (ws.knowledgeRepo ?? '') as string,
+    progressComments: ws.progressComments !== false,
     spend,
     gatewayOn: gatewayEnabled(),
   }

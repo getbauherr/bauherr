@@ -51,3 +51,20 @@ test('a template that loses a part the factory fills cannot be saved, and the fi
   }).toPass({ timeout: 20_000 })
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
 })
+
+test('the Progress template previews its text with sample values, and an unknown placeholder cannot be saved', async ({ page }) => {
+  await login(page)
+  await page.goto('/settings/templates')
+  await expect(row(page, 'Progress')).toContainText('Default')
+  await page.getByRole('link', { name: 'Progress', exact: true }).click()
+  const preview = page.getByTestId('template-preview')
+  await expect(preview).toContainText('Try it here: https://staging.example.com')
+  await expect(preview).toContainText('Security review in progress.')
+  await expect(preview).not.toContainText('{{')
+  const editor = page.getByLabel('Template')
+  await expect(async () => {
+    await editor.fill((await editor.inputValue()).replace('Being built.', 'Being built {{nope}}.'))
+    await expect(page.getByRole('alert').filter({ hasText: '{{nope}}' })).toBeVisible({ timeout: 1_500 })
+  }).toPass({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+})
