@@ -8,6 +8,7 @@ import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../
 import { backendFor } from '../../../../lib/adapters'
 import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
+import { withLoginLock } from '../../../../lib/login-lock'
 import { suggestOverlapIgnore } from '../../../../lib/overlap'
 import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { forgeOf } from '../../../../lib/release'
@@ -405,7 +406,8 @@ export const saveAssignment = act({}, async (c, fd) => {
   if (target.role !== 'product-owner') throw new Error('Not a Product owner.')
   const workspace = Number(s(fd, 'workspace'))
   const rest = assignmentRows(target.assignments).filter((r) => r.workspace !== workspace)
-  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { assignments: s(fd, 'scope') === 'none' ? rest : [...rest, await assignmentFrom(c, fd)] }, ...c.w } as never)
+  const assignments = s(fd, 'scope') === 'none' ? rest : [...rest, await assignmentFrom(c, fd)]
+  await withLoginLock(target.email, () => c.payload.update({ collection: 'bauherren', id: id(fd), data: { assignments }, ...c.w } as never))
 })
 
 /** Bauherr <-> Product owner. Never your own account, never the last Admin; the assignments are cleared on the way out and a new Product owner starts with none. */
@@ -418,7 +420,7 @@ export const changeRole = act({}, async (c, fd) => {
   // The form names the role it was rendered for: a stale tab or a double submit cannot change the account back.
   if (target.role !== s(fd, 'from')) throw new Error('This account changed meanwhile. Reload the page.')
   if (target.role === 'admin') await assertAnotherAdmin(c.payload, id(fd))
-  if (target.role !== role) await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role }, ...c.w } as never)
+  if (target.role !== role) await withLoginLock(target.email, () => c.payload.update({ collection: 'bauherren', id: id(fd), data: { role }, ...c.w } as never))
 })
 
 export const saveBauherr = act({}, async (c, fd) => {
@@ -432,13 +434,16 @@ export const saveBauherr = act({}, async (c, fd) => {
   if (target.role === 'admin' && (s(fd, 'role') !== 'admin' || (id(fd) === c.user.id && !ids.length))) await assertAnotherAdmin(c.payload, id(fd))
   const login = s(fd, 'githubLogin').replace(/^@/, '')
   if (login && login !== target.githubLogin && !(await githubKnows(c, login))) throw Object.assign(new Error('GitHub login unknown.'), { data: { errors: [{ path: 'githubLogin', message: `GitHub does not know @${login}. Check the spelling.` }] } })
-  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), githubLogin: login || null, oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
+  await withLoginLock(target.email, () =>
+    c.payload.update({ collection: 'bauherren', id: id(fd), data: { role: s(fd, 'role'), tenants: ids.map((tenant) => ({ tenant })), githubLogin: login || null, oidcSubject: s(fd, 'oidcSubject') || null }, ...c.w } as never)
+  )
 })
 
 /** Ends a failed-login lockout; the Bauherr can sign in again at once. */
 export const unlockBauherr = act({}, async (c, fd) => {
   only(c.user)
-  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { lockUntil: null, loginAttempts: 0 }, overrideAccess: true } as never)
+  const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
+  await withLoginLock(target.email, () => c.payload.update({ collection: 'bauherren', id: id(fd), data: { lockUntil: null, loginAttempts: 0 }, overrideAccess: true } as never))
 })
 
 /** The creating Admin joins the new Workspace's tenants. */
@@ -451,7 +456,7 @@ export const createWorkspace = act({}, async (c, fd) => {
   const ws = await c.payload.create({ collection: 'workspaces', data: { name, slug }, ...c.w } as never)
   const me = await c.payload.findByID({ collection: 'bauherren', id: c.user.id as number, depth: 0, overrideAccess: true })
   const have = ((me.tenants ?? []) as { tenant: number | { id: number } }[]).map((t) => ({ tenant: typeof t.tenant === 'object' ? t.tenant.id : t.tenant }))
-  await c.payload.update({ collection: 'bauherren', id: me.id, data: { tenants: [...have, { tenant: ws.id as number }] }, overrideAccess: true } as never)
+  await withLoginLock(me.email, () => c.payload.update({ collection: 'bauherren', id: me.id, data: { tenants: [...have, { tenant: ws.id as number }] }, overrideAccess: true } as never))
 })
 
 const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
