@@ -48,6 +48,14 @@ const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'Gi
 await payload.update({ collection: 'workspaces', id: workspace, data: { knowledgeConnection: github, knowledgeRepo: 'acme/knowledge' }, ...o })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
 await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+// workflow-editor.spec.ts: a Workspace of its own (the spec applies factory files and flips Workspace settings), an Admin that only that spec signs in as (cookie `bauherr-ws=editor`), one Product with a ticket source and one Ticket. Twin in `src/lib/fake-forge.ts`.
+const editorWs = (await ensure('workspaces', { slug: 'editor' }, { name: 'Editor Lab', slug: 'editor', wipLimits: {} })).id
+await ensure('bauherren', { email: 'editor-admin@example.com' }, { email: 'editor-admin@example.com', password, role: 'admin', githubLogin: 'e2e-editor-admin' })
+const editorGithub = (await ensure('connections', { name: 'GitHub Editor' }, { name: 'GitHub Editor', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: editorWs })).id
+const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 'Editor App', slug: 'editor-app', workspace: editorWs })).id
+await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
+await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
+await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
 const seeded = new Set<number>()
 const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) => {
   if (seeded.has(n)) throw new Error(`seed-e2e: Ticket number ${n} seeded twice`)

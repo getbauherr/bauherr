@@ -1,14 +1,18 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
+
+// Own Workspace (slug `editor`, seeded) and own Admin: nothing this spec applies is seen by another spec.
+const email = process.env.E2E_EMAIL ? 'editor-admin@example.com' : ''
+const inEditorWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'editor', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 // Every test that applies a factory file lives in this one file (one worker): two specs must never write the same Workspace's factory file. The last test puts the shipped default back; e2e/team.spec.ts only reads.
 
 const signIn = async (page: Page) => {
+  await inEditorWorkspace(page)
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())

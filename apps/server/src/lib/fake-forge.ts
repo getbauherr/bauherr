@@ -87,6 +87,9 @@ const build = (): FakeBackend => {
   const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
   fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])
   fake.setChecks('acme/checks', checks, [{ name: 'deploy-production', status: 'completed', conclusion: 'success' }, { name: 'lint', status: 'completed', conclusion: 'success' }])
+  // acme/editor: the Product of workflow-editor.spec.ts's own Workspace; its one Ticket (#1) is in Build.
+  fake.commit('acme/editor', 'main', 'README.md', '# Editor\n')
+  void fake.tickets('acme/editor').create({ title: 'Editor lab: build the thing', labels: ['bauherr:stage:build'] })
   // acme/merge: a merge queue is on, but the only workflow has no merge_group trigger; the merge-mode spec re-detects it.
   fake.commit('acme/merge', 'main', '.github/workflows/ci.yml', 'name: ci\non:\n  pull_request:\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps: []\n')
   fake.setQueueSupport('acme/merge', true)
