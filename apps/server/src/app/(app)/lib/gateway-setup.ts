@@ -6,14 +6,14 @@ import type { GatewayHealth } from '../../../lib/session-usage'
 import type { GatewaySetup } from './harnesses'
 
 const gatewayOn = (): boolean => !!process.env.GATEWAY_ADMIN_URL
-/** The temporary loopback forward that opens the gateway UI without publishing its port (docs/gateway.md, The gateway UI). */
-export const UI_FORWARD = `docker run --rm -p 127.0.0.1:15000:15000 --network "$(docker inspect bauherr-gateway-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')" alpine/socat tcp-listen:15000,fork,reverse tcp:gateway:15000`
+/** The two lines that switch the gateway UI on (compose profile `gateway-ui`, docs/gateway.md, The gateway UI). */
+export const UI_SWITCH_ON = 'COMPOSE_PROFILES=gateway-ui\nGATEWAY_UI_URL=http://127.0.0.1:15000/ui/'
 
 /** The stored gateway health (written every minute by `watch-gateway`); null before the first check or when the gateway is off. DB only. */
 export const loadGatewayHealth = async (payload: Payload): Promise<GatewayHealth | null> =>
   gatewayOn() ? ((await payload.find({ collection: 'instance_state', where: { key: { equals: 'gateway' } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]?.value as GatewayHealth | undefined) ?? null : null
 
-/** `uiUrl`: where the gateway UI is reachable for this installation (`GATEWAY_UI_URL`, a loopback address or tunnel the owner opened); empty until set. */
+/** `uiUrl`: where the gateway UI is reachable for this installation (`GATEWAY_UI_URL`, set next to the `gateway-ui` compose profile); empty while it is off. */
 export type GatewayStatus = { on: boolean; up: boolean | null; message: string | null; checkedAt: string | null; uiUrl: string }
 
 export const loadGatewayStatus = async (payload: Payload): Promise<GatewayStatus> => {

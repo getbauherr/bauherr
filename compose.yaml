@@ -85,11 +85,22 @@ services:
     image: cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b
     user: "0" # provider key files are 0600 and written by root in app/worker
     command: [-f, /gateway/config.yaml]
-    ports: ["127.0.0.1:4000:4000"] # loopback only: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal, never published
+    ports: ["127.0.0.1:4000:4000"] # loopback only: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal; only the opt-in `gateway-ui` profile below forwards it, on loopback
     volumes: ["bauherr-gateway:/gateway:ro"]
     depends_on:
       db: {condition: service_healthy}
       init: {condition: service_completed_successfully}
+    restart: unless-stopped
+  # Opt-in gateway UI: set `COMPOSE_PROFILES=gateway-ui` and `GATEWAY_UI_URL=http://127.0.0.1:15000/ui/` next to this file, then `docker compose up -d` (docs/gateway.md).
+  # WARNING: port 15000 has no sign-in and can read and change gateway keys; while this service runs, every program on this machine can reach it.
+  # Published on 127.0.0.1 only, never 0.0.0.0. Off by default.
+  gateway-ui:
+    image: alpine/socat@sha256:e8a6e8868a8e6e01d9c2c321a8f8d4474d2d741d962462e5c5a124a8e66a0055
+    profiles: [gateway-ui]
+    command: ["tcp-listen:15000,fork,reuseaddr", "tcp:gateway:15000"]
+    ports: ["127.0.0.1:15000:15000"]
+    depends_on:
+      gateway: {condition: service_started}
     restart: unless-stopped
   # Opt-in vLLM Semantic Router (`docker compose --profile router up`), docs/router.md. Not published: reachable as http://router:8801.
   # router-core = ExtProc (downloads its classifier models into bauherr-router on first start); router = its Envoy front.

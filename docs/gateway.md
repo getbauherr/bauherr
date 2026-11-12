@@ -85,6 +85,8 @@ There is no `bauherr session start` command: the CLI keeps no credentials, so a 
 
 The gateway prices a call from a model catalog: per model input, output, cache read and cache write rates. Once a day (`refresh-prices`, checked hourly, fetched once a day, retried hourly after a failure) Bauherr fetches the catalog that the agentgateway project itself publishes (`https://raw.githubusercontent.com/agentgateway/agentgateway/main/catalog/model-catalog.json`; `agentgateway.dev/model-catalog` redirects there, and redirects are refused, so the final address is the default; the same catalog the gateway UI's "Refresh base costs" uses), rewrites it to what the pinned gateway reads and writes `catalogs/base-costs.json`. The gateway watches that file and reloads it without a restart; the file is listed in the gateway config automatically.
 
+The gateway can fetch this catalog itself (`POST /api/costs/refresh-base` on its admin port, the gateway UI's "Refresh base costs"), but on v1.7.0 that call fails on the published file: it answers HTTP 500 `decode model catalog from GitHub` (tested 2026-11-12), and the same file loaded by hand is refused with `unknown variant \`fast\`` for a price tier. So Bauherr keeps its own fetch and conversion, and `lib/cost.ts` reads the same `catalogs/` directory the gateway reads. The gateway has no setting for a catalog URL or refresh interval (`modelCatalog` takes only `file` and `inline`).
+
 Guards, because a bad catalog would put wrong numbers on every page:
 
 - One fixed host. A redirect is an error. At most 5 MB. Parsed as JSON and rewritten field by field; nothing from it is ever run.
@@ -104,21 +106,22 @@ Where your own contracted prices go: a file in `/gateway/catalogs/` **without** 
 
 - Port 4000 is published on **loopback only** (`127.0.0.1:4000`): sessions on the same machine reach it, nothing else does.
 - Sessions on another machine need a TLS proxy in front of port 4000 (your own Caddy, nginx or Traefik). Then set `GATEWAY_PUBLIC_URL=https://gateway.example.com` so the setup blocks show that address. Keys travel in headers: never expose port 4000 without TLS.
-- Port 15000 (the gateway's admin API and UI) has **no sign-in** and is never published. Only Bauherr reaches it inside the compose network.
+- Port 15000 (the gateway's admin API and UI) has **no sign-in** and is not published by default: only Bauherr reaches it inside the compose network. The opt-in `gateway-ui` profile forwards it on loopback only (see below).
 
 ### The gateway UI
 
-The gateway has its own UI (analytics, request log, costs). When the gateway runs, Settings › AI usage › Measure session cost, Models & budget and the Insights notice (Admin) show its status and **Open the gateway UI**.
+The gateway has its own UI (analytics, request log, costs, keys). It is **off by default**. Port 15000 has no sign-in and can read and change gateway keys; while the UI is on, every program on this machine can reach it. It is published on `127.0.0.1` only, never on `0.0.0.0`.
 
-The UI cannot be served through Bauherr's admin proxy: it loads its files and calls its API from the root of its own host (`/ui/assets/…`, `/api/…`), and the proxy's sandbox (an opaque origin, so that a script from the upstream cannot reach your Bauherr session) blocks those requests. So the button opens the address you set in `GATEWAY_UI_URL`. Until you set it the button is disabled and the page shows the way. Port 15000 has no sign-in and can read and change gateway keys; while the forward runs, every program on this machine can reach it. To open it without publishing the port, forward it to your own machine only while you need it:
+To switch it on, put these two lines in the environment file next to `compose.yaml` (if `COMPOSE_PROFILES` is already set there, add `gateway-ui` to it with a comma) and run `docker compose up -d`:
 
 ```bash
-docker run --rm -p 127.0.0.1:15000:15000 \
-  --network "$(docker inspect bauherr-gateway-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')" \
-  alpine/socat tcp-listen:15000,fork,reverse tcp:gateway:15000
+COMPOSE_PROFILES=gateway-ui
+GATEWAY_UI_URL=http://127.0.0.1:15000/ui/
 ```
 
-then open `http://127.0.0.1:15000/ui/` (and set `GATEWAY_UI_URL` to it to make the button work). Stop the command when you are done. The gateway's settings are also readable through the proxy without this, read-only: `/-/gateway/config_dump` (Admin).
+The first line starts the `gateway-ui` service, a small forward (`alpine/socat`, pinned by digest) from `127.0.0.1:15000` to the gateway. The second makes **Open the gateway UI** in Settings › AI usage, Models & budget and the Insights notice (Admin) a working link; it shows only while the gateway runs. Remove both lines and run `docker compose up -d --remove-orphans` to switch it off again. While it is off the button is disabled and the page says how to switch it on.
+
+It cannot be served through Bauherr's admin proxy: the UI loads its files and calls its API from the root of its own host (`/ui/assets/…`, `/api/…`), and the proxy's sandbox (an opaque origin, so that a script from the upstream cannot reach your Bauherr session) blocks those requests. The gateway's settings stay readable through the proxy, read-only, for an Admin: `/-/gateway/config_dump`.
 
 ## Never downgrade the gateway image
 
