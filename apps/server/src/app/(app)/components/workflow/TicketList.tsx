@@ -8,6 +8,7 @@ import { duration, heartbeatAge } from '../../lib/format'
 import type { TicketRow } from '../../lib/overview'
 import { ticketStatus } from '../../lib/status'
 import { LinkPending } from '../LinkPending'
+import { KindChip } from '../RequestParts'
 import { TicketStatus } from '../TicketStatus'
 import { SortableRows } from './SortableRows'
 
@@ -53,6 +54,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
                       <Link href={`/tickets/${t.id}`} className="ticket-title hover:underline">{t.title}<LinkPending /></Link>
                       <span className="flex flex-wrap items-center gap-2">
                         {t.expedite && <span className="label text-destructive" data-hotfix>Hotfix</span>}
+                        <KindChip kind={t.kind} />
                         <EpicTag t={t} />
                         {t.product && showProduct && <span className="small text-muted-foreground @min-[800px]:hidden">{t.product.name}</span>}
                       </span>

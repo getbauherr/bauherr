@@ -69,14 +69,36 @@ const stubGateway = (turns: object[]) => {
 }
 const turn = (d: Partial<Draft>, extra: object = {}) => ({ question: 'Next?', draft: draft(d), needsScreenshot: false, missing: [], ...extra })
 
-it('readiness: needs problem, context, two criteria and, for a screen request, a screenshot', () => {
+it('readiness: needs problem, context, a criterion and, for a screen request, a screenshot', () => {
   expect(readiness(draft(), false, false, 1)).toEqual({ ready: true, exhausted: false, missing: [] })
-  expect(readiness(draft({ acceptance_criteria: ['one', ' '] }), false, false, 1).missing).toEqual(['acceptance_criteria'])
+  expect(readiness(draft({ acceptance_criteria: [' '] }), false, false, 1).missing).toEqual(['acceptance_criteria'])
   expect(readiness(draft({ problem: '', context: '' }), false, false, 1).missing).toEqual(['problem', 'context'])
   expect(readiness(null, false, false, 0).ready).toBe(false)
   expect(readiness(draft(), false, true, 1)).toMatchObject({ ready: false, missing: ['screenshot'] })
   expect(readiness(draft(), true, true, 1).ready).toBe(true)
   expect(readiness(draft({ problem: '' }), false, false, MAX_QUESTIONS)).toMatchObject({ ready: false, exhausted: true })
+})
+
+it('readiness by type: a feature or change needs no context, a question only the question, an urgent bug its reason', () => {
+  expect(readiness(draft({ type: 'feature', context: '' }), false, false, 1).ready).toBe(true)
+  expect(readiness(draft({ type: 'change', context: '', acceptance_criteria: [] }), false, false, 1).missing).toEqual(['acceptance_criteria'])
+  expect(readiness(draft({ type: 'question', context: '', acceptance_criteria: [] }), false, true, 1)).toMatchObject({ ready: true })
+  expect(readiness(draft({ urgency: 'urgent' }), false, false, 1).missing).toEqual(['urgent_reason'])
+  expect(readiness(draft({ urgency: 'urgent', urgent_reason: 'Checkout is down for everyone since 9.' }), false, false, 1).ready).toBe(true)
+})
+
+it('the card: urgency only for a bug, the title is trimmed, edited fields survive the model and the model sees the card', async () => {
+  expect(normalizeTurn({ question: 'Q?', draft: { ...draft(), title: '  Export\n fails ', urgency: 'urgent', urgent_reason: ' down ' } }).draft).toMatchObject({ title: 'Export fails', urgency: 'urgent', urgent_reason: 'down' })
+  expect(normalizeTurn({ question: 'Q?', draft: { ...draft({ type: 'feature' }), urgency: 'urgent', urgent_reason: 'x' } }).draft.urgency).toBeUndefined()
+  const calls: string[] = []
+  const model: ModelCall = async ({ system }) => (calls.push(system), turn({ title: 'Model title', type: 'bug', problem: 'Model problem' }))
+  const before: Session = { messages: [], draft: draft({ title: 'Mine', type: 'feature', problem: 'My words' }), edited: ['title', 'type'] }
+  const r = await nextTurn(before, 'more', model)
+  expect(r.session.draft).toMatchObject({ title: 'Mine', type: 'feature', problem: 'Model problem' })
+  expect(calls[0]).toContain('"editedByThePerson":["title","type"]')
+  expect(calls[0]).toContain('My words')
+  const off = await nextTurn({ messages: [], draft: null }, 'x', async () => turn({ urgency: 'urgent', urgent_reason: 'down' }), [], false)
+  expect(off.session.draft?.urgency).toBeUndefined()
 })
 
 it('normalizeTurn rejects malformed model output and trims fields', () => {
@@ -123,7 +145,7 @@ it('intakeTicket: title <= 80 chars, fixed sections, draft text cannot add headi
   expect(t.body.match(/^## .+$/gm)).toEqual(['## Problem', '## Context', '## Acceptance criteria', '## Open'])
   expect(t.body.match(/<!-- bauherr:intake/g)).toHaveLength(1)
   expect(t.body.endsWith('<!-- bauherr:intake session=7 -->')).toBe(true)
-  expect(t.labels).toEqual(['type:bug', 'product:web'])
+  expect(t.labels).toEqual(['type:bug', 'bauherr:type:bug', 'product:web'])
 })
 
 it('Ticket and Interview text cannot reassemble markers from nested delimiters', async () => {
@@ -237,7 +259,7 @@ it('session API: auth, Workspace isolation, SSE turn, submit lands at Triage wit
   expect(done.status).toBe(200)
   const { number } = await done.json()
   const t = await fake.tickets(repo).get(String(number))
-  expect(t.labels).toEqual(['type:bug', 'product:web'])
+  expect(t.labels).toEqual(['type:bug', 'bauherr:type:bug', 'product:web'])
   expect(t.body).toContain(`bauherr:intake session=${id}`)
   expect((await fake.tickets(repo).listComments(String(number))).at(-1)!.body).toContain('**Requester:** The export fails')
   expect(await (await submit.POST(req(keyA), ctx(id))).json()).toEqual({ number })
@@ -249,7 +271,7 @@ it('session API: auth, Workspace isolation, SSE turn, submit lands at Triage wit
 
 it('submit is refused while the draft is incomplete and the question cap is not reached', async () => {
   const { id } = await (await sessions.POST(req(keyA, { product: productId }))).json()
-  stubGateway([turn({ acceptance_criteria: ['only one'] })])
+  stubGateway([turn({ acceptance_criteria: [] })])
   await (await messages.POST(req(keyA, { text: 'something' }), ctx(id))).text()
   const r = await submit.POST(req(keyA), ctx(id))
   expect(r.status).toBe(409)
@@ -274,9 +296,9 @@ it('normalizeTurn keeps a split of 2 to 6 items, fills empty context, drops fewe
   expect(() => normalizeTurn({ question: 'Q?', draft: draft(), split: [draft(), { problem: 'x', type: 'epic' }] })).toThrow('invalid turn')
 })
 
-it('splitReadiness: every item needs problem, context and two criteria', () => {
+it('splitReadiness: every item needs problem, context and a criterion', () => {
   expect(splitReadiness([draft(), draft()], false, false, 1)).toEqual({ ready: true, exhausted: false, missing: [] })
-  expect(splitReadiness([draft(), draft({ acceptance_criteria: ['one'] })], false, false, 1)).toMatchObject({ ready: false, missing: ['2: acceptance_criteria'] })
+  expect(splitReadiness([draft(), draft({ acceptance_criteria: [' '] })], false, false, 1)).toMatchObject({ ready: false, missing: ['2: acceptance_criteria'] })
   expect(splitReadiness([draft(), draft({ problem: '' })], false, false, MAX_QUESTIONS)).toMatchObject({ ready: false, exhausted: true })
 })
 
@@ -320,7 +342,7 @@ it('split submit is refused for a different confirmed count and for an incomplet
   expect((await missing.json()).error).toContain('list changed')
   expect((await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o }) as any).status).toBe('open')
 
-  const bad = await startSplit(keyA, [{ problem: 'a' }, { problem: 'b', acceptance_criteria: ['only one'] }])
+  const bad = await startSplit(keyA, [{ problem: 'a' }, { problem: 'b', acceptance_criteria: [] }])
   const r = await submit.POST(req(keyA, { expect: 2 }), ctx(bad))
   expect(r.status).toBe(409)
   expect((await r.json()).error).toContain('2: acceptance_criteria')

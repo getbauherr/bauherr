@@ -42,6 +42,12 @@ export type RunRow = {
   model?: string | null
   provider?: string | null
 }
+import { KINDS, type Kind } from '../../../lib/intake/kinds'
+/** The type of a Ticket from its `bauherr:type:<kind>` label (null for tickets that did not come from a typed request). */
+export const kindOfLabels = (labels: readonly string[] | null | undefined): Kind | null => {
+  const k = labels?.find((l) => l.startsWith('bauherr:type:'))?.slice(13)
+  return KINDS.find((x) => x === k) ?? null
+}
 export type TicketRow = {
   id: number
   number: number
@@ -53,6 +59,8 @@ export type TicketRow = {
   reviewRounds: number
   /** Hotfix: the Expedite lane serves this open Ticket. */
   expedite: boolean
+  /** The request's type from its `bauherr:type:<kind>` label; null for a ticket nobody typed. */
+  kind: Kind | null
   /** Tag of the release the Ticket shipped in, e.g. v0.2.0. */
   releasedIn: string | null
   product: { id: number; name: string } | null
@@ -155,6 +163,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       rank: t.rank ?? null,
       reviewRounds: t.reviewRounds ?? 0,
       expedite: isOpen && !!t.expedite,
+      kind: kindOfLabels(t.labels),
       releasedIn: t.releasedIn ?? null,
       product: byId.get(t.product) ? { id: byId.get(t.product)!.id, name: byId.get(t.product)!.name } : null,
       run,

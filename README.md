@@ -92,7 +92,7 @@ One row per area. The full list, with the page of each feature, is in [docs/feat
 
 | Area | What Bauherr does |
 |---|---|
-| 🗺️ [Workflow](docs/features.md#workflow) | The stages as a graph on the home page, one editable factory file per Workspace with custom agent and human stages, WIP limits, an expedite lane for hotfixes, overlap hold between Builds |
+| 🗺️ [Workflow](docs/features.md#workflow) | The stages as a graph on the home page, one editable factory file per Workspace with custom agent and human stages, WIP limits, a fast lane for urgent bugs (an urgent request, or "Put on the fast lane" on a Ticket), overlap hold between Builds |
 | 🎫 [Tickets](docs/features.md#tickets) | One status vocabulary, a Path through the stages, a Steps timeline with executor, model and cost, epics and sub-tickets |
 | 📥 [Decisions](docs/features.md#decisions) | An Inbox of prepared decision cards for plans, staging, production and review round caps |
 | 💬 [Chat](docs/chat.md) | A chat on every page that knows the page, stored threads, confirm cards for actions, pasted screenshots, answer feedback |
@@ -211,7 +211,7 @@ pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 ## 🧭 Status and roadmap
 
 Pre-release. The factory builds Bauherr itself. Every feature with its page: [docs/features.md](docs/features.md).
-- **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Agent team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, expedite lane, WIP limits, AI gateway with budgets, audit, OIDC.
+- **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Agent team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, fast lane, request card with types and the Requests workbench, WIP limits, AI gateway with budgets, audit, OIDC.
 - **Planned:** a GitLab driver, notifications at checkpoints ([#77](https://github.com/getbauherr/bauherr/issues/77)), provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
 Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: [docs/releasing.md](docs/releasing.md).
