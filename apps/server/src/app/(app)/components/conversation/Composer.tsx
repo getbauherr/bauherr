@@ -68,12 +68,12 @@ export const Composer: FC<{ view: View; placeholder: string; streaming: boolean;
         <ComposerPrimitive.AddAttachment asChild>
           <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-muted-foreground"><Paperclip size={16} />Attach</Button>
         </ComposerPrimitive.AddAttachment>
-        <ModelSelectorRoot models={TIERS.map((t) => ({ id: t, name: view.models.find((m) => m.tier === t)!.model, description: `${LABEL[t]} tier` }))} value={view.tier} onValueChange={(t) => onModel(t as Tier)}>
+        {view.viewer === 'bauherr' && <ModelSelectorRoot models={TIERS.map((t) => ({ id: t, name: view.models.find((m) => m.tier === t)!.model, description: `${LABEL[t]} tier` }))} value={view.tier} onValueChange={(t) => onModel(t as Tier)}>
           <ModelSelectorTrigger variant="ghost" size="sm" data-testid="model-chip" className="font-mono text-[12px] text-muted-foreground" />
           <ModelSelectorContent searchable={false} side="top" />
-        </ModelSelectorRoot>
+        </ModelSelectorRoot>}
         <span className="ms-auto flex items-center gap-1">
-          <CostChip cost={view.cost} />
+          {view.viewer === 'bauherr' && <CostChip cost={view.cost} />}
           {streaming ? (
             <Button type="button" size="icon" aria-label="Stop" data-testid="stop" className="size-8" onClick={onStop}><Stop /></Button>
           ) : (

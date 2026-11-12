@@ -1,5 +1,6 @@
 import { chatWho, fail } from '../../../../../lib/chat/http'
-import { refineRecheck, refineTurn, type View } from '../../../../../lib/refine/engine'
+import { isBauherr } from '../../../../../lib/people'
+import { hasRows, refineRecheck, refineTurn, type View } from '../../../../../lib/refine/engine'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,11 +9,11 @@ export const dynamic = 'force-dynamic'
 export type TurnEvent = { type: 'reply'; text: string } | { type: 'done'; view: View | null } | { type: 'error'; message: string }
 
 /**
- * Body `{ text, images? }` (a typed message, `images`: ids from `api/chat/media`) or `{ recheck: { point } }` (the short turn after an option click); streams NDJSON `TurnEvent`s. Bauherr/Admin only.
+ * Body `{ text, images? }` (a typed message, `images`: ids from `api/chat/media`) or `{ recheck: { point } }` (the short turn after an option click); streams NDJSON `TurnEvent`s. Bauherr/Admin, and a Product owner for the rows addressed to them on their Products (`loadGate`).
  * A client abort aborts the model call; nothing is stored then, nor when the result is invalid.
  */
 export const POST = async (req: Request, { params }: { params: Promise<{ ticket: string }> }): Promise<Response> => {
-  const w = await chatWho(req)
+  const w = await chatWho(req, { owner: true })
   if (w instanceof Response) return w
   const ticket = Number((await params).ticket)
   const body = (await req.json().catch(() => null)) as { text?: unknown; images?: unknown; recheck?: { point?: unknown } } | null
@@ -20,6 +21,11 @@ export const POST = async (req: Request, { params }: { params: Promise<{ ticket:
   const images = Array.isArray(body?.images) && body.images.every((i) => Number.isInteger(i)) ? (body.images as number[]) : []
   const point = typeof body?.recheck?.point === 'string' ? body.recheck.point : null
   if (!Number.isInteger(ticket) || (text === null) === (point === null)) return fail('a Ticket id and either text or recheck.point required', 400)
+  if (!isBauherr(w.user)) {
+    const rows = await hasRows(w.payload, w.user, { ticket, workspaceId: w.workspace }).catch(() => null)
+    if (rows === null) return fail('the forge could not be read', 502)
+    if (!rows) return fail('not found', 404)
+  }
   const enc = new TextEncoder()
   const abort = new AbortController()
   req.signal.addEventListener('abort', () => abort.abort())

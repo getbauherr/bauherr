@@ -94,11 +94,11 @@ export const reviewWord = (reviewState?: string | null): string =>
 
 type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null }
 
-/** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. Closed Tickets only while a release check failed. */
-export const needsOf = (wf: Workflow, t: Row, run: { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean): Need | null => {
+/** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. `gates`: the Product's human gates when they differ from the workflow's (`humanGates(wf, stagingGateOn(...))`). Closed Tickets only while a release check failed. */
+export const needsOf = (wf: Workflow, t: Row, run: { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean, gates?: readonly HumanGate[]): Need | null => {
   const need =
   t.state !== 'closed' || t.releaseChecksState === 'failed'
-    ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run)
+    ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, run, 0, gates)
     : null
   // The stored count of unanswered critical decisions turns "Approve plan" into "Answer decisions" without a forge call.
   return need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need

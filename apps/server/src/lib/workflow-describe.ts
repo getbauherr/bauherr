@@ -1,6 +1,6 @@
 import { stagesOf, type Doc } from './workflow-edit'
-import { modelText, pathLabel, SPECIAL_TARGET, stageTitle } from './workflow-labels'
-import type { Kind } from './workflow-rules'
+import { ASKED, modelText, pathLabel, SPECIAL_TARGET, stageTitle } from './workflow-labels'
+import { askedBy, type Kind } from './workflow-rules'
 import { whenClause } from './workflow-when'
 
 // Browser-safe. Plain-word list of what differs between two factory documents (Review changes and History).
@@ -48,8 +48,15 @@ export const describeChanges = (a: Doc, b: Doc): string[] => {
     if (!same(x.when, y.when)) out.push(y.when ? `${t} now runs only ${whenClause(y.when)}` : `${t} now runs for every ticket`)
     if (x.skill !== y.skill) out.push(`${t}: now follows the skill ${y.skill ?? 'none'}`)
     if (x.wip !== y.wip) out.push(`${t}: at most ${limit(x.wip)} → ${limit(y.wip)} tickets at a time`)
-    if (x.gate !== y.gate) out.push(`${t}: you are ${y.gate ? 'now' : 'no longer'} asked to ${kind === 'plan' ? 'approve the plan' : 'accept the result on staging'}`)
-    if (x.production_gate !== y.production_gate) out.push(`${t}: you are ${y.production_gate ? 'now' : 'no longer'} asked to approve production`)
+    if (!!askedBy(x.gate) !== !!askedBy(y.gate)) out.push(`${t}: you are ${y.gate ? 'now' : 'no longer'} asked to ${kind === 'plan' ? 'approve the plan' : 'accept the result on staging'}`)
+    if (!!askedBy(x.production_gate) !== !!askedBy(y.production_gate)) out.push(`${t}: you are ${y.production_gate ? 'now' : 'no longer'} asked to approve production`)
+    const who = (what: string, a: unknown, b: unknown) => {
+      if (a !== undefined && b !== undefined && askedBy(a) !== askedBy(b)) out.push(`${t}: ${what} is now asked of the ${ASKED[askedBy(b) ?? 'bauherr']} instead of the ${ASKED[askedBy(a) ?? 'bauherr']}`)
+    }
+    who(kind === 'plan' ? 'approving the plan' : 'accepting the result on staging', x.gate, y.gate)
+    who('approving production', x.production_gate, y.production_gate)
+    who('answering open questions', x.refine ?? { by: 'bauherr' }, y.refine ?? { by: 'bauherr' })
+    if (kind === 'human' && askedBy({ by: x.by }) !== askedBy({ by: y.by })) out.push(`${t}: the decision is now asked of the ${ASKED[askedBy({ by: y.by }) ?? 'bauherr']} instead of the ${ASKED[askedBy({ by: x.by }) ?? 'bauherr']}`)
     if (!same(x.exclude_labels, y.exclude_labels)) out.push(`${t}: the labels that keep a ticket out of the factory changed`)
     for (const key of new Set([...Object.keys(x.outcomes ?? {}), ...Object.keys(y.outcomes ?? {})])) {
       const from = x.outcomes?.[key]

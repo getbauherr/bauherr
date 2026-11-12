@@ -3,6 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { hasProductionChecks } from '../../../lib/mode'
 import { nextStep } from '../../../lib/next-step'
+import { productGates } from '../../../lib/staging'
 import { payloadClient } from './session'
 import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere } from './epics'
@@ -122,7 +123,7 @@ const stageEntries = async (payload: Payload, tickets: number[]): Promise<Map<nu
   !tickets.length ? new Map() : new Map((await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "ticket_id" AS ticket, "at" FROM "ticket_events" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) AND "stage" IS NOT NULL AND COALESCE("cause", '') NOT LIKE 'skip:%' AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "ticket_id", "at" DESC, "id" DESC`)).rows.map((r) => [r.ticket as number, new Date(r.at as string).toISOString()]))
 
 /** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
-const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null }[], wip: Base['wip']): Promise<TicketRow[]> => {
+const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null; productOwnerTestsStaging?: boolean | null }[], wip: Base['wip']): Promise<TicketRow[]> => {
   const ws = { workspace: { equals: workspace } }
   const wf = workflowFor(workspace)
   const buildStage = byKind(wf, 'build')?.name
@@ -146,11 +147,12 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
   const blockers = new Map(blockerDocs.map((b) => [b.id as number, { id: b.id as number, number: b.number as number, open: b.state !== 'closed' }]))
   const parents = new Map(parentDocs.map((p) => [p.id as number, { id: p.id as number, number: p.number as number, title: p.title as string }]))
   const byId = new Map(productRows.map((p) => [p.id, p]))
+  const gatesFor = await productGates(payload, wf, workspace, productRows)
   return ticketDocs.map((t): TicketRow => {
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
     const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
-    const need = needsOf(wf, t, run, !hasProductionChecks(byId.get(t.product) ?? {}))
+    const need = needsOf(wf, t, run, !hasProductionChecks(byId.get(t.product) ?? {}), gatesFor(t.product))
     const overlap = isOpen && t.waitingFor === buildStage ? /^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1] : undefined
     const hold = isOpen && t.waitingFor && !blockedBy.length ? waitingText(wf, t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason).replace(/^Waiting: /, '') : null
     return {
@@ -225,7 +227,7 @@ export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | n
   const ws = { workspace: { equals: workspace } }
   const [subs, products, wsDoc, counts] = await Promise.all([
     docsOf(payload, 'tickets', { where: { and: [ws, { parent: { equals: ticket.id } }] }, sort: 'number' }),
-    docsOf(payload, 'products', { where: ws, select: { name: true, productionChecks: true } }),
+    docsOf(payload, 'products', { where: ws, select: { name: true, productionChecks: true, productOwnerTestsStaging: true } }),
     payload.findByID({ collection: 'workspaces', id: workspace, select: { wipLimits: true }, ...q }),
     wipCounts(payload, workspace),
   ])

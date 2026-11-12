@@ -171,7 +171,7 @@ export const saveDeploy = act({}, async (c, fd) => {
   const data: Record<string, unknown> = Object.fromEntries(TEXT_FIELDS.filter((k) => fd.has(k)).map((k) => [k, s(fd, k)]))
   if (fd.has('checkRetries')) data.checkRetries = Number(s(fd, 'checkRetries') || 1)
   if (fd.has('releaseReminderDays')) data.releaseReminderDays = Number(s(fd, 'releaseReminderDays') || 7)
-  if (sec('approvals')) Object.assign(data, { autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on' })
+  if (sec('approvals')) Object.assign(data, { autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on', ...(fd.get('poStagingShown') && { productOwnerTestsStaging: fd.get('productOwnerTestsStaging') === 'on' }) })
   if (sec('releases')) data.releasePrerelease = fd.get('releasePrerelease') === 'on'
   const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { stagingUrl: true, deployMode: true, deployWebhookUrl: true, productionWebhookUrl: true, productionGate: true, productionChecks: true, expediteSkipStaging: true }, ...c.w } as never)) as Record<string, any>
   const merged = { stagingUrl: '', deployWebhookUrl: '', productionWebhookUrl: '', productionChecks: '', deployMode: 'observe-ci', productionGate: false, ...before, ...data } as Parameters<typeof deployErrors>[0]

@@ -255,12 +255,12 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   await expect(page.getByTestId('cost-total')).toBeVisible()
 })
 
-test('a Product owner still gets the reduced Ticket page and no conversation', async ({ page }) => {
+test('a Product owner that Triage\'s questions are not addressed to still gets the reduced Ticket page and no conversation', async ({ page }) => {
   await signIn(page, owner)
   await page.goto(hrefs['Export the invoices']!)
   await expect(page.getByTestId('conversation-shell')).toHaveCount(0)
   await expect(page.getByTestId('open-conversation')).toHaveCount(0)
   const id = /\/tickets\/(\d+)/.exec(hrefs['Export the invoices']!)![1]
   const r = await page.request.post(`/api/refine/${id}/turn`, { data: { text: 'hello' } })
-  expect(r.status()).toBe(403)
+  expect(r.status()).toBe(404) // they have no row to answer (this Workspace asks the Bauherr: gated-pack)
 })

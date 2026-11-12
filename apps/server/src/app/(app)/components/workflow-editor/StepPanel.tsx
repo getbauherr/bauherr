@@ -1,12 +1,13 @@
 'use client'
 import { useMemo } from 'react'
-import { checkpointOn, forwardTarget, hasLimit, isCustom, kindStage, removePath, renamePath, setCheckpoint, setPath, setSplit, setStageField, setTitle, setWhen, slugOf, stagesOf, takesRole, type Doc } from '../../../../lib/workflow-edit'
+import { askedOf, checkpointOn, forwardTarget, hasLimit, isCustom, kindStage, removePath, renamePath, setAsked, setCheckpoint, setPath, setSplit, setStageField, setTitle, setWhen, slugOf, stagesOf, takesRole, type Doc } from '../../../../lib/workflow-edit'
 import { humanize, pathLabel, stageTitle } from '../../../../lib/workflow-labels'
 import type { Kind } from '../../../../lib/workflow-rules'
 import { Lock } from '../icons'
 import { Button } from '../ui/button'
 import { Label } from '../ui/label'
 import { NativeSelect } from '../ui/native-select'
+import { Asked } from './Asked'
 import { Switch } from '../ui/switch'
 import { Commit, RoleSelect } from './Fields'
 import { allowedTargets, targetTitle, type RoleView } from './model'
@@ -95,15 +96,24 @@ export function StepPanel({ yaml, doc, findings, name, roles, skills, pathSets, 
           <Commit id="panel-wip" type="number" min={1} step={1} placeholder="No limit" aria-label="At most how many tickets here at a time" value={s.wip === undefined ? '' : String(s.wip)} onCommit={(v) => mutate((y) => setStageField(y, s.name, 'wip', /^[1-9]\d*$/.test(v.trim()) ? Number(v) : undefined))} />
         </Row>
       )}
+      {kind === 'human' && <Asked what={stageTitle(s)} value={askedOf(s, 'human')} onChange={(by) => mutate((y) => setAsked(y, 'human', s.name, by))} />}
       {(kind === 'plan' || kind === 'release' || kind === 'triage') && (
         <div className="flex flex-col gap-2">
           <span className="small font-medium">You are asked</span>
-          {kind === 'triage' && <span className="small flex items-center gap-1.5 text-muted-foreground"><Lock className="size-3.5" /> You answer open questions: always on</span>}
+          {kind === 'triage' && (
+            <>
+              <span className="small flex items-center gap-1.5 text-muted-foreground"><Lock className="size-3.5" /> {askedOf(s, 'refine') === 'bauherr' ? 'You answer' : 'The Product owner answers'} open questions: always on</span>
+              <Asked what="Open questions" value={askedOf(s, 'refine')} onChange={(by) => mutate((y) => setAsked(y, 'refine', s.name, by))} />
+            </>
+          )}
           {kind === 'plan' && <Ask label="You approve the plan" on={checkpointOn(s, 'plan')} onChange={(on) => mutate((y) => setCheckpoint(y, 'plan', on))} />}
+          {kind === 'plan' && checkpointOn(s, 'plan') && <Asked what="Approve the plan" value={askedOf(s, 'plan')} onChange={(by) => mutate((y) => setAsked(y, 'plan', s.name, by))} />}
           {kind === 'release' && (
             <>
               <Ask label="You accept the result on staging" on={checkpointOn(s, 'staging')} onChange={(on) => mutate((y) => setCheckpoint(y, 'staging', on))} />
+              {checkpointOn(s, 'staging') && <Asked what="Accept on staging" value={askedOf(s, 'staging')} onChange={(by) => mutate((y) => setAsked(y, 'staging', s.name, by))} />}
               <Ask label="You approve production" on={checkpointOn(s, 'production')} onChange={(on) => mutate((y) => setCheckpoint(y, 'production', on))} />
+              {checkpointOn(s, 'production') && <Asked what="Approve production" value={askedOf(s, 'production')} onChange={(by) => mutate((y) => setAsked(y, 'production', s.name, by))} />}
               <span className="small text-muted-foreground">A Product can also require approval for production on its own.</span>
             </>
           )}

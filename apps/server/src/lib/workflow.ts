@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { GRAPH_CHECKPOINT } from './checkpoints'
 import { resolve } from 'node:path'
-import { IN_FLIGHT, LIVE, WIP, lint, parseFactory, type Kind, type Role, type StageDef, type Workflow } from './workflow-rules'
+import { IN_FLIGHT, LIVE, WIP, askedBy, lint, parseFactory, type Addressee, type Kind, type Role, type StageDef, type Workflow } from './workflow-rules'
 
 export * from './workflow-rules'
 
@@ -15,7 +15,7 @@ export const compile = (doc: unknown): Workflow => {
   return {
     version: 1,
     roles: Object.entries(d.team.roles as Record<string, Omit<Role, 'id'>>).map(([id, r]) => ({ id, ...r })),
-    stages: (d.workflow.stages as Partial<StageDef>[]).map((s) => ({ ...s, title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
+    stages: (d.workflow.stages as Record<string, any>[]).map(({ refine, gate, production_gate, ...s }) => ({ ...s, ...(gate !== undefined && { gate: 'human', ...(askedBy(gate) === 'product-owner' && { gate_by: 'product-owner' }) }), ...(production_gate !== undefined && { production_gate: 'human', ...(askedBy(production_gate) === 'product-owner' && { production_gate_by: 'product-owner' }) }), ...(refine?.by === 'product-owner' && { refine_by: 'product-owner' }), title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
     aliases: d.workflow.aliases ?? {},
   }
 }
@@ -84,6 +84,10 @@ export const gates = (wf: Workflow): { plan: boolean; staging: boolean; producti
   staging: byKind(wf, 'release')?.gate === 'human',
   production: byKind(wf, 'release')?.production_gate === 'human',
 })
+export type CheckpointOf = 'refine' | 'plan' | 'staging' | 'production' | 'human'
+/** Who a checkpoint asks. Files and stored versions without `by:` ask the Bauherr (`gate: human` = `{by: bauherr}`; only `product-owner` is stored, so a compiled file without it hashes as before); `name` is the `human` stage. */
+export const checkpointBy = (wf: Workflow, key: CheckpointOf, name?: string): Addressee =>
+  (key === 'refine' ? byKind(wf, 'triage')?.refine_by : key === 'plan' ? byKind(wf, 'plan')?.gate_by : key === 'staging' ? byKind(wf, 'release')?.gate_by : key === 'production' ? byKind(wf, 'release')?.production_gate_by : name ? stage(wf, name)?.by : undefined) ?? 'bauherr'
 export const excludeLabels = (wf: Workflow): string[] => byKind(wf, 'triage')?.exclude_labels ?? []
 
 export const graph = (wf: Workflow): Graph => {

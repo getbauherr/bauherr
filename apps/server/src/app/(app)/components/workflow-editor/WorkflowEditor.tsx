@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { describeChanges } from '../../../../lib/workflow-describe'
-import { addStep, checkpointsOf, isCustom, moveStep, readDraft, removeStep, setCheckpoint, setMigrate, setStageField, stagesOf, takesRole, type NewStep } from '../../../../lib/workflow-edit'
+import { addStep, checkpointsOf, isCustom, moveStep, readDraft, removeStep, setAsked, setCheckpoint, setMigrate, setStageField, stagesOf, takesRole, type NewStep } from '../../../../lib/workflow-edit'
 import { CHECKPOINT, stageTitle } from '../../../../lib/workflow-labels'
 import { cn } from '@/lib/utils'
 import { setExpediteLane } from '../../(shell)/workflow/edit/actions'
@@ -220,13 +220,21 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
           </div>
         )}
         {doc && (
-          <div className="flex flex-wrap items-center gap-2" data-testid="checkpoint-strip">
-            <span className="small font-medium">You are asked at {checkpoints.length} {checkpoints.length === 1 ? 'point' : 'points'}:</span>
-            {checkpoints.map((c) => {
-              const s = stages.find((x) => x.name === c.stage)
-              const label = c.key === 'human' ? stageTitle(s ?? {}) : CHECKPOINT[c.key].chip
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2" data-testid="checkpoint-strip">
+            {(['bauherr', 'product-owner'] as const).map((by) => {
+              const list = checkpoints.filter((c) => c.by === by)
+              if (!list.length && by === 'product-owner') return null
               return (
-                <button key={`${c.stage}-${c.key}`} type="button" onClick={() => jump(c.key === 'human' ? `step-${c.stage}` : checkpointId(c))} className={cn('small rounded-full border px-3 py-1 font-[inherit] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring', AMBER)}>{label}</button>
+                <div key={by} className="flex flex-wrap items-center gap-2" data-testid={`strip-${by}`}>
+                  <span className="small font-medium">{by === 'bauherr' ? 'You are asked at' : 'The Product owner is asked at'} {list.length} {list.length === 1 ? 'point' : 'points'}:</span>
+                  {list.map((c) => {
+                    const s = stages.find((x) => x.name === c.stage)
+                    const label = c.key === 'human' ? stageTitle(s ?? {}) : CHECKPOINT[c.key].chip
+                    return (
+                      <button key={`${c.stage}-${c.key}`} type="button" onClick={() => jump(c.key === 'human' ? `step-${c.stage}` : checkpointId(c))} className={cn('small rounded-full border px-3 py-1 font-[inherit] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring', AMBER)}>{label}</button>
+                    )
+                  })}
+                </div>
               )
             })}
             {problemCount > 0 && <span role="status" className="small ml-auto font-medium text-destructive" data-testid="problem-count">{problemCount} {problemCount === 1 ? 'problem' : 'problems'}</span>}
@@ -276,6 +284,7 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
                   slotOk={slotOk}
                   moveOk={(n, d) => moves[`${n}:${d}`] === true}
                   onToggle={(which, on) => mutate((y) => setCheckpoint(y, which, on))}
+                  onAsk={(key, stage, by) => mutate((y) => setAsked(y, key, stage, by))}
                   onAdd={(after, kind) => setAdding({ after, afterTitle: stageTitle(stages.find((s) => s.name === after) ?? { name: after }), kind, role: kind === 'agent' ? placing?.id : undefined })}
                   onSeat={seat}
                   onMove={(n, d) => mutate((y) => moveStep(y, n, d))}

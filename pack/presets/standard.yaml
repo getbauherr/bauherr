@@ -4,7 +4,9 @@
 # Human gates: refine (Triage questions) is always on; production is on by default (`production_gate: human` on `release`;
 # a Product without productionChecks shows the "Configure production checks" gate until they are set).
 # Approve plan (`gate: human` on `plan`) is on by default: every plan waits for the Bauherr. Remove it in your own factory file to let plans through.
-# Optional, off by default: `gate: human` on `release` (Accept on staging).
+# Who is asked (docs/spec/people.md): `gate: human` asks the Bauherr, `gate: {by: bauherr | product-owner}` names the person; the same on `production_gate`, `refine: {by: ...}` on triage and `by:` on a `human` stage.
+# The Product owner answers Triage's questions and accepts on staging (`gate: {by: product-owner}` on `release`, per Product: only where the Product owner tests on staging is switched on and one is assigned); the Bauherr approves plans and production.
+# Where a checkpoint asks the Product owner and the Product has none assigned, the Bauherr is asked. A Bauherr or Admin can always decide in the Product owner's place.
 version: 1
 team:
   roles:
@@ -21,6 +23,7 @@ workflow:
       kind: triage
       role: orchestrator
       skill: triage
+      refine: {by: product-owner}
       exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
       outcomes: {plan: plan, refine: triage, skip: backlog}
     - {name: plan, kind: plan, role: engineer, skill: run-contract, gate: human, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
@@ -29,5 +32,5 @@ workflow:
     # Only when the change touches the Product's `security` paths (Product > Checks & merging > Path sets); otherwise the ticket goes straight on to review.
     - {name: security-review, title: Security review, kind: agent, role: security, skill: mr-security-review, when: {touches: security}, wip: 2, outcomes: {pass: review, findings: build}}
     - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
-    - {name: release, kind: release, title: Staging, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
+    - {name: release, kind: release, title: Staging, gate: {by: product-owner}, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
     - {name: done, kind: done}

@@ -1,5 +1,6 @@
 import type { Decision } from '../../app/(app)/lib/plan'
 import { readAnswer } from '../../app/(app)/lib/plan'
+import type { Addressee } from '../workflow-rules'
 
 /** Caps of one conversation (design: at most 3 new points per turn, 10 open at a time). */
 export const MAX_ADDED = 3
@@ -10,7 +11,7 @@ const MAX_ANSWER = 500
 
 export type PointStatus = 'open' | 'answered' | 'dropped'
 /** One question of the decision sheet (or added by the conversation) with what became of it. */
-export type Point = { id: string; title: string; why?: string; options: string[]; default: string; critical: boolean; status: PointStatus; answer?: string; source: 'triage' | 'conversation'; run?: number | null }
+export type Point = { id: string; title: string; why?: string; options: string[]; default: string; critical: boolean; status: PointStatus; answer?: string; source: 'triage' | 'conversation'; run?: number | null; /** Who answers it: the row's `for:`, else whom the checkpoint asks. */ for?: Addressee }
 
 /** Who spoke a message: the Triage session that asked, or the Factory assistant (`model` null: no model call). */
 export type Speaker = { kind: 'session' | 'assistant' | 'person'; role?: string; avatar?: string; session?: string; live?: boolean; run?: number | null; model?: string | null; at: string }
@@ -51,12 +52,12 @@ export const REFINE_TOOL = {
 const line = (v: unknown, n: number): string => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
 const MARKER = /<!--\s*bauherr:[^>]*-->/g
 
-/** The sheet's rows as points, with the stored answers (a dropped row reads as `dropped`); added rows come after the sheet's, critical first within each. */
-export const pointsOf = (sheet: Decision[], added: Decision[], answers: Record<string, string>, run: number | null): Point[] => {
+/** The sheet's rows as points, with the stored answers (a dropped row reads as `dropped`); added rows come after the sheet's, critical first within each. `by` is whom the checkpoint asks: the addressee of a row without `for:`. */
+export const pointsOf = (sheet: Decision[], added: Decision[], answers: Record<string, string>, run: number | null, by: Addressee = 'bauherr'): Point[] => {
   const ids = new Set(sheet.map((d) => d.id))
   const row = (d: Decision, source: Point['source']): Point => {
     const a = answers[d.id] === undefined ? null : readAnswer(answers[d.id]!)
-    return { id: d.id, title: d.title, ...(d.why && { why: d.why }), options: d.options, default: d.default, critical: d.critical, status: !a ? 'open' : a.dropped ? 'dropped' : 'answered', ...(a && { answer: a.text }), source, ...(source === 'triage' && { run }) }
+    return { id: d.id, title: d.title, ...(d.why && { why: d.why }), options: d.options, default: d.default, critical: d.critical, status: !a ? 'open' : a.dropped ? 'dropped' : 'answered', ...(a && { answer: a.text }), source, for: d.for ?? by, ...(source === 'triage' && { run }) }
   }
   const order = (ps: Point[]) => [...ps].sort((a, b) => Number(b.critical) - Number(a.critical))
   return [...order(sheet.map((d) => row(d, 'triage'))), ...added.filter((d) => !ids.has(d.id)).map((d) => row(d, 'conversation'))]

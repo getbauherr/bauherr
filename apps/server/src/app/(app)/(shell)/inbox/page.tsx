@@ -6,12 +6,13 @@ import { CHECKPOINTS } from '../../../../lib/decision'
 import { workflowFor } from '../../../../lib/factory'
 import { byKind, graph } from '../../../../lib/workflow'
 import { loadInbox } from '../../lib/inbox'
-import { currentWorkspace } from '../../lib/session'
+import { currentPersonWorkspace } from '../../lib/session'
+import { isProductOwner } from '../../../../lib/people'
 
 export const dynamic = 'force-dynamic'
 
 export default async function Inbox({ searchParams }: { searchParams: Promise<{ product?: string; checkpoint?: string }> }) {
-  const { user, workspace } = await currentWorkspace()
+  const { user, workspace } = await currentPersonWorkspace()
   const { product, checkpoint } = await searchParams
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const { groups, products, working } = await loadInbox(workspace.id, user, { product: /^\d+$/.test(product ?? '') ? Number(product) : undefined, checkpoint: CHECKPOINTS.find((c) => c === checkpoint) })
@@ -20,6 +21,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const wf = workflowFor(workspace.id)
   const nodes = graph(wf).nodes
   const workflowHref = Object.fromEntries(CHECKPOINTS.flatMap((c) => { const id = nodes.find((n) => n.checkpoint && n.id.includes(':') && n.title === c)?.id ?? (c === 'Review' ? byKind(wf, 'review')?.name : undefined); return id ? [[c, `/?stage=${encodeURIComponent(id)}`]] : [] }))
+  const owner = isProductOwner(user)
   const count = groups.reduce((n, g) => n + g.items.length, 0)
   return (
     <>
@@ -45,10 +47,10 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       {count ? (
         <>
           <p className="small text-muted-foreground">{count} decision{count === 1 ? '' : 's'} wait for you.</p>
-          <div className="max-w-[760px]"><InboxList groups={groups} admin={user.role === 'admin'} workflowHref={workflowHref} /></div>
+          <div className="max-w-[760px]"><InboxList groups={groups} admin={user.role === 'admin'} workflowHref={owner ? {} : workflowHref} /></div>
         </>
       ) : (
-        <EmptyState text={picked ? `Nothing waits for you at ${picked}.` : `Nothing needs you. The factory is working on ${working} ticket${working === 1 ? '' : 's'}.`} action={picked ? { href: '/inbox', label: 'Show all decisions' } : { href: '/', label: 'Open the Workflow' }} />
+        <EmptyState text={picked ? `Nothing waits for you at ${picked}.` : owner ? 'Nothing waits for you.' : `Nothing needs you. The factory is working on ${working} ticket${working === 1 ? '' : 's'}.`} action={picked ? { href: '/inbox', label: 'Show all decisions' } : owner ? { href: '/requests', label: 'Open Requests' } : { href: '/', label: 'Open the Workflow' }} />
       )}
     </>
   )

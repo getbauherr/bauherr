@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { getPayload } from 'payload'
+import { parseDocument, stringify } from 'yaml'
 import { hasProductionChecks } from '../src/lib/mode'
-import { workflowFor } from '../src/lib/factory'
+import { applyFactory, inlineProfiles, workflowFor } from '../src/lib/factory'
 import { attachProof } from '../src/lib/artifacts'
 import { prepareDecision } from '../src/lib/decision'
 import { needsOf } from '../src/lib/needs-you'
-import { kindOf } from '../src/lib/workflow'
+import { askedOf, needBy } from '../src/lib/addressee'
+import { productOwnersOfTicket } from '../src/lib/people'
+import { productGates } from '../src/lib/staging'
+import { corePack, kindOf } from '../src/lib/workflow'
 import config from '../src/payload.config'
 
 /** Seeds what the Playwright smoke needs on an empty DB: one admin, one Workspace, one Product, one Ticket. Idempotent. */
@@ -340,16 +345,42 @@ for (const [slug, name, repo] of [['lab-alpha', 'Lab Alpha', 'acme/lab-alpha'], 
     await ensure('intake_sessions', { title: 'Lab Alpha draft' }, { product: labProduct, workspace: lab, status: 'open', persona: 'product-user', user: labOwner, title: 'Lab Alpha draft', kind: 'bug', messages: [{ role: 'user', content: 'Something is off' }], draft: { title: 'Lab Alpha draft', problem: 'Something is off', context: '', acceptance_criteria: [], type: 'bug', links: [] } })
   }
 }
+// checkpoints-who.spec.ts: a Workspace of its own (`who-lab`), a Bauherr and a Product owner only that spec signs in as. Who Alpha has the Product owner and "Product owner tests on staging" on, Who Beta has no Product owner. Each Product has #1 on staging, #2 a plan to approve (the Bauherr's) and #3 held by Triage with a mixed sheet. Twins in `src/lib/fake-forge.ts` (acme/who-alpha, acme/who-beta).
+const who = (await ensure('workspaces', { slug: 'who-lab' }, { name: 'Who Lab', slug: 'who-lab', wipLimits: {} })).id
+// The shipped default factory file (the CI job runs on the gated pack, which asks the Bauherr everywhere): the Product owner is asked for Triage's questions and staging acceptance in this Workspace.
+{
+  const doc = parseDocument(readFileSync(resolve(corePack(), 'factory.yaml'), 'utf8')).toJS() as Record<string, any>
+  inlineProfiles(doc, corePack(), [])
+  const applied = await applyFactory(payload, who as number, stringify(doc), { by: 'seed', via: 'seed', note: 'who-lab: the shipped default' })
+  if (!applied.ok) throw new Error(`who-lab factory file: ${applied.findings.join('; ')}`)
+}
+const whoHub = (await ensure('connections', { name: 'GitHub Who' }, { name: 'GitHub Who', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: who })).id
+await ensure('bauherren', { email: 'who-bauherr@example.com' }, { email: 'who-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: who }], githubLogin: 'e2e-who-bauherr' })
+for (const [slug, name, repo] of [['who-alpha', 'Alpha', 'acme/who-alpha'], ['who-beta', 'Beta', 'acme/who-beta']] as const) {
+  const whoProduct = (await ensure('products', { slug }, { name: `Who ${name}`, slug, workspace: who, stagingUrl: `https://staging.example.com/${slug}`, productOwnerTestsStaging: slug === 'who-alpha' })).id
+  await ensure('repositories', { fullName: repo }, { fullName: repo, product: whoProduct, workspace: who })
+  await ensure('ticket_sources', { repo }, { repo, product: whoProduct, connection: whoHub, cursor: '2026-10-30T09:00:00Z', workspace: who })
+  const whoTicket = (n: number, title: string, data: Record<string, unknown>) => ensure('tickets', { externalId: `e2e-${slug}-${n}` }, { title: `${name}: ${title}`, externalId: `e2e-${slug}-${n}`, number: n, url: `https://github.com/${repo}/issues/${n}`, state: 'open', product: whoProduct, workspace: who, rank: `00${n}0`, ...data })
+  await whoTicket(1, 'check the new header on staging', { labels: ['bauherr:stage:release'], stage: 'release', releaseState: 'on_staging', mergeSha: `sha-${slug}-1`, releaseAt: new Date().toISOString(), stagingTldr: { whatYouGet: '- The header is bigger.\n**Found:** nothing', found: 'nothing' } })
+  const plan = (await whoTicket(2, 'approve the retry policy', { labels: ['bauherr:stage:plan'], stage: 'plan' })).id
+  await ensure('runs', { ticket: plan, stage: 'plan', status: 'succeeded' }, { ticket: plan, stage: 'plan', status: 'succeeded', mode: 'autonomous', workspace: who })
+  await whoTicket(3, 'settle the header copy', { labels: ['bauherr:needs-refinement', 'bauherr:type:feature'], stage: null })
+  if (slug === 'who-alpha') await ensure('bauherren', { email: 'who-po@example.com' }, { email: 'who-po@example.com', password, role: 'product-owner', assignments: [{ workspace: who, scope: 'products', products: [whoProduct] }] })
+}
 // No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>
-  const need = needsOf(workflowFor(t.workspace), t, latest ?? null, !hasProductionChecks(productDoc))
+  const wfT = workflowFor(t.workspace)
+  const need = needsOf(wfT, t, latest ?? null, !hasProductionChecks(productDoc), (await productGates(payload, wfT, t.workspace, [productDoc as { id: number }]))(t.product))
+  // Whom it asks (the sweep's `needsBy`): the workflow's addressee, the Bauherr where the Product has no Product owner.
+  const nominal = need ? needBy(wfT, need, t.stage) : null
+  const needsBy = need ? askedOf(nominal!, nominal === 'product-owner' && (await productOwnersOfTicket(payload, t)).length > 0) : null
   // Plans awaiting approval carry the TL;DR their Plan Run would have posted; every need gets the Decision the sweep would prepare.
   const planTldr = need === 'Approve plan' || need === 'Answer decisions' ? { decision: `Approve the plan for ${t.title}`, recommendation: 'Approve; the change is small and has a test.', why: ['Two small steps', 'No data is touched', 'A regression test is added'], risk: 'none', options: [] } : t.planTldr
   const row = { ...t, planTldr }
   const decision = need ? await prepareDecision(payload, row, need, latest ?? null) : null
-  await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need, decision, planTldr: planTldr ?? null }, ...o })
+  await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need, needsBy, decision, planTldr: planTldr ?? null }, ...o })
 }
 console.log('seeded')
 process.exit(0)

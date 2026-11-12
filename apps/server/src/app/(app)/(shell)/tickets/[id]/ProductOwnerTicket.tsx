@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+import { DecisionCard } from '../../../components/DecisionCard'
+import { RefineConversation } from '../../../components/conversation/RefineConversation'
 import { PageTitle } from '../../../components/PageTitle'
 import { ProgressPath } from '../../../components/ProgressPath'
 import { ProofList } from '../../../components/ProofList'
@@ -8,12 +10,13 @@ import { KindChip, LaneChip, StatusLine } from '../../../components/RequestParts
 import { RequestCardPage } from '../../../components/RequestCardPage'
 import { Comments } from '../../../components/RequestComments'
 import { ago } from '../../../lib/format'
+import { cardOf } from '../../../lib/inbox'
 import { loadProof } from '../../../lib/proof'
 import { loadOwnerTicket } from '../../../lib/requests'
 import { currentPersonWorkspace, payloadClient } from '../../../lib/session'
 
 /** What a Product owner sees of a Ticket of their Products: the request card, the plain-word path and timeline, who it waits for, proof for review, the release note and the comments. Never a Run, step, cost, token, agent, plan, budget or setting; a Ticket of another Product is a 404. */
-export async function ProductOwnerTicket({ id }: { id: string }) {
+export async function ProductOwnerTicket({ id, view: wanted }: { id: string; view?: string }) {
   const { user, workspace } = await currentPersonWorkspace()
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
   const view = await loadOwnerTicket(workspace.id, Number(id), user as { id: number })
@@ -23,6 +26,16 @@ export async function ProductOwnerTicket({ id }: { id: string }) {
   const full = (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as Record<string, any>
   const product = (await payload.findByID({ collection: 'products', id: view.product.id, depth: 0, overrideAccess: true })) as Record<string, any>
   const proof = (await loadProof(payload, [full], new Map([[view.product.id, product]]))).get(t.id)
+  // What asks this person, when the checkpoint is addressed to the Product owner (a Bauherr's checkpoints are not shown).
+  const asked = full.needsBy === 'product-owner' && full.state === 'open' ? cardOf(full, { id: view.product.id, name: view.product.name, stagingUrl: product.stagingUrl }) : null
+  if (asked && (wanted === 'conversation' || (asked.decision.need === 'Answer questions' && wanted !== 'ticket'))) {
+    return (
+      <>
+        <PageTitle>{`#${t.number}`}</PageTitle>
+        <RefineConversation ticket={t.id} kind={null} where={t.progress.headline} info={<p className="small m-0 text-muted-foreground">{view.product.name}</p>} />
+      </>
+    )
+  }
   return (
     <div className="flex flex-col gap-4" data-testid="owner-ticket">
       <p className="small"><Link className="text-primary" href={view.request ? `/requests/${view.request}` : '/requests'}>{view.request ? 'Request' : 'Requests'}</Link></p>
@@ -34,6 +47,7 @@ export async function ProductOwnerTicket({ id }: { id: string }) {
         <LaneChip lane={t.lane} />
         <StatusLine status={t.status} waits={t.waits} />
       </p>
+      {asked && <div className="max-w-[640px]" data-testid="owner-decision"><DecisionCard item={{ ...asked, product: undefined }} admin={false} /></div>}
       {view.card && <div className="max-w-xl"><RequestCardPage card={view.card} /></div>}
       <section className="flex flex-col gap-3" aria-labelledby="where">
         <h2 className="heading" id="where">Where it stands</h2>

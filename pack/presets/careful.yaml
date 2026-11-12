@@ -17,6 +17,7 @@ workflow:
       kind: triage
       role: orchestrator
       skill: triage
+      refine: {by: product-owner}
       exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
       outcomes: {plan: plan, refine: triage, skip: backlog}
     - {name: plan, kind: plan, role: engineer, skill: run-contract, gate: human, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}

@@ -17,7 +17,7 @@ _Avoid_: Project (a repository in GitLab, a board container in Planka, a board i
 ### People
 
 **Bauherr** (plural Bauherren):
-A person who is a member of a Workspace and owns all its Products: configures the factory for them and approves work at gates; owns the factory, risk, spend and production. Only a Bauherr can pass a gate today.
+A person who is a member of a Workspace and owns all its Products: configures the factory for them and approves work at gates; owns the factory, risk, spend and production. Can decide every Checkpoint, also one addressed to the Product owner (recorded as `bauherr`).
 _Avoid_: Operator, project owner, owner (bare; say Bauherr, Product owner or Product user)
 
 **Open point**:
@@ -25,7 +25,7 @@ One question of a Ticket's decision sheet, or one the refinement conversation ad
 _Avoid_: Question card, decision row (say Open point; Decision is the recorded answer)
 
 **Product owner**:
-The person accountable for a Product's requirements: files requests for it and answers product questions about it. Has an account with a login (role `product-owner`, ranks below the Bauherr) that an Admin assigns to a Workspace or to single Products; it works in Requests and the reduced Ticket page of the Products assigned to it, and everything that needs a decision at a gate still goes to a Bauherr until the decisions slice. See `docs/spec/people.md`.
+The person accountable for a Product's requirements: files requests for it and answers product questions about it. Has an account with a login (role `product-owner`, ranks below the Bauherr) that an Admin assigns to a Workspace or to single Products; it works in the Inbox, Requests and the reduced Ticket page of the Products assigned to it, and decides the Checkpoints and decision rows addressed to it (by default Triage's questions and acceptance on staging); everything else goes to a Bauherr. See `docs/spec/people.md`.
 _Avoid_: Project owner, owner (bare)
 
 **Admin**:
@@ -108,10 +108,13 @@ The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edi
 One applied state of a Workspace's Factory file (`workflow_versions`): the file with its profiles inlined, the compiled workflow and its hash. The newest applied one is active; an identical file adds no version.
 
 **Decision**:
-The Bauherr's choice in a `human` Stage: one of the Stage's Outcomes, recorded as a human touch `decide:<stage>:<outcome>`; the Ticket then follows that Outcome.
+The choice of whom a `human` Stage asks (the Bauherr, or the Product owner with `by: product-owner`) in that Stage: one of the Stage's Outcomes, recorded as a human touch `decide:<stage>:<outcome>`; the Ticket then follows that Outcome.
+
+**Asked**:
+Whom a Checkpoint or decision row is addressed to: `bauherr` or `product-owner` (`gate: {by}`, `refine: {by}`, `by:`, a row's `for:`). A Checkpoint asked of the Product owner of a Product without one asks the Bauherr; `tickets.needsBy` stores it. _Avoid_: assignee, owner (bare)
 
 **Checkpoint**:
-A point where the workflow waits for a human (Triage's questions, a `gate: human`, the production gate, a `human` Stage).
+A point where the workflow waits for a person (Triage's questions, a `gate`, the production gate, a `human` Stage). Each is addressed (`by: bauherr | product-owner`, default the Bauherr): only that person, and a Bauherr or Admin in their place, can decide it (`mayDecide`).
 
 **Decision**:
 What one Checkpoint asks of a person, prepared the same way every time (ask, recommendation, at most three facts, options, what happens next) and stored on the Ticket; the Inbox lists exactly the Tickets that have one.

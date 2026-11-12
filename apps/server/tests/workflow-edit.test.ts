@@ -146,7 +146,7 @@ describe('split, migrate, fold', () => {
 
 describe('checkpointsOf', () => {
   it('lists the points in flow order with their state', () => {
-    expect(e.checkpointsOf(doc(base)).map((c) => `${c.key}:${c.on}`)).toEqual(['refine:true', 'plan:true', 'staging:false', 'production:true'])
+    expect(e.checkpointsOf(doc(base)).map((c) => `${c.key}:${c.on}`)).toEqual(['refine:true', 'plan:true', 'staging:true', 'production:true'])
     const { yaml } = e.addStep(base, { after: 'build', kind: 'human', title: 'Sign-off', choices: ['Ok'] })
     expect(e.checkpointsOf(doc(yaml)).map((c) => c.key)).toEqual(['refine', 'plan', 'human', 'staging', 'production'])
   })

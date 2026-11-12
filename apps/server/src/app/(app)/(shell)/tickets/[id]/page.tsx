@@ -185,7 +185,7 @@ const Noted = ({ items }: { items: OpenItem[] }) =>
 export default async function TicketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> }) {
   const { id } = await params
   const { view } = await searchParams
-  if (isProductOwner(await requirePerson())) return await ProductOwnerTicket({ id })
+  if (isProductOwner(await requirePerson())) return await ProductOwnerTicket({ id, view })
   const { user, workspace } = await currentWorkspace()
   const wf = workflowFor(workspace?.id)
   const admin = isAdmin(user)

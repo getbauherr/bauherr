@@ -56,7 +56,7 @@ test('Admin opens the editor from the Workflow page and sees where they are aske
   await expect(strip.getByRole('button', { name: 'Open questions' })).toBeVisible()
   await expect(strip.getByRole('button', { name: 'Approve the plan' })).toBeVisible()
   const rows = page.getByTestId('checkpoint')
-  await expect(rows.filter({ hasText: 'You answer open questions' })).toContainText('always on')
+  await expect(rows.filter({ hasText: /answers? open questions/ })).toContainText('always on')
   await expect(rows.filter({ hasText: 'You approve the plan' })).toBeVisible()
   await expect(page.getByTestId('step').first()).toContainText('Sorts new tickets')
 
@@ -71,6 +71,45 @@ test('Admin opens the editor from the Workflow page and sees where they are aske
   await page.goto('/settings/profile')
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Workflow', exact: true }).click()
   await expect(page).toHaveURL(/\/workflow\/edit$/)
+})
+
+test('every checkpoint says whom it asks in a select; changing it regroups the strip on top and is reviewed in words', async ({ page }) => {
+  await open(page)
+  const strip = page.getByTestId('checkpoint-strip')
+  const asked = (what: string) => page.getByRole('combobox', { name: `Asked: ${what}` })
+  const group = (by: string) => strip.getByTestId(`strip-${by}`)
+  const words: Record<string, string> = { bauherr: 'Bauherr', 'product-owner': 'Product owner' }
+  // every point is in the group of whom it asks, whatever the workflow in force (the shipped default asks the Product owner for Triage's questions, the gated pack the Bauherr)
+  await expect(group('bauherr')).toContainText(/You are asked at \d+ points?:/)
+  const from = await asked('Open questions').inputValue()
+  const to = from === 'bauherr' ? 'product-owner' : 'bauherr'
+  await expect(asked('Open questions').locator('option')).toHaveText(['Bauherr', 'Product owner'])
+  await expect(asked('Approve the plan')).toHaveValue('bauherr')
+  await expect(group(from).getByRole('button', { name: 'Open questions' })).toBeVisible()
+  if (process.env.SHOTS_DIR) {
+    await asked('Approve the plan').selectOption('product-owner') // a draft with both groups, for the picture
+    await page.setViewportSize({ width: 1440, height: 900 })
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme })
+      await page.waitForTimeout(300)
+      await page.screenshot({ path: `${process.env.SHOTS_DIR}/editor-asked-${scheme}.png` })
+    }
+    await page.emulateMedia({ colorScheme: 'light' })
+    await asked('Approve the plan').selectOption('bauherr')
+  }
+
+  await asked('Open questions').selectOption(to)
+  await expect(group(to).getByRole('button', { name: 'Open questions' })).toBeVisible()
+  await expect(group(from).getByRole('button', { name: 'Open questions' })).toHaveCount(0)
+  await expect(page.getByTestId('checkpoint').filter({ hasText: to === 'bauherr' ? 'You answer open questions' : 'The Product owner answers open questions' })).toHaveAttribute('data-on', 'true')
+  await page.getByRole('button', { name: 'Review changes' }).click()
+  const review = page.getByRole('dialog', { name: 'Review changes' })
+  await expect(review).toContainText(`Triage: answering open questions is now asked of the ${words[to]} instead of the ${words[from]}`)
+  await review.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Discard' }).click()
+  await page.getByRole('dialog', { name: 'Discard your changes?' }).getByRole('button', { name: 'Discard' }).click()
+  await expect(page.getByTestId('draft-badge')).toHaveCount(0)
+  await expect(asked('Open questions')).toHaveValue(from)
 })
 
 test('a human checkpoint that is switched off stays in place; a decision step is an amber card with its choices', async ({ page }) => {

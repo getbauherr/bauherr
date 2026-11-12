@@ -15,6 +15,9 @@ import { cas, forgeOf, id } from './release'
 import { sql } from '@payloadcms/db-postgres'
 import { syncProgress } from './progress'
 import { workflowFor } from './factory'
+import { gatesOf } from './staging'
+import { askedOf, needBy } from './addressee'
+import { productOwnersOfTicket } from './people'
 import { is } from './workflow'
 
 type Doc = Record<string, any>
@@ -73,10 +76,15 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const wf = workflowFor(t.workspace)
   const productionChecksMissing = is(wf, t.stage, 'release') && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
   // A checkpoint the owner decided in the UI a moment ago stays closed until the forge side has caught up.
-  const raw = needsOf(wf, t, run, productionChecksMissing)
+  const raw = needsOf(wf, t, run, productionChecksMissing, await gatesOf(payload, wf, t))
   const candidate = justDecided(t, raw) ? null : raw
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
+  // Who it asks (`needsBy`): what the workflow addresses it to, the Bauherr when that is the Product owner and the Product has none assigned.
+  const nominal = candidate ? needBy(wf, candidate, t.stage) : null
+  const ownerRows = nominal === 'product-owner' ? await productOwnersOfTicket(payload, t) : []
+  const asked = candidate ? askedOf(nominal!, ownerRows.length > 0) : null
+  if ((t.needsBy ?? null) !== asked) await cas(payload, t.id, sql`"needs_by" = ${asked}`, sql`"needs_by" IS DISTINCT FROM ${asked}`)
   // The prepared Decision (Inbox card, Ticket page) follows `needsYou`: written when its content changed, cleared with the need.
   const decision = candidate ? await prepareDecision(payload, t, candidate, run) : null
   if (!sameDecision(t.decision, decision)) await cas(payload, t.id, sql`"decision" = ${decision ? JSON.stringify(decision) : null}::jsonb`, sql`true`)
@@ -84,7 +92,8 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
-  const owners = candidate ? await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o })) : []
+  // The people told: the Product owners' forge logins when it asks them, else the gate owners of the Product.
+  const owners = !candidate ? [] : asked === 'product-owner' ? ownerRows.flatMap((u) => logins(u.githubLogin)) : await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))
   const base = owners.length ? candidate : null
   let forge: ReturnType<typeof forgeOf> | undefined
   const source = async (): Promise<TicketSource> => (await (forge ??= forgeOf(payload, id(t.product)))).tickets
