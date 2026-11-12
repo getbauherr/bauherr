@@ -74,15 +74,45 @@ export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): A
   yield { type: 'usage', ...usage }
 }
 
+/** What the system prompt gets when a call must end in one tool: current Claude models (Sonnet 5.5, Opus 5.5, Fable 5.x) answer a forced `tool_choice` (`tool`, `any`) with HTTP 400, so the tool is asked for in words and the caller checks that it came. */
+export const mustCall = (tool: string): string => `\n\nEnd this turn by calling the \`${tool}\` tool exactly once. Write no text before or after the call; everything you want to say goes into the tool's fields.`
+
+/** The request body of one chat call. `forceTool` never sends a forced `tool_choice` (see `mustCall`): `auto`, one call at most, and the instruction in the system prompt. */
+export const chatBody = (model: string, a: { system: string; messages: ModelMessage[]; tools: ToolDef[]; noTools?: boolean; forceTool?: string }): Record<string, unknown> => ({
+  model,
+  max_tokens: 16000,
+  stream: true,
+  system: a.forceTool ? a.system + mustCall(a.forceTool) : a.system,
+  messages: a.messages,
+  tools: a.tools,
+  ...(a.noTools && { tool_choice: { type: 'none' } }),
+  ...(a.forceTool && { tool_choice: { type: 'auto', disable_parallel_tool_use: true } }),
+})
+
+/** The provider's own words for a failed call (`error.message` of the JSON answer), shortened; never the request. */
+export const upstreamReason = (body: string): string => {
+  try {
+    const j = JSON.parse(body) as { error?: { message?: unknown }; message?: unknown }
+    const m = j.error?.message ?? j.message
+    return typeof m === 'string' ? m.replace(/\s+/g, ' ').slice(0, 300) : ''
+  } catch {
+    return ''
+  }
+}
+
 /** One streaming Messages-API call through the gateway as the Workspace. */
 export const gatewayChatModel = (a: { slug: string; key: string; model: string }): ModelCall =>
   async function* ({ system, messages, tools, noTools, forceTool, signal }) {
     const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${a.key}` },
-      body: JSON.stringify({ model: `ws-${a.slug}/${a.model}`, max_tokens: 4096, stream: true, system, messages, tools, ...(noTools && { tool_choice: { type: 'none' } }), ...(forceTool && { tool_choice: { type: 'tool', name: forceTool } }) }),
+      body: JSON.stringify(chatBody(`ws-${a.slug}/${a.model}`, { system, messages, tools, noTools, forceTool })),
       signal,
     })
-    if (!res.ok || !res.body) throw new Error(`chat model call failed: HTTP ${res.status}`)
+    if (!res.ok || !res.body) {
+      const reason = upstreamReason(await res.text().catch(() => ''))
+      console.error(`chat model call failed: HTTP ${res.status}${reason ? `: ${reason}` : ''}`)
+      throw new Error(`chat model call failed: HTTP ${res.status}${reason ? ` (${reason})` : ''}`)
+    }
     yield* parseAnthropicStream(res.body)
   }
