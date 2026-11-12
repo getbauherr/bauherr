@@ -10,7 +10,7 @@ let payload: Payload
 let testDb: TestDb
 const run = (q: ReturnType<typeof sql>) => (payload.db as any).drizzle.execute(q)
 
-const NAME = '20261111_180000_request_card'
+const NAME = '20261112_130000_request_card'
 
 beforeAll(async () => {
   testDb = await createTestDb('migrations_request_card', undefined, { blank: true })
@@ -53,6 +53,6 @@ it('the migration adds the request card columns with their defaults, backfills t
   await run(sql`DELETE FROM intake_sessions WHERE id = ${first}`)
   expect((await run(sql`SELECT count(*)::int AS n FROM intake_sessions WHERE follow_up_of_id IS NULL`)).rows[0].n).toBe(1)
 
-  await (await import('../src/migrations/20261111_180000_request_card')).down({ db: (payload.db as any).drizzle } as never)
+  await (await import('../src/migrations/20261112_130000_request_card')).down({ db: (payload.db as any).drizzle } as never)
   expect((await cols()).rows).toHaveLength(0)
 }, 180_000)
