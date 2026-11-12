@@ -4,6 +4,7 @@ import { unansweredCriticalCount } from '../../app/(app)/lib/plan'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadOverviewRows, within, FORGE_TIMEOUT_MS } from '../../app/(app)/lib/overview'
 import { ticketsOf, tenantsOf } from '../actions'
+import { decisionComments } from '../forge-channel'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
 import { board, gates, is, nameOf, title as stageTitle } from '../workflow'
 import { loadInsights, RANGES } from '../../app/(app)/lib/insights'
@@ -47,7 +48,7 @@ const inboxPage = async (payload: Payload, user: Doc, ws: number): Promise<PageC
 const decisionsOpen = async (payload: Payload, t: Doc): Promise<number | null> => {
   try {
     const ts = await ticketsOf(payload, typeof t.product === 'object' ? t.product.id : t.product)
-    return unansweredCriticalCount(await within(ts.listComments(String(t.number)), FORGE_TIMEOUT_MS))
+    return unansweredCriticalCount(await within(decisionComments(payload, t as Doc, ts), FORGE_TIMEOUT_MS))
   } catch {
     return null
   }

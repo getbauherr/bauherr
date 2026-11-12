@@ -8,7 +8,6 @@ import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../
 import { backendFor } from '../../../../lib/adapters'
 import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
-import { unknownLogins } from '../../../../lib/gates'
 import { suggestOverlapIgnore } from '../../../../lib/overlap'
 import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { forgeOf } from '../../../../lib/release'
@@ -157,7 +156,7 @@ const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => 
   return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
 }
 
-const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'gateOwners', 'productionWebhookUrl', 'productionChecks', 'releaseMode'] as const
+const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'productionWebhookUrl', 'productionChecks', 'releaseMode'] as const
 
 /**
  * Saves the fields of one Product tab (`section`: deploy, approvals, checks or releases); only the fields the form posted are written, so a tab never resets another one.
@@ -180,10 +179,6 @@ export const saveDeploy = act({}, async (c, fd) => {
   if (days !== undefined && (!Number.isInteger(days) || days < 1)) errors.push({ path: 'releaseReminderDays', message: 'Enter a whole number of days, 1 or more.' })
   const retries = data.checkRetries as number | undefined
   if (retries !== undefined && (!Number.isInteger(retries) || retries < 0 || retries > 1)) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
-  if (typeof data.gateOwners === 'string') {
-    const unknown = await unknownLogins(c.payload, id(fd), data.gateOwners)
-    if (unknown.length) errors.push({ path: 'gateOwners', message: `GitHub does not know ${unknown.map((l) => `@${l}`).join(', ')}. Check the spelling.` })
-  }
   if (fd.has('reviewChecks')) {
     try {
       const checks = parseReviewChecks(s(fd, 'reviewChecks')) ?? {}

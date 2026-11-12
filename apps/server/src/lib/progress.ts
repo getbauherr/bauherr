@@ -3,7 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { type StatusRun, ticketStatus } from '../app/(app)/lib/status'
 import { workflowFor } from './factory'
-import { gateOwnersOf } from './gates'
+import { gateOwnersOf } from './forge-channel'
 import { APPROVED_STAGING, type Need } from './needs-you'
 import { cas, forgeOf, id } from './release'
 import { fillPlaceholders, type Section } from './template-text'
@@ -194,7 +194,7 @@ const notify = async (payload: Payload, t: Doc, p: Progress): Promise<void> => {
     const { tickets: ts } = await forgeOf(payload, id(t.product))
     const author = (await ts.get(String(t.number))).author
     if (!author || (await isBot(ts, author))) return
-    if (t.gateNotified && (await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))).includes(author)) return
+    if (t.gateNotified && (await gateOwnersOf(payload, t.workspace)).some((l) => l.toLowerCase() === author.toLowerCase())) return
     await ts.comment(String(t.number), `<!-- bauherr:progress-notice:${key} -->\n@${author}: ${p.headline}${p.next ? ` ${p.next}` : ''}`)
   } catch (e) {
     await cas(payload, t.id, sql`"progress_notified" = ${t.progressNotified ?? null}`, sql`"progress_notified" = ${key}`)

@@ -11,7 +11,8 @@ import { tldrError } from './tldr'
 import { gateOn } from './mode'
 import { dequeueBeforeChange, isQueue, isTrain } from './merge-mode'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
-import { logins, storeOpenCritical } from './gates'
+import { storeOpenCritical } from './gates'
+import { decisionComments, factoryLoginOf, isFactoryAuthor, logins } from './forge-channel'
 import { cardColumns, questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type Session } from './intake/engine'
 import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from './intake/media'
 
@@ -230,7 +231,7 @@ export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: Ticke
   const existing = latestWith(await ts.listComments(n), PLAN_MARKER)
   const saved = existing ? await ts.updateComment(n, existing.id, body) : await ts.comment(n, body)
   await storePlanTldr(payload, t.id, body, heading)
-  await storeOpenCritical(payload, t.id, await ts.listComments(n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
+  await storeOpenCritical(payload, t.id, await decisionComments(payload, t, ts, { notify: true })).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
   return { commentId: saved.id, created: !existing }
 }
 
@@ -391,7 +392,7 @@ const touch = async (payload: Payload, user: Doc, t: Doc, kind: string, addresse
 }
 
 /** Whether the Ticket has an open critical decision: it holds every forward move. */
-export const holdsRefine = async (ts: TicketSource, n: string) => openCritical(await ts.listComments(n)).length > 0
+export const holdsRefine = async (payload: Payload, t: Doc, ts: TicketSource) => openCritical(await decisionComments(payload, t, ts, { notify: true })).length > 0
 
 const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
   payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: now() }, overrideAccess: true })
@@ -400,7 +401,7 @@ const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'plan')
   const { ts, n } = await sourceOf(payload, t)
-  const open = openCritical(await ts.listComments(n))
+  const open = openCritical(await decisionComments(payload, t, ts))
   if (open.length) throw new Error(`Answer the critical decisions first: ${open.map((d) => d.id).join(', ')}`)
   await touch(payload, user, t, 'approve:plan', checkpointBy(workflowFor(t.workspace), 'plan'))
   await ts.addLabels(n, [APPROVED_PLAN])
@@ -473,7 +474,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<string | nu
   const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
   if (!run || kindOfRun(wf, run) !== 'plan' || run.status !== 'succeeded') return null
   const { ts, n } = await sourceOf(payload, t)
-  const comments = await ts.listComments(n)
+  const comments = await decisionComments(payload, t, ts)
   const plan = latestWith(comments, PLAN_MARKER)
   if (!plan) return null
   const rows = parseDecisions(plan.body)
@@ -648,7 +649,7 @@ export const postDecisions = async (
   const t = await loadGate(payload, user, a, 'refine', 'product-owner')
   return exclusive(String(t.id), async () => {
     const src = await sourceOf(payload, t)
-    const comments = await src.ts.listComments(src.n)
+    const comments = await decisionComments(payload, t, src.ts)
     const existing = answersOf(comments)
     // Each row has its own addressee (`for:`, else the checkpoint's): a Product owner answers, reopens and adds only rows addressed to them.
     const sheet = sheetOf(comments)
@@ -663,7 +664,8 @@ export const postDecisions = async (
     for (const k of a.reopen ?? []) delete merged[k]
     const rows = [...addedOf(comments), ...(a.added ?? [])]
     const body = `${DECISIONS_MARKER}\n${Object.entries(merged).map(([k, v]) => `${k}: ${v}`).join('\n')}${rows.length ? `\n\n## Decisions\n${rows.map(formatDecision).join('\n')}` : ''}`
-    if (existing) await src.ts.updateComment(src.n, existing.id, body)
+    // Only the factory's own Comment is edited in place: a counted Comment of a person stays theirs, and the merged answers go in a newer one.
+    if (existing && isFactoryAuthor(existing.author, await factoryLoginOf(payload, t, src.ts))) await src.ts.updateComment(src.n, existing.id, body)
     else await src.ts.comment(src.n, body)
     if (changed.length) {
       const date = now().slice(0, 10)
@@ -672,7 +674,7 @@ export const postDecisions = async (
       if (log) await src.ts.updateComment(src.n, log.id, appendDecisions(log.body, lines))
       else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendDecisions(await worklogTemplate(payload, t), lines)}`)
     }
-    await storeOpenCritical(payload, t.id, await src.ts.listComments(src.n)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
+    await storeOpenCritical(payload, t.id, await decisionComments(payload, t, src.ts)).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'open critical decisions not stored'))
     if (a.release !== false) await releaseIfAnswered(payload, src, t)
     return { recorded: changed.length }
   })
@@ -686,7 +688,7 @@ export const finishRefinement = async (payload: Payload, user: Doc, a: { ticket:
   const t = await loadGate(payload, user, a, 'refine')
   return exclusive(String(t.id), async () => {
     const src = await sourceOf(payload, t)
-    const open = openCritical(await src.ts.listComments(src.n))
+    const open = openCritical(await decisionComments(payload, t, src.ts))
     if (open.length) throw new Error(`Answer the critical points first: ${open.map((d) => d.id).join(', ')}`)
     if (a.edits?.title || a.edits?.body) {
       await src.ts.update(src.n, a.edits)
@@ -700,7 +702,7 @@ export const finishRefinement = async (payload: Payload, user: Doc, a: { ticket:
 const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc) => {
   const wf = workflowFor(t.workspace)
   const { labels } = await ts.get(n)
-  if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await ts.listComments(n)).length) return
+  if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await decisionComments(payload, t, ts, { notify: true })).length) return
   await enterStage(payload, t, nameOf(wf, 'plan'), async () => {
     await ts.removeLabels(n, [NEEDS_REFINEMENT])
     await moveStage(payload, ts, t, nameOf(wf, 'plan'), 'answered')

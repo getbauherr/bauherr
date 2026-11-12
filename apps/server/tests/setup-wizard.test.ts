@@ -28,7 +28,7 @@ const REPO = 'acme/wizard'
 
 const workspace = async (slug: string, repo = `acme/${slug}`) => {
   const ws = (await payload.create({ collection: 'workspaces', data: { name: slug, slug, defaultMode: 'session' }, ...o })).id as number
-  const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, gateOwners: 'owner', stagingUrl: 'https://staging.example' }, ...o })).id as number
+  const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, stagingUrl: 'https://staging.example' }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws, capabilities: { verifiedAt: '2026-01-01' } }, ...o })).id as number
   await payload.create({ collection: 'repositories', data: { fullName: repo, product, workspace: ws }, ...o })
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })

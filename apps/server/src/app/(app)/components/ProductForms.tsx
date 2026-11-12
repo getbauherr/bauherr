@@ -66,10 +66,10 @@ export const CheckRetriesField = ({ value }: { value: number }) => (
 )
 
 /** Approvals section of a Product (the Approvals tab and step 3 of /setup); renders the gate ladder with the production switch. */
-export function ApprovalsSection({ data: { product: p, workflow, members, adminApprover }, admin, n, retries = true }: SectionProps) {
+export function ApprovalsSection({ data: { product: p, workflow, members, hasApprover }, admin, n, retries = true }: SectionProps) {
   const d = p.deploy
-  const admins = members.filter((m) => m.admin).map((m) => `@${m.login}`)
-  const notifiable = !!d.gateOwners || adminApprover
+  const names = members.map((m) => `@${m.login}`).join(', ')
+  const notifiable = hasApprover
   const [off] = productionCallouts({ checks: namesOf(d.productionChecks), seen: null, notifiable, on: false })
   return (
     <SettingsSection id="approvals" n={n} title="Approvals" purpose="Where the process waits for you. Everything else runs on its own.">
@@ -89,28 +89,21 @@ export function ApprovalsSection({ data: { product: p, workflow, members, adminA
       )}
       {workflow.staging && <ToggleRow name="expediteSkipStaging" label="Skip staging approval for Hotfixes" help="A Hotfix Ticket moves on from staging without your Accept. The production approval still waits for you." defaultChecked={d.expediteSkipStaging} />}
       {retries && <CheckRetriesField value={d.checkRetries} />}
-      <MultiPick
-        name="gateOwners"
-        legend="Who approves?"
-        hint="They are assigned on GitHub and mentioned when a Ticket waits for an approval."
-        options={members.map((m) => ({ value: m.login, label: `${m.email} · @${m.login}` }))}
-        value={namesOf(d.gateOwners)}
-        addLabel="Add GitHub login"
-        example="sbuckpesch"
-        missingMeta="not a Member with this login"
-        emptyNote={adminApprover ? (admins.length ? `Nobody picked: all Admins with a GitHub login (${admins.join(', ')}).` : 'Nobody picked: all Admins with a GitHub login.') : undefined}
-        login
-        mono={false}
-      />
+      <div className="flex flex-col gap-1">
+        <span className="small font-medium text-foreground">Who approves?</span>
+        <span className="small text-muted-foreground">
+          Every Bauherr and Admin with a forge login ({names || 'nobody has linked one yet'}), and a Product owner assigned to this Product where a checkpoint asks them. They are assigned and mentioned on the issue when a Ticket waits for an approval, and a label or answers comment on the forge counts only from them. Link a login on the person&apos;s profile or under People.
+        </span>
+      </div>
     </SettingsSection>
   )
 }
 
 /** Production section of a Product (the Deploy tab when the production gate is on, and step 3 of /setup). */
-export function ProductionSection({ data: { product: p, adminApprover }, n }: SectionProps) {
+export function ProductionSection({ data: { product: p, hasApprover }, n }: SectionProps) {
   const d = p.deploy
   const production = namesOf(d.productionChecks)
-  const notifiable = !!d.gateOwners || adminApprover
+  const notifiable = hasApprover
   return (
     <SettingsSection id="production" n={n} title="Production" purpose="How Bauherr knows your production deploy finished." advanced={
       <Field name="productionWebhookUrl" label="Also call this URL when I approve" type="url" hint="Optional. Bauherr POSTs {ticket, sha, environment: production} once per approval. Use it if your pipeline cannot listen for the GitHub label." example="https://ci.acme.com/hooks/prod" defaultValue={d.productionWebhookUrl} />

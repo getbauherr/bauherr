@@ -30,6 +30,8 @@ export default async function Health() {
                 <td>{s.polledAt ? ago(s.polledAt) : 'never'}{s.error && <span className="text-destructive"> · Failed: {s.error}</span>}</td>
               </tr>
             ))}
+            {health.forge.nobodyLinked && <tr><th>Forge decisions</th><td><span className="text-destructive">No Bauherr or Admin of this Workspace has linked a forge login.</span> A label or answers comment on the forge counts only from a linked login, so none will count until someone links theirs on their profile. Approving on the Ticket page still works.</td></tr>}
+            {health.forge.unlinked.map((u) => <tr key={u.product}><th>Unlinked approvers, {u.product}</th><td><span className="text-warn">{u.logins.map((l) => `@${l}`).join(', ')}</span> named as approvers before and have no account, so they no longer count. Link each login on the person&apos;s profile (or under People).</td></tr>)}
             <tr><th>Expedite lead time (last 5)</th><td>{health.expediteLeadMs == null ? <span className="text-muted-foreground">No Hotfix merged yet.</span> : `${Math.max(1, Math.round(health.expediteLeadMs / 6e4))} min from flag to merge`}</td></tr>
             <tr><th>Gateway budget</th><td><span className={budget[1]}>{budget[0]}</span>{spend ? ` · $${spend.spentUsd.toFixed(2)}${spend.limitUsd == null ? '' : ` of $${spend.limitUsd}`}` : ''}</td></tr>
           </tbody>

@@ -3,6 +3,7 @@ import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { addedOf, answersOf, dropLine, parseAnswers, parseDecisions, sheetOf } from '../../app/(app)/lib/plan'
 import { NotInWorkspace, exclusive, finishRefinement, loadGate, postDecisions, sourceOf } from '../actions'
+import { decisionComments } from '../forge-channel'
 import { isBauherr } from '../people'
 import { chatModelFor, tierModels, withImages } from '../chat/engine'
 import { priceOf } from '../cost'
@@ -108,7 +109,7 @@ const read = async (payload: Payload, user: User, ticket: number, workspaceId: n
   // `product-owner`: the precondition for a Product owner is only that the Ticket is theirs to see; each point is checked below by its own addressee.
   const t = await loadGate(payload, user, { ticket, workspaceId }, 'refine', 'product-owner')
   const { ts, n } = await sourceOf(payload, t)
-  const [comments, issue, triage] = [await ts.listComments(n), await ts.get(n), await triageSpeaker(payload, t)]
+  const [comments, issue, triage] = [await decisionComments(payload, t, ts), await ts.get(n), await triageSpeaker(payload, t)]
   const sheet = sheetOf(comments)
   const wf = workflowFor(t.workspace)
   const all = pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), triage.speaker.run ?? null, checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine'))
@@ -125,7 +126,7 @@ export const hasRows = async (payload: Payload, user: User, a: { ticket: number;
   const t = await loadGate(payload, user, a, 'refine', 'product-owner').catch(() => null)
   if (!t) return false
   const { ts, n } = await sourceOf(payload, t)
-  const comments = await ts.listComments(n)
+  const comments = await decisionComments(payload, t, ts)
   const sheet = sheetOf(comments)
   const wf = workflowFor(t.workspace)
   const by = checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine')

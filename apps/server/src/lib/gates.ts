@@ -18,6 +18,7 @@ import { workflowFor } from './factory'
 import { gatesOf } from './staging'
 import { askedOf, needBy } from './addressee'
 import { productOwnersOfTicket } from './people'
+import { decisionComments, gateOwnersOf, logins } from './forge-channel'
 import { is } from './workflow'
 
 type Doc = Record<string, any>
@@ -33,30 +34,9 @@ export const storeOpenCritical = async (payload: Payload, ticket: number | strin
   return n
 }
 
-export const logins = (v: unknown): string[] => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-
-/** The Product's `gateOwners`, else the Admin Bauherren with a `githubLogin` (Admins are not tenant-scoped: they see every Workspace, so there is no narrower membership). */
-export const gateOwnersOf = async (payload: Payload, product: Doc): Promise<string[]> => {
-  const listed = logins(product.gateOwners)
-  if (listed.length) return listed
-  const admins = await payload.find({ collection: 'bauherren', where: { and: [{ role: { equals: 'admin' } }, { githubLogin: { exists: true } }] }, pagination: false, ...o })
-  return admins.docs.flatMap((a) => logins(a.githubLogin))
-}
-
-/** The logins in `next` that are new for the Product and unknown to its forge. */
-export const unknownLogins = async (payload: Payload, productId: number, next: string): Promise<string[]> => {
-  const known = logins((await payload.findByID({ collection: 'products', id: productId, ...o })).gateOwners)
-  const fresh = logins(next).filter((l) => !known.includes(l))
-  if (!fresh.length) return []
-  const { tickets } = await forgeOf(payload, productId)
-  const unknown: string[] = []
-  for (const l of fresh) if (!(await tickets.userExists(l))) unknown.push(l)
-  return unknown
-}
-
 /** Whether `login` owns the Ticket's current gate, so a session release must leave it assigned. */
 export const ownsGate = async (payload: Payload, t: Doc, login: string): Promise<boolean> =>
-  !!(t.gateNotified || logins(t.gateAssignees).length) && (await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))).includes(login)
+  !!(t.gateNotified || logins(t.gateAssignees).length) && (await gateOwnersOf(payload, t.workspace)).some((l) => l.toLowerCase() === login.toLowerCase())
 
 /** The logins of the running session Runs on the Ticket: they hold the assignment for their Run, whatever the gate does. */
 const sessionLoginsOf = async (payload: Payload, ticketId: number | string): Promise<string[]> => {
@@ -94,13 +74,13 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
-  // The people told: the Product owners' forge logins when it asks them, else the gate owners of the Product.
-  const owners = !candidate ? [] : asked === 'product-owner' ? ownerRows.flatMap((u) => logins(u.githubLogin)) : await gateOwnersOf(payload, await payload.findByID({ collection: 'products', id: id(t.product), ...o }))
+  // The people told: the Product owners' forge logins when it asks them, else the Bauherren and Admins with a linked login.
+  const owners = !candidate ? [] : asked === 'product-owner' ? ownerRows.flatMap((u) => logins(u.githubLogin)) : await gateOwnersOf(payload, t.workspace)
   const base = owners.length ? candidate : null
   let forge: ReturnType<typeof forgeOf> | undefined
   const source = async (): Promise<TicketSource> => (await (forge ??= forgeOf(payload, id(t.product)))).tickets
   // The one bounded forge read per awaiting-plan Ticket and sweep that keeps `openCriticalDecisions` current for the pages; a failed read keeps the stored value, and only a first notice (not yet held) needs the answer.
-  const open = candidate === 'Approve plan' ? await (async () => storeOpenCritical(payload, t.id, await (await source()).listComments(String(t.number))))().catch((e) => { if (!PLAN_GATES.includes(held)) throw e; return null }) : null
+  const open = candidate === 'Approve plan' ? await (async () => storeOpenCritical(payload, t.id, await decisionComments(payload, t, await source(), { notify: true })))().catch((e) => { if (!PLAN_GATES.includes(held)) throw e; return null }) : null
   let want = base
   if (base === 'Approve plan' && PLAN_GATES.includes(held)) want = held
   else if (base === 'Approve plan' && open) want = 'Answer decisions'

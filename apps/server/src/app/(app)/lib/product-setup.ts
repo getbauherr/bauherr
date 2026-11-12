@@ -48,7 +48,7 @@ export type Callout = { tone: Tone; lead: string; text: string }
 
 /**
  * The production status callouts, most important first. `seen` holds the check names found on recent commits, or null when the forge could not be read (then a named check counts as ready, with a note that it is not confirmed).
- * `notifiable` is false when no gate owner and no Admin has a GitHub login.
+ * `notifiable` is false when no Bauherr or Admin of the Workspace has a linked forge login.
  */
 export function productionCallouts({ on, checks, seen, notifiable }: { on: boolean; checks: string[]; seen: string[] | null; notifiable: boolean }): Callout[] {
   if (!on) return [{ tone: 'muted', lead: 'Off', text: 'Once you accept on staging, the Ticket is done. Nothing waits for you before production.' }]
@@ -59,7 +59,7 @@ export function productionCallouts({ on, checks, seen, notifiable }: { on: boole
     const missing = checks.filter((c) => !seen.includes(c))
     out.push({ tone: 'warn', lead: 'Almost ready', text: `${missing.join(', ')} ${missing.length === 1 ? 'has' : 'have'} not reported on recent commits. After you approve, Bauherr waits 60 minutes for ${missing.length === 1 ? 'it' : 'them'}, then stops the deploy as timed out.` })
   } else out.push({ tone: 'ok', lead: 'Ready', text: `After you accept on staging, Approve production appears on the Ticket. Bauherr then watches ${names}.${seen ? '' : ' GitHub could not be read, so the names are not confirmed.'}` })
-  if (!notifiable) out.push({ tone: 'warn', lead: 'No approver', text: 'Nobody gets a GitHub notification. Add a login under Who approves.' })
+  if (!notifiable) out.push({ tone: 'warn', lead: 'No approver', text: 'Nobody gets a GitHub notification. Link a forge login on a Bauherr or Admin under People.' })
   return out
 }
 

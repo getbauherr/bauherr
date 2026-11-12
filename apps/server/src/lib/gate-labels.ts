@@ -1,7 +1,7 @@
 import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { LabelEvent } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { gateOwnersOf, logins } from './gates'
+import { askedFor, speaksAs, voicesOf } from './forge-channel'
 import { EXPEDITE_LABEL, EXPEDITE_SKIP_TOUCH } from './needs-you'
 import { workflowFor } from './factory'
 import { humanGates } from './mode'
@@ -14,11 +14,11 @@ const o = { overrideAccess: true, depth: 0 } as const
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 
-/** Labels that approve a human gate. Only a gate owner/Admin, or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is stripped as well (the factory writes it only while the gate is on; gate-off Tickets advance through `advancePlan`, which needs no label). */
+/** Labels that approve a human gate. Only a linked Bauherr/Admin (or, where the gate asks the Product owner, a linked Product owner of the Product), or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is stripped as well (the factory writes it only while the gate is on; gate-off Tickets advance through `advancePlan`, which needs no label). */
 export const GATE_LABELS = [
   { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: true },
   { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging', EXPEDITE_SKIP_TOUCH], strictWhenOff: true },
-  // The Expedite lane is not a gate, but its label skips Triage and the plan approval, so it is held to the same rule: a gate owner or Admin, or the factory's own Expedite action (`expedite` touch).
+  // The Expedite lane is not a gate, but its label skips Triage and the plan approval, so it is held to the same rule: a linked Bauherr or Admin, or the factory's own Expedite action (`expedite` touch).
   { gate: 'expedite', label: EXPEDITE_LABEL, kind: 'expedite', recorded: ['expedite'], strictWhenOff: true },
 ] as const
 
@@ -67,9 +67,7 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
     verdict.pending.push(...present.map((g) => g.label))
     return verdict
   }
-  const product = await payload.findByID({ collection: 'products', id: id(ticket.product), ...o })
-  const admins = await payload.find({ collection: 'bauherren', where: { and: [{ role: { equals: 'admin' } }, { githubLogin: { exists: true } }] }, pagination: false, ...o })
-  const owners = new Set([...(await gateOwnersOf(payload, product)), ...admins.docs.flatMap((a) => logins(a.githubLogin))].map((l) => l.toLowerCase()))
+  const voices = await voicesOf(payload, ticket)
   for (const g of present) {
     const ev = events.filter((e) => e.label === g.label && e.action === 'labeled').at(-1)
     if (!ev?.actor) {
@@ -85,7 +83,10 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
       ...o,
     })).totalDocs > 0
     const on = gateIsOn(wf, g.gate)
-    if (factory ? touched : on && owners.has(actor)) {
+    // A Bauherr or Admin always counts; a Product owner only where this gate asks the Product owner of the Ticket's Product.
+    const as = factory ? null : speaksAs(voices, actor)
+    const asked = g.gate === 'expedite' ? 'bauherr' : askedFor(ticket, g.gate === 'plan' ? 'Approve plan' : 'Accept on staging', voices)
+    if (factory ? touched : on && (as === 'bauherr' || (as === 'product-owner' && asked === 'product-owner'))) {
       verdict.accepted.push(g.label)
       if (!factory && !touched) {
         await payload.create({ collection: 'human_touches', data: { kind: g.kind, ticket: ticket.id, workspace: id(ticket.workspace), actor: ev.actor, at: ev.at }, ...o })
@@ -96,7 +97,7 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
     await ts.removeLabels(n, [g.label])
     const marker = REJECTED_MARKER(g.label, ev.at)
     if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-      await ts.comment(n, `${marker}\nBauherr removed \`${g.label}\`: ${on ? `it was set by ${ev.actor}, who is not a gate owner or Admin of this Product. Use the ${g.gate === 'expedite' ? 'Expedite' : 'Approve'} button on the Ticket page.` : `the ${g.gate} gate is off, so the label approves nothing.`}`)
+      await ts.comment(n, `${marker}\nBauherr removed \`${g.label}\`: ${on ? `it was set by ${ev.actor}, whose forge login is not linked to a Bauherr or Admin of this Workspace or, where this gate asks the Product owner, to a Product owner assigned to this Product. Link your login on your profile or use the ${g.gate === 'expedite' ? 'Expedite' : 'Approve'} button on the Ticket page.` : `the ${g.gate} gate is off, so the label approves nothing.`}`)
     }
   }
   return verdict
