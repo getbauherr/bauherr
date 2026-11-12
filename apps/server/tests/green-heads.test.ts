@@ -116,6 +116,24 @@ it('pending for more than 2 hours: the Build Run needs a human with the reason',
   expect((await runs(id, 'build')).at(-1)).toMatchObject({ status: 'needs_human' })
 })
 
+it('review requested twice while checks run: the Ticket waits in Build, never in Review with nobody watching', async () => {
+  const { id, a, pr } = await seed(running)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review' }, ...o })
+  expect(await call(member, 'request_review', a)).toMatchObject({ stage: 'build', waiting: 'checks' })
+  expect(await reload(id)).toMatchObject({ stage: 'build', waitingFor: 'checks' })
+  fake.setChecks(repo, pr.headSha, green)
+  expect(await actions.watchChecks(payload)).toBe(1)
+  expect(await runs(id, 'review')).toHaveLength(1)
+})
+
+it('a Ticket stranded in Review with the checks wait gets its Review Run on the next pass', async () => {
+  const { id } = await seed(green)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review', waitingFor: 'checks', reviewWaitingSince: new Date().toISOString() }, ...o })
+  expect(await actions.watchChecks(payload)).toBe(1)
+  expect(await reload(id)).toMatchObject({ stage: 'review', waitingFor: null })
+  expect(await runs(id, 'review')).toHaveLength(1)
+})
+
 it('green checks go straight to Review', async () => {
   const { id, a } = await seed(green)
   expect(await call(member, 'request_review', a)).toMatchObject({ stage: 'review' })
