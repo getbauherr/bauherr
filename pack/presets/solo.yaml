@@ -5,7 +5,7 @@ team:
     engineer:
       title: Software engineer
       skills: [Implementation, Small diffs, Tests first, Refactoring]
-      tier: cheap
+      tier: standard
       exceptions: true
       profile: |
         Mission: do the whole job alone: triage a Ticket, plan it, build it and review the result.

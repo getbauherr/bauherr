@@ -59,9 +59,9 @@ const editRoles = async (fn: (roles: Doc) => void) => {
   expect(await factory.applyFactory(payload, ws, stringify(d), by)).toMatchObject({ ok: true })
 }
 
-it('the default pack gives triage, plan and build the cheap tier and the review role the standard tier', async () => {
-  expect(await tiers()).toEqual({ triage: 'cheap', plan: 'cheap', build: 'cheap' })
-  expect((await import('../src/lib/workflow')).roleOf(factory.workflowFor(ws), 'review')?.tier).toBe('standard')
+it('the default pack gives triage the cheap tier, plan and build the standard tier and the review role the strong tier', async () => {
+  expect(await tiers()).toEqual({ triage: 'cheap', plan: 'standard', build: 'standard' })
+  expect((await import('../src/lib/workflow')).roleOf(factory.workflowFor(ws), 'review')?.tier).toBe('strong')
 })
 
 it('an escalated Run uses the strong tier', async () => {
@@ -69,8 +69,8 @@ it('an escalated Run uses the strong tier', async () => {
 })
 
 it('a role tier from the applied factory file drives the plan and build Runs', async () => {
-  await editRoles((roles) => (roles.engineer.tier = 'standard'))
-  expect(await tiers()).toEqual({ triage: 'cheap', plan: 'standard', build: 'standard' })
+  await editRoles((roles) => (roles.engineer.tier = 'cheap'))
+  expect(await tiers()).toEqual({ triage: 'cheap', plan: 'cheap', build: 'cheap' })
   expect((await ctxOf('plan', { escalation: { step: 2, reason: 'stuck', previousRuns: [] } })).run.tier).toBe('strong')
 })
 
