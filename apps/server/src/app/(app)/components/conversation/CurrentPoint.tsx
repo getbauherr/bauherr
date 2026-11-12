@@ -18,8 +18,8 @@ export const CurrentPoint: FC<{ point: Point; open: number; busy: boolean; onPic
       />
     )}
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onWhy}>Why does this matter?</Button>
-      {open > 1 && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onRest}>Use the recommended answers for the rest</Button>}
+      <Button type="button" size="sm" variant="outline" className="h-auto whitespace-normal" disabled={busy} onClick={onWhy}>Why does this matter?</Button>
+      {open > 1 && <Button type="button" size="sm" variant="outline" className="h-auto whitespace-normal text-left" disabled={busy} onClick={onRest}>Use the recommended answers for the rest</Button>}
       <span className="small text-muted-foreground">or answer in your own words below</span>
     </div>
   </section>

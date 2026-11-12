@@ -97,9 +97,9 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
             : `You are talking to the ${view.strip.assistant}${view.strip.model ? ` (${view.strip.model})` : ''}. Your answers go to ${view.strip.to} when you send them.`}
         </p>
       </header>
-      <div className="grid items-start gap-4 @3xl:grid-cols-[minmax(0,1fr)_17rem]">
+      <div className="grid items-start gap-4 @2xl:grid-cols-[minmax(0,1fr)_16rem]">
         <OpenPoints points={view.points} busy={busy} locked={locked} onChange={(id) => void act(() => refineChange(ticket, id))} />
-        <div className="flex min-w-0 flex-col gap-3 @3xl:order-first">
+        <div className="flex min-w-0 flex-col gap-3 @2xl:order-first">
           {view.earlier.length > 0 && (
             <details data-testid="earlier" className="small rounded-md border p-2 text-muted-foreground">
               <summary className="cursor-pointer">Earlier conversation ({view.earlier.length})</summary>

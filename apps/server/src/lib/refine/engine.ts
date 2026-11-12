@@ -78,7 +78,7 @@ const triageSpeaker = async (payload: Payload, t: Doc): Promise<Speaker & { role
   const run = runs.find((r) => kindOfRun(wf, r) === 'triage')
   const s = run && typeof run.session === 'object' ? (run.session as Doc) : null
   const live = !!s && !s.disconnectedAt && (run!.status === 'running' || Date.now() - Date.parse(s.lastSeenAt ?? 0) < sessionTimeoutS() * 1000)
-  return { kind: 'session', role: `Triage · ${roleOf(wf, nameOf(wf, 'triage'))?.title ?? 'Orchestrator'}`, ...((s?.publicId || run?.sessionLabel) && { session: (s?.publicId ?? run?.sessionLabel) as string, live }), run: run?.id ?? null, model: run?.model ?? s?.model ?? null, at: now() }
+  return { kind: 'session', role: `Triage · ${roleOf(wf, nameOf(wf, 'triage'))?.title ?? 'Orchestrator'}`, ...((s || run?.sessionLabel) && { session: (s?.label || run?.sessionLabel || s?.publicId) as string, live }), run: run?.id ?? null, model: run?.model ?? s?.model ?? null, at: now() }
 }
 
 const configuredModel = async (payload: Payload, t: Doc): Promise<string> => {
@@ -150,7 +150,7 @@ export const nextQuestion = (points: Point[]): string | null => {
   return p ? `${p.title}${p.default ? ` I would take: ${p.default}.` : ''}` : null
 }
 
-const speakAs = (model: string | null): Speaker => ({ kind: 'assistant', role: 'Factory assistant', model, at: now() })
+const speakAs = (model: string | null): Speaker => ({ kind: 'assistant', role: 'Refinement', model, at: now() })
 
 /** The shared tail of every action: write the points, store the messages, answer the view. Runs under the Ticket's lock. */
 const commit = async (

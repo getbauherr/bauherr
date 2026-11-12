@@ -41,23 +41,20 @@ const shoot = async (page: Page, name: string, viewports = [{ width: 1440, heigh
 }
 
 // Own seeded Ticket (#41, Triage hold with one question).
-test('the Inbox card opens the Ticket thread in the dock; the recommended answer resolves the question and the Inbox count drops', async ({ page }) => {
+test('the Inbox card expands into the conversation in place; the recommended answer resolves the question, sending it on drops the card and the Inbox count', async ({ page }) => {
   await login(page)
   await page.goto('/inbox')
   const before = await badge(page)
   const card = page.locator('article[data-decision]').filter({ hasText: 'Name the export file' })
   await card.getByRole('button', { name: 'Answer questions' }).click()
-  await expect(dock(page)).toBeVisible()
-  const q = dock(page).getByRole('region', { name: 'Answer questions' })
-  await expect(q).toContainText('Which file name', { timeout: 30_000 })
-  await expect(q.getByRole('button', { name: 'export.csv (recommended)' })).toBeVisible()
-  await dock(page).getByTestId('thread-list-button').click()
-  await expect(page.getByTestId('thread-list')).toContainText('#41 Name the export file')
-  await page.keyboard.press('Escape')
-  await q.getByRole('button', { name: 'export.csv (recommended)' }).click()
-  await expect(q).toContainText('D1 export.csv. Next: the plan is being written, then you can approve it.', { timeout: 60_000 })
-  await expect.poll(() => badge(page)).toBe(before - 1)
+  await expect(dock(page)).toBeHidden()
+  const panel = card.getByTestId('refine-panel')
+  await expect(panel).toContainText('Which file name', { timeout: 30_000 })
+  await panel.getByRole('button', { name: /export\.csv/ }).click()
+  await expect(panel.getByTestId('refine-summary')).toBeVisible({ timeout: 30_000 })
+  await panel.getByRole('button', { name: 'Send to planning' }).click()
   await expect(card).toHaveCount(0)
+  await expect.poll(() => badge(page)).toBe(before - 1)
   await page.goto('/inbox')
   await expect(card).toHaveCount(0)
 })
@@ -134,13 +131,13 @@ test('the model drafts a comment, the person confirms it on a card, and a declin
   await expect(second).toContainText('Declined')
 })
 
-test('the open question of a Ticket is on its page as one compact entry and its card sits in the Ticket thread (screenshots)', async ({ page }) => {
+test('the open question of a Ticket is on its page as one compact entry and the panel sits on the page (screenshots)', async ({ page }) => {
   test.skip(!shots, 'screenshots only')
   await login(page)
   await open(page, 'Add a dark theme to the dashboard')
   await expect(page.getByTestId('action-bar').getByRole('button', { name: 'Comment' })).toBeVisible()
   await shoot(page, 'ticket-open-question')
-  await page.getByTestId('action-bar').getByRole('button', { name: /^Answer \d questions?$/ }).click()
-  await expect(dock(page).getByRole('region', { name: 'Answer questions' })).toContainText('Follow the system setting', { timeout: 30_000 })
-  await shoot(page, 'dock-ticket-thread-question')
+  await page.getByTestId('action-bar').getByRole('link', { name: /^Answer \d questions?$/ }).click()
+  await expect(page.getByTestId('refine-panel')).toContainText('Follow the system setting', { timeout: 30_000 })
+  await shoot(page, 'ticket-refine-panel')
 })
