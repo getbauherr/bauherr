@@ -20,7 +20,7 @@ test('AI usage: Measure session cost shows the status, fills in per tool and nev
   await page.goto('/settings/usage')
   const section = page.getByRole('region', { name: 'Measure session cost' })
   await expect(section.getByRole('heading', { name: 'Measure session cost' })).toBeVisible()
-  await expect(section.getByTestId('gateway-status')).toContainText('Gateway not reachable')
+  await expect(section.getByTestId('gateway-status')).toContainText(/Gateway not reachable|Not checked yet/) // the production image run has no worker, so no check ran yet
   await expect(section.getByRole('button', { name: 'Open the gateway UI' })).toHaveCount(0)
   const setup = section.getByTestId('harness-setup')
   await expect(setup.locator('pre').first()).toContainText(/BAUHERR_SESSION=orchestrator-[0-9a-f]{4}/)
