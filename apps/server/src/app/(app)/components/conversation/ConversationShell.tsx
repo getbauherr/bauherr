@@ -66,10 +66,10 @@ export const ConversationShell: FC<{ header: ReactNode; stream: ReactNode; compo
     </CanvasSplitDocument>
   )
   return (
-    <div data-testid="conversation-shell" className={`-m-8 grid h-[calc(100dvh-3.5rem)] min-h-[32rem] min-w-0 bg-background max-sm:-m-4 max-sm:h-[calc(100dvh-3.5rem)] ${open && !phone ? 'grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)]' : 'grid-cols-1'}`}>
+    <div data-testid="conversation-shell" className={`aui-root -m-8 grid h-[calc(100dvh-3.5rem)] min-h-[32rem] min-w-0 bg-background max-sm:-m-4 max-sm:h-[calc(100dvh-3.5rem)] ${open && !phone ? 'grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)]' : 'grid-cols-1'}`}>
       <section aria-label="Conversation" className="@container flex min-h-0 min-w-0 flex-col">
         <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col px-6 max-sm:px-3">
-          <div className="shrink-0 pt-3">{header}</div>
+          <div className="shrink-0 pt-3 pb-2">{header}</div>
           {stream}
           <div className="flex shrink-0 flex-col gap-2 pt-2 pb-4">
             {!open && !phone && <ArtifactCard data-testid="artifact-card" title={artifact.title} meta={artifact.summary} onClick={() => setOpen(true)} />}

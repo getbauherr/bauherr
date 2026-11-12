@@ -41,22 +41,23 @@ const shoot = async (page: Page, name: string, viewports = [{ width: 1440, heigh
 }
 
 // Own seeded Ticket (#41, Triage hold with one question).
-test('the Inbox card expands into the conversation in place; the recommended answer resolves the question, sending it on drops the card and the Inbox count', async ({ page }) => {
+test('the Inbox card opens the conversation; the recommended answer resolves the question, sending it on drops the card and the Inbox count', async ({ page }) => {
   await login(page)
   await page.goto('/inbox')
   const before = await badge(page)
   const card = page.locator('article[data-decision]').filter({ hasText: 'Name the export file' })
-  await card.getByRole('button', { name: 'Answer questions' }).click()
+  await card.getByRole('link', { name: 'Answer questions' }).click()
   await expect(dock(page)).toBeHidden()
-  const panel = card.getByTestId('refine-panel')
+  const panel = page.getByTestId('refine-panel')
   await expect(panel).toContainText('Which file name', { timeout: 30_000 })
   await panel.getByRole('button', { name: /export\.csv/ }).click()
-  await expect(panel.getByTestId('refine-summary')).toBeVisible({ timeout: 30_000 })
-  await panel.getByRole('button', { name: 'Send to planning' }).click()
-  await expect(card).toHaveCount(0)
-  await expect.poll(() => badge(page)).toBeLessThan(before) // other specs of this Workspace decide Tickets at the same time: the count only has to drop
+  const send = page.getByTestId('send-to-planning')
+  await expect(send).toBeEnabled({ timeout: 30_000 })
+  await send.click()
+  await expect(panel).toHaveAttribute('data-state', 'sent')
   await page.goto('/inbox')
   await expect(card).toHaveCount(0)
+  await expect.poll(() => badge(page)).toBeLessThan(before) // other specs of this Workspace decide Tickets at the same time: the count only has to drop
 })
 
 test('a Ticket page at 1440 px has the facts in a right column and one Steps row per Run; narrow, the column stacks below', async ({ page }) => {

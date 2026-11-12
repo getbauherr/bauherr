@@ -233,7 +233,7 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   await typed.press('Enter')
   await expect(page.getByTestId('speaker').last().getByTestId('speaker-model')).toHaveText('claude-opus-5-5')
   const requests = async () => (await (await page.request.get('/api/chat/fake-requests')).json()) as { model: string; text: string; images: number }[]
-  expect((await requests()).filter((r) => r.text.includes('Just call it export.')).map((r) => r.model)).toEqual(['claude-opus-5-5'])
+  await expect.poll(async () => (await requests()).filter((r) => r.text.includes('Just call it export.')).map((r) => r.model)).toEqual(['claude-opus-5-5']) // the header shows the model at once; the request is recorded when the turn runs
 
   // The choice is stored on the conversation: it survives a reload.
   await page.reload()
@@ -247,7 +247,7 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   await typed.press('Enter')
   await expect(page.getByTestId('message-image')).toBeVisible()
   await expect(page.getByTestId('attachment')).toHaveCount(0)
-  expect((await requests()).filter((r) => r.text.includes('This is what I see.')).map((r) => r.images)).toEqual([1])
+  await expect.poll(async () => (await requests()).filter((r) => r.text.includes('This is what I see.')).map((r) => r.images)).toEqual([1])
 
   await page.getByTestId('cost-chip').click()
   await expect(page.getByTestId('cost-turn')).toHaveCount(2)

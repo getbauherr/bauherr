@@ -29,7 +29,7 @@ export const fakeRequests = (): Recorded[] => log.__fakeRequests ?? []
 
 const run = async function* ({ messages, tools, signal }: Parameters<ModelCall>[0], model: string): AsyncGenerator<ModelEvent> {
   const sent = messages.at(-1)!
-  ;(log.__fakeRequests ??= []).push({ model, text: sent.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ').slice(0, 2000), images: sent.content.filter((b) => b.type === 'image').length })
+  ;(log.__fakeRequests ??= []).push({ model, text: (/<person>([\s\S]*)<\/person>/.exec(sent.content.map((b) => (b.type === 'text' ? b.text : '')).join(' '))?.[1] ?? sent.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ')).slice(0, 2000), images: sent.content.filter((b) => b.type === 'image').length })
   if (tools.some((t) => t.name === 'refine')) {
     const said = messages.at(-1)!.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ')
     const { reply, ...rest } = fakeRefine(said)

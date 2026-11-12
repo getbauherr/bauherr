@@ -40,6 +40,10 @@ test('the action bar is the same single, visible bar in every state', async ({ p
     for (const [slug, title, verb] of STATES) {
       await page.goto('/')
       await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
+      if (slug === 'answer-questions') { // a Ticket that waits for answers opens as the conversation: its action bar is on the normal page
+        await expect(page.getByTestId('conversation-shell')).toBeVisible()
+        await page.goto(`${new URL(page.url()).pathname}?view=ticket`)
+      }
       const bar = page.getByTestId('action-bar')
       await expect(bar).toBeVisible()
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
@@ -94,7 +98,11 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   const chat = page.getByTestId('refine-panel')
   await expect(chat).toContainText('Follow the system setting')
   await chat.getByTestId('current-point').getByRole('button', { name: /yes, until the user picks/ }).click()
+  await expect(chat.getByTestId('points-count')).toHaveText('1 of 2 open')
+  await page.getByTestId('more').click()
+  await page.getByRole('menuitem', { name: /Ticket page/ }).click()
   await expect(approve).toBeVisible({ timeout: 60_000 })
+  if (!(await page.locator('#worklog').isVisible())) await page.getByText('Details', { exact: true }).click() // the router may bring the page back with its Details open
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
 
