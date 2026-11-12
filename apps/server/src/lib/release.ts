@@ -6,10 +6,11 @@ import { backendFor } from './adapters'
 import { retryRed, settleRetries } from './check-retry'
 import { connectionInput, webOrigin } from './connection'
 import { EXPEDITE_SKIP_TOUCH } from './needs-you'
-import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gate-labels'
+import { APPROVED_STAGING, GATE_LABELS, verifyGateLabels } from './gate-labels'
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
-import { gateOn, productionGateOn, stagingGateOn } from './mode'
+import { gateOn, humanGates, productionGateOn, stagingGateOn } from './mode'
+import { gatesOf } from './staging'
 import { record } from './history'
 import { inKindStage } from './stage-scope'
 import { moveStage } from './stage-move'
@@ -184,7 +185,7 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   }
   const issue = await ts.get(n)
   if (issue.state === 'open') return syncOpen()
-  const accepted = gateIsOn(workflowFor(t.workspace), 'staging')
+  const accepted = ((await gatesOf(payload, workflowFor(t.workspace), t)) ?? humanGates(workflowFor(t.workspace))).includes('staging')
     ? t.labels?.includes(APPROVED_STAGING) || (await verifyGateLabels(payload, t, issue.labels, ts, GATE_LABELS.filter((g) => g.label === APPROVED_STAGING))).accepted.length > 0
     : !!t.productionState
   if (accepted && t.productionState) return 'held'

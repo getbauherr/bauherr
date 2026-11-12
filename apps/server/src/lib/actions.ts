@@ -1505,6 +1505,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
     if (t.outcome === 'refine') {
       await ts.comment(n, triageSheet(t, await template(payload, id(doc.workspace), 'triage-questions')))
       await ts.addLabels(n, [NEEDS_REFINEMENT])
+      await storeOpenCritical(payload, doc.id, await ts.listComments(n)).catch((e) => payload.logger.warn({ err: e, ticket: doc.id }, 'open critical decisions not stored'))
     } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
     await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Payload } from 'payload'
-import { unansweredCriticalCount } from '../app/(app)/lib/plan'
+import { openOwnerRows, unansweredCriticalCount } from '../app/(app)/lib/plan'
 import type { TicketSource } from '@bauherr/adapters'
 import { PROOF_NEEDS, decisionMarkdown, justDecided, prepareDecision, sameDecision } from './decision'
 import { template } from './templates'
@@ -28,6 +28,8 @@ const PLAN_GATES: (Need | null)[] = ['Approve plan', 'Answer decisions']
 export const storeOpenCritical = async (payload: Payload, ticket: number | string, comments: Parameters<typeof unansweredCriticalCount>[0]): Promise<number> => {
   const n = unansweredCriticalCount(comments)
   await cas(payload, ticket, sql`"open_critical_decisions" = ${n}::int`, sql`"open_critical_decisions" IS DISTINCT FROM ${n}::int`)
+  const rows = openOwnerRows(comments)
+  await cas(payload, ticket, sql`"open_owner_rows" = ${rows}::int`, sql`"open_owner_rows" IS DISTINCT FROM ${rows}::int`)
   return n
 }
 

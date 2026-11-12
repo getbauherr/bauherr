@@ -6,6 +6,7 @@ import { SIDEBAR_COOKIE } from '../components/ui/sidebar-cookie'
 import { logout, selectWorkspace } from '../lib/actions'
 import { countOwnDrafts } from '../lib/requests'
 import { isProductOwner, productScope } from '../../../lib/people'
+import { asksOwner } from '../../../lib/addressee'
 import { currentPersonWorkspace, currentWorkspace, payloadClient, requirePerson, type Person } from '../lib/session'
 import { isAdmin } from '../lib/settings'
 import { loadPresence } from '../../../lib/presence'
@@ -16,7 +17,7 @@ import { appVersion } from '../lib/version'
 const countNeedsYou = async (workspace: number, admin: boolean, owner?: Person): Promise<number> => {
   const payload = await payloadClient()
   const [tickets, skills] = await Promise.all([
-    payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [{ needsBy: { equals: 'product-owner' } }, productScope(owner, workspace)] : [])] }, overrideAccess: true }),
+    payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [asksOwner, productScope(owner, workspace)] : [])] }, overrideAccess: true }),
     admin ? payload.count({ collection: 'skill_proposals', where: { workspace: { equals: workspace }, status: { in: ['proposed', 'replayed'] }, pr: { exists: true } }, overrideAccess: true }) : { totalDocs: 0 },
   ])
   return tickets.totalDocs + skills.totalDocs

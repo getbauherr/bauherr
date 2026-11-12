@@ -10,6 +10,7 @@ import { KindChip, LaneChip, StatusLine } from '../../../components/RequestParts
 import { RequestCardPage } from '../../../components/RequestCardPage'
 import { Comments } from '../../../components/RequestComments'
 import { ago } from '../../../lib/format'
+import { asksOwnerRow } from '../../../../../lib/addressee'
 import { cardOf } from '../../../lib/inbox'
 import { loadProof } from '../../../lib/proof'
 import { loadOwnerTicket } from '../../../lib/requests'
@@ -27,7 +28,7 @@ export async function ProductOwnerTicket({ id, view: wanted }: { id: string; vie
   const product = (await payload.findByID({ collection: 'products', id: view.product.id, depth: 0, overrideAccess: true })) as Record<string, any>
   const proof = (await loadProof(payload, [full], new Map([[view.product.id, product]]))).get(t.id)
   // What asks this person, when the checkpoint is addressed to the Product owner (a Bauherr's checkpoints are not shown).
-  const asked = full.needsBy === 'product-owner' && full.state === 'open' ? cardOf(full, { id: view.product.id, name: view.product.name, stagingUrl: product.stagingUrl }) : null
+  const asked = asksOwnerRow(full) && full.state === 'open' ? cardOf(full, { id: view.product.id, name: view.product.name, stagingUrl: product.stagingUrl }) : null
   if (asked && (wanted === 'conversation' || (asked.decision.need === 'Answer questions' && wanted !== 'ticket'))) {
     return (
       <>

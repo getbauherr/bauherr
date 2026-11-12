@@ -270,3 +270,100 @@ describe('the gate sweep says who is asked, and the Inbox follows', () => {
     expect((await reload(off.id)).needsYou).toBe('Approve production')
   })
 })
+
+describe('a Bauherr\'s forge label on acceptance on staging', () => {
+  const STAGING = 'bauherr:approved:staging'
+  const labelled = async (p: 'a' | 'b', title: string) => {
+    const rel = await releaseTicket(p, title)
+    fake.actingAs = 'the-admin'
+    await fake.tickets(REPOS[p]).addLabels(rel.n, [STAGING])
+    fake.actingAs = 'factory'
+    const { verifyGateLabels, GATE_LABELS } = await import('../src/lib/gate-labels')
+    const ts = fake.tickets(REPOS[p])
+    const verdict = await verifyGateLabels(payload, await reload(rel.id), (await ts.get(rel.n)).labels, ts, GATE_LABELS.filter((g) => g.label === STAGING))
+    return { verdict, rejections: (await ts.listComments(rel.n)).filter((c) => c.body.includes('label-rejected')).map((c) => c.body) }
+  }
+
+  it('counts where the Product owner is asked for that Product (assigned Product owner, switch on)', async () => {
+    await payload.update({ collection: 'products', id: productA, data: { productOwnerTestsStaging: true } as never, ...o })
+    const r = await labelled('a', 'label on A')
+    expect(r.verdict).toMatchObject({ accepted: [STAGING], rejected: [] })
+    expect(r.rejections).toEqual([])
+  })
+
+  it('is still rejected with the "gate is off" note where the Product has no acceptance checkpoint (no Product owner, or the switch off)', async () => {
+    const noOwner = await labelled('b', 'label on B')
+    expect(noOwner.verdict).toMatchObject({ accepted: [], rejected: [STAGING] })
+    expect(noOwner.rejections[0]).toContain('gate is off')
+    await payload.update({ collection: 'products', id: productA, data: { productOwnerTestsStaging: false } as never, ...o })
+    const off = await labelled('a', 'label on A, switch off')
+    expect(off.verdict).toMatchObject({ rejected: [STAGING] })
+    expect(off.rejections[0]).toContain('gate is off')
+  })
+})
+
+describe('rows for the Product owner on a checkpoint that asks the Bauherr (gated-pack)', () => {
+  const SHEET = '<!-- bauherr:triage -->\n## Questions\nTriage needs your answers.\n\n## Decisions\n- **D1** Pricing? Alternatives: free. Default: paid. critical: true.\n- **D2** Wording? Alternatives: formal. Default: friendly. critical: true. for: product-owner.\n'
+  const held = async (p: 'a' | 'b', title: string, sheet = SHEET) => {
+    const issue = await fake.tickets(REPOS[p]).create({ title, labels: ['bauherr:needs-refinement'] })
+    await fake.tickets(REPOS[p]).comment(String(issue.number), sheet)
+    const t = await payload.create({ collection: 'tickets', data: { title, externalId: `${p}${issue.number}`, number: issue.number, url: issue.url, state: 'open', stage: null, labels: ['bauherr:needs-refinement'], product: product(p), workspace: ws }, ...o })
+    const { storeOpenCritical } = await import('../src/lib/gates')
+    await storeOpenCritical(payload, t.id, await fake.tickets(REPOS[p]).listComments(String(issue.number)))
+    return { id: t.id as number, n: String(issue.number) }
+  }
+
+  it('stores the open rows; the Product owner\'s Inbox and badge list the Ticket although it asks the Bauherr, only for their Products', async () => {
+    usePack('gated-pack')
+    try {
+      await payload.update({ collection: 'bauherren', id: poOther.id, data: { assignments: [{ workspace: ws, scope: 'products', products: [productB] }] } as never, ...o })
+      Object.assign(poOther, await payload.findByID({ collection: 'bauherren', id: poOther.id, depth: 0, ...o }))
+      const a = await held('a', 'rows A')
+      const none = await held('a', 'no rows for the owner', SHEET.replace(' for: product-owner.', ''))
+      const b = await held('b', 'rows B')
+      const { syncGates } = await import('../src/lib/gates')
+      await syncGates(payload)
+      expect(await Promise.all([a, none, b].map(async (t) => [(await reload(t.id)).needsBy, (await reload(t.id)).openOwnerRows]))).toEqual([['bauherr', 1], ['bauherr', 0], ['bauherr', 1]])
+      const { loadInbox } = await import('../src/app/(app)/lib/inbox')
+      const ids = async (u: Record<string, any>) => (await loadInbox(ws, u, {})).groups.flatMap((g) => g.items).map((i) => i.id)
+      const mine = await ids(po)
+      expect(mine).toContain(a.id)
+      expect(mine).not.toContain(none.id)
+      expect(mine).not.toContain(b.id)
+      expect(await ids(poOther)).toEqual(expect.arrayContaining([b.id]))
+      expect(await ids(poOther)).not.toContain(a.id)
+      expect(await ids(bauherr)).toEqual(expect.arrayContaining([a.id, none.id, b.id]))
+      // the badge: the same `where` as the layout's count
+      const { asksOwner } = await import('../src/lib/addressee')
+      const { productScope } = await import('../src/lib/people')
+      const badge = (u: Record<string, any>) => payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: ws } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, asksOwner, productScope(u, ws)] }, ...o }).then((r) => r.totalDocs)
+      const [before, beforeOther] = [await badge(po), await badge(poOther)]
+      expect(before).toBe((await ids(po)).length)
+      expect(beforeOther).toBe((await ids(poOther)).length)
+      // answering the row takes the Ticket out again
+      const refine = await import('../src/lib/refine/engine')
+      await refine.refineOption(payload, po, { ticket: a.id, workspaceId: ws, point: 'D2', option: 0 })
+      expect((await reload(a.id)).openOwnerRows).toBe(0)
+      await syncGates(payload)
+      expect(await ids(po)).not.toContain(a.id)
+      expect(await badge(po)).toBe(before - 1)
+
+      // the typed turn route follows the same rule as the other refine actions: rows addressed to the person, not the checkpoint's addressee
+      const again = await held('a', 'rows A again')
+      expect(await refine.hasRows(payload, po, { ticket: again.id, workspaceId: ws })).toBe(true)
+      expect(await refine.hasRows(payload, po, { ticket: none.id, workspaceId: ws })).toBe(false)
+      expect(await refine.hasRows(payload, po, { ticket: b.id, workspaceId: ws })).toBe(false)
+      expect(await refine.hasRows(payload, bauherr, { ticket: none.id, workspaceId: ws })).toBe(true)
+      const { signSession } = await import('../src/lib/oidc-session')
+      const { POST } = await import('../src/app/api/refine/[ticket]/turn/route')
+      const turn = async (ticket: number) => {
+        const res = await POST(new Request('http://t/x', { method: 'POST', headers: { cookie: `bauherr-session=${signSession(po.id, 0)}`, 'content-type': 'application/json' }, body: JSON.stringify({ recheck: { point: 'D2' } }) }), { params: Promise.resolve({ ticket: String(ticket) }) })
+        await res.body?.cancel()
+        return res.status
+      }
+      expect(await Promise.all([turn(again.id), turn(none.id), turn(b.id)])).toEqual([200, 404, 404])
+    } finally {
+      usePack('owner-pack')
+    }
+  })
+})

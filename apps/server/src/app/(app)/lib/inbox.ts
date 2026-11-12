@@ -1,6 +1,7 @@
 import { type Checkpoint, CHECKPOINTS, type Decision, PROOF_NEEDS, buildDecision, canDecide, humanStage, isNeed, urgentReasons } from '../../../lib/decision'
 import { SKILL_NEED } from '../../../lib/checkpoints'
 import { isProductOwner, productScope, productsVisibleTo } from '../../../lib/people'
+import { asksOwner } from '../../../lib/addressee'
 import { payloadClient } from './session'
 import { renderMarkdown } from './markdown'
 import { waited } from './format'
@@ -35,7 +36,7 @@ export const loadInbox = async (workspace: number, user: Doc, opts: { product?: 
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const owner = isProductOwner(user)
   const [rows, products, working] = await Promise.all([
-    payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [{ needsBy: { equals: 'product-owner' } }, productScope(user, workspace)] : []), ...(opts.product ? [{ product: { equals: opts.product } }] : [])] }, select: { workspace: true, needsBy: true, number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
+    payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [asksOwner, productScope(user, workspace)] : []), ...(opts.product ? [{ product: { equals: opts.product } }] : [])] }, select: { workspace: true, needsBy: true, openOwnerRows: true, number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
     payload.find({ collection: 'products', where: productsVisibleTo(user, workspace), select: { name: true, stagingUrl: true, reviewChecks: true }, sort: 'name', ...o }),
     payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: false } }, ...(owner ? [productScope(user, workspace)] : [])] }, overrideAccess: true }),
   ])

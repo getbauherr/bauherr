@@ -168,6 +168,13 @@ export const openCritical = (comments: Commentish[]): Decision[] => {
   return unansweredCritical(parseDecisions(sheet.body), parseAnswers(answersOf(comments)?.body ?? ''))
 }
 
+/** Unanswered rows of the sheet in force that name the Product owner (`for: product-owner`), also on a checkpoint that asks the Bauherr. */
+export const openOwnerRows = (comments: Commentish[]): number => {
+  const sheet = sheetOf(comments)
+  const answers = parseAnswers(answersOf(comments)?.body ?? '')
+  return sheet ? [...parseDecisions(sheet.body), ...addedOf(comments)].filter((d) => d.for === 'product-owner' && !answers[d.id]).length : 0
+}
+
 export const unansweredCriticalCount = (comments: Commentish[]): number => openCritical(comments).length
 
 /** Plan markdown without its `## Decisions` block (the sheet shows it). */
