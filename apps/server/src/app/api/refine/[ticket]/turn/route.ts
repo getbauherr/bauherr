@@ -28,9 +28,9 @@ export const POST = async (req: Request, { params }: { params: Promise<{ ticket:
         const send = (e: TurnEvent) => {
           if (!abort.signal.aborted) c.enqueue(enc.encode(`${JSON.stringify(e)}\n`))
         }
-        const run = { ticket, workspaceId: w.workspace, signal: abort.signal, onReply: (t: string) => send({ type: 'reply', text: t }) }
+        const run = { ticket, workspaceId: w.workspace, signal: abort.signal }
         try {
-          send({ type: 'done', view: await (text !== null ? refineTurn(w.payload, w.user, { ...run, text }) : refineRecheck(w.payload, w.user, { ...run, point: point! })) })
+          send({ type: 'done', view: await (text !== null ? refineTurn(w.payload, w.user, { ...run, text, onReply: (t) => send({ type: 'reply', text: t }) }) : refineRecheck(w.payload, w.user, { ...run, point: point! })) })
         } catch (e) {
           send({ type: 'error', message: e instanceof Error ? e.message : 'The turn failed.' })
         }

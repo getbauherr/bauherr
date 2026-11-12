@@ -265,9 +265,9 @@ export const refineTurn = (payload: Payload, user: User, a: TurnHooks & { ticket
 
 /**
  * The short turn after an option click (design section 2): when other points are still open, the model may only drop points the choice made pointless (or ask one differently
- * with `added`) and asks the next one. A result that settles a point or edits the Ticket is invalid. When it changes nothing, nothing is stored. Skipped (no call) when no point is open.
+ * with `added`) and asks the next one. Its text is never streamed (the panel shows a quiet "checking" line; the message appears whole, only when something changed). A result that settles a point or edits the Ticket is invalid. When it changes nothing, nothing is stored. Skipped (no call) when no point is open.
  */
-export const refineRecheck = (payload: Payload, user: User, a: TurnHooks & { ticket: number; workspaceId: number | string; point: string; model?: Awaited<ReturnType<typeof chatModelFor>> }): Promise<View> =>
+export const refineRecheck = (payload: Payload, user: User, a: Pick<TurnHooks, 'signal'> & { ticket: number; workspaceId: number | string; point: string; model?: Awaited<ReturnType<typeof chatModelFor>> }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
     live(c)

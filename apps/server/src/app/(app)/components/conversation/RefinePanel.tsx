@@ -104,9 +104,9 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
   const model = view?.strip.model ?? null
   const messages = useMemo(() => {
     const stored = (view?.messages ?? []).map(toMessage)
-    if (!turn) return stored
+    if (!turn?.user) return stored // a re-check shows no message while it runs
     const at = new Date().toISOString()
-    return [...stored, ...(turn.user ? [pending('pending-user', 'user', turn.user, { kind: 'person', at })] : []), pending('pending-assistant', 'assistant', turn.reply, { kind: 'assistant', role: 'Refinement', model, at })]
+    return [...stored, pending('pending-user', 'user', turn.user, { kind: 'person', at }), pending('pending-assistant', 'assistant', turn.reply, { kind: 'assistant', role: 'Refinement', model, at })]
   }, [view?.messages, turn, model])
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
@@ -155,6 +155,7 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
               {error && <p role="alert" data-testid="refine-error" className="small m-0 text-destructive">{error}</p>}
               {recorded && <p role="status" data-testid="recorded" className="small m-0 flex items-center gap-1.5 text-ok"><Check />Recorded. {recorded}</p>}
               {!locked && current && <CurrentPoint point={current} open={open.length} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`); if (open.length > 1) void run({ recheck: { point: current.id } }, null) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} onRest={() => void act(() => refineRest(ticket))} />}
+              {turn && !turn.user && <p role="status" data-testid="rechecking" className="small m-0 animate-pulse text-muted-foreground">Checking the remaining points...</p>}
               {view.summary && !(kept && !locked) && <SummaryCard summary={view.summary} sent={locked} busy={busy} onSend={() => void send()} onKeep={() => setKept(true)} />}
               {view.summary && kept && !locked && <div><Button type="button" size="sm" variant="outline" onClick={() => setKept(false)}>Review the summary</Button></div>}
             </Conversation>

@@ -89,12 +89,24 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
   await expect(last).toContainText('Finance opens the file in Excel')
   await expect(last.getByTestId('speaker-model')).toHaveText('no model call')
 
+  // The re-check after an option click is held at the network (only its request): while it runs the person sees one quiet line and no message or "is writing".
+  let releaseRecheck!: () => void
+  const recheckGate = new Promise<void>((r) => (releaseRecheck = r))
+  await page.route('**/api/refine/*/turn', async (route) => {
+    if (route.request().postData()?.includes('recheck')) await recheckGate
+    await route.continue()
+  })
   // An option click records at once; the open points follow without a reload.
   await panel.getByTestId('current-point').getByRole('button', { name: /CSV/ }).click()
   await expect(panel.getByTestId('recorded')).toContainText('CSV')
-  // The message after the click has the same two-line shape; the background re-check changes nothing here and stores no message.
+  await expect(panel.getByTestId('rechecking')).toBeVisible()
+  await expect(panel.getByTestId('writing')).toHaveCount(0)
+  releaseRecheck()
+  await expect(panel.getByTestId('rechecking')).toHaveCount(0)
+  // The message after the click has the same two-line shape; the re-check changed nothing here: no message, no "ok".
   await expect(panel.getByTestId('refine-thread').locator('[data-role=assistant]').last().getByTestId('reply-text')).toHaveText('Who may export\nRecommended: Admins only.', { useInnerText: true })
   await expect(panel.getByTestId('writing')).toHaveCount(0)
+  await expect(panel.getByTestId('refine-thread').getByText('ok', { exact: true })).toHaveCount(0)
   await expect(points.locator('[data-point=D1]')).toHaveAttribute('data-status', 'answered')
   await expect(points.locator('[data-point=D1] [data-testid=point-answer]')).toHaveText('CSV')
   await expect(points).toContainText('4 of 5 open')
