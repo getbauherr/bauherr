@@ -66,11 +66,14 @@ afterAll(async () => {
 
 const done = async (ws: number) => Object.fromEntries((await setupLib.loadSetup(ws)).steps.map((s) => [s.id, s.done]))
 
-it('every preset lints clean, and Standard is the shipped default file', () => {
+it('every preset lints clean, and Standard is the shipped default file plus a conditional security review', () => {
   for (const id of presets.PRESETS) expect(wf.lint(parse(presets.presetSource(id))), id).toEqual([])
-  const pack = resolve(process.cwd(), '../../pack')
-  expect(readFileSync(resolve(pack, 'presets/standard.yaml'), 'utf8')).toBe(readFileSync(resolve(pack, 'factory.yaml'), 'utf8'))
-  expect(presets.presetWorkflow('standard')).toEqual(wf.compile(parse(factory.packSource())))
+  const standard = presets.presetWorkflow('standard')
+  const shipped = wf.compile(parse(factory.packSource()))
+  expect(wf.stage(standard, 'security-review')).toMatchObject({ kind: 'agent', role: 'security', when: { touches: 'security' } })
+  expect(wf.target(standard, 'build', 'done')).toBe('security-review')
+  const withoutSecurity = { ...standard, stages: standard.stages.filter((s) => s.name !== 'security-review').map((s) => (s.name === 'build' ? { ...s, outcomes: { ...s.outcomes, done: 'review' } } : s)) }
+  expect(withoutSecurity).toEqual(shipped)
 })
 
 it('Solo: one engineer works every stage, plans pass, production is asked', async () => {
@@ -83,23 +86,26 @@ it('Solo: one engineer works every stage, plans pass, production is asked', asyn
   expect(wf.gates(w)).toEqual({ plan: false, staging: false, production: true })
 })
 
-it('Standard is the pack default workflow with the approve-plan gate', async () => {
+it('Standard is the pack default workflow plus the security review, with the approve-plan gate', async () => {
   const { ws } = await workspace('standard')
   expect(await apply(ws, 'standard')).toMatchObject({ saved: true })
-  expect((await factory.activeVersion(payload, ws))?.hash).toBe(factory.defaultHash())
+  expect(wf.order(factory.workflowFor(ws))).toEqual(['triage', 'plan', 'parent', 'build', 'security-review', 'review', 'release', 'done'])
   expect(wf.gates(factory.workflowFor(ws))).toEqual({ plan: true, staging: false, production: true })
   expect(factory.workflowFor(ws).roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
 })
 
-it('Careful adds the security stage between Build and Review, staging acceptance, and the specialist roles', async () => {
+it('Careful adds the three conditional specialist stages between Build and Review, staging acceptance, and the specialist roles', async () => {
   const { ws } = await workspace('careful')
   expect(await apply(ws, 'careful')).toMatchObject({ saved: true })
   const w = factory.workflowFor(ws)
-  expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'security', 'review', 'release', 'done'])
-  expect(wf.stage(w, 'security')).toMatchObject({ kind: 'agent', role: 'security', skill: 'mr-security-review' })
-  expect(wf.target(w, 'build', 'done')).toBe('security')
-  expect(wf.target(w, 'security', 'pass')).toBe('review')
-  expect(wf.target(w, 'security', 'findings')).toBe('build')
+  expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'security-review', 'ux-review', 'test-review', 'review', 'release', 'done'])
+  expect(wf.stage(w, 'security-review')).toMatchObject({ kind: 'agent', role: 'security', skill: 'mr-security-review', when: { touches: 'security' } })
+  expect(wf.stage(w, 'ux-review')).toMatchObject({ kind: 'agent', role: 'ux', skill: 'ux-review', when: { touches: 'ui' } })
+  expect(wf.stage(w, 'test-review')).toMatchObject({ kind: 'agent', role: 'test', skill: 'test-review', when: { types: ['bug'] } })
+  expect(wf.target(w, 'build', 'done')).toBe('security-review')
+  expect(wf.target(w, 'security-review', 'pass')).toBe('ux-review')
+  expect(wf.target(w, 'test-review', 'pass')).toBe('review')
+  expect(wf.target(w, 'test-review', 'findings')).toBe('build')
   expect(wf.gates(w)).toEqual({ plan: true, staging: true, production: true })
   expect(w.roles.map((r) => r.id)).toEqual(expect.arrayContaining(['security', 'ux', 'test']))
   const row = (await payload.db.drizzle.execute(sql`SELECT "note", "applied_via" AS via, "applied_by" AS by FROM "workflow_versions" WHERE "workspace_id" = ${ws}`)).rows[0]
@@ -204,13 +210,16 @@ const drive = async (slug: string, preset: string, edit?: (d: Record<string, any
   return { id, m, call, claim, stage, runs, labels, planAndApprove, build, poll }
 }
 
-it('Careful routes a Ticket by the security outcomes: findings back to Build, pass on to Review', async () => {
-  const d = await drive('route', 'careful')
+/** Careful with the security review unconditional: these tests drive the outcomes, not the condition (tests/conditional-stages.test.ts covers that). */
+const always = (doc: Record<string, any>) => delete (doc.workflow.stages as Record<string, any>[]).find((s) => s.name === 'security-review')!.when
+
+it('Careful routes a Ticket by the security outcomes: findings back to Build, pass on to Review (UX and test steps skip: no ui paths, no bug)', async () => {
+  const d = await drive('route', 'careful', always)
   for (const outcome of ['findings', 'pass']) {
     await d.build()
-    expect(await d.stage()).toBe('security')
-    const sec = await d.claim('security')
-    expect(sec.claimed.agent).toMatchObject({ stage: 'security', skill: 'mr-security-review', outcomes: ['pass', 'findings'], role: { id: 'security' } })
+    expect(await d.stage()).toBe('security-review')
+    const sec = await d.claim('security-review')
+    expect(sec.claimed.agent).toMatchObject({ stage: 'security-review', skill: 'mr-security-review', outcomes: ['pass', 'findings'], role: { id: 'security' } })
     await d.call(d.m, 'finish_run', { runId: sec.runId, leaseToken: sec.leaseToken, status: 'succeeded', outcome, comment: 'checked' })
     expect(await d.stage()).toBe(outcome === 'pass' ? 'review' : 'build')
   }
@@ -229,13 +238,15 @@ it('a Build that asks for a replan returns the Ticket to the plan stage: approva
 
 it('an agent stage or a human stage that returns a Ticket to the plan stage plans again and asks for a new approval', async () => {
   const d = await drive('replan', 'careful', (doc) => {
+    always(doc)
+    doc.workflow.stages = (doc.workflow.stages as Record<string, any>[]).filter((s) => !['ux-review', 'test-review'].includes(s.name))
     const st = doc.workflow.stages as Record<string, any>[]
-    st.find((s) => s.name === 'security')!.outcomes = { pass: 'signoff', findings: 'plan' }
-    st.splice(st.findIndex((s) => s.name === 'security') + 1, 0, { name: 'signoff', kind: 'human', title: 'Sign-off', outcomes: { approve: 'review', reject: 'plan' } })
+    st.find((s) => s.name === 'security-review')!.outcomes = { pass: 'signoff', findings: 'plan' }
+    st.splice(st.findIndex((s) => s.name === 'security-review') + 1, 0, { name: 'signoff', kind: 'human', title: 'Sign-off', outcomes: { approve: 'review', reject: 'plan' } })
   })
   expect(await d.labels()).toContain('bauherr:approved:plan')
   await d.build()
-  const sec1 = await d.claim('security')
+  const sec1 = await d.claim('security-review')
   await d.call(d.m, 'finish_run', { runId: sec1.runId, leaseToken: sec1.leaseToken, status: 'succeeded', outcome: 'findings', comment: 'replan please' })
   expect(await d.stage()).toBe('plan')
   expect(await d.labels()).not.toContain('bauherr:approved:plan')
@@ -245,7 +256,7 @@ it('an agent stage or a human stage that returns a Ticket to the plan stage plan
 
   await d.planAndApprove()
   await d.build()
-  const sec2 = await d.claim('security')
+  const sec2 = await d.claim('security-review')
   await d.call(d.m, 'finish_run', { runId: sec2.runId, leaseToken: sec2.leaseToken, status: 'succeeded', outcome: 'pass' })
   expect(await d.stage()).toBe('signoff')
   await d.call(d.m, 'decide', { ticket: d.id, outcome: 'reject' })

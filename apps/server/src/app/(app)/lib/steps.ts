@@ -60,7 +60,9 @@ export const rowsOf = (v: Visit): Row[] => {
   return rows
 }
 
-export type Steps = { visits: Visit[]; path: TicketPath; totals: { lead: number; human: number; working: number; ci: number; queued: number }; rounds: { stage: string; title: string; n: number }[] }
+/** A conditional step the Ticket passed without entering (no time, no Run). */
+export type Skipped = { stage: string; title: string; at: string; reason: string }
+export type Steps = { visits: Visit[]; skipped: Skipped[]; path: TicketPath; totals: { lead: number; human: number; working: number; ci: number; queued: number }; rounds: { stage: string; title: string; n: number }[] }
 
 const first = (s: unknown) => (typeof s === 'string' ? s.split('\n')[0]!.trim().slice(0, 160) || null : null)
 
@@ -73,7 +75,7 @@ const usage = (r: Doc): string | null => [r.costUsd != null && '$' + Number(r.co
  * The Ticket's route and steps from its history: spans of one stage form a visit, a visit is entered from the previous one (the transitions taken), steps are the phases inside it.
  * Runs add who ran a step, a human step names who decided what (the event after it carries `gate:<what>` and the actor, else the matching `human_touches` row), a CI step names the provider and links the MR.
  */
-export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Doc[], o: { current: string; provider: string | null; admin: boolean; sessions?: Map<number, string>; workflowVersion?: number | null }): Steps => {
+export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Doc[], o: { current: string; provider: string | null; admin: boolean; sessions?: Map<number, string>; workflowVersion?: number | null; skips?: { stage: string; at: string; reason: string }[] }): Steps => {
   const byRun = new Map(runs.map((r) => [r.id as number, r]))
   const prUrl = runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl ?? null
   const visits: Visit[] = []
@@ -103,5 +105,5 @@ export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Do
     path.visits.set(v.stage, (path.visits.get(v.stage) ?? 0) + 1)
     if (i) path.taken.set(`${visits[i - 1]!.stage}>${v.stage}`, (path.taken.get(`${visits[i - 1]!.stage}>${v.stage}`) ?? 0) + 1)
   })
-  return { visits, path, totals, rounds: [...path.visits].filter(([, n]) => n > 1).map(([stage, n]) => ({ stage, title: title(wf, stage), n })) }
+  return { visits, skipped: (o.skips ?? []).map((k) => ({ ...k, title: title(wf, k.stage) })), path, totals, rounds: [...path.visits].filter(([, n]) => n > 1).map(([stage, n]) => ({ stage, title: title(wf, stage), n })) }
 }

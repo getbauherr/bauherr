@@ -2,6 +2,7 @@ import type { Forge } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { PLAN_MARKER, latestWith, planFiles } from '../app/(app)/lib/plan'
 import { executionOrder } from './frontier'
+import { matches, WILD } from './glob'
 import { isExpediting } from './expedite'
 import { forgeOf, id, prOf } from './release'
 import { workflowFor } from './factory'
@@ -10,9 +11,6 @@ import { nameOf } from './workflow'
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
 
-const WILD = /[*?]/
-const matches = (glob: string, path: string): boolean =>
-  new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/|\*\*|\*|\?/g, (m) => ({ '**/': '(?:.*/)?', '**': '.*', '*': '[^/]*', '?': '[^/]' })[m]!)}$`).test(path)
 
 /** True when two paths or globs can name a common file: equal paths, a glob matching a path, or two globs sharing a literal prefix up to their first wildcard (conservative). */
 export const globsIntersect = (a: string, b: string): boolean => {

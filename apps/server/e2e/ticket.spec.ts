@@ -253,3 +253,14 @@ test('Repair shows the counters next to Reset counters; Details say when a Ticke
   await openTicket(page, 12, 'Invoice PDF layout')
   await expect(page.getByText('Approved with parent #11')).toBeVisible()
 })
+
+test('a conditional step the Ticket passed is listed as skipped with the reason: no Run, no visit', async ({ page }) => {
+  await login(page)
+  await page.locator('.card', { hasText: 'Check the CSV header' }).first().getByRole('link', { name: 'Check the CSV header' }).click()
+  const steps = page.getByTestId('ticket-steps')
+  const skipped = steps.getByTestId('skipped')
+  await expect(skipped).toHaveCount(1)
+  await expect(skipped).toContainText('Skipped')
+  await expect(skipped).toContainText('The change touches no security paths')
+  await expect(steps.locator('[data-testid=visit][data-stage=e2e-security-review]')).toHaveCount(0)
+})

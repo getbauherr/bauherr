@@ -7,6 +7,8 @@ import { moveStage } from './stage-move'
 import { enterStage, startAfterPull } from './wip'
 import { APPROVED_PLAN } from './needs-you'
 import { handBackToBuild, sendToBacklog, sourceOf, startReviewNow } from './actions'
+import { routeEntry } from './route'
+import { skipEvent } from './history'
 import { is, isForward, nameOf, stage as stageDef, target } from './workflow'
 
 type Doc = Record<string, any>
@@ -24,8 +26,8 @@ export type AdvanceOpts = { by: string; run?: Doc; why?: string; note?: string }
 export const advance = async (payload: Payload, ts: TicketSource | null, ticket: Doc, outcome: string, opts: AdvanceOpts): Promise<Advanced> => {
   const wf = workflowFor(ticket.workspace)
   const from = ticket.stage ?? nameOf(wf, 'triage')
-  const to = target(wf, from, outcome)
-  if (!to) {
+  const first = target(wf, from, outcome)
+  if (!first) {
     const reason = `outcome "${outcome}" is not mapped by stage "${from}"`
     if (!opts.run) throw new Error(reason)
     await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'needs_human', "reason_kind" = 'decision', "error" = ${reason}, "finished_at" = coalesce("finished_at", now()), "updated_at" = now() WHERE "id" = ${opts.run.id}`)
@@ -33,6 +35,7 @@ export const advance = async (payload: Payload, ts: TicketSource | null, ticket:
     await src.comment(n, `Bauherr needs a human: ${reason}.`)
     return { stage: null, entered: 'unrouted' }
   }
+  let to = first
   if (to === 'escalate') {
     if (!opts.run) throw new Error(`"${from}" escalates on "${outcome}" and needs the Run`)
     await escalateRun(payload, ticket, opts.run, opts.note ?? `${from}: ${outcome}`)
@@ -42,6 +45,9 @@ export const advance = async (payload: Payload, ts: TicketSource | null, ticket:
     await sendToBacklog(payload, ticket, { executor: opts.by === 'factory' ? 'factory' : 'human', actor: opts.by, note: opts.note })
     return { stage: null, entered: 'backlog' }
   }
+  const routed = await routeEntry(payload, ticket, wf, to)
+  to = routed.to
+  for (const sk of routed.skipped) await skipEvent(payload, ticket, sk, { from, by: opts.by })
   const def = stageDef(wf, to)!
   const source = ts ?? (await sourceOf(payload, ticket)).ts
   const why = opts.why ?? `outcome:${outcome}`

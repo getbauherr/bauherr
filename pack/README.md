@@ -6,7 +6,7 @@ OSS core pack: content, not code. Name `core`, version `0.1.0` (semver, released
 ```
 pack.yaml            manifest: layers, skills, rules, hooks, purposes
 skills/<name>/       Agent Skills folders (SKILL.md + references/; optional mode parts session.md and autonomous.md, each served only to its own mode)
-presets/*.yaml       factory files the setup wizard offers: solo, standard (equals factory.yaml), careful
+presets/*.yaml       factory files the setup wizard offers: solo, standard (factory.yaml plus a conditional security review), careful (conditional security, UX and test reviews)
 templates/*.md       text structures for people (request, plan, decision, review, staging summary, release note, worklog, triage questions, progress)
 rules/*.md           markdown rules with globs/applies front matter
 hooks/               reference stubs (not active) + hooks.yaml (SDK event mapping)

@@ -76,11 +76,37 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
   }
 }
 
+/** The cause of an event that only notes a skipped conditional step: it is no visit of that stage, takes no time and is left out of the spans and the flow metrics. */
+export const SKIP_CAUSE = 'skip:'
+
+/** Notes that a Ticket passed a conditional step without entering it (`reason` in plain words); never throws. */
+export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { name: string; kind: string }; reason: string }, opts: { from: string; by?: string }): Promise<void> => {
+  try {
+    const cause = SKIP_CAUSE + sk.stage.name
+    const last = (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticket.id } }, sort: ['-at', '-id'], limit: 1, ...o })).docs[0] as Doc | undefined
+    if (last?.cause === cause && last.note === sk.reason) return
+    const ws = typeof ticket.workspace === 'object' ? ticket.workspace.id : ticket.workspace
+    await payload.create({
+      collection: 'ticket_events',
+      data: { ticket: ticket.id, workspace: ws, at: new Date().toISOString(), stage: sk.stage.name, stageKind: sk.stage.kind, phase: 'queued', fromStage: opts.from, executor: 'factory', actor: opts.by ?? null, cause, note: sk.reason, workflowVersion: (await activeVersion(payload, ws))?.version ?? null },
+      ...o,
+    })
+  } catch (e) {
+    payload.logger.warn({ err: e, ticket: ticket.id }, 'recording a skipped step failed')
+  }
+}
+
+/** The conditional steps the Ticket passed without entering, in order: `{ stage, at, reason }`. */
+export const skips = async (payload: Payload, ticketId: number | string): Promise<{ stage: string; at: string; reason: string }[]> =>
+  ((await payload.find({ collection: 'ticket_events', where: { and: [{ ticket: { equals: ticketId } }, { cause: { like: SKIP_CAUSE } }] }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[])
+    .filter((e) => String(e.cause).startsWith(SKIP_CAUSE))
+    .map((e) => ({ stage: e.stage, at: e.at, reason: e.note ?? '' }))
+
 export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; backfilled: boolean; workflowVersion: number | null }
 
 /** The Ticket's events in order; `until` is the next event's `at` (now for the newest, which is its own `at` once closed). */
 export const timeline = async (payload: Payload, ticketId: number | string): Promise<Span[]> => {
-  const events = (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticketId } }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[]
+  const events = ((await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticketId } }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[]).filter((e) => !String(e.cause).startsWith(SKIP_CAUSE))
   return events.map((e, i) => {
     const until = events[i + 1]?.at ?? (e.phase === 'closed' ? e.at : new Date().toISOString())
     return {
@@ -107,7 +133,7 @@ export const flow = async (payload: Payload, workspace: number | string, w: { fr
     WITH ev AS (
       SELECT e."ticket_id", e."stage", e."stage_kind", e."phase", e."at", LEAD(e."at") OVER (PARTITION BY e."ticket_id" ORDER BY e."at", e."id") AS "until"
       FROM "ticket_events" e JOIN "tickets" t ON t."id" = e."ticket_id"
-      WHERE e."workspace_id" = ${workspace}::int ${w.product == null ? sql`` : sql`AND t."product_id" = ${w.product}::int`}
+      WHERE e."workspace_id" = ${workspace}::int AND COALESCE(e."cause", '') NOT LIKE ${SKIP_CAUSE + '%'} ${w.product == null ? sql`` : sql`AND t."product_id" = ${w.product}::int`}
     ), span AS (
       SELECT "ticket_id", "stage", "stage_kind", "phase", "at", EXTRACT(EPOCH FROM (COALESCE("until", CASE WHEN "phase" = 'closed' THEN "at" ELSE now() END) - "at"))::float8 AS "sec" FROM ev
     ), cohort AS (

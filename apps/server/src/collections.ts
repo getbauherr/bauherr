@@ -626,6 +626,13 @@ export const collections: CollectionConfig[] = [
       access: { update: ({ req }) => req.user?.role === 'admin' },
       admin: { description: 'Path globs that never hold a Build for overlapping files, e.g. ["CHANGELOG.md","pnpm-lock.yaml"].' },
     },
+    {
+      name: 'pathSets',
+      type: 'json',
+      defaultValue: {},
+      validate: (v: unknown) => v == null || (typeof v === 'object' && !Array.isArray(v) && Object.entries(v as object).every(([k, g]) => /^[a-z][a-z0-9-]*$/.test(k) && Array.isArray(g) && g.every((x) => typeof x === 'string' && x.trim() !== '' && !/\s/.test(x)))) || 'must map set names (lowercase, dashes) to lists of path globs without spaces',
+      admin: { description: 'Named path sets that conditional workflow steps refer to (`when: {touches: security}`): {name: [globs]}, e.g. {"security": ["src/auth/**"], "ui": ["src/app/**"]}. A set that is empty or not declared never matches.' },
+    },
     { name: 'overlapSuggestions', type: 'json', admin: { readOnly: true, description: 'Result of the last "Suggest paths" action: {at, items: [{path, percent}]}. Computed on request, never on page render.' } },
   ], {
     hooks: {
@@ -858,6 +865,7 @@ export const collections: CollectionConfig[] = [
     text('actor'),
     text('cause', { admin: { description: 'Short machine reason, e.g. moveStage:request_review, run:claimed, gate:approve:plan, sweep.' } }),
     num('workflowVersion'),
+    text('note', { admin: { description: 'Plain words for a `skip:<stage>` event: why the conditional step was not entered.' } }),
     { name: 'backfilled', type: 'checkbox', defaultValue: false },
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['ticket', 'at'] }, { fields: ['workspace', 'at'] }] }),
   col('agent_sessions', [

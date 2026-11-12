@@ -1,14 +1,19 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
+// Own Workspace (slug `editor`, seeded) and own Admin: nothing this spec applies is seen by another spec.
+// Its own Admin in its own Workspace (seed-e2e.ts): what this spec applies must never reach the Workspace other specs read.
+const email = 'editor-admin@example.com'
+const inEditorWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'editor', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+
+test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 // Every test that applies a factory file lives in this one file (one worker): two specs must never write the same Workspace's factory file. The last test puts the shipped default back; e2e/team.spec.ts only reads.
 
 const signIn = async (page: Page) => {
+  await inEditorWorkspace(page)
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -227,12 +232,43 @@ test('a draft survives a reload and a preset loads into the draft without applyi
   await page.getByRole('button', { name: 'Start from a preset' }).click()
   await page.getByRole('menuitem', { name: /^Careful/ }).click()
   await expect(page.getByTestId('draft-badge')).toBeVisible()
-  await expect(page.locator('[data-stage=security]')).toBeVisible()
+  await expect(page.locator('[data-stage=security-review]')).toBeVisible()
   await page.reload()
   await expect(page.getByTestId('draft-badge')).toBeVisible()
-  await expect(page.locator('[data-stage=security]')).toBeVisible()
+  await expect(page.locator('[data-stage=security-review]')).toBeVisible()
   await page.getByRole('button', { name: 'Discard' }).click()
   await page.getByRole('dialog', { name: 'Discard your changes?' }).getByRole('button', { name: 'Discard' }).click()
   await page.reload()
   await expect(page.getByTestId('draft-badge')).toHaveCount(0)
+})
+
+test('a step can run only when the change needs it: a chip on the card, the choices in the panel, the words in Review changes', async ({ page }) => {
+  await open(page)
+  await page.getByRole('button', { name: 'Add a step after Build' }).click()
+  await page.getByRole('menuitem', { name: 'Add an agent step' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add an agent step' })
+  await dialog.getByLabel('Title').fill('Security review')
+  await dialog.getByRole('combobox', { name: 'Who works here' }).click()
+  await page.getByRole('option').first().click()
+  await dialog.getByLabel('Skill').selectOption('mr-security-review')
+  await dialog.getByLabel('When does this step run?').selectOption('only')
+  await dialog.getByLabel('The change touches').selectOption('security')
+  await expect(dialog.getByTestId('when-hint')).toContainText('No Product of this Workspace declares security paths yet')
+  await dialog.getByRole('button', { name: 'Add step' }).click()
+  const card = page.getByTestId('step').filter({ hasText: 'Security review' })
+  await expect(card.getByTestId('when-chip')).toHaveText('Only when the change touches security paths')
+  await expect(page.getByTestId('problem-count')).toHaveCount(0)
+
+  await card.getByRole('button', { name: 'Security review', exact: true }).click()
+  const panel = page.getByTestId('step-panel')
+  await expect(panel.getByLabel('When does this step run?')).toHaveValue('only')
+  await panel.getByLabel('The request is').selectOption('bug')
+  await expect(card.getByTestId('when-chip')).toHaveText('Only when the change touches security paths and the request is a bug')
+  await panel.getByLabel('When does this step run?').selectOption('always')
+  await expect(card.getByTestId('when-chip')).toHaveCount(0)
+  await panel.getByLabel('When does this step run?').selectOption('only')
+  await panel.getByLabel('The request is').selectOption('bug')
+  await expect(card.getByTestId('when-chip')).toHaveText('Only for bugs')
+  await page.getByRole('button', { name: 'Review changes' }).click()
+  await expect(page.getByRole('dialog', { name: 'Review changes' })).toContainText('only for bugs')
 })

@@ -6,6 +6,7 @@ import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../li
 import { gateOn, productionGateOn } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { blockedBy } from '../../../lib/settings-guards'
+import { formatPathSets, missingSuggestions, neverRuns } from '../../../lib/path-sets'
 import { workflowFor } from '../../../lib/factory'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
@@ -104,6 +105,7 @@ export async function loadProducts(workspace: number) {
           reviewChecks: formatReviewChecks(p.reviewChecks),
           overlap: overlapOf(p),
           proofRules: ((p.reviewChecks?.artifacts ?? []) as { name: string; globs: string[]; kind: string; command: string; before?: boolean }[]).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before })),
+          pathSets: { text: formatPathSets(p.pathSets), missing: missingSuggestions(p.pathSets ?? {}), never: neverRuns(workflowFor(workspace), p.pathSets ?? {}) },
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens

@@ -32,7 +32,8 @@ it('the migration adds the Product owner role and assignments that Payload reads
   expect((await run(sql`SELECT enum_range(NULL::enum_bauherren_role)::text AS r`)).rows[0].r).toBe('{admin,bauherr}')
   await run(sql`INSERT INTO workspaces (name, slug) VALUES ('W', 'w')`)
 
-  await payload.db.migrate({ migrations: migrations.slice(i, i + 1) as never })
+  // This one and every later migration: the Payload API below reads with today's schema, which later migrations extend.
+  await payload.db.migrate({ migrations: migrations.slice(i) as never })
   expect((await run(sql`SELECT enum_range(NULL::enum_bauherren_role)::text AS r`)).rows[0].r).toBe('{admin,bauherr,product-owner}')
   const o = { overrideAccess: true } as const
   const ws = (await payload.find({ collection: 'workspaces', limit: 1, ...o })).docs[0]!.id
