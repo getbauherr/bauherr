@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { Cost, Line, Quantiles } from '../../lib/cost'
 import { Table } from '../ui/table'
+import { GatewayStatus } from '../gateway/GatewayStatus'
+import type { GatewayStatus as Status } from '../../lib/gateway-setup'
 
 export const usd = (n: number | null): string => (n == null ? '—' : n >= 100 ? `$${n.toFixed(0)}` : n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`)
 export const tok = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(Math.round(n)))
@@ -40,15 +42,25 @@ function Lines({ id, head, lines, total, extra }: { id: string; head: string; li
 }
 
 /** Tokens and cost of the range: totals, breakdowns by model, role, session, stage and Ticket, cost per finished Ticket, and how many Runs the numbers cover. */
-export function CostSection({ cost, days }: { cost: Cost; days: number }) {
+export function CostSection({ cost, days, gateway }: { cost: Cost; days: number; gateway?: { status: Status; admin: boolean } }) {
+  const sessions = cost.coverage.find((c) => c.label.startsWith('Session Runs'))
+  const unmeasured = !!sessions && sessions.runs > 0 && sessions.covered / sessions.runs < 0.5
   const src = Object.entries(cost.sources).map(([k, v]) => `${k} ${usd(v)}`).join(' · ')
   return (
     <section className="flex flex-col gap-3" aria-labelledby="cost" data-testid="cost-section">
       <h2 className="heading" id="cost">Cost &amp; tokens</h2>
       <p className="small m-0 text-muted-foreground">
-        Last {days} days. Runner and CI Runs are priced by the gateway; session Runs report their own usage (priced at list price when the client sends tokens only); chat answers are counted as stored.{' '}
+        Last {days} days. Runner, CI and session Runs that go through the gateway are priced by it, and tokens the catalog did not know are priced once it does; session Runs outside the gateway report their own usage (priced at list price when the client sends tokens only); chat answers are counted as stored.{' '}
         <Link className="underline" href="/settings/usage">Budgets and cost per Product</Link>
       </p>
+      {unmeasured && (
+        <div role="note" className="flex flex-col gap-2 rounded-md border border-warn bg-card p-3" data-testid="cost-gateway-cta">
+          <strong>Session cost is not measured: route your sessions through the gateway.</strong>
+          <span className="small text-muted-foreground">Only {sessions!.covered} of {sessions!.runs} finished session Runs have usage. Copy the lines for your coding tool once; the gateway then counts the tokens and cost of every call, per session, model, role, stage and Ticket.</span>
+          <span><Link className="text-primary underline" href="/settings/usage#measure">Set up session measuring</Link></span>
+          {gateway?.admin && <GatewayStatus status={gateway.status} admin />}
+        </div>
+      )}
       <dl className="m-0 grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Cost summary">
         <Tile id="total" label="Total cost" value={usd(cost.totalUsd)} note={src || undefined} />
         <Tile id="tokens" label="Tokens in + out" value={tok(cost.tokens)} note={`${tok(cost.cache)} cache`} />

@@ -143,7 +143,7 @@ it('aggregates by model, role, session, stage and Ticket; a gateway Run drops it
   expect(c.doneTickets).toEqual({ total: 1, priced: 1 })
   expect(c.coverage).toEqual([
     { label: 'Runner and CI Runs (gateway)', runs: 2, covered: 1 },
-    { label: 'Session Runs (reported)', runs: 1, covered: 1 },
+    { label: 'Session Runs (gateway or reported)', runs: 1, covered: 1 },
   ])
   expect(bare).toBeGreaterThan(0)
   expect((await view.loadCost(payload, wf, ws, { days: 7, product })).byModel.find((l) => l.key === 'claude-haiku-5-5')).toBeUndefined()

@@ -26,15 +26,21 @@ frontendPolicies:
         stage: 'request.headers["x-bauherr-stage"]'
         product: 'request.headers["x-bauherr-product"]'
         ticket: 'request.headers["x-bauherr-ticket"]'
+        # Session traffic (docs/gateway.md): the name the person gave the session (also the `session` of `connect`), its role and the coding tool.
+        # Only picks the session inside the Workspace the key belongs to; the key decides the Workspace.
+        session: 'request.headers["x-bauherr-session"]'
+        role: 'request.headers["x-bauherr-role"]'
+        client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])'
 llm:
   gateways: default
   policies:
     apiKey:
       mode: strict
       # Session keys arrive in x-agw-key (Claude Code ANTHROPIC_CUSTOM_HEADERS) so Authorization stays free for sub/*;
-      # the Runner proxy sends the Workspace key as Authorization: Bearer. An expression location deletes nothing.
+      # the Runner proxy sends the Workspace key as Authorization: Bearer; the Anthropic and Gemini SDKs send their key in x-api-key / x-goog-api-key.
+      # An expression location deletes nothing: every model entry below removes these headers before the request leaves.
       location:
-        expression: 'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))'
+        expression: 'coalesce(request.headers["x-agw-key"], request.headers["x-api-key"], request.headers["x-goog-api-key"], request.headers["authorization"].stripPrefix("Bearer "))'
       keys: []
   # Bauherr owns only the ws-<slug>/* entries (apps/server/src/lib/gateway.ts); sub/* stays as rendered here.
   models:
@@ -57,3 +63,22 @@ llm:
     requestHeaders:
       remove:
       - x-agw-key
+      - x-api-key
+      - x-goog-api-key
+  # The same login under the model names Claude Code sends by itself (`claude-sonnet-5-5`, aliases): no model mapping needed.
+  - name: "claude-*"
+    provider: anthropic
+    auth:
+      passthrough:
+        location:
+          header:
+            name: authorization
+            prefix: "Bearer "
+    authorization:
+      rules:
+      - allow: 'apiKey.kind == "owner-session"'
+    requestHeaders:
+      remove:
+      - x-agw-key
+      - x-api-key
+      - x-goog-api-key

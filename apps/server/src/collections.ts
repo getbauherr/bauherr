@@ -814,5 +814,6 @@ export const collections: CollectionConfig[] = [
     text('claudeSession', { required: true, admin: { description: "The client's own session id (Claude Code `session_id`)." } }),
     json('totals'),
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['session', 'claudeSession'], unique: true }] }),
+  col('instance_state', [text('key', { required: true, unique: true }), json('value')], { access: { read: () => false, create: () => false, update: () => false, delete: () => false } }),
   ...chatCollections,
 ]

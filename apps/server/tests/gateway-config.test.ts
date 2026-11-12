@@ -68,3 +68,42 @@ it('a gateway admin call that never answers fails within the timeout', async () 
     srv.close()
   }
 }, 20_000)
+
+it('the rendered config logs the session fields and serves the owner login under claude-* and sub/*, with every key header stripped', () => {
+  const cfg = buildConfig(mkdtempSync(join(tmpdir(), 'agw-')))
+  expect(cfg.frontendPolicies.accessLog.database.add).toEqual({
+    run: 'request.headers["x-bauherr-run"]',
+    stage: 'request.headers["x-bauherr-stage"]',
+    product: 'request.headers["x-bauherr-product"]',
+    ticket: 'request.headers["x-bauherr-ticket"]',
+    session: 'request.headers["x-bauherr-session"]',
+    role: 'request.headers["x-bauherr-role"]',
+    client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])',
+  })
+  expect(cfg.frontendPolicies.accessLog.database.llm).toBe('metadata')
+  const models = cfg.llm.models as { name: string; authorization?: unknown; requestHeaders: { remove: string[] } }[]
+  expect(models.map((m) => m.name).filter((n) => !n.startsWith('ws-'))).toEqual(['sub/*', 'claude-*'])
+  for (const m of models) expect(m.requestHeaders.remove, m.name).toEqual(expect.arrayContaining(['x-agw-key', 'x-api-key', 'x-goog-api-key']))
+  for (const n of ['sub/*', 'claude-*']) expect(models.find((m) => m.name === n)!.authorization).toEqual({ rules: [{ allow: 'apiKey.kind == "owner-session"' }] })
+  expect(cfg.llm.policies.apiKey.location.expression).toContain('x-goog-api-key')
+})
+
+it('ensureManaged brings an older config up to date, adds claude-* once and lists every catalog file', async () => {
+  const { ensureManaged, KEY_LOCATION } = await import('../src/lib/gateway')
+  const cfg = {
+    config: { modelCatalog: [{ file: '/gateway/catalogs/anthropic.json' }] },
+    frontendPolicies: { accessLog: { database: { llm: 'metadata', add: { run: 'request.headers["x-bauherr-run"]' } } } },
+    llm: {
+      policies: { apiKey: { location: { expression: 'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))' } } },
+      models: [{ name: 'sub/*', provider: 'anthropic', transformation: { model: 'x' }, requestHeaders: { remove: ['x-agw-key'] } }, { name: 'ws-a/anthropic/*', provider: 'anthropic' }],
+    },
+  } as Record<string, any>
+  expect(ensureManaged(cfg, ['anthropic.json', 'base-costs.json'])).toBe(true)
+  expect(Object.keys(cfg.frontendPolicies.accessLog.database.add)).toEqual(['run', 'session', 'role', 'client'])
+  expect(cfg.llm.policies.apiKey.location.expression).toBe(KEY_LOCATION)
+  expect(cfg.llm.models.map((m: { name: string }) => m.name)).toEqual(['sub/*', 'claude-*', 'ws-a/anthropic/*'])
+  expect(cfg.llm.models[1].transformation).toBeUndefined()
+  expect(cfg.llm.models[1].requestHeaders.remove).toEqual(['x-agw-key', 'x-api-key', 'x-goog-api-key'])
+  expect(cfg.config.modelCatalog.map((c: { file: string }) => c.file.split('/').pop())).toEqual(['anthropic.json', 'base-costs.json'])
+  expect(ensureManaged(cfg, ['anthropic.json', 'base-costs.json'])).toBe(false)
+})

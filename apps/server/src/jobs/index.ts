@@ -16,6 +16,8 @@ import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
 import { ingestProof } from '../lib/artifacts'
 import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, retentionDays } from '../lib/reconcile'
+import { refreshPrices } from '../lib/prices'
+import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
@@ -848,6 +850,26 @@ export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; ou
   },
 }
 
+/** Every minute: probes the gateway (stored for the pages), attributes the session key's calls to sessions and Runs, prices what had no price. */
+export const watchGatewayTask: TaskConfig<{ input: Record<string, never>; output: { calls: number } }> = {
+  slug: 'watch-gateway',
+  schedule: scheduled('0 * * * * *'),
+  retries: 0,
+  handler: async ({ req }) => {
+    if (!gatewayDbEnabled() || !process.env.GATEWAY_URL) return { output: { calls: 0 } }
+    const health = await checkGateway(req.payload)
+    return { output: { calls: health.migration == null ? 0 : (await reconcileSessions(req.payload)).calls } }
+  },
+}
+
+/** Hourly check; fetches the price catalog at most once a day (a failed fetch is retried after an hour). */
+export const refreshPricesTask: TaskConfig<{ input: Record<string, never>; output: { models: number } }> = {
+  slug: 'refresh-prices',
+  schedule: scheduled('0 7 * * * *'),
+  retries: 0,
+  handler: async ({ req }) => ({ output: { models: (await refreshPrices(req.payload))?.models ?? 0 } }),
+}
+
 export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; output: { deleted: number } }> = {
   slug: 'prune-comment-media',
   schedule: scheduled('0 30 3 * * *'),
@@ -905,4 +927,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]

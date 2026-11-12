@@ -130,7 +130,9 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Connections | Forge and model provider credentials, verified | `/settings/connections` (Admin) | Live |
 | Gateway key rotation | Rotate the Workspace's consumer key | Settings › Workspace › General | Live |
 | Insights | Lead time, cycle time, time per stage with the bottleneck, throughput per week | `/insights` | Live |
-| Tokens and cost | Tokens and cost per model, role, session, stage and Ticket, cost per finished Ticket, source coverage; sessions report usage by tool argument or a Claude Code hook; cost per session and role on the Team page; `cost_summary` in the chat | `/insights#cost`, `/team`, [cost.md](cost.md) | Live |
+| Measure session cost | Your own coding sessions go through the gateway with one pasted block per tool (Claude Code, Codex, Gemini CLI, Copilot, opencode, Aider, Cline); each call is measured per session, with the gateway status and a notice on Insights when session cost is not measured | `/settings/usage#measure`, `/team`, [gateway.md](gateway.md) | Live |
+| Prices and models | The model price catalog and the model lists refresh daily from the catalog the gateway project publishes; guards keep the previous prices on a bad answer; status and Update now | `/settings/models#prices`, [gateway.md](gateway.md#prices-and-models-update-themselves) | Live |
+| Tokens and cost | Tokens and cost per model, role, session, stage and Ticket, cost per finished Ticket, source coverage; sessions are measured by the gateway, else report usage by tool argument or a Claude Code hook; cost per session and role on the Team page; `cost_summary` in the chat | `/insights#cost`, `/team`, [cost.md](cost.md) | Live |
 | Health | Jobs, oldest queued, dead Tickets, last poll, expedite lead time, gateway budget, flaky checks | Settings › Admin › Health (`/settings/health`) | Live |
 
 ## Administration
@@ -154,7 +156,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | MCP server | Frontier, claim, finish, worklog, evidence, knowledge; human gates refused for agent keys | MCP only: `/mcp` | No UI |
 | REST API | Payload's API; chat and intake endpoints | API only: `/api`, [chat.md](chat.md), [intake-embed.md](intake-embed.md) | No UI |
 | Runner | Runs one stage with the Claude Agent SDK in a fresh clone | job: [`packages/runner`](../packages/runner) | No UI |
-| Environment flags | `BAUHERR_DEFAULT_MODE`, `BAUHERR_ENABLE_ADMIN`, `OIDC_*`, `MEDIA_*`, `GATEWAY_URL`, retention | env only: Environment | No UI |
+| Environment flags | `BAUHERR_DEFAULT_MODE`, `BAUHERR_ENABLE_ADMIN`, `OIDC_*`, `MEDIA_*`, `GATEWAY_URL`, `GATEWAY_PUBLIC_URL`, `GATEWAY_UI_URL`, `BAUHERR_PRICES_REFRESH`, `BAUHERR_PRICES_URL`, retention | env only: Environment | No UI |
 
 ## Known gaps
 

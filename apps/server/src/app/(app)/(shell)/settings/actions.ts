@@ -11,7 +11,8 @@ import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { suggestOverlapIgnore } from '../../../../lib/overlap'
 import { forgeOf } from '../../../../lib/release'
-import { rotateKey } from '../../../../lib/gateway'
+import { gatewayEnabled, rotateKey, rotateSessionKey } from '../../../../lib/gateway'
+import { refreshPrices } from '../../../../lib/prices'
 import { SCAN_MAX_BUDGET_USD } from '../../../../lib/investigation'
 import { startSecurityScan } from '../../../../lib/security-scan'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
@@ -112,6 +113,21 @@ export const suggestOverlapPaths = act({}, async (c, fd) => {
 export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) => {
   only(user)
   await rotateKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
+})
+
+/** Admin: a new session key for this Workspace (the old one stops working); shown once, never stored by Bauherr. */
+export const createSessionKey = act({}, async ({ user, workspace, payload }) => {
+  only(user)
+  if (!gatewayEnabled()) throw new Error('The gateway is off on this instance.')
+  return rotateSessionKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
+})
+
+/** Admin: fetches the price catalog now instead of waiting for the daily refresh; a refusal or failure is shown as the error. */
+export const updatePricesNow = act({}, async ({ user, payload }) => {
+  only(user)
+  const status = await refreshPrices(payload, { force: true })
+  if (status?.error) throw new Error(status.error.message)
+  if (!status) throw new Error('Price updates are switched off on this instance (BAUHERR_PRICES_REFRESH=0).')
 })
 
 const inWs = (c: Awaited<ReturnType<typeof ctx>>, collection: string, ...ids: (number | undefined)[]) => assertInWorkspace(c.payload, collection, ids, inWorkspace(c))

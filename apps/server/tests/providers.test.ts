@@ -15,6 +15,8 @@ const EXPECTED: Record<Preset, object> = {
     params: { vertexProject: 'p', vertexRegion: 'europe-west1' },
     auth: { gcp: { credential: { file: FILE } } },
   },
+  openai: { provider: 'openAI', params: { apiKey: { file: FILE } } },
+  gemini: { provider: 'gemini', params: { apiKey: { file: FILE } } },
   foundry: { provider: 'anthropic', params: { apiKey: { file: FILE }, baseUrl: 'https://res.services.ai.azure.com/anthropic' } },
   'bedrock-iam': {
     provider: 'bedrock',
@@ -42,7 +44,7 @@ const SECRETS: Partial<Record<Preset, string>> = {
 it.each(Object.keys(PRESETS) as Preset[])('%s renders its entry; file presets reference the secret by path only, ambient ones carry none', (preset) => {
   const def = PRESETS[preset]
   const e = def.render('acme', FULL, FILE, def.auth === 'inline' ? SECRETS[preset] : undefined)
-  expect(e).toEqual({ name: 'ws-acme/*', requestHeaders: { remove: ['x-agw-key'] }, transformation: { model: 'llmRequest.model.stripPrefix("ws-acme/")' }, ...EXPECTED[preset] })
+  expect(e).toEqual({ name: 'ws-acme/*', requestHeaders: { remove: ['x-agw-key', 'x-api-key', 'x-goog-api-key'] }, transformation: { model: 'llmRequest.model.stripPrefix("ws-acme/")' }, ...EXPECTED[preset] })
   expect(JSON.stringify(e).includes(FILE)).toBe(def.auth === 'file')
   expect(JSON.stringify(e).includes('s3cret')).toBe(def.auth === 'inline')
 })
