@@ -109,7 +109,7 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
 test('an approval Ticket shows the bar, title, pipeline and the gate; the rest sits in a closed Details', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
-  const details = page.locator('details')
+  const details = page.locator('details', { has: page.locator('#details') })
   await expect(details).not.toHaveAttribute('open', '')
   await expect(page.getByTestId('action-bar')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Tidy the settings copy')
@@ -140,7 +140,7 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
     await expect(page.locator('[data-testid=workflow]')).toBeVisible()
     await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
     await page.getByText('Details', { exact: true }).click()
-    const details = page.locator('details')
+    const details = page.locator('details', { has: page.locator('#details') })
     for (const name of ['Budget', 'Model']) await expect(details.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
     if (!admin) await expect(details).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku|Merge commit|#\d+\s*$/i)
     await expect(details.locator('table thead th')).toHaveText(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence'])
@@ -168,7 +168,7 @@ test('an approved plan held by an overlap shows a disabled button with the overl
   await expect(bar).not.toContainText('Nothing to do')
   await expect(page.getByRole('region', { name: 'Answer questions' })).toHaveCount(0)
   await page.getByText('Details', { exact: true }).click()
-  await expect(page.locator('details')).toContainText('0 answered')
+  await expect(page.locator('details', { has: page.locator('#details') })).toContainText('0 answered')
 })
 
 test('a plan waiting for approval shows an enabled Approve plan button', async ({ page }) => {

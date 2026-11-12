@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { addedOf, answersOf, dropLine, parseAnswers, parseDecisions, sheetOf } from '../../app/(app)/lib/plan'
 import { NotInWorkspace, exclusive, finishRefinement, loadIn, postDecisions, sourceOf } from '../actions'
@@ -95,7 +96,8 @@ const read = async (payload: Payload, user: User, ticket: number, workspaceId: n
   const [comments, issue, triage] = [await ts.listComments(n), await ts.get(n), await triageSpeaker(payload, t)]
   const sheet = sheetOf(comments)
   const points = pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), triage.run ?? null)
-  const s = await sessionOf(payload, user, t, openOf(points).length > 0)
+  // An approved plan no longer asks anything: its leftover rows start no conversation (an existing one stays as history).
+  const s = await sessionOf(payload, user, t, openOf(points).length > 0 && !issue.labels.includes(APPROVED_PLAN))
   const thread = s ? await threadOf(payload, user, t, s) : null
   return { t, s, thread, points, body: issue.body ?? '', labels: issue.labels, edits: s?.draft?.edits ?? null, triage }
 }
