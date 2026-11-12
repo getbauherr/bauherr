@@ -41,11 +41,11 @@ export const countOf = (points: Point[]): string => `${points.filter((p) => p.st
 /** Wide: a sticky column next to the conversation. Narrow: a sticky bar on top that expands. */
 export const OpenPoints: FC<{ points: Point[]; busy: boolean; locked: boolean; onChange(id: string): void }> = (p) => (
   <>
-    <details data-testid="open-points-bar" className="sticky top-[calc(var(--next-step-h,0px)+var(--space-2,0.5rem))] z-10 rounded-md border bg-card p-2 @2xl:hidden">
+    <details data-testid="open-points-bar" className="sticky top-[calc(var(--next-step-h,0px)+var(--space-2,0.5rem))] z-10 rounded-md border bg-card p-2 @xl:hidden">
       <summary className="small cursor-pointer font-medium">Open points · {countOf(p.points)}</summary>
       <div className="mt-2 max-h-[50dvh] overflow-y-auto"><PointsList {...p} /></div>
     </details>
-    <aside data-testid="open-points" aria-label="Open points" className="hidden flex-col gap-3 @2xl:sticky @2xl:top-[calc(var(--next-step-h,0px)+var(--space-4,1rem))] @2xl:flex @2xl:max-h-[calc(100dvh-8rem)] @2xl:overflow-y-auto">
+    <aside data-testid="open-points" aria-label="Open points" className="hidden flex-col gap-3 @xl:sticky @xl:top-[calc(var(--next-step-h,0px)+var(--space-4,1rem))] @xl:flex @xl:max-h-[calc(100dvh-8rem)] @xl:overflow-y-auto">
       <h3 className="label m-0 text-muted-foreground">Open points · <span data-testid="points-count">{countOf(p.points)}</span></h3>
       <PointsList {...p} />
     </aside>

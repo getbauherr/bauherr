@@ -1,4 +1,5 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ const textOf = (m: { content: readonly { type: string; text?: string }[] }): str
  * Renders nothing while the Ticket has no points.
  */
 export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel carries the `#refine` anchor. */ anchor?: boolean; onSent?(): void }> = ({ ticket, anchor, onSent }) => {
+  const router = useRouter()
   const [view, setView] = useState<View | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +59,9 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
     async (run: () => Promise<Reply>): Promise<boolean> => {
       setBusy(true)
       try {
-        return take(await run())
+        const ok = take(await run())
+        if (ok) router.refresh()
+        return ok
       } catch {
         setError('That did not go through. Try again.')
         return false
@@ -65,7 +69,7 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
         setBusy(false)
       }
     },
-    [take],
+    [take, router],
   )
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
@@ -97,9 +101,9 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
             : `You are talking to the ${view.strip.assistant}${view.strip.model ? ` (${view.strip.model})` : ''}. Your answers go to ${view.strip.to} when you send them.`}
         </p>
       </header>
-      <div className="grid items-start gap-4 @2xl:grid-cols-[minmax(0,1fr)_16rem]">
+      <div className="grid items-start gap-4 @xl:grid-cols-[minmax(0,1fr)_16rem]">
         <OpenPoints points={view.points} busy={busy} locked={locked} onChange={(id) => void act(() => refineChange(ticket, id))} />
-        <div className="flex min-w-0 flex-col gap-3 @2xl:order-first">
+        <div className="flex min-w-0 flex-col gap-3 @xl:order-first">
           {view.earlier.length > 0 && (
             <details data-testid="earlier" className="small rounded-md border p-2 text-muted-foreground">
               <summary className="cursor-pointer">Earlier conversation ({view.earlier.length})</summary>
