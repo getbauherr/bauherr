@@ -7,22 +7,17 @@ import { EXPEDITE_PROPOSED, type Need } from '../../../lib/needs-you'
 import { loadProgress, type Progress } from '../../../lib/progress'
 import { canDecide } from '../../../lib/decision'
 import { kindOf, type Kind as StageKind, type Workflow } from '../../../lib/workflow'
+import { canSeeProduct, isBauherr, isProductOwner, productScope, productsVisibleTo, requestsVisibleTo } from '../../../lib/people'
 import { kindOfLabels } from './overview'
 import { payloadClient } from './session'
 
 type Ref = number | { id: number; name?: string; email?: string }
 type Session = { id: number; product: Ref; user?: Ref | null; status: string; draft?: { problem?: string; title?: string; type?: Kind; urgency?: string } | null; title?: string | null; kind?: Kind | null; urgency?: string | null; ticketNumber?: number | null; updatedAt: string }
 type TicketDoc = Record<string, any> & { id: number; number: number; product: Ref }
-type Viewer = { id?: number | string; role?: string | null }
+type Viewer = { id?: number | string; role?: string | null; assignments?: unknown; tenants?: unknown }
 const idOf = (r: Ref | null | undefined) => (typeof r === 'object' ? r?.id : r)
 
 export const REQUESTS_LIMIT = 100
-
-/** The ONE place that says which requests of a Workspace a person sees: an Admin or a Bauherr all of them, anyone else only their own (the accounts work narrows this to the assigned Products here and nowhere else). */
-export const requestsVisibleTo = (user: Viewer, workspaceId: number): Where => ({
-  'product.workspace': { equals: workspaceId },
-  ...(user.role === 'admin' || user.role === 'bauherr' ? {} : { user: { equals: user.id } }),
-})
 
 /** Who a request waits for, from the viewer's side: the requester's own steps, the Bauherr's, or nobody's (the factory works). */
 export type Waits = 'You' | 'The requester' | 'The Bauherr' | 'The factory'
@@ -79,8 +74,8 @@ const titleOf = (s: Pick<Session, 'title' | 'draft'>) => (s.title?.trim() || s.d
 export type Filters = { product?: number; kind?: Kind; mine?: boolean }
 export type Workbench = { needs: RequestRow[]; factory: RequestRow[]; done: RequestRow[]; products: { id: number; name: string }[]; multiProduct: boolean; showBy: boolean; total: number }
 
-/** Whether `need` is the viewer's to act on: the requester's steps on their own request, or a Bauherr's step they may decide (an Expedite is an Admin's). */
-const needsViewer = (user: Viewer, need: Need | null, mine: boolean): boolean => !!need && (REQUESTER_NEEDS.includes(need) ? mine : canDecide(user, need))
+/** Whether `need` is the viewer's to act on: the requester's steps on their own request, or a Bauherr's step they may decide (an Expedite is an Admin's; a Product owner has no Bauherr step until the decisions slice). */
+const needsViewer = (user: Viewer, need: Need | null, mine: boolean): boolean => !!need && (REQUESTER_NEEDS.includes(need) ? mine : !isProductOwner(user) && canDecide(user, need))
 
 /** Sent requests of a Workspace for the Requests page, in three sections (Needs you, In the factory, Done), without conversation text. Database only. */
 export async function loadWorkbench(workspaceId: number, user: Viewer, filters: Filters = {}): Promise<Workbench> {
@@ -93,7 +88,7 @@ export async function loadWorkbench(workspaceId: number, user: Viewer, filters: 
     select: { product: true, user: true, status: true, draft: true, title: true, kind: true, urgency: true, ticketNumber: true, updatedAt: true },
     overrideAccess: true,
   })
-  const products = (await payload.find({ collection: 'products', where: { workspace: { equals: workspaceId } }, sort: 'name', select: { name: true }, depth: 0, ...o })).docs.map((p) => ({ id: p.id as number, name: p.name as string }))
+  const products = (await payload.find({ collection: 'products', where: productsVisibleTo(user, workspaceId), sort: 'name', select: { name: true }, depth: 0, ...o })).docs.map((p) => ({ id: p.id as number, name: p.name as string }))
   const docs = sessions.docs as unknown as Session[]
   const pairs = docs.filter((s) => s.ticketNumber != null).map((s) => ({ and: [{ product: { equals: idOf(s.product) } }, { number: { equals: s.ticketNumber } }] as Where[] }))
   const tickets = pairs.length ? ((await payload.find({ collection: 'tickets', where: { workspace: { equals: workspaceId }, or: pairs }, depth: 0, ...o })).docs as unknown as TicketDoc[]) : []
@@ -143,7 +138,7 @@ export async function loadWorkbench(workspaceId: number, user: Viewer, filters: 
     done: rows.filter((r) => r.row.waits === null).map((r) => r.row),
     products,
     multiProduct: products.length > 1,
-    showBy: user.role === 'admin' || user.role === 'bauherr',
+    showBy: isBauherr(user),
     total: sessions.totalDocs,
   }
 }
@@ -151,11 +146,11 @@ export async function loadWorkbench(workspaceId: number, user: Viewer, filters: 
 export type DraftRow = { id: number; title: string; product: string; productId: number; updatedAt: string; kind: Kind | null; urgent: boolean; /** Plain words of what is missing to send; empty when it can be sent. */ missing: string[]; canSend: boolean }
 
 /** Every open draft of the person in a Workspace that has been written to (newest first, no cut-off): the title is the card's title, the draft's problem or the first message. */
-export async function loadDrafts(userId: number, workspaceId: number): Promise<DraftRow[]> {
+export async function loadDrafts(user: Viewer & { id: number | string }, workspaceId: number): Promise<DraftRow[]> {
   const payload = await payloadClient()
   const { docs } = await payload.find({
     collection: 'intake_sessions',
-    where: { and: [{ user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }, { draft: { exists: true } }] },
+    where: { and: [productScope(user, workspaceId), { user: { equals: user.id } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }, { draft: { exists: true } }] },
     sort: '-updatedAt', pagination: false, depth: 1, select: { product: true, draft: true, title: true, kind: true, urgency: true, messages: true, screenshots: true, turn: true, split: true, updatedAt: true }, overrideAccess: true,
   })
   return docs.map((s) => {
@@ -254,5 +249,31 @@ export async function loadRequest(workspaceId: number, id: number, user: Viewer 
     }),
     timeline: s.status === 'submitted' ? timelineOf(first?.createdAt ?? s.updatedAt, events, shipped) : [],
     released: shipped,
+  }
+}
+
+export type OwnerTicket = { ticket: RequestTicket; product: { id: number; name: string }; /** The request that created it, when it has one. */ request: number | null; card: CardData | null; timeline: TimelineEntry[]; released: boolean; note: string | null }
+
+/** The Ticket as a Product owner sees it, or null when it does not exist, is in another Workspace or its Product is not assigned to them (one answer for all three: a 404). Database only: no Runs, steps, cost or plan are read. */
+export async function loadOwnerTicket(workspaceId: number, id: number, user: Viewer & { id: number | string }): Promise<OwnerTicket | null> {
+  const payload = await payloadClient()
+  const o = { overrideAccess: true, pagination: false, depth: 0 } as const
+  const [t] = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: workspaceId } }] }, limit: 1, ...o })).docs as unknown as TicketDoc[]
+  if (!t || !canSeeProduct(user, { id: idOf(t.product)!, workspace: workspaceId })) return null
+  const product = (await payload.findByID({ collection: 'products', id: idOf(t.product)!, select: { name: true }, ...o })) as { id: number; name: string }
+  const [s] = (await payload.find({ collection: 'intake_sessions', where: { and: [{ product: { equals: product.id } }, { ticketNumber: { equals: t.number } }, { status: { equals: 'submitted' } }, { persona: { not_equals: 'owner' } }] }, limit: 1, ...o, depth: 1 })).docs as unknown as Session[]
+  const p = (await loadProgress(payload, [t])).get(t.id)!
+  const events = (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: t.id } }, sort: 'at', select: { at: true, stageKind: true, phase: true, cause: true }, ...o })).docs as unknown as EventRow[]
+  const closed = t.state === 'closed'
+  const released = closed && p.key === 'released'
+  const stand = closed ? { status: 'Done', waits: null, lane: null } : lifecycleOf(workflowFor(workspaceId), t, p.key, !!s && String(idOf(s.user)) === String(user.id))
+  return {
+    ticket: { id: t.id, number: t.number, title: t.title, url: null, ...stand, kind: kindOfLabels(t.labels), progress: p, need: closed ? null : (t.needsYou as Need | null) ?? null },
+    product,
+    request: s?.id ?? null,
+    card: s ? await cardData({ payload, user: user as never, workspace: workspaceId }, s as never, false) : null,
+    timeline: timelineOf(String(t.createdAt ?? s?.updatedAt), events, released),
+    released,
+    note: released ? (p.detail?.split('\n')[0] ?? null) : null,
   }
 }

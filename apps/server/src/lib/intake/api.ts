@@ -30,6 +30,17 @@ export const actor = async (req: Request): Promise<({ payload: Payload } & Who) 
   return user ? { payload, user, token: null } : Response.json({ error: 'unauthorized' }, { status: 401 })
 }
 
+/** The signed-in person of any role (a Product owner too) or an embed token, for the few routes that serve files to both; the caller decides what each may see. */
+export const viewer = async (req: Request): Promise<({ payload: Payload } & Who) | Response> => {
+  const payload = await getPayload({ config })
+  await loadWorkflows(payload)
+  const token = await embedAuth(payload, req)
+  if (token instanceof Response) return token
+  if (token) return { payload, user: null, token }
+  const { user } = await payload.auth({ headers: req.headers })
+  return user ? { payload, user, token: null } : Response.json({ error: 'unauthorized' }, { status: 401 })
+}
+
 const idOf = (v: unknown): unknown => (v && typeof v === 'object' ? (v as Doc).id : v)
 
 /** The session this caller created (an Admin: any; a token: sessions of that token); 404 for anything else (no existence leak across Workspaces, members or tokens). */

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import { LinkPending } from './LinkPending'
 import { PresenceDot } from './Presence'
-import { mainItems, settingsItem, type NavItem } from './nav-items'
+import { mainItems, ownerItems, settingsItem, type NavItem } from './nav-items'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, useSidebar } from './ui/sidebar'
 import { UserMenu } from './UserMenu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -47,7 +47,7 @@ export function AppSidebar({ email, admin, workspaces, current, needsYou, drafts
       <SidebarContent>
         <SidebarGroup>
           <nav aria-label="Main">
-            <SidebarMenu>{(minimal ? [settingsItem('Profile')] : mainItems({ hasKnowledge, admin })).map(item)}</SidebarMenu>
+            <SidebarMenu>{(minimal ? ownerItems() : mainItems({ hasKnowledge, admin })).map(item)}</SidebarMenu>
           </nav>
         </SidebarGroup>
       </SidebarContent>

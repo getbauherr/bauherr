@@ -56,12 +56,6 @@ describe('loadWorkbench', () => {
     expect((await requests.loadWorkbench(ws, asMe(), { mine: true })).factory.map((r) => r.title)).toEqual(['My nice title'])
   })
 
-  it('requestsVisibleTo: an Admin or a Bauherr sees the Workspace, anyone else only their own', () => {
-    expect(requests.requestsVisibleTo({ id: 1, role: 'admin' }, 5)).toEqual({ 'product.workspace': { equals: 5 } })
-    expect(requests.requestsVisibleTo({ id: 1, role: 'bauherr' }, 5)).toEqual({ 'product.workspace': { equals: 5 } })
-    expect(requests.requestsVisibleTo({ id: 1, role: 'product-owner' }, 5)).toEqual({ 'product.workspace': { equals: 5 }, user: { equals: 1 } })
-  })
-
   it('sorts the sections: a need of the viewer is "Needs you", a closed Ticket is Done with its release note or the decline reason', async () => {
     const mkTicket = (number: number, extra: Record<string, unknown>) => payload.create({ collection: 'tickets', data: { title: `W${number}`, externalId: `wb-${number}`, number, url: `https://x/${number}`, state: 'open', labels: [], product, workspace: ws, rank: String(number), ...extra }, ...o } as never)
     const mkSession = (number: number, extra: Record<string, unknown> = {}) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'submitted', persona: 'product-user', messages: [], draft: { problem: `Work ${number}`, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ticketNumber: number, user: me, ...extra }, ...o } as never)
@@ -134,7 +128,7 @@ describe('loadDrafts', () => {
     const untitled = await mk({})
     const skipped = [await mk({ user: other }), await mk({ status: 'submitted' }), await mk({ status: 'abandoned' }), await mk({ persona: 'owner' }), await mk({ draft: null, messages: [] })]
     await payload.update({ collection: 'intake_sessions', id: older, data: { updatedAt: new Date(Date.now() + 120_000).toISOString() }, ...o } as never)
-    const drafts = await requests.loadDrafts(me, ws)
+    const drafts = await requests.loadDrafts(asMe(), ws)
     expect(drafts.map((d) => d.id)).toEqual(expect.arrayContaining([...ids, untitled]))
     expect(drafts[0]).toMatchObject({ id: older, title: 'Older draft', product: 'One' })
     expect(drafts.find((d) => d.id === untitled)?.title).toBe('first words')

@@ -11,6 +11,7 @@ import { gateOn } from './mode'
 import { dequeueBeforeChange, isQueue, isTrain } from './merge-mode'
 import { EXPEDITE_LABEL, EXPEDITE_PROPOSED, MAX_REVIEW_ROUNDS, NEEDS_REFINEMENT } from './needs-you'
 import { logins, storeOpenCritical } from './gates'
+import { canSeeProduct, isProductOwner } from './people'
 import { decrypt } from './secrets'
 import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { fakeOwnerModel } from './intake/fake'
@@ -68,6 +69,17 @@ const loadIn = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId
   if (workspaceId !== undefined && String(id(t.workspace)) !== String(workspaceId)) throw new NotInWorkspace()
   return t
 }
+
+/** The Ticket a comment goes to. The `tickets` collection is closed to a Product owner, so theirs is read here, and only when its Product is assigned to them (anything else is `NotInWorkspace`, as for a Ticket of another Workspace). */
+const loadForComment = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId?: TicketId): Promise<Doc> => {
+  if (!isProductOwner(user)) return loadIn(payload, user, ticket, workspaceId)
+  const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
+  if (!t || (workspaceId !== undefined && String(id(t.workspace)) !== String(workspaceId)) || !canSeeProduct(user, { id: id(t.product), workspace: id(t.workspace) })) throw new NotInWorkspace()
+  return t
+}
+
+/** A Product owner has no forge login of the factory's account: the factory posts for them and names them, so the issue shows who wrote it. */
+const asWritten = (user: Doc, text: string): string => (isProductOwner(user) ? `${String(user.email).split('@')[0]} (Product owner):${text ? ` ${text}` : ''}` : text)
 
 /** A rank longer than this triggers a rebalance of the Workspace. */
 export const MAX_RANK_LENGTH = 12
@@ -227,7 +239,7 @@ const commentMedia = (t: Doc, ...more: Doc[]) => ({ and: [{ product: { equals: i
 
 /** Posts a Ticket comment from the UI: `body` plus one `![name](link)` line per uploaded image. The images are marked sent before the forge call and released again when it fails, so a retry works and the daily prune never deletes a posted image. Returns the image links. */
 export const postComment = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadForComment(payload, user, a.ticket, a.workspaceId)
   const text = a.body.trim()
   if (!text && !a.mediaIds.length) throw new CommentRefused('write a comment or add an image')
   if (a.mediaIds.length > mediaLimits().maxPerSession) throw new CommentRefused(`at most ${mediaLimits().maxPerSession} images per comment`)
@@ -238,7 +250,7 @@ export const postComment = async (payload: Payload, user: Doc, a: { ticket: Tick
   const { ts, n } = await sourceOf(payload, t)
   await mark(true)
   try {
-    await ts.comment(n, [text, ...links.map((l) => `![${l.name}](${l.url})`)].filter(Boolean).join('\n\n'))
+    await ts.comment(n, [asWritten(user, text), ...links.map((l) => `![${l.name}](${l.url})`)].filter(Boolean).join('\n\n'))
   } catch (e) {
     await mark(false).catch(() => undefined)
     throw e
@@ -248,7 +260,7 @@ export const postComment = async (payload: Payload, user: Doc, a: { ticket: Tick
 
 /** The docked chat's direct comment path: images the person pasted into the chat composer (stored without a Ticket by `/api/chat/media`, not yet used) become this Ticket's comment images, then `postComment` posts text and images as it does for the comment box. */
 export const postCommentFromChat = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadForComment(payload, user, a.ticket, a.workspaceId)
   if (a.mediaIds.length) {
     for (const m of (await payload.find({ collection: 'media', where: { and: [{ id: { in: a.mediaIds } }, { workspace: { equals: id(t.workspace) } }, { product: { exists: false } }, { session: { exists: false } }, { attached: { equals: false } }] }, pagination: false, depth: 0, overrideAccess: true })).docs) await payload.update({ collection: 'media', id: m.id, data: { product: id(t.product), ticketNumber: t.number }, overrideAccess: true })
   }
@@ -1530,7 +1542,7 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
 /** Discards an open Product-user session of the caller (the New request page's resume list). */
 export const abandonIntake = async (payload: Payload, user: Doc, sessionId: TicketId): Promise<void> => {
   const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
-  if (!s || s.persona !== 'product-user' || s.status !== 'open' || String(id(s.user)) !== String(user.id)) throw new NotInWorkspace()
+  if (!s || s.persona !== 'product-user' || s.status !== 'open' || String(id(s.user)) !== String(user.id) || (isProductOwner(user) && !canSeeProduct(user, { id: id(s.product), workspace: id(s.workspace) }))) throw new NotInWorkspace()
   await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'abandoned' }, overrideAccess: true })
 }
 

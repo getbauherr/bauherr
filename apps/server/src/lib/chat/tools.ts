@@ -8,6 +8,7 @@ import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
 import { NotInWorkspace, postComment, submitIntake } from '../actions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
+import { canSeeProduct, isProductOwner } from '../people'
 import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
 type Doc = Record<string, any>
@@ -41,6 +42,8 @@ type Entry = {
   hidden?: boolean
   /** Offered to Admins only. */
   admin?: boolean
+  /** Open to a Product owner (and checked against their assignment); every tool without it is closed to them, in the tool list and when it runs. */
+  po?: true
   describe?: (c: Ctx, input: Doc) => Promise<Card>
 }
 
@@ -48,7 +51,7 @@ type Entry = {
 const findByNumber = async (c: Ctx, number: unknown, product?: unknown): Promise<Resolved & { ticket?: Doc }> => {
   if (!Number.isInteger(number)) return { reply: 'ticket must be a Ticket number (integer)', ok: false }
   const { docs } = await c.payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: c.workspace } }, { number: { equals: number } }] }, limit: 20, depth: 1, overrideAccess: true })
-  const hits = (docs as Doc[]).filter((t) => !product || t.product?.slug === product)
+  const hits = (docs as Doc[]).filter((t) => (!product || t.product?.slug === product) && (!isProductOwner(c.user) || canSeeProduct(c.user, { id: id(t.product), workspace: c.workspace! })))
   if (!hits.length) return { reply: `No Ticket #${number}${product ? ` in Product ${product}` : ''} in this Workspace.`, ok: false }
   if (hits.length > 1) return { reply: JSON.stringify({ ambiguous: `Ticket #${number} exists in several Products; ask which one and call again with product.`, candidates: hits.map((t) => ({ number: t.number, title: t.title, product: t.product?.slug })) }), ok: true }
   return { input: {}, ticket: hits[0] }
@@ -165,7 +168,15 @@ const frontierIn = async (c: Ctx, a: Doc) => {
   return rows.filter((r) => mine.has(r.ticket)).map(({ ticket: _id, labels: _l, ...r }) => r)
 }
 
+/** The requests the person sees with their plain status and who each waits for (a Product owner: those of their Products). */
+const requestStatus = async (c: Ctx) => {
+  const { loadWorkbench } = await import('../../app/(app)/lib/requests')
+  const wb = await loadWorkbench(Number(c.workspace), c.user)
+  return { requests: [...wb.needs, ...wb.factory, ...wb.done].slice(0, 30).map((r) => ({ request: r.id, title: r.title, product: r.product, ticket: r.ticket?.number ?? null, status: r.status, waitsFor: r.waits })) }
+}
+
 const ENTRIES: Record<string, Entry> = {
+  request_status: { po: true, description: 'The requests the person can see, each with its plain-word status and who it waits for. Use it for "where is my request?".', schema: schema({}), kind: 'read', local: requestStatus },
   factory_status: { description: 'The factory at a glance: every stage in workflow order with its ticket count and WIP limit, and the open Tickets that need the person (number, title, what is needed).', schema: schema({}), kind: 'read', local: (c) => factoryStatus(c.workspace!) },
   list_tickets: {
     description: 'List Tickets of this Workspace (newest first, at most 50): number, title, product, stage, status, what is needed, waiting reason, blockers.',
@@ -231,6 +242,7 @@ const ENTRIES: Record<string, Entry> = {
     describe: gateCard((t) => `Request changes on ${ticketLine(t)}`, 'The Ticket goes back to Build with your note; a Build Run starts', { extra: note }),
   },
   post_comment: {
+    po: true,
     description: 'Post a comment on the Ticket\'s issue. Draft the text from what the person asked for; they confirm on a card first. Images are not part of this tool (the person pastes them with /comment).',
     schema: withTicket({ body: prop('The comment text, markdown') }, ['body']),
     kind: 'confirm',
@@ -242,12 +254,13 @@ const ENTRIES: Record<string, Entry> = {
     describe: async (c, input) => gateCard((t) => `Comment on ${ticketLine(t)}`, 'The text is posted as a comment on the issue', { extra: (i) => [{ label: 'Comment', value: String(i.body ?? '').slice(0, 600) }] })(c, input),
   },
   submit_request: {
+    po: true,
     schema: schema({ session: { type: 'integer' }, expect: { type: 'integer' } }, ['session']),
     kind: 'confirm',
     hidden: true,
     local: async (c, i) => {
       const s = (await c.payload.findByID({ collection: 'intake_sessions', id: i.session, ...o }).catch(() => null)) as Doc | null
-      if (!s || s.persona !== 'product-user' || String(id(s.user)) !== String(c.user.id) || String(id(s.workspace)) !== String(c.workspace)) throw new NotInWorkspace()
+      if (!s || s.persona !== 'product-user' || String(id(s.user)) !== String(c.user.id) || String(id(s.workspace)) !== String(c.workspace) || (isProductOwner(c.user) && !canSeeProduct(c.user, { id: id(s.product), workspace: c.workspace! }))) throw new NotInWorkspace()
       return submitIntake(c.payload, s.id, i.expect)
     },
   },
@@ -287,7 +300,10 @@ const ENTRIES: Record<string, Entry> = {
 
 const mcp = (name: string) => mcpTools.find((t) => t.name === name)!
 
-const offered = (e: Entry | undefined, user: { role?: string | null }): e is Entry => !!e && !e.hidden && (!e.admin || user.role === 'admin')
+const offered = (e: Entry | undefined, user: { role?: string | null }): e is Entry => !!e && !e.hidden && (!e.admin || user.role === 'admin') && (!isProductOwner(user) || !!e.po)
+
+/** What each chat tool is open to, for the guard test: `po` is open to a Product owner, `hidden` is issued by the server only. */
+export const chatToolAccess = (): Record<string, { po: boolean; hidden: boolean }> => Object.fromEntries(Object.entries(ENTRIES).map(([name, e]) => [name, { po: !!e.po, hidden: !!e.hidden }]))
 
 /** The chat tool set this person may use (Admin-only tools only for Admins, server-issued ones never); the client picks widgets by `kind`, never by name. */
 export const chatTools = (user: { role?: string | null }): ChatTool[] =>
@@ -320,6 +336,7 @@ const audit = async (c: Ctx, name: string, input: unknown, ok: boolean, t0: numb
 export const runChatTool = async (c: Ctx, name: string, input: Doc): Promise<unknown> => {
   const e = ENTRIES[name]
   if (!e) throw new Error(`unknown tool ${name}`)
+  if (isProductOwner(c.user) && !e.po) throw new Error(`forbidden: ${name} is not open to this account`)
   if (!e.local) {
     const out = await callTool(c, name, input)
     return e.fence ? fenceTicket(out) : out

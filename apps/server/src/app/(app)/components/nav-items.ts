@@ -14,6 +14,9 @@ export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admi
   { href: '/insights', label: 'Insights', Icon: ChartColumn, match: (p: string) => p.startsWith('/insights') },
 ]
 
+/** The sidebar of a Product owner: Requests and their profile, nothing else. */
+export const ownerItems = (): NavItem[] => [mainItems({ hasKnowledge: false, admin: false }).find((i) => i.href === '/requests')!, settingsItem('Profile')]
+
 /** The sidebar Settings link opens the first page everyone may open. */
 export const settingsItem = (label = 'Settings'): NavItem => ({ href: '/settings/profile', label, Icon: Settings, match: (p) => p.startsWith('/settings') })
 

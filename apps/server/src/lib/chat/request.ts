@@ -6,6 +6,7 @@ import { cardOf, type CardData } from '../intake/card'
 import { KIND_LABEL, SEND_TEXT } from '../intake/kinds'
 import { CARD_FIELDS, KINDS, cardColumns, emptyDraft, type CardField, type Draft, type Kind } from '../intake/engine'
 import { laneOn } from '../expedite'
+import { canSeeProduct, isProductOwner, productsVisibleTo } from '../people'
 import { mediaLimits, mediaUrl, type ImageMime } from '../intake/media'
 import { advanceIntake } from '../intake/turn'
 import type { ChatEvent, ChatInput } from './engine'
@@ -22,13 +23,14 @@ const idOf = (v: unknown): number => Number(v && typeof v === 'object' ? (v as {
 export type RequestInfo = { session: number | null; sent: boolean; product: string | null; productId: number | null; products: { id: number; name: string }[] }
 
 const productsOf = async (w: Who): Promise<{ id: number; name: string }[]> =>
-  (await w.payload.find({ collection: 'products', where: { workspace: { equals: w.workspace } }, sort: 'name', pagination: false, select: { name: true }, ...o })).docs.map((p: Doc) => ({ id: p.id, name: p.name }))
+  (await w.payload.find({ collection: 'products', where: productsVisibleTo(w.user, w.workspace), sort: 'name', pagination: false, select: { name: true }, ...o })).docs.map((p: Doc) => ({ id: p.id, name: p.name }))
 
 /** A request session of this person in this Workspace (open or sent), else null. */
 const ownSessionOf = async (w: Who, id: unknown): Promise<Doc | null> => {
   if (!/^\d+$/.test(String(id))) return null
   const s = (await w.payload.findByID({ collection: 'intake_sessions', id: Number(id), depth: 1, overrideAccess: true }).catch(() => null)) as Doc | null
-  return s && s.persona === 'product-user' && ['open', 'submitted'].includes(s.status) && idOf(s.user) === Number(w.user.id) && idOf(s.workspace) === w.workspace ? s : null
+  const seen = s && (!isProductOwner(w.user) || canSeeProduct(w.user, { id: idOf(s.product), workspace: w.workspace }))
+  return s && seen && s.persona === 'product-user' && ['open', 'submitted'].includes(s.status) && idOf(s.user) === Number(w.user.id) && idOf(s.workspace) === w.workspace ? s : null
 }
 
 /** What the dock needs of a request thread: its session, Product and (while no Product is chosen) the Products to choose from; null for any other thread. */
@@ -127,7 +129,7 @@ export const requestCard = async (w: Who, id: unknown): Promise<CardData | null>
 export const cardData = async (w: Who, s: Doc, editable: boolean): Promise<CardData> => {
   const media = (await w.payload.find({ collection: 'media', where: { session: { equals: s.id } }, sort: 'id', pagination: false, select: { name: true, mime: true, mimeType: true }, ...o })).docs as Doc[]
   const followUp = s.followUpOf ? ((await w.payload.findByID({ collection: 'intake_sessions', id: idOf(s.followUpOf), depth: 0, select: { ticketNumber: true }, overrideAccess: true }).catch(() => null)) as Doc | null)?.ticketNumber ?? null : null
-  return cardOf(s, { editable, images: media.map((m) => ({ id: m.id, name: m.name, url: mediaUrl(m.id, (m.mime ?? m.mimeType) as ImageMime) })), fastLane: await laneOn(w.payload, w.workspace), maxImages: mediaLimits().maxPerSession, products: editable ? await productsOf(w) : [], followUp })
+  return cardOf(s, { editable, images: media.map((m) => ({ id: m.id, name: m.name, url: isProductOwner(w.user) ? `/intake/api/media/${m.id}` : mediaUrl(m.id, (m.mime ?? m.mimeType) as ImageMime) })), fastLane: await laneOn(w.payload, w.workspace), maxImages: mediaLimits().maxPerSession, products: editable ? await productsOf(w) : [], followUp })
 }
 
 export type CardPatch = Partial<{ title: string; type: Kind; urgency: 'normal' | 'urgent'; urgent_reason: string; problem: string; context: string; acceptance_criteria: string[]; product: number }>

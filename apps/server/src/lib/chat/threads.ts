@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import { canSeeProduct, isProductOwner } from '../people'
 
 type Doc = Record<string, any>
 /** The acting person in their current Workspace; every function below treats a thread of anyone else as not found. */
@@ -27,7 +28,7 @@ export const ownThread = async (w: Who, id: string | number): Promise<Doc | null
 }
 
 export const listThreads = async (w: Who, { archived = false }: { archived?: boolean } = {}): Promise<Meta[]> =>
-  (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { archivedAt: { exists: archived } }] }, sort: '-lastMessageAt', limit: LIST_LIMIT, pagination: false, ...o })).docs.map(meta)
+  (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { archivedAt: { exists: archived } }, ...(isProductOwner(w.user) ? [{ or: [{ request: { equals: true } }, { ticket: { exists: true } }] }] : [])] }, sort: '-lastMessageAt', limit: LIST_LIMIT, pagination: false, ...o })).docs.map(meta)
 
 export const createThread = async (w: Who, context?: { path: string; label: string }): Promise<Meta> =>
   meta(await w.payload.create({ collection: 'chat_threads', data: { owner: w.user.id, workspace: w.workspace, context, lastMessageAt: new Date().toISOString() }, ...o }))
@@ -35,8 +36,8 @@ export const createThread = async (w: Who, context?: { path: string; label: stri
 /** The person's one thread of a Ticket of this Workspace, created (named "#<number> <title>") or brought back from the archive; null when the Ticket is not in the Workspace. */
 export const ticketThread = async (w: Who, ticketId: number | string): Promise<Meta | null> => {
   if (!/^\d+$/.test(String(ticketId))) return null
-  const t = (await w.payload.find({ collection: 'tickets', where: { and: [{ id: { equals: Number(ticketId) } }, { workspace: { equals: w.workspace } }] }, limit: 1, select: { number: true, title: true }, ...o })).docs[0] as Doc | undefined
-  if (!t) return null
+  const t = (await w.payload.find({ collection: 'tickets', where: { and: [{ id: { equals: Number(ticketId) } }, { workspace: { equals: w.workspace } }] }, limit: 1, select: { number: true, title: true, product: true }, ...o })).docs[0] as Doc | undefined
+  if (!t || (isProductOwner(w.user) && !canSeeProduct(w.user, { id: typeof t.product === 'object' ? t.product.id : t.product, workspace: w.workspace }))) return null
   const find = async () => (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { ticket: { equals: t.id } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
   const found = (await find()) ?? (await w.payload
     .create({ collection: 'chat_threads', data: { owner: w.user.id, workspace: w.workspace, ticket: t.id, title: `#${t.number} ${t.title}`.slice(0, 120), context: { path: `/tickets/${t.id}`, label: `Ticket #${t.number} ${t.title}` }, lastMessageAt: new Date().toISOString() }, ...o })
