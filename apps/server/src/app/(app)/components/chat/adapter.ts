@@ -19,8 +19,6 @@ export type Artifact =
   | { kind: 'request-card'; session: number | null }
   /** The interview's option buttons under its question. */
   | { kind: 'options'; options: { label: string; recommended: boolean }[] }
-  /** The owner questions of a Ticket thread (first message; the card loads them itself). */
-  | { kind: 'questions'; ticket: number }
 export type Decision = { approved: boolean; reason?: string }
 export type Outcome = { ok: boolean; text: string; href?: string }
 export type Usage = { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number }

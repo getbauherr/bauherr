@@ -31,7 +31,7 @@ type Props = {
   canExpedite?: boolean
   /** The prepared Decision's ask: the bar's sentence, so the Inbox and this page say the same. */
   ask?: string | null
-  /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary opens the docked chat on them. */
+  /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary jumps to the refinement panel. */
   answerable?: number
 }
 
@@ -77,7 +77,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       case 'rerun': return { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run!)}><FormPending /></form> }
       case 'link': {
         const l = action as Extract<Action, { kind: 'link' }>
-        if (l.href === '#answer') return { node: <DockOpen ticket={ticket} mode="answer">{l.label ?? verb}</DockOpen> }
+        if (l.href === '#answer') return { node: <Button asChild data-testid="answer-questions"><a href="#refine">{l.label ?? verb}</a></Button> }
         return { primary: { label: l.label ?? verb, href: l.href, ...(l.newTab ? { newTab: true } : {}) } }
       }
     }
@@ -89,8 +89,8 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
       {secondary}
       {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</Post>}
-      {answerable > 0 && !step.node && <DockOpen ticket={ticket} mode="answer" variant="outline">Answer {answerable} question{answerable === 1 ? '' : 's'}</DockOpen>}
-      <DockOpen ticket={ticket} mode="comment" variant="outline">Comment</DockOpen>
+      {answerable > 0 && !step.node && <Button asChild variant="outline" data-testid="answer-questions"><a href="#refine">Answer {answerable} question{answerable === 1 ? '' : 's'}</a></Button>}
+      <DockOpen ticket={ticket} variant="outline">Comment</DockOpen>
       {step.form}
       {step.node}
     </NextStepBar>

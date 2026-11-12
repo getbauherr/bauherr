@@ -58,6 +58,16 @@ const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 
 await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
 await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
 await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
+// refine-conversation.spec.ts: a Workspace of its own (`bauherr-ws=refine`), an Admin only that spec signs in as, and one Ticket held by Triage with five open points asked in a succeeded Triage Run of a session. Twin in `src/lib/fake-forge.ts`.
+const refineWs = (await ensure('workspaces', { slug: 'refine' }, { name: 'Refine Lab', slug: 'refine', wipLimits: {} })).id
+await ensure('bauherren', { email: 'refine-admin@example.com' }, { email: 'refine-admin@example.com', password, role: 'admin', githubLogin: 'e2e-refine-admin' })
+const refineGithub = (await ensure('connections', { name: 'GitHub Refine' }, { name: 'GitHub Refine', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: refineWs })).id
+const refineProduct = (await ensure('products', { slug: 'refine-app' }, { name: 'Refine App', slug: 'refine-app', workspace: refineWs })).id
+await ensure('repositories', { fullName: 'acme/refine' }, { fullName: 'acme/refine', product: refineProduct, workspace: refineWs })
+await ensure('ticket_sources', { repo: 'acme/refine' }, { repo: 'acme/refine', product: refineProduct, connection: refineGithub, cursor: '2026-10-30T09:00:00Z', workspace: refineWs })
+const refineTicket = (await ensure('tickets', { externalId: 'e2e-refine-1' }, { title: 'Export invoices as a file', externalId: 'e2e-refine-1', number: 1, url: 'https://github.com/acme/refine/issues/1', state: 'open', labels: ['bauherr:needs-refinement'], stage: null, product: refineProduct, workspace: refineWs, rank: '000040' })).id
+const refineSession = (await ensure('agent_sessions', { publicId: 'ses_e2e_refine' }, { publicId: 'ses_e2e_refine', role: 'orchestrator', label: 'orchestrator-refine@laptop', clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', connectedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), workspace: refineWs })).id
+await ensure('runs', { ticket: refineTicket, stage: 'triage', status: 'succeeded' }, { ticket: refineTicket, stage: 'triage', status: 'succeeded', mode: 'session', executor: 'session', role: 'orchestrator', session: refineSession, sessionLabel: 'orchestrator-refine@laptop', model: 'claude-sonnet-4-5', workspace: refineWs })
 const seeded = new Set<number>()
 const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) => {
   if (seeded.has(n)) throw new Error(`seed-e2e: Ticket number ${n} seeded twice`)
@@ -310,6 +320,23 @@ const released = await ticket(605, 'Dark theme for the invoice page', 'done', pr
 await mine('Dark theme for the invoice page', 'submitted', kinded(605, 'Dark theme for the invoice page', 'feature'))
 const sentAt = (m: number) => new Date(now - m * 6e4).toISOString()
 for (const [at, stage, kind, phase, cause] of [[600, 'triage', 'triage', 'working', 'poll'], [580, 'plan', 'plan', 'queued', 'run:queued'], [560, 'plan', 'plan', 'queued', 'gate:approve:plan'], [500, 'review', 'review', 'working', 'run:claimed'], [400, 'release', 'release', 'ci', 'release:on_staging'], [380, 'release', 'release', 'queued', 'gate:accept:staging'], [300, 'done', 'done', 'closed', 'poll']] as const) await ensure('ticket_events', { ticket: released, cause, at: sentAt(at) }, { ticket: released, workspace, at: sentAt(at), stage, stageKind: kind, phase, cause })
+// product-owner-view.spec.ts: a Workspace of its own with two Products (Lab Alpha, Lab Beta), a Product owner assigned to Lab Alpha only and a Bauherr of the Workspace for comparison (nothing else signs in as them). Each Product has one Ticket (#1, in Build), one sent request and one review artifact; the Product owner also has a draft. Twins in `src/lib/fake-forge.ts` (acme/lab-alpha #1, acme/lab-beta #1).
+const lab = (await ensure('workspaces', { slug: 'po-lab' }, { name: 'PO Lab', slug: 'po-lab', wipLimits: {} })).id
+const labHub = (await ensure('connections', { name: 'GitHub Lab' }, { name: 'GitHub Lab', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: lab })).id
+const labBauherr = (await ensure('bauherren', { email: 'po-view-bauherr@example.com' }, { email: 'po-view-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: lab }], githubLogin: 'e2e-po-view' })).id
+for (const [slug, name, repo] of [['lab-alpha', 'Lab Alpha', 'acme/lab-alpha'], ['lab-beta', 'Lab Beta', 'acme/lab-beta']] as const) {
+  const labProduct = (await ensure('products', { slug }, { name, slug, workspace: lab, stagingUrl: `https://staging.example.com/${slug}` })).id
+  await ensure('repositories', { fullName: repo }, { fullName: repo, product: labProduct, workspace: lab })
+  await ensure('ticket_sources', { repo }, { repo, product: labProduct, connection: labHub, cursor: '2026-10-30T09:00:00Z', workspace: lab })
+  const labTicket = (await ensure('tickets', { externalId: `e2e-${slug}-1` }, { title: `${name} ticket`, externalId: `e2e-${slug}-1`, number: 1, url: `https://github.com/${repo}/issues/1`, state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: labProduct, workspace: lab, rank: '000900' })).id
+  await ensure('runs', { ticket: labTicket, stage: 'build', status: 'running' }, { ticket: labTicket, stage: 'build', status: 'running', mode: 'autonomous', workspace: lab, model: 'claude-lab-secret-model', costUsd: 1.234 })
+  await ensure('artifacts', { title: `${name} report` }, { ticket: labTicket, workspace: lab, kind: 'report', title: `${name} report`, text: `All checks of ${name} are green`, sha: 'lab1234' })
+  await ensure('intake_sessions', { title: `${name} request` }, { product: labProduct, workspace: lab, status: 'submitted', persona: 'product-user', messages: [], user: labBauherr, title: `${name} request`, kind: 'feature', ticketNumber: 1, draft: { title: `${name} request`, problem: `${name} needs a change`, context: '', acceptance_criteria: ['The change works'], type: 'feature', links: [] } })
+  if (slug === 'lab-alpha') {
+    const labOwner = (await ensure('bauherren', { email: 'po-view@example.com' }, { email: 'po-view@example.com', password, role: 'product-owner', assignments: [{ workspace: lab, scope: 'products', products: [labProduct] }] })).id
+    await ensure('intake_sessions', { title: 'Lab Alpha draft' }, { product: labProduct, workspace: lab, status: 'open', persona: 'product-user', user: labOwner, title: 'Lab Alpha draft', kind: 'bug', messages: [{ role: 'user', content: 'Something is off' }], draft: { title: 'Lab Alpha draft', problem: 'Something is off', context: '', acceptance_criteria: [], type: 'bug', links: [] } })
+  }
+}
 // No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined

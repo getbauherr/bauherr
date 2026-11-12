@@ -239,6 +239,8 @@ export const STALE_JOB_MS = 60 * 60_000
 
 /** Scheduled poller tasks, derived from `TASKS`; agent Runs (`run-stage`, `reconcile-costs`) have no schedule and are never listed. */
 export const scheduledSlugs = (): string[] => TASKS.filter((t) => t.schedule?.length).map((t) => t.slug)
+/** Every scheduled task with its cron line (seconds first). */
+export const scheduledTasks = (): { slug: string; cron: string }[] => TASKS.flatMap((t) => (t.schedule?.[0] ? [{ slug: t.slug, cron: t.schedule[0].cron }] : []))
 
 /** Adds every task slug to the two Payload job enums (idempotent), so a new task needs no `ALTER TYPE` migration. Runs on init; skips an enum that does not exist yet (schema not migrated, the migrations create it). */
 export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.slug)): Promise<void> => {

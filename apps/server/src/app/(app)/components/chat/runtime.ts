@@ -76,16 +76,6 @@ const withPending = (items: HistoryItem[], pending: Pending | null): HistoryItem
   return [...items, { parentId: last?.id ?? null, message } as HistoryItem]
 }
 
-const QUESTIONS = (ticket: number) => `questions-${ticket}`
-
-/** A Ticket thread starts with the card of the owner's open questions (not stored; it loads them itself and hides when none are open); the first stored message hangs off it. */
-const withQuestions = (items: HistoryItem[], ticket: number): HistoryItem[] => {
-  const id = QUESTIONS(ticket)
-  const part = { type: 'tool-call' as const, toolCallId: id, toolName: 'owner_questions', args: {}, argsText: '{}', artifact: { kind: 'questions', ticket } satisfies Artifact }
-  const message = { id, role: 'assistant', createdAt: new Date(0), content: [part], status: { type: 'complete', reason: 'unknown' }, metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { synthetic: true } } }
-  return [{ parentId: null, message } as HistoryItem, ...items.map((i) => (i.parentId ? i : ({ ...i, parentId: id } as HistoryItem)))]
-}
-
 const PRODUCT = (thread: string) => `product-${thread}`
 
 /** A request thread that is not sent starts with its cards (not stored): the Product to choose while that is still possible, and the request card; the first stored message hangs off them. */
@@ -111,7 +101,7 @@ const listAdapter = (hooks: RefObject<Hooks>): RemoteThreadListAdapter => {
       const d = await api.messages(id)
       hooks.current.onLoaded(id, d.context, d.ticket, d.request)
       const items = withPending(d.messages.map(decode), d.pending)
-      return { messages: withoutOrphans(d.ticket ? withQuestions(items, d.ticket) : d.request && !d.request.sent ? withCards(items, id, d.request) : items) }
+      return { messages: withoutOrphans(d.request && !d.request.sent ? withCards(items, id, d.request) : items) }
     },
     append: async (entry) => {
       const id = await remoteId(item())

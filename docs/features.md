@@ -44,7 +44,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 |---|---|---|---|
 | Inbox | One prepared card per decision: the ask, a recommendation, the facts and the real options; grouped by checkpoint, filtered by Product | `/inbox` | Live |
 | Approve plan | Approve the plan, refused while a critical decision is open | Inbox card, Ticket page, chat | Live |
-| Answer questions and decisions | The owner answers Triage's questions in a chat with recommended defaults | `/tickets/[id]`, Inbox | Live |
+| Answer questions and decisions | The owner refines the Ticket in one conversation embedded in the Ticket page and the Inbox card: open points pinned beside it, options and free text, who speaks on every message, a summary with the text changes, "Send to planning" | `/tickets/[id]`, Inbox | Live |
 | Accept on staging (optional), approve production | Accept a change on staging, then approve the deploy | Inbox card, Ticket page, chat | Live |
 | Review round cap | Give the review one more round, or stop | Inbox card, Ticket page | Live |
 | Request changes, back to Build or backlog | Send a Ticket back with a note | Ticket page, Inbox | Live |
@@ -70,6 +70,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Request card | Title, type (Bug, Feature, Change, Question), product, urgency, what is wrong or wanted, "It is done when" and screenshots; the assistant fills it, every field is editable; "Send to the factory" says what is missing | Top of `/requests/[id]` for a draft and in the dock thread | Live |
 | Requests workbench | Four sections with counts: Needs you, Drafts, In the factory (plain-word status and who it waits for; order your own by drag or Move up/down), Done (release note, Report a problem); filters Product and Type; a Bauherr also sees By and Mine | `/requests` | Live |
 | Request page | The card, a plain-word timeline, who it waits for, the Tickets with progress, comments through the dock | `/requests/[id]` | Live |
+| Product owner view | A Product owner lands on Requests and sees only their assigned Products: the four sections, a request and a reduced Ticket page (card, plain-word path and timeline, who it waits for, proof for review, release note, comments). No Runs, cost, tokens, plan, settings, Inbox, dock or question card; a Ticket of another Product is a 404. Writing, answering and accepting come later | `/requests`, `/requests/[id]`, `/tickets/[id]`; [spec/people.md](spec/people.md) | Live |
 | Website widget | An embeddable request form per Product with its own token | Product page, tab Widget | Live |
 | Widget rate limit per token | Sessions per hour of a token (default 20) | Product page, tab Widget | Live |
 

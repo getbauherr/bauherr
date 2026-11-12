@@ -98,6 +98,25 @@ export const decisionsSectionHasRows = (plan: string): boolean => /^\s*[-*|]/m.t
 export const parseAnswers = (comment: string): Record<string, string> =>
   Object.fromEntries([...comment.matchAll(/^\s*(?:[-*]\s+)?(D\d+):\s*(.+?)\s*$/gm)].map((m) => [m[1]!, m[2]!]))
 
+/** The answer line of a point the conversation found pointless: `D<n>: (no longer needed) <reason>`; it counts as answered everywhere a sheet is read. */
+export const DROPPED = '(no longer needed)'
+export const dropLine = (reason: string): string => `${DROPPED} ${reason}`.trim()
+/** `{ dropped, text }` of a stored answer: the reason of a dropped point, or the person's words. */
+export const readAnswer = (a: string): { dropped: boolean; text: string } => (a.startsWith(DROPPED) ? { dropped: true, text: a.slice(DROPPED.length).trim() } : { dropped: false, text: a })
+
+/** A row in the canonical shape `parseDecisions` reads back. Options are one line each, without the `;` and `. ` the parser splits at. */
+export const formatDecision = (d: Decision): string => {
+  const clean = (v: string) => v.replace(/\s+/g, ' ').replace(/;/g, ',').replace(/\?(?=\s)/g, ',').replace(/\.\s/g, ' - ').replace(/\.$/, '').trim()
+  const alts = d.options.filter((o) => o !== d.default).map(clean)
+  return `- **${d.id}** ${clean(d.title)}${/[?]$/.test(clean(d.title)) ? '' : '?'}${alts.length ? ` Alternatives: ${alts.join('; ')}.` : ''} Default: ${clean(d.default)}.${d.why ? ` Why: ${clean(d.why)}.` : ''} critical: ${d.critical}.`
+}
+
+/** Rows the conversation added: the `## Decisions` block of the decisions Comment (the sheet itself is the agent's and never edited). */
+export const addedOf = (comments: Commentish[]): Decision[] => {
+  const c = answersOf(comments)
+  return c ? parseDecisions(c.body) : []
+}
+
 export const unansweredCritical = (decisions: Decision[], answers: Record<string, string>): Decision[] =>
   decisions.filter((d) => d.critical && !answers[d.id])
 

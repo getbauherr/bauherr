@@ -20,8 +20,12 @@ _Avoid_: Project (a repository in GitLab, a board container in Planka, a board i
 A person who is a member of a Workspace and owns all its Products: configures the factory for them and approves work at gates; owns the factory, risk, spend and production. Only a Bauherr can pass a gate today.
 _Avoid_: Operator, project owner, owner (bare; say Bauherr, Product owner or Product user)
 
+**Open point**:
+One question of a Ticket's decision sheet, or one the refinement conversation added, with its reason, options and recommended default. It is `open`, `answered` or `dropped` (no longer needed); the owner settles them in the refinement conversation and sends the Ticket on when none is open. Same rows as the Decisions of a plan; "critical" ones hold the plan.
+_Avoid_: Question card, decision row (say Open point; Decision is the recorded answer)
+
 **Product owner**:
-The person accountable for a Product's requirements: files requests for it and answers product questions about it. Has an account with a login (role `product-owner`, ranks below the Bauherr) that an Admin assigns to a Workspace or to single Products; until the pages for it are built it reaches only its own profile, and everything that needs a decision at a gate still goes to a Bauherr. See `docs/spec/people.md`.
+The person accountable for a Product's requirements: files requests for it and answers product questions about it. Has an account with a login (role `product-owner`, ranks below the Bauherr) that an Admin assigns to a Workspace or to single Products; it works in Requests and the reduced Ticket page of the Products assigned to it, and everything that needs a decision at a gate still goes to a Bauherr until the decisions slice. See `docs/spec/people.md`.
 _Avoid_: Project owner, owner (bare)
 
 **Admin**:

@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { artifactOf, type Decision, type Outcome } from './adapter'
 import { ChevronRight, Shield } from './icons'
-import { Questions } from './questions'
 import { Options, ProductCard, RequestCardSlot } from './request'
 import { ProofList } from '../ProofList'
 
@@ -75,7 +74,6 @@ const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => 
 /** Tool widgets are picked by the `kind` the server sent, never by tool name. */
 export const ToolPart: FC<ToolCallMessagePartProps> = (props) => {
   const a = artifactOf(props)
-  if (a?.kind === 'questions') return <Questions ticket={a.ticket} />
   if (a?.kind === 'confirm') return <Card {...props} />
   if (a?.kind === 'outcome') return <OutcomeLine result={props.result as Outcome | undefined} href={a.href} />
   if (a?.kind === 'product') return <ProductCard thread={a.thread} products={a.products} current={a.current} />

@@ -200,6 +200,9 @@ class GithubTickets implements TicketSource {
     const i = await this.h.json('POST', `${this.p}/issues`, { title: t.title, body: t.body ?? '', labels: t.labels ?? [] });
     return this.get(String(i.number));
   }
+  async update(id: string, patch: { title?: string; body?: string }) {
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, patch);
+  }
   async comment(id: string, body: string) {
     return comment(await this.h.json('POST', `${this.p}/issues/${id}/comments`, { body }));
   }

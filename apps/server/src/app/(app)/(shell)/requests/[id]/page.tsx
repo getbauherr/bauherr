@@ -2,8 +2,6 @@ import { PageTitle } from '../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
-import { sourceOf } from '../../../../../lib/actions'
-import { Markdown } from '../../../components/Markdown'
 import { DockOpen, RequestOpen } from '../../../components/chat/DockOpen'
 import { DiscardDraft } from '../../../components/DiscardDraft'
 import { ProgressPath } from '../../../components/ProgressPath'
@@ -13,18 +11,17 @@ import { RequestCardPage } from '../../../components/RequestCardPage'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ago } from '../../../lib/format'
-import { renderMarkdown } from '../../../lib/markdown'
-import { within } from '../../../lib/overview'
 import { loadRequest } from '../../../lib/requests'
-import { currentWorkspace, payloadClient } from '../../../lib/session'
+import { currentPersonWorkspace } from '../../../lib/session'
+import { isProductOwner } from '../../../../../lib/people'
+import { Comments } from '../../../components/RequestComments'
 
 export const dynamic = 'force-dynamic'
 
-const COMMENTS_MS = 5000
-
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { user, workspace } = await currentWorkspace()
+  const { user, workspace } = await currentPersonWorkspace()
+  const owner = isProductOwner(user)
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
   const request = await loadRequest(workspace.id, Number(id), user as { id: number })
   if (!request) notFound()
@@ -45,7 +42,9 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
       <div className="max-w-xl"><RequestCardPage card={request.card} /></div>
       <section className="flex flex-col gap-2" aria-labelledby="next">
         <h2 className="heading" id="next">Next step</h2>
-        {request.own ? (
+        {owner ? (
+          <p className="m-0" data-testid="waits-for-you">{next ? `Waiting for you: ${next.need} on #${next.number}.` : request.sent ? 'Nothing for you to do.' : 'A draft.'}</p>
+        ) : request.own ? (
           <div className="flex flex-wrap gap-2">
             <RequestOpen request={request.id}>Continue draft</RequestOpen>
             <DiscardDraft session={request.id} title={request.title} />
@@ -55,8 +54,8 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
         ) : (
           <p className="text-muted-foreground">{request.sent ? 'Nothing for you to do.' : 'Only its author can continue this draft.'}</p>
         )}
-        {request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
-        {request.released && <ReportProblem session={request.id} />}
+        {!owner && request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
+        {!owner && request.released && <ReportProblem session={request.id} />}
       </section>
       {request.timeline.length > 0 && (
         <section className="flex flex-col gap-2" aria-labelledby="timeline">
@@ -81,11 +80,11 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                     <KindChip kind={t.kind} />
                     <LaneChip lane={t.lane} />
                     {t.need && <Badge variant="warn">{t.need}</Badge>}
-                    {t.url && <a className="small text-primary" href={t.url}>Open the issue</a>}
+                    {!owner && t.url && <a className="small text-primary" href={t.url}>Open the issue</a>}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {(t.need === 'Answer questions' || t.need === 'Answer decisions') && <DockOpen ticket={t.id} mode="answer" size="sm">{t.need}</DockOpen>}
-                    <DockOpen ticket={t.id} mode="comment" size="sm" variant="outline">Comment on #{t.number}</DockOpen>
+                    {!owner && (t.need === 'Answer questions' || t.need === 'Answer decisions') && <Button asChild size="sm"><Link href={`/tickets/${t.id}#refine`}>{t.need}</Link></Button>}
+                    {!owner && <DockOpen ticket={t.id} size="sm" variant="outline">Comment on #{t.number}</DockOpen>}
                   </div>
                   <p className="body m-0 font-medium" data-testid="request-headline">{t.progress.headline}{t.progress.since && <span className="small font-normal text-muted-foreground"> · since {ago(t.progress.since).replace(/ ago$/, '')}</span>}</p>
                   <ProgressPath step={t.progress.step} large />
@@ -104,46 +103,10 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
         <section className="flex flex-col gap-2" aria-labelledby="comments">
           <h2 className="heading" id="comments">Comments</h2>
           <Suspense fallback={<div className="h-16 animate-pulse rounded-sm bg-secondary" aria-busy="true" />}>
-            <Comments tickets={request.tickets} />
+            <Comments tickets={request.tickets} owner={owner} />
           </Suspense>
         </section>
       )}
     </div>
-  )
-}
-
-/** The forge-backed Comments, streamed after the page; 5 s per Ticket, then "could not be reached". */
-async function Comments({ tickets }: { tickets: { id: number; number: number }[] }) {
-  const payload = await payloadClient()
-  let forgeError = false
-  const comments = (
-    await Promise.all(
-      tickets.map(async (t) => {
-        try {
-          const { ts, n } = await sourceOf(payload, (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as never)
-          return (await within(ts.listComments(n), COMMENTS_MS)).filter((c) => !c.body.startsWith('<!-- bauherr:')).map((c) => ({ ...c, ticket: t.number }))
-        } catch {
-          forgeError = true
-          return []
-        }
-      }),
-    )
-  ).flat().sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  return (
-    <>
-      {forgeError && <p className="small text-muted-foreground">The forge could not be reached; some comments are unavailable.</p>}
-      {comments.length ? (
-        <ul className="m-0 flex list-none flex-col gap-3 p-0">
-          {comments.map((c) => (
-            <li key={`${c.ticket}-${c.id}`} className="flex flex-col gap-1" data-testid="request-comment">
-              <p className="small m-0 text-muted-foreground">#{c.ticket} · {c.author} · {ago(c.createdAt)}</p>
-              <Markdown html={renderMarkdown(c.body)} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-muted-foreground">No comments yet.</p>
-      )}
-    </>
   )
 }

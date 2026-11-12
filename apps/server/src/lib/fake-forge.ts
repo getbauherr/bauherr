@@ -39,6 +39,18 @@ Triage needs your answers before this Ticket can be planned: the export scope is
 - **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON.
 `
 
+const REFINE = `<!-- bauherr:triage -->
+## Questions
+Triage needs your answers before this Ticket can be planned.
+
+## Decisions
+- **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON. Why: Finance opens the file in Excel, a wrong format costs a rebuild.
+- **D2 Who may export**. Default: Admins only. Alternatives: Everyone in the Workspace. Why: The file holds every customer's invoices.
+- **D3 Keep an audit trail of exports**. Default: No. Alternatives: Yes. Why: An audit trail needs its own table and a retention rule.
+- **D4 Include archived invoices**. Default: No. Alternatives: Yes. Why: Archived invoices make the file much larger.
+- **D5 Name the file after the date**. Default: Yes. Alternatives: No. Why: Finance files the exports by month.
+`
+
 const summary = (n: number) => `<!-- bauherr:staging-summary -->
 
 # Staging summary: #${n} Ship the export
@@ -78,6 +90,10 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
   void gated.comment('1', WORKLOG)
   void gated.comment('1', summary(1))
+  // acme/lab-alpha and acme/lab-beta: the Products of product-owner-view.spec.ts's own Workspace, one Ticket (#1) each; Alpha's has a comment.
+  void fake.tickets('acme/lab-alpha').create({ title: 'Lab Alpha ticket', labels: ['bauherr:stage:build'] })
+  void fake.tickets('acme/lab-alpha').comment('1', 'Please check the contrast of the new header.')
+  void fake.tickets('acme/lab-beta').create({ title: 'Lab Beta ticket', labels: ['bauherr:stage:build'] })
   // newco/shop: the repository and open issues the setup wizard's e2e picks on the Workspace `newco`.
   fake.commit('newco/shop', 'main', 'README.md', '# Shop\n')
   const shop = fake.tickets('newco/shop')
@@ -90,6 +106,10 @@ const build = (): FakeBackend => {
   // acme/editor: the Product of workflow-editor.spec.ts's own Workspace; its one Ticket (#1) is in Build.
   fake.commit('acme/editor', 'main', 'README.md', '# Editor\n')
   void fake.tickets('acme/editor').create({ title: 'Editor lab: build the thing', labels: ['bauherr:stage:build'] })
+  // acme/refine: the Product of refine-conversation.spec.ts's own Workspace; its one Ticket (#1) is held by Triage with five open points.
+  fake.commit('acme/refine', 'main', 'README.md', '# Refine\n')
+  void fake.tickets('acme/refine').create({ title: 'Export invoices as a file', body: '## Problem\nFinance cannot get the invoices out of the portal.\n\n## Done when\n- An export button exists', labels: ['bauherr:needs-refinement'] })
+  void fake.tickets('acme/refine').comment('1', REFINE)
   // acme/merge: a merge queue is on, but the only workflow has no merge_group trigger; the merge-mode spec re-detects it.
   fake.commit('acme/merge', 'main', '.github/workflows/ci.yml', 'name: ci\non:\n  pull_request:\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps: []\n')
   fake.setQueueSupport('acme/merge', true)
