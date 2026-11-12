@@ -8,6 +8,7 @@ import { PRESETS, presetOf } from '../../../lib/providers'
 import { modelOptions } from './models'
 import { loadModelList, loadPriceStatus } from '../../../lib/prices'
 import { blockedBy } from '../../../lib/settings-guards'
+import { formatPathSets, missingSuggestions, neverRuns } from '../../../lib/path-sets'
 import { workflowFor } from '../../../lib/factory'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
@@ -108,6 +109,7 @@ export async function loadProducts(workspace: number) {
           reviewChecks: formatReviewChecks(p.reviewChecks),
           overlap: overlapOf(p),
           proofRules: ((p.reviewChecks?.artifacts ?? []) as { name: string; globs: string[]; kind: string; command: string; before?: boolean }[]).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before })),
+          pathSets: { text: formatPathSets(p.pathSets), missing: missingSuggestions(p.pathSets ?? {}), never: neverRuns(workflowFor(workspace), p.pathSets ?? {}) },
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
@@ -215,6 +217,13 @@ export async function loadConnections(workspace: number) {
     }))
 }
 
+/** The Workspaces (all for an Admin) with their Products, for the Product owner forms. */
+export async function loadAssignable(workspaces: { id: number; name: string }[]) {
+  const { docs } = await (await payloadClient()).find({ collection: 'products', where: { workspace: { in: workspaces.map((w) => w.id) } }, sort: 'name', pagination: false, select: { name: true, workspace: true }, ...o } as never)
+  const products = docs as unknown as { id: number; name: string; workspace: number }[]
+  return workspaces.map((w) => ({ id: w.id, name: w.name, products: products.filter((p) => p.workspace === w.id).map(({ id, name }) => ({ id, name })) }))
+}
+
 /** Admin: everyone, with SSO details. Others: only Bauherren sharing the current Workspace, SSO as a flag, Workspaces reduced to the viewer's own. */
 export async function loadBauherren(user: Bauherr, workspace: number | null) {
   const admin = isAdmin(user)
@@ -229,6 +238,9 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
     workspaces: ((b.tenants ?? []) as { tenant: { id: number; name: string } | number }[])
       .flatMap((t) => (typeof t.tenant === 'object' && t.tenant ? [t.tenant] : []))
       .filter((w) => admin || own.includes(w.id)),
+    /** Product owners only: one row per Workspace the viewer may see. */
+    assignments: ((b.assignments ?? []) as { workspace: { id: number; name: string } | number; scope: 'workspace' | 'products'; products?: ({ id: number; name: string } | number)[] }[])
+      .flatMap((a) => (typeof a.workspace === 'object' && a.workspace && (admin || own.includes(a.workspace.id)) ? [{ workspace: a.workspace, scope: a.scope, products: (a.products ?? []).flatMap((p) => (typeof p === 'object' ? [p] : [])) }] : [])),
     locked: !!b.lockUntil && new Date(b.lockUntil as string).getTime() > Date.now(),
     githubLogin: (b.githubLogin ?? '') as string,
     oidcLinked: !!b.oidcSubject,

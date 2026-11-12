@@ -15,6 +15,8 @@ export type Artifact =
   | { kind: 'outcome'; href?: string }
   /** The Products to choose from at the start of a request thread (first message; the card asks the server itself). */
   | { kind: 'product'; thread: number; products: { id: number; name: string }[]; current: number | null }
+  /** The request card of a request thread (first message; the card loads itself, `session` null until a Product is chosen). */
+  | { kind: 'request-card'; session: number | null }
   /** The interview's option buttons under its question. */
   | { kind: 'options'; options: { label: string; recommended: boolean }[] }
   /** The owner questions of a Ticket thread (first message; the card loads them itself). */

@@ -21,12 +21,12 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
   await expect(draft.getByRole('link', { name: 'Export totals drift' })).toHaveAttribute('href', /^\/requests\/\d+$/)
   await expect(draft.getByRole('button', { name: 'Continue' })).toBeVisible()
   await expect(draft.getByRole('button', { name: /^Discard draft: / })).toBeVisible()
-  await expect(page.locator('tbody')).not.toContainText('Export totals drift') // an own Draft sits in Drafts, not in the table
-  const linked = page.locator('tbody tr').filter({ hasText: 'Dark theme for the dashboard' })
-  await expect(linked).toContainText('Sent')
-  await expect(page.locator('tbody')).not.toContainText(/Linked|Triage|↳|No Ticket yet/)
-  await expect(linked.getByTestId('request-progress')).toContainText('Questions for you.')
-  await expect(linked.getByTestId('request-progress')).toContainText(/since/)
+  await expect(page.getByTestId('factory-rows')).not.toContainText('Export totals drift') // an own Draft sits in Drafts, not among the sent requests
+  const linked = page.getByTestId('factory-row').filter({ hasText: 'Dark theme for the dashboard' })
+  await expect(linked).toContainText('by Product widget')
+  await expect(page.getByTestId('factory-rows')).not.toContainText(/Linked|Triage|↳|No Ticket yet/)
+  await expect(linked.getByTestId('request-status')).toContainText('Waiting for your answer')
+  await expect(linked.getByTestId('request-status')).toContainText('waits for the requester')
   await expect(linked.getByTestId('progress-path')).toHaveAttribute('data-step', '1')
   await expect(linked.getByTestId('progress-path').locator('[data-state=current]')).toHaveText('Planned')
   const shots = process.env.SHOTS_DIR

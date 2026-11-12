@@ -10,6 +10,7 @@ import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { createEmbedToken } from '../../../../lib/intake/embed'
 import { unknownLogins } from '../../../../lib/gates'
 import { suggestOverlapIgnore } from '../../../../lib/overlap'
+import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { forgeOf } from '../../../../lib/release'
 import { gatewayEnabled, rotateKey, rotateSessionKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
@@ -27,6 +28,7 @@ import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { isWebUrl } from '../../lib/url'
 import { modeStages } from '../../../../lib/workflow'
 import { workflowFor } from '../../../../lib/factory'
+import { assignmentRows } from '../../../../lib/people'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -98,6 +100,21 @@ export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
   const lines = fd.has('ignore') ? s(fd, 'ignore').split('\n').map((l) => l.trim()).filter(Boolean) : [...current, s(fd, 'add')]
   if (lines.some((l) => /\s/.test(l))) throw Object.assign(new Error('Invalid glob.'), { data: { errors: [{ path: 'ignore', message: 'One path glob per line, without spaces' }] } })
   await c.payload.update({ collection: 'products', id: product, data: { overlapIgnore: [...new Set(lines)] }, ...c.w } as never)
+})
+
+/** The Product's named path sets (conditional workflow steps refer to them): the textarea replaces them; `add` appends one suggested name with an empty list. */
+export const savePathSets = act({ sets: 'sets' }, async (c, fd) => {
+  only(c.user)
+  const product = id(fd)
+  await assertInWorkspace(c.payload, 'products', [product], inWorkspace(c))
+  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { pathSets: true }, depth: 0, overrideAccess: true })) as { pathSets?: PathSets }).pathSets ?? {}
+  let pathSets: PathSets
+  try {
+    pathSets = fd.has('sets') ? parsePathSets(s(fd, 'sets')) : { ...current, [s(fd, 'add')]: current[s(fd, 'add')] ?? [] }
+  } catch (e) {
+    throw fieldError('sets', (e as Error).message)
+  }
+  await c.payload.update({ collection: 'products', id: product, data: { pathSets }, ...c.w } as never)
 })
 
 /** Reads the Product's last 100 merged pull requests from the forge (explicit action, never on render) and stores the suggested paths with the time on the Product. */
@@ -351,6 +368,7 @@ const known = async (c: Awaited<ReturnType<typeof ctx>>, ids: number[]) => {
 }
 export const createBauherr = act({}, async (c, fd) => {
   only(c.user)
+  if (s(fd, 'role') !== 'admin' && s(fd, 'role') !== 'bauherr') throw new Error('Choose Admin or Bauherr.')
   await known(c, tenants(fd))
   const password = randomBytes(12).toString('base64url')
   await c.payload.create({ collection: 'bauherren', data: { email: s(fd, 'email'), password, role: s(fd, 'role'), tenants: tenants(fd).map((tenant) => ({ tenant })) }, ...c.w } as never)
@@ -368,11 +386,54 @@ const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): P
   }
 }
 
+/** One assignment row from the Workspace, scope and Products fields of the form. */
+const assignmentFrom = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => {
+  const workspace = Number(s(fd, 'workspace'))
+  await known(c, [workspace])
+  const scope = s(fd, 'scope') === 'workspace' ? 'workspace' : 'products'
+  return { workspace, scope, products: scope === 'products' ? [...new Set(fd.getAll('products').map(Number))] : [] }
+}
+
+/** A Product owner: login plus an assignment, nothing else. The temporary password is shown once, as for a Bauherr. */
+export const createProductOwner = act({}, async (c, fd) => {
+  only(c.user)
+  const assignment = await assignmentFrom(c, fd)
+  const password = randomBytes(12).toString('base64url')
+  await c.payload.create({ collection: 'bauherren', data: { email: s(fd, 'email'), password, role: 'product-owner', assignments: [assignment] }, ...c.w } as never)
+  return `Temporary password (shown once): ${password}`
+})
+
+/** Sets, replaces or (`scope=none`) removes the Product owner's assignment in one Workspace; their other assignments stay. */
+export const saveAssignment = act({}, async (c, fd) => {
+  only(c.user)
+  const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
+  if (target.role !== 'product-owner') throw new Error('Not a Product owner.')
+  const workspace = Number(s(fd, 'workspace'))
+  const rest = assignmentRows(target.assignments).filter((r) => r.workspace !== workspace)
+  await c.payload.update({ collection: 'bauherren', id: id(fd), data: { assignments: s(fd, 'scope') === 'none' ? rest : [...rest, await assignmentFrom(c, fd)] }, ...c.w } as never)
+})
+
+/** Bauherr <-> Product owner. Never your own account, never the last Admin; the assignments are cleared on the way out and a new Product owner starts with none. */
+export const changeRole = act({}, async (c, fd) => {
+  only(c.user)
+  const role = s(fd, 'role')
+  if (role !== 'bauherr' && role !== 'product-owner') throw new Error('Choose Bauherr or Product owner.')
+  if (id(fd) === c.user.id) throw new Error('You cannot change your own role.')
+  const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
+  // The form names the role it was rendered for: a stale tab or a double submit cannot change the account back.
+  if (target.role !== s(fd, 'from')) throw new Error('This account changed meanwhile. Reload the page.')
+  if (target.role === 'admin') await assertAnotherAdmin(c.payload, id(fd))
+  if (target.role !== role) await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role }, ...c.w } as never)
+})
+
 export const saveBauherr = act({}, async (c, fd) => {
   only(c.user)
   const ids = tenants(fd)
   await known(c, ids)
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
+  if (target.role === 'product-owner') throw new Error('Use the Product owner form.')
+  if (s(fd, 'role') !== 'admin' && s(fd, 'role') !== 'bauherr') throw new Error('Choose Admin or Bauherr.')
+  if (id(fd) === c.user.id && s(fd, 'role') !== target.role) throw new Error('You cannot change your own role.')
   if (target.role === 'admin' && (s(fd, 'role') !== 'admin' || (id(fd) === c.user.id && !ids.length))) await assertAnotherAdmin(c.payload, id(fd))
   const login = s(fd, 'githubLogin').replace(/^@/, '')
   if (login && login !== target.githubLogin && !(await githubKnows(c, login))) throw Object.assign(new Error('GitHub login unknown.'), { data: { errors: [{ path: 'githubLogin', message: `GitHub does not know @${login}. Check the spelling.` }] } })

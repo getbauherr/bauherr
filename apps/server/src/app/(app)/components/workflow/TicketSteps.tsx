@@ -85,9 +85,21 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
 /** The Ticket's steps, newest first: one row per Run (stage, outcome, duration, who ran it, model, cost) with its phases as one thin bar; the full executor data opens under "Details". */
 export function TicketSteps({ steps, decision }: { steps: Steps; decision?: { ticket: number; ask: string } | null }) {
   const rows = steps.visits.flatMap(rowsOf).reverse()
+  const items = [...rows.map((row, i) => ({ at: row.at, row, i })), ...steps.skipped.map((skip) => ({ at: skip.at, skip }))].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
   return rows.length ? (
     <ol className="m-0 flex list-none flex-col gap-0 rounded-md border border-border bg-card p-4 max-sm:p-3" data-testid="ticket-steps">
-      {rows.map((row, i) => <StepRow key={`${row.stage}-${row.at}-${row.run?.id ?? i}`} row={row} open={i === 0 ? decision : null} current={i === 0 && row.stage === steps.path.current && row.steps.at(-1)!.phase !== 'closed'} />)}
+      {items.map((it) =>
+        'skip' in it ? (
+          <li key={`skip-${it.skip.stage}-${it.at}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border py-3 first:border-t-0 first:pt-0 last:pb-0" data-testid="skipped" data-stage={it.skip.stage}>
+            <h3 className="heading m-0">{it.skip.title}</h3>
+            <Badge variant="muted">Skipped</Badge>
+            <span className="small text-muted-foreground">{cap(it.skip.reason)}</span>
+            <span className="small text-muted-foreground" title={it.at}>{when(it.at)}</span>
+          </li>
+        ) : (
+          <StepRow key={`${it.row.stage}-${it.row.at}-${it.row.run?.id ?? it.i}`} row={it.row} open={it.i === 0 ? decision : null} current={it.i === 0 && it.row.stage === steps.path.current && it.row.steps.at(-1)!.phase !== 'closed'} />
+        ),
+      )}
     </ol>
   ) : (
     <p className="m-0 text-muted-foreground" data-testid="ticket-steps">No history recorded yet.</p>

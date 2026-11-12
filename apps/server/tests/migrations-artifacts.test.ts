@@ -45,7 +45,8 @@ it('the migration adds artifacts and the recording media types, rows follow thei
   const ticket = (await run(sql`SELECT id FROM tickets LIMIT 1`)).rows[0].id
 
   await payload.db.migrate({ migrations: migrations.slice(i, i + 1) as never })
-  await payload.create({ collection: 'artifacts', data: { ticket, workspace: ws, kind: 'image', title: 'Before', pair: 'before', sha: 'abc', rule: 'Screens' } as never, overrideAccess: true })
+  // Raw SQL, not the Payload API: the API reads related rows with today's schema, which later migrations (not applied here) extend.
+  await run(sql`INSERT INTO artifacts (ticket_id, workspace_id, kind, title, pair, sha, rule) VALUES (${ticket}, ${ws}, 'image', 'Before', 'before', 'abc', 'Screens')`)
   await run(sql`INSERT INTO media (workspace_id, name, mime) VALUES (${ws}, 'clip.webm', 'video/webm')`)
   expect((await run(sql`SELECT count(*)::int AS n FROM artifacts`)).rows[0].n).toBe(1)
   await run(sql`DELETE FROM tickets WHERE id = ${ticket}`)

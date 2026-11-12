@@ -44,10 +44,20 @@ const newco = (await ensure('workspaces', { slug: 'newco' }, { name: 'Newco', sl
 await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup-member@example.com', password, role: 'bauherr', tenants: [{ tenant: newco }] })
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
+await ensure('bauherren', { email: 'guard-bauherr@example.com' }, { email: 'guard-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the signed-in control of product-owner.spec: only that spec signs in as this user
+await ensure('bauherren', { email: 'owner@example.com' }, { email: 'owner@example.com', password, role: 'product-owner', assignments: [{ workspace, scope: 'products', products: [product] }] }) // the Product owner of Acme Web; people.spec and product-owner.spec sign in as this user
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
 await payload.update({ collection: 'workspaces', id: workspace, data: { knowledgeConnection: github, knowledgeRepo: 'acme/knowledge' }, ...o })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
 await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+// workflow-editor.spec.ts: a Workspace of its own (the spec applies factory files and flips Workspace settings), an Admin that only that spec signs in as (cookie `bauherr-ws=editor`), one Product with a ticket source and one Ticket. Twin in `src/lib/fake-forge.ts`.
+const editorWs = (await ensure('workspaces', { slug: 'editor' }, { name: 'Editor Lab', slug: 'editor', wipLimits: {} })).id
+await ensure('bauherren', { email: 'editor-admin@example.com' }, { email: 'editor-admin@example.com', password, role: 'admin', githubLogin: 'e2e-editor-admin' })
+const editorGithub = (await ensure('connections', { name: 'GitHub Editor' }, { name: 'GitHub Editor', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: editorWs })).id
+const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 'Editor App', slug: 'editor-app', workspace: editorWs })).id
+await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
+await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
+await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
 const seeded = new Set<number>()
 const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) => {
   if (seeded.has(n)) throw new Error(`seed-e2e: Ticket number ${n} seeded twice`)
@@ -203,6 +213,11 @@ await run(t3, 'build', 'needs_human', { startedAt: '2026-10-30T10:00:00Z' })
 // run.spec.ts re-runs this Run: it lives on Acme Checks, which no other spec counts Runs of (overview.spec.ts counts those of Acme Web and Acme Shop).
 const stalled = (await ensure('tickets', { externalId: 'e2e-checks-1' }, { title: 'Recover the stalled import', externalId: 'e2e-checks-1', number: 1, url: 'https://github.com/acme/checks/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: checksProduct, workspace, rank: '000025' })).id
 await run(stalled, 'build', 'needs_human', { startedAt: '2026-10-30T10:30:00Z' })
+// ticket.spec.ts: a Ticket on Acme Checks that passed a conditional step (`skip:` event, written as `skipEvent` does): the Steps list shows it as Skipped with the reason, it is no visit.
+const routed = (await ensure('tickets', { externalId: 'e2e-checks-3' }, { title: 'Check the CSV header', externalId: 'e2e-checks-3', number: 3, url: 'https://github.com/acme/checks/issues/3', state: 'open', labels: ['bauherr:stage:review'], stage: 'review', historyKey: 'review|queued', product: checksProduct, workspace, rank: '000027' })).id
+for (const [cause, stage, kind, phase, hoursAgo, extra] of [['e2e:routed:0', 'build', 'build', 'working', 3, {}], ['skip:e2e-security-review', 'e2e-security-review', 'agent', 'queued', 2.5, { note: 'the change touches no security paths', fromStage: 'build' }], ['e2e:routed:2', 'review', 'review', 'queued', 2.5, { fromStage: 'build' }]] as const) {
+  await ensure('ticket_events', { ticket: routed, cause }, { ticket: routed, workspace, at: new Date(seedNow - hoursAgo * 3600e3).toISOString(), stage, stageKind: kind, phase, executor: 'factory', cause, ...extra })
+}
 // Own Ticket of the release-failed case in ticket.spec.ts (#2 on Acme Checks): release checks failed with no run link, so the next-step bar falls back to the details link.
 await ensure('tickets', { externalId: 'e2e-checks-2' }, { title: 'Release the CSV checks', externalId: 'e2e-checks-2', number: 2, url: 'https://github.com/acme/checks/issues/2', state: 'open', labels: ['bauherr:stage:release'], stage: 'release', releaseChecksState: 'failed', product: checksProduct, workspace, rank: '000026' })
 await run(t5, 'review', 'succeeded', {
@@ -277,6 +292,24 @@ const request = async (key: string, status: string, extra: Record<string, unknow
 await request('Export totals drift', 'open', { user: draftOwner })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
 await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, ticketNumbers: [6, 7] })
+// request-card.spec.ts, requests.spec.ts: a member with a workbench of their own (nothing else signs in as them): a draft (urgent bug), a request that waits for their answer (#601), two they can order (#602, #603), an urgent one waiting for the Bauherr (#604) and a released one (#605; numbers high enough that no fake-forge issue created by another spec collides).
+const cardOwner = (await ensure('bauherren', { email: 'card-owner@example.com' }, { email: 'card-owner@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })).id
+const mine = (key: string, status: string, extra: Record<string, unknown>) => request(key, status, { user: cardOwner, ...extra })
+await mine('Checkout is down', 'open', { title: 'Checkout is down', kind: 'bug', urgency: 'urgent', urgentReason: 'Checkout is down for all customers since 9.', messages: [{ role: 'user', content: 'Checkout is down' }], draft: { title: 'Checkout is down', problem: 'Checkout is down', context: 'Checkout page', acceptance_criteria: [], type: 'bug', urgency: 'urgent', urgent_reason: 'Checkout is down for all customers since 9.', links: [] } })
+const kinded = (n: number, title: string, kind: string, extra: Record<string, unknown> = {}) => ({ title, kind, ticketNumber: n, draft: { title, problem: title, context: '', acceptance_criteria: [], type: kind, links: [] }, ...extra })
+const typed = (kind: string) => [`bauherr:type:${kind}`, `type:${kind}`]
+await ticket(601, 'Add an invoice filter', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement', ...typed('feature')] })
+await mine('Add an invoice filter', 'submitted', kinded(601, 'Add an invoice filter', 'feature'))
+await ticket(602, 'CSV export misses its total row', 'build', product, { labels: ['bauherr:stage:build', ...typed('bug')] })
+await mine('CSV export misses its total row', 'submitted', kinded(602, 'CSV export misses its total row', 'bug'))
+await ticket(603, 'Show the due date on invoices', 'plan', product, { labels: ['bauherr:stage:plan', ...typed('change')] })
+await mine('Show the due date on invoices', 'submitted', kinded(603, 'Show the due date on invoices', 'change'))
+await ticket(604, 'Checkout fails for every customer', 'triage', product, { stage: null, labels: ['bauherr:expedite-proposed', ...typed('bug')] })
+await mine('Checkout fails for every customer', 'submitted', kinded(604, 'Checkout fails for every customer', 'bug', { urgency: 'urgent', urgentReason: 'Checkout is down for all customers since 9.' }))
+const released = await ticket(605, 'Dark theme for the invoice page', 'done', product, { state: 'closed', labels: typed('feature'), mergeSha: 'sha-605', releasedIn: 'v0.4.0', stagingTldr: { whatYouGet: '- The invoice page follows the dark theme.\n**Found:** nothing', found: 'nothing' } })
+await mine('Dark theme for the invoice page', 'submitted', kinded(605, 'Dark theme for the invoice page', 'feature'))
+const sentAt = (m: number) => new Date(now - m * 6e4).toISOString()
+for (const [at, stage, kind, phase, cause] of [[600, 'triage', 'triage', 'working', 'poll'], [580, 'plan', 'plan', 'queued', 'run:queued'], [560, 'plan', 'plan', 'queued', 'gate:approve:plan'], [500, 'review', 'review', 'working', 'run:claimed'], [400, 'release', 'release', 'ci', 'release:on_staging'], [380, 'release', 'release', 'queued', 'gate:accept:staging'], [300, 'done', 'done', 'closed', 'poll']] as const) await ensure('ticket_events', { ticket: released, cause, at: sentAt(at) }, { ticket: released, workspace, at: sentAt(at), stage, stageKind: kind, phase, cause })
 // No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined

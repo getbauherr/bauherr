@@ -1,6 +1,6 @@
 'use client'
 import { useMemo } from 'react'
-import { checkpointOn, forwardTarget, hasLimit, isCustom, kindStage, removePath, renamePath, setCheckpoint, setPath, setSplit, setStageField, setTitle, slugOf, stagesOf, takesRole, type Doc } from '../../../../lib/workflow-edit'
+import { checkpointOn, forwardTarget, hasLimit, isCustom, kindStage, removePath, renamePath, setCheckpoint, setPath, setSplit, setStageField, setTitle, setWhen, slugOf, stagesOf, takesRole, type Doc } from '../../../../lib/workflow-edit'
 import { humanize, pathLabel, stageTitle } from '../../../../lib/workflow-labels'
 import type { Kind } from '../../../../lib/workflow-rules'
 import { Lock } from '../icons'
@@ -10,8 +10,9 @@ import { NativeSelect } from '../ui/native-select'
 import { Switch } from '../ui/switch'
 import { Commit, RoleSelect } from './Fields'
 import { allowedTargets, targetTitle, type RoleView } from './model'
+import { WhenFields } from './When'
 
-type Props = { yaml: string; doc: Doc; findings: string[]; name: string; roles: RoleView[]; skills: string[]; mutate: (fn: (y: string) => string) => void; onBack: () => void }
+type Props = { yaml: string; doc: Doc; findings: string[]; name: string; roles: RoleView[]; skills: string[]; pathSets: Record<string, string[]>; mutate: (fn: (y: string) => string) => void; onBack: () => void }
 
 const Row = ({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) => (
   <div className="flex flex-col gap-1.5">
@@ -28,7 +29,7 @@ const Ask = ({ label, on, onChange, disabled }: { label: string; on: boolean; on
 )
 
 /** Everything about the selected step, in the order an owner thinks about it. */
-export function StepPanel({ yaml, doc, findings, name, roles, skills, mutate, onBack }: Props) {
+export function StepPanel({ yaml, doc, findings, name, roles, skills, pathSets, mutate, onBack }: Props) {
   const stages = stagesOf(doc)
   const s = stages.find((x) => x.name === name)
   const kind = s?.kind as Kind | undefined
@@ -88,6 +89,7 @@ export function StepPanel({ yaml, doc, findings, name, roles, skills, mutate, on
           </NativeSelect>
         </Row>
       )}
+      {custom && <WhenFields idPrefix="panel-when" value={s.when} declared={pathSets} onChange={(w) => mutate((y) => setWhen(y, s.name, w))} />}
       {hasLimit(kind) && (
         <Row title="At most … tickets here at a time" id="panel-wip">
           <Commit id="panel-wip" type="number" min={1} step={1} placeholder="No limit" aria-label="At most how many tickets here at a time" value={s.wip === undefined ? '' : String(s.wip)} onCommit={(v) => mutate((y) => setStageField(y, s.name, 'wip', /^[1-9]\d*$/.test(v.trim()) ? Number(v) : undefined))} />

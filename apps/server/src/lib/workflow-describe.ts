@@ -1,6 +1,7 @@
 import { stagesOf, type Doc } from './workflow-edit'
 import { modelText, pathLabel, SPECIAL_TARGET, stageTitle } from './workflow-labels'
 import type { Kind } from './workflow-rules'
+import { whenClause } from './workflow-when'
 
 // Browser-safe. Plain-word list of what differs between two factory documents (Review changes and History).
 
@@ -31,7 +32,7 @@ export const describeChanges = (a: Doc, b: Doc): string[] => {
     if (A.has(s.name) || s.kind === 'container') continue
     const prev = before(sb, s.name)
     const where = prev ? ` after ${stageTitle(prev)}` : ''
-    out.push(s.kind === 'human' ? `New decision for you: ${stageTitle(s)}${where}` : `New step ${stageTitle(s)}${where}${s.role ? `, worked by ${roleTitle(b, s.role)}` : ''}`)
+    out.push(s.kind === 'human' ? `New decision for you: ${stageTitle(s)}${where}` : `New step ${stageTitle(s)}${where}${s.role ? `, worked by ${roleTitle(b, s.role)}` : ''}${s.when ? `, only ${whenClause(s.when)}` : ''}`)
   }
   if (!splitBefore && splitAfter) out.push('Plan: large tickets can now be split into sub-tickets')
   if (splitBefore && !splitAfter) out.push('Plan: large tickets can no longer be split into sub-tickets')
@@ -44,6 +45,7 @@ export const describeChanges = (a: Doc, b: Doc): string[] => {
     const kind = y.kind as Kind
     if (stageTitle(x) !== t) out.push(`Step renamed: ${stageTitle(x)} → ${t}`)
     if (x.role !== y.role) out.push(`${t}: now worked by ${y.role ? roleTitle(b, y.role) : 'no agent'}`)
+    if (!same(x.when, y.when)) out.push(y.when ? `${t} now runs only ${whenClause(y.when)}` : `${t} now runs for every ticket`)
     if (x.skill !== y.skill) out.push(`${t}: now follows the skill ${y.skill ?? 'none'}`)
     if (x.wip !== y.wip) out.push(`${t}: at most ${limit(x.wip)} → ${limit(y.wip)} tickets at a time`)
     if (x.gate !== y.gate) out.push(`${t}: you are ${y.gate ? 'now' : 'no longer'} asked to ${kind === 'plan' ? 'approve the plan' : 'accept the result on staging'}`)

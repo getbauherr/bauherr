@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import type { NewStep } from '../../../../lib/workflow-edit'
+import type { When } from '../../../../lib/workflow-when'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Input } from '../ui/input'
@@ -8,15 +9,17 @@ import { Label } from '../ui/label'
 import { NativeSelect } from '../ui/native-select'
 import { RoleSelect } from './Fields'
 import type { RoleView } from './model'
+import { WhenFields } from './When'
 
 export type Adding = { after: string; afterTitle: string; kind: 'agent' | 'human'; role?: string }
-type Props = { adding: Adding | null; roles: RoleView[]; skills: string[]; onClose: () => void; onAdd: (s: NewStep) => void }
+type Props = { adding: Adding | null; roles: RoleView[]; skills: string[]; pathSets: Record<string, string[]>; onClose: () => void; onAdd: (s: NewStep) => void }
 
-function Form({ adding, roles, skills, onClose, onAdd }: Props & { adding: Adding }) {
+function Form({ adding, roles, skills, pathSets, onClose, onAdd }: Props & { adding: Adding }) {
   const [title, setTitle] = useState('')
   const [role, setRole] = useState(adding.role ?? '')
   const [skill, setSkill] = useState(skills[0] ?? '')
   const [choices, setChoices] = useState(['Approve', 'Reject'])
+  const [when, setWhen] = useState<When | undefined>()
   const agent = adding.kind === 'agent'
   const picked = choices.map((c) => c.trim()).filter(Boolean)
   const ready = title.trim() && (agent ? role && skill : picked.length >= 1)
@@ -25,7 +28,7 @@ function Form({ adding, roles, skills, onClose, onAdd }: Props & { adding: Addin
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault()
-        if (ready) onAdd({ after: adding.after, kind: adding.kind, title, ...(agent ? { role, skill } : { choices: picked }) })
+        if (ready) onAdd({ after: adding.after, kind: adding.kind, title, ...(agent ? { role, skill } : { choices: picked }), ...(when && { when }) })
       }}
     >
       <DialogHeader>
@@ -62,6 +65,7 @@ function Form({ adding, roles, skills, onClose, onAdd }: Props & { adding: Addin
           <span className="small text-muted-foreground">The first choice moves the ticket on. The others send it back.</span>
         </fieldset>
       )}
+      <WhenFields idPrefix="add-when" value={when} declared={pathSets} onChange={setWhen} />
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
         <Button type="submit" disabled={!ready}>Add step</Button>

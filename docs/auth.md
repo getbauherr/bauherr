@@ -14,7 +14,8 @@ Authorization code flow with PKCE, `state` and `nonce`; endpoints come from disc
 | `OIDC_CLIENT_ID` | | Client id |
 | `OIDC_CLIENT_SECRET` / `OIDC_CLIENT_SECRET_FILE` | | Client secret (confidential client); the file form wins |
 | `OIDC_ROLE_CLAIM` | `realm_access.roles` | Dot path into the ID token or userinfo |
-| `OIDC_ADMIN_ROLE` | `bauherr-admin` | Value in the role claim that grants role `admin`; anyone else is `bauherr` |
+| `OIDC_ADMIN_ROLE` | `bauherr-admin` | Value in the role claim that grants role `admin`; anyone else is `bauherr` (or `product-owner` with `OIDC_PRODUCT_OWNER_ROLE`) |
+| `OIDC_PRODUCT_OWNER_ROLE` | unset | Value in the role claim that grants role `product-owner` (no part of the factory but their own profile, see `docs/spec/people.md`). The admin role wins; unset maps nobody. |
 | `OIDC_WORKSPACE_CLAIM` | `groups` | Claim whose values are Workspace slugs (a leading `/` is stripped) |
 | `OIDC_DISPLAY_NAME` | issuer host | Label on the button |
 
@@ -24,6 +25,7 @@ Sign-in rules:
 
 - `email` is required and `email_verified` must be exactly `true`; missing or non-boolean fails the login. Claims from the ID token win over userinfo; a userinfo failure fails the login.
 - Lookup is by `oidcSubject` (`<issuer>|<sub>`) first. A match logs in and resyncs. No match but a Bauherr with that email (case-insensitive) exists: refused, no automatic linking (`/login?error=oidc-link`). Nothing found: a Bauherr is created with the lowercased email. SSO creates are never made `admin` for being first; the role comes from the claim only.
+- A re-sync never raises a Product owner to `bauherr`: the claim's default `bauherr` is ignored for a stored Product owner, only the admin claim (or an Admin under People) does. It never touches `assignments`; a new SSO Product owner starts with none and sees nothing. After sign-in a Product owner lands on `/settings/profile`.
 - Resync writes `role` only when the role claim is present, and `tenants` only when the workspace claim is present; an absent claim keeps the stored value. Slugs matching no Workspace are ignored.
 - Linking policy: an Admin edits the Bauherr under Settings, Bauherren and sets `oidcSubject` to `<issuer>|<id>`. In Keycloak the id is Users, the user, ID. The value is unique across Bauherren.
 - Session: cookie `bauherr-session`, an HS256 token signed with `PAYLOAD_SECRET` (claims `id`, `v`, `typ=bauherr-session`, `aud=bauherr`, 14 days, HttpOnly, `Secure` when `PUBLIC_URL` is https), accepted by the UI, `/admin` (only when `BAUHERR_ENABLE_ADMIN=1`) and the REST API through the Payload auth strategy `oidc`.

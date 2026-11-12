@@ -1,9 +1,13 @@
 'use client'
 import { useAui, useAuiState } from '@assistant-ui/react'
-import { useState, type FC } from 'react'
+import { useEffect, useState, type FC } from 'react'
 import { Button } from '@/components/ui/button'
+import type { CardData } from '../../../../lib/intake/card'
+import { SEND_TEXT } from '../../../../lib/intake/kinds'
+import { RequestCard, onCardChanged } from '../RequestCard'
+import { takeSend } from './dock-state'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
-import { chooseRequestProduct } from '../../lib/actions'
+import { chooseRequestProduct, loadRequestCard } from '../../lib/actions'
 import type { RequestInfo } from './api'
 import { Shield } from './icons'
 
@@ -61,4 +65,28 @@ export const Options: FC<{ options: { label: string; recommended: boolean }[] }>
       ))}
     </div>
   )
+}
+
+/** The request card pinned at the top of a request thread: it loads the draft's card, reloads after every interview turn and every edit (here or on the page), and "Send to the factory" sends the fixed message that makes the confirmation card. */
+export const RequestCardSlot: FC<{ session: number | null }> = ({ session: initial }) => {
+  const aui = useAui()
+  const running = useAuiState((s) => s.thread.isRunning)
+  const [session, setSession] = useState(initial)
+  const [card, setCard] = useState<CardData | null>(null)
+  useEffect(() => onChosen((c) => setSession(c.session)), [])
+  const [tick, setTick] = useState(0)
+  useEffect(() => (session ? onCardChanged(session, () => setTick((n) => n + 1)) : undefined), [session])
+  useEffect(() => {
+    if (!session || running) return
+    let live = true
+    void loadRequestCard(session).then((c) => {
+      if (!live) return
+      setCard(c)
+      if (c?.canSend && takeSend(session)) void aui.thread().append(SEND_TEXT)
+    })
+    return () => {
+      live = false
+    }
+  }, [session, running, tick])
+  return card ? <div className="my-2" data-testid="dock-request-card"><RequestCard initial={card} onSend={() => aui.thread().append(SEND_TEXT)} /></div> : null
 }

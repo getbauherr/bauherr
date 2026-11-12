@@ -23,9 +23,9 @@ import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../../lib/summary'
 import { cardOf } from '../../../lib/inbox'
-import { forgeKinds, loadEpic, within } from '../../../lib/overview'
+import { forgeKinds, kindOfLabels, loadEpic, within } from '../../../lib/overview'
 import { buildSteps } from '../../../lib/steps'
-import { timeline } from '../../../../../lib/history'
+import { skips, timeline } from '../../../../../lib/history'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
@@ -38,6 +38,7 @@ import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../l
 import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
+import { KindChip } from '../../../components/RequestParts'
 import { waitingLabel } from '../../../../../lib/wip'
 import { connectedOfRole } from '../../../../../lib/presence'
 
@@ -174,7 +175,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const q = { depth: 0, overrideAccess: true } as const
   const [ticket] = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: workspace.id } }] }, limit: 1, ...q })).docs as Doc[]
   if (!ticket) notFound()
-  const [product, ws, runs, blockers, blocks, shots, epic, spans, touches, forges] = await Promise.all([
+  const [product, ws, runs, blockers, blocks, shots, epic, spans, skipped, touches, forges] = await Promise.all([
     payload.findByID({ collection: 'products', id: ticket.product, ...q }) as Promise<Doc>,
     payload.findByID({ collection: 'workspaces', id: workspace.id, ...q }) as Promise<Doc>,
     payload.find({ collection: 'runs', where: { ticket: { equals: ticket.id } }, sort: '-createdAt', pagination: false, ...(admin ? {} : { select: { stage: true, kind: true, status: true, startedAt: true, finishedAt: true, evidence: true, createdAt: true, error: true, verdict: true, findings: true, reviewedSha: true, mode: true, executor: true, role: true, sessionLabel: true, session: true, clientName: true, clientVersion: true, model: true, provider: true, outcome: true, artifacts: true } }), ...q }).then((r) => r.docs as Doc[]),
@@ -183,6 +184,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     payload.find({ collection: 'media', where: { and: [{ 'session.product': { equals: ticket.product } }, { 'session.ticketNumber': { equals: ticket.number } }, { 'session.status': { equals: 'submitted' } }] }, select: { name: true }, sort: 'id', pagination: false, ...q }).then((r) => r.docs as Doc[]),
     loadEpic(workspace.id, ticket),
     timeline(payload, ticket.id),
+    skips(payload, ticket.id),
     payload.find({ collection: 'human_touches', where: { ticket: { equals: ticket.id } }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     forgeKinds(payload, workspace.id),
   ])
@@ -192,7 +194,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const forge = forges.get(ticket.product)
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
   const sessions = new Map<number, string>(sessionIds.length ? ((await payload.find({ collection: 'agent_sessions', where: { id: { in: sessionIds } }, select: { publicId: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; publicId: string }[]).map((x) => [x.id, x.publicId]) : [])
-  const steps = buildSteps(wf, spans, runs, touches, { sessions, workflowVersion: (await activeVersion(payload, workspace.id))?.version ?? null, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
+  const steps = buildSteps(wf, spans, runs, touches, { sessions, workflowVersion: (await activeVersion(payload, workspace.id))?.version ?? null, skips: skipped, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
   const d = derive(payload, P)
   const card = cardOf(ticket, product as never)
   const tiers = Object.entries((ws.modelByTier as Record<string, string> | null) ?? {})
@@ -229,6 +231,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <div className="flex min-w-0 flex-col gap-6">
             <header className="flex flex-col gap-2">
               <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
+              {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
               <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
                 <Badge variant={status.tone}>{status.label}</Badge>
                 {status.detail && <span>{status.detail}</span>}

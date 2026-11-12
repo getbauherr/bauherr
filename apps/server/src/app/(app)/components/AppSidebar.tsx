@@ -9,9 +9,9 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, Si
 import { UserMenu } from './UserMenu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
-type Props = { email: string; admin: boolean; workspaces: { slug: string; name: string }[]; current?: string; needsYou: number; drafts: number; setup?: { done: number; total: number; complete: boolean }; hasKnowledge: boolean; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
+type Props = { email: string; admin: boolean; workspaces: { slug: string; name: string }[]; current?: string; needsYou: number; drafts: number; setup?: { done: number; total: number; complete: boolean }; hasKnowledge: boolean; minimal?: boolean; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
 
-export function AppSidebar({ email, admin, workspaces, current, needsYou, drafts, setup, hasKnowledge, logout, selectWorkspace }: Props) {
+export function AppSidebar({ email, admin, workspaces, current, needsYou, drafts, setup, hasKnowledge, minimal, logout, selectWorkspace }: Props) {
   const path = usePathname()
   const { setOpenMobile } = useSidebar()
   useEffect(() => setOpenMobile(false), [path, setOpenMobile])
@@ -42,12 +42,12 @@ export function AppSidebar({ email, admin, workspaces, current, needsYou, drafts
           </svg>
           <span className="heading group-data-[collapsible=icon]:hidden">Bauherr</span>
         </Link>
-        <WorkspaceSwitcher workspaces={workspaces} current={current} admin={admin} selectWorkspace={selectWorkspace} />
+        {!minimal && <WorkspaceSwitcher workspaces={workspaces} current={current} admin={admin} selectWorkspace={selectWorkspace} />}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <nav aria-label="Main">
-            <SidebarMenu>{mainItems({ hasKnowledge, admin }).map(item)}</SidebarMenu>
+            <SidebarMenu>{(minimal ? [settingsItem('Profile')] : mainItems({ hasKnowledge, admin })).map(item)}</SidebarMenu>
           </nav>
         </SidebarGroup>
       </SidebarContent>
@@ -59,10 +59,12 @@ export function AppSidebar({ email, admin, workspaces, current, needsYou, drafts
             <LinkPending />
           </Link>
         )}
-        <nav aria-label="Account">
-          <SidebarMenu>{item(settingsItem())}</SidebarMenu>
-        </nav>
-        <UserMenu email={email} logout={logout} />
+        {!minimal && (
+          <nav aria-label="Account">
+            <SidebarMenu>{item(settingsItem())}</SidebarMenu>
+          </nav>
+        )}
+        <UserMenu email={email} logout={logout} minimal={minimal} />
       </SidebarFooter>
     </Sidebar>
   )

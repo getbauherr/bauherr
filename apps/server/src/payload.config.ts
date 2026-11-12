@@ -1,8 +1,8 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { s3Storage } from '@payloadcms/storage-s3'
-import { buildConfig } from 'payload'
-import { collections, isAdmin } from './collections'
+import { buildConfig, type SanitizedConfig } from 'payload'
+import { bauherrOnly, collections, isAdmin } from './collections'
 import { TASKS, syncJobEnums } from './jobs'
 import { bootFactory } from './lib/factory'
 import { migrations } from './migrations'
@@ -18,6 +18,12 @@ const tenantCollections = Object.fromEntries(
 const mediaBucket = process.env.MEDIA_S3_BUCKET
 // Fails at boot on a bad LOGIN_IP_MAX_ATTEMPTS / TRUSTED_PROXY_HOPS, like DATABASE_POOL_*.
 if (!loginLimits().trustedProxyHops) console.warn('TRUSTED_PROXY_HOPS=0: x-forwarded-for is ignored, so the per-IP sign-in limit is off (the per-account cap still applies)')
+
+/** Payload's own collections (document locks, jobs, migrations, kv) carry its default access, which answers any signed-in account: closed to everyone but Admins and Bauherren. Preferences are keyed to the user already. */
+const closeBuiltIns = (config: SanitizedConfig): SanitizedConfig => {
+  for (const c of config.collections) if (c.slug.startsWith('payload-') && c.slug !== 'payload-preferences') c.access = { ...c.access, read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly }
+  return config
+}
 
 export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),
@@ -64,4 +70,4 @@ export default buildConfig({
     tasks: TASKS,
     // No in-app autoRun: the `poller` (queue poll) and `worker` (queue runs) processes run the jobs (package.json).
   },
-})
+}).then(closeBuiltIns)

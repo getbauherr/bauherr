@@ -1,0 +1,22 @@
+# The default factory plus three conditional agent stages between build and review (security: touches security, ux: touches ui, test: bugs). Used by tests/conditional-stages.test.ts.
+version: 1
+team:
+  roles:
+    orchestrator: {title: Orchestrator, tier: cheap, profile: "Triage the Ticket."}
+    engineer:     {title: Software engineer, tier: cheap, profile: "Plan and build."}
+    reviewer:     {title: Reviewer, tier: standard, profile: "Review the MR."}
+    security:     {title: Security reviewer, tier: standard, profile: "Look for security problems in the open MR."}
+    ux:           {title: UX reviewer, tier: standard, profile: "Look at what people see."}
+    test:         {title: Test reviewer, tier: standard, profile: "Look at the tests."}
+workflow:
+  stages:
+    - {name: triage, kind: triage, role: orchestrator, skill: triage, outcomes: {plan: plan, refine: triage, skip: backlog}}
+    - {name: plan, kind: plan, role: engineer, skill: run-contract, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
+    - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: security-review, stuck: escalate, replan: plan}}
+    - {name: security-review, title: Security review, kind: agent, role: security, skill: mr-security-review, when: {touches: security}, outcomes: {pass: ux-review, findings: build}}
+    - {name: ux-review, title: UX review, kind: agent, role: ux, skill: ux-review, when: {touches: ui}, outcomes: {pass: test-review, findings: build}}
+    - {name: test-review, title: Test review, kind: agent, role: test, skill: test-review, when: {types: [bug]}, outcomes: {pass: review, findings: build}}
+    - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
+    - {name: release, kind: release, title: Staging, wip: 5, outcomes: {accepted: done, changes: build}}
+    - {name: done, kind: done}

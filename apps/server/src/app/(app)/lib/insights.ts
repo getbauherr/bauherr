@@ -78,7 +78,7 @@ export const wipAge = async (payload: Payload, wf: Workflow, workspace: number, 
   const rows = (await payload.db.drizzle.execute(sql`
     SELECT t."id", t."number", t."title", COALESCE(t."stage", ${board(wf)[0]}) AS "stage", COALESCE(e."at", t."updated_at") AS "since"
     FROM "tickets" t
-    LEFT JOIN LATERAL (SELECT "at" FROM "ticket_events" WHERE "ticket_id" = t."id" AND "stage" IS NOT NULL AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "at" DESC, "id" DESC LIMIT 1) e ON true
+    LEFT JOIN LATERAL (SELECT "at" FROM "ticket_events" WHERE "ticket_id" = t."id" AND "stage" IS NOT NULL AND COALESCE("cause", '') NOT LIKE 'skip:%' AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "at" DESC, "id" DESC LIMIT 1) e ON true
     WHERE t."workspace_id" = ${workspace}::int AND t."state" = 'open' ${product ? sql`AND t."product_id" = ${product}::int` : sql``}
       AND COALESCE(t."stage", '') NOT IN (${byKind(wf, 'done')?.name ?? ''}, ${byKind(wf, 'container')?.name ?? ''})
     ORDER BY "since" ASC LIMIT 10`)).rows
