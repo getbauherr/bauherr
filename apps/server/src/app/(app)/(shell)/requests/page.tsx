@@ -11,7 +11,8 @@ import { ReportProblem } from '../../components/ReportProblem'
 import { Badge } from '../../components/ui/badge'
 import { ago } from '../../lib/format'
 import { loadDrafts, loadWorkbench, REQUESTS_LIMIT, type RequestRow } from '../../lib/requests'
-import { currentWorkspace } from '../../lib/session'
+import { currentPersonWorkspace } from '../../lib/session'
+import { isProductOwner } from '../../../../lib/people'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,13 +42,14 @@ const Title = ({ row }: { row: RequestRow }) => (
 )
 
 export default async function Requests({ searchParams }: { searchParams: Promise<Search> }) {
-  const { user, workspace } = await currentWorkspace()
+  const { user, workspace } = await currentPersonWorkspace()
+  const owner = isProductOwner(user)
   const q = await searchParams
   const kind = KINDS.find((k) => k === q.type)
   const product = /^\d+$/.test(q.product ?? '') ? Number(q.product) : undefined
   const mine = q.mine === '1'
   const wb = workspace ? await loadWorkbench(workspace.id, user, { product, kind, mine }) : null
-  const drafts = (workspace ? await loadDrafts(user.id as number, workspace.id) : []).filter((d) => (!product || d.productId === product) && (!kind || d.kind === kind))
+  const drafts = (workspace ? await loadDrafts(user, workspace.id) : []).filter((d) => (!product || d.productId === product) && (!kind || d.kind === kind))
   const href = (next: Search) => {
     const p = new URLSearchParams()
     for (const [k, v] of Object.entries({ product: q.product, type: q.type, mine: q.mine, ...next })) if (v) p.set(k, v)
@@ -73,7 +75,7 @@ export default async function Requests({ searchParams }: { searchParams: Promise
                 <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-warn/50 bg-card p-3" data-testid="needs-row">
                   <Title row={r} />
                   <StatusLine status={r.status} waits={r.waits} />
-                  {r.ticket?.id && r.need && <NeedButton ticket={r.ticket.id} need={r.need} />}
+                  {!owner && r.ticket?.id && r.need && <NeedButton ticket={r.ticket.id} need={r.need} />}
                 </li>
               ))}
             </ul>
@@ -91,10 +93,12 @@ export default async function Requests({ searchParams }: { searchParams: Promise
                     <span className="small text-muted-foreground">{wb.multiProduct && <>{d.product} · </>}changed {ago(d.updatedAt)}</span>
                     <span className="small" data-testid="draft-ready">{d.canSend ? (d.missing.length ? `Can be sent · still open: ${d.missing.join(', ')}` : 'Ready to send') : `Missing: ${d.missing.join(', ')}`}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <RequestOpen request={d.id} size="sm">Continue</RequestOpen>
-                    <DiscardDraft session={d.id} title={d.title} label="Discard" />
-                  </div>
+                  {!owner && (
+                    <div className="flex gap-2">
+                      <RequestOpen request={d.id} size="sm">Continue</RequestOpen>
+                      <DiscardDraft session={d.id} title={d.title} label="Discard" />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -102,7 +106,7 @@ export default async function Requests({ searchParams }: { searchParams: Promise
           <Section id="factory" title="In the factory" count={wb.factory.length}>
             <OrderedRequests
               items={wb.factory.map((r): OrderedItem => ({
-                session: r.id, ticket: r.ticket?.id ?? null, product: r.productId, movable: r.mine, title: r.title,
+                session: r.id, ticket: r.ticket?.id ?? null, product: r.productId, movable: r.mine && !owner, title: r.title,
                 node: (
                   <>
                     <Title row={r} />
@@ -124,7 +128,7 @@ export default async function Requests({ searchParams }: { searchParams: Promise
                     <span className="small" data-testid="request-status">{r.status}</span>
                     {r.note && <span className="small text-muted-foreground" data-testid="release-note">{r.note}</span>}
                   </div>
-                  {!r.status.startsWith('Declined') && <ReportProblem session={r.id} size="sm" />}
+                  {!owner && !r.status.startsWith('Declined') && <ReportProblem session={r.id} size="sm" />}
                 </li>
               ))}
             </ul>
@@ -132,7 +136,7 @@ export default async function Requests({ searchParams }: { searchParams: Promise
           {wb.total > REQUESTS_LIMIT && <p className="text-muted-foreground small">Showing the newest {REQUESTS_LIMIT}</p>}
         </>
       )}
-      {none && <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/requests/new', label: 'New request' }} />}
+      {none && <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={owner ? undefined : { href: '/requests/new', label: 'New request' }} />}
     </>
   )
 }

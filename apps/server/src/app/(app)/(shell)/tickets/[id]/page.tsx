@@ -1,4 +1,6 @@
 import { PageTitle } from '../../../components/PageTitle'
+import { ProductOwnerTicket } from './ProductOwnerTicket'
+import { isProductOwner } from '../../../../../lib/people'
 import { APPROVED_PLAN } from '@bauherr/adapters'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -36,7 +38,7 @@ import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, f
 import { ago } from '../../../lib/format'
 import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
-import { currentWorkspace, payloadClient } from '../../../lib/session'
+import { currentWorkspace, payloadClient, requirePerson } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import { KindChip } from '../../../components/RequestParts'
 import { waitingLabel } from '../../../../../lib/wip'
@@ -167,6 +169,7 @@ const Noted = ({ items }: { items: OpenItem[] }) =>
 
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  if (isProductOwner(await requirePerson())) return await ProductOwnerTicket({ id })
   const { user, workspace } = await currentWorkspace()
   const wf = workflowFor(workspace?.id)
   const admin = isAdmin(user)
