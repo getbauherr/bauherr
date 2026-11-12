@@ -74,5 +74,5 @@ test('Cost & tokens breaks the seeded usage down and says how much of it is cove
   await expect(key('cost-stages', 'review')).toContainText('$2.50 / $2.50')
   await expect(page.getByTestId('cost-tickets')).toContainText('Cost: usage seeded')
   await expect(page.getByTestId('cost-coverage')).toContainText(/\d+ %.*Runner and CI Runs \(gateway\).*finished Runs have usage/)
-  await expect(page.getByTestId('cost-coverage')).toContainText(/Session Runs \(reported\): \d+ of \d+ finished/)
+  await expect(page.getByTestId('cost-coverage')).toContainText(/Session Runs \(gateway or reported\): \d+ of \d+ finished/)
 })

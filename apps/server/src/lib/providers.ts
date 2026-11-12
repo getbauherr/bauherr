@@ -1,4 +1,4 @@
-export type Preset = 'anthropic' | 'greenpt' | 'bedrock' | 'vertex' | 'foundry' | 'anthropic-compatible' | 'openai-compatible' | 'bedrock-iam' | 'foundry-entra' | 'bedrock-ambient' | 'vertex-ambient' | 'foundry-ambient' | 'router'
+export type Preset = 'anthropic' | 'openai' | 'gemini' | 'greenpt' | 'bedrock' | 'vertex' | 'foundry' | 'anthropic-compatible' | 'openai-compatible' | 'bedrock-iam' | 'foundry-entra' | 'bedrock-ambient' | 'vertex-ambient' | 'foundry-ambient' | 'router'
 type Tier = 'cheap' | 'standard' | 'strong'
 type Cfg = Record<string, string | undefined>
 
@@ -42,12 +42,15 @@ type Def = {
   render: (slug: string, cfg: Cfg, file: string, secret?: string) => Record<string, unknown>
 }
 
+/** Headers a gateway key can arrive in; every model entry removes them so the key never reaches a provider. */
+export const KEY_HEADERS = ['x-agw-key', 'x-api-key', 'x-goog-api-key']
+
 const entry = (slug: string, provider: unknown, params: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
   name: `ws-${slug}/*`,
   provider,
   params,
   ...extra,
-  requestHeaders: { remove: ['x-agw-key'] },
+  requestHeaders: { remove: [...KEY_HEADERS] },
   transformation: { model: `llmRequest.model.stripPrefix("ws-${slug}/")` },
 })
 
@@ -61,6 +64,22 @@ export const PRESETS: Record<Preset, Def> = {
     catalog: true,
     defaultModels: ANTHROPIC_MODELS,
     render: (slug, _c, file) => entry(slug, 'anthropic', { apiKey: { file } }),
+  },
+  openai: {
+    auth: 'file',
+    required: [],
+    secret: { ext: 'key', hint: 'OpenAI API key; serves Chat Completions and Responses (Codex CLI); set `modelByTier`' },
+    catalog: true,
+    defaultModels: null,
+    render: (slug, _c, file) => entry(slug, 'openAI', { apiKey: { file } }),
+  },
+  gemini: {
+    auth: 'file',
+    required: [],
+    secret: { ext: 'key', hint: 'Gemini API key; serves Gemini, Chat Completions and Messages calls; set `modelByTier`' },
+    catalog: true,
+    defaultModels: null,
+    render: (slug, _c, file) => entry(slug, 'gemini', { apiKey: { file } }),
   },
   greenpt: {
     auth: 'file',

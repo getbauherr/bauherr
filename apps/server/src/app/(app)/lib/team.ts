@@ -2,6 +2,8 @@ import type { Payload } from 'payload'
 import { parseDocument } from 'yaml'
 import { tierModels } from '../../../lib/gateway'
 import { PRESETS, presetOf } from '../../../lib/providers'
+import { loadModelList } from '../../../lib/prices'
+import { modelOptions } from './models'
 import type { ModelOption, RoleSettings } from '../components/team/types'
 
 type Doc = Record<string, any>
@@ -12,13 +14,15 @@ const TIERS = ['cheap', 'standard', 'strong']
 export const loadModelOptions = async (payload: Payload, workspace: number): Promise<ModelOption[]> => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { slug: true, modelByTier: true }, ...o })) as Doc
   const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', pagination: false, select: { slug: true, name: true, config: true }, ...o })).docs as Doc[]
+  const listed = await loadModelList(payload)
   const mapped = await tierModels(payload, { ...ws, id: workspace }).catch(() => ({}) as Record<string, string>)
   const bare = (v: string) => v.replace(`ws-${ws.slug}/`, '')
   const tiers = TIERS.filter((t) => mapped[t]).map((t) => ({ value: `tier:${t}`, label: `${t[0]!.toUpperCase()}${t.slice(1)} tier (${bare(mapped[t]!).split('/').slice(-1)[0]})`, group: 'Tier' }))
   const models = conns.filter((c) => c.config?.provider !== 'router').flatMap((c) => {
     const defaults = Object.values(PRESETS[presetOf(c.config)].defaultModels ?? {})
     const used = TIERS.flatMap((t) => (mapped[t] && bare(mapped[t]!).startsWith(`${c.slug}/`) ? [bare(mapped[t]!).slice(c.slug.length + 1)] : []))
-    return [...new Set([...defaults, ...used])].map((m) => ({ value: `${c.slug}/${m}`, label: m, group: c.name as string }))
+    const fresh = modelOptions(presetOf(c.config), [], listed, []) ?? []
+    return [...new Set([...defaults, ...fresh.map((o) => (Array.isArray(o) ? o[0]! : o)), ...used])].map((m) => ({ value: `${c.slug}/${m}`, label: m, group: c.name as string }))
   })
   return [...tiers, ...models]
 }

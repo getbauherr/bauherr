@@ -53,7 +53,7 @@ That is the role you get.
 - **You decide, the factory works.** Tickets move through stages by themselves. You are asked at a few checkpoints, and the Inbox shows each one as a prepared card: the ask, a recommendation, the facts and the real options.
 - **Your tickets stay yours.** They live in GitHub. Bauherr keeps a pointer and what it derives, and writes the stage as a label.
 - **Everything is on the record.** Runs, steps, tool calls, human touches and cost are stored. Every step of a Ticket shows who or what did it, with which model, for how much.
-- **Cost is capped.** Each Workspace has its own provider key and a rolling 30-day budget in a bundled gateway. An exhausted budget ends the Run.
+- **Cost is capped and measured.** Each Workspace has its own provider key and a rolling 30-day budget in a bundled gateway. An exhausted budget ends the Run. Your own coding sessions go through the same gateway with one pasted block per tool, so Insights shows tokens and cost per session, and prices update themselves ([docs/gateway.md](docs/gateway.md)).
 - **Use your own session.** A stage can wait for your Claude Code to claim it, so you work in your own worktree with your own credentials.
 - **Small to run.** Docker and Postgres 17. No Redis, no external service.
 
@@ -101,7 +101,7 @@ One row per area. The full list, with the page of each feature, is in [docs/feat
 | 🛡️ [Quality and security](docs/features.md#quality-and-security) | A review stage, pre-review checks, flaky-check tracking, a scheduled security scan, evidence on every merge request |
 | 👥 [Team and sessions](docs/session-mode.md) | An Agent team page to pick roles with profiles, skills and models; sessions that connect as a role and pull work; who is working, on what, for how long; agent keys, people, OIDC sign-in |
 | 📚 [Knowledge](docs/features.md#knowledge) | A repository of your documents and skills that agents search, and a pack of skills, rules and hooks per Run |
-| 💶 [Models and cost](docs/features.md#models-and-cost) | A bundled AI gateway, budgets, model tiers, cost per Product, Ticket and stage |
+| 💶 [Models and cost](docs/gateway.md) | A bundled AI gateway that also measures your own coding sessions, self-updating prices, budgets, model tiers, cost per Product, Ticket and stage |
 | 📈 [Insights](docs/features.md#models-and-cost) | Lead time, cycle time, time per stage with the bottleneck, throughput per week; [tokens and cost](docs/cost.md) per model, role, session, stage and Ticket |
 | 🧾 [Audit](docs/observability.md) | Human touches and tool calls in the UI, metrics and traces in Prometheus and Jaeger |
 | ⚙️ [Administration](docs/features.md#administration) | Workspaces, Products, Connections, editable text templates, a command palette |

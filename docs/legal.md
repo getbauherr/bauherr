@@ -30,12 +30,16 @@ Bauherr ships the SDK and Claude Code binary unmodified. Do not modify them or r
 
 ## Owner-session passthrough
 
-The gateway's `sub/*` model family forwards the caller's own `Authorization` header to Anthropic. It is only for the Workspace owner's own, unmodified Claude Code session. Never for Product users, clients or spawned agents (the Runner uses `ws-<slug>/*` with the Workspace API key only). Bauherr never collects, stores or logs the token:
+The gateway's `sub/*` and `claude-*` model families (the same login under the names Claude Code sends by itself) forward the caller's own `Authorization` header to Anthropic. It is only for the Workspace owner's own, unmodified Claude Code session. Never for Product users, clients or spawned agents (the Runner uses `ws-<slug>/*` with the Workspace API key only). Bauherr never collects, stores or logs the token:
 
-- `deploy/gateway/config.yaml.tmpl`: `sub/*` has no `params.apiKey`, only `auth.passthrough` of the request header; `x-agw-key` is removed before upstream.
-- `frontendPolicies.accessLog` adds only run, stage, product and ticket headers; `database.llm` stays `metadata`, so no header or prompt is persisted.
-- Only keys with `metadata.kind: owner-session` (`allowedModels: ["sub/*", "ws-<slug>/*"]`, created by `ensureSessionKey`) pass the `sub/*` authorization rule.
+- `deploy/gateway/config.yaml.tmpl`: `sub/*` and `claude-*` have no `params.apiKey`, only `auth.passthrough` of the request header; `x-agw-key`, `x-api-key` and `x-goog-api-key` are removed before upstream.
+- `frontendPolicies.accessLog` adds only run, stage, product, ticket, session name, role and tool name (`user-agent`) headers; `database.llm` stays `metadata`, so no header or prompt is persisted.
+- Only keys with `metadata.kind: owner-session` (`allowedModels: ["sub/*", "claude-*", "ws-<slug>/*"]`, created by `ensureSessionKey`) pass the `sub/*` authorization rule.
 - The same key may call `ws-<slug>/*`, the owner's own use of the Workspace API key. Those routes set `params.apiKey`, which replaces the forwarded `Authorization`, and strip `x-agw-key`.
+
+### Other vendors' subscriptions
+
+Only Claude Code's own login is passed through, because Anthropic documents gateways that forward it ([LLM gateway](https://code.claude.com/docs/en/llm-gateway)) while limiting the same terms to the unmodified Claude Code binary. For the other coding tools the gateway offers no subscription passthrough: Codex's ChatGPT login and Gemini CLI's Google login are issued for the vendor's own endpoints, the tools document no gateway route for them (Gemini CLI's custom endpoint works only with an API key), and their terms on forwarding those logins through a third-party proxy were not found in the documentation. They use the Workspace's API key for that vendor instead. See [gateway.md](gateway.md).
 
 ## What is stored
 

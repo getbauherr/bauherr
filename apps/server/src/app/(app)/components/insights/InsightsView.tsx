@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react'
 import Link from 'next/link'
 import { title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { duration, durationHm } from '../../lib/format'
@@ -27,7 +28,7 @@ const Legend = () => (
 )
 
 /** Time to market of the Tickets that started in the range: tiles, where time goes per stage, throughput and WIP age. Plain markup, no chart library. */
-export function InsightsView({ wf, data, wip, team, cost, days }: { wf: Workflow; data: Insights; wip: WipAge[]; team?: TeamTime; cost?: Cost; days: number }) {
+export function InsightsView({ wf, data, wip, team, cost, days, gateway }: { wf: Workflow; data: Insights; wip: WipAge[]; team?: TeamTime; cost?: Cost; days: number; gateway?: ComponentProps<typeof CostSection>['gateway'] }) {
   const max = Math.max(1, ...data.stages.map((s) => s.total))
   const weeks = Math.max(1, ...data.throughput.map((w) => w.tickets))
   return (
@@ -111,7 +112,7 @@ export function InsightsView({ wf, data, wip, team, cost, days }: { wf: Workflow
           <p className="m-0 text-muted-foreground">No open Tickets.</p>
         )}
       </section>
-      {cost && <CostSection cost={cost} days={days} />}
+      {cost && <CostSection cost={cost} days={days} gateway={gateway} />}
       {team && (
         <section className="flex flex-col gap-3" aria-labelledby="team">
           <h2 className="heading" id="team">Team</h2>

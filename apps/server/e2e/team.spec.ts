@@ -45,7 +45,13 @@ test('Agent team is in the sidebar after Workflow, not in Settings; the roster i
   await expect(sheet.locator('#role-title')).toHaveText('Software engineer')
   await expect(sheet.getByRole('list', { name: 'Skills' })).toContainText('Small diffs')
   await expect(sheet.getByText('Works on')).toBeVisible()
-  await expect(sheet.getByTestId('connect')).toContainText('Connect to the factory as engineer and work until I tell you to stop.')
+  await expect(sheet.getByTestId('connect')).toContainText(/Connect to the factory as engineer with session "engineer-[0-9a-f]{4}" and work until I tell you to stop\./)
+  // One step connects and routes through the gateway: the tool picker carries the same session name as the prompt.
+  const name = /Connect to the factory as engineer with session "(engineer-[0-9a-f]{4})"/.exec(await sheet.getByTestId('connect').innerText())![1]!
+  await expect(sheet.getByTestId('connect-gateway').locator('pre').first()).toContainText(`BAUHERR_SESSION=${name}`)
+  await sheet.getByLabel('Coding tool').selectOption('codex')
+  await expect(sheet.getByTestId('connect-gateway')).toContainText('wire_api = "responses"')
+  await expect(sheet.getByTestId('connect-gateway')).not.toContainText(/sk-bauherr|bha_/)
   await expect(sheet.getByRole('link', { name: 'How sessions connect' })).toHaveAttribute('href', /session-mode\.md/)
 })
 
