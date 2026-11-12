@@ -17,6 +17,7 @@ x-app: &app
     GATEWAY_DATABASE_URL: &gwdb postgres://bauherr:bauherr@db:5432/gateway
     GATEWAY_CONFIG_DIR: /gateway
     # Where sessions reach the gateway (default loopback; set the TLS address for remote sessions) and where the Admin opens its UI, see docs/gateway.md.
+    GATEWAY_PORT: ${GATEWAY_PORT:-4000}
     GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-}
     GATEWAY_UI_URL: ${GATEWAY_UI_URL:-}
     # Daily model price refresh (default on); BAUHERR_PRICES_REFRESH=0 for air-gapped installs, BAUHERR_PRICES_URL to pin another mirror.
@@ -85,7 +86,7 @@ services:
     image: cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b
     user: "0" # provider key files are 0600 and written by root in app/worker
     command: [-f, /gateway/config.yaml]
-    ports: ["127.0.0.1:4000:4000"] # loopback only: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal; only the opt-in `gateway-ui` profile below forwards it, on loopback
+    ports: ["127.0.0.1:${GATEWAY_PORT:-4000}:4000"] # loopback only (never 0.0.0.0), host port from GATEWAY_PORT: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal; only the opt-in `gateway-ui` profile below forwards it, on loopback
     volumes: ["bauherr-gateway:/gateway:ro"]
     depends_on:
       db: {condition: service_healthy}

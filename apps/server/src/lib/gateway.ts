@@ -15,7 +15,7 @@ type Resource = { id: string; value: { key: string; metadata?: { name?: string; 
 
 /** Hooks no-op without a gateway (tests, seed outside compose). */
 /** Where a session on this machine reaches the gateway (loopback by default); set `GATEWAY_PUBLIC_URL` to the TLS address for remote sessions. */
-export const gatewayPublicUrl = (): string => (process.env.GATEWAY_PUBLIC_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '')
+export const gatewayPublicUrl = (): string => (process.env.GATEWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.GATEWAY_PORT || 4000}`).replace(/\/+$/, '')
 
 export const gatewayEnabled = (): boolean => {
   if (process.env.GATEWAY_ADMIN_URL) return true

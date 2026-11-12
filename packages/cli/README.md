@@ -3,7 +3,7 @@
 One-command start for the [Bauherr](https://github.com/getbauherr/bauherr) AI software factory. Needs Docker with Compose and Node 22.14+.
 
 ```bash
-npx bauherr init [--dir bauherr] [--port 3000] [--url http://localhost:3000] [--yes]
+npx bauherr init [--dir bauherr] [--port 3000] [--gateway-port 4000] [--url http://localhost:3000] [--yes]
 npx bauherr up | down [--volumes] | status | seed
 BAUHERR_API_KEY=<personal key> npx bauherr apply -f factory.yaml --workspace <slug> [--dry-run] [--url <instance>]
 BAUHERR_API_KEY=<personal key> npx bauherr export --workspace <slug> [--out factory.yaml]

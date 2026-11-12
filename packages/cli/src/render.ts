@@ -8,13 +8,13 @@ const envFile = (dir: string) => join(dir, '.env')
 export const cliVersion = (): string =>
   (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
 
-/** Repo-root compose.yaml turned into the installed one: image pinned, no build, no fixed db/gateway host ports or container names, secrets from the env file. */
+/** Repo-root compose.yaml turned into the installed one: image pinned, no build, no fixed db host port or container names, secrets from the env file. */
 export const renderCompose = (template: string, version: string): string =>
   template
     .replace('${BAUHERR_VERSION:-dev}', version)
     .replace(/^  build:\n(?:    .*\n)+/m, '')
     .split('\n')
-    .filter((l) => !/container_name:/.test(l) && !/ports: \["127\.0\.0\.1:(54330|4000):/.test(l))
+    .filter((l) => !/container_name:/.test(l) && !/ports: \["127\.0\.0\.1:(54330):/.test(l))
     .join('\n')
     .replace('PAYLOAD_SECRET_FILE: /run/secrets/payload_secret', 'PAYLOAD_SECRET: ${PAYLOAD_SECRET:?run bauherr init}')
     .replace('ENCRYPTION_KEY_FILE: /run/secrets/encryption_key', 'ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run bauherr init}')
@@ -32,13 +32,14 @@ export const parseEnv = (text: string): Map<string, string> =>
 export const readEnv = (dir: string): Map<string, string> =>
   existsSync(envFile(dir)) ? parseEnv(readFileSync(envFile(dir), 'utf8')) : new Map()
 
-type Settings = { PORT: string; PUBLIC_URL: string }
+type Settings = { PORT: string; GATEWAY_PORT: string; PUBLIC_URL: string }
 
 /** Merges `values` over the existing env file (unknown keys survive); secrets are generated only when absent. */
 export const writeEnv = (dir: string, values: Settings): Map<string, string> => {
   const env = readEnv(dir)
   env.set('COMPOSE_PROJECT_NAME', env.get('COMPOSE_PROJECT_NAME') ?? projectName(dir))
   env.set('PORT', values.PORT)
+  env.set('GATEWAY_PORT', values.GATEWAY_PORT)
   env.set('PUBLIC_URL', values.PUBLIC_URL)
   for (const k of ['PAYLOAD_SECRET', 'ENCRYPTION_KEY']) if (!env.get(k)) env.set(k, randomBytes(32).toString('hex'))
   writeFileSync(envFile(dir), [...env].map(([k, v]) => `${k}=${v}`).join('\n') + '\n', { mode: 0o600 })
