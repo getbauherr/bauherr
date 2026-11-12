@@ -86,7 +86,7 @@ it('health: stale scheduled tasks are named, fresh ones and the startup grace ar
   // startup grace: only a young job row exists
   await insert('poll-tickets', { updated: 1 })
   expect(await health.staleTasks(payload, fresh)).toEqual([])
-  for (const s of jobs.scheduledSlugs().filter((s) => s !== 'prune-request-logs' && s !== 'watch-release')) await insert(s, { updated: 1, completed: 1 })
+  for (const s of jobs.scheduledSlugs().filter((s) => s !== 'watch-release')) await insert(s, { updated: 1, completed: 1 })
   await insert('watch-release', { updated: 6, completed: 6 })
   expect(await health.staleTasks(payload, fresh)).toEqual(['watch-release'])
   await insert('watch-release', { updated: 0, completed: 0 })
@@ -95,4 +95,20 @@ it('health: stale scheduled tasks are named, fresh ones and the startup grace ar
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug" = 'notify-gates'`)
   await insert('poll-tickets', { updated: 30 })
   expect(await health.staleTasks(payload, fresh)).toEqual(['notify-gates'])
+  // an hourly and a daily task are not stale between their runs, and are once a run was missed
+  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug" IN ('notify-gates', 'security-scan-tick', 'prune-comment-media')`)
+  await insert('notify-gates', { updated: 1, completed: 1 })
+  await insert('security-scan-tick', { updated: 50, completed: 50 })
+  await insert('prune-comment-media', { updated: 20 * 60, completed: 20 * 60 })
+  expect(await health.staleTasks(payload, fresh)).toEqual([])
+  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug" = 'security-scan-tick'`)
+  await insert('security-scan-tick', { updated: 200, completed: 200 })
+  expect(await health.staleTasks(payload, fresh)).toEqual(['security-scan-tick'])
+})
+
+it('health: the allowed gap follows the schedule', () => {
+  expect(health.staleAfterMs('0 * * * * *')).toBe(5 * 60_000)
+  expect(health.staleAfterMs('0 */5 * * * *')).toBe(15 * 60_000)
+  expect(health.staleAfterMs('0 0 * * * *')).toBe(150 * 60_000)
+  expect(health.staleAfterMs('0 30 3 * * *')).toBe(26 * 3_600_000)
 })
