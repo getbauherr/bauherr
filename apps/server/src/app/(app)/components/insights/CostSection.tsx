@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Cost, Line, Quantiles } from '../../lib/cost'
+import { UNNAMED_SESSION } from '../../lib/cost-labels'
 import { Table } from '../ui/table'
 import { GatewayStatus } from '../gateway/GatewayStatus'
 import type { GatewayStatus as Status } from '../../lib/gateway-setup'
@@ -45,6 +46,8 @@ function Lines({ id, head, lines, total, extra }: { id: string; head: string; li
 export function CostSection({ cost, days, gateway }: { cost: Cost; days: number; gateway?: { status: Status; admin: boolean } }) {
   const sessions = cost.coverage.find((c) => c.label.startsWith('Session Runs'))
   const unmeasured = !!sessions && sessions.runs > 0 && sessions.covered / sessions.runs < 0.5
+  // Calls that reach the gateway without a session name are measured, but only for the Workspace: say that, not "not measured".
+  const unnamed = cost.bySession.find((l) => l.label === UNNAMED_SESSION && l.tokens + l.cache > 0)
   const src = Object.entries(cost.sources).map(([k, v]) => `${k} ${usd(v)}`).join(' · ')
   return (
     <section className="flex flex-col gap-3" aria-labelledby="cost" data-testid="cost-section">
@@ -55,8 +58,17 @@ export function CostSection({ cost, days, gateway }: { cost: Cost; days: number;
       </p>
       {unmeasured && (
         <div role="note" className="flex flex-col gap-2 rounded-md border border-warn bg-card p-3" data-testid="cost-gateway-cta">
-          <strong>Session cost is not measured: route your sessions through the gateway.</strong>
-          <span className="small text-muted-foreground">Only {sessions!.covered} of {sessions!.runs} finished session Runs have usage. Copy the lines for your coding tool once; the gateway then counts the tokens and cost of every call, per session, model, role, stage and Ticket.</span>
+          {unnamed ? (
+            <>
+              <strong data-testid="cost-unnamed">Your sessions go through the gateway, but they send no session name.</strong>
+              <span className="small text-muted-foreground">{usd(unnamed.costUsd)} is counted for the Workspace as &quot;{UNNAMED_SESSION}&quot;, not per session, role, stage or Ticket: only {sessions!.covered} of {sessions!.runs} finished session Runs have usage. Start each session with the lines for your coding tool; they add the name the session connects with. A setting shared by all sessions cannot carry it.</span>
+            </>
+          ) : (
+            <>
+              <strong>Session cost is not measured: route your sessions through the gateway.</strong>
+              <span className="small text-muted-foreground">Only {sessions!.covered} of {sessions!.runs} finished session Runs have usage. Copy the lines for your coding tool once; the gateway then counts the tokens and cost of every call, per session, model, role, stage and Ticket.</span>
+            </>
+          )}
           <span><Link className="text-primary underline" href="/settings/usage#measure">Set up session measuring</Link></span>
           {gateway?.admin && <GatewayStatus status={gateway.status} admin />}
         </div>

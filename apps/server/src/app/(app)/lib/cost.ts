@@ -1,5 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import { UNNAMED_SESSION } from './cost-labels'
 import { title as stageTitle, type Workflow } from '../../../lib/workflow'
 
 export type Row = { run: number | null; group: string; executor: string; ticket: number | null; number: number | null; ticketTitle: string | null; stage: string | null; role: string | null; model: string; source: string; tokens: number; cache: number; cost: number | null; at: string }
@@ -98,7 +99,7 @@ const EFFECTIVE = sql`NOT (e."source" = 'session-reported' AND (
 
 const toRow = (r: Record<string, any>): Row => ({
   run: r.run_id == null ? null : Number(r.run_id),
-  group: r.session_label ?? (r.source === 'chat' ? 'Chat' : r.executor === 'ci' ? 'CI' : r.source === 'gateway' && r.run_id == null ? 'Unnamed gateway session' : 'Runner'),
+  group: r.session_label ?? (r.source === 'chat' ? 'Chat' : r.executor === 'ci' ? 'CI' : r.source === 'gateway' && r.run_id == null ? UNNAMED_SESSION : 'Runner'),
   executor: r.session_label ? 'session' : r.source === 'chat' ? 'chat' : r.source === 'gateway' && r.run_id == null ? 'session' : (r.executor ?? 'runner'),
   ticket: r.ticket_id == null ? null : Number(r.ticket_id),
   number: r.number == null ? null : Number(r.number),
