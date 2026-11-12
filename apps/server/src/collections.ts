@@ -11,8 +11,11 @@ import { runKind, runStageError, waitingForError } from './lib/stage-text'
 import { chatCollections } from './lib/chat/collections'
 import { workflowFor } from './lib/factory'
 import { TEMPLATE_NAMES } from './lib/template-text'
+import { assignmentRows, isBauherr, ROLES, tenantIds } from './lib/people'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
+/** The default of every collection: only an Admin or a Bauherr (the tenant plugin narrows to their Workspaces). A Product owner and an unknown role get nothing. */
+export const bauherrOnly = ({ req }: { req: { user?: object | null } }): boolean => isBauherr(req.user as Doc | null)
 
 type Doc = Record<string, any>
 /** The workflow of the Workspace a document belongs to, or undefined when the document does not say. */
@@ -22,12 +25,20 @@ const wfOfDoc = (data?: Doc, sibling?: Doc) => {
 }
 
 const AMBIENT_LOCK = 143
+const ACCOUNT_LOCK = 144
 
 /** Serialises the ambient-identity single-tenant check against the write it guards; released when the request transaction ends. */
 const lockAmbient = async (req: PayloadRequest): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
   const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
   await tx.execute(sql`select pg_advisory_xact_lock(${AMBIENT_LOCK})`)
+}
+
+/** Serialises writers of one account; released when the request transaction ends. */
+const lockAccount = async (req: PayloadRequest, id: number | string): Promise<void> => {
+  const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
+  const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
+  await tx.execute(sql`select pg_advisory_xact_lock(${ACCOUNT_LOCK}, ${Number(id)})`)
 }
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
@@ -49,12 +60,17 @@ const json = (name: string): Field => ({ name, type: 'json' })
 const select = (name: string, options: string[], extra: Partial<Field> = {}): Field =>
   ({ name, type: 'select', options, ...extra }) as Field
 
+/** Every collection decides its access: `extra.access` overrides single operations, the rest is `bauherrOnly`. */
 const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {}): CollectionConfig => ({
   slug,
   admin: { useAsTitle: (fields[0] as { name: string }).name },
   fields,
   ...extra,
+  access: { read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly, ...extra.access },
 })
+
+/** What a Product owner may write on their own account. */
+const SELF_FIELDS = ['uiPrefs', 'password']
 
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
@@ -81,6 +97,7 @@ const bauherren: CollectionConfig = {
       },
     },
   ],
+  // Everyone reads and updates only their own account; a Product owner's own update is cut down to `SELF_FIELDS` by the beforeValidate hook.
   access: {
     admin: isAdmin,
     create: isAdmin,
@@ -89,6 +106,30 @@ const bauherren: CollectionConfig = {
     update: ({ req }) => (req.user?.role === 'admin' ? true : { id: { equals: req.user?.id } }),
   },
   hooks: {
+    beforeValidate: [
+      async ({ data, originalDoc, operation, req }) => {
+        if (!data) return data
+        const fail = (path: string, message: string) => new ValidationError({ collection: 'bauherren', errors: [{ path, message }] })
+        // Payload writes the whole merged document, so a write based on an older read would put back the role, assignments or tenants it saw.
+        // Under the account's lock the stored row must still be the one this update was built from, otherwise it is refused and nothing is written.
+        if (operation === 'update' && originalDoc?.id != null) {
+          await lockAccount(req, originalDoc.id)
+          const fresh = (await req.payload.findByID({ collection: 'bauherren', id: originalDoc.id, depth: 0, overrideAccess: true, select: { updatedAt: true }, req })) as { updatedAt?: string }
+          if (fresh.updatedAt !== originalDoc.updatedAt) throw fail('id', 'This account changed while you were editing it. Reload and try again.')
+        }
+        if (operation === 'update' && req.user?.role === 'product-owner') {
+          // `data` is the whole merged document: only a field that differs from the stored one counts as a change.
+          const other = Object.keys(data).filter((k) => ![...SELF_FIELDS, 'updatedAt', 'createdAt'].includes(k) && !isDeepStrictEqual(data[k] ?? null, originalDoc?.[k] ?? null))
+          if (other.length) throw fail(other[0], 'A Product owner can change only the password and display preferences')
+        }
+        if ((data.role ?? originalDoc?.role) === 'product-owner') {
+          // `data` carries the stored value on an update: only turning a key on, or sending one, is refused; a stored key is switched off.
+          if ((data.enableAPIKey && !originalDoc?.enableAPIKey) || (data.apiKey && data.apiKey !== originalDoc?.apiKey)) throw fail('enableAPIKey', 'A Product owner cannot have an API key')
+          if (data.enableAPIKey) data.enableAPIKey = false
+        }
+        return data
+      },
+    ],
     // Payload's built-in API-key and local-JWT strategies ignore lockUntil: refuse their lookup while the request is still unauthenticated.
     // The throw hits any locked Bauherr read in an unauthenticated request that carries a credential; today only the strategies' own user lookups run there.
     afterRead: [
@@ -101,10 +142,31 @@ const bauherren: CollectionConfig = {
       },
     ],
     beforeChange: [
-      async ({ data, operation, req }) => {
+      async ({ data, operation, originalDoc, req }) => {
         if (operation === 'create' && !req.context.oidc && (await req.payload.count({ collection: 'bauherren' })).totalDocs === 0) {
           data.role = 'admin'
         }
+        const role = data.role ?? originalDoc?.role
+        if (role !== 'product-owner') {
+          if (data.role && originalDoc?.role === 'product-owner') data.assignments = []
+          else if (data.assignments?.length) throw new ValidationError({ collection: 'bauherren', errors: [{ path: 'assignments', message: 'Only a Product owner has assignments' }] })
+          return data
+        }
+        const rows = assignmentRows(data.assignments ?? originalDoc?.assignments)
+        if (data.assignments !== undefined) {
+          const err = (message: string) => new ValidationError({ collection: 'bauherren', errors: [{ path: 'assignments', message }] })
+          if (new Set(rows.map((r) => r.workspace)).size !== rows.length) throw err('At most one assignment per Workspace')
+          for (const r of rows) {
+            if (!r.products.length) continue
+            const found = await req.payload.count({ collection: 'products', where: { id: { in: r.products }, workspace: { equals: r.workspace } }, overrideAccess: true, req })
+            if (found.totalDocs !== new Set(r.products).size) throw err('Products must belong to the Workspace of their assignment')
+          }
+          if (!isDeepStrictEqual(rows, assignmentRows(originalDoc?.assignments))) data.assignments = rows
+        }
+        // The tenant plugin scopes by `tenants`: for a Product owner it is exactly the Workspaces of the assignments.
+        const want = rows.map((r) => r.workspace)
+        const have = tenantIds({ tenants: data.tenants ?? originalDoc?.tenants })
+        if (want.length !== have.length || want.some((w, i) => w !== have[i])) data.tenants = want.map((tenant) => ({ tenant }))
         return data
       },
     ],
@@ -113,12 +175,19 @@ const bauherren: CollectionConfig = {
     {
       name: 'role',
       type: 'select',
-      options: ['admin', 'bauherr'],
+      options: [...ROLES],
       defaultValue: 'bauherr',
       required: true,
       access: { create: isAdmin, update: isAdmin },
     },
     json('uiPrefs'),
+    {
+      name: 'assignments',
+      type: 'array',
+      access: { create: isAdmin, update: isAdmin },
+      admin: { description: 'Product owner only: per Workspace, all its Products (scope workspace) or the listed ones (scope products; an empty list grants nothing). Keeps `tenants` equal to the Workspaces listed here.' },
+      fields: [rel('workspace', 'workspaces', { required: true }), select('scope', ['workspace', 'products'], { required: true }), rel('products', 'products', { hasMany: true })],
+    },
     text('githubLogin', { admin: { description: 'Assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN).' } }),
     text('oidcSubject', { index: true, access: { create: isAdmin, update: isAdmin }, admin: { description: 'issuer|sub of the OIDC identity (Keycloak: <issuer>|<user ID>). Set on first SSO sign-in; Admins can set it to link an existing Bauherr.' } }),
     { name: 'sessionVersion', type: 'number', defaultValue: 0, access: { create: () => false, update: () => false }, admin: { hidden: true } },
@@ -137,7 +206,7 @@ const agentKeys = col(
     date('revokedAt'),
   ],
   // Minted, used and revoked only through lib/api-key.ts (overrideAccess); never writable over the API.
-  { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }) => (req.user?.role === 'admin' ? true : { owner: { equals: req.user?.id } }) } },
+  { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }) => (req.user?.role === 'admin' ? true : isBauherr(req.user as Doc | null) ? { owner: { equals: req.user?.id } } : false) } },
 )
 
 const workspaces = col(
@@ -193,7 +262,9 @@ const workspaces = col(
       read: ({ req }) =>
         req.user?.role === 'admin'
           ? true
-          : { id: { in: ((req.user?.tenants as { tenant: { id: number } | number }[]) ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant)) } },
+          : !isBauherr(req.user as Doc | null)
+            ? false
+            : { id: { in: ((req.user?.tenants as { tenant: { id: number } | number }[]) ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant.id : t.tenant)) } },
     },
     hooks: {
       beforeValidate: [
@@ -563,7 +634,20 @@ export const collections: CollectionConfig[] = [
       admin: { description: 'Named path sets that conditional workflow steps refer to (`when: {touches: security}`): {name: [globs]}, e.g. {"security": ["src/auth/**"], "ui": ["src/app/**"]}. A set that is empty or not declared never matches.' },
     },
     { name: 'overlapSuggestions', type: 'json', admin: { readOnly: true, description: 'Result of the last "Suggest paths" action: {at, items: [{path, percent}]}. Computed on request, never on page render.' } },
-  ]),
+  ], {
+    hooks: {
+      // A deleted Product leaves the assignments of every Product owner; a `products` assignment left empty grants nothing.
+      afterDelete: [
+        async ({ id, req }) => {
+          const { docs } = await req.payload.find({ collection: 'bauherren', where: { 'assignments.products': { equals: id } }, pagination: false, depth: 0, overrideAccess: true, req })
+          for (const u of docs) {
+            const assignments = assignmentRows(u.assignments).map((r) => ({ ...r, products: r.products.filter((p) => p !== Number(id)) }))
+            await req.payload.update({ collection: 'bauherren', id: u.id, data: { assignments }, overrideAccess: true, depth: 0, req })
+          }
+        },
+      ],
+    },
+  }),
   connections,
   col('repositories', [text('fullName', { required: true }), rel('product', 'products', { required: true })]),
   col('ticket_sources', [
@@ -756,7 +840,7 @@ export const collections: CollectionConfig[] = [
     select('pair', ['before', 'after']),
     text('sha', { required: true, admin: { description: 'The commit it was made on.' } }),
     { name: 'waived', type: 'checkbox', defaultValue: false, admin: { description: 'No proof for the rule; `text` is the reason (Evidence line "No artifact: <rule>: <reason>").' } },
-  ], { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }: { req: { user?: object | null } }) => !!req.user } }),
+  ], { access: { create: () => false, update: () => false, delete: () => false } }), // read: the `col()` default (Admin or Bauherr); a Product owner gets proof through the page built for them, never over REST
   col('workflow_versions', [
     num('version'),
     rel('product', 'products', { admin: { description: 'Reserved.' } }),
@@ -830,3 +914,4 @@ export const collections: CollectionConfig[] = [
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['session', 'claudeSession'], unique: true }] }),
   ...chatCollections,
 ]
+

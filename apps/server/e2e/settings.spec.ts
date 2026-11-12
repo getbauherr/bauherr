@@ -60,7 +60,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await add.getByRole('button', { name: 'Add Bauherr' }).click()
   await expect(add.getByText('Temporary password (shown once)')).toBeVisible()
   const row = page.getByRole('row', { name: new RegExp(added) })
-  await expect(row).toContainText('bauherr')
+  await expect(row).toContainText('Bauherr')
   await expect(row).toContainText('Acme')
   await row.getByText('Edit', { exact: true }).click()
   await expect(row.getByLabel('Role')).toBeVisible()

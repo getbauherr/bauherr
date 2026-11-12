@@ -19,7 +19,9 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
   const ref = useRef<HTMLFormElement>(null)
   const formId = useId()
   const [dirty, setDirty] = useState(false)
+  const [round, setRound] = useState(0)
   useEffect(() => {
+    setRound((n) => n + 1)
     if (state.saved) setDirty(false)
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
@@ -55,7 +57,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
         {children}
         {!bar && (
           <div className="flex flex-wrap items-center gap-3">
-            {confirm ? <ConfirmButton label={submit} confirm={confirm} primary={primary} /> : <Button variant={primary ? 'default' : 'outline'} disabled={pending}>{submit}</Button>}
+            {confirm ? <ConfirmButton key={round} label={submit} confirm={confirm} primary={primary} /> : <Button variant={primary ? 'default' : 'outline'} disabled={pending}>{submit}</Button>}
             {status}
           </div>
         )}

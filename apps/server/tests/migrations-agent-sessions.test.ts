@@ -40,6 +40,8 @@ it('the migration adds agent_sessions, session_spans and runs.session that Paylo
   await run(sql`INSERT INTO workspaces (name, slug) VALUES ('W', 'w')`)
 
   await payload.db.migrate({ migrations: migrations.slice(i, i + 1) as never })
+  // The Bauherren table of the current schema carries the Product owner assignments: this test creates an account.
+  await payload.db.migrate({ migrations: migrations.filter((m) => m.name === '20261112_110000_product_owner') as never })
   const o = { overrideAccess: true } as const
   const ws = (await payload.find({ collection: 'workspaces', limit: 1, ...o })).docs[0].id
   const owner = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })

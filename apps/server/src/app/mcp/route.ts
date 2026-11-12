@@ -9,6 +9,7 @@ import { ACCOUNT_LOCKED, lockedRequests } from '../../lib/oidc-session'
 import { callTool, tools, type Ctx } from '../../lib/mcp-tools'
 import { instructions } from '../../lib/sessions'
 import { tenantsOf } from '../../lib/actions'
+import { isBauherr } from '../../lib/people'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,7 @@ const handle = async (req: Request): Promise<Response> => {
   if (!user) {
     return Response.json({ jsonrpc: '2.0', error: { code: -32001, message: locked ? ACCOUNT_LOCKED : 'unauthorized' }, id: null }, { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } })
   }
+  if (!isBauherr(user)) return Response.json({ jsonrpc: '2.0', error: { code: -32003, message: 'forbidden' }, id: null }, { status: 403 })
   const server = new Server({ name: 'bauherr', version: '0.1.0' }, { capabilities: { tools: {} }, instructions: instructions(workflowFor(tenantsOf(user as never)[0])) })
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),

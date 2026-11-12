@@ -181,7 +181,7 @@ the issue, edited in place, with a new Comment only for a question, ready on sta
 
 ## 8. Decisions on the open questions
 
-1. No login needed: the forge issue carries the progress. People with a login also get the Requests pages.
+1. No login needed: the forge issue carries the progress. People with a login also get the Requests pages. _Reversed by the owner on 2026-11-11: a Product owner has an account with a login and an assignment; see `docs/spec/people.md`._
 2. Three presets as shortcuts; roles stay freely editable in the factory file and on the Team page.
 3. Yes. Staging and production config left the wizard; the "Configure production checks" gate asks at first release.
 4. Forge comment only. No email.
