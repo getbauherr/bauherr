@@ -22,7 +22,8 @@ import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
-import { logins, syncGates } from '../lib/gates'
+import { logins } from '../lib/forge-channel'
+import { syncGates } from '../lib/gates'
 import { syncProgress } from '../lib/progress'
 import { record } from '../lib/history'
 import { isForward, moveStage, stageOf } from '../lib/stage-move'
@@ -621,7 +622,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             }
           }
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
-          if (at(stage, 'plan') && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(backendFor(conn).tickets(src.repo), String(t.number)))) {
+          if (at(stage, 'plan') && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(payload, { ...(prev ?? base), stage }, backendFor(conn).tickets(src.repo)))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = nameOf(wf, 'container')
             else {

@@ -38,7 +38,7 @@ beforeAll(async () => {
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   const mk = async (slug: string, r: string, pathSets: Record<string, string[]>) => {
-    const id = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, gateOwners: 'owner', stagingUrl: 'https://staging.example', pathSets }, ...o })).id as number
+    const id = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, stagingUrl: 'https://staging.example', pathSets }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: r, product: id, connection, workspace: ws }, ...o })
     return id
   }

@@ -26,7 +26,7 @@ export default async function BauherrenSettings() {
       <h2 className="heading">People</h2>
       {!bauherren.length && <EmptyState text="No people yet." />}
       <Table>
-          <thead><tr className="label"><th>Email</th><th>Role</th><th>Access</th><th>SSO</th>{admin && <th />}</tr></thead>
+          <thead><tr className="label"><th>Email</th><th>Role</th><th>Access</th><th>Forge login</th><th>SSO</th>{admin && <th />}</tr></thead>
           <tbody>
             {bauherren.map((b) => {
               const owner = b.role === 'product-owner'
@@ -35,6 +35,7 @@ export default async function BauherrenSettings() {
                 <td>{b.email}{b.locked && <> <Badge variant="destructive">Locked</Badge></>}</td>
                 <td>{LABEL[b.role] ?? b.role}</td>
                 <td>{owner ? assignmentWords(b.assignments.map((a) => ({ workspace: a.workspace.name, scope: a.scope, products: a.products.map((p) => p.name) }))) : b.workspaces.map((w) => w.name).join(', ')}</td>
+                <td>{b.githubLogin ? `@${b.githubLogin}` : <span className="text-warn" title="A label or comment from this person on the forge does not count until they link their login">not linked</span>}</td>
                 <td>{b.oidcLinked ? 'linked' : <span className="text-muted-foreground">—</span>}</td>
                 {admin && (
                   <td>
@@ -48,7 +49,7 @@ export default async function BauherrenSettings() {
                               </SettingsForm>
                               <SettingsForm action={saveBauherr}>
                                 <input type="hidden" name="id" value={b.id} />
-                                <Field name="githubLogin" label="GitHub login" hint="Links the forge account of this person." example="sbuckpesch" defaultValue={b.githubLogin} />
+                                <Field name="githubLogin" label="GitHub login" hint="Links the forge account of this person: their labels and comments there then count as their decision." example="sbuckpesch" defaultValue={b.githubLogin} />
                                 <Field name="oidcSubject" label="SSO subject" defaultValue={b.oidcSubject} hint="<issuer>|<user ID>. In Keycloak the ID is under Users, the user, ID." />
                               </SettingsForm>
                             </>
@@ -57,7 +58,7 @@ export default async function BauherrenSettings() {
                             <input type="hidden" name="id" value={b.id} />
                             <Field name="role" label="Role" options={ROLES} defaultValue={b.role} />
                             <Checks name="workspaces" items={items} checked={b.workspaces.map((w) => w.id)} />
-                            <Field name="githubLogin" label="GitHub login" hint="Used to assign and mention you when a Ticket needs your approval." example="sbuckpesch" defaultValue={b.githubLogin} />
+                            <Field name="githubLogin" label="GitHub login" hint="Links the forge account of this person: their labels and comments there count as their decision, and they are assigned and mentioned when a Ticket needs their approval." example="sbuckpesch" defaultValue={b.githubLogin} />
                             <Field name="oidcSubject" label="SSO subject" defaultValue={b.oidcSubject} hint="<issuer>|<user ID>. In Keycloak the ID is under Users, the user, ID." />
                           </SettingsForm>
                           )}

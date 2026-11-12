@@ -8,7 +8,7 @@ export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
 export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[]; /** The row's `Why:` text, when it has one. */ why?: string; /** Who answers the row (`for: product-owner | bauherr`); absent = whom the checkpoint asks. */ for?: 'bauherr' | 'product-owner' }
 
-type Commentish = { body: string }
+type Commentish = { body: string; /** Forge login of the writer; the decisions Comments are vetted by it (`lib/forge-channel.ts`). */ author?: string }
 /** Newest comment starting with `marker`. */
 export const latestWith = <T extends Commentish>(comments: T[], marker: string): T | undefined => comments.findLast((c) => c.body.startsWith(marker))
 /** Oldest comment starting with `marker` (the worklog is one comment per ticket, first wins). */

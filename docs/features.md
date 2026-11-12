@@ -71,6 +71,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Requests workbench | Four sections with counts: Needs you, Drafts, In the factory (plain-word status and who it waits for; order your own by drag or Move up/down), Done (release note, Report a problem); filters Product and Type; a Bauherr also sees By and Mine | `/requests` | Live |
 | Request page | The card, a plain-word timeline, who it waits for, the Tickets with progress, comments through the dock, a link to the conversation | `/requests/[id]` | Live |
 | Product owner view | A Product owner lands on Requests and sees only their assigned Products: the four sections, a request and a reduced Ticket page (card, plain-word path and timeline, who it waits for, proof for review, release note, comments). No Runs, cost, tokens, plan, settings, Inbox, dock or question card; a Ticket of another Product is a 404. Writing, answering and accepting come later | `/requests`, `/requests/[id]`, `/tickets/[id]`; [spec/people.md](spec/people.md) | Live |
+| Forge channel | A gate label or answers comment on the forge counts only from a login linked to a Bauherr or Admin, or to an assigned Product owner where the checkpoint or row asks them; anything else is ignored with one comment saying why | Profile and People (link a login), Settings › Health; [spec/people.md](spec/people.md) | Live |
 | Website widget | An embeddable request form per Product with its own token | Product page, tab Widget | Live |
 | Widget rate limit per token | Sessions per hour of a token (default 20) | Product page, tab Widget | Live |
 
@@ -108,12 +109,12 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 |---|---|---|---|
 | Your own Claude Code session | `claim_run`, `claim_next`, `heartbeat` and the other tools over `/mcp`; an agent key per laptop | Settings › Account › API keys (`/settings/api-key`); [session-mode.md](session-mode.md) | Live |
 | Agent keys and personal key | Create, list and revoke keys | Settings › Account › API keys | Live |
-| Profile | Your email, role, GitHub login and Workspaces, and the theme | Settings › Account › Profile (`/settings/profile`) | Live |
+| Profile | Your email, role and Workspaces, your linked forge login (editable, a Product owner's too), and the theme | Settings › Account › Profile (`/settings/profile`) | Live |
 | Agent roles | Orchestrator, engineer, reviewer, security, UX and test: profile, skills, model or tier, agent limit, declared in the factory file | Factory file; [session-mode.md](session-mode.md#connect-as-a-role) | Live |
 | Connect as a role | `connect {role}`, then `next_work` pulls the Runs of the role's stages; the orchestrator also gets stuck Tickets | MCP; [session-mode.md](session-mode.md#connect-as-a-role) | Live |
 | Presence | Sessions show as Working, Idle or Offline with their active time; Ticket status and Steps name who works ("<session> (<role>)", Runner, CI); the chat answers who is working | Ticket page, chat | Live |
 | Agent team page | Pick a role (avatar, profile, skills), set its model and agent limit (saved to the factory file), connect a session in three steps, live session list (Working, Idle, Offline, ticket, active time); agents on the Workflow graph; who is working (sidebar dot, header pill) on every page; team time in Insights | `/team`, `/`, `/insights` | Live |
-| People and roles | Admin or Bauherr per person, Workspaces, GitHub login, SSO subject, unlock, remove | Settings › Workspace › People (`/settings/bauherren`) | Live |
+| People and roles | Admin or Bauherr per person, Workspaces, forge login (the column shows who has none), SSO subject, unlock, remove | Settings › Workspace › People (`/settings/bauherren`) | Live |
 | Workspaces | Isolation boundary with its own Connections, budget and keys; Admins always have the menu with settings and New Workspace | Settings › Workspace › General (`/settings/workspace`), workspace menu | Live |
 | OIDC sign-in | SSO with role and Workspace mapping | `/login`; [auth.md](auth.md) | Live |
 

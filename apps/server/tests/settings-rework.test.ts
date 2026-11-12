@@ -53,13 +53,13 @@ describe('Product tabs save only their own fields', () => {
   })
 
   it('the Approvals tab keeps the staging URL; the gate without a production check saves there and is refused on the Deploy tab', async () => {
-    expect(await actions.saveDeploy({}, form({ id: product, section: 'approvals', autoMerge: 'on', gateOwners: '' }))).toMatchObject({ saved: true })
+    expect(await actions.saveDeploy({}, form({ id: product, section: 'approvals', autoMerge: 'on' }))).toMatchObject({ saved: true })
     expect(await productDoc()).toMatchObject({ autoMerge: true, stagingUrl: 'https://staging.example.com', productionGate: false })
-    expect(await actions.saveDeploy({}, form({ id: product, section: 'approvals', productionGate: 'on', gateOwners: '' }))).toMatchObject({ saved: true })
+    expect(await actions.saveDeploy({}, form({ id: product, section: 'approvals', productionGate: 'on' }))).toMatchObject({ saved: true })
     expect((await productDoc()).productionGate).toBe(true)
     expect(await actions.saveDeploy({}, form({ id: product, section: 'deploy', stagingUrl: 'https://staging.example.com', deployMode: 'observe-ci', productionChecks: '' }))).toMatchObject({ fields: { productionChecks: expect.any(String) } })
     expect(await actions.saveDeploy({}, form({ id: product, section: 'deploy', stagingUrl: 'https://staging.example.com', deployMode: 'observe-ci', productionChecks: 'deploy-prod' }))).toMatchObject({ saved: true })
-    await actions.saveDeploy({}, form({ id: product, section: 'approvals', autoMerge: 'on', gateOwners: '' }))
+    await actions.saveDeploy({}, form({ id: product, section: 'approvals', autoMerge: 'on' }))
     expect((await productDoc()).productionGate).toBe(false)
   })
 

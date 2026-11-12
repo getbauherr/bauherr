@@ -43,6 +43,7 @@ const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
   'lib/actions.ts#decideAction': 'a card of the Inbox: only decisions addressed to the Product owner on assigned Products (`mayDecide` in every gate function); every other action of a card is refused',
+  '(shell)/settings/profile/actions.ts#saveOwnLogin': 'the profile: links or removes their own forge login; Payload refuses a login another account holds',
   ...Object.fromEntries(['refineState', 'refineSay', 'refinePick', 'refineExplain', 'refineRest', 'refineChange', 'refineFinish'].map((n) => [`lib/actions.ts#${n}`, 'the refinement conversation: only rows addressed to the Product owner (`loadGate`, `postDecisions`); no model choice, no cost'])),
   'lib/actions.ts#discardIntake': 'discards their own open draft; 404 for any other',
   'lib/actions.ts#requestState': 'the conversation of their own request; null for any other',
@@ -66,7 +67,7 @@ const PO_CHAT_TOOLS: string[] = []
 const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'post_comment', 'approve_skill_proposal', 'reject_skill_proposal']
 /** Collections a Product owner may touch, and how. Every other collection is `BAUHERR_COLLECTIONS`: no operation at all, also over Payload REST. `artifacts` stay closed: proof reaches a Product owner through the Ticket page and its artifact route, never over REST. */
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
-  bauherren: { read: 'own account only', update: 'own account: uiPrefs and password only' },
+  bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
 }
 const BAUHERR_COLLECTIONS = ['agent_keys', 'artifacts', 'workspaces', 'products', 'connections', 'repositories', 'ticket_sources', 'tickets', 'runs', 'steps', 'tool_calls', 'human_touches', 'skill_proposals', 'templates', 'check_flakes', 'knowledge_chunks', 'intake_sessions', 'embed_tokens', 'media', 'workflow_versions', 'ticket_events', 'agent_sessions', 'session_spans', 'usage_entries', 'usage_cursors', 'instance_state', 'chat_threads', 'chat_messages', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
@@ -81,6 +82,7 @@ const partition = (what: string, all: string[], po: string[], bauherr: string[])
   expect([...po, ...bauherr].sort(), `${what}: every one is in exactly one list`).toEqual([...all].sort())
 }
 
+const mkBauherrIdRef = { id: 0 }
 const session = vi.hoisted(() => ({ cookie: '' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: session.cookie }), cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
@@ -116,6 +118,7 @@ beforeAll(async () => {
   const a2 = await payload.create({ collection: 'products', data: { name: 'a2', slug: 'a2', workspace: a.id }, ...o })
   const mkBauherr = await payload.create({ collection: 'bauherren', data: { email: 'member@x.io', password: PASSWORD, role: 'bauherr', tenants: [{ tenant: a.id }] }, ...o })
   const mkPo = await payload.create({ collection: 'bauherren', data: { email: 'owner@x.io', password: PASSWORD, role: 'product-owner', assignments: [{ workspace: a.id, scope: 'products', products: [a1.id] }] } as never, ...o })
+  mkBauherrIdRef.id = mkBauherr.id as number
   bauherrCookie = `bauherr-session=${signSession(mkBauherr.id, 0)}`
   productOwnerCookie = `bauherr-session=${signSession(mkPo.id, 0)}`
   po = await asUser(productOwnerCookie)
@@ -189,18 +192,26 @@ describe('collections', () => {
     expect(adminAccess({ req: { user: po } })).toBe(false)
   })
 
-  it('a Product owner can change their password and preferences, nothing else on the account', async () => {
+  it('a Product owner can change their password, preferences and forge login, nothing else on the account', async () => {
     const own = (data: Record<string, unknown>) => payload.update({ collection: 'bauherren', id: po.id, data, user: po, overrideAccess: false, depth: 0 } as never)
     await expect(own({ uiPrefs: { epic: 3 } })).resolves.toMatchObject({ uiPrefs: { epic: 3 } })
     await expect(own({ password: `${PASSWORD}-new` })).resolves.toBeTruthy()
     const before = await payload.findByID({ collection: 'bauherren', id: po.id, depth: 0, ...o })
-    for (const data of [{ role: 'bauherr' }, { role: 'admin' }, { tenants: [] }, { assignments: [] }, { enableAPIKey: true }, { apiKey: 'x'.repeat(32) }, { githubLogin: 'x' }, { oidcSubject: 'x|y' }, { email: 'other@x.io' }]) {
+    for (const data of [{ role: 'bauherr' }, { role: 'admin' }, { tenants: [] }, { assignments: [] }, { enableAPIKey: true }, { apiKey: 'x'.repeat(32) }, { oidcSubject: 'x|y' }, { email: 'other@x.io' }]) {
       // Refused, or the field is dropped by its own access rule: either way nothing changes.
       await own(data).catch(() => undefined)
       const after = await payload.findByID({ collection: 'bauherren', id: po.id, depth: 0, ...o })
-      for (const k of ['role', 'tenants', 'assignments', 'enableAPIKey', 'githubLogin', 'oidcSubject', 'email'] as const) expect(after[k] ?? null, `${JSON.stringify(data)} changed ${k}`).toEqual(before[k] ?? null)
+      for (const k of ['role', 'tenants', 'assignments', 'enableAPIKey', 'oidcSubject', 'email'] as const) expect(after[k] ?? null, `${JSON.stringify(data)} changed ${k}`).toEqual(before[k] ?? null)
     }
     expect(before).toMatchObject({ role: 'product-owner' })
+  })
+
+  it('a Product owner links their own forge login, and cannot take one another account holds, whatever its case', async () => {
+    const own = (data: Record<string, unknown>) => payload.update({ collection: 'bauherren', id: po.id, data, user: po, overrideAccess: false, depth: 0 } as never)
+    await payload.update({ collection: 'bauherren', id: mkBauherrIdRef.id, data: { githubLogin: 'Taken-Login' }, ...o })
+    await expect(own({ githubLogin: 'taken-login' })).rejects.toThrow()
+    await expect(own({ githubLogin: 'po-login' })).resolves.toMatchObject({ githubLogin: 'po-login' })
+    await expect(own({ githubLogin: null })).resolves.toMatchObject({ githubLogin: null })
   })
 
   it('an Admin cannot give a Product owner an API key either', async () => {
@@ -282,6 +293,22 @@ describe('server actions', () => {
     const all: string[] = []
     for (const f of files) for (const [name, fn] of Object.entries(await appModules[f]!())) if (typeof fn === 'function') all.push(`${f.slice((APP + '(app)/').length)}#${name}`)
     partition('actions', all, Object.keys(PO_ACTIONS), BAUHERR_ACTIONS)
+  })
+
+  it('the profile action links the Product owner\'s own login and says why when another account holds it', async () => {
+    session.cookie = productOwnerCookie
+    const { saveOwnLogin } = (await appModules[`${APP}(app)/(shell)/settings/profile/actions.ts`]!()) as { saveOwnLogin: (p: unknown, fd: FormData) => Promise<{ saved?: boolean; fields?: Record<string, string> }> }
+    const form = (login: string) => {
+      const fd = new FormData()
+      fd.set('githubLogin', login)
+      return fd
+    }
+    expect(await saveOwnLogin({}, form('@po-via-profile'))).toMatchObject({ saved: true })
+    expect(await payload.findByID({ collection: 'bauherren', id: po.id, depth: 0, ...o })).toMatchObject({ githubLogin: 'po-via-profile' })
+    await payload.update({ collection: 'bauherren', id: mkBauherrIdRef.id, data: { githubLogin: 'Held-By-Bauherr' }, ...o })
+    expect(await saveOwnLogin({}, form('held-by-bauherr'))).toMatchObject({ fields: { githubLogin: 'This forge login is already linked to another account' } })
+    expect(await saveOwnLogin({}, form(''))).toMatchObject({ saved: true })
+    expect(await payload.findByID({ collection: 'bauherren', id: po.id, depth: 0, ...o })).toMatchObject({ githubLogin: null })
   })
 
   it('OPEN_ACTIONS names real exports', async () => {

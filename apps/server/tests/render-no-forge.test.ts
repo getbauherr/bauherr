@@ -13,11 +13,11 @@ const rendered = [
   ...walk(join(app, 'components/setup')),
 ]
 
-const FORBIDDEN = /(?<!function )\b(ticketsOf|forgeOf|sourceOf|backendFor|prOf|recentChecks|releaseDraft|deadTickets|invisibleDead|suggestOverlapIgnore|listRepos)\(|\.(listComments|listPullRequestFiles|listPullRequests|listChecks|listReleases|listRepositories)\(/g
+const FORBIDDEN = /(?<!function )\b(ticketsOf|forgeOf|sourceOf|backendFor|prOf|recentChecks|releaseDraft|deadTickets|invisibleDead|suggestOverlapIgnore|listRepos|decisionComments)\(|\.(listComments|listPullRequestFiles|listPullRequests|listChecks|listReleases|listRepositories)\(/g
 
 /** file (relative to src) -> identifiers allowed there, each with the reason it is not on the blocking render path. */
 const ALLOWED: Record<string, { ids: string[]; why: string }> = {
-  'app/(app)/(shell)/tickets/[id]/page.tsx': { ids: ['sourceOf', '.listComments'], why: 'only inside derive(), awaited by components under <Suspense> with a 5 s within()' },
+  'app/(app)/(shell)/tickets/[id]/page.tsx': { ids: ['sourceOf', 'decisionComments'], why: 'only inside derive(), awaited by components under <Suspense> with a 5 s within()' },
   'app/(app)/lib/settings.ts': { ids: ['forgeOf', 'backendFor', '.listChecks', '.listRepositories'], why: 'recentChecks/collectChecks run in DeploySectionsStreamed (<Suspense>, 3 s); listRepos is called by a server action and the open exception below' },
   'app/(app)/(shell)/releases/page.tsx': { ids: ['releaseDraft'], why: 'only inside Draft(), under <Suspense> with an 8 s within()' },
   'app/(app)/(shell)/settings/knowledge/page.tsx': { ids: ['listRepos'], why: 'only inside LoadedRepo(), under <Suspense> with a 3 s listRepos' },

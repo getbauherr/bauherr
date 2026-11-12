@@ -43,7 +43,7 @@ export class FakeBackend implements Backend {
   readonly forge: Forge;
   private ticketSources = new Map<string, FakeTickets>();
   private repos = new Map<string, FakeRepo>();
-  /** Login recorded as the actor of label changes. */
+  /** Login recorded as the actor of label changes and the author of comments. */
   actingAs = 'factory';
   /** What `whoami` reports: the factory credential's own login. */
   login: string | null = 'factory';
@@ -247,7 +247,7 @@ export class FakeBackend implements Backend {
       },
       commentOnPullRequest: async (repo, n, body) => {
         find(repo, n);
-        const c: Comment = { id: String(++this.seq), author: this.opts.user ?? 'fake', body, createdAt: this.now() };
+        const c: Comment = { id: String(++this.seq), author: this.actingAs, body, createdAt: this.now() };
         comments.set(`${repo}#${n}`, [...(comments.get(`${repo}#${n}`) ?? []), c]);
         return c;
       },
@@ -444,7 +444,7 @@ class FakeTickets implements TicketSource {
   }
   async comment(id: string, body: string) {
     const t = this.t(id);
-    const c: Comment = { id: `${t.number}-${t.comments.length + 1}`, author: this.b.opts.user ?? 'fake', body, createdAt: this.b.now() };
+    const c: Comment = { id: `${t.number}-${t.comments.length + 1}`, author: this.b.actingAs, body, createdAt: this.b.now() };
     t.comments.push(c);
     this.touch(t);
     return c;

@@ -14,6 +14,7 @@ import { workflowFor } from '../../../lib/factory'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
+import { gateOwnersOf, logins } from '../../../lib/forge-channel'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -105,7 +106,7 @@ export async function loadProducts(workspace: number) {
           id: p.id as number,
           name: p.name as string,
           slug: p.slug as string,
-          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productOwnerTestsStaging: !!p.productOwnerTestsStaging, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, productOwnerTestsStaging: !!p.productOwnerTestsStaging, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           overlap: overlapOf(p),
@@ -128,7 +129,7 @@ export async function loadProducts(workspace: number) {
   }
 }
 
-/** One Product of the Workspace with the workflow facts and the people who can be gate owners (Members with a GitHub login); undefined when it belongs to another Workspace. */
+/** One Product of the Workspace with the workflow facts and the people who approve (Bauherren and Admins with a linked forge login); undefined when it belongs to another Workspace. */
 export async function loadProduct(workspace: number, id: number, viewerIsAdmin = false) {
   const { products, connections } = await loadProducts(workspace)
   const wf = workflowFor(workspace)
@@ -144,7 +145,7 @@ export async function loadProduct(workspace: number, id: number, viewerIsAdmin =
     payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security' } }] }, sort: '-number', limit: 5, select: { number: true }, ...o } as never),
   ])
   const scan = { run: ((lastRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (findings.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
-  return { product, scan, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
+  return { product, scan, connections, members, hasApprover: all.length > 0, workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
@@ -320,6 +321,12 @@ export async function loadHealth(workspace: number) {
   ])
   const found = findings.docs as unknown as { id: number; number: number; liveness: { cause: string; need: string | null; at: string } }[]
   const stale = found.some((t) => Date.now() - Date.parse(t.liveness.at) > FINDING_FRESH_MS)
+  const [approvers, accounts, legacy] = await Promise.all([
+    gateOwnersOf(payload, workspace),
+    payload.find({ collection: 'bauherren', where: { githubLogin: { exists: true } }, pagination: false, select: { githubLogin: true }, ...o } as never),
+    payload.find({ collection: 'products', where: { and: [{ workspace: { equals: workspace } }, { unlinkedGateOwners: { exists: true } }] }, sort: 'name', pagination: false, select: { name: true, unlinkedGateOwners: true }, ...o } as never),
+  ])
+  const linked = new Set((accounts.docs as unknown as Doc[]).flatMap((a) => logins(a.githubLogin)).map((l) => l.toLowerCase()))
   const flakeRows = (await payload.find({ collection: 'check_flakes', where: { workspace: { equals: workspace }, outcome: { equals: 'flake' }, createdAt: { greater_than_equal: new Date(Date.now() - 30 * 864e5).toISOString() } }, sort: '-createdAt', pagination: false, ...o, depth: 1 } as never)).docs as unknown as Doc[]
   const byCheck = new Map<string, { check: string; count: number; lastSeen: string; ticket: number | null }>()
   for (const r of flakeRows) {
@@ -340,6 +347,12 @@ export async function loadHealth(workspace: number) {
     oldestQueued: ((oldest.docs[0] as Doc | undefined)?.createdAt ?? null) as string | null,
     /** Tickets with no live Run, no wait and no need for the owner; the goal is 0. */
     dead: stale ? null : found.filter((t) => !t.liveness.need).map((t) => ({ id: t.id, number: t.number, cause: t.liveness.cause as Cause })),
+    forge: {
+      /** The Workspace has a forge but no Bauherr or Admin has linked a login: no label or answers comment on the forge can count (the Ticket page still works). */
+      nobodyLinked: sources.docs.length > 0 && !approvers.length,
+      /** Logins the retired `gateOwners` list named that no account has linked yet, per Product. */
+      unlinked: (legacy.docs as unknown as Doc[]).map((p) => ({ product: p.name as string, logins: logins(p.unlinkedGateOwners).filter((l) => !linked.has(l.toLowerCase())) })).filter((r) => r.logins.length),
+    },
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
     flakes,
   }

@@ -29,7 +29,7 @@ beforeAll(async () => {
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   admin = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin', githubLogin: 'owner' }, ...o })
   const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
-  const product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace, gateOwners: 'owner' }, ...o })).id as number
+  const product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace }, ...o })
 })

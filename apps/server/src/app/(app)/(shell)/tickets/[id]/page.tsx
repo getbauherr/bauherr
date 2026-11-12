@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { OPEN_WORDS, sourceOf, type OpenItem } from '../../../../../lib/actions'
+import { decisionComments } from '../../../../../lib/forge-channel'
 import { expediteAction } from '../../../lib/actions'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { Button } from '../../../components/ui/button'
@@ -77,7 +78,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const live = await within(
     (async () => {
       const { ts, n } = await sourceOf(payload, ticket)
-      const [comments, t] = await Promise.all([ts.listComments(n), ts.get(n)])
+      const [comments, t] = await Promise.all([decisionComments(payload, ticket, ts), ts.get(n)])
       return { comments: comments as { body: string }[], labels: t.labels, forgeError: false }
     })(),
     LIVE_MS,

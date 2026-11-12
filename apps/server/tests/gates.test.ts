@@ -8,6 +8,7 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 let payload: Payload
 let fake: FakeBackend
 let ws: number
+let adminId: number
 let product: number
 let gates: typeof import('../src/lib/gates')
 let jobs: typeof import('../src/jobs')
@@ -24,6 +25,8 @@ beforeAll(async () => {
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
   process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
   delete process.env.GATEWAY_ADMIN_URL
+  // A session Bauherr without a linked login works under the factory's bot login, so they are not themselves a gate owner.
+  process.env.BAUHERR_BOT_LOGIN = 'fake'
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   gates = await import('../src/lib/gates')
@@ -35,13 +38,16 @@ beforeAll(async () => {
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
-  await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin', githubLogin: 'fake' }, ...o })
+  adminId = (await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin', githubLogin: 'fake' }, ...o })).id as number
 })
 
 afterAll(async () => {
   await payload?.destroy()
   await testDb?.drop(payload)
 })
+
+/** The gate owners are the Bauherren and Admins with a linked forge login: this test has one Admin whose login list is set here (empty: back to `fake`). */
+const owners = (logins: string) => payload.update({ collection: 'bauherren', id: adminId, data: { githubLogin: logins || 'fake' }, ...o })
 
 /** A plan Ticket whose plan Run succeeded: the Approve plan gate. */
 const planTicket = async (title: string) => {
@@ -81,7 +87,7 @@ it('keeps a human co-assignee when the gate is passed', async () => {
 })
 
 it('retries a claim that fails with a 5xx on the next sweep, without a second Comment', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin, late' }, ...o })
+  await owners('e2e-admin, late')
   fake.opts.users!.push('late')
   const proto = Object.getPrototypeOf(fake.tickets(repo)) as any
   const orig = proto.claim
@@ -99,7 +105,7 @@ it('retries a claim that fails with a 5xx on the next sweep, without a second Co
   expect(issue(n).assignees).toEqual(['e2e-admin', 'late'])
   expect(await reload(id)).toMatchObject({ gateNotified: 'Approve plan', gateAssignees: 'e2e-admin,late' })
   expect(await gateComments(n)).toHaveLength(1)
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('starts a Run only when every assignee is a factory gate assignee', async () => {
@@ -116,7 +122,7 @@ it('starts a Run only when every assignee is a factory gate assignee', async () 
 })
 
 it('drops a login the forge rejects for good and still completes the gate', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost, e2e-admin' }, ...o })
+  await owners('ghost, e2e-admin')
   const { id, n } = await planTicket('owners')
   await gates.syncGates(payload)
   expect(issue(n).assignees).toEqual(['e2e-admin'])
@@ -124,14 +130,7 @@ it('drops a login the forge rejects for good and still completes the gate', asyn
   expect(body).toContain('@e2e-admin: Approve plan')
   expect(body).not.toContain('@ghost')
   expect((await reload(id)).gateNotified).toBe('Approve plan')
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
-})
-
-it('rejects only new, unknown gate owner logins', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost' }, ...o })
-  expect(await gates.unknownLogins(payload, product, 'ghost, e2e-admin')).toEqual([])
-  expect(await gates.unknownLogins(payload, product, 'ghost, nobody, fake')).toEqual(['nobody'])
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 /** A Ticket on staging (Accept on staging) with a finished build Run. */
@@ -143,7 +142,7 @@ const stagingTicket = async (title: string) => {
 }
 
 it('keeps an owner of both gates assigned when the gate changes, with one new Comment', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  await owners('e2e-admin')
   const { id, n } = await stagingTicket('staging')
   await gates.syncGates(payload)
   expect(await reload(id)).toMatchObject({ gateNotified: 'Accept on staging', gateAssignees: 'e2e-admin' })
@@ -152,24 +151,24 @@ it('keeps an owner of both gates assigned when the gate changes, with one new Co
   expect(issue(n).assignees).toEqual(['e2e-admin'])
   expect(await reload(id)).toMatchObject({ gateNotified: 'Staging not confirmed', gateAssignees: 'e2e-admin' })
   expect(await gateComments(n)).toHaveLength(2)
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('a session release unassigns only its own login, not the gate owner', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  await owners('e2e-admin')
   const { id, n } = await stagingTicket('session')
   await gates.syncGates(payload)
-  const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'awaiting_session', mode: 'session', workspace: ws }, ...o })
   const { leaseToken } = await claimOnly(payload, call, member, ws, run.id)
   expect(issue(n).assignees).toEqual(['e2e-admin', 'fake'])
   await call(member, 'release_run', { runId: run.id, leaseToken })
   expect(issue(n).assignees).toEqual(['e2e-admin'])
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('starts the missing Run when recording a gate assignee, but never for a hand-worked Ticket', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  await owners('e2e-admin')
   const mk = async (title: string, assignees: string) => {
     const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:build'] })
     const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, state: 'open', stage: 'build', labels: ['bauherr:stage:build'], assignees, product, workspace: ws }, ...o })
@@ -182,54 +181,54 @@ it('starts the missing Run when recording a gate assignee, but never for a hand-
   await gates.syncGates(payload)
   expect(await runs(free)).toBe(1)
   expect(await runs(worked)).toBe(0)
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('a session release keeps its login assigned when that login owns the gate', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'fake' }, ...o })
+  await owners('fake')
   const { id, n } = await stagingTicket('same login')
   await gates.syncGates(payload)
   await fake.tickets(repo).unassign(n, ['fake'])
-  const member = await payload.create({ collection: 'bauherren', data: { email: 'm2@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'm2@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'awaiting_session', mode: 'session', workspace: ws }, ...o })
   const { leaseToken } = await claimOnly(payload, call, member, ws, run.id)
   await call(member, 'release_run', { runId: run.id, leaseToken })
   expect(issue(n).assignees).toEqual(['fake'])
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('does not notify a gate whose owners are all rejected for good, and notifies once an owner is reachable', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost' }, ...o })
+  await owners('ghost')
   const { id, n } = await planTicket('unreachable')
   await gates.syncGates(payload)
   await gates.syncGates(payload)
   expect(await reload(id)).toMatchObject({ gateNotified: null, gateUnreachable: 'Approve plan' })
   expect(await gateComments(n)).toHaveLength(0)
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost, e2e-admin' }, ...o })
+  await owners('ghost, e2e-admin')
   await gates.syncGates(payload)
   expect(await reload(id)).toMatchObject({ gateNotified: 'Approve plan', gateUnreachable: null })
   expect(await gateComments(n)).toHaveLength(1)
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('clears the unreachable flag when the gate passes', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'ghost' }, ...o })
+  await owners('ghost')
   const { id } = await planTicket('unreachable passed')
   await gates.syncGates(payload)
   expect((await reload(id)).gateUnreachable).toBe('Approve plan')
   await payload.update({ collection: 'tickets', id, data: { labels: ['bauherr:approved:plan'] }, ...o })
   await gates.syncGates(payload)
   expect((await reload(id)).gateUnreachable).toBeNull()
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('leaves the login of a running session Run assigned when the gate passes, and unassigns it after the Run', async () => {
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: 'e2e-admin' }, ...o })
+  await owners('e2e-admin')
   const { id, n } = await stagingTicket('session login')
   await gates.syncGates(payload)
   await fake.tickets(repo).claim(n, 'fake')
   await payload.update({ collection: 'tickets', id, data: { gateAssignees: 'e2e-admin,fake' }, ...o })
-  const member = await payload.create({ collection: 'bauherren', data: { email: 'm3@x.io', password: 'pw-123456', role: 'bauherr', githubLogin: 'fake', tenants: [{ tenant: ws }] }, ...o })
+  const member = await payload.create({ collection: 'bauherren', data: { email: 'm3@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', status: 'running', mode: 'session', sessionOwner: member.id, workspace: ws }, ...o })
   await payload.update({ collection: 'tickets', id, data: { releaseState: 'waiting' }, ...o })
   await gates.syncGates(payload)
@@ -237,7 +236,7 @@ it('leaves the login of a running session Run assigned when the gate passes, and
   await payload.update({ collection: 'runs', id: run.id, data: { status: 'succeeded' }, ...o })
   await gates.syncGates(payload)
   expect(issue(n).assignees).toEqual([])
-  await payload.update({ collection: 'products', id: product, data: { gateOwners: '' }, ...o })
+  await owners('')
 })
 
 it('the poll starts a Run when the gate assignee was recorded after the poll read the Ticket', async () => {

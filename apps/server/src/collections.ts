@@ -70,7 +70,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
 })
 
 /** What a Product owner may write on their own account. */
-const SELF_FIELDS = ['uiPrefs', 'password']
+const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
 
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
@@ -120,7 +120,13 @@ const bauherren: CollectionConfig = {
         if (operation === 'update' && req.user?.role === 'product-owner') {
           // `data` is the whole merged document: only a field that differs from the stored one counts as a change.
           const other = Object.keys(data).filter((k) => ![...SELF_FIELDS, 'updatedAt', 'createdAt'].includes(k) && !isDeepStrictEqual(data[k] ?? null, originalDoc?.[k] ?? null))
-          if (other.length) throw fail(other[0], 'A Product owner can change only the password and display preferences')
+          if (other.length) throw fail(other[0], 'A Product owner can change only the password, display preferences and forge login')
+        }
+        // A forge login speaks for one account: the label and comment checks look the author up by it, case ignored.
+        if (data.githubLogin && data.githubLogin !== originalDoc?.githubLogin) {
+          const mine = String(data.githubLogin).split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
+          const others = await req.payload.find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, ...(originalDoc?.id != null ? [{ id: { not_equals: originalDoc.id } }] : [])] }, pagination: false, depth: 0, overrideAccess: true, select: { githubLogin: true }, req })
+          if (others.docs.some((u) => String(u.githubLogin).split(',').some((l) => mine.includes(l.trim().toLowerCase())))) throw fail('githubLogin', 'This forge login is already linked to another account')
         }
         if ((data.role ?? originalDoc?.role) === 'product-owner') {
           // `data` carries the stored value on an update: only turning a key on, or sending one, is refused; a stored key is switched off.
@@ -188,7 +194,7 @@ const bauherren: CollectionConfig = {
       admin: { description: 'Product owner only: per Workspace, all its Products (scope workspace) or the listed ones (scope products; an empty list grants nothing). Keeps `tenants` equal to the Workspaces listed here.' },
       fields: [rel('workspace', 'workspaces', { required: true }), select('scope', ['workspace', 'products'], { required: true }), rel('products', 'products', { hasMany: true })],
     },
-    text('githubLogin', { admin: { description: 'Assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN).' } }),
+    text('githubLogin', { admin: { description: 'The forge login (GitHub, or GitLab username) linked to this account: a gate label or answers comment from it counts as this person\'s decision, and it is assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN). One account per login, case ignored.' } }),
     text('oidcSubject', { index: true, access: { create: isAdmin, update: isAdmin }, admin: { description: 'issuer|sub of the OIDC identity (Keycloak: <issuer>|<user ID>). Set on first SSO sign-in; Admins can set it to link an existing Bauherr.' } }),
     { name: 'sessionVersion', type: 'number', defaultValue: 0, access: { create: () => false, update: () => false }, admin: { hidden: true } },
     { name: 'oidcSynced', type: 'date', access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'Last OIDC sign-in that synced role and Workspaces.' } },
@@ -587,7 +593,7 @@ export const collections: CollectionConfig[] = [
     text('stagingUrl'),
     select('deployMode', ['observe-ci', 'webhook'], { defaultValue: 'observe-ci', required: true }),
     text('deployWebhookUrl'),
-    text('gateOwners', { admin: { description: 'Comma-separated GitHub logins assigned and mentioned at human gates; empty = Admin Bauherren with a githubLogin.' } }),
+    text('unlinkedGateOwners', { admin: { readOnly: true, description: 'Forge logins the old `gateOwners` list named that no account has linked (written by the migration); Settings > Health lists them until someone links the login on their profile.' } }),
     text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
     { name: 'expediteSkipStaging', type: 'checkbox', defaultValue: false, admin: { description: 'An expedite (Hotfix) Ticket skips the Accept on staging gate once its merge is on staging; the production gate still waits for a human.' } },
     { name: 'productOwnerTestsStaging', type: 'checkbox', defaultValue: false, admin: { description: 'Where the workflow asks the Product owner to accept on staging: this Product asks them (they need an assigned Product owner), else nobody is asked.' } },
