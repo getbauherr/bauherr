@@ -9,16 +9,38 @@ const usage = (text: string): ModelEvent => ({ type: 'usage', tokensIn: 10, toke
 /** The refine engine's turn (`tools` holds `refine`): the person's text starting `refine:` carries the whole result as JSON; any other text settles the first open point with it. */
 const fakeRefine = (said: string): Record<string, unknown> => {
   const open = (JSON.parse(/<state>([\s\S]*)<\/state>/.exec(said)?.[1] ?? '{}') as { points?: { id: string; status: string }[] }).points?.filter((p) => p.status === 'open') ?? []
-  const text = /<person>([\s\S]*)<\/person>/.exec(said)?.[1]?.trim() ?? ''
+  const text = (/<person>([\s\S]*)<\/person>/.exec(said)?.[1]?.trim() ?? '').replace(/^hold:/, '')
+  if (said.includes('<recheck>')) return { reply: 'ok', settled: [], dropped: [], added: [], next: 'ask' }
   if (text.startsWith('refine:')) return JSON.parse(text.slice(7))
   const first = open[0]
   return { reply: first ? 'Noted.' : 'Noted, nothing else is open.', settled: first ? [{ id: first.id, answer: text.slice(0, 500) }] : [], dropped: [], added: [], next: open.length > 1 ? 'ask' : 'summary' }
 }
 
-export const fakeChatModel: ModelCall = async function* ({ messages, tools }) {
+/** The gate a `hold:` refine turn waits at after the first 30 characters of its reply, until `releaseFakeGate()` (the `api/chat/fake-gate` route) or an abort. On `globalThis`: route and model may sit in different bundles. */
+const gates = globalThis as { __fakeGate?: { promise: Promise<void>; resolve(): void } }
+export const releaseFakeGate = (): void => void gates.__fakeGate?.resolve()
+const HOLD_AT = '{"reply":"'.length + 30
+const CHUNK = 16
+
+export const fakeChatModel: ModelCall = async function* ({ messages, tools, signal }) {
   if (tools.some((t) => t.name === 'refine')) {
     const said = messages.at(-1)!.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ')
-    yield { type: 'tool_use', id: `toolu_fake_refine_${messages.length}`, name: 'refine', input: fakeRefine(said) }
+    const { reply, ...rest } = fakeRefine(said)
+    const id = `toolu_fake_refine_${messages.length}`
+    const json = JSON.stringify({ reply, ...rest })
+    const hold = /<person>\s*hold:/.test(said)
+    // The reply streams in fixed chunks, `reply` first, like the real tool input.
+    for (let at = 0; at < json.length; at += CHUNK) {
+      const end = hold && at < HOLD_AT && at + CHUNK > HOLD_AT ? HOLD_AT : Math.min(at + CHUNK, json.length)
+      yield { type: 'tool_delta', id, name: 'refine', json: json.slice(0, end) }
+      if (end === HOLD_AT && hold) {
+        let resolve!: () => void
+        const gate = (gates.__fakeGate = { promise: new Promise<void>((r) => (resolve = r)), resolve })
+        await Promise.race([gate.promise, new Promise((_, no) => signal?.addEventListener('abort', () => no(signal.reason), { once: true }))])
+        at = end - CHUNK
+      }
+    }
+    yield { type: 'tool_use', id, name: 'refine', input: { reply, ...rest } }
     yield { type: 'usage', tokensIn: 10, tokensOut: 20, model: 'fake-refine' }
     return
   }

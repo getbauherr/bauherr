@@ -4,15 +4,25 @@ import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLi
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react'
 import { Check } from '@/components/icons'
 import { Button } from '@/components/ui/button'
-import { refineChange, refineExplain, refineFinish, refinePick, refineRest, refineSay, refineState } from '../../lib/actions'
+import { refineChange, refineExplain, refineFinish, refinePick, refineRest, refineState } from '../../lib/actions'
 import type { View } from '../../../../lib/refine/engine'
 import { openOf, type Msg } from '../../../../lib/refine/model'
 import { Conversation } from './Conversation'
 import { CurrentPoint } from './CurrentPoint'
 import { OpenPoints, countOf } from './OpenPoints'
 import { SummaryCard } from './SummaryCard'
+import { useRefineTurn } from './useRefineTurn'
 
 type Reply = { view: View | null } | { error: string }
+
+const pending = (id: string, role: Msg['role'], text: string, speaker: Msg['speaker']): ThreadMessageLike => ({
+  id,
+  role,
+  createdAt: new Date(speaker.at),
+  content: text ? [{ type: 'text', text }] : [],
+  ...(role === 'assistant' && { status: { type: 'running' } as const }),
+  metadata: { custom: { speaker } },
+})
 
 const toMessage = (m: Msg): ThreadMessageLike => ({
   id: m.id,
@@ -44,7 +54,10 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
     return () => clearTimeout(t)
   }, [recorded])
   const alive = useRef(true)
-  useEffect(() => () => void (alive.current = false), [])
+  useEffect(() => {
+    alive.current = true // Strict Mode mounts twice in dev
+    return () => void (alive.current = false)
+  }, [])
 
   const take = useCallback((r: Reply): boolean => {
     if ('error' in r) return setError(r.error), false
@@ -79,15 +92,35 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
     [take, router],
   )
 
+  const onView = useCallback(
+    (v: View | null) => {
+      setError(null)
+      setView(v)
+      router.refresh()
+    },
+    [router],
+  )
+  const { turn, run, stop } = useRefineTurn(ticket, onView)
+  const model = view?.strip.model ?? null
+  const messages = useMemo(() => {
+    const stored = (view?.messages ?? []).map(toMessage)
+    if (!turn) return stored
+    const at = new Date().toISOString()
+    return [...stored, ...(turn.user ? [pending('pending-user', 'user', turn.user, { kind: 'person', at })] : []), pending('pending-assistant', 'assistant', turn.reply, { kind: 'assistant', role: 'Refinement', model, at })]
+  }, [view?.messages, turn, model])
+
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
-    messages: useMemo(() => (view?.messages ?? []).map(toMessage), [view?.messages]),
-    isRunning: busy,
+    messages,
+    isRunning: busy || !!turn,
     convertMessage: (m) => m,
     onNew: async (m) => {
       const text = textOf(m)
       if (!text) return
       setKept(false)
-      if (!(await act(() => refineSay(ticket, text)))) setRestore(text)
+      const r = await run({ text }, text)
+      if (r.ok) return
+      setRestore(text)
+      if (!r.aborted) setError(r.error)
     },
   })
 
@@ -118,10 +151,10 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
             </details>
           )}
           <AssistantRuntimeProvider runtime={runtime}>
-            <Conversation thread={view.thread} locked={locked} restore={restore} onRestored={() => setRestore('')}>
+            <Conversation thread={view.thread} locked={locked} working={busy && !turn} streaming={!!turn?.user} onStop={stop} restore={restore} onRestored={() => setRestore('')}>
               {error && <p role="alert" data-testid="refine-error" className="small m-0 text-destructive">{error}</p>}
               {recorded && <p role="status" data-testid="recorded" className="small m-0 flex items-center gap-1.5 text-ok"><Check />Recorded. {recorded}</p>}
-              {!locked && current && <CurrentPoint point={current} open={open.length} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} onRest={() => void act(() => refineRest(ticket))} />}
+              {!locked && current && <CurrentPoint point={current} open={open.length} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`); if (open.length > 1) void run({ recheck: { point: current.id } }, null) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} onRest={() => void act(() => refineRest(ticket))} />}
               {view.summary && !(kept && !locked) && <SummaryCard summary={view.summary} sent={locked} busy={busy} onSend={() => void send()} onKeep={() => setKept(true)} />}
               {view.summary && kept && !locked && <div><Button type="button" size="sm" variant="outline" onClick={() => setKept(false)}>Review the summary</Button></div>}
             </Conversation>

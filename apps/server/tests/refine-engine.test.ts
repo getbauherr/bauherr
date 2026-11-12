@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ModelCall } from '../src/lib/chat/stream'
+import { answer, contractViolations, spyOnModelFetch } from './helpers/anthropic-contract'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -65,7 +66,7 @@ describe('on a plan sheet with D2 critical and D1', () => {
     expect(v.points.map((p) => [p.id, p.status])).toEqual([['D2', 'open'], ['D1', 'open']])
     expect(v.messages).toHaveLength(1)
     expect(v.messages[0]).toMatchObject({ role: 'assistant', speaker: { kind: 'session', role: expect.stringContaining('Triage') } })
-    expect(v.messages[0]!.text).toContain('Follow the system setting')
+    expect(v.messages[0]!.text).toBe('Triage asked 2 questions about this Ticket. All 2 are still open.\n\nFollow the system setting\nRecommended: yes, until the user picks.')
     expect(v.strip).toMatchObject({ assistant: 'Factory assistant' })
     expect((await refine.loadRefine(payload, user, w()))!.messages).toHaveLength(1) // resuming does not seed again
   })
@@ -92,7 +93,7 @@ describe('on a plan sheet with D2 critical and D1', () => {
     expect(await comments(plan)).toEqual(before)
     const v = await refine.refineOption(payload, user, { ...w(), point: 'D2', option: 1 })
     expect(v.points.find((p) => p.id === 'D2')).toMatchObject({ status: 'answered', answer: 'never, always light first' })
-    expect(v.messages.at(-1)!.text).toContain('Where to store the choice')
+    expect(v.messages.at(-1)!.text).toBe('Where to store the choice\nRecommended: localStorage.')
     expect((await decisions(plan))[0]).toContain('D2: never, always light first')
     expect((await comments(plan)).find((b) => b.startsWith('<!-- bauherr:worklog -->'))).toContain('D2 Follow the system setting: never, always light first')
     expect(await payload.count({ collection: 'chat_threads', where: { ticket: { equals: plan } }, ...o })).toMatchObject({ totalDocs: 0 })
@@ -187,5 +188,148 @@ describe('on a Triage hold', () => {
 
   it('sending with a point still open is refused', async () => {
     await expect(refine.refineSend(payload, user, w())).rejects.toThrow('still open')
+  })
+})
+
+/** A model that streams its refine input in `chunks` (accumulated JSON, like `input_json_delta`), then ends with the call. */
+const streaming = (result: Record<string, unknown>, opts: { onChunk?: (i: number) => void } = {}) => {
+  const json = JSON.stringify(result)
+  const calls = vi.fn()
+  const model: ModelCall = async function* (a) {
+    calls(a)
+    for (let at = 7, i = 0; at < json.length + 7; at += 7, i++) {
+      a.signal?.throwIfAborted()
+      yield { type: 'tool_delta', id: 't', name: 'refine', json: json.slice(0, at) }
+      opts.onChunk?.(i)
+    }
+    yield { type: 'tool_use', id: 't', name: 'refine', input: result }
+    yield { type: 'usage', tokensIn: 5, tokensOut: 7, model: 'm-1' }
+  }
+  return { model, calls }
+}
+
+describe('streaming, the re-check and abort on a three-point sheet', () => {
+  const SHEET = `<!-- bauherr:triage -->
+## Questions
+Triage needs your answers.
+
+## Decisions
+- **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON.
+- **D2 Who may export**. Default: Admins only. Alternatives: Everyone.
+- **D3 Keep an audit trail of exports**. Default: No. Alternatives: Yes.
+`
+  let id = 0
+  const mk = async (n: number): Promise<{ ticket: number; workspaceId: number }> => {
+    const { ts } = await actions.sourceOf(payload, await actions.loadTicket(payload, user, plan))
+    const made = (await ts.create({ title: `Export, take ${n}`, labels: ['bauherr:needs-refinement'] })) as { number: number }
+    await ts.comment(String(made.number), SHEET)
+    const ticket = await payload.create({ collection: 'tickets', data: { title: `Export, take ${n}`, externalId: `stream-${n}`, number: made.number, url: `https://x/${made.number}`, state: 'open', labels: ['bauherr:needs-refinement'], stage: null, product: (await payload.findByID({ collection: 'tickets', id: plan, depth: 0, ...o })).product, workspace: ws } as never, ...o })
+    id = ticket.id as number
+    await refine.loadRefine(payload, user, { ticket: id, workspaceId: ws })
+    return { ticket: id, workspaceId: ws }
+  }
+  const count = async () => (await payload.count({ collection: 'chat_messages', where: { 'thread.intakeSession.draft.ticket': { equals: id } }, ...o })).totalDocs
+
+  it('opens with who asked and how many are open, then the first question and its recommendation on their own lines', async () => {
+    const a = await mk(1)
+    const v = (await refine.loadRefine(payload, user, a))!
+    expect(v.messages[0]!.text).toBe('Triage asked 3 questions about this Ticket. All 3 are still open.\n\nWhich export format\nRecommended: CSV.')
+  })
+
+  it('streams the reply, whitespace collapsed, as the tool input arrives, and stores the turn once', async () => {
+    const a = await mk(2)
+    const seen: string[] = []
+    const { model } = streaming(ok({ reply: 'Fine,\nCSV it is. Next:   who may export?', settled: [{ id: 'D1', answer: 'CSV' }] }))
+    const v = await refine.refineTurn(payload, user, { ...a, text: 'CSV', model, onReply: (t) => seen.push(t) })
+    expect(seen.length).toBeGreaterThan(3)
+    expect(seen.at(-1)).toBe('Fine, CSV it is. Next: who may export?')
+    for (const t of seen) expect('Fine, CSV it is. Next: who may export?'.startsWith(t)).toBe(true)
+    expect(v.messages.filter((m) => m.role === 'assistant' && m.speaker.model === 'm-1')).toHaveLength(1)
+  })
+
+  it('an invalid result after the retry withdraws the streamed text ("") and stores nothing', async () => {
+    const a = await mk(3)
+    const before = await count()
+    const seen: string[] = []
+    const { model, calls } = streaming(ok({ reply: 'Looks fine to me', settled: [{ id: 'D9', answer: 'x' }] }))
+    await expect(refine.refineTurn(payload, user, { ...a, text: 'x', model, onReply: (t) => seen.push(t) })).rejects.toThrow('unknown or repeated')
+    expect(calls).toHaveBeenCalledTimes(2)
+    expect(seen).toContain('')
+    expect(seen.at(-1)).not.toBe('')
+    expect(await count()).toBe(before)
+    expect(await decisions((await refine.loadRefine(payload, user, a))!.ticket.id)).toEqual([])
+  })
+
+  it('an abort mid-reply stops the model, does not retry and stores nothing', async () => {
+    const a = await mk(4)
+    const before = await count()
+    const ctl = new AbortController()
+    const { model, calls } = streaming(ok({ reply: 'A long answer that will never be finished' }), { onChunk: (i) => i === 2 && ctl.abort() })
+    await expect(refine.refineTurn(payload, user, { ...a, text: 'x', model, signal: ctl.signal })).rejects.toThrow()
+    expect(calls).toHaveBeenCalledTimes(1)
+    expect(await count()).toBe(before)
+    expect((await refine.loadRefine(payload, user, a))!.points.every((p) => p.status === 'open')).toBe(true)
+  })
+
+  it('an option click on D1 whose answer makes D3 pointless: the re-check drops D3 and asks the next one, with no message of the person', async () => {
+    const a = await mk(5)
+    await refine.refineOption(payload, user, { ...a, point: 'D1', option: 1 })
+    const before = await count()
+    const { model, calls } = scripted(ok({ reply: 'JSON needs no audit trail, so I dropped that. Next: who may export?', dropped: [{ id: 'D3', reason: 'JSON export is not audited' }] }))
+    const v = await refine.refineRecheck(payload, user, { ...a, point: 'D1', model })
+    expect(calls).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(calls.mock.calls[0]![0].messages.at(-1))).toContain('<recheck>')
+    expect(v.points.map((p) => [p.id, p.status])).toEqual([['D1', 'answered'], ['D2', 'open'], ['D3', 'dropped']])
+    expect(await count()).toBe(before + 1)
+    expect(v.messages.at(-1)).toMatchObject({ role: 'assistant', text: expect.stringContaining('dropped that') })
+    expect((await decisions(a.ticket))[0]).toContain('D3: (no longer needed) JSON export is not audited')
+  })
+
+  it('a re-check never settles a point or edits the Ticket: such a result is invalid after the retry and nothing changes', async () => {
+    const a = await mk(6)
+    await refine.refineOption(payload, user, { ...a, point: 'D1', option: 0 })
+    const before = await count()
+    const { model, calls } = scripted(ok({ settled: [{ id: 'D2', answer: 'Admins only' }] }))
+    await expect(refine.refineRecheck(payload, user, { ...a, point: 'D1', model })).rejects.toThrow('may not settle')
+    expect(calls).toHaveBeenCalledTimes(2)
+    const edit = scripted(ok({ ticket: { title: 'New title' } }))
+    await expect(refine.refineRecheck(payload, user, { ...a, point: 'D1', model: edit.model })).rejects.toThrow('may not settle')
+    expect(await count()).toBe(before)
+    expect((await refine.loadRefine(payload, user, a))!.points.find((p) => p.id === 'D2')!.status).toBe('open')
+  })
+
+  it('a re-check that changes nothing stores nothing, and with no other point open the model is not called', async () => {
+    const a = await mk(7)
+    await refine.refineOption(payload, user, { ...a, point: 'D1', option: 0 })
+    const before = await count()
+    const same = scripted(ok({ reply: 'ok' }))
+    await refine.refineRecheck(payload, user, { ...a, point: 'D1', model: same.model })
+    expect(same.calls).toHaveBeenCalledTimes(1)
+    expect(await count()).toBe(before)
+    await refine.refineOption(payload, user, { ...a, point: 'D2', option: 0 })
+    await refine.refineOption(payload, user, { ...a, point: 'D3', option: 0 })
+    const none = scripted(ok({ reply: 'ok' }))
+    await refine.refineRecheck(payload, user, { ...a, point: 'D3', model: none.model })
+    expect(none.calls).not.toHaveBeenCalled()
+  })
+
+  it('keeps the Messages API contract for a typed turn and a re-check (fetch spied, no network)', async () => {
+    const { gatewayChatModel } = await import('../src/lib/chat/stream')
+    const model = gatewayChatModel({ slug: 'acme', key: 'k', model: 'claude-sonnet-5-5' })
+    const turn = answer({ tool: { name: 'refine', input: ok({ reply: 'Noted, nothing changes.' }) } })
+    const spy = spyOnModelFetch(turn)
+    try {
+      const w2 = await mk(8)
+      await refine.refineOption(payload, user, { ...w2, point: 'D1', option: 1 })
+      await refine.refineTurn(payload, user, { ...w2, text: 'what about it?', model })
+      await refine.refineTurn(payload, user, { ...w2, text: 'and one more', model })
+      await refine.refineRecheck(payload, user, { ...w2, point: 'D1', model })
+      expect(spy.bodies.length).toBe(3)
+      expect(spy.bodies.flatMap((b) => contractViolations(b))).toEqual([])
+      expect(spy.bodies[0]).toMatchObject({ stream: true, tool_choice: { type: 'auto', disable_parallel_tool_use: true } })
+      expect(spy.bodies[1]!.messages.at(0).role).toBe('user')
+    } finally {
+      spy.restore()
+    }
   })
 })

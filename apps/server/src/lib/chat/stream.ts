@@ -11,6 +11,8 @@ export type ToolDef = { name: string; description: string; input_schema: Record<
 export type ModelEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  /** The input JSON of a tool call as it has arrived so far (a prefix of the final JSON; usually cut mid-token). */
+  | { type: 'tool_delta'; id: string; name: string; json: string }
   | { type: 'usage'; tokensIn: number; tokensOut: number; model?: string }
 
 export type ModelCall = (a: { system: string; messages: ModelMessage[]; tools: ToolDef[]; noTools?: boolean; /** Name of the one tool the model must call. */ forceTool?: string; signal?: AbortSignal }) => AsyncIterable<ModelEvent>
@@ -33,7 +35,10 @@ export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): A
       if (d.delta?.type === 'text_delta' && d.delta.text) yield { type: 'text', text: d.delta.text }
       else if (d.delta?.type === 'input_json_delta') {
         const c = calls.get(d.index)
-        if (c) c.json += d.delta.partial_json ?? ''
+        if (c && d.delta.partial_json) {
+          c.json += d.delta.partial_json
+          yield { type: 'tool_delta', id: c.id, name: c.name, json: c.json }
+        }
       }
     } else if (d.type === 'content_block_stop') {
       const c = calls.get(d.index)
@@ -72,6 +77,38 @@ export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): A
     if (d) yield* handle(d)
   }
   yield { type: 'usage', ...usage }
+}
+
+const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' }
+
+/**
+ * The `reply` string of a tool input that is still arriving, as far as it has come. Reads only a `reply` that is the first property (the schema asks for that order);
+ * an escape or a surrogate pair cut off at the end is held back until it is whole. Returns null while no `reply` has started and the whole string once its closing quote is in.
+ */
+export const partialReply = (json: string): string | null => {
+  const head = /^\s*\{\s*"reply"\s*:\s*"/.exec(json)
+  if (!head) return null
+  let out = ''
+  for (let i = head[0].length; i < json.length; i++) {
+    const c = json[i]!
+    if (c === '"') return out
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const e = json[i + 1]
+    if (e === undefined) break
+    if (e === 'u') {
+      const hex = json.slice(i + 2, i + 6)
+      if (!/^[0-9a-fA-F]{4}$/.test(hex)) break
+      out += String.fromCharCode(parseInt(hex, 16))
+      i += 5
+    } else {
+      out += ESCAPES[e] ?? e
+      i++
+    }
+  }
+  return /[\ud800-\udbff]$/.test(out) ? out.slice(0, -1) : out
 }
 
 /** What the system prompt gets when a call must end in one tool: current Claude models (Sonnet 5.5, Opus 5.5, Fable 5.x) answer a forced `tool_choice` (`tool`, `any`) with HTTP 400, so the tool is asked for in words and the caller checks that it came. */
