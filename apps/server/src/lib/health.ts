@@ -17,14 +17,27 @@ export const staleAfterMs = (cron: string): number => {
   return step ? Math.max(STALE_TASK_MS, Number(step[1]) * 3 * MIN) : STALE_TASK_MS
 }
 
-/** Looks at the last two days of job rows only (payload_jobs is never pruned). A scheduled task is stale when its last completion is older than its schedule allows (`staleAfterMs`). A task that never completed counts only once the oldest job row is that old (startup grace). */
+/**
+ * Looks at the last two days of job rows only (payload_jobs is never pruned). A scheduled task is stale when
+ * - it completed in the window, and the last completion is older than its schedule allows (`staleAfterMs`);
+ * - it has rows but none completed (queued or running), and its oldest row is older than that;
+ * - it has no row at all, and another task with the same cron line completed at least twice in the window (the schedule demonstrably ran, this task did not).
+ * A task with no row otherwise counts as not stale: it is new (just deployed) or the instance just started.
+ */
 export const staleTasks = async (payload: Payload, now = Date.now()): Promise<string[]> => {
   const rows = (
     await payload.db.drizzle.execute(
-      sql`SELECT "task_slug"::text AS slug, max("completed_at") AS last, min("created_at") AS first FROM "payload_jobs" WHERE "created_at" > now() - interval '2 days' GROUP BY "task_slug"`,
+      sql`SELECT "task_slug"::text AS slug, max("completed_at") AS last, min("created_at") AS first, count("completed_at")::int AS done FROM "payload_jobs" WHERE "created_at" > now() - interval '2 days' GROUP BY "task_slug"`,
     )
-  ).rows as { slug: string; last: Date | null; first: Date | null }[]
-  const first = rows.reduce<number>((m, r) => Math.min(m, r.first ? new Date(r.first).getTime() : now), now)
-  const last = new Map(rows.map((r) => [r.slug, r.last ? new Date(r.last).getTime() : first]))
-  return scheduledTasks().filter((t) => now - (last.get(t.slug) ?? first) > staleAfterMs(t.cron)).map((t) => t.slug)
+  ).rows as { slug: string; last: Date | null; first: Date | null; done: number }[]
+  const by = new Map(rows.map((r) => [r.slug, r]))
+  const tasks = scheduledTasks()
+  return tasks
+    .filter((t) => {
+      const r = by.get(t.slug)
+      if (!r) return tasks.some((o) => o.cron === t.cron && (by.get(o.slug)?.done ?? 0) >= 2)
+      const since = r.last ?? r.first
+      return !!since && now - new Date(since).getTime() > staleAfterMs(t.cron)
+    })
+    .map((t) => t.slug)
 }

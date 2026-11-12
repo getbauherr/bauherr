@@ -1,10 +1,11 @@
 'use client'
-import { AuiIf, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, useAuiState } from '@assistant-ui/react'
+import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, useAuiState } from '@assistant-ui/react'
 import Link from 'next/link'
 import { useEffect, useState, type FC } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ArrowUp } from '@/components/icons'
+import { Stop } from '../chat/icons'
 import { cn } from '@/lib/utils'
 import { FeedbackDialog } from '../assistant-ui/elements/feedback-dialog'
 import { ThumbsDown, ThumbsUp } from '../chat/icons'
@@ -71,16 +72,19 @@ const UserMessage: FC = () => (
   </MessagePrimitive.Root>
 )
 
-const AssistantMessage: FC<{ thread: number; locked: boolean }> = ({ thread, locked }) => (
-  <MessagePrimitive.Root className="flex flex-col gap-1" data-role="assistant">
-    <SpeakerLine />
-    <div className="text-[14px] leading-6 wrap-anywhere whitespace-pre-wrap"><MessagePrimitive.Parts /></div>
-    {!locked && <Rate thread={thread} />}
-  </MessagePrimitive.Root>
-)
+const AssistantMessage: FC<{ thread: number; locked: boolean }> = ({ thread, locked }) => {
+  const writing = useAuiState((m) => m.message.status?.type === 'running')
+  return (
+    <MessagePrimitive.Root className="flex flex-col gap-1" data-role="assistant" data-writing={writing || undefined}>
+      <SpeakerLine />
+      <div data-testid="reply-text" className="text-[14px] leading-6 wrap-anywhere whitespace-pre-wrap"><MessagePrimitive.Parts /></div>
+      {writing ? <p role="status" data-testid="writing" className="small m-0 animate-pulse text-muted-foreground">is writing...</p> : !locked && <Rate thread={thread} />}
+    </MessagePrimitive.Root>
+  )
+}
 
 /** The thread of the panel (assistant-ui primitives); `restore` puts text a failed turn did not take back into the composer. */
-export const Conversation: FC<{ thread: number; locked: boolean; restore: string; onRestored(): void; children?: React.ReactNode }> = ({ thread, locked, restore, onRestored, children }) => {
+export const Conversation: FC<{ thread: number; locked: boolean; /** An action without a streamed reply is running. */ working: boolean; /** A typed message is being answered: the send button turns into stop. */ streaming: boolean; onStop(): void; restore: string; onRestored(): void; children?: React.ReactNode }> = ({ thread, locked, working, streaming, onStop, restore, onRestored, children }) => {
   const aui = useAui()
   useEffect(() => {
     if (!restore) return
@@ -91,13 +95,13 @@ export const Conversation: FC<{ thread: number; locked: boolean; restore: string
     <ThreadPrimitive.Root className="aui-root flex min-w-0 flex-col gap-3 text-foreground">
       <ThreadPrimitive.Viewport className="relative flex max-h-[26rem] min-h-40 flex-col gap-4 overflow-y-auto rounded-md border bg-card p-3" aria-live="polite" data-testid="refine-thread">
         <ThreadPrimitive.Messages>{({ message }) => (message.role === 'user' ? <UserMessage /> : <AssistantMessage thread={thread} locked={locked} />)}</ThreadPrimitive.Messages>
-        <AuiIf condition={(s) => s.thread.isRunning}><p role="status" data-testid="waiting" className="small m-0 animate-pulse text-muted-foreground">Working...</p></AuiIf>
+        {working && <p role="status" data-testid="waiting" className="small m-0 animate-pulse text-muted-foreground">Working...</p>}
       </ThreadPrimitive.Viewport>
       {children}
       {!locked && (
         <ComposerPrimitive.Root className="flex items-end gap-2 rounded-md border bg-card p-2 focus-within:ring-2 focus-within:ring-ring">
           <ComposerPrimitive.Input rows={1} maxRows={6} style={{ outline: 'none' }} aria-label="Your answer" placeholder="Answer in your own words" className="max-h-40 min-h-9 w-full resize-none bg-transparent px-1 py-1 text-[14px]" />
-          <ComposerPrimitive.Send asChild><Button type="submit" size="icon" aria-label="Send" className="size-8 shrink-0"><ArrowUp /></Button></ComposerPrimitive.Send>
+          {streaming ? <Button type="button" size="icon" aria-label="Stop" data-testid="stop" className="size-8 shrink-0" onClick={onStop}><Stop /></Button> : <ComposerPrimitive.Send asChild><Button type="submit" size="icon" aria-label="Send" className="size-8 shrink-0"><ArrowUp /></Button></ComposerPrimitive.Send>}
         </ComposerPrimitive.Root>
       )}
     </ThreadPrimitive.Root>

@@ -1,6 +1,7 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { answer, contractViolations, spyOnModelFetch } from './helpers/anthropic-contract'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 type Doc = Record<string, any>
@@ -407,4 +408,20 @@ it('routes: 401 without a session, foreign threads are 404, the run streams NDJS
   while ((await threads.recentRuns(w)) < RUNS_PER_HOUR) await threads.startAnswer(w, t.id)
   expect((await post({ messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], context: { path: '/' } })).status).toBe(429)
   expect((await run.POST(req('', keyBob, { method: 'POST', body: '{}' }), ctx(t.id))).status).toBe(404)
+})
+
+it('the helper chat sends request bodies that keep the Messages API contract: a text answer, a read-tool round, an image turn (fetch spied, no network)', async () => {
+  const { gatewayChatModel } = await import('../src/lib/chat/stream')
+  const model = gatewayChatModel({ slug: 'acme', key: 'k', model: 'claude-sonnet-5-5' })
+  const spy = spyOnModelFetch(answer({ tool: { name: 'factory_status', input: {} } }), answer({ text: 'All quiet.' }))
+  try {
+    const events = await turn(alice, wsA, await newThread(), 'how is the factory?', model)
+    expect(types(events)).toContain('tool-result')
+    expect(spy.bodies.length).toBe(2)
+    expect(spy.bodies.flatMap((b) => contractViolations(b))).toEqual([])
+    expect(spy.bodies[1]!.messages.map((m: Doc) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(spy.bodies[0]!.tools.length).toBeGreaterThan(0)
+  } finally {
+    spy.restore()
+  }
 })

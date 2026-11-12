@@ -75,6 +75,10 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
   await expect(first).toContainText('claude-sonnet-4-5')
   await expect(first.getByRole('link', { name: /Run #\d+/ })).toBeVisible()
 
+  // The opening message: who asked and how many are open, then the first question and its recommendation on their own lines.
+  await expect(first.locator('xpath=following-sibling::*[@data-testid="reply-text"]')).toHaveText('Triage asked 5 questions about this Ticket. All 5 are still open.\n\nWhich export format\nRecommended: CSV.', { useInnerText: true })
+
+  await shoot(page, 'opening', [1280])
   const points = panel.getByTestId('open-points')
   await expect(points).toContainText('5 of 5 open')
   await expect(points.locator('[data-point=D1]')).toHaveAttribute('aria-current', 'step')
@@ -85,17 +89,63 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
   await expect(last).toContainText('Finance opens the file in Excel')
   await expect(last.getByTestId('speaker-model')).toHaveText('no model call')
 
+  // The re-check after an option click is held at the network (only its request): while it runs the person sees one quiet line and no message or "is writing".
+  let releaseRecheck!: () => void
+  const recheckGate = new Promise<void>((r) => (releaseRecheck = r))
+  await page.route('**/api/refine/*/turn', async (route) => {
+    if (route.request().postData()?.includes('recheck')) await recheckGate
+    await route.continue()
+  })
   // An option click records at once; the open points follow without a reload.
   await panel.getByTestId('current-point').getByRole('button', { name: /CSV/ }).click()
   await expect(panel.getByTestId('recorded')).toContainText('CSV')
+  await expect(panel.getByTestId('rechecking')).toBeVisible()
+  await expect(panel.getByTestId('writing')).toHaveCount(0)
+  releaseRecheck()
+  await expect(panel.getByTestId('rechecking')).toHaveCount(0)
+  // The message after the click has the same two-line shape; the re-check changed nothing here: no message, no "ok".
+  await expect(panel.getByTestId('refine-thread').locator('[data-role=assistant]').last().getByTestId('reply-text')).toHaveText('Who may export\nRecommended: Admins only.', { useInnerText: true })
+  await expect(panel.getByTestId('writing')).toHaveCount(0)
+  await expect(panel.getByTestId('refine-thread').getByText('ok', { exact: true })).toHaveCount(0)
   await expect(points.locator('[data-point=D1]')).toHaveAttribute('data-status', 'answered')
   await expect(points.locator('[data-point=D1] [data-testid=point-answer]')).toHaveText('CSV')
   await expect(points).toContainText('4 of 5 open')
   await expect(panel.getByTestId('current-point')).toContainText('Who may export')
 
+  const thread = panel.getByTestId('refine-thread')
+  const answers = thread.locator('[data-role=assistant]')
+  const typed = panel.getByRole('textbox', { name: 'Your answer' })
+
+  // Stop: a held turn is aborted mid-reply; the text is back in the composer, nothing was stored, nothing settled.
+  const countBefore = await answers.count()
+  const NEVER = `hold:refine:${JSON.stringify({ reply: 'This long answer is cut off by the stop button before it ends.', settled: [{ id: 'D2', answer: 'never applied' }], dropped: [], added: [], next: 'ask' })}`
+  await typed.fill(NEVER)
+  await typed.press('Enter')
+  await expect(thread.locator('[data-role=assistant][data-writing] [data-testid=reply-text]')).toContainText('This long answer is cut off')
+  await panel.getByTestId('stop').click()
+  await expect(panel.getByTestId('writing')).toHaveCount(0)
+  await expect(typed).toHaveValue(NEVER)
+  await expect(answers).toHaveCount(countBefore)
+  await expect(thread).not.toContainText('cut off by the stop button')
+  await expect(points.locator('[data-point=D2]')).toHaveAttribute('data-status', 'open')
+  await expect(panel.getByTestId('refine-error')).toHaveCount(0)
+
   // One free-text message settles one point and makes another pointless; the Ticket text edit waits for the summary.
-  await panel.getByRole('textbox', { name: 'Your answer' }).fill(FREE_TEXT)
-  await panel.getByRole('textbox', { name: 'Your answer' }).press('Enter')
+  // The reply streams: the message is there at once, then the speaker header with "is writing" and the growing text, held here after 30 characters.
+  await typed.fill(`hold:${FREE_TEXT}`)
+  await typed.press('Enter')
+  await expect(thread.locator('[data-role=user]').last()).toContainText('Admins only')
+  const writing = thread.locator('[data-role=assistant][data-writing]')
+  await expect(writing).toHaveCount(1)
+  await expect(writing.getByTestId('writing')).toBeVisible()
+  await expect(writing.getByTestId('speaker')).toContainText('Refinement')
+  await expect(writing.getByTestId('speaker-model')).toHaveText('fake-refine')
+  await expect(writing.getByTestId('reply-text')).toContainText('Admins only means nobody else')
+  await expect(writing.getByTestId('reply-text')).not.toContainText('audit trail')
+  await expect(points.locator('[data-point=D2]')).toHaveAttribute('data-status', 'open') // nothing is applied before the turn is validated
+  await shoot(page, 'mid-stream', [1280])
+  expect((await page.request.post('/api/chat/fake-gate')).status()).toBe(204)
+  await expect(writing).toHaveCount(0)
   await expect(points.locator('[data-point=D2]')).toHaveAttribute('data-status', 'answered')
   await expect(points.locator('[data-point=D3]')).toHaveAttribute('data-status', 'dropped')
   await expect(points).toContainText('2 of 5 open')

@@ -128,7 +128,7 @@ async function* loop(env: Env, s: State, answerId: string, t0: number, tally: An
           text.push(ev.text)
           yield { type: 'delta', text: ev.text }
         } else if (ev.type === 'tool_use') uses.push(ev)
-        else {
+        else if (ev.type === 'usage') {
           usage.tokensIn += ev.tokensIn
           usage.tokensOut += ev.tokensOut
           usage.model = ev.model ?? usage.model

@@ -26,6 +26,10 @@ test('Agent team is in the sidebar after Workflow, not in Settings; the roster i
 
   const roster = page.getByRole('radiogroup', { name: 'Roles' })
   const radios = roster.getByRole('radio')
+  // The list is as tall as its cards: no inner scroll hides the last role at a normal desktop height.
+  await page.setViewportSize({ width: 1280, height: 800 })
+  expect(await roster.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(0)
+  await expect(radios.last()).toBeVisible()
   await radios.first().focus()
   await expect(radios.first()).toBeChecked()
   await page.keyboard.press('ArrowDown')
