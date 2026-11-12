@@ -1,5 +1,6 @@
 'use server'
 import { revalidatePath } from 'next/cache'
+import { withLoginLock } from '../../../../../lib/login-lock'
 import { run, type FormState } from '../../../lib/settings'
 import { payloadClient, requirePerson } from '../../../lib/session'
 
@@ -8,7 +9,9 @@ export const saveOwnLogin = async (_prev: FormState, fd: FormData): Promise<Form
   const user = await requirePerson()
   const login = String(fd.get('githubLogin') ?? '').trim().replace(/^@/, '')
   const result = await run(async () => {
-    await (await payloadClient()).update({ collection: 'bauherren', id: user.id, data: { githubLogin: login || null }, user, overrideAccess: false } as never)
+    const payload = await payloadClient()
+    // In the sign-in queue: a sign-in of this account under way would write back the row it read and revert the edit.
+    await withLoginLock(String(user.email), () => payload.update({ collection: 'bauherren', id: user.id, data: { githubLogin: login || null }, user, overrideAccess: false } as never))
   })
   if (result.saved) revalidatePath('/settings', 'layout')
   return result
