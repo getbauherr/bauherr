@@ -12,6 +12,7 @@ import { ConnectBlock } from './ConnectBlock'
 import { Chip } from './Chip'
 import { agentsLabel, connectPrompt, groupOptions, live, modelName, modelValue, profileMarkdown, tagline } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
+import { sessionName, type GatewaySetup } from '../../lib/harnesses'
 import type { ModelOption, RoleSettings, SaveResult, TeamRole } from './types'
 
 const MAX_AGENTS = 10
@@ -24,6 +25,8 @@ type Props = {
   docsHref: string
   /** The `claude mcp add` line with the factory URL and a key placeholder. */
   mcpLine: string
+  /** Values for the per-tool setup that also routes the session through the gateway. */
+  gateway?: GatewaySetup
   /** Read-only roster (setup wizard): no model/agents form and no connect block. */
   preview?: boolean
 }
@@ -129,7 +132,7 @@ function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, '
   )
 }
 
-export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcpLine, preview }: Props) {
+export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcpLine, gateway, preview }: Props) {
   const [id, setId] = useState(roles[0]?.id)
   const [hot, setHot] = useState<string>()
   const group = useRef<HTMLDivElement>(null)
@@ -148,7 +151,7 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcp
     e.preventDefault()
     pick(next)
   }
-  const prompt = connectPrompt(role)
+  const prompt = connectPrompt(role, gateway ? sessionName(role.id, gateway.roll) : undefined)
 
   return (
     <div className="grid gap-6 lg:grid-cols-[24rem_minmax(0,1fr)]">
@@ -173,7 +176,7 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcp
           {role.exceptions && <p className="small m-0 text-muted-foreground">Handles stuck tickets.</p>}
         </div>
         {!preview && <RoleSettingsForm key={role.id} role={role} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />}
-        {!preview && <ConnectBlock mcpLine={mcpLine} prompt={prompt} docsHref={docsHref} />}
+        {!preview && <ConnectBlock mcpLine={mcpLine} prompt={prompt} docsHref={docsHref} gateway={gateway} role={role.id} />}
       </section>
     </div>
   )

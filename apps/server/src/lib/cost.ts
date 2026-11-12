@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
@@ -8,28 +8,60 @@ export type Usage = { tokensIn: number; tokensOut: number; cacheRead: number; ca
 type Rates = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 const catalogDirs = () => [join(process.env.GATEWAY_CONFIG_DIR ?? '/gateway', 'catalogs'), resolve(process.cwd(), '../../deploy/gateway/catalogs')]
-let rates: Map<string, Rates> | undefined
+/** Providers whose price wins when several catalog providers list the same model name (a usage row only knows the model name). */
+const FIRST_PARTY = ['anthropic', 'openai', 'gcp.gemini', 'mistral', 'xai', 'deepseek', 'greenpt']
+type CatalogFile = { metadata?: { generatedAt?: string }; providers?: Record<string, { models?: Record<string, { rates?: Record<string, string> }> }> }
 
-/** USD per million tokens by model name, from the gateway price catalogs. */
+let loaded: { at: number; sig: string; rates: Map<string, Rates> } | undefined
+
+/**
+ * USD per million tokens by model name, from the gateway price catalogs, the way the gateway reads them:
+ * the base catalog with the newest `metadata.generatedAt` (the daily refresh, `base-costs.json`), then every catalog without `metadata` as an overlay in file order.
+ * Re-read when a file changes (checked at most every 10 s).
+ */
 const catalog = (): Map<string, Rates> => {
-  if (rates) return rates
-  const out = new Map<string, Rates>()
+  if (loaded && Date.now() - loaded.at < 10_000) return loaded.rates
   for (const dir of catalogDirs()) {
+    let files: string[]
     try {
-      for (const f of readdirSync(dir).filter((x) => x.endsWith('.json'))) {
-        const json = JSON.parse(readFileSync(join(dir, f), 'utf8')) as { providers?: Record<string, { models?: Record<string, { rates?: Record<string, string> }> }> }
-        for (const p of Object.values(json.providers ?? {})) {
-          for (const [name, m] of Object.entries(p.models ?? {})) {
-            if (m.rates && !out.has(name)) out.set(name, { input: +m.rates.input!, output: +m.rates.output!, cacheRead: +(m.rates.cacheRead ?? m.rates.input!), cacheWrite: +(m.rates.cacheWrite ?? m.rates.input!) })
-          }
+      files = readdirSync(dir).filter((x) => x.endsWith('.json')).sort()
+    } catch {
+      continue
+    }
+    const sig = files.map((f) => `${dir}/${f}:${statSync(join(dir, f)).mtimeMs}`).join('|')
+    if (!files.length) continue
+    if (loaded?.sig === sig) return (loaded.at = Date.now(), loaded.rates)
+    const parsed = files.flatMap((f) => {
+      try {
+        return [JSON.parse(readFileSync(join(dir, f), 'utf8')) as CatalogFile]
+      } catch {
+        return []
+      }
+    })
+    const base = parsed.filter((c) => c.metadata?.generatedAt).sort((a, b) => b.metadata!.generatedAt!.localeCompare(a.metadata!.generatedAt!))[0]
+    const out = new Map<string, Rates>()
+    const rank = (p: string) => (FIRST_PARTY.includes(p) ? FIRST_PARTY.indexOf(p) : FIRST_PARTY.length)
+    const add = (c: CatalogFile | undefined, overlay: boolean) => {
+      for (const [, p] of Object.entries(c?.providers ?? {}).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))) {
+        for (const [name, m] of Object.entries(p.models ?? {})) {
+          if (m.rates?.input == null || m.rates.output == null || (!overlay && out.has(name))) continue
+          out.set(name, { input: +m.rates.input, output: +m.rates.output, cacheRead: +(m.rates.cacheRead ?? m.rates.input), cacheWrite: +(m.rates.cacheWrite ?? m.rates.input) })
         }
       }
-    } catch {
-      // directory absent: the next one is tried
     }
-    if (out.size) break
+    add(base, false)
+    for (const c of parsed.filter((x) => !x.metadata?.generatedAt)) add(c, true)
+    if (out.size) {
+      loaded = { at: Date.now(), sig, rates: out }
+      return out
+    }
   }
-  return (rates = out)
+  return (loaded = { at: Date.now(), sig: '', rates: new Map() }).rates
+}
+
+/** Forgets the read catalog; the next price lookup reads the files again. */
+export const reloadCatalog = (): void => {
+  loaded = undefined
 }
 
 /** Model name without gateway prefix (`ws-x/conn/`) and context suffix (`[1m]`). */

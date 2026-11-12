@@ -46,6 +46,8 @@ A `llm-provider` Connection picks a preset (`apps/server/src/lib/providers.ts`).
 | Preset | Fields | Secret to paste | Model IDs / default tiers | Budget |
 |---|---|---|---|---|
 | `anthropic` | none | Anthropic API key | `claude-haiku-5-5` / `claude-sonnet-5-5` / `claude-opus-5-5` | USD |
+| `openai` | none | OpenAI API key (serves Chat Completions and Responses, which Codex CLI needs) | set `modelByTier` | USD |
+| `gemini` | none | Gemini API key | set `modelByTier` | USD |
 | `greenpt` | none | GreenPT API key | `glm-5.3-flash` / `glm-5.3` / `kimi-k3` | USD |
 | `bedrock` | `awsRegion` | Bedrock API key | e.g. `us.anthropic.claude-sonnet-5-5-v1:0`; set `modelByTier` | tokens |
 | `vertex` | `vertexProject`, `vertexRegion` | service-account JSON | e.g. `claude-sonnet-5-5@20260101`; set `modelByTier` | tokens |

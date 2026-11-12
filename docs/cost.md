@@ -1,6 +1,6 @@
 # Tokens and cost
 
-Where the numbers come from, how a Claude Code session reports its own, and what they cover. They are shown on Insights › Cost & tokens (`/insights#cost`), per session and role on the Team page, per Run on the Run page, and to the chat as `cost_summary`.
+Where the numbers come from, how the gateway measures sessions, how a Claude Code session can report its own instead, and what they cover. They are shown on Insights › Cost & tokens (`/insights#cost`), per session and role on the Team page, per Run on the Run page, and to the chat as `cost_summary`.
 
 ## One table
 
@@ -8,13 +8,17 @@ Where the numbers come from, how a Claude Code session reports its own, and what
 
 | `source` | Written by | Idempotency |
 |---|---|---|
-| `gateway` | `reconcile-costs`: one row per model of the Run, summed from the gateway `request_logs` (`attributes_json->>'run'`) | the row is replaced, a re-reconcile never adds |
+| `gateway` | Runner and CI Runs: `reconcile-costs`, one row per model of the Run, summed from the gateway `request_logs` (`attributes_json->>'run'`). Sessions: `watch-gateway` every minute, one row per (Run, model) for calls made while the session held the Run, and one row per (session, model, day) for calls between Runs; see [gateway.md](gateway.md#how-a-session-is-measured) | the Run row is replaced; the Run-less rows of the last two days are replaced in one transaction, so a rerun never adds |
 | `session-reported` | a session: `usage` on `heartbeat`, `finish_run`, `submit_review`, `submit_triage` (cumulative for the Run), or the usage hook | `usage`: maximum of the cumulative reports; hook: cursor per Claude session |
 | `chat` | not stored: `chat_messages.answer` (`model`, `tokensIn`, `tokensOut`, `costUsd`) is read at query time | n/a |
 
-A Run priced by the gateway ignores its `session-reported` rows (the gateway is exact), so nothing counts twice. `runs.costUsd` and the token fields stay in sync: a session report copies its sum into the Run (`costSource: session-reported`) unless the gateway already priced it. Settings › AI usage keeps the budget and the cost per Product and links here.
+The gateway is the primary source for session cost; the usage hook and the `usage` argument are the fallback for tools that cannot go through it. A Run priced by the gateway ignores its `session-reported` rows (the gateway is exact), and so does every row of a session from its first gateway row on, so nothing counts twice. `runs.costUsd` and the token fields stay in sync: a session report copies its sum into the Run (`costSource: session-reported`) unless the gateway already priced it. Settings › AI usage keeps the budget and the cost per Product and links here.
 
-## What a Claude Code session can report
+## Set up the gateway for sessions
+
+Settings › AI usage › Measure session cost (and the Agent team page) generate the lines per coding tool. What it measures, which tools can do it and how: [gateway.md](gateway.md). Tokens and cost then show under the session name, and calls without a name under "Unnamed gateway session".
+
+## What a Claude Code session can report instead
 
 From the Claude Code documentation:
 
@@ -22,7 +26,7 @@ From the Claude Code documentation:
 - Hooks ([hooks](https://code.claude.com/docs/en/hooks)): every hook input has `session_id` and `transcript_path` ("Path to conversation JSON"). The transcript is a JSONL file; each assistant line carries `message.id`, `message.model` and `message.usage` (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`). A message is written on several lines with the same id and usage, so count one per id. The docs warn the transcript "may lag the in-memory conversation".
 - OpenTelemetry ([monitoring](https://code.claude.com/docs/en/monitoring-usage)): `claude_code.token.usage` (attribute `type`: `input`, `output`, `cacheRead`, `cacheCreation`; `model`) and `claude_code.cost.usage`, both with the standard attribute `session.id`. Needs `CLAUDE_CODE_ENABLE_TELEMETRY=1` and an OTLP collector the factory does not run.
 
-Chosen: a `Stop` hook that reads the transcript. It needs no collector, sees exact per-message usage per model, and needs only the agent key the session already has. OpenTelemetry is the better source for a fleet but needs infrastructure; the status line has cost but no totals.
+Without the gateway, chosen: a `Stop` hook that reads the transcript. It needs no collector, sees exact per-message usage per model, and needs only the agent key the session already has. OpenTelemetry is the better source for a fleet but needs infrastructure; the status line has cost but no totals.
 
 ## The usage hook
 
@@ -48,10 +52,10 @@ The hook never fails the session and never prints the key. Once it has reported,
 
 ## Gateway attribution of session calls
 
-Claude Code on the owner's machine sends its calls through the bundled gateway with one consumer key per Workspace, so `request_logs` cannot tell sessions apart. The access log copies `x-bauherr-run`, `x-bauherr-stage`, `x-bauherr-product`, `x-bauherr-ticket` (`deploy/gateway/config.yaml.tmpl`), but `ANTHROPIC_CUSTOM_HEADERS` is fixed when Claude Code starts, so it cannot name the Run a session claims later. Not implemented: a per-session header would have to change per Run, which a fixed environment variable cannot do.
+The gateway tells sessions apart by a fixed header, `x-bauherr-session: <name>`, that the coding tool sends on every call (and `x-bauherr-role`, plus the tool's `user-agent`). The name is known when the tool starts and is the `session` the session passes to `connect`. A header cannot name the Run, because it is fixed at start, so the factory joins by time: a call at time T of session S belongs to the Run S held at T (`session_spans`), a call between Runs to S without a Run. The key decides the Workspace, the header only a session inside it. Details and limits: [gateway.md](gateway.md#how-a-session-is-measured).
 
 ## Coverage and limits
 
 Every breakdown table (model, role, session, stage) adds up to the total: usage without a role is its own row ("Runner, no role", "CI, no role", "Session, no role", "Chat"), usage without a stage is "Chat" or "No stage", and a missing model is "Not recorded" (Runs from before models were recorded). `cost_summary` uses the same labels.
 
-Every number on the page shows how many finished Runs have usage ("82 % of session Runs (reported)"); a Run without usage counts as 0, not as unknown cost. Tokens without a catalog price add to the "unpriced" count and not to the cost. Subagent transcripts of Claude Code are separate files and are not summed by the hook. Chat cost covers answers stored with `answer.costUsd`. Runs from before this table are backfilled only when the gateway priced them.
+Every number on the page shows how many finished Runs have usage ("82 % of session Runs (gateway or reported)"); a Run without usage counts as 0, not as unknown cost. Tokens without a catalog price add to the "unpriced" count and not to the cost until the daily price refresh knows the model; the count then goes down by itself ([gateway.md](gateway.md#prices-and-models-update-themselves)). When session Runs have little or no usage, the page says "Session cost is not measured" and links to the setup. Subagent transcripts of Claude Code are separate files and are not summed by the hook. Chat cost covers answers stored with `answer.costUsd`. Runs from before this table are backfilled only when the gateway priced them.
