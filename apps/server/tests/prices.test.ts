@@ -89,9 +89,12 @@ it('a refresh writes the base catalog atomically, stores status and model list, 
   reloadCatalog()
   expect(priceOf('claude-new-1', { tokensIn: 1e6, tokensOut: 0, cacheRead: 0, cacheWrite: 0 })).toBeNull()
   const urls: string[] = []
-  const status = await refreshPrices(payload, { fetcher: (async (u: unknown) => (urls.push(String(u)), new Response(JSON.stringify(source()), { status: 200 }))) as typeof fetch })
-  expect(urls).toEqual(['https://agentgateway.dev/model-catalog'])
-  expect(status).toMatchObject({ source: 'agentgateway.dev', generatedAt: '2026-11-10T00:00:00Z', models: 401, error: null })
+  const inits: RequestInit[] = []
+  const status = await refreshPrices(payload, { fetcher: (async (u: unknown, init: RequestInit) => (urls.push(String(u)), inits.push(init), new Response(JSON.stringify(source()), { status: 200 }))) as typeof fetch })
+  // The default is the final address: agentgateway.dev/model-catalog answers 302 and a redirect is refused.
+  expect(urls).toEqual(['https://raw.githubusercontent.com/agentgateway/agentgateway/main/catalog/model-catalog.json'])
+  expect(inits[0]!.redirect).toBe('error')
+  expect(status).toMatchObject({ source: 'raw.githubusercontent.com', generatedAt: '2026-11-10T00:00:00Z', models: 401, error: null })
   expect(JSON.parse(readFileSync(join(dir, 'catalogs', 'base-costs.json'), 'utf8')).metadata.generatedAt).toBe('2026-11-10T00:00:00Z')
   expect(existsSync(join(dir, 'catalogs', 'base-costs.json.tmp'))).toBe(false)
   expect(readFileSync(join(dir, 'config.yaml'), 'utf8')).toContain('base-costs.json')
@@ -143,4 +146,20 @@ it('the price lookup reads the refreshed base over the shipped one, and overlays
   writeFileSync(join(dir, 'catalogs', 'z-overlay.json'), JSON.stringify(model('5')))
   reloadCatalog()
   expect(priceOf('claude-x', u)).toBe(5)
+})
+
+it('the first refresh is compared with the shipped prices and lists the models the instance uses whose price moved; unused models are not listed', async () => {
+  const { refreshPrices, loadPriceStatus } = await import('../src/lib/prices')
+  const { mkdirSync } = await import('node:fs')
+  mkdirSync(join(dir, 'catalogs'), { recursive: true })
+  const shipped = { metadata: { generatedAt: '2026-10-01T00:00:00Z' }, providers: { anthropic: { models: { 'claude-haiku-5-5': { rates: { input: '1', output: '5' } }, 'claude-sonnet-5-5': { rates: { input: '3', output: '15' } }, 'claude-unused-1': { rates: { input: '1', output: '1' } } } } } }
+  writeFileSync(join(dir, 'catalogs', 'anthropic.json'), JSON.stringify(shipped))
+  await payload.create({ collection: 'workspaces', data: { name: 'chg', slug: 'chg', modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-9' } }, ...o })
+  const next = source(400, { 'claude-haiku-5-5': { name: 'Haiku', rates: { input: '0.1', output: '0.5' } }, 'claude-sonnet-5-5': { name: 'Sonnet', rates: { input: '3', output: '15' } }, 'claude-unused-1': { name: 'U', rates: { input: '2', output: '2' } } })
+  const status = await refreshPrices(payload, { force: true, fetcher: answer(next) })
+  expect(status?.error).toBeNull()
+  expect(status?.changed).toEqual([{ model: 'claude-haiku-5-5', input: ['1', '0.1'], output: ['5', '0.5'] }])
+  expect((await loadPriceStatus(payload))?.changed).toHaveLength(1)
+  // The next refresh compares with the refreshed file: nothing moved, nothing listed.
+  expect((await refreshPrices(payload, { force: true, fetcher: answer(next) }))?.changed).toEqual([])
 })

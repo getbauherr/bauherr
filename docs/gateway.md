@@ -34,7 +34,7 @@ If you also run the [usage hook](cost.md#the-usage-hook), the gateway wins from 
 - **Your own Claude subscription login** (`sub/*` and `claude-*`, Claude Code only): your tool keeps sending its login token; the gateway forwards it to Anthropic and never stores it. The calls are priced at list price so you can see the volume, but the Workspace pays nothing. Allowed only for the Workspace's session key (`kind: owner-session`) and only for your own unmodified Claude Code ([legal.md](legal.md#owner-session-passthrough)).
 - **The Workspace's API key** (`ws-<workspace>/<connection>/<model>`): the gateway puts the Workspace's provider key on the call. The tools below use this route unless they say otherwise.
 
-The session key is shown once under Settings › AI usage › Measure session cost ("Create a session key", Admin). Creating a new one replaces the old one. It has its own budget (`SESSION_BUDGET_USD`, default 100 per 30 days) that only warns.
+The session key is shown once under Settings › AI usage › Measure session cost ("Create a session key", Admin). Creating a new one replaces the old one: sessions that use the current key stop working until they get the new one. It has its own budget (`SESSION_BUDGET_USD`, default 100 per 30 days) that only warns.
 
 ## What the gateway proxies
 
@@ -83,7 +83,7 @@ There is no `bauherr session start` command: the CLI keeps no credentials, so a 
 
 ## Prices and models update themselves
 
-The gateway prices a call from a model catalog: per model input, output, cache read and cache write rates. Once a day (`refresh-prices`, checked hourly, fetched once a day, retried hourly after a failure) Bauherr fetches the catalog that the agentgateway project itself publishes ([agentgateway.dev/model-catalog](https://agentgateway.dev/model-catalog), the same source as the gateway UI's "Refresh base costs"), rewrites it to what the pinned gateway reads and writes `catalogs/base-costs.json`. The gateway watches that file and reloads it without a restart; the file is listed in the gateway config automatically.
+The gateway prices a call from a model catalog: per model input, output, cache read and cache write rates. Once a day (`refresh-prices`, checked hourly, fetched once a day, retried hourly after a failure) Bauherr fetches the catalog that the agentgateway project itself publishes (`https://raw.githubusercontent.com/agentgateway/agentgateway/main/catalog/model-catalog.json`; `agentgateway.dev/model-catalog` redirects there, and redirects are refused, so the final address is the default; the same catalog the gateway UI's "Refresh base costs" uses), rewrites it to what the pinned gateway reads and writes `catalogs/base-costs.json`. The gateway watches that file and reloads it without a restart; the file is listed in the gateway config automatically.
 
 Guards, because a bad catalog would put wrong numbers on every page:
 
@@ -92,11 +92,11 @@ Guards, because a bad catalog would put wrong numbers on every page:
 - Refused, with the previous prices kept and the reason stored: fewer than 300 models, a loss of more than 30 % of the models, or any known input/output price moving by more than 10 times.
 - Shipped fallback: `deploy/gateway/catalogs/` (a dated base catalog for the Anthropic models, plus GreenPT prices as an overlay). The gateway also has a built-in catalog.
 
-Settings › Models & budget shows "Prices updated <time> from <source>, N models", the last error, and **Update now** (Admin). The same refresh keeps the model lists of Settings › Models & budget and of the role model select current: non-deprecated models of the Connection's provider are offered; a model a tier or role already uses stays selectable and is marked "no longer in the price catalog" when it disappeared, and the choice itself is never changed.
+Settings › Models & budget shows "Prices updated <time> from <source>, N models", the last error, **Update now** (Admin), and, when a refresh changed the price of a model your tiers or roles use, a line such as "Changed: claude-haiku-5-5 input 1 → 0.1, output 5 → 0.5". The first refresh is compared with the shipped prices, so a change from the shipped file to the published one is shown, not silent. The same refresh keeps the model lists of Settings › Models & budget and of the role model select current: non-deprecated models of the Connection's provider are offered; a model a tier or role already uses stays selectable and is marked "no longer in the price catalog" when it disappeared, and the choice itself is never changed.
 
 Calls that had no price when they were logged (a new model) are priced as soon as the catalog knows the model: the unpriced count on Insights goes down by itself, at the catalog's list price.
 
-Air-gapped installs: `BAUHERR_PRICES_REFRESH=0` switches the fetch off; the shipped files stay in use. `BAUHERR_PRICES_URL` pins another mirror (same format, one host).
+Air-gapped installs: `BAUHERR_PRICES_REFRESH=0` switches the fetch off; the shipped files stay in use. `BAUHERR_PRICES_URL` pins another mirror (same format, one host, no redirects).
 
 Where your own contracted prices go: a file in `/gateway/catalogs/` **without** a `metadata` block is an overlay and wins over the base (the way `greenpt.json` does).
 
@@ -110,7 +110,7 @@ Where your own contracted prices go: a file in `/gateway/catalogs/` **without** 
 
 The gateway has its own UI (analytics, request log, costs). When the gateway runs, Settings › AI usage › Measure session cost, Models & budget and the Insights notice (Admin) show its status and **Open the gateway UI**.
 
-The UI cannot be served through Bauherr's admin proxy: it loads its files and calls its API from the root of its own host (`/ui/assets/…`, `/api/…`), and the proxy's sandbox (an opaque origin, so that a script from the upstream cannot reach your Bauherr session) blocks those requests. So the button opens the address you set in `GATEWAY_UI_URL`. Until you set it the button is disabled and the page shows the way. To open it without publishing the port, forward it to your own machine only while you need it:
+The UI cannot be served through Bauherr's admin proxy: it loads its files and calls its API from the root of its own host (`/ui/assets/…`, `/api/…`), and the proxy's sandbox (an opaque origin, so that a script from the upstream cannot reach your Bauherr session) blocks those requests. So the button opens the address you set in `GATEWAY_UI_URL`. Until you set it the button is disabled and the page shows the way. Port 15000 has no sign-in and can read and change gateway keys; while the forward runs, every program on this machine can reach it. To open it without publishing the port, forward it to your own machine only while you need it:
 
 ```bash
 docker run --rm -p 127.0.0.1:15000:15000 \

@@ -867,7 +867,10 @@ export const refreshPricesTask: TaskConfig<{ input: Record<string, never>; outpu
   slug: 'refresh-prices',
   schedule: scheduled('0 7 * * * *'),
   retries: 0,
-  handler: async ({ req }) => ({ output: { models: (await refreshPrices(req.payload))?.models ?? 0 } }),
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { models: (await refreshPrices(req.payload))?.models ?? 0 } }
+  },
 }
 
 export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; output: { deleted: number } }> = {

@@ -16,6 +16,9 @@ export function PricesStatus({ prices, admin }: { prices: Prices; admin: boolean
       ) : (
         <p className="small m-0 text-muted-foreground">Prices have not been fetched yet; the prices shipped with Bauherr are used until the first update.</p>
       )}
+      {!!s?.changed?.length && (
+        <p className="small m-0" data-testid="prices-changed">Changed: {s.changed.map((c) => [c.model, [c.input && `input ${c.input[0]} → ${c.input[1]}`, c.output && `output ${c.output[0]} → ${c.output[1]}`].filter(Boolean).join(', ')].join(' ')).join('; ')} (USD per million tokens, models your tiers and roles use).</p>
+      )}
       {s?.error && <p className="small m-0 text-destructive" role="alert" data-testid="prices-error">Last update failed {ago(s.error.at)}: {s.error.message}</p>}
       {admin && prices.enabled && <SettingsForm action={updatePricesNow} submit="Update now" />}
     </section>

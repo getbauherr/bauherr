@@ -18,7 +18,7 @@ export function GatewayStatus({ status, admin }: { status: Status; admin: boolea
       {status.up && admin && !status.uiUrl && (
         <details className="small w-full text-muted-foreground" data-testid="gateway-ui-howto">
           <summary className="cursor-pointer">How to open the gateway UI</summary>
-          <p className="m-0 mt-2">The gateway UI has no sign-in, so its port is never published. Forward it to your machine only while you need it, then set <span className="mono">GATEWAY_UI_URL=http://127.0.0.1:15000/ui/</span> so this button opens it.</p>
+          <p className="m-0 mt-2">Port 15000 has no sign-in and can read and change gateway keys; while the forward runs, every program on this machine can reach it. So it is never published. Forward it to your machine only while you need it, then set <span className="mono">GATEWAY_UI_URL=http://127.0.0.1:15000/ui/</span> so this button opens it.</p>
           <pre className="mono m-0 mt-2 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap text-foreground">{UI_FORWARD}</pre>
           <p className="m-0 mt-2">The gateway settings, read-only, open here without that: <a className="text-primary" href="/-/gateway/config_dump" target="_blank" rel="noreferrer">gateway config</a>.</p>
         </details>

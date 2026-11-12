@@ -1,11 +1,13 @@
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { priceOf, reloadCatalog } from './cost'
-import { syncManagedConfig } from './gateway'
+import { modelName, priceOf, reloadCatalog } from './cost'
+import { workflowFor } from './factory'
+import { syncManagedConfig, tierModels } from './gateway'
 
-export const PRICES_URL = 'https://agentgateway.dev/model-catalog'
+/** The catalog agentgateway publishes (https://agentgateway.dev/model-catalog redirects here; the fetch refuses redirects, so the final address is the default). */
+export const PRICES_URL = 'https://raw.githubusercontent.com/agentgateway/agentgateway/main/catalog/model-catalog.json'
 export const BASE_FILE = 'base-costs.json'
 /** The refreshed file is a base catalog (newest `metadata.generatedAt` wins in the gateway); the shipped overlays stay. */
 const MAX_BYTES = 5_000_000
@@ -23,7 +25,9 @@ type Model = { name?: string; rates: Rates; tiers?: { contextOver?: number; serv
 export type Catalog = { metadata: { generatedAt: string }; providers: Record<string, { models: Record<string, Model> }> }
 /** One entry of the model list shown in Settings: provider, id, display name, whether the source marks it deprecated. */
 export type ListedModel = { provider: string; id: string; name: string; deprecated: boolean }
-export type PriceStatus = { fetchedAt: string; attemptedAt: string; source: string; generatedAt: string | null; models: number; error: { at: string; message: string } | null; version: number }
+/** A model the instance uses (a tier or role model of any Workspace) whose price moved in a refresh; `[old, new]` USD per million tokens. */
+export type PriceChange = { model: string; input?: [string, string]; output?: [string, string] }
+export type PriceStatus = { fetchedAt: string; attemptedAt: string; source: string; generatedAt: string | null; models: number; error: { at: string; message: string } | null; changed?: PriceChange[]; version: number }
 
 export const pricesEnabled = (): boolean => process.env.BAUHERR_PRICES_REFRESH !== '0'
 export const pricesUrl = (): string => process.env.BAUHERR_PRICES_URL || PRICES_URL
@@ -133,14 +137,54 @@ export const repriceUnpriced = async (payload: Payload): Promise<number> => {
   return done
 }
 
-/** The previous base catalog on disk, if it is readable. */
-const previous = async (): Promise<Catalog | undefined> => {
+const readCatalog = async (path: string): Promise<Catalog | undefined> => {
   try {
-    return JSON.parse(await readFile(join(dir(), BASE_FILE), 'utf8')) as Catalog
+    return JSON.parse(await readFile(path, 'utf8')) as Catalog
   } catch {
     return undefined
   }
 }
+
+/** The previous base catalog: the last refresh, else (first refresh) the shipped base catalog, so a first update is checked and compared the same way. */
+const previous = async (): Promise<Catalog | undefined> =>
+  (await readCatalog(join(dir(), BASE_FILE))) ?? (await readCatalog(join(dir(), 'anthropic.json'))) ?? (await readCatalog(resolve(process.cwd(), '../../deploy/gateway/catalogs/anthropic.json')))
+
+const FIRST_PARTY = ['anthropic', 'openai', 'gcp.gemini', 'mistral', 'xai', 'deepseek']
+const rateOf = (c: Catalog | undefined, model: string): Rates | undefined => {
+  const hits = Object.entries(c?.providers ?? {}).filter(([, p]) => p.models[model]).sort(([a], [b]) => (FIRST_PARTY.indexOf(a) + 1 || 99) - (FIRST_PARTY.indexOf(b) + 1 || 99))
+  return hits[0]?.[1].models[model]?.rates
+}
+
+/** Tier and role models of every Workspace, as bare model names. */
+export const modelsInUse = async (payload: Payload): Promise<string[]> => {
+  const out = new Set<string>()
+  const workspaces = (await payload.find({ collection: 'workspaces', pagination: false, depth: 0, overrideAccess: true, select: { slug: true, modelByTier: true } })).docs as unknown as { id: number; slug: string; modelByTier?: Record<string, string> | null }[]
+  for (const ws of workspaces) {
+    try {
+      for (const m of Object.values(await tierModels(payload, ws as never))) out.add(modelName(m))
+    } catch {
+      for (const m of Object.values(ws.modelByTier ?? {})) out.add(modelName(m))
+    }
+    try {
+      for (const r of workflowFor(ws.id).roles) if (r.model) out.add(modelName(r.model))
+    } catch {
+      // workflows not loaded: tier models still count
+    }
+  }
+  return [...out]
+}
+
+/** Models in `used` whose input or output price differs between the two catalogs. */
+export const priceChanges = (prev: Catalog | undefined, next: Catalog, used: string[]): PriceChange[] =>
+  used.flatMap((model) => {
+    const a = rateOf(prev, model)
+    const b = rateOf(next, model)
+    if (!a || !b) return []
+    const diff = (k: 'input' | 'output'): [string, string] | undefined => (Number(a[k]) !== Number(b[k]) ? [String(Number(a[k])), String(Number(b[k]))] : undefined)
+    const input = diff('input')
+    const output = diff('output')
+    return input || output ? [{ model, ...(input && { input }), ...(output && { output }) }] : []
+  })
 
 const REFRESH_EVERY_MS = 24 * 3_600_000
 const RETRY_EVERY_MS = 3_600_000
@@ -163,7 +207,7 @@ export const refreshPrices = async (payload: Payload, o: { force?: boolean; now?
   const source = new URL(url).host
   const stamp = new Date(now).toISOString()
   const fail = async (message: string): Promise<PriceStatus> => {
-    const status: PriceStatus = { fetchedAt: before?.fetchedAt ?? '', attemptedAt: stamp, source, generatedAt: before?.generatedAt ?? null, models: before?.models ?? 0, error: { at: stamp, message }, version: 1 }
+    const status: PriceStatus = { fetchedAt: before?.fetchedAt ?? '', attemptedAt: stamp, source, generatedAt: before?.generatedAt ?? null, models: before?.models ?? 0, error: { at: stamp, message }, ...(before?.changed && { changed: before.changed }), version: 1 }
     await setState(payload, 'prices', status)
     payload.logger.warn({ source, message }, 'price refresh failed')
     return status
@@ -185,7 +229,8 @@ export const refreshPrices = async (payload: Payload, o: { force?: boolean; now?
   } catch (e) {
     return fail(e instanceof SyntaxError ? 'the answer is not JSON' : (e as Error).message)
   }
-  const why = refusal(await previous(), converted.catalog)
+  const prev = await previous()
+  const why = refusal(prev, converted.catalog)
   if (why) return fail(why)
   await mkdir(dir(), { recursive: true })
   const path = join(dir(), BASE_FILE)
@@ -195,7 +240,7 @@ export const refreshPrices = async (payload: Payload, o: { force?: boolean; now?
   await rename(tmp, path)
   reloadCatalog()
   await syncManagedConfig().catch((e) => payload.logger.warn({ err: e }, 'listing the price catalog in the gateway config failed'))
-  const status: PriceStatus = { fetchedAt: stamp, attemptedAt: stamp, source, generatedAt: converted.catalog.metadata.generatedAt, models: converted.list.length, error: null, version: 1 }
+  const status: PriceStatus = { fetchedAt: stamp, attemptedAt: stamp, source, generatedAt: converted.catalog.metadata.generatedAt, models: converted.list.length, error: null, changed: priceChanges(prev, converted.catalog, await modelsInUse(payload).catch(() => [])), version: 1 }
   await setState(payload, 'price-models', converted.list.map(({ provider, id, name, deprecated }) => ({ provider, id, name, deprecated })))
   await setState(payload, 'prices', status)
   const repriced = await repriceUnpriced(payload)

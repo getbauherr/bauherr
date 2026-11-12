@@ -145,3 +145,43 @@ it('checkGateway stores the status and names a database newer than the image whe
   const stored = (await payload.find({ collection: 'instance_state', where: { key: { equals: 'gateway' } }, ...o })).docs[0]!.value
   expect(stored).toMatchObject({ up: true })
 })
+
+it('a Run stuck in running does not widen the scan beyond 14 days', async () => {
+  const { reconcileSessions } = await import('../src/lib/session-usage')
+  const a = await seed('suc')
+  const now = Date.now()
+  const run = (await payload.create({ collection: 'runs', data: { ticket: a.ticket, stage: 'build', workspace: a.workspace, mode: 'session', status: 'running' }, ...o })).id
+  await db().execute(sql`UPDATE "runs" SET "session_id" = ${a.sessionId} WHERE "id" = ${run}`)
+  await db().execute(sql`INSERT INTO "session_spans" ("workspace_id", "session_id", "run_id", "ticket_id", "started_at", "last_at") VALUES (${a.workspace}, ${a.sessionId}, ${run}, ${a.ticket}, ${new Date(now - 30 * 864e5).toISOString()}::timestamptz, ${new Date(now - 30 * 864e5).toISOString()}::timestamptz)`)
+  await log(new Date(now - 20 * 864e5), { ws: 'suc', session: 'eng-suc', tin: 111 })
+  await log(new Date(now - 5 * 864e5), { ws: 'suc', session: 'eng-suc', tin: 222 })
+  expect((await reconcileSessions(payload, now)).calls).toBe(1)
+  const rows = (await db().execute(sql`SELECT "tokens_in"::int AS tin FROM "usage_entries" WHERE "run_id" = ${run}`)).rows as { tin: number }[]
+  expect(rows).toEqual([{ tin: 222 }])
+})
+
+it('a gateway row of a session Run whose calls went elsewhere is removed on the next pass; Runner Runs keep theirs', async () => {
+  const { reconcileSessions } = await import('../src/lib/session-usage')
+  const a = await seed('sud')
+  const now = Date.now()
+  const run = (await payload.create({ collection: 'runs', data: { ticket: a.ticket, stage: 'build', workspace: a.workspace, mode: 'session', status: 'succeeded' }, ...o })).id
+  const runner = (await payload.create({ collection: 'runs', data: { ticket: a.ticket, stage: 'plan', workspace: a.workspace, mode: 'autonomous', status: 'succeeded' }, ...o })).id
+  await db().execute(sql`UPDATE "runs" SET "session_id" = ${a.sessionId} WHERE "id" = ${run}`)
+  await db().execute(sql`INSERT INTO "session_spans" ("workspace_id", "session_id", "run_id", "ticket_id", "started_at", "last_at") VALUES (${a.workspace}, ${a.sessionId}, ${run}, ${a.ticket}, ${new Date(now - 30 * 60_000).toISOString()}::timestamptz, ${new Date(now - 10 * 60_000).toISOString()}::timestamptz)`)
+  await db().execute(sql`INSERT INTO "usage_entries" ("workspace_id", "run_id", "model", "tokens_in", "tokens_out", "cost_usd", "source", "at") VALUES (${a.workspace}, ${runner}, 'claude-haiku-5-5', 5, 5, 0.5, 'gateway', now())`)
+  await log(new Date(now - 20 * 60_000), { ws: 'sud', session: 'eng-sud', model: 'claude-sonnet-5-5' })
+  const second = new Date(now - 19 * 60_000)
+  await log(second, { ws: 'sud', session: 'eng-sud', model: 'claude-opus-5-5' })
+  await reconcileSessions(payload, now)
+  const models = async () => ((await db().execute(sql`SELECT "run_id", "model" FROM "usage_entries" WHERE "source" = 'gateway' AND "run_id" IS NOT NULL AND "workspace_id" = ${a.workspace} ORDER BY "run_id", "model"`)).rows as { run_id: number; model: string }[]).map((r) => `${r.run_id}:${r.model}`)
+  expect(await models()).toEqual([`${run}:claude-opus-5-5`, `${run}:claude-sonnet-5-5`, `${runner}:claude-haiku-5-5`].sort())
+  // The opus call is now attributed elsewhere (its session name no longer matches): its Run row must go.
+  await gw.query(`UPDATE request_logs SET attributes_json = jsonb_set(attributes_json, '{session}', '"someone-else"') WHERE started_at = $1`, [second])
+  await reconcileSessions(payload, now)
+  expect(await models()).toEqual([`${run}:claude-sonnet-5-5`, `${runner}:claude-haiku-5-5`].sort())
+  // Every call gone: the Run no longer claims gateway pricing.
+  await gw.query('DELETE FROM request_logs')
+  await reconcileSessions(payload, now)
+  expect(await models()).toEqual([`${runner}:claude-haiku-5-5`])
+  expect((await db().execute(sql`SELECT "cost_source", "gateway_cost_usd" FROM "runs" WHERE "id" = ${run}`)).rows[0]).toMatchObject({ cost_source: 'sdk-estimate', gateway_cost_usd: null })
+})

@@ -53,8 +53,8 @@ export function HarnessSetup({ setup, roles, role }: { setup: GatewaySetup; role
       )}
       {setup.admin && h.level !== 'none' && (
         <div className="flex flex-col gap-2">
-          <span className="small text-muted-foreground">The session key is shown once. A new one replaces the old one, which stops working.</span>
-          <SettingsForm action={createSessionKey} submit="Create a session key" copy confirm="Confirm: the old key stops working" />
+          <span className="small text-muted-foreground">The session key is shown once. Creating a new one replaces the current key: sessions that use the current key stop working until they get the new one.</span>
+          <SettingsForm action={createSessionKey} submit="Create a session key" copy confirm="Confirm: running sessions stop until they get the new key" />
         </div>
       )}
       <a className="small text-primary" href={h.docs} target="_blank" rel="noreferrer">{h.label}: official documentation</a>

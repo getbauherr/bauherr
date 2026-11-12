@@ -55,6 +55,8 @@ export const providerOf = (original: string | null | undefined): string => {
 }
 
 const LOOKBACK_DAYS = 2
+/** A Run stuck in `running` must not make the job scan the whole request log every minute. */
+export const MAX_SCAN_DAYS = 14
 const dayStart = (ms: number) => Date.UTC(new Date(ms).getUTCFullYear(), new Date(ms).getUTCMonth(), new Date(ms).getUTCDate())
 
 /**
@@ -68,7 +70,7 @@ export const reconcileSessions = async (payload: Payload, now = Date.now()): Pro
   const db = payload.db.drizzle
   const spanRows = (await db.execute(sql`SELECT p."session_id", p."run_id", p."ticket_id", r."stage", r."role", r."status", p."started_at", p."last_at" FROM "session_spans" p JOIN "runs" r ON r."id" = p."run_id" WHERE p."last_at" >= ${new Date(cutoff).toISOString()}::timestamptz OR r."status" = 'running'`)).rows as Record<string, any>[]
   const spans: Span[] = spanRows.map((r) => ({ sessionId: r.session_id, runId: r.run_id, ticketId: r.ticket_id, stage: r.stage, role: r.role, startedAt: new Date(r.started_at).getTime(), lastAt: r.status === 'running' ? now : new Date(r.last_at).getTime() }))
-  const from = Math.min(cutoff, ...spans.map((s) => s.startedAt))
+  const from = Math.max(now - MAX_SCAN_DAYS * 864e5, Math.min(cutoff, ...spans.map((s) => s.startedAt)))
   const wsRows = (await db.execute(sql`SELECT "id", "slug" FROM "workspaces"`)).rows as { id: number; slug: string }[]
   const bySlug = new Map(wsRows.map((w) => [w.slug, w.id]))
   const client = new pg.Client({ connectionString: process.env.GATEWAY_DATABASE_URL })
@@ -102,8 +104,15 @@ export const reconcileSessions = async (payload: Payload, now = Date.now()): Pro
   const sessions: Sess[] = sessRows.map((s) => ({ id: s.id, workspace: s.workspace_id, clientKey: s.client_key, role: s.role, connectedAt: new Date(s.connected_at).getTime(), disconnectedAt: s.disconnected_at ? new Date(s.disconnected_at).getTime() : null }))
   const groups = group(attribute(calls, sessions, spans)).filter((g) => g.span || g.at >= cutoff)
   const runIds = new Set<number>()
+  const spanRuns = [...new Set(spans.map((p) => p.runId))]
+  const keep = [...new Set(groups.filter((g) => g.span).map((g) => `${g.span!.runId}|${g.model}`))].map((k) => k.split('|') as [string, string])
   await db.transaction(async (tx) => {
     await tx.execute(sql`DELETE FROM "usage_entries" WHERE "source" = 'gateway' AND "run_id" IS NULL AND "at" >= ${new Date(cutoff).toISOString()}::timestamptz`)
+    if (spanRuns.length) {
+      // Session Runs only: Runner Runs have `source = 'gateway'` rows from reconcile-costs. A (Run, model) no longer in any group was attributed elsewhere on this pass.
+      const kept = keep.length ? sql`AND (e."run_id", e."model") NOT IN (${sql.join(keep.map(([r, m]) => sql`(${Number(r)}::int, ${m}::text)`), sql`, `)})` : sql``
+      await tx.execute(sql`DELETE FROM "usage_entries" e USING "runs" r WHERE e."run_id" = r."id" AND r."mode" = 'session' AND e."source" = 'gateway' AND e."run_id" IN (${sql.join(spanRuns.map((r) => sql`${r}::int`), sql`, `)}) ${kept}`)
+    }
     for (const g of groups) {
       const cost = costOf(g)
       const role = g.span?.role ?? g.role ?? g.session?.role ?? null
@@ -120,7 +129,7 @@ export const reconcileSessions = async (payload: Payload, now = Date.now()): Pro
       }
     }
   })
-  for (const id of runIds) await syncRunFromGateway(payload, id)
+  for (const id of new Set([...runIds, ...spanRuns])) await syncRunFromGateway(payload, id)
   await repriceUnpriced(payload)
   return { calls: calls.length, runs: runIds.size }
 }
@@ -128,8 +137,9 @@ export const reconcileSessions = async (payload: Payload, now = Date.now()): Pro
 /** A session Run priced from the gateway: its own money fields follow the gateway rows (the session-reported rows are then ignored by Insights). */
 const syncRunFromGateway = (payload: Payload, run: number) =>
   payload.db.drizzle.execute(sql`
-    UPDATE "runs" r SET "gateway_tokens_in" = s."tin", "gateway_tokens_out" = s."tout", "gateway_tokens_total" = s."tin" + s."tout", "gateway_cost_usd" = s."cost", "cost_source" = 'gateway', "updated_at" = now()
-    FROM (SELECT sum(COALESCE("tokens_in", 0) + COALESCE("cache_read", 0) + COALESCE("cache_write", 0)) AS "tin", sum(COALESCE("tokens_out", 0)) AS "tout", sum("cost_usd") AS "cost" FROM "usage_entries" WHERE "run_id" = ${run} AND "source" = 'gateway') s
+    UPDATE "runs" r SET "gateway_tokens_in" = s."tin", "gateway_tokens_out" = s."tout", "gateway_tokens_total" = s."tin" + s."tout", "gateway_cost_usd" = s."cost",
+      "cost_source" = CASE WHEN s."n" > 0 THEN 'gateway'::"enum_runs_cost_source" WHEN r."cost_source" = 'gateway' THEN 'sdk-estimate'::"enum_runs_cost_source" ELSE r."cost_source" END, "updated_at" = now()
+    FROM (SELECT count(*) AS "n", sum(COALESCE("tokens_in", 0) + COALESCE("cache_read", 0) + COALESCE("cache_write", 0)) AS "tin", sum(COALESCE("tokens_out", 0)) AS "tout", sum("cost_usd") AS "cost" FROM "usage_entries" WHERE "run_id" = ${run} AND "source" = 'gateway') s
     WHERE r."id" = ${run} AND r."mode" = 'session'`)
 
 export type GatewayHealth = { checkedAt: string; up: boolean; message: string | null; migration: number | null }
