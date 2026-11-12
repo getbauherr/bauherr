@@ -23,7 +23,7 @@ export const shoot = async (page: Page, name: string, viewports = [{ width: 1440
     await page.emulateMedia({ colorScheme: scheme })
     for (const vp of viewports) {
       await page.setViewportSize(vp)
-      await page.waitForTimeout(300)
+      await page.waitForTimeout(300) // allow-wait: screenshots only, lets the resize settle
       await page.screenshot({ path: `${dir}/${name}-${scheme}-${vp.width}x${vp.height}.png` })
     }
   }

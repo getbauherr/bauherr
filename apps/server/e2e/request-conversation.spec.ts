@@ -35,7 +35,7 @@ const shoot = async (page: Page, name: string, sizes: [number, number][] = [[144
         await page.setViewportSize({ width: w, height: h })
         await page.reload() // as a person at that size would see it: the composer measures itself at load
       }
-      await page.waitForTimeout(500)
+      await page.waitForTimeout(500) // allow-wait: screenshots only, lets the resize settle
       await page.screenshot({ path: `${shots}/${name}-${scheme}-${w}x${h}.png` })
     }
   }

@@ -63,6 +63,7 @@ export class LoginBusy extends Error {
  * out-of-transaction write on a wrong password (`incrementLoginAttempts`) can exhaust the pool. It serialises within one server process,
  * which is today's deployment (one app container); several replicas would need a shared lock that holds no connection while it waits.
  * Beyond `MAX_LOGIN_WAITERS` per account it throws `LoginBusy` before queueing, so a burst cannot build an unbounded queue.
+ * Writers of an account (settings forms) run inside the same queue: a sign-in writes back the whole user it read at its start, so an edit made in between (role, tenants, GitHub login) would be reverted by it.
  */
 export const withLoginLock = async <T>(email: string, fn: () => Promise<T>): Promise<T> => {
   const key = email.trim().toLowerCase()

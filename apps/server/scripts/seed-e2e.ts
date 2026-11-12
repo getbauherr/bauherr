@@ -49,6 +49,14 @@ const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop
 await ensure('bauherren', { email: 'guard-bauherr@example.com' }, { email: 'guard-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the signed-in control of product-owner.spec: only that spec signs in as this user
 await ensure('bauherren', { email: 'owner@example.com' }, { email: 'owner@example.com', password, role: 'product-owner', assignments: [{ workspace, scope: 'products', products: [product] }] }) // the Product owner of Acme Web; people.spec and product-owner.spec sign in as this user
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
+// settings.spec.ts and templates.spec.ts own this Workspace (signed in with the `bauherr-ws=settingsco` cookie): they save its budget, models, Knowledge and templates and add a Connection, which no spec reading `acme` may see.
+const settingsco = (await ensure('workspaces', { slug: 'settingsco' }, { name: 'Settingsco', slug: 'settingsco' })).id
+const settingsGithub = (await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: settingsco })).id
+const settingsApp = (await ensure('products', { slug: 'settingsco-app' }, { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' })).id
+await ensure('repositories', { fullName: 'settingsco/app' }, { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco })
+await payload.update({ collection: 'workspaces', id: settingsco, data: { knowledgeConnection: settingsGithub, knowledgeRepo: 'acme/knowledge' }, ...o })
+// The account whose GitHub login the Members test of product-settings.spec.ts edits: no other spec signs in as it.
+await ensure('bauherren', { email: 'members-edit@example.com' }, { email: 'members-edit@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
 await payload.update({ collection: 'workspaces', id: workspace, data: { knowledgeConnection: github, knowledgeRepo: 'acme/knowledge' }, ...o })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
 await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
@@ -143,6 +151,8 @@ const t22 = await ticket(22, 'Pick the export columns', 'plan', product, openCri
 // Own Tickets of triage.spec.ts (#23, held by Triage with questions) and of the plan-approval test in ticket.spec.ts (#24, approved there). The numbers follow the fake forge (`src/lib/fake-forge.ts`), which creates them in this order.
 await ticket(23, 'Settle the export format', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement'] })
 const t24 = await ticket(24, 'Add a light theme to the dashboard', 'plan', product, openCritical)
+// #42: the twin of #24 that its test uses on a retry (the first attempt answered and approved #24); twin in `src/lib/fake-forge.ts`.
+const t42 = await ticket(42, 'Switch the dashboard to a light theme', 'plan', product, openCritical)
 // Own Tickets of the next-step button cases in ticket.spec.ts (#385): #25 an approved plan held by an overlap, #26 a plan awaiting approval, #27 a Build with a live Run. Twins in `src/lib/fake-forge.ts` carry these numbers.
 await ticket(25, 'Hold the approved export tweak', 'plan', product, { labels: ['bauherr:stage:plan', 'bauherr:approved:plan'], waitingFor: 'build', waitingReason: 'overlaps #356' })
 const t26 = await ticket(26, 'Approve the retry policy', 'plan', product)
@@ -193,10 +203,14 @@ await ensure('runs', { ticket: chained, stage: 'build', status: 'succeeded' }, {
 // Counters (ticket.spec.ts): #306 shows them next to Reset counters.
 await doneOn(306, 'Counters: merge keeps failing', extras, { mergeFailures: 2, trainFailures: 1, conflictReturns: 3, releaseAttempts: 1, triageAttempts: 2, gatePendingAttempts: 4, mainMergeNoops: 1 })
 await ensure('runs', { ticket: live, stage: 'build', status: 'running' }, { ticket: live, stage: 'build', status: 'running', mode: 'autonomous', executor: 'runner', model: 'claude-sonnet-4-5', provider: 'anthropic', workspace, startedAt: new Date().toISOString() })
+// graph.spec.ts flips the Run of this Ticket to succeeded and back: no other spec reads it (Acme Merge is only opened on its Merging tab).
+const graphLive = await ticket(140, 'Graph live build', 'build', mergeProduct, { rank: '900001' })
+await ensure('runs', { ticket: graphLive, stage: 'build', status: 'running' }, { ticket: graphLive, stage: 'build', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await run(t17, 'plan', 'succeeded', { startedAt: '2026-10-30T12:00:00Z', finishedAt: '2026-10-30T12:01:00Z' })
 await run(t18, 'plan', 'succeeded', { startedAt: '2026-10-30T12:05:00Z', finishedAt: '2026-10-30T12:06:00Z' })
 await run(t18, 'build', 'failed', { reasonKind: 'decision', startedAt: '2026-10-30T12:10:00Z', finishedAt: '2026-10-30T12:12:00Z' })
 await run(t24, 'plan', 'succeeded', { startedAt: '2026-10-30T09:30:00Z', finishedAt: '2026-10-30T09:32:00Z' })
+await run(t42, 'plan', 'succeeded', { startedAt: '2026-10-30T09:30:00Z', finishedAt: '2026-10-30T09:32:00Z' })
 // The owner-chat spec's Tickets have a plan Run in progress from the start ("the plan is being written" is what its answers lead to), so the spec does not depend on how long the server has been up for the factory to start one.
 await ensure('runs', { ticket: t21, stage: 'plan', status: 'running' }, { ticket: t21, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })
 await ensure('runs', { ticket: t22, stage: 'plan', status: 'running' }, { ticket: t22, stage: 'plan', status: 'running', mode: 'autonomous', workspace, startedAt: new Date().toISOString() })

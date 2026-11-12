@@ -28,7 +28,7 @@ const signIn = async (page: Page, who: string) => {
 const shoot = async (page: Page, name: string, scheme: 'light' | 'dark' = 'light') => {
   if (!shots) return
   await page.emulateMedia({ colorScheme: scheme })
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(400) // allow-wait: screenshots only, lets the resize settle
   await page.screenshot({ path: `${shots}/${name}.png` })
   await page.emulateMedia({ colorScheme: 'light' })
 }
@@ -238,7 +238,7 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   await typed.fill('Just call it export.')
   await typed.press('Enter')
   await expect(page.getByTestId('speaker').last().getByTestId('speaker-model')).toHaveText('claude-opus-5-5')
-  const requests = async () => (await (await page.request.get('/api/chat/fake-requests')).json()) as { model: string; text: string; images: number }[]
+  const requests = async () => (await page.evaluate(async () => (await fetch('/api/chat/fake-requests')).json())) as { model: string; text: string; images: number }[]
   await expect.poll(async () => (await requests()).filter((r) => r.text.includes('Just call it export.')).map((r) => r.model)).toEqual(['anthropic/claude-opus-5-5']) // the header shows the model at once; the request is recorded when the turn runs
 
   // The choice is stored on the conversation: it survives a reload.
@@ -267,6 +267,6 @@ test('a Product owner that Triage\'s questions are not addressed to still gets t
   await expect(page.getByTestId('conversation-shell')).toHaveCount(0)
   await expect(page.getByTestId('open-conversation')).toHaveCount(0)
   const id = /\/tickets\/(\d+)/.exec(hrefs['Export the invoices']!)![1]
-  const r = await page.request.post(`/api/refine/${id}/turn`, { data: { text: 'hello' } })
-  expect(r.status()).toBe(404) // they have no row to answer (this Workspace asks the Bauherr: gated-pack)
+  const status = await page.evaluate(async (i) => (await fetch(`/api/refine/${i}/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello' }) })).status, id)
+  expect(status).toBe(404) // they have no row to answer (this Workspace asks the Bauherr: gated-pack)
 })

@@ -70,8 +70,9 @@ test('the action bar is the same single, visible bar in every state', async ({ p
   await page.setViewportSize({ width: 1280, height: 800 })
 })
 
-// Own seeded Ticket (#24): approving its plan changes nothing the other tests or specs read.
-test('answer the critical decision, then approve the plan', async ({ page }) => {
+// Own seeded Tickets: #24, and its twin #42 for a retry (the first attempt answered and approved #24); approving their plan changes nothing the other tests or specs read.
+test('answer the critical decision, then approve the plan', async ({ page }, testInfo) => {
+  const title = testInfo.retry ? 'Switch the dashboard to a light theme' : 'Add a light theme to the dashboard'
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await page.getByLabel('Email').fill(email)
@@ -79,9 +80,9 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 
-  const row = page.locator('.card', { hasText: 'Add a light theme to the dashboard' }).first()
+  const row = page.locator('.card', { hasText: title }).first()
   await expect(row.getByText('Answer decisions')).toBeVisible()
-  await row.getByRole('link', { name: 'Add a light theme to the dashboard' }).click()
+  await row.getByRole('link', { name: title }).click()
 
   await expect(page.locator('#worklog')).toBeHidden()
   await page.getByText('Details', { exact: true }).click()
@@ -101,7 +102,7 @@ test('answer the critical decision, then approve the plan', async ({ page }) => 
   await expect(chat.getByTestId('points-count')).toHaveText('1 of 2 open')
   await page.getByTestId('more').click()
   await page.getByRole('menuitem', { name: /Ticket page/ }).click()
-  await expect(approve).toBeVisible({ timeout: 60_000 })
+  await expect(approve).toBeVisible()
   if (!(await page.locator('#worklog').isVisible())) await page.getByText('Details', { exact: true }).click() // the router may bring the page back with its Details open
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()

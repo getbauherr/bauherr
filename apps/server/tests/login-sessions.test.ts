@@ -74,3 +74,18 @@ it('more parallel wrong passwords on distinct accounts than pool connections all
   const r = await Promise.allSettled(emails.map((email) => signIn(email, 'nope')))
   expect(r.every((x) => x.status === 'rejected' && (x.reason as { status?: number }).status === 401)).toBe(true)
 }, 20_000)
+
+it('an account edit made while a sign-in runs is not reverted by it, and the sign-in keeps its session', async () => {
+  const { withLoginLock } = await import('../src/lib/login-lock')
+  const email = 'edit-during-login@x.io'
+  const { id } = await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
+  for (let i = 0; i < 4; i++) {
+    const login = signIn(email, 'pw-123456')
+    await new Promise((r) => setTimeout(r, 15)) // inside the sign-in: after its read of the user, before its write
+    await withLoginLock(email, () => payload.update({ collection: 'bauherren', id, data: { githubLogin: `gh-${i}` }, ...o }))
+    await login
+    const row = await payload.findByID({ collection: 'bauherren', id, ...o })
+    expect(row.githubLogin).toBe(`gh-${i}`)
+    expect(row.sessions).toHaveLength(i + 1)
+  }
+}, 20_000)

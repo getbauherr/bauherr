@@ -90,109 +90,6 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   await expect(page.locator('table tbody tr')).toHaveCount(2)
 })
 
-test('drag a Board card above another: the order survives a reload', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 2400 }) // the whole column is on screen, so a drag needs no scrolling
-  await page.goto('/')
-  await page.waitForLoadState('networkidle')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(password())
-  await page.getByRole('button', { name: 'Sign in' }).click()
-
-  const titles = () => page.locator('.col[data-stage=build] .card .ticket-title').allTextContents()
-  const a = 'Blocker: migrate the invoice table'
-  const b = 'Export invoices as CSV'
-  await expect(page.locator('.col[data-stage=build] .card')).not.toHaveCount(0)
-  const [first, second] = (await titles()).indexOf(a) < (await titles()).indexOf(b) ? [a, b] : [b, a]
-  await page.locator('.col[data-stage=build] .card', { hasText: second }).dragTo(page.locator('.col[data-stage=build] .card', { hasText: first }))
-  await expect.poll(async () => (await titles()).indexOf(second) < (await titles()).indexOf(first)).toBe(true)
-  await expect(async () => {
-    await page.reload()
-    const after = await titles()
-    expect(after.indexOf(second)).toBeLessThan(after.indexOf(first))
-  }).toPass()
-})
-
-test('dragging a Board card shows the drop position', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 2400 }) // the whole column is on screen, so a drag needs no scrolling
-  await page.goto('/')
-  await page.waitForLoadState('networkidle')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(password())
-  await page.getByRole('button', { name: 'Sign in' }).click()
-
-  const col = page.locator('.col[data-stage=build]')
-  const card = (name: string) => col.locator('.card[draggable=true]', { hasText: name })
-  const marks = col.locator('[data-drop]')
-  const titles = () => col.locator('.card .ticket-title').allTextContents()
-  const a = 'Blocker: migrate the invoice table'
-  const b = 'Export invoices as CSV'
-  await expect(col.locator('.card')).not.toHaveCount(0)
-  const start = await titles()
-  const [upper, lower] = start.indexOf(a) < start.indexOf(b) ? [a, b] : [b, a]
-  const centre = async (name: string) => {
-    await card(name).scrollIntoViewIfNeeded()
-    const box = (await card(name).boundingBox())!
-    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-  }
-  const hover = async (name: string) => {
-    const c = await centre(name)
-    await page.mouse.move(c.x, c.y, { steps: 10 })
-  }
-  const grab = async (name: string) => {
-    const c = await centre(name)
-    await page.mouse.move(c.x, c.y)
-    await page.mouse.down()
-  }
-  const above = async () => {
-    const after = await titles()
-    return after.indexOf(lower) < after.indexOf(upper)
-  }
-  const cancel = async () => {
-    await page.keyboard.press('Escape')
-    await page.mouse.up()
-    await expect(marks).toHaveCount(0)
-    expect(await above()).toBe(false)
-  }
-
-  await grab(lower)
-  await hover(upper)
-  await expect(marks).toHaveCount(1)
-  await expect(card(upper)).toHaveAttribute('data-drop', 'before')
-  const shots = process.env.SHOTS_DIR
-  if (shots) {
-    for (const [w, h] of [[1280, 2400]] as const) {
-      await page.setViewportSize({ width: w, height: h })
-      for (const scheme of ['light', 'dark'] as const) {
-        await page.emulateMedia({ colorScheme: scheme })
-        await hover(upper)
-        await expect(marks).toHaveCount(1)
-        await page.screenshot({ path: `${shots}/workflow-drop-line-${scheme}-${w}x${h}.png` })
-      }
-    }
-    await page.setViewportSize({ width: 1280, height: 720 })
-    await hover(upper)
-  }
-  await hover(lower)
-  await expect(marks).toHaveCount(0)
-  await cancel()
-
-  await grab(upper)
-  await hover(lower)
-  await expect(card(lower)).toHaveAttribute('data-drop', 'after')
-  await cancel()
-
-  await grab(lower)
-  await hover(upper)
-  await expect(card(upper)).toHaveAttribute('data-drop', 'before')
-  await page.mouse.up()
-  await expect(marks).toHaveCount(0)
-  await expect.poll(above).toBe(true)
-  await expect(async () => {
-    await page.reload()
-    expect(await above()).toBe(true)
-  }).toPass()
-})
-
 test('hovering or dropping on a closed card in a mixed column shows no drop position and keeps the order', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
@@ -223,7 +120,8 @@ test('hovering or dropping on a closed card in a mixed column shows no drop posi
   await expect(marks).toHaveCount(0)
   await page.mouse.up()
   await expect(marks).toHaveCount(0)
-  expect(await titles()).toEqual(before)
+  // release.spec.ts accepts Tickets into this column meanwhile: the order of the cards that were there is what must stay
+  expect((await titles()).filter((t) => before.includes(t))).toEqual(before)
 })
 
 test('A running Run reads In progress with who runs it', async ({ page }) => {

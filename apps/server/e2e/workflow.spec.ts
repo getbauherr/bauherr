@@ -20,13 +20,14 @@ test('the graph draws the stages of the workflow in order, with the counts of th
   const nodes = page.getByTestId('stage-node')
   await expect(nodes).toHaveText([/triage/i, /plan/i, /Split/, /build/i, /review/i, /Staging/, /Done/i])
   expect(await nodes.evaluateAll((els) => els.map((e) => e.getAttribute('data-stage')))).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
-  for (const stage of ['triage', 'plan', 'build', 'review', 'release', 'done']) {
-    // the node and the list heading read the same count (a WIP limit set by another spec turns it into "n / limit")
-    const count = (await page.locator(`[data-testid=stage-node][data-stage=${stage}] [data-testid=stage-count]`).textContent())!.trim()
-    await expect(page.locator(`.col[data-stage=${stage}] h2`)).toContainText(count)
-    // the done group is collapsed behind "Show N done"
-    if (!count.includes('/') && stage !== 'done') expect(await page.locator(`.col[data-stage=${stage}] .card`).count()).toBe(Number(count))
-  }
+  // node, heading and cards are read in one go: Tickets of other specs move while this runs, and the page refreshes on its own, so reads made one after the other can straddle a refresh
+  await expect.poll(() => page.evaluate(() => ['triage', 'plan', 'build', 'review', 'release', 'done'].flatMap((stage) => {
+    // the node and the list heading read the same count (a WIP limit set by another spec turns it into "n / limit"); the done group is collapsed behind "Show N done"
+    const count = document.querySelector(`[data-testid=stage-node][data-stage=${stage}] [data-testid=stage-count]`)?.textContent?.trim() ?? ''
+    const heading = document.querySelector(`.col[data-stage=${stage}] h2`)?.textContent ?? ''
+    const cards = document.querySelectorAll(`.col[data-stage=${stage}] .card`).length
+    return [...(heading.includes(count) ? [] : [`${stage}: heading "${heading}" vs count ${count}`]), ...(count.includes('/') || stage === 'done' || cards === Number(count) ? [] : [`${stage}: ${cards} cards vs count ${count}`])]
+  }))).toEqual([])
   // outcome edges: forward solid, backward dashed
   await expect(page.locator('[data-edge="build>review"][data-outcome=done]')).toHaveCount(1)
   await expect(page.locator('[data-edge="review>build"][data-back]')).toHaveCount(1)
@@ -35,15 +36,21 @@ test('the graph draws the stages of the workflow in order, with the counts of th
 
 test('a checkpoint node counts the Tickets waiting at it and filters the list', async ({ page }) => {
   const refine = page.locator('[data-testid=checkpoint-node][data-checkpoint="triage:refine"]')
-  const waiting = await page.locator('[data-testid=status-detail]', { hasText: /^Answer questions$/ }).count()
-  expect(waiting).toBeGreaterThan(0)
-  await expect(refine.getByTestId('checkpoint-count')).toHaveText(new RegExp(`^${waiting}\\b`))
+  // the node and the waiting rows are read in one go (Triage specs answer their Tickets while this runs)
+  const counts = () => page.evaluate(() => ({
+    node: Number(/^\d+/.exec(document.querySelector('[data-testid=checkpoint-node][data-checkpoint="triage:refine"] [data-testid=checkpoint-count]')?.textContent ?? '')?.[0] ?? -1),
+    rows: [...document.querySelectorAll('[data-testid=status-detail]')].filter((e) => e.textContent?.trim() === 'Answer questions').length,
+  }))
+  await expect.poll(async () => { const c = await counts(); return c.node === c.rows && c.rows > 0 }).toBe(true)
   if (process.env.E2E_GATED_PACK) await expect(page.locator('[data-checkpoint="plan:gate"]')).toBeVisible()
   await refine.click()
   await expect(page).toHaveURL(/stage=triage%3Arefine/)
   await expect(page.getByTestId('stage-filter')).toContainText('Answer questions')
-  await expect(page.locator('.col .card')).toHaveCount(waiting)
-  await expect(page.locator('[data-testid=ticket-list] [data-testid=status-detail]')).toHaveText(Array(waiting).fill('Answer questions'))
+  await expect.poll(() => page.evaluate(() => {
+    const cards = document.querySelectorAll('.col .card').length
+    const details = [...document.querySelectorAll('[data-testid=ticket-list] [data-testid=status-detail]')].map((e) => e.textContent?.trim())
+    return cards > 0 && details.length === cards && details.every((d) => d === 'Answer questions')
+  })).toBe(true)
 })
 
 test('clicking a stage filters the list and survives a reload; a second click clears it', async ({ page }) => {
@@ -66,7 +73,7 @@ test('a running Run reads In progress with who runs it, and the word Working nev
   await expect(row.getByTestId('ticket-status').locator('[data-status=working]')).toHaveText('In progress')
   await expect(row.getByTestId('row-who')).toContainText('Bauherr runner')
   await expect(page.locator('main')).not.toContainText(/\bWorking\b/)
-  await expect(page.locator('[data-testid=stage-node][data-stage=build] [data-testid=stage-execs] li').first()).toHaveAttribute('title', /Bauherr runner · claude-sonnet-4-5 · #123 building/)
+  await expect(page.locator('[data-testid=stage-node][data-stage=build] [data-testid=stage-execs] li[title*="#123 "]')).toHaveAttribute('title', /Bauherr runner · claude-sonnet-4-5 · #123 building/)
 })
 
 test('ranking by drag persists after a reload', async ({ page }) => {

@@ -26,7 +26,7 @@ const shoot = async (page: Page, name: string) => {
   if (!shots) return
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme })
-    await page.waitForTimeout(300)
+    await page.waitForTimeout(300) // allow-wait: screenshots only, lets the resize settle
     await page.screenshot({ path: `${shots}/${name}-${scheme}.png` })
   }
   await page.emulateMedia({ colorScheme: 'light' })
