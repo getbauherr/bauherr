@@ -58,6 +58,16 @@ const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 
 await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
 await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
 await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
+// refine-conversation.spec.ts: a Workspace of its own (`bauherr-ws=refine`), an Admin only that spec signs in as, and one Ticket held by Triage with five open points asked in a succeeded Triage Run of a session. Twin in `src/lib/fake-forge.ts`.
+const refineWs = (await ensure('workspaces', { slug: 'refine' }, { name: 'Refine Lab', slug: 'refine', wipLimits: {} })).id
+await ensure('bauherren', { email: 'refine-admin@example.com' }, { email: 'refine-admin@example.com', password, role: 'admin', githubLogin: 'e2e-refine-admin' })
+const refineGithub = (await ensure('connections', { name: 'GitHub Refine' }, { name: 'GitHub Refine', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: refineWs })).id
+const refineProduct = (await ensure('products', { slug: 'refine-app' }, { name: 'Refine App', slug: 'refine-app', workspace: refineWs })).id
+await ensure('repositories', { fullName: 'acme/refine' }, { fullName: 'acme/refine', product: refineProduct, workspace: refineWs })
+await ensure('ticket_sources', { repo: 'acme/refine' }, { repo: 'acme/refine', product: refineProduct, connection: refineGithub, cursor: '2026-10-30T09:00:00Z', workspace: refineWs })
+const refineTicket = (await ensure('tickets', { externalId: 'e2e-refine-1' }, { title: 'Export invoices as a file', externalId: 'e2e-refine-1', number: 1, url: 'https://github.com/acme/refine/issues/1', state: 'open', labels: ['bauherr:needs-refinement'], stage: null, product: refineProduct, workspace: refineWs, rank: '000040' })).id
+const refineSession = (await ensure('agent_sessions', { publicId: 'ses_e2e_refine' }, { publicId: 'ses_e2e_refine', role: 'orchestrator', label: 'orchestrator-refine@laptop', clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', connectedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), workspace: refineWs })).id
+await ensure('runs', { ticket: refineTicket, stage: 'triage', status: 'succeeded' }, { ticket: refineTicket, stage: 'triage', status: 'succeeded', mode: 'session', executor: 'session', role: 'orchestrator', session: refineSession, sessionLabel: 'orchestrator-refine@laptop', model: 'claude-sonnet-4-5', workspace: refineWs })
 const seeded = new Set<number>()
 const ticket = async (n: number, title: string, stage: string, p: string | number, extra: Record<string, unknown> = {}) => {
   if (seeded.has(n)) throw new Error(`seed-e2e: Ticket number ${n} seeded twice`)

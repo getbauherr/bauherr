@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, startOwnerIntake, askOwnerIntake } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
 import { attachImage, chooseProduct, discardRequest, editCard, removeImage, requestCard, type CardPatch } from '../../../lib/chat/request'
 import type { CardData } from '../../../lib/intake/card'
 import { orderOwnRequests } from '../../../lib/request-order'
@@ -20,6 +20,7 @@ import { homeOf } from '../../../lib/people'
 import { id } from '../../../lib/release'
 import { emptyDraft } from '../../../lib/intake/engine'
 import { requestsVisibleTo } from './requests'
+import { loadRefine, refineOption, refineRecommended, refineReopen, refineSend, refineTurn, refineWhy, type View as RefineView } from '../../../lib/refine/engine'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
@@ -244,25 +245,34 @@ export async function orderRequests(ticketIds: number[]): Promise<{ error?: stri
   }
 }
 
-/** Opens (or resumes) the owner's questions over the Ticket's open decision rows; null when none is open. */
-export async function startOwnerChat(ticket: number) {
-  const { user, payload, workspaceId } = await acting()
-  return inWorkspace(startOwnerIntake(payload, user, { ticket, workspaceId })).catch((e) => {
-    if (e instanceof Error && e.message === 'no open questions') return null
-    throw e
-  })
+/** Runs one action of the refinement panel as the acting person and answers the panel's whole state (or the refusal as text), then refreshes the pages that show the Ticket. */
+const refining = async <T extends { ticket: number }>(a: T, run: (x: Awaited<ReturnType<typeof acting>> & T) => Promise<RefineView | null>): Promise<{ view: RefineView | null } | { error: string }> => {
+  const ctx = await acting()
+  try {
+    const view = await inWorkspace(run({ ...ctx, ...a }))
+    revalidatePath(`/tickets/${a.ticket}`)
+    revalidatePath('/inbox')
+    return { view }
+  } catch (e) {
+    if ((e as { digest?: string }).digest?.startsWith('NEXT_')) throw e
+    return { error: e instanceof Error ? e.message : 'The conversation failed.' }
+  }
 }
 
-/** A clicked option or typed message: an answer is recorded verbatim, an explain request is answered and records nothing. */
-export async function askOwnerChat(session: number, ticket: number, decision: string, text: string, literal?: boolean) {
-  const { user, payload, workspaceId } = await acting()
-  const next = await inWorkspace(askOwnerIntake(payload, user, { session, decision, text, literal, workspaceId }))
-  // The last answer of a Triage hold ends the need now; the sweep would only notice within a minute.
-  if ('done' in next && ((await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null } | null)?.needsYou === 'Answer questions') await settleDecision(payload, ticket)
-  revalidatePath(`/tickets/${ticket}`)
-  revalidatePath('/inbox')
-  return next
-}
+/** The refinement conversation of a Ticket (see `lib/refine`), null when it has no open points and no history. */
+export const refineState = async (ticket: number) => refining({ ticket }, (x) => loadRefine(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
+/** A message typed in the panel: one refine-engine turn. */
+export const refineSay = async (ticket: number, text: string) => refining({ ticket }, (x) => refineTurn(x.payload, x.user, { ticket, workspaceId: x.workspaceId, text }))
+/** A click on an option of an open point (no model call). */
+export const refinePick = async (ticket: number, point: string, option: number) => refining({ ticket }, (x) => refineOption(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point, option }))
+/** "Why does this matter?" (no model call). */
+export const refineExplain = async (ticket: number, point: string) => refining({ ticket }, (x) => refineWhy(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
+/** "Use the recommended answers for the rest". */
+export const refineRest = async (ticket: number) => refining({ ticket }, (x) => refineRecommended(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
+/** "Change" on an answered point. */
+export const refineChange = async (ticket: number, point: string) => refining({ ticket }, (x) => refineReopen(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
+/** "Send to planning". */
+export const refineFinish = async (ticket: number) => refining({ ticket }, (x) => refineSend(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
 
 /** Starts a new Run of the stage of a failed or needs_human Run (Admin or a member of its Workspace) and records a human touch; null when the Run cannot be re-run by this person. */
 const startRerun = async (user: Awaited<ReturnType<typeof requireBauherr>>, payload: Awaited<ReturnType<typeof payloadClient>>, runId: number) => {

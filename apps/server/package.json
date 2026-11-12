@@ -51,6 +51,7 @@
     "cmdk": "1.1.1",
     "croner": "10.0.1",
     "graphql": "^16.11.0",
+    "lucide-react": "1.72.0",
     "marked": "^18.1.2",
     "next": "16.4.3",
     "openid-client": "^6.8.8",
@@ -61,6 +62,7 @@
     "remark-gfm": "4.0.1",
     "shiki": "4.6.0",
     "tailwind-merge": "3.7.0",
+    "tw-shimmer": "0.4.14",
     "yaml": "^2.8.0"
   },
   "devDependencies": {

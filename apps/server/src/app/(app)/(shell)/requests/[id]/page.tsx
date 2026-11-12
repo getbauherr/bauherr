@@ -84,8 +84,8 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                     {t.url && <a className="small text-primary" href={t.url}>Open the issue</a>}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {(t.need === 'Answer questions' || t.need === 'Answer decisions') && <DockOpen ticket={t.id} mode="answer" size="sm">{t.need}</DockOpen>}
-                    <DockOpen ticket={t.id} mode="comment" size="sm" variant="outline">Comment on #{t.number}</DockOpen>
+                    {(t.need === 'Answer questions' || t.need === 'Answer decisions') && <Button asChild size="sm"><Link href={`/tickets/${t.id}#refine`}>{t.need}</Link></Button>}
+                    <DockOpen ticket={t.id} size="sm" variant="outline">Comment on #{t.number}</DockOpen>
                   </div>
                   <p className="body m-0 font-medium" data-testid="request-headline">{t.progress.headline}{t.progress.since && <span className="small font-normal text-muted-foreground"> · since {ago(t.progress.since).replace(/ ago$/, '')}</span>}</p>
                   <ProgressPath step={t.progress.step} large />

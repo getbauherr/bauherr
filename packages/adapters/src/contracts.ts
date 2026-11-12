@@ -69,6 +69,8 @@ export interface TicketSource {
   /** At-least-once: returns tickets with `updatedAt >= cursor`; `next` is the max `updatedAt` seen. Null cursor = all. */
   poll(cursor: string | null): Promise<{ changes: TicketSummary[]; next: string | null }>;
   create(t: NewTicket): Promise<Ticket>;
+  /** Replaces the title and/or the body of the ticket (the body keeps the forge's relation block). */
+  update(id: string, patch: { title?: string; body?: string }): Promise<void>;
   comment(id: string, body: string): Promise<Comment>;
   listComments(id: string, since?: string): Promise<Comment[]>;
   updateComment(id: string, commentId: string, body: string): Promise<Comment>;

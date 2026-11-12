@@ -9,7 +9,6 @@ import { onRequest, request as openDock, takeRequest, type DockRequest } from '.
 import { DockThread, kindOf, type Command } from './dock-thread'
 import { ContextChip, usePageContext, WasAbout, type PageContext } from './page-context'
 import { onChosen } from './request'
-import { answerWithText, useHasQuestion } from './questions'
 import { useChatRuntime } from './runtime'
 import { shikiCss } from './markdown'
 import { ThreadList } from './thread-list'
@@ -28,7 +27,6 @@ const RequestChip: FC<{ request: RequestInfo }> = ({ request }) => (
 const Body: FC<{ info: PageContext | null; was: Was }> = ({ info, was }) => {
   const aui = useAui()
   const router = useRouter()
-  const hasQuestion = useHasQuestion()
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const [note, setNote] = useState<{ text: string; images?: string[] } | null>(null)
   const ticket = was.id && was.id === threadId ? was.ticket : null
@@ -42,10 +40,10 @@ const Body: FC<{ info: PageContext | null; was: Was }> = ({ info, was }) => {
         setNote({ text: e instanceof ApiError && e.status === 404 && which === 'new' ? 'This Workspace has no product yet. An Admin adds one in Settings.' : 'The request chat could not be opened.' })
       }
     }
-    const openTicket = async ({ ticket: id, mode }: Extract<DockRequest, { ticket: number }>) => {
+    const openTicket = async ({ ticket: id }: Extract<DockRequest, { ticket: number }>) => {
       try {
         await aui.threads().switchToThread(String((await api.ticketThread(id)).id))
-        if (mode === 'comment') aui.composer().setText('/comment ')
+        aui.composer().setText('/comment ')
         focusComposer()
       } catch {
         setNote({ text: 'The Ticket chat could not be opened.' })
@@ -78,10 +76,9 @@ const Body: FC<{ info: PageContext | null; was: Was }> = ({ info, was }) => {
             },
           }]
         : []),
-      ...(hasQuestion ? [{ name: 'answer', help: 'Answer the open question with your own text', arg: true, run: (text: string) => (text ? answerWithText(text) : false) }] : []),
-      { name: 'help', help: 'List the commands', run: () => setNote({ text: `/context  show what the assistant sees on this page\n/new  start a new chat\n/request  describe a new request\n${ticket ? '/comment <text>  post a comment on the Ticket\'s issue\n' : ''}${hasQuestion ? '/answer <text>  answer the open question\n' : ''}/help  this list\n\nCommands stay on your screen; the assistant never gets them.` }) },
+      { name: 'help', help: 'List the commands', run: () => setNote({ text: `/context  show what the assistant sees on this page\n/new  start a new chat\n/request  describe a new request\n${ticket ? '/comment <text>  post a comment on the Ticket\'s issue\n' : ''}/help  this list\n\nCommands stay on your screen; the assistant never gets them.` }) },
     ],
-    [aui, info, ticket, hasQuestion, router],
+    [aui, info, ticket, router],
   )
   const above = (
     <>

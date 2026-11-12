@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { KIND_LABEL } from '../../../lib/intake/kinds'
 import type { Kind } from '../../../lib/intake/engine'
 import type { Need } from '../../../lib/needs-you'
-import { DockOpen } from './chat/DockOpen'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import type { Waits } from '../lib/requests'
@@ -19,9 +18,9 @@ export const StatusLine = ({ status, waits }: { status: string; waits: Waits | n
   <span className="small" data-testid="request-status">{status}{waits && <span className="text-muted-foreground"> · waits for {waits === 'You' ? 'you' : waits.replace(/^The /, 'the ')}</span>}</span>
 )
 
-/** The one primary action of a request that needs the viewer: questions open the dock, the rest the Inbox card. */
+/** The one primary action of a request that needs the viewer: questions open the refinement panel on the Ticket page, the rest the Inbox card. */
 export function NeedButton({ ticket, need }: { ticket: number; need: Need }) {
-  if (need === 'Answer questions' || need === 'Answer decisions') return <DockOpen ticket={ticket} mode="answer" size="sm">{need}</DockOpen>
+  if (need === 'Answer questions' || need === 'Answer decisions') return <Button asChild size="sm"><Link href={`/tickets/${ticket}#refine`}>{need}</Link></Button>
   const label = need === 'Accept on staging' ? 'Test and accept' : need === 'Expedite?' ? 'Decide on the fast lane' : need
   return <Button asChild size="sm"><Link href={`/inbox#t${ticket}`}>{label}</Link></Button>
 }

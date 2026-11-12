@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import type { Decision, DecisionOption } from '../../../lib/decision'
 import { decideAction } from '../lib/actions'
 import { Badge } from './ui/badge'
@@ -9,7 +9,7 @@ import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Textarea } from './ui/textarea'
-import { DockOpen } from './chat/DockOpen'
+import { RefinePanel } from './conversation/RefinePanel'
 import { Markdown } from './Markdown'
 import { ProofList } from './ProofList'
 import type { ProofData } from '../lib/proof'
@@ -30,6 +30,11 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gone, setGone] = useState(false)
+  const [refining, setRefining] = useState(false)
+  // `/inbox#t<id>` of a question card opens the conversation in place.
+  useEffect(() => {
+    if (!compact && location.hash === `#t${item.id}` && d.options.some((o) => o.href?.endsWith('#answer'))) setRefining(true)
+  }, [compact, item.id, d.options])
   const run = (o: DecisionOption, text = '') => {
     setError(null)
     setAsking(null)
@@ -93,7 +98,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
             <div className="flex flex-wrap items-center gap-2">
               {d.options.map((o) =>
                 o.action === 'open' && o.href?.endsWith('#answer') ? (
-                  <DockOpen key={o.label} ticket={item.id} mode="answer" variant={o.primary ? 'default' : 'outline'} title={o.effect}>{o.label}</DockOpen>
+                  <Button key={o.label} variant={o.primary ? 'default' : 'outline'} title={o.effect} aria-expanded={refining} data-testid="answer-questions" onClick={() => setRefining((x) => !x)}>{refining ? 'Hide the conversation' : o.label}</Button>
                 ) : o.action === 'open' ? (
                   <Button key={o.label} asChild variant={o.primary ? 'default' : 'outline'} title={o.effect}>
                     <a href={o.href} {...(o.href && external(o.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{o.label}</a>
@@ -108,6 +113,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
             {error && <p role="alert" className="small m-0 text-destructive">{error}</p>}
           </footer>
         )}
+        {refining && !compact && <RefinePanel ticket={item.id} onSent={() => { setGone(true); onDecided?.(item.id); router.refresh() }} />}
         <Dialog open={!!asking} onOpenChange={(open) => !open && setAsking(null)}>
           <DialogContent>
             <DialogHeader>

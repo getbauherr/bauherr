@@ -201,6 +201,11 @@ class GitlabTickets implements TicketSource {
     const keep = ((await this.issue(id)).assignees as any[]).filter((a) => !drop.includes(a.username.toLowerCase())).map((a) => a.id);
     await this.edit(id, { assignee_ids: keep });
   }
+  async update(id: string, patch: { title?: string; body?: string }) {
+    const body: Record<string, unknown> = { ...(patch.title !== undefined && { title: patch.title }) };
+    if (patch.body !== undefined) body.description = renderRelations(patch.body, parseRelations((await this.issue(id)).description ?? '').relations);
+    await this.edit(id, body);
+  }
   async close(id: string, reason: CloseReason) {
     await this.edit(id, { state_event: 'close', add_labels: closeReasonLabel(reason) });
   }
