@@ -42,13 +42,37 @@ test('every page of the factory is a 404 for a Product owner', async ({ page }) 
   }
 })
 
-test('the API answers a Product owner with 401, 403 or 404 everywhere but the own account', async ({ page }) => {
+/** Fetched from inside the page, so the call carries the browser's session like the app's own requests do: `page.request` sends no `Sec-Fetch-Site`/`Origin`, which Payload's cookie check treats as anonymous. */
+const call = (page: Page, path: string, init?: { method: string; body?: string; headers?: Record<string, string> }) =>
+  page.evaluate(async ([p, i]) => {
+    const r = await fetch(p, i ?? undefined)
+    return { status: r.status, body: (await r.json().catch(() => null)) as { docs?: { email: string }[] } | null }
+  }, [path, init ?? null] as const)
+
+const PATHS = ['/api/tickets', '/api/runs', '/api/connections', '/api/products', '/api/workspaces', '/api/agent_keys', '/api/chat/threads', '/api/presence', '/api/changes']
+
+test('the API refuses a Product owner on every path the same call of a signed-in Bauherr succeeds on', async ({ page, browser, baseURL }) => {
+  const control = await (await browser.newContext({ baseURL })).newPage()
+  await control.goto('/login')
+  await control.getByLabel('Email').fill('guard-bauherr@example.com')
+  await control.getByLabel('Password').fill(password())
+  await control.getByRole('button', { name: 'Sign in' }).click()
+  await expect(control.getByRole('banner')).toBeVisible()
   await signIn(page)
-  for (const path of ['/api/tickets', '/api/runs', '/api/connections', '/api/products', '/api/workspaces', '/api/agent_keys', '/api/chat/threads', '/api/presence', '/api/changes']) {
-    expect([401, 403, 404], `GET ${path}`).toContain((await page.request.get(path)).status())
+  const anonymous = await (await browser.newContext({ baseURL })).newPage()
+  await anonymous.goto('/login')
+
+  for (const path of PATHS) {
+    expect((await call(control, path)).status, `a signed-in Bauherr reads ${path}: the call carries the session`).toBe(200)
+    expect([401, 403, 404], `Product owner GET ${path}`).toContain((await call(page, path)).status)
+    expect([401, 403], `anonymous GET ${path}`).toContain((await call(anonymous, path)).status)
   }
-  expect([401, 403]).toContain((await page.request.post('/mcp', { data: { jsonrpc: '2.0', id: 1, method: 'tools/list' }, headers: { accept: 'application/json, text/event-stream' } })).status())
-  const me = (await (await page.request.get('/api/bauherren')).json()) as { docs: { email: string }[] }
-  expect(me.docs.map((d) => d.email)).toEqual([owner])
-  expect((await page.request.get('/api/health')).status()).toBeLessThan(600)
+  const mcp = { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' } }
+  expect([401, 403], 'POST /mcp takes a bearer key only: a Product owner session gets nothing').toContain((await call(page, '/mcp', mcp)).status)
+
+  // The one thing the Product owner reads is their own account, exactly like the Bauherr reads theirs.
+  expect((await call(control, '/api/bauherren')).body?.docs?.map((d) => d.email)).toEqual(['guard-bauherr@example.com'])
+  expect((await call(page, '/api/bauherren')).body?.docs?.map((d) => d.email)).toEqual([owner])
+  expect((await call(anonymous, '/api/bauherren')).body?.docs ?? []).toEqual([])
+  expect((await call(page, '/api/health')).status).toBeLessThan(600)
 })

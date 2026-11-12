@@ -137,4 +137,21 @@ describe('account hooks', () => {
     await payload.update({ collection: 'bauherren', id: keyed.id, data: { role: 'product-owner' }, ...o })
     expect(await get(keyed.id)).toMatchObject({ role: 'product-owner', enableAPIKey: false, tenants: [] })
   })
+  it('concurrent writers never put an account back: one of two racing writes is refused and the stored account is exactly the winner, never a mix', async () => {
+    const w = (await payload.create({ collection: 'products', data: { name: 'r', slug: 'r', workspace: a }, ...o })).id as number
+    const race = (id: number | string, first: Record<string, unknown>, second: Record<string, unknown>) =>
+      Promise.all([first, second].map((data) => payload.update({ collection: 'bauherren', id, data: data as never, ...o }).then(() => null, (e: Error) => e)))
+    for (let i = 0; i < 20; i++) {
+      const u = await mk(`race-down-${i}@x.io`, { role: 'product-owner', assignments: [{ workspace: a, scope: 'products', products: [w] }] })
+      const [assign, role] = await race(u.id, { assignments: [{ workspace: a, scope: 'workspace' }] }, { role: 'bauherr' })
+      expect([assign === null, role === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([false, true])
+      expect(await get(u.id), `iteration ${i}`).toMatchObject(role === null ? { role: 'bauherr', assignments: [] } : { role: 'product-owner', assignments: [{ scope: 'workspace' }] })
+    }
+    for (let i = 0; i < 20; i++) {
+      const u = await mk(`race-up-${i}@x.io`, { role: 'bauherr', tenants: [{ tenant: a }] })
+      const [role, login] = await race(u.id, { role: 'product-owner' }, { githubLogin: 'stale' })
+      expect([role === null, login === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([false, true])
+      expect(await get(u.id), `iteration ${i}`).toMatchObject(role === null ? { role: 'product-owner', tenants: [], githubLogin: null } : { role: 'bauherr', githubLogin: 'stale' })
+    }
+  })
 })

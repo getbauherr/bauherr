@@ -62,8 +62,9 @@ export default async function BauherrenSettings() {
                           </SettingsForm>
                           )}
                           {b.role !== 'admin' && b.id !== user.id && (
-                            <SettingsForm action={changeRole} submit={owner ? 'Make Bauherr' : 'Make Product owner'} confirm={owner ? 'Confirm: sees the whole Workspace' : 'Confirm: loses access to everything but their profile'}>
+                            <SettingsForm key={b.role} action={changeRole} submit={owner ? 'Make Bauherr' : 'Make Product owner'} confirm={owner ? 'Confirm: sees the whole Workspace' : 'Confirm: loses access to everything but their profile'}>
                               <input type="hidden" name="id" value={b.id} />
+                              <input type="hidden" name="from" value={b.role} />
                               <input type="hidden" name="role" value={owner ? 'bauherr' : 'product-owner'} />
                               <p className="small text-muted-foreground">{owner ? 'A Bauherr sees everything in the Workspaces below. Set them under Workspaces after the change.' : 'A Product owner has no access until you assign Products.'}</p>
                             </SettingsForm>

@@ -25,12 +25,20 @@ const wfOfDoc = (data?: Doc, sibling?: Doc) => {
 }
 
 const AMBIENT_LOCK = 143
+const ACCOUNT_LOCK = 144
 
 /** Serialises the ambient-identity single-tenant check against the write it guards; released when the request transaction ends. */
 const lockAmbient = async (req: PayloadRequest): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
   const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
   await tx.execute(sql`select pg_advisory_xact_lock(${AMBIENT_LOCK})`)
+}
+
+/** Serialises writers of one account; released when the request transaction ends. */
+const lockAccount = async (req: PayloadRequest, id: number | string): Promise<void> => {
+  const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
+  const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
+  await tx.execute(sql`select pg_advisory_xact_lock(${ACCOUNT_LOCK}, ${Number(id)})`)
 }
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
@@ -99,9 +107,16 @@ const bauherren: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [
-      ({ data, originalDoc, operation, req }) => {
+      async ({ data, originalDoc, operation, req }) => {
         if (!data) return data
         const fail = (path: string, message: string) => new ValidationError({ collection: 'bauherren', errors: [{ path, message }] })
+        // Payload writes the whole merged document, so a write based on an older read would put back the role, assignments or tenants it saw.
+        // Under the account's lock the stored row must still be the one this update was built from, otherwise it is refused and nothing is written.
+        if (operation === 'update' && originalDoc?.id != null) {
+          await lockAccount(req, originalDoc.id)
+          const fresh = (await req.payload.findByID({ collection: 'bauherren', id: originalDoc.id, depth: 0, overrideAccess: true, select: { updatedAt: true }, req })) as { updatedAt?: string }
+          if (fresh.updatedAt !== originalDoc.updatedAt) throw fail('id', 'This account changed while you were editing it. Reload and try again.')
+        }
         if (operation === 'update' && req.user?.role === 'product-owner') {
           // `data` is the whole merged document: only a field that differs from the stored one counts as a change.
           const other = Object.keys(data).filter((k) => ![...SELF_FIELDS, 'updatedAt', 'createdAt'].includes(k) && !isDeepStrictEqual(data[k] ?? null, originalDoc?.[k] ?? null))

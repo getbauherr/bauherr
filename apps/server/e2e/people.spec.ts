@@ -37,6 +37,8 @@ test('People: the Admin adds a Product owner with Products, edits the assignment
 
   await again.getByText('Edit', { exact: true }).click()
   await confirmClick(again.getByRole('button', { name: 'Make Bauherr' }), again.getByRole('button', { name: /^Confirm: sees the whole Workspace/ }), (t) => expect(page.getByRole('row', { name: new RegExp(added) }).getByRole('cell', { name: 'Bauherr', exact: true })).toBeVisible({ timeout: t }))
+  // The armed confirm must not survive the change: the same button now offers the opposite change, unarmed.
+  await expect(again.getByRole('button', { name: 'Make Product owner' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('row', { name: new RegExp(added) }).getByRole('cell', { name: 'Bauherr', exact: true })).toBeVisible()
 

@@ -388,6 +388,8 @@ export const changeRole = act({}, async (c, fd) => {
   if (role !== 'bauherr' && role !== 'product-owner') throw new Error('Choose Bauherr or Product owner.')
   if (id(fd) === c.user.id) throw new Error('You cannot change your own role.')
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
+  // The form names the role it was rendered for: a stale tab or a double submit cannot change the account back.
+  if (target.role !== s(fd, 'from')) throw new Error('This account changed meanwhile. Reload the page.')
   if (target.role === 'admin') await assertAnotherAdmin(c.payload, id(fd))
   if (target.role !== role) await c.payload.update({ collection: 'bauherren', id: id(fd), data: { role }, ...c.w } as never)
 })
