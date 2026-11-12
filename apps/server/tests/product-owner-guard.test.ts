@@ -56,6 +56,7 @@ const COLLECTIONS: Record<string, 'closed' | Record<string, string>> = {
   session_spans: 'closed',
   usage_entries: 'closed',
   usage_cursors: 'closed',
+  instance_state: 'closed',
   chat_threads: 'closed',
   chat_messages: 'closed',
   'payload-kv': 'closed',
