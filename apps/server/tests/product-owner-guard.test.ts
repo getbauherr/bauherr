@@ -19,11 +19,12 @@ const PO_PAGES: Record<string, string> = {
   settings: 'redirects to the profile',
   'settings/profile': 'the profile',
   requests: 'the four sections, limited to requests of assigned Products and their own drafts',
-  'requests/[id]': 'one request: the card, timeline, "waits for", comments; 404 outside the assignment',
+  'requests/new': 'opens the conversation on their own empty draft for an assigned Product',
+  'requests/[id]': 'one request: the card, timeline, "waits for", comments, and the conversation of their own draft or filed request; 404 outside the assignment',
   'tickets/[id]': 'the reduced Ticket page and, where a checkpoint asks them, its decision card and the refinement conversation; 404 outside the assignment',
   inbox: 'only the cards that ask a Product owner (`tickets.needsBy`) on assigned Products',
 }
-const BAUHERR_PAGES = ['', 'requests/new', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'tickets/n/[number]', 'workflow/edit']
+const BAUHERR_PAGES = ['', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'tickets/n/[number]', 'workflow/edit']
 /** Route handlers (relative to src/app, `<path> <METHOD>`) that answer a Product owner's session. */
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
@@ -33,6 +34,8 @@ const PO_ROUTES: Record<string, string> = {
   'api/tickets/[id]/artifacts/[artifactId] GET': 'review artifacts of assigned Products; 404 elsewhere',
   'intake/api/media/[id] GET': 'files of assigned Products through the signed-in route; 404 elsewhere',
   'api/refine/[ticket]/turn POST': 'a typed answer of the refinement conversation: only rows addressed to the Product owner, on assigned Products (`loadGate`); 404 elsewhere',
+  'api/requests/[id]/turn POST': 'one turn of the interview of their own request; 404 for any other',
+  'api/requests/media POST': 'a screenshot for their own request conversation, stored in their Workspace',
 }
 const BAUHERR_ROUTES = ['api/chat/context GET', 'api/chat/media POST', 'api/chat/threads GET', 'api/chat/threads POST', 'api/chat/threads/[id] DELETE', 'api/chat/threads/[id] GET', 'api/chat/threads/[id] PATCH', 'api/chat/threads/[id]/confirm POST', 'api/chat/threads/[id]/feedback POST', 'api/chat/threads/[id]/messages GET', 'api/chat/threads/[id]/messages PUT', 'api/chat/threads/[id]/run POST', 'api/chat/fake-gate POST', 'api/chat/fake-requests GET', ...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), 'api/changes GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
 /** Exported server actions (`<file>#<name>`, file relative to src/app/(app)) a Product owner may call. */
@@ -41,10 +44,14 @@ const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#logout': 'sign-out',
   'lib/actions.ts#decideAction': 'a card of the Inbox: only decisions addressed to the Product owner on assigned Products (`mayDecide` in every gate function); every other action of a card is refused',
   ...Object.fromEntries(['refineState', 'refineSay', 'refinePick', 'refineExplain', 'refineRest', 'refineChange', 'refineFinish'].map((n) => [`lib/actions.ts#${n}`, 'the refinement conversation: only rows addressed to the Product owner (`loadGate`, `postDecisions`); no model choice, no cost'])),
+  'lib/actions.ts#discardIntake': 'discards their own open draft; 404 for any other',
+  'lib/actions.ts#requestState': 'the conversation of their own request; null for any other',
+  'lib/actions.ts#requestChange': 'edits their own open draft (card fields, screenshots); refused for any other',
+  'lib/actions.ts#requestSubmit': 'files their own draft; refused for any other',
 }
 const BAUHERR_ACTIONS = [
   'approvePlanAction', 'expediteAction', 'decideOutcomeAction', 'acceptStagingAction', 'approveProductionAction', 'approveSkillProposalAction', 'rejectSkillProposalAction', 'grantReviewRoundAction', 'stopReviewAction', 'backToBuildAction', 'backToBacklogAction', 'requestChangesAction',
-  'selectWorkspace', 'discardIntake', 'chooseRequestProduct', 'loadRequestCard', 'editRequestCard', 'changeRequestImage', 'reportProblem', 'postDockComment', 'orderRequests', 'refineTier', 'rerunStage', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
+  'selectWorkspace', 'reportProblem', 'postDockComment', 'orderRequests', 'refineTier', 'rerunStage', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
 ].map((n) => `lib/actions.ts#${n}`).concat([
   'lib/search.ts#searchTickets', '(shell)/team/actions.ts#saveRole',
   ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'createSessionKey', 'updatePricesNow', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate'].map((n) => `(shell)/settings/actions.ts#${n}`),
@@ -389,5 +396,28 @@ describe('what is open to a Product owner answers 404 outside the assignment', (
     partition('chat tools', chatTools({ role: 'admin' }).map((t) => t.name), PO_CHAT_TOOLS, BAUHERR_CHAT_TOOLS)
     const { GET } = await import('../src/app/api/chat/threads/route')
     expect((await GET(new Request('http://t/x', { headers: { cookie: productOwnerCookie } }))).status).toBe(403)
+  })
+
+  it('the request conversation: their own draft opens, Product B and a draft of someone else are refused on every door', async () => {
+    asPo()
+    const actions = await import('../src/app/(app)/lib/actions')
+    const a1 = ((await payload.findByID({ collection: 'intake_sessions', id: mine.request, depth: 0, ...o })) as Record<string, any>).product as number
+    const draft = await payload.create({ collection: 'intake_sessions', data: { product: a1, workspace: mine.workspace, user: po.id, persona: 'product-user', status: 'open', messages: [] } as never, ...o })
+    expect(await actions.requestState(draft.id as number)).toMatchObject({ view: { session: draft.id, card: { editable: true } } })
+    expect(await actions.requestState(foreign.otherProduct.draft)).toEqual({ view: null }) // their own draft, but of a Product they are not assigned to
+    expect(await actions.requestState(mine.request)).toEqual({ view: null }) // a request of someone else
+    expect(await actions.requestChange(foreign.otherProduct.draft, { patch: { title: 'x' } })).toMatchObject({ error: expect.stringContaining('not found') })
+    expect(await actions.requestSubmit(mine.request)).toMatchObject({ error: expect.stringContaining('not found') })
+    const turn = (id: number) => (routeModules[`${APP}api/requests/[id]/turn/route.ts`]!() as Promise<{ POST: (r: Request, c: unknown) => Promise<Response> }>).then((m) => m.POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Hello' }) }), { params: Promise.resolve({ id: String(id) }) }))
+    expect((await turn(foreign.otherProduct.draft)).status).toBe(404)
+    expect((await turn(mine.request)).status).toBe(404)
+    expect((await turn(draft.id as number)).status).toBe(200)
+    const form = new FormData()
+    form.append('file', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')], { type: 'image/png' }), 'x.png')
+    const wire = new Request('http://t/x', { method: 'POST', body: form })
+    const body = new Uint8Array(await wire.arrayBuffer())
+    const upload = await (await routeModules[`${APP}api/requests/media/route.ts`]!() as { POST: (r: Request) => Promise<Response> }).POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': wire.headers.get('content-type')!, 'content-length': String(body.byteLength) }, body }))
+    expect(upload.status).toBe(201)
+    expect(await render('(shell)/requests/new/page.tsx', {})).toMatch(/threw .*NEXT_REDIRECT/)
   })
 })

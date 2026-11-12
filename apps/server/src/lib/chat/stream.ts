@@ -82,11 +82,11 @@ export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): A
 const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' }
 
 /**
- * The `reply` string of a tool input that is still arriving, as far as it has come. Reads only a `reply` that is the first property (the schema asks for that order);
+ * The `reply` string (or `key`'s) of a tool input that is still arriving, as far as it has come. Reads only a `reply` that is the first property (the schema asks for that order);
  * an escape or a surrogate pair cut off at the end is held back until it is whole. Returns null while no `reply` has started and the whole string once its closing quote is in.
  */
-export const partialReply = (json: string): string | null => {
-  const head = /^\s*\{\s*"reply"\s*:\s*"/.exec(json)
+export const partialReply = (json: string, key = 'reply'): string | null => {
+  const head = new RegExp(`^\\s*\\{\\s*"${key}"\\s*:\\s*"`).exec(json)
   if (!head) return null
   let out = ''
   for (let i = head[0].length; i < json.length; i++) {

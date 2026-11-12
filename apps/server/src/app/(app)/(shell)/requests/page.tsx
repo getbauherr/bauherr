@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { KIND_LABEL, KINDS } from '../../../../lib/intake/kinds'
-import { RequestOpen } from '../../components/chat/DockOpen'
+import { Button } from '../../components/ui/button'
 import { DiscardDraft } from '../../components/DiscardDraft'
 import { EmptyState } from '../../components/EmptyState'
 import { OrderedRequests, type OrderedItem } from '../../components/OrderedRequests'
@@ -93,12 +93,10 @@ export default async function Requests({ searchParams }: { searchParams: Promise
                     <span className="small text-muted-foreground">{wb.multiProduct && <>{d.product} · </>}changed {ago(d.updatedAt)}</span>
                     <span className="small" data-testid="draft-ready">{d.canSend ? (d.missing.length ? `Can be sent · still open: ${d.missing.join(', ')}` : 'Ready to send') : `Missing: ${d.missing.join(', ')}`}</span>
                   </div>
-                  {!owner && (
-                    <div className="flex gap-2">
-                      <RequestOpen request={d.id} size="sm">Continue</RequestOpen>
-                      <DiscardDraft session={d.id} title={d.title} label="Discard" />
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    <Button asChild size="sm"><Link href={`/requests/${d.id}`}>Continue</Link></Button>
+                    <DiscardDraft session={d.id} title={d.title} label="Discard" />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -136,7 +134,7 @@ export default async function Requests({ searchParams }: { searchParams: Promise
           {wb.total > REQUESTS_LIMIT && <p className="text-muted-foreground small">Showing the newest {REQUESTS_LIMIT}</p>}
         </>
       )}
-      {none && <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={owner ? undefined : { href: '/requests/new', label: 'New request' }} />}
+      {none && <EmptyState text={`No requests in ${workspace?.name ?? 'any Workspace'} yet.`} action={{ href: '/requests/new', label: 'New request' }} />}
     </>
   )
 }

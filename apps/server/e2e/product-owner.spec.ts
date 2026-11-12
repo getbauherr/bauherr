@@ -20,7 +20,7 @@ test('a Product owner lands on Requests; the shell has Inbox, Requests, Profile 
   await expect(nav.getByRole('link')).toHaveText([/^Inbox/, /^Requests/, 'Profile'])
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
   const bar = page.getByRole('banner')
-  await expect(bar.getByRole('button', { name: 'New request' })).toHaveCount(0)
+  await expect(bar.getByRole('link', { name: 'New request' })).toBeVisible()
   await expect(page.getByTestId('chat-open')).toHaveCount(0)
   await expect(bar.getByRole('button', { name: /Search/i })).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0)
@@ -37,7 +37,7 @@ test('a Product owner lands on Requests; the shell has Inbox, Requests, Profile 
 
 test('every page of the factory is a 404 for a Product owner', async ({ page }) => {
   await signIn(page)
-  for (const path of ['/', '/requests/new', '/team', '/insights', '/releases', '/knowledge', '/runs', '/release-notes', '/setup', '/settings/workspace', '/settings/bauherren', '/settings/api-key', '/settings/products', '/workflow/edit']) {
+  for (const path of ['/', '/team', '/insights', '/releases', '/knowledge', '/runs', '/release-notes', '/setup', '/settings/workspace', '/settings/bauherren', '/settings/api-key', '/settings/products', '/workflow/edit']) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
   }

@@ -76,7 +76,7 @@ test('a Product owner works in Requests: home, own Product, no factory internals
   await expect(ticket.getByTestId('progress-path')).toBeVisible()
   await expect(ticket.getByTestId('request-comment').filter({ hasText: 'Please check the contrast' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId('chat-open')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /New request/ })).toHaveCount(0)
+  await expect(page.getByRole('banner').getByRole('link', { name: 'New request' })).toBeVisible() // their one door to a new request
   await expect(ticket.getByRole('button')).toHaveCount(0) // no question card, no decision, no dock button
   for (const heading of ['Runs', 'Steps', 'Plan', 'Worklog', 'Path', 'Details']) await expect(page.getByRole('heading', { name: heading, exact: true })).toHaveCount(0)
   await expect(main).not.toContainText(/claude-lab-secret-model|1\.234|\$|tokens|budget|executor|Run #|Fix state|Expedite/i)
@@ -88,7 +88,9 @@ test('a Product owner works in Requests: home, own Product, no factory internals
   expect((await call(page, `/api/tickets/${alphaTicket}/artifacts/${alphaArtifact}`)).status).toBe(200)
   expect((await call(page, `/api/tickets/${betaTicket}/artifacts/${betaArtifact}`)).status).toBe(404)
   for (const path of [`/api/chat/context?path=/tickets/${alphaTicket}`, '/api/chat/threads']) expect([401, 403, 404], path).toContain((await call(page, path)).status)
-  expect((await page.goto('/requests/new'))?.status()).toBe(404)
+  expect((await page.goto('/requests/new'))?.status()).toBe(200) // their own empty draft, for an assigned Product
+  await expect(page).toHaveURL(/\/requests\/\d+$/)
+  await expect(page.getByTestId('artifact-panel').locator('[data-field=product]')).toContainText('Lab Alpha')
 
   // The same Ticket for a Bauherr shows what the Product owner must not see (screenshot for comparison).
   await control.goto(`/tickets/${alphaTicket}`)

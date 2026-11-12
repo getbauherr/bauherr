@@ -4,8 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
-import { attachImage, chooseProduct, discardRequest, editCard, removeImage, requestCard, type CardPatch } from '../../../lib/chat/request'
-import type { CardData } from '../../../lib/intake/card'
+import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunIfNeeded } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
@@ -185,48 +184,40 @@ export async function requestChangesAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** Discards one of the caller's open drafts and its conversation ("Discard" on the Requests page and "Discard draft" on the Request page). */
+/** `actingPerson` in the shape the request conversation's functions take (`workspace`, not `workspaceId`). */
+const requestWho = async () => {
+  const { user, payload, workspaceId } = await actingPerson()
+  return { user: user as Doc, payload, workspace: workspaceId }
+}
+
+/** Discards one of the caller's open drafts and its conversation ("Discard" on the Requests page, "Discard draft" in the conversation). */
 export async function discardIntake(session: number) {
-  const { user, payload, workspaceId } = await acting()
-  await inWorkspace(discardRequest({ payload, user, workspace: workspaceId }, session))
+  const w = await requestWho()
+  await inWorkspace(discardRequest(w, session))
   revalidatePath('/requests')
-}
-
-/** The Product select of a request thread in the dock: starts the interview session for a Product of the selected Workspace. Null when the thread or the Product is not theirs. */
-export async function chooseRequestProduct(thread: number, product: number): Promise<{ session: number; product: string } | null> {
-  const { user, payload, workspaceId } = await acting()
-  return chooseProduct({ payload, user, workspace: workspaceId }, thread, product)
-}
-
-/** The request card of one of the caller's requests (the dock reloads it after every turn); null when it is not theirs. */
-export async function loadRequestCard(session: number): Promise<CardData | null> {
-  const { user, payload, workspaceId } = await acting()
-  return requestCard({ payload, user, workspace: workspaceId }, session)
 }
 
 const cardError = (e: unknown): { error: string } => ({ error: e instanceof Error ? e.message : 'This could not be saved.' })
 
-/** A direct edit of the request card by its author; the next interview turn keeps it. */
-export async function editRequestCard(session: number, patch: CardPatch): Promise<{ card: CardData } | { error: string }> {
-  const { user, payload, workspaceId } = await acting()
+/** Runs one action of the request conversation as the acting person and answers its whole state (or the refusal as text). `lists`: the action changes what the Requests lists and the draft count show (a read or a card edit does not, so nothing is refreshed behind the conversation). */
+const requesting = async (run: (w: Awaited<ReturnType<typeof requestWho>>) => Promise<RequestView | null>, lists = false): Promise<{ view: RequestView | null } | { error: string }> => {
+  const w = await requestWho()
   try {
-    const card = await editCard({ payload, user, workspace: workspaceId }, session, patch)
-    revalidatePath('/requests')
-    return { card }
+    const view = await run(w)
+    if (lists) revalidatePath('/requests')
+    return { view }
   } catch (e) {
+    if ((e as { digest?: string }).digest?.startsWith('NEXT_')) throw e
     return cardError(e)
   }
 }
 
-/** Adds an uploaded image (`/api/chat/media`) to the request's screenshots, or removes one. */
-export async function changeRequestImage(session: number, mediaId: number, change: 'add' | 'remove'): Promise<{ card: CardData } | { error: string }> {
-  const { user, payload, workspaceId } = await acting()
-  try {
-    return { card: await (change === 'add' ? attachImage : removeImage)({ payload, user, workspace: workspaceId }, session, mediaId) }
-  } catch (e) {
-    return cardError(e)
-  }
-}
+/** The conversation of one of the caller's requests (an open draft or a filed request); null when it is not theirs. */
+export const requestState = async (session: number) => requesting((w) => loadRequestView(w, session))
+/** A direct edit of the request card (the next interview turn keeps it), or the removal of one screenshot. */
+export const requestChange = async (session: number, change: { patch: CardPatch } | { removeImage: number }) => requesting((w) => requestEdit(w, session, change))
+/** "File request": creates the Ticket(s) from the card as it stands. */
+export const requestSubmit = async (session: number) => requesting((w) => requestFile(w, session), true)
 
 /** "Report a problem" on a released request: a new Bug draft of the same Product, linked to the original ("Follow-up to #n" on the filed issue). Returns the new request's id. */
 export async function reportProblem(session: number): Promise<{ session: number } | { error: string }> {

@@ -19,7 +19,7 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
   const draft = page.getByTestId('drafts').getByTestId('draft').filter({ hasText: 'Export totals drift' })
   await expect(draft).toContainText('changed')
   await expect(draft.getByRole('link', { name: 'Export totals drift' })).toHaveAttribute('href', /^\/requests\/\d+$/)
-  await expect(draft.getByRole('button', { name: 'Continue' })).toBeVisible()
+  await expect(draft.getByRole('link', { name: 'Continue' })).toBeVisible()
   await expect(draft.getByRole('button', { name: /^Discard draft: / })).toBeVisible()
   await expect(page.getByTestId('factory-rows')).not.toContainText('Export totals drift') // an own Draft sits in Drafts, not among the sent requests
   const linked = page.getByTestId('factory-row').filter({ hasText: 'Dark theme for the dashboard' })
@@ -54,7 +54,7 @@ test('Requests list shows Draft and Sent rows with plain wording and Ticket link
   await expect(page).toHaveURL(/\/tickets\/\d+/)
 })
 
-test('an empty own Draft opens its request page, and Continue draft opens its thread in the dock', async ({ page }) => {
+test('an own Draft opens as a conversation with its card, and can be discarded from its menu', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -63,16 +63,15 @@ test('an empty own Draft opens its request page, and Continue draft opens its th
   await page.goto('/requests')
   await page.getByRole('link', { name: 'Export totals drift' }).click()
   await expect(page).toHaveURL(/\/requests\/\d+$/)
-  await expect(page.getByRole('heading', { name: 'Export totals drift' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Discard draft' })).toBeVisible()
-  await page.getByRole('button', { name: 'Continue draft' }).click()
-  const dock = page.getByTestId('chat-dock')
-  await expect(dock).toBeVisible()
-  await expect(dock.getByTestId('context-chip')).toHaveText('New request · Acme Web', { timeout: 30_000 })
-  await expect(dock.getByRole('textbox', { name: 'Message the factory' })).toBeVisible()
+  await expect(page.getByTestId('conversation-shell')).toBeVisible()
+  await expect(page.getByTestId('participant')).toContainText('Factory assistant')
+  await expect(page.getByTestId('artifact-panel').locator('[data-field=product]')).toContainText('Acme Web')
+  await expect(page.getByRole('textbox', { name: 'Your answer' })).toBeVisible()
+  await page.getByTestId('more').click()
+  await expect(page.getByTestId('discard-draft')).toBeVisible()
 })
 
-test('/requests/new?session=<id> continues that draft in the dock', async ({ page }) => {
+test('/requests/new?session=<id> opens that draft; an unknown one opens an empty draft of the person instead', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -81,8 +80,10 @@ test('/requests/new?session=<id> continues that draft in the dock', async ({ pag
   await page.goto('/requests')
   const href = (await page.getByRole('link', { name: 'Export totals drift' }).getAttribute('href'))!
   await page.goto(`/requests/new?session=${href.split('/').pop()}`)
-  await expect(page.getByText('Your draft is open in the chat on the right.')).toBeVisible()
-  await expect(page.getByTestId('chat-dock').getByTestId('context-chip')).toHaveText('New request · Acme Web', { timeout: 30_000 })
+  await expect(page).toHaveURL(new RegExp(`${href}$`))
+  await expect(page.getByTestId('conversation-shell')).toBeVisible()
   await page.goto('/requests/new?session=999999999')
-  await expect(page.getByText('Describe what you need in the chat on the right.')).toBeVisible()
+  await expect(page).toHaveURL(/\/requests\/\d+$/)
+  await expect(page).not.toHaveURL(new RegExp(`${href}$`))
+  await expect(page.getByTestId('empty-state')).toBeVisible()
 })

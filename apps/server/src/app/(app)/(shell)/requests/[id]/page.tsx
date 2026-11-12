@@ -2,12 +2,12 @@ import { PageTitle } from '../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
-import { DockOpen, RequestOpen } from '../../../components/chat/DockOpen'
-import { DiscardDraft } from '../../../components/DiscardDraft'
+import { DockOpen } from '../../../components/chat/DockOpen'
+import { RequestConversation } from '../../../components/conversation/RequestConversation'
 import { ProgressPath } from '../../../components/ProgressPath'
 import { KindChip, LaneChip, StatusLine } from '../../../components/RequestParts'
 import { ReportProblem } from '../../../components/ReportProblem'
-import { RequestCardPage } from '../../../components/RequestCardPage'
+import { RequestCard } from '../../../components/RequestCard'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ago } from '../../../lib/format'
@@ -18,13 +18,16 @@ import { Comments } from '../../../components/RequestComments'
 
 export const dynamic = 'force-dynamic'
 
-export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RequestPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> }) {
   const { id } = await params
+  const { view } = await searchParams
   const { user, workspace } = await currentPersonWorkspace()
   const owner = isProductOwner(user)
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
   const request = await loadRequest(workspace.id, Number(id), user as { id: number })
   if (!request) notFound()
+  // The author's open draft is the conversation; so is their filed request when asked for (read-only history).
+  if (request.own || (request.mine && request.sent && view === 'conversation')) return <><PageTitle>{request.own && request.title === 'Untitled request' ? 'New request' : request.title}</PageTitle><RequestConversation session={request.id} owner={owner} /></>
   const next = request.tickets.find((t) => t.need)
   const lead = request.tickets[0]
 
@@ -39,22 +42,17 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
         <LaneChip urgent={request.card.urgency === 'urgent' && lead?.lane == null} lane={lead?.lane} />
         {lead && <StatusLine status={lead.status} waits={lead.waits} />}
       </p>
-      <div className="max-w-xl"><RequestCardPage card={request.card} /></div>
+      <div className="max-w-xl"><RequestCard card={request.card} /></div>
       <section className="flex flex-col gap-2" aria-labelledby="next">
         <h2 className="heading" id="next">Next step</h2>
         {owner ? (
           <p className="m-0" data-testid="waits-for-you">{next ? `Waiting for you: ${next.need} on #${next.number}.` : request.sent ? 'Nothing for you to do.' : 'A draft.'}</p>
-        ) : request.own ? (
-          <div className="flex flex-wrap gap-2">
-            <RequestOpen request={request.id}>Continue draft</RequestOpen>
-            <DiscardDraft session={request.id} title={request.title} />
-          </div>
         ) : next ? (
           <Button asChild className="self-start"><Link href={`/tickets/${next.id}`}>{next.need} on #{next.number}</Link></Button>
         ) : (
           <p className="text-muted-foreground">{request.sent ? 'Nothing for you to do.' : 'Only its author can continue this draft.'}</p>
         )}
-        {!owner && request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
+        {request.mine && request.sent && <Button asChild variant="outline" className="self-start"><Link href={`/requests/${request.id}?view=conversation`}>Open the conversation</Link></Button>}
         {!owner && request.released && <ReportProblem session={request.id} />}
       </section>
       {request.timeline.length > 0 && (

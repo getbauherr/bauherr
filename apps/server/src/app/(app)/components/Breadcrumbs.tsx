@@ -41,7 +41,7 @@ export function Breadcrumbs({ owner }: { owner?: boolean }) {
         {crumbs.map(({ label, href }, i) => (
           <Fragment key={i}>
             {i > 0 && <BreadcrumbSeparator />}
-            <BreadcrumbItem className="min-w-0">
+            <BreadcrumbItem className={i === crumbs.length - 1 ? 'min-w-0' : 'shrink-0'}>
               {i === crumbs.length - 1 ? <BreadcrumbPage className="truncate">{label}</BreadcrumbPage> : href ? <BreadcrumbLink asChild><Link href={href}>{label}</Link></BreadcrumbLink> : <span>{label}</span>}
             </BreadcrumbItem>
           </Fragment>

@@ -5,10 +5,12 @@ import { discardIntake } from '../lib/actions'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 
-/** "Discard" of a draft (Requests list, Request page): asks in a dialog first, then removes the draft with its conversation and goes to the Requests list. */
-export function DiscardDraft({ session, title, label = 'Discard draft' }: { session: number; title: string; label?: string }) {
+/** "Discard" of a draft (Requests list, Request page, the conversation's menu): asks in a dialog first, then removes the draft with its conversation and goes to the Requests list. With `open` the dialog is controlled and has no button. */
+export function DiscardDraft({ session, title, label = 'Discard draft', open: controlled, onOpenChange }: { session: number; title: string; label?: string; open?: boolean; onOpenChange?(open: boolean): void }) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [own, setOwn] = useState(false)
+  const open = controlled ?? own
+  const setOpen = onOpenChange ?? setOwn
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const discard = async () => {
@@ -24,7 +26,7 @@ export function DiscardDraft({ session, title, label = 'Discard draft' }: { sess
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button type="button" variant="outline" aria-label={`Discard draft: ${title}`}>{label}</Button></DialogTrigger>
+      {controlled === undefined && <DialogTrigger asChild><Button type="button" variant="outline" aria-label={`Discard draft: ${title}`}>{label}</Button></DialogTrigger>}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Discard this draft?</DialogTitle>

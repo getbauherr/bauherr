@@ -42,9 +42,6 @@ const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
 await ensure('bauherren', { email: 'solo@example.com' }, { email: 'solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
 await ensure('bauherren', { email: 'duo@example.com' }, { email: 'duo@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }, { tenant: zeta }] })
 await ensure('products', { slug: 'zeta-app' }, { name: 'Zeta App', slug: 'zeta-app', workspace: zeta }) // the one Product of a single-Product Workspace
-// request-dock specs: a member of the several-Product Workspace and one of the single-Product Workspace, each with a user of their own (nothing else signs in as them)
-await ensure('bauherren', { email: 'intake-member@example.com' }, { email: 'intake-member@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })
-await ensure('bauherren', { email: 'intake-solo@example.com' }, { email: 'intake-solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
 const newco = (await ensure('workspaces', { slug: 'newco' }, { name: 'Newco', slug: 'newco' })).id // stays empty: /setup walks it
 await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup-member@example.com', password, role: 'bauherr', tenants: [{ tenant: newco }] })
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
@@ -63,8 +60,20 @@ const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 
 await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
 await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
 await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
+// request-conversation.spec.ts: a Workspace of its own (`bauherr-ws=rc`) with two Products (Rc Web, Rc Api), models as `<connection>/<model>` (the short name is what is shown), a Bauherr and a Product owner (assigned to Rc Web only) that only that spec signs in as. Twins in `src/lib/fake-forge.ts` (acme/rc-web, acme/rc-api).
+const rcWs = (await ensure('workspaces', { slug: 'rc' }, { name: 'Request Lab', slug: 'rc', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
+await ensure('bauherren', { email: 'rc-bauherr@example.com' }, { email: 'rc-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: rcWs }] })
+const rcGithub = (await ensure('connections', { name: 'GitHub Rc' }, { name: 'GitHub Rc', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: rcWs })).id
+const rcProducts: number[] = []
+for (const [name, slug] of [['Rc Web', 'rc-web'], ['Rc Api', 'rc-api']] as const) {
+  const id = (await ensure('products', { slug }, { name, slug, workspace: rcWs })).id as number
+  rcProducts.push(id)
+  await ensure('repositories', { fullName: `acme/${slug}` }, { fullName: `acme/${slug}`, product: id, workspace: rcWs })
+  await ensure('ticket_sources', { repo: `acme/${slug}` }, { repo: `acme/${slug}`, product: id, connection: rcGithub, cursor: '2026-10-30T09:00:00Z', workspace: rcWs })
+}
+await ensure('bauherren', { email: 'rc-owner@example.com' }, { email: 'rc-owner@example.com', password, role: 'product-owner', assignments: [{ workspace: rcWs, scope: 'products', products: [rcProducts[0]] }] })
 // conversation.spec.ts: a Workspace of its own (`bauherr-ws=conv`), an Admin and a Product owner only that spec signs in as, and three Tickets held by Triage (#1 the Docs Agent with four open points, #2 and #3 untouched by the first test), each with a succeeded Triage Run of a session. Twin in `src/lib/fake-forge.ts` (acme/conv).
-const convWs = (await ensure('workspaces', { slug: 'conv' }, { name: 'Conversation Lab', slug: 'conv', wipLimits: {} })).id
+const convWs = (await ensure('workspaces', { slug: 'conv' }, { name: 'Conversation Lab', slug: 'conv', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'conv-admin@example.com' }, { email: 'conv-admin@example.com', password, role: 'admin', githubLogin: 'e2e-conv-admin' })
 const convGithub = (await ensure('connections', { name: 'GitHub Conv' }, { name: 'GitHub Conv', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: convWs })).id
 const convProduct = (await ensure('products', { slug: 'conv-app' }, { name: 'Conv App', slug: 'conv-app', workspace: convWs })).id

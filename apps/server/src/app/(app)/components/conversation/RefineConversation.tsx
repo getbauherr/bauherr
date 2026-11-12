@@ -1,5 +1,5 @@
 'use client'
-import { AssistantRuntimeProvider, useAui, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react'
 import { Info } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -12,50 +12,18 @@ import { Button } from '../ui/button'
 import { DropdownMenuItem } from '../ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import type { View } from '../../../../lib/refine/engine'
-import { openOf, type Msg, type Tier } from '../../../../lib/refine/model'
+import { openOf, withoutQuestion, type Tier } from '../../../../lib/refine/model'
 import { Composer } from './Composer'
 import { ConversationShell } from './ConversationShell'
 import { ParticipantHeader } from './ParticipantHeader'
 import { QuestionCard } from './QuestionCard'
 import { Stream, when } from './Stream'
 import { TicketArtifact } from './TicketArtifact'
-import { useRefineTurn } from './useRefineTurn'
+import { Restore, mediaId, pending, textOf, toMessage } from './shared'
+import { useTurn } from './useTurn'
 
 type Reply = { view: View | null } | { error: string }
-
-const pending = (id: string, role: Msg['role'], text: string, speaker: Msg['speaker']): ThreadMessageLike => ({
-  id,
-  role,
-  createdAt: new Date(speaker.at),
-  content: text ? [{ type: 'text', text }] : [],
-  ...(role === 'assistant' && { status: { type: 'running' } as const }),
-  metadata: { custom: { speaker } },
-})
-
-const toMessage = (m: Msg): ThreadMessageLike => ({
-  id: m.id,
-  role: m.role,
-  createdAt: new Date(m.speaker.at),
-  content: [{ type: 'text', text: m.text }],
-  ...(m.role === 'assistant' && { status: { type: 'complete', reason: 'stop' } as const }),
-  metadata: { custom: { speaker: m.speaker, feedback: m.feedback ?? null, images: m.images ?? [], settled: m.settled ?? [] } },
-})
-
-const textOf = (m: { content: readonly { type: string; text?: string }[] }): string => m.content.map((p) => (p.type === 'text' ? p.text : '')).join('').trim()
-/** The media id of an uploaded image: its signed URL is `/m/<id>/<signature>.<ext>`. */
-const mediaId = (url: string): number | null => Number(/\/m\/(\d+)\//.exec(url)?.[1]) || null
 const attachments = makeAttachments()
-
-/** Pulls the composer's text back when a failed turn did not take it. */
-const Restore: FC<{ text: string; done(): void }> = ({ text, done }) => {
-  const aui = useAui()
-  useEffect(() => {
-    if (!text) return
-    aui.composer().setText(text)
-    done()
-  }, [text, aui, done])
-  return null
-}
 
 /**
  * The refinement conversation of a Ticket in the conversation shell: the participant header, the stream with the open question as a card, the composer with its model and cost
@@ -115,10 +83,12 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
     },
     [router],
   )
-  const { turn, run, stop } = useRefineTurn(ticket, onView)
+  const { turn, run, stop } = useTurn<View>(`/api/refine/${ticket}/turn`, onView)
   const model = view ? (view.models.find((m) => m.tier === view.tier)?.model ?? '') : null
   const messages = useMemo(() => {
-    const stored = (view?.messages ?? []).map(toMessage)
+    const asked = view && !view.sent ? openOf(view.points)[0] : undefined
+    const last = view?.messages.findLastIndex((m) => m.role === 'assistant') ?? -1
+    const stored = (view?.messages ?? []).map((m, i) => (asked && i === last ? toMessage(m, withoutQuestion(m.text, asked)) : toMessage(m)))
     if (!turn?.user) return stored // a re-check shows no message while it runs
     const at = new Date().toISOString()
     const speaker = view ? { kind: 'assistant' as const, role: view.participant.role, avatar: view.participant.avatar, model, at } : { kind: 'assistant' as const, model, at }
@@ -160,7 +130,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
         <ConversationShell
           header={
             <ParticipantHeader
-              view={view}
+              participant={view.participant}
               model={model}
               subtitle={`refining #${view.ticket.number} with you`}
               menu={<DropdownMenuItem asChild><Link href={`/tickets/${ticket}?view=ticket`}>Ticket page: path, steps, proof</Link></DropdownMenuItem>}
@@ -175,7 +145,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
               earlier={view.earlier}
               working={busy && !turn}
               onChange={(id) => void act(() => refineChange(ticket, id))}
-              tail={!locked && current && <QuestionCard point={current} n={view.points.indexOf(current) + 1} of={view.points.length} open={open.length} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`); if (open.length > 1) void run({ recheck: { point: current.id } }, null) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} onRest={() => void act(() => refineRest(ticket))} />}
+              tail={!locked && current && <QuestionCard id={current.id} eyebrow={`Question ${view.points.indexOf(current) + 1} of ${view.points.length}`} title={current.title} why={current.why} options={current.options.map((label) => ({ label, recommended: label === current.default }))} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`); if (open.length > 1) void run({ recheck: { point: current.id } }, null) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} extra={open.length > 1 && <Button type="button" size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => void act(() => refineRest(ticket))}>Use recommended for the rest</Button>} />}
             >
               {error && <p role="alert" data-testid="refine-error" className="m-0 text-[13px] text-destructive">{error}</p>}
               {recorded && <p role="status" data-testid="recorded" className="m-0 flex items-center gap-1.5 text-[13px] text-ok"><Check />Recorded. {recorded}</p>}
@@ -183,7 +153,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
               {locked && <AgentHandoff data-testid="handoff" from={view.participant.role} to={view.planner} reason={view.next.replace(/^Then: /, 'Next: ')} carried={view.points.filter((p) => p.status === 'answered').map((p) => `${p.title}: ${p.answer}`)} settled />}
             </Stream>
           }
-          composer={locked ? <p data-testid="read-only" className="m-0 rounded-md border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">Sent to planning. This conversation is read-only history.</p> : <Composer view={view} placeholder={open.length ? 'Answer in your own words' : 'Reply, or ask for a change to the Ticket'} streaming={!!turn?.user} onStop={stop} onModel={(t: Tier) => void act(() => refineTier(ticket, t), false)} />}
+          composer={locked ? <p data-testid="read-only" className="m-0 rounded-md border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">Sent to planning. This conversation is read-only history.</p> : <Composer models={view.models} tier={view.tier} cost={view.viewer === 'bauherr' ? view.cost : null} placeholder={open.length ? 'Answer in your own words' : 'Reply, or ask for a change to the Ticket'} streaming={!!turn?.user} onStop={stop} onModel={(t: Tier) => void act(() => refineTier(ticket, t), false)} />}
           bar={<><span data-testid="bar-count">{count}</span><span className="font-medium text-primary">View outcome</span></>}
           artifact={{
             title: 'Refined ticket',

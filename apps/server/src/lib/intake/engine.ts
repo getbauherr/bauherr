@@ -14,7 +14,9 @@ export type Draft = { title?: string; problem: string; context: string; acceptan
 /** The card fields a person can edit by hand; an edited field is kept when the model answers next. */
 export const CARD_FIELDS = ['title', 'type', 'urgency', 'urgent_reason', 'problem', 'context', 'acceptance_criteria'] as const
 export type CardField = (typeof CARD_FIELDS)[number]
-export type Message = { role: 'user' | 'assistant'; content: string; images?: (number | string)[] }
+/** `at` and `usage` are for the conversation view (when it was said, what the model call cost); the model never sees them. */
+export type Usage = { model: string; tokensIn: number; tokensOut: number }
+export type Message = { role: 'user' | 'assistant'; content: string; images?: (number | string)[]; at?: string; usage?: Usage }
 export type Image = { id: number | string; mime: string; data: string }
 type Block = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
 export type ModelMessage = { role: 'user' | 'assistant'; content: string | Block[] }
@@ -22,6 +24,9 @@ export type Turn = { question: string; options?: { label: string; recommended?: 
 export type Session = { messages: Message[]; draft: Draft | null; split?: Draft[]; screenshots?: number; edited?: CardField[] }
 
 /** The card columns of a session that mirror its draft (list rows and chips read these, not the JSON). */
+/** The card fields that differ between two drafts: what a turn changed. */
+export const changedFields = (before: Draft | null, after: Draft): CardField[] => CARD_FIELDS.filter((f) => JSON.stringify((before as Record<string, unknown> | null)?.[f] ?? null) !== JSON.stringify((after as unknown as Record<string, unknown>)[f] ?? null))
+
 export const cardColumns = (d: Draft | null) => ({ title: d?.title ?? null, kind: d?.type ?? null, urgency: d?.urgency ?? ('normal' as const), urgentReason: d?.urgent_reason ?? null })
 
 export const emptyDraft = (): Draft => ({ problem: '', context: '', acceptance_criteria: [], type: 'feature', links: [] })
@@ -115,19 +120,44 @@ const prompt = async (): Promise<string> =>
 /** Appended to the system prompt once the question cap is reached: the person may keep adding detail, the assistant no longer asks. */
 const CLOSING = '\n\nThe question limit is reached. Do not ask any question. `question` is a one-sentence acknowledgement of what the person just said; update `draft` (and `split`, `missing`) from it.'
 
-export type ModelCall = (a: { system: string; messages: ModelMessage[]; schema: object }) => Promise<unknown>
+/** `onPartial` asks for a streamed call: it gets the answer's JSON text as far as it has come. `onUsage` gets the tokens and the model that answered. `signal` aborts the call. */
+export type ModelCall = (a: { system: string; messages: ModelMessage[]; schema: object; signal?: AbortSignal; onPartial?: (json: string) => void; onUsage?: (u: Usage) => void }) => Promise<unknown>
+export type TurnHooks = Pick<Parameters<ModelCall>[0], 'signal' | 'onPartial'>
 
-/** One Messages-API call through the gateway as the Workspace; the answer is the schema-enforced JSON text. */
-export const gatewayModel = (a: { slug: string; key: string; model: string }): ModelCall => async ({ system, messages, schema }) => {
+/** One Messages-API call through the gateway as the Workspace; the answer is the schema-enforced JSON text. With `onPartial` the call streams (server-sent events) and the text is passed on as it arrives. */
+export const gatewayModel = (a: { slug: string; key: string; model: string }): ModelCall => async ({ system, messages, schema, signal, onPartial, onUsage }) => {
   const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${a.key}` },
-    body: JSON.stringify({ model: `ws-${a.slug}/${a.model}`, max_tokens: 1500, system, messages, output_config: { format: { type: 'json_schema', schema } } }),
-    signal: AbortSignal.timeout(60_000),
+    body: JSON.stringify({ model: `ws-${a.slug}/${a.model}`, max_tokens: 1500, system, messages, ...(onPartial && { stream: true }), output_config: { format: { type: 'json_schema', schema } } }),
+    signal: AbortSignal.any([AbortSignal.timeout(60_000), ...(signal ? [signal] : [])]),
   })
   if (!res.ok) throw new Error(`intake model call failed: HTTP ${res.status}`)
-  const text = ((await res.json()) as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text
-  return JSON.parse(text ?? '')
+  if (!onPartial) {
+    const body = (await res.json()) as { model?: string; usage?: { input_tokens?: number; output_tokens?: number }; content: { type: string; text?: string }[] }
+    onUsage?.({ model: body.model ?? a.model, tokensIn: body.usage?.input_tokens ?? 0, tokensOut: body.usage?.output_tokens ?? 0 })
+    return JSON.parse(body.content.find((c) => c.type === 'text')?.text ?? '')
+  }
+  const usage = { model: a.model, tokensIn: 0, tokensOut: 0 }
+  let text = ''
+  let rest = ''
+  const dec = new TextDecoder()
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    rest += dec.decode(chunk, { stream: true })
+    const rows = rest.split('\n')
+    rest = rows.pop() ?? ''
+    for (const row of rows) {
+      if (!row.startsWith('data:')) continue
+      const ev = JSON.parse(row.slice(5)) as { type: string; message?: { model?: string; usage?: { input_tokens?: number } }; delta?: { type?: string; text?: string }; usage?: { output_tokens?: number } }
+      if (ev.type === 'message_start') {
+        usage.model = ev.message?.model ?? usage.model
+        usage.tokensIn = ev.message?.usage?.input_tokens ?? 0
+      } else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') onPartial((text += ev.delta.text ?? ''))
+      else if (ev.type === 'message_delta') usage.tokensOut = ev.usage?.output_tokens ?? usage.tokensOut
+    }
+  }
+  onUsage?.(usage)
+  return JSON.parse(text)
 }
 
 const list = (v: unknown, max: number): string[] => (Array.isArray(v) ? v.map((x) => String(x).trim().slice(0, 500)).filter(Boolean).slice(0, max) : [])
@@ -169,16 +199,17 @@ export const checkMessage = (s: Session, text: string): void => {
 }
 
 /** Adds the user's message (with this turn's screenshots as vision input), asks the model for the next single question (past the question cap: only an acknowledgement) and the updated draft, and returns the new session state. */
-export const nextTurn = async (s: Session, text: string, model: ModelCall, images: Image[] = [], lane = true): Promise<{ session: Session; turn: Turn; ready: boolean; exhausted: boolean; missing: string[] }> => {
+export const nextTurn = async (s: Session, text: string, model: ModelCall, images: Image[] = [], lane = true, hooks: TurnHooks = {}): Promise<{ session: Session; turn: Turn; ready: boolean; exhausted: boolean; missing: string[] }> => {
   checkMessage(s, text)
-  const messages: Message[] = [...s.messages, { role: 'user', content: text, ...(images.length && { images: images.map((i) => i.id) }) }]
+  const messages: Message[] = [...s.messages, { role: 'user', content: text, ...(images.length && { images: images.map((i) => i.id) }), at: new Date().toISOString() }]
   const sent: ModelMessage[] = [
     ...s.messages.map(({ role, content }) => ({ role, content })),
     { role: 'user', content: images.length ? [...images.map((i): Block => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })), { type: 'text', text }] : text },
   ]
-  const turn = normalizeTurn(await model({ system: (await prompt()) + cardBlock(s) + (questionsAsked(s) >= MAX_QUESTIONS ? CLOSING : ''), messages: sent, schema: TURN_SCHEMA }))
+  let usage: Usage | undefined
+  const turn = normalizeTurn(await model({ system: (await prompt()) + cardBlock(s) + (questionsAsked(s) >= MAX_QUESTIONS ? CLOSING : ''), messages: sent, schema: TURN_SCHEMA, ...hooks, onUsage: (u) => (usage = u) }))
   turn.draft = keepEdited(turn.draft, s.draft, s.edited, lane && !turn.split)
-  const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question }], draft: turn.draft, split: turn.split }
+  const session: Session = { ...s, messages: [...messages, { role: 'assistant', content: turn.question, at: new Date().toISOString(), ...(usage && { usage }) }], draft: turn.draft, split: turn.split }
   const [shot, refers, asked] = [(s.screenshots ?? 0) > 0, refersToScreen(session, turn.needsScreenshot), questionsAsked(session)]
   const r = turn.split ? splitReadiness(turn.split, shot, refers, asked) : readiness(turn.draft, shot, refers, asked)
   return { session, turn, ...r }

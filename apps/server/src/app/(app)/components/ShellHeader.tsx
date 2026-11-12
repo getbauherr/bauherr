@@ -2,11 +2,12 @@
 import { usePathname } from 'next/navigation'
 import { Breadcrumbs } from './Breadcrumbs'
 import { ChatButton } from './chat/ChatButton'
-import { RequestOpen } from './chat/DockOpen'
+import Link from 'next/link'
 import { CommandMenu } from './CommandMenu'
 import { Plus } from './icons'
 import { PresencePill } from './Presence'
 import type { NavItem } from './nav-items'
+import { Button } from './ui/button'
 import { Separator } from './ui/separator'
 import { SidebarTrigger } from './ui/sidebar'
 
@@ -18,17 +19,23 @@ export function ShellHeader({ items, admin, setup, minimal, logout }: { items: P
       <SidebarTrigger />
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5 max-sm:hidden" />
       <Breadcrumbs owner={minimal} />
-      {!minimal && <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         {!path.startsWith('/requests/new') && (
-          <RequestOpen request="new" variant="outline" className="max-sm:size-9 max-sm:px-0">
-            <Plus />
-            <span className="max-sm:sr-only">New request</span>
-          </RequestOpen>
+          <Button asChild variant="outline" className="max-sm:size-9 max-sm:px-0">
+            <Link href="/requests/new" prefetch={false} data-testid="new-request">
+              <Plus />
+              <span className="max-sm:sr-only">New request</span>
+            </Link>
+          </Button>
         )}
-        <PresencePill />
-        <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />
-        <ChatButton />
-      </div>}
+        {!minimal && (
+          <>
+            <PresencePill />
+            <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />
+            <ChatButton />
+          </>
+        )}
+      </div>
     </header>
   )
 }

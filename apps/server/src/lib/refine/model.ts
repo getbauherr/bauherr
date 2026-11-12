@@ -144,3 +144,12 @@ export const lineDiff = (a: string, b: string): DiffLine[] => {
     return near(-1) || near(1) || near(-2) || near(2) ? [l] : []
   })
 }
+
+/** The open question is a card under the message that asked it: the message shows it only once, so its own lines (the question, then "Recommended: ...") are left out of the text. */
+export const withoutQuestion = (text: string, p: Pick<Point, 'title'>): string => {
+  const lines = text.split('\n')
+  const at = lines.findIndex((l) => l.trim() === p.title.trim())
+  if (at < 0) return text
+  return [...lines.slice(0, at), ...lines.slice(at + (lines[at + 1]?.startsWith('Recommended:') ? 2 : 1))].join('\n').trim()
+}
+

@@ -1,26 +1,27 @@
-import { OpenOnLoad, RequestOpen } from '../../../components/chat/DockOpen'
+import { notFound, redirect } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
 import { ownsDraft } from '../../../lib/requests'
-import { isAdmin } from '../../../lib/settings'
-import { currentWorkspace, payloadClient } from '../../../lib/session'
+import { currentPersonWorkspace, payloadClient } from '../../../lib/session'
+import { isBauherr, productsVisibleTo } from '../../../../../lib/people'
+import { startDraft } from '../../../../../lib/request-conversation'
 
 export const dynamic = 'force-dynamic'
 
-/** The link people bookmark: it opens the docked chat on a new, empty request. `?session=<id>` (an older draft link) continues that draft of the caller's instead. */
-export default async function NewRequest({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
-  const { session } = await searchParams
-  const { user, workspace } = await currentWorkspace()
+/** The link people bookmark: it opens the conversation on their empty draft (one they left is reused, so this never piles up drafts). `?session=<id>` (an older draft link) opens that draft of theirs, `?product=<id>` starts for that Product. */
+export default async function NewRequest({ searchParams }: { searchParams: Promise<{ session?: string; product?: string }> }) {
+  const { session, product } = await searchParams
+  const { user, workspace } = await currentPersonWorkspace()
+  if (!workspace) notFound()
+  if (session && /^\d{1,9}$/.test(session) && (await ownsDraft(user.id as number, workspace.id, Number(session)))) redirect(`/requests/${session}`)
   const payload = await payloadClient()
-  const products = workspace ? (await payload.count({ collection: 'products', where: { workspace: { equals: workspace.id } }, overrideAccess: true })).totalDocs : 0
-  if (!products) return <><h1 className="title">New request</h1><EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) ? '' : ' Ask an Admin to set up the Workspace.'}`} action={isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} /></>
-  const draft = workspace && session && /^\d{1,9}$/.test(session) && (await ownsDraft(user.id as number, workspace.id, Number(session))) ? Number(session) : 'new'
-  return (
-    <div className="flex flex-col gap-4">
-      <h1 className="title">New request</h1>
-      <p className="body m-0 max-w-[60ch]">{draft === 'new' ? 'Describe what you need in the chat on the right. I ask a few questions, then you check the request before it is sent.' : 'Your draft is open in the chat on the right.'}</p>
-      <RequestOpen request={draft} className="self-start">Open the chat</RequestOpen>
-      <p className="small m-0"><a className="text-primary" href="/requests">Your requests</a></p>
-      <OpenOnLoad request={draft} />
-    </div>
-  )
+  const products = (await payload.count({ collection: 'products', where: productsVisibleTo(user, workspace.id), overrideAccess: true })).totalDocs
+  if (!products) return <><h1 className="title">New request</h1><EmptyState text={`No products in ${workspace.name} yet.${isBauherr(user) ? ' Set up the Workspace first.' : ' Ask your Bauherr to assign one to you.'}`} action={isBauherr(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} /></>
+  let id: number | null
+  try {
+    id = await startDraft({ payload, user, workspace: workspace.id }, /^\d{1,9}$/.test(product ?? '') ? Number(product) : undefined)
+  } catch (e) {
+    return <><h1 className="title">New request</h1><p role="alert" className="text-destructive">{e instanceof Error ? e.message : 'The request could not be started.'}</p></>
+  }
+  if (id === null) notFound()
+  redirect(`/requests/${id}`)
 }
