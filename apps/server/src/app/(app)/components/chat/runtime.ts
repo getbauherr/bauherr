@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { useAui, useLocalRuntime, useRemoteThreadListRuntime, type FeedbackAdapter, type RemoteThreadListAdapter, type ThreadHistoryAdapter } from '@assistant-ui/react'
-import { api, currentPath, remember, type HistoryItem, type Meta, type Pending, type RequestInfo, type Stored } from './api'
+import { api, currentPath, remember, type HistoryItem, type Meta, type Pending, type Stored } from './api'
 import { makeAttachments, makeChatAdapter, type Artifact, type Custom } from './adapter'
 
 type Metadata = Awaited<ReturnType<RemoteThreadListAdapter['fetch']>>
@@ -9,8 +9,8 @@ type TitleChunk = TitleStream extends ReadableStream<infer C> ? C : never
 type Item = { getState(): { remoteId?: string | undefined }; initialize(): Promise<{ remoteId: string }> }
 
 export type Hooks = {
-  /** A stored thread was opened: the page it was about (null for a new one), its Ticket, its request. */
-  onLoaded(threadId: string | undefined, context: Meta['context'], ticket: number | null, request: RequestInfo | null): void
+  /** A stored thread was opened: the page it was about (null for a new one) and its Ticket. */
+  onLoaded(threadId: string | undefined, context: Meta['context'], ticket: number | null): void
   onWrite(): void
 }
 
@@ -76,32 +76,14 @@ const withPending = (items: HistoryItem[], pending: Pending | null): HistoryItem
   return [...items, { parentId: last?.id ?? null, message } as HistoryItem]
 }
 
-const PRODUCT = (thread: string) => `product-${thread}`
-
-/** A request thread that is not sent starts with its cards (not stored): the Product to choose while that is still possible, and the request card; the first stored message hangs off them. */
-const withCards = (items: HistoryItem[], thread: string, request: RequestInfo): HistoryItem[] => {
-  const id = PRODUCT(thread)
-  const call = (name: string, artifact: Artifact) => ({ type: 'tool-call' as const, toolCallId: `${id}-${name}`, toolName: name, args: {}, argsText: '{}', artifact })
-  const content = [...(request.products.length ? [call('choose_product', { kind: 'product', thread: Number(thread), products: request.products, current: request.productId })] : []), call('request_card', { kind: 'request-card', session: request.session })]
-  const message = { id, role: 'assistant', createdAt: new Date(0), content, status: { type: 'complete', reason: 'unknown' }, metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { synthetic: true } } }
-  return [{ parentId: null, message } as HistoryItem, ...items.map((i) => (i.parentId ? i : ({ ...i, parentId: id } as HistoryItem)))]
-}
-
-/** A message that hung off a card which is no longer shown (the Product card of a thread that has started) becomes a root. */
-const withoutOrphans = (items: HistoryItem[]): HistoryItem[] => {
-  const ids = new Set(items.map((i) => i.message.id))
-  return items.map((i) => (i.parentId && !ids.has(i.parentId) ? ({ ...i, parentId: null } as HistoryItem) : i))
-}
-
 const listAdapter = (hooks: RefObject<Hooks>): RemoteThreadListAdapter => {
   const history = (item: () => Item): ThreadHistoryAdapter => ({
     async load() {
       const id = item().getState().remoteId
       if (!id) return { messages: [] }
       const d = await api.messages(id)
-      hooks.current.onLoaded(id, d.context, d.ticket, d.request)
-      const items = withPending(d.messages.map(decode), d.pending)
-      return { messages: withoutOrphans(d.request && !d.request.sent ? withCards(items, id, d.request) : items) }
+      hooks.current.onLoaded(id, d.context, d.ticket)
+      return { messages: withPending(d.messages.map(decode), d.pending) }
     },
     append: async (entry) => {
       const id = await remoteId(item())
@@ -162,7 +144,7 @@ export function useChatRuntime(hooks: Hooks, initialThreadId: string | undefined
     initialThreadId,
     onThreadIdChange: (id) => {
       remember.set(userKey, id ?? null)
-      if (!id) ref.current.onLoaded(undefined, null, null, null)
+      if (!id) ref.current.onLoaded(undefined, null, null)
     },
   })
   return runtime

@@ -8,8 +8,7 @@ type User = Doc & { id: number }
 let payload: Payload
 let testDb: TestDb
 let fake: FakeBackend
-let request: typeof import('../src/lib/chat/request')
-let threads: typeof import('../src/lib/chat/threads')
+let request: typeof import('../src/lib/request-conversation')
 let actions: typeof import('../src/lib/actions')
 let jobs: typeof import('../src/jobs')
 let gates: typeof import('../src/lib/gates')
@@ -33,8 +32,7 @@ beforeAll(async () => {
   delete process.env.GATEWAY_ADMIN_URL
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
-  request = await import('../src/lib/chat/request')
-  threads = await import('../src/lib/chat/threads')
+  request = await import('../src/lib/request-conversation')
   actions = await import('../src/lib/actions')
   jobs = await import('../src/jobs')
   gates = await import('../src/lib/gates')
@@ -54,23 +52,16 @@ afterAll(async () => {
 })
 
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
-const drain = async (g: AsyncGenerator<any>): Promise<any[]> => {
-  const out: any[] = []
-  for await (const e of g) out.push(e)
-  return out
-}
-const say = (text: string) => [{ role: 'user' as const, content: [{ type: 'text' as const, text }] }]
-const start = async (user: User) => {
-  const session = (await payload.create({ collection: 'intake_sessions', data: { product: web, workspace: ws, persona: 'product-user', status: 'open', messages: [], user: user.id }, ...o })).id as number
-  return { thread: (await request.requestThread(who(user), session))!.id as number, session }
-}
-const run = async (s: { thread: number }, user: User, text: string) => drain(request.runRequest({ ...who(user), thread: (await threads.ownThread(who(user), s.thread))!, messages: say(text) }))
+const start = async (user: User) => ({ session: (await payload.create({ collection: 'intake_sessions', data: { product: web, workspace: ws, persona: 'product-user', status: 'open', messages: [], user: user.id }, ...o })).id as number })
+const run = (s: { session: number }, user: User, text: string) => request.requestTurn(who(user), { session: s.session, text })
+const edit = async (user: User, session: number, patch: Parameters<typeof request.requestEdit>[2] extends infer C ? (C extends { patch: infer P } ? P : never) : never) => (await request.requestEdit(who(user), session, { patch })).card
+const cardOf = async (user: User, session: number) => (await request.loadRequestView(who(user), session))!.card
 const complete = (session: number, extra: Doc = {}) =>
   payload.update({ collection: 'intake_sessions', id: session, data: { draft: { title: 'Totals wrong', problem: 'The invoice total is wrong', context: 'Invoices page', acceptance_criteria: ['Totals match'], type: 'bug', links: [], ...extra }, messages: [{ role: 'user', content: 'x' }] }, ...o })
 
 it('a hand edit of the card is stored, kept by the next interview turn and the model sees it', async () => {
   const s = await start(alice)
-  const card = await request.editCard(who(alice), s.session, { title: 'My title', type: 'change', acceptance_criteria: ['  One  ', '', 'Two'] })
+  const card = await edit(alice, s.session, { title: 'My title', type: 'change', acceptance_criteria: ['  One  ', '', 'Two'] })
   expect(card).toMatchObject({ title: 'My title', kind: 'change', criteria: ['One', 'Two'], editable: true })
   expect(await payload.findByID({ collection: 'intake_sessions', id: s.session, ...o })).toMatchObject({ title: 'My title', kind: 'change', edited: ['title', 'type', 'acceptance_criteria'] })
   await run(s, alice, 'The invoice total is wrong')
@@ -81,50 +72,49 @@ it('a hand edit of the card is stored, kept by the next interview turn and the m
 
 it('urgency: only a bug, only with the fast lane on, never for several requests in one; it needs its reason', async () => {
   const s = await start(alice)
-  await expect(request.editCard(who(alice), s.session, { urgency: 'urgent' })).rejects.toThrow('Only a bug can be urgent')
-  await request.editCard(who(alice), s.session, { type: 'bug' })
-  expect(await request.editCard(who(alice), s.session, { urgency: 'urgent' })).toMatchObject({ urgency: 'urgent', canSend: false, missing: expect.arrayContaining(['what is broken, for whom, since when']) })
-  expect(await request.editCard(who(alice), s.session, { urgent_reason: 'Checkout is down for all customers since 9.' })).toMatchObject({ urgentReason: expect.stringContaining('Checkout') })
-  expect(await request.editCard(who(alice), s.session, { type: 'feature' })).toMatchObject({ urgency: 'normal', urgentReason: '' })
-  await request.editCard(who(alice), s.session, { type: 'bug' })
+  await expect(edit(alice, s.session, { urgency: 'urgent' })).rejects.toThrow('Only a bug can be urgent')
+  await edit(alice, s.session, { type: 'bug' })
+  expect(await edit(alice, s.session, { urgency: 'urgent' })).toMatchObject({ urgency: 'urgent', canSend: false, missing: expect.arrayContaining(['what is broken, for whom, since when']) })
+  expect(await edit(alice, s.session, { urgent_reason: 'Checkout is down for all customers since 9.' })).toMatchObject({ urgentReason: expect.stringContaining('Checkout') })
+  expect(await edit(alice, s.session, { type: 'feature' })).toMatchObject({ urgency: 'normal', urgentReason: '' })
+  await edit(alice, s.session, { type: 'bug' })
   await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: false }, ...o })
-  await expect(request.editCard(who(alice), s.session, { urgency: 'urgent' })).rejects.toThrow('fast lane is off')
-  expect((await request.requestCard(who(alice), s.session))!.fastLane).toBe(false)
+  await expect(edit(alice, s.session, { urgency: 'urgent' })).rejects.toThrow('fast lane is off')
+  expect((await cardOf(alice, s.session)).fastLane).toBe(false)
   await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: true }, ...o })
-  await expect(request.editCard(who(alice), 99999999, { title: 'x' })).rejects.toThrow()
+  await expect(edit(alice, 99999999, { title: 'x' })).rejects.toThrow()
 })
 
 it('the AI proposes title, type and urgency from an outage; the fake model keeps them on the card', async () => {
   const s = await start(alice)
   await run(s, alice, 'The checkout has an outage')
-  expect(await request.requestCard(who(alice), s.session)).toMatchObject({ title: 'The checkout has an outage', kind: 'bug', urgency: 'urgent', urgentReason: expect.stringContaining('Nobody can work') })
+  expect(await cardOf(alice, s.session)).toMatchObject({ title: 'The checkout has an outage', kind: 'bug', urgency: 'urgent', urgentReason: expect.stringContaining('Nobody can work') })
   await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: false }, ...o })
   const off = await start(alice)
   await run(off, alice, 'The checkout has an outage')
-  expect(await request.requestCard(who(alice), off.session)).toMatchObject({ urgency: 'normal' })
+  expect(await cardOf(alice, off.session)).toMatchObject({ urgency: 'normal' })
   await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: true }, ...o })
 })
 
-it('a question is answered in the thread and files nothing until it is turned into a request', async () => {
+it('a question is answered in the conversation and files nothing until it is turned into a request', async () => {
   const s = await start(alice)
-  for (const t of ['Question: where is the export?', 'anyone', 'ok']) expect((await run(s, alice, t)).map((e) => e.type)).not.toContain('confirm')
-  expect(await request.requestCard(who(alice), s.session)).toMatchObject({ kind: 'question', canSend: true })
-  const send = await run(s, alice, 'Send this request to the factory.')
-  expect(send[0].text).toContain('answered here and files nothing')
+  for (const t of ['Question: where is the export?', 'anyone', 'ok']) await run(s, alice, t)
+  expect(await cardOf(alice, s.session)).toMatchObject({ kind: 'question', canSend: true })
+  await expect(request.requestFile(who(alice), s.session)).rejects.toThrow('answered in the chat')
   await expect(actions.submitIntake(payload, s.session)).rejects.toThrow('answered in the chat')
-  await request.editCard(who(alice), s.session, { acceptance_criteria: [] })
-  expect(await request.editCard(who(alice), s.session, { type: 'feature' })).toMatchObject({ kind: 'feature', canSend: false, missing: ['at least one "It is done when"'] })
+  await edit(alice, s.session, { acceptance_criteria: [] })
+  expect(await edit(alice, s.session, { type: 'feature' })).toMatchObject({ kind: 'feature', canSend: false, missing: ['at least one "It is done when"'] })
 })
 
-it('"Send to the factory" makes the confirmation card without a model call and says what is missing otherwise', async () => {
+it('filing says what is missing otherwise, and files the card exactly as it stands', async () => {
   const s = await start(alice)
   await complete(s.session, { acceptance_criteria: [] })
-  expect((await run(s, alice, 'Send this request to the factory.'))[0].text).toBe('Not ready to send yet. Still needed: what should happen instead.')
-  await request.editCard(who(alice), s.session, { acceptance_criteria: ['Totals match'] })
-  const events = await run(s, alice, 'Send this request to the factory.')
-  expect(events.map((e) => e.type)).toEqual(['delta', 'tool-call', 'confirm', 'done'])
-  expect(events.find((e) => e.type === 'confirm').details).toContainEqual({ label: 'Type', value: 'Bug' })
-  expect(((await payload.findByID({ collection: 'intake_sessions', id: s.session, ...o })) as Doc).messages).toHaveLength(1)
+  await expect(request.requestFile(who(alice), s.session)).rejects.toThrow('draft incomplete: acceptance_criteria')
+  await edit(alice, s.session, { acceptance_criteria: ['Totals match'] })
+  const view = await request.requestFile(who(alice), s.session)
+  expect(view).toMatchObject({ sent: true, status: expect.stringMatching(/^Filed as #\d+\.$/), handoff: { numbers: [expect.any(Number)], ticket: null } })
+  expect(view.card).toMatchObject({ sent: true, editable: false })
+  expect(await request.requestFile(who(alice), s.session)).toMatchObject({ sent: true }) // filing twice answers the same
 })
 
 const labelsOf = async (number: number) => (await fake.tickets(repo).get(String(number))).labels
@@ -142,7 +132,7 @@ it('filing a request puts the type on the issue and the title is the card title;
   await payload.update({ collection: 'intake_sessions', id: next.session, data: { followUpOf: s.session }, ...o })
   const again = await actions.submitIntake(payload, next.session)
   expect((await fake.tickets(repo).get(String(again.number))).body).toContain(`Follow-up to #${number}`)
-  expect(await request.requestCard(who(alice), next.session)).toMatchObject({ followUp: number, sent: true })
+  expect(await cardOf(alice, next.session)).toMatchObject({ followUp: number, sent: true })
 })
 
 it('an urgent request of a member asks for the fast lane at once: the proposal label, the Inbox decision with the reason, no Triage Run first', async () => {

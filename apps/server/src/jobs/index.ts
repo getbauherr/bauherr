@@ -881,8 +881,8 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   retries: 0,
   handler: async ({ req }) => {
     await loadWorkflows(req.payload)
-    const { pruneEmptyRequests } = await import('../lib/chat/request') // loaded here: the chat code imports the actions, which import this file
-    return { output: { deleted: (await pruneCommentMedia(req.payload)) + (await pruneEmptyRequests(req.payload)) } } // comment images nobody posted, and request threads nobody wrote to
+    const { pruneEmptyRequests } = await import('../lib/request-conversation') // loaded here: it imports the actions, which import this file
+    return { output: { deleted: (await pruneCommentMedia(req.payload)) + (await pruneEmptyRequests(req.payload)) } } // comment images nobody posted, and empty request drafts nobody wrote to
   },
 }
 

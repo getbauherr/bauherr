@@ -1,4 +1,4 @@
-import { questionsAsked, readiness, refersToScreen, type Draft, type Session } from './engine'
+import { questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type Session } from './engine'
 import type { Kind } from './kinds'
 
 type Doc = Record<string, any>
@@ -32,6 +32,13 @@ export type CardData = {
   images: CardImage[]
   /** Plain words of what is still missing to send (empty: ready). */
   missing: string[]
+  /** The same as the engine's keys (`problem`, `context`, `acceptance_criteria`, `urgent_reason`, `screenshot`): which fields of the card are placeholders. */
+  needs: string[]
+  /** The card fields the last interview turn changed. */
+  changed: string[]
+  /** Items of a request that is several in one (0: a single request) and what each is about. */
+  parts: number
+  items: string[]
   /** Nothing missing, or the question cap lets the person send what exists. */
   canSend: boolean
   /** The Workspace's fast lane is on, so Urgent is offered (for a Bug). */
@@ -49,7 +56,10 @@ export const cardOf = (s: Doc, o: { editable: boolean; images: CardImage[]; fast
   const kind: Kind = d?.type ?? s.kind ?? 'feature'
   const session: Session = { messages: s.messages ?? [], draft: d, screenshots: s.screenshots }
   const split = !!s.split?.length
-  const r = readiness(d, (s.screenshots ?? 0) > 0, refersToScreen(session, s.turn?.needsScreenshot === true), questionsAsked(session))
+  const ready = [(s.screenshots ?? 0) > 0, refersToScreen(session, s.turn?.needsScreenshot === true), questionsAsked(session)] as const
+  const r = split ? splitReadiness(s.split, ...ready) : readiness(d, ...ready)
+  // Several requests in one: every item must be complete, and the words name the item (`<n>: <field>`).
+  const missing = split ? r.missing.map((m) => `request ${m.split(': ')[0]}: ${missingWords(kind, [m.split(': ')[1]!])[0]}`) : missingWords(kind, r.missing)
   const product = s.product && typeof s.product === 'object' ? { id: s.product.id as number, name: s.product.name as string } : null
   return {
     session: s.id,
@@ -65,7 +75,11 @@ export const cardOf = (s: Doc, o: { editable: boolean; images: CardImage[]; fast
     context: d?.context ?? '',
     criteria: (d?.acceptance_criteria ?? []).filter((c) => c.trim()),
     images: o.images,
-    missing: missingWords(kind, r.missing),
+    missing,
+    needs: split ? [] : r.missing,
+    changed: Array.isArray(s.turn?.changed) ? s.turn.changed : [],
+    parts: s.split?.length ?? 0,
+    items: ((s.split ?? []) as Draft[]).map((i) => i.problem),
     canSend: r.ready || r.exhausted,
     fastLane: o.fastLane,
     split,

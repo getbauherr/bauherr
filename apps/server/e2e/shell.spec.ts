@@ -24,16 +24,16 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
   await expect(nav.getByRole('link')).toHaveCount(8) // Inbox, Workflow, Agent team, Requests, Releases, Knowledge, Runs (Admin), Insights
   await expect(nav.getByRole('link', { name: 'Knowledge' })).toBeVisible()
   await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Workflow')
-  await expect(bar.getByRole('button', { name: 'New request' })).toBeVisible()
+  await expect(bar.getByRole('link', { name: 'New request' })).toBeVisible()
   await nav.getByRole('link', { name: /^Requests/ }).click()
   await expect(nav.getByRole('link', { name: /^Requests/ })).toHaveAttribute('aria-current', 'page')
   await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Requests')
-  await bar.getByRole('button', { name: 'New request' }).click()
-  await expect(page.getByTestId('chat-dock')).toBeVisible()
-  await expect(page.getByTestId('chat-dock').getByTestId('context-chip')).toContainText('New request', { timeout: 30_000 })
+  await bar.getByRole('link', { name: 'New request' }).click()
+  await expect(page).toHaveURL(/\/requests\/\d+$/)
+  await expect(page.getByTestId('conversation-shell')).toBeVisible()
+  await expect(page.getByTestId('chat-dock')).toBeHidden() // the conversation is the page, not the dock
   await page.goto('/requests/new')
-  await expect(page.getByRole('heading', { name: 'New request' })).toBeVisible()
-  await expect(bar.getByRole('button', { name: 'New request' })).toHaveCount(0)
+  await expect(page).toHaveURL(/\/requests\/\d+$/) // the empty draft is reused, not piled up
   await page.goto('/')
 
   const footer = page.getByRole('contentinfo')

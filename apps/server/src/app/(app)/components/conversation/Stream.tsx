@@ -9,6 +9,7 @@ import { FeedbackDialog } from '../assistant-ui/elements/feedback-dialog'
 import { SpeakerTurn } from '../assistant-ui/elements/speaker-identity'
 import { RoleAvatar } from '../team/RoleAvatar'
 import { api } from '../chat/api'
+import { shortModel } from '../../lib/format'
 import { cn } from '@/lib/utils'
 import type { Image, Point, Speaker } from '../../../../lib/refine/model'
 
@@ -16,7 +17,8 @@ const REASONS = ['Wrong', 'Incomplete', 'Too long', 'Did not do what I asked', '
 export const when = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 type Custom = { speaker?: Speaker; feedback?: 'up' | 'down' | null; images?: Image[]; settled?: string[] }
-type Ctx = { thread: number; locked: boolean; points: Point[]; busy: boolean; tail: ReactNode; onChange(id: string): void }
+/** `thread`: the chat thread that stores the ratings (null: the conversation has none, so no thumbs). */
+type Ctx = { thread: number | null; /** Whether each message names its executor (false: the partner is the executor, as the Factory assistant is in request drafting). */ executor?: boolean; locked: boolean; points: Point[]; busy: boolean; tail: ReactNode; onChange(id: string): void }
 const StreamCtx = createContext<Ctx>(null as never)
 
 /** Who speaks, the way the participant header says it: the session that asked (with presence), or the Factory assistant that replied. Never the session for a server-side reply. */
@@ -43,7 +45,7 @@ const Actions: FC = () => {
   const [note, setNote] = useState('')
   const [sent, setSent] = useState(false)
   const send = async (value: 'up' | 'down') => {
-    await api.feedback(String(thread), { messageId: id, value, ...(value === 'down' && { reasons, note: note.trim() }) }).catch(() => {})
+    await api.feedback(String(thread!), { messageId: id, value, ...(value === 'down' && { reasons, note: note.trim() }) }).catch(() => {})
     setRated(value)
   }
   return (
@@ -89,7 +91,7 @@ const UserMessage: FC = () => {
 }
 
 const AssistantMessage: FC = () => {
-  const { locked, points, tail } = useContext(StreamCtx)
+  const { locked, points, tail, thread, executor = true } = useContext(StreamCtx)
   const custom = useAuiState((m) => m.message.metadata.custom as Custom)
   const writing = useAuiState((m) => m.message.status?.type === 'running')
   const last = useAuiState((m) => m.message.isLast)
@@ -98,23 +100,23 @@ const AssistantMessage: FC = () => {
   const settled = (custom.settled ?? []).flatMap((id) => points.filter((p) => p.id === id && p.status !== 'open'))
   return (
     <MessagePrimitive.Root data-role="assistant" data-writing={writing || undefined} className="group/message">
-      <SpeakerTurn data-testid="speaker" data-kind={s.kind} avatar={<RoleAvatar avatar={s.avatar ?? 'orchestrator'} size="sm" animate={writing} />} name={s.role ?? 'Orchestrator'} detail={<Executor s={s} />} meta={<><span data-testid="speaker-model">{s.model ?? 'no model call'}</span> · <time>{when(s.at)}</time></>}>
-        <div data-testid="reply-text" className="text-[14px] leading-6 wrap-anywhere whitespace-pre-wrap"><MessagePrimitive.Parts /></div>
+      <SpeakerTurn data-testid="speaker" data-kind={s.kind} avatar={<RoleAvatar avatar={s.avatar ?? 'orchestrator'} size="sm" animate={writing} />} name={s.role ?? 'Orchestrator'} detail={executor ? <Executor s={s} /> : undefined} meta={<><span data-testid="speaker-model" title={s.model ?? undefined}>{s.model ? shortModel(s.model) : 'no model call'}</span> · <time>{when(s.at)}</time></>}>
+        <div data-testid="reply-text" className="text-[14px] leading-6 wrap-anywhere whitespace-pre-wrap empty:hidden"><MessagePrimitive.Parts /></div>
         {settled.map((p) => <Chip key={p.id} p={p} />)}
         {last && !writing && tail}
-        {writing ? <p role="status" data-testid="writing" className="m-0 animate-pulse text-[13px] text-muted-foreground">is writing...</p> : !locked && <div className="opacity-60 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100"><Actions /></div>}
+        {writing ? <p role="status" data-testid="writing" className="m-0 animate-pulse text-[13px] text-muted-foreground">is writing...</p> : !locked && thread !== null && <div className="opacity-60 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100"><Actions /></div>}
       </SpeakerTurn>
     </MessagePrimitive.Root>
   )
 }
 
-/** The stream of the refinement: assistant-ui's thread of messages, with the open question as a card at the end of the last agent message. */
-export const Stream: FC<Ctx & { earlier: { role: string; text: string }[]; working: boolean; children?: ReactNode }> = ({ earlier, working, children, ...ctx }) => {
+/** The stream of a conversation: assistant-ui's thread of messages, with the open question as a card at the end of the last agent message. */
+export const Stream: FC<Ctx & { earlier: { role: string; text: string }[]; working: boolean; /** The test id of the scrolling thread. */ name?: string; children?: ReactNode }> = ({ earlier, working, name = 'refine-thread', children, ...ctx }) => {
   const [showEarlier, setShowEarlier] = useState(false)
   return (
     <StreamCtx.Provider value={ctx}>
       <ThreadPrimitive.Root className="aui-root flex min-h-0 flex-1 flex-col text-foreground">
-        <ThreadPrimitive.Viewport className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto py-4" aria-live="polite" data-testid="refine-thread" autoScroll>
+        <ThreadPrimitive.Viewport className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto py-4" aria-live="polite" data-testid={name} autoScroll>
           {earlier.length > 0 && (
             <button type="button" data-testid="earlier" onClick={() => setShowEarlier(true)} className="mx-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[13px] text-muted-foreground hover:text-foreground">
               <History className="size-3.5" />Earlier conversation · {earlier.length} message{earlier.length === 1 ? '' : 's'}

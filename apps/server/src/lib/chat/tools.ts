@@ -6,7 +6,7 @@ import { loadRun } from '../../app/(app)/lib/run'
 import { loadProof, type ProofData } from '../../app/(app)/lib/proof'
 import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
-import { NotInWorkspace, postComment, submitIntake } from '../actions'
+import { NotInWorkspace, postComment } from '../actions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
 import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
 
@@ -240,16 +240,6 @@ const ENTRIES: Record<string, Entry> = {
       return { posted: true }
     },
     describe: async (c, input) => gateCard((t) => `Comment on ${ticketLine(t)}`, 'The text is posted as a comment on the issue', { extra: (i) => [{ label: 'Comment', value: String(i.body ?? '').slice(0, 600) }] })(c, input),
-  },
-  submit_request: {
-    schema: schema({ session: { type: 'integer' }, expect: { type: 'integer' } }, ['session']),
-    kind: 'confirm',
-    hidden: true,
-    local: async (c, i) => {
-      const s = (await c.payload.findByID({ collection: 'intake_sessions', id: i.session, ...o }).catch(() => null)) as Doc | null
-      if (!s || s.persona !== 'product-user' || String(id(s.user)) !== String(c.user.id) || String(id(s.workspace)) !== String(c.workspace)) throw new NotInWorkspace()
-      return submitIntake(c.payload, s.id, i.expect)
-    },
   },
   approve_skill_proposal: {
     admin: true,

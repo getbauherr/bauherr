@@ -1,4 +1,7 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
+/** A model id without its provider prefix ("anthropic/claude-sonnet-5-5" is "claude-sonnet-5-5"); the full id belongs in a title attribute. */
+export const shortModel = (id: string): string => id.replace(/^.*\//, '')
+
 /** "5 min ago", "3 h ago", "2 d ago". */
 export const ago = (iso: string): string => {
   const m = Math.max(0, Math.round((Date.now() - +new Date(iso)) / 6e4))

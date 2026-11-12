@@ -132,7 +132,7 @@ describe('Requests of a Product owner', () => {
     expect(await loadOwnerTicket(ws.a, ticket.a2, other as never)).not.toBeNull()
   })
 
-  it('the pages: Requests, a request and the Ticket render for a Product owner and are 404 for Product B; New request is closed with the dock', async () => {
+  it('the pages: Requests, a request and the Ticket render for a Product owner and are 404 for Product B; New request opens their own draft', async () => {
     session.cookie = cookie.po
     const notFound = (e: unknown) => /404|NEXT_NOT_FOUND/.test(String((e as { digest?: string })?.digest ?? e))
     const render = async (load: () => Promise<{ default: (p: any) => Promise<unknown> }>, params: Record<string, string>) => {
@@ -146,7 +146,7 @@ describe('Requests of a Product owner', () => {
     const requestPage = () => import('../src/app/(app)/(shell)/requests/[id]/page')
     const ticketPage = () => import('../src/app/(app)/(shell)/tickets/[id]/page')
     expect(await render(() => import('../src/app/(app)/(shell)/requests/page'), {})).toBe('rendered')
-    expect(await render(() => import('../src/app/(app)/(shell)/requests/new/page'), {})).toBe('404')
+    expect(await render(() => import('../src/app/(app)/(shell)/requests/new/page'), {})).toBe('threw Error: NEXT_REDIRECT') // to the conversation on their empty draft
     expect(await render(requestPage, { id: String(request.sentA1) })).toBe('rendered')
     expect(await render(requestPage, { id: String(request.sentA2) })).toBe('404')
     expect(await render(requestPage, { id: String(request.draftOther) })).toBe('404')

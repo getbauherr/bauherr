@@ -1,68 +1,79 @@
 import { expect, test, type Page } from '@playwright/test'
 import { email as admin } from './user'
-import { dock, productChosen, say, shoot, signIn, startRequest } from './request-dock'
+import { password, shoot } from './dock'
 
 test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1, INTAKE_FAKE=1 and CHAT_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
 
 // A member of the several-Product Workspace with a workbench of their own (seed-e2e.ts); only these tests sign in as them.
 const owner = 'card-owner@example.com'
-const card = (page: Page) => dock(page).getByTestId('dock-request-card')
-const saved = (c: ReturnType<typeof card>) => expect(c.getByRole('status')).toHaveCount(0)
+const signIn = async (page: Page, who: string) => {
+  await page.context().clearCookies()
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(who)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('banner')).toBeVisible()
+}
+const panel = (page: Page) => page.getByTestId('artifact-panel')
+const field = (page: Page, name: string) => panel(page).locator(`[data-field=${name}]`)
+const composer = (page: Page) => page.getByRole('textbox', { name: 'Your answer' })
+const say = async (page: Page, text: string, reply: string | RegExp) => {
+  await expect(page.getByTestId('stop')).toHaveCount(0)
+  await composer(page).fill(text)
+  await composer(page).press('Enter')
+  await expect(page.getByTestId('speaker').last().getByTestId('reply-text')).toContainText(reply, { timeout: 30_000 })
+  await expect(page.getByTestId('stop')).toHaveCount(0, { timeout: 30_000 })
+}
+/** A new request in the conversation, for Acme Web (the card's Product select, several Products). */
+const start = async (page: Page) => {
+  await page.getByRole('banner').getByRole('link', { name: 'New request' }).click()
+  await expect(page.getByTestId('conversation-shell')).toBeVisible()
+  await field(page, 'product').getByRole('combobox', { name: 'Product' }).click()
+  await page.getByRole('option', { name: 'Acme Web' }).click()
+  await expect(field(page, 'product')).toContainText('Acme Web')
+}
 
-test('the card fills from the conversation, keeps what the person edits, and "Send to the factory" makes the confirmation card', async ({ page }) => {
+test('the card fills from the conversation, keeps what the person edits, and an urgent bug asks for the fast lane', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page, owner)
-  await startRequest(page, 'choose a product')
-  await productChosen(page)
+  await start(page)
   await say(page, 'The checkout has an outage', 'Who is affected, and since when?')
-  const c = card(page)
-  await expect(c.getByTestId('card-kind')).toHaveText('Bug')
-  await expect(c.getByTestId('card-urgent')).toBeVisible()
-  await expect(c.getByLabel('What is broken, for whom, since when')).toHaveValue(/Nobody can work/)
-  await expect(c.getByLabel('Title')).toHaveValue('The checkout has an outage')
-  await expect(c.getByTestId('card-send')).toBeDisabled()
-  await expect(c.getByTestId('card-missing')).toContainText('Missing')
-  await c.getByLabel('Title').fill('Checkout outage')
-  await c.getByLabel('Title').blur()
-  await saved(c)
+  await expect(panel(page).getByTestId('card-kind')).toHaveText('Bug')
+  await expect(panel(page).getByTestId('card-urgent')).toBeVisible()
+  await expect(field(page, 'urgent_reason')).toContainText('Nobody can work')
+  await expect(field(page, 'urgency')).toContainText('asks the Bauherr for the fast lane')
+  await expect(field(page, 'title')).toContainText('The checkout has an outage')
+  await expect(page.getByTestId('file-request')).toBeDisabled()
+  await expect(page.getByTestId('foot-status')).toContainText('Still needed')
+  await field(page, 'title').getByRole('button', { name: 'Edit Title' }).click()
+  await page.getByRole('textbox', { name: 'Title' }).fill('Checkout outage')
+  await field(page, 'title').getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByTestId('card-edit')).toHaveCount(0) // saved: the editor closes with the answer
+  await expect(field(page, 'title')).toContainText('Checkout outage')
   await say(page, 'Finance, last week', 'How should it work once it is fixed?')
-  await expect(c.getByLabel('Title')).toHaveValue('Checkout outage') // the next turn kept the edit
-  await c.evaluate((el) => el.scrollIntoView({ block: 'start' }))
-  await shoot(page, 'dock-card')
+  await expect(field(page, 'title')).toContainText('Checkout outage') // the next turn kept the edit
   await say(page, 'Totals should match', 'Anything to add before I send this?')
-  const confirm = dock(page).getByTestId('confirm-card').last()
-  await expect(confirm).toContainText('Urgent', { timeout: 30_000 })
-  await expect(confirm).toContainText('asks the Bauherr for the fast lane')
-  await shoot(page, 'dock-card-urgent-bug')
-  await confirm.getByRole('button', { name: 'Keep editing' }).click()
-  await expect(confirm).toHaveAttribute('data-state', 'declined')
-  await expect(c.getByTestId('card-missing')).toHaveText('Ready to send.')
-  await c.getByTestId('card-send').click()
-  const again = dock(page).getByTestId('confirm-card').last()
-  await expect(again).toHaveAttribute('data-state', 'pending', { timeout: 30_000 })
-  await expect(again).toContainText('Bug')
-  await again.getByRole('button', { name: 'Create request' }).click()
-  await expect(dock(page).getByTestId('confirm-outcome').last()).toContainText(/Request #\d+ sent/, { timeout: 30_000 })
+  await expect(page.getByTestId('foot-status')).toHaveText('Ready to file.')
+  await expect(page.getByTestId('foot-next')).toContainText('fast lane')
+  await page.getByTestId('file-request').click()
+  await expect(page.getByTestId('handoff')).toContainText(/Filed as #\d+/, { timeout: 30_000 })
 })
 
-test('a question is answered in the thread and files nothing until it is turned into a request', async ({ page }) => {
+test('a question is answered in the conversation and files nothing until it is turned into a request', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page, owner)
-  await startRequest(page, 'choose a product')
-  await productChosen(page)
+  await start(page)
   await say(page, 'Question: where do I find the export?', 'Here is the answer in plain words.')
-  const c = card(page)
-  await expect(c.getByTestId('card-kind')).toHaveText('Question')
-  await expect(c).toContainText('files nothing')
-  await expect(c.getByTestId('card-send')).toHaveCount(0)
-  await expect(dock(page).getByTestId('confirm-card')).toHaveCount(0)
-  await c.getByRole('button', { name: 'Turn into a request' }).click()
-  await expect(c.getByTestId('card-kind')).toHaveText('Feature')
-  await expect(c.getByTestId('card-send')).toBeVisible()
+  await expect(panel(page).getByTestId('card-kind')).toHaveText('Question')
+  await expect(page.getByTestId('foot-status')).toContainText('files nothing')
+  await expect(page.getByTestId('file-request')).toHaveCount(0)
+  await panel(page).getByRole('button', { name: 'Turn into a request' }).click()
+  await expect(panel(page).getByTestId('card-kind')).toHaveText('Feature')
+  await expect(page.getByTestId('file-request')).toBeVisible()
 })
 
-test('the request page pins the card of a draft; an edit there is stored and Send opens the confirmation in the dock', async ({ page }) => {
+test('the seeded draft opens as a conversation with its card; an edit of the card is stored and makes it ready', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page, owner)
   await page.goto('/requests')
@@ -70,23 +81,20 @@ test('the request page pins the card of a draft; an edit there is stored and Sen
   await expect(draft.getByTestId('kind-chip')).toHaveText('Bug')
   await expect(draft.getByTestId('urgent-chip')).toBeVisible()
   await expect(draft.getByTestId('draft-ready')).toContainText('Missing: what should happen instead')
-  await draft.getByRole('link', { name: 'Checkout is down' }).click()
-  const c = page.getByTestId('request-card')
-  await expect(c).toHaveAttribute('data-urgency', 'urgent')
-  await expect(c.getByLabel('Title')).toHaveValue('Checkout is down')
-  await expect(c.getByLabel('What is broken, for whom, since when')).toHaveValue(/since 9/)
-  await expect(c.getByTestId('card-send')).toBeDisabled()
-  await shoot(page, 'request-page-draft-card')
-  await c.getByLabel('It is done when').fill('Customers can pay again\nNo order is lost')
-  await c.getByLabel('It is done when').blur()
-  await expect(c.getByTestId('card-send')).toBeEnabled()
+  await draft.getByRole('link', { name: 'Continue' }).click()
+  await expect(page.getByTestId('conversation-shell')).toBeVisible()
+  await expect(panel(page).getByTestId('request-card')).toHaveAttribute('data-urgency', 'urgent')
+  await expect(field(page, 'title')).toContainText('Checkout is down')
+  await expect(field(page, 'urgent_reason')).toContainText('since 9')
+  await expect(page.getByTestId('file-request')).toBeDisabled()
+  await field(page, 'acceptance_criteria').getByRole('button', { name: 'Edit Done when' }).click()
+  await page.getByRole('textbox', { name: 'Done when' }).fill('Customers can pay again\nNo order is lost')
+  await field(page, 'acceptance_criteria').getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByTestId('card-edit')).toHaveCount(0)
+  await expect(page.getByTestId('file-request')).toBeEnabled()
   await page.reload()
-  await expect(page.getByTestId('request-card').getByLabel('It is done when')).toHaveValue('Customers can pay again\nNo order is lost')
-  await page.getByTestId('request-card').getByTestId('card-send').click()
-  const confirm = dock(page).getByTestId('confirm-card').last()
-  await expect(confirm).toContainText('Send this request', { timeout: 30_000 })
-  await expect(confirm).toContainText('Urgent')
-  await expect(confirm).toHaveAttribute('data-state', 'pending')
+  await expect(field(page, 'acceptance_criteria')).toContainText('No order is lost')
+  await expect(page.getByTestId('foot-status')).toHaveText('Ready to file.')
 })
 
 test('Requests has four sections with counts; ordering your own requests persists; Report a problem starts a linked Bug draft', async ({ page }) => {
@@ -124,9 +132,9 @@ test('Requests has four sections with counts; ordering your own requests persist
 
   await page.goto('/requests')
   await done.getByTestId('report-problem').click()
-  const c = card(page)
-  await expect(c.getByTestId('card-kind')).toHaveText('Bug', { timeout: 30_000 })
-  await expect(c).toContainText('Follow-up to #605')
+  await expect(page).toHaveURL(/\/requests\/\d+$/)
+  await expect(panel(page).getByTestId('card-kind')).toHaveText('Bug', { timeout: 30_000 })
+  await expect(panel(page)).toContainText('Follow-up to #605')
 })
 
 test('an Admin sees every request with a By column and the fast lane decision first in the Inbox; the Ticket page offers "Put on the fast lane"', async ({ page }) => {

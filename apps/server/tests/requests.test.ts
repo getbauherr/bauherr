@@ -110,7 +110,7 @@ describe('loadRequest', () => {
     expect(await requests.loadRequest(ws2, split, asMe())).toBeNull()
     expect(await requests.loadRequest(ws, await mk({ persona: 'owner' }), asMe())).toBeNull()
     const own = await mk({ status: 'open', user: me })
-    expect(await requests.loadRequest(ws, own, asMe())).toMatchObject({ sent: false, own: true, mine: true, tickets: [], card: { editable: true } })
+    expect(await requests.loadRequest(ws, own, asMe())).toMatchObject({ sent: false, own: true, mine: true, tickets: [], card: { editable: false } }) // the page's card only reads: a draft is edited in its conversation
     expect(await requests.loadRequest(ws, own, { id: me + 1000, role: 'bauherr' })).toMatchObject({ own: false, mine: false, card: { editable: false } })
     expect(await requests.loadRequest(ws, split, { id: me + 1000, role: 'product-owner' })).toBeNull()
     expect((await requests.loadWorkbench(ws, asMe())).factory.find((x) => x.id === split)?.href).toBe(`/requests/${split}`)

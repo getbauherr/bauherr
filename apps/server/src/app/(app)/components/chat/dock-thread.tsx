@@ -13,20 +13,17 @@ import { MarkdownText } from './markdown'
 import { ToolPart } from './tools'
 
 const MAX_IMAGES = 6
-export type Kind = 'ticket' | 'overview' | 'settings' | 'other' | 'request'
+export type Kind = 'ticket' | 'overview' | 'settings' | 'other'
 export const kindOf = (path: string): Kind => (path.startsWith('/tickets/') ? 'ticket' : path === '/' || path.startsWith('/?') ? 'overview' : path.startsWith('/settings') ? 'settings' : 'other')
 const suggestions: Record<Kind, string[]> = {
   ticket: ['What is blocking this ticket?', 'Summarise the plan', 'What happens next?', 'What needs me here?'],
   overview: ['What needs me right now?', 'What is the factory working on?', 'Which tickets are blocked?'],
   settings: ['Explain this page'],
   other: ['What needs me right now?', 'Explain this page'],
-  request: [],
 }
 
 /** `arg`: the command takes the rest of the line (`/comment <text>`); `run` gets it and the ids of the images in the composer, and answers false to keep the composer as it is (a failure). */
 export type Command = { name: string; help: string; arg?: boolean; run(arg: string, mediaIds: number[]): void | boolean | Promise<void | boolean> }
-
-const isSynthetic = (m: { metadata?: { custom?: unknown } }): boolean => !!(m.metadata?.custom as Custom | undefined)?.synthetic
 
 const imageOf = (a: { content?: readonly { type: string; image?: string }[] | undefined }): string | undefined => a.content?.find((c) => c.type === 'image')?.image
 
@@ -111,10 +108,6 @@ const Retry: FC = () => {
   return <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => aui.message().reload()}>Retry</Button>
 }
 
-const QuestionsMessage: FC = () => (
-  <MessagePrimitive.Root className="empty:hidden" data-role="questions"><MessagePrimitive.Parts components={{ tools: { Fallback: ToolPart } }} /></MessagePrimitive.Root>
-)
-
 const AssistantMessage: FC = () => (
   <MessagePrimitive.Root className="flex flex-col gap-1" data-role="assistant">
     <MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolPart } }} />
@@ -125,7 +118,7 @@ const AssistantMessage: FC = () => (
     </MessagePrimitive.Error>
     <AuiIf condition={(s) => s.message.status?.type !== 'running'}>
       <Usage />
-      <div className="flex items-center gap-0.5 group-data-[kind=request]/dock:hidden">
+      <div className="flex items-center gap-0.5">
         <ActionBarPrimitive.Root className="contents">
           <ActionBarPrimitive.Copy asChild>
             <button type="button" aria-label="Copy" title="Copy" className={iconBtn}>
@@ -143,8 +136,8 @@ const AssistantMessage: FC = () => (
 
 const Welcome: FC<{ kind: Kind }> = ({ kind }) => (
   <div className={cn('flex flex-col gap-3 py-6', useAuiState((s) => s.thread.messages.length) ? 'mt-2' : 'my-auto')} data-testid="welcome">
-    <p className="text-[15px] font-semibold">{kind === 'request' ? 'Describe what you need' : 'Ask the factory'}</p>
-    <p className="text-[14px] text-muted-foreground">{kind === 'request' ? 'Say it in a sentence, or paste a screenshot. I will ask a few questions, then you check the request before it is sent.' : 'I can see the page you are on. Ask about it, or tell me what to approve.'}</p>
+    <p className="text-[15px] font-semibold">Ask the factory</p>
+    <p className="text-[14px] text-muted-foreground">I can see the page you are on. Ask about it, or tell me what to approve.</p>
     <div className="flex flex-wrap gap-2">
       {suggestions[kind].map((s) => (
         <ThreadPrimitive.Suggestion key={s} prompt={s} send className="rounded-full border px-3 py-1.5 text-left text-[13px] hover:bg-secondary">{s}</ThreadPrimitive.Suggestion>
@@ -202,7 +195,7 @@ const Composer: FC<{ commands: Command[]; kind: Kind }> = ({ commands, kind }) =
         )}
         <AddError />
         <div className="flex flex-wrap gap-1.5 empty:hidden"><ComposerPrimitive.Attachments>{() => <Thumb removable />}</ComposerPrimitive.Attachments></div>
-        <ComposerPrimitive.Input rows={1} maxRows={8} style={{ outline: 'none' }} aria-label="Message the factory" placeholder={kind === 'request' ? 'Describe what you need, or paste a screenshot' : 'Ask, or paste a screenshot'} className="max-h-48 min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 outline-none placeholder:text-muted-foreground" />
+        <ComposerPrimitive.Input rows={1} maxRows={8} style={{ outline: 'none' }} aria-label="Message the factory" placeholder="Ask, or paste a screenshot" className="max-h-48 min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 outline-none placeholder:text-muted-foreground" />
         <div className="flex items-center justify-between">
           <ComposerPrimitive.AddAttachment asChild>
             <button type="button" aria-label="Attach image" title="Attach image" disabled={count >= MAX_IMAGES} className={cn(iconBtn, 'disabled:opacity-40')}><Paperclip /></button>
@@ -223,8 +216,8 @@ const Composer: FC<{ commands: Command[]; kind: Kind }> = ({ commands, kind }) =
 export const DockThread: FC<{ kind: Kind; commands: Command[]; above: ReactNode }> = ({ kind, commands, above }) => (
   <ThreadPrimitive.Root data-kind={kind} className="aui-root group/dock flex min-h-0 flex-1 flex-col text-foreground">
     <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3" aria-live="polite">
-      <ThreadPrimitive.Messages>{({ message }) => (message.role === 'user' ? <UserMessage /> : isSynthetic(message) ? <QuestionsMessage /> : <AssistantMessage />)}</ThreadPrimitive.Messages>
-      <AuiIf condition={(s) => s.thread.messages.every(isSynthetic)}><Welcome kind={kind} /></AuiIf>
+      <ThreadPrimitive.Messages>{({ message }) => (message.role === 'user' ? <UserMessage /> : <AssistantMessage />)}</ThreadPrimitive.Messages>
+      <AuiIf condition={(s) => s.thread.messages.length === 0}><Welcome kind={kind} /></AuiIf>
     </ThreadPrimitive.Viewport>
     <div className="relative flex flex-col gap-2 border-t p-3">
       <ThreadPrimitive.ScrollToBottom asChild>

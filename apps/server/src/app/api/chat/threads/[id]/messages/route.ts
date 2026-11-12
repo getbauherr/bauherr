@@ -1,19 +1,18 @@
 import { chatWho, fail } from '../../../../../../lib/chat/http'
-import { requestInfo } from '../../../../../../lib/chat/request'
-import { loadMessages, ownThread, upsertMessage } from '../../../../../../lib/chat/threads'
+import { loadMessages, upsertMessage } from '../../../../../../lib/chat/threads'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type P = { params: Promise<{ id: string }> }
 
-/** `{ context, ticket, request, pending, messages: [{ parentId, message, answer, feedback }] }`, oldest first. */
+/** `{ context, ticket, pending, messages: [{ parentId, message, answer, feedback }] }`, oldest first. */
 export const GET = async (req: Request, { params }: P): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w
   const id = (await params).id
-  const [r, t] = await Promise.all([loadMessages(w, id), ownThread(w, id)])
-  return r && t ? Response.json({ ...r, request: await requestInfo(w, t) }) : fail('thread not found', 404)
+  const r = await loadMessages(w, id)
+  return r ? Response.json(r) : fail('thread not found', 404)
 }
 
 /** Body `{ parentId?, message, answerId? }`: assistant-ui's exported message item, stored verbatim and upserted by `message.id`. */

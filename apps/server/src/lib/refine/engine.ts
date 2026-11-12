@@ -132,7 +132,7 @@ export const hasRows = async (payload: Payload, user: User, a: { ticket: number;
   return pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), null, by).some((p) => isBauherr(user) || p.for === 'product-owner')
 }
 
-const costOf = (messages: Msg[]): View['cost'] => {
+export const costOf = (messages: Msg[]): View['cost'] => {
   const turns = messages.flatMap((m) => (m.usage ? [{ id: m.id, at: m.speaker.at, ...m.usage, usd: priceOf(m.usage.model, { ...m.usage, cacheRead: 0, cacheWrite: 0 }) }] : []))
   return { turns, tokens: turns.reduce((n, x) => n + x.tokensIn + x.tokensOut, 0), usd: turns.some((x) => x.usd === null) ? null : turns.reduce((n, x) => n + x.usd!, 0) }
 }

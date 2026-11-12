@@ -7,7 +7,7 @@ import { PageTitle } from '../../../components/PageTitle'
 import { ProgressPath } from '../../../components/ProgressPath'
 import { ProofList } from '../../../components/ProofList'
 import { KindChip, LaneChip, StatusLine } from '../../../components/RequestParts'
-import { RequestCardPage } from '../../../components/RequestCardPage'
+import { RequestCard } from '../../../components/RequestCard'
 import { Comments } from '../../../components/RequestComments'
 import { ago } from '../../../lib/format'
 import { asksOwnerRow } from '../../../../../lib/addressee'
@@ -49,7 +49,7 @@ export async function ProductOwnerTicket({ id, view: wanted }: { id: string; vie
         <StatusLine status={t.status} waits={t.waits} />
       </p>
       {asked && <div className="max-w-[640px]" data-testid="owner-decision"><DecisionCard item={{ ...asked, product: undefined }} admin={false} /></div>}
-      {view.card && <div className="max-w-xl"><RequestCardPage card={view.card} /></div>}
+      {view.card && <div className="max-w-xl"><RequestCard card={view.card} /></div>}
       <section className="flex flex-col gap-3" aria-labelledby="where">
         <h2 className="heading" id="where">Where it stands</h2>
         <p className="body m-0 font-medium" data-testid="request-headline">{t.progress.headline}{t.progress.since && <span className="small font-normal text-muted-foreground"> · since {ago(t.progress.since).replace(/ ago$/, '')}</span>}</p>

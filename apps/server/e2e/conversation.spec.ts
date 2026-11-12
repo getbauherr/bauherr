@@ -84,6 +84,10 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   const card = page.getByTestId('current-point')
   await expect(card).toContainText('Question 1 of 4')
   await expect(card).toContainText('What should it deliver?')
+  const opening = page.getByTestId('speaker').first().getByTestId('reply-text') // the card says the question: the message that asked it does not say it again
+  await expect(opening).toContainText('Triage asked 4 questions')
+  await expect(opening).not.toContainText('What should it deliver?')
+  await expect(opening).not.toContainText('Recommended')
   await expect(card).toContainText('Why this matters')
   await expect(card).toContainText('Recommended')
   await expect(card).toContainText('Or answer in your own words below')
@@ -220,7 +224,9 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   await signIn(page, admin)
   await page.goto(hrefs['Name the export file']!)
   await expect(page.getByTestId('conversation-shell')).toBeVisible()
-  await expect(page.getByTestId('header-model')).toHaveText('claude-sonnet-5-5')
+  await expect(page.getByTestId('header-model')).toHaveText('claude-sonnet-5-5') // the Workspace names it anthropic/claude-sonnet-5-5: the short name is shown, the full id is the title
+  await expect(page.getByTestId('header-model')).toHaveAttribute('title', 'anthropic/claude-sonnet-5-5')
+  await expect(page.getByTestId('model-chip')).toHaveText('claude-sonnet-5-5')
   await expect(page.getByTestId('cost-chip')).toContainText('tokens')
 
   await page.getByTestId('model-chip').click()
@@ -233,7 +239,7 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   await typed.press('Enter')
   await expect(page.getByTestId('speaker').last().getByTestId('speaker-model')).toHaveText('claude-opus-5-5')
   const requests = async () => (await (await page.request.get('/api/chat/fake-requests')).json()) as { model: string; text: string; images: number }[]
-  await expect.poll(async () => (await requests()).filter((r) => r.text.includes('Just call it export.')).map((r) => r.model)).toEqual(['claude-opus-5-5']) // the header shows the model at once; the request is recorded when the turn runs
+  await expect.poll(async () => (await requests()).filter((r) => r.text.includes('Just call it export.')).map((r) => r.model)).toEqual(['anthropic/claude-opus-5-5']) // the header shows the model at once; the request is recorded when the turn runs
 
   // The choice is stored on the conversation: it survives a reload.
   await page.reload()

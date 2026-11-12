@@ -127,6 +127,9 @@ const build = (): FakeBackend => {
   // acme/editor: the Product of workflow-editor.spec.ts's own Workspace; its one Ticket (#1) is in Build.
   fake.commit('acme/editor', 'main', 'README.md', '# Editor\n')
   void fake.tickets('acme/editor').create({ title: 'Editor lab: build the thing', labels: ['bauherr:stage:build'] })
+  // acme/rc-web and acme/rc-api: the Products of request-conversation.spec.ts's own Workspace (no Ticket yet; the requests it files create them).
+  fake.commit('acme/rc-web', 'main', 'README.md', '# Rc Web\n')
+  fake.commit('acme/rc-api', 'main', 'README.md', '# Rc Api\n')
   // acme/conv: the Product of conversation.spec.ts's own Workspace; its Tickets #1 (Docs Agent), #2 and #3 are held by Triage with four open points each.
   fake.commit('acme/conv', 'main', 'README.md', '# Conv\n')
   const conv = fake.tickets('acme/conv')

@@ -201,7 +201,7 @@ One recorded unit inside a Run (an agent turn or tool call), kept for audit and 
 _Avoid_: Action, event
 
 **Chat thread**:
-One person's stored conversation with the factory assistant in one Workspace; it remembers the page of its last message and at most one tool call awaiting confirmation. Private to its owner. It is not a Run and not an Intake session; a request thread is the chat surface of one Intake session (the interview runs in the dock).
+One person's stored conversation with the factory assistant in one Workspace; it remembers the page of its last message and at most one tool call awaiting confirmation. Private to its owner. It is not a Run and not an Intake session; the request conversation is not a thread: it reads and writes its Intake session directly.
 _Avoid_: Conversation, session
 
 **Page context**:
@@ -221,5 +221,5 @@ What the user sees of the expedite lane: a Ticket on it skips Triage and plan ap
 _Avoid_: Expedite (in text people read), hotfix lane
 
 **Intake session**:
-A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run. In the app it is held in the docked chat (a request thread); the embeddable widget is its other surface.
+A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run. In the app it is the request conversation (the Factory assistant in the conversation shell, the request card as its artifact); the embeddable widget is its other surface.
 _Avoid_: Chat, interview, request

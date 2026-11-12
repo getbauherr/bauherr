@@ -7,7 +7,6 @@ import { decrypt } from '../secrets'
 import { mediaBytes } from '../intake/media'
 import { fakeChatModelOf } from './fake'
 import { gatewayChatModel, type Block, type ModelCall, type ModelMessage } from './stream'
-import { resumeRequest } from './request'
 import { chatTools, describe, kindOf, resolveInput, runChatTool, summarize, type Card } from './tools'
 import { claimPending, dropPending, finishAnswer, setContext, startAnswer, storePending, type Answer, type Who } from './threads'
 import type { PageContext } from './context'
@@ -19,7 +18,6 @@ export type ChatEvent =
   | { type: 'delta'; text: string }
   | { type: 'tool-call'; id: string; name: string; kind: string; input: unknown; summary: string }
   | { type: 'tool-result'; id: string; ok: boolean; result: string; /** Where the outcome can be opened (a sent request). */ href?: string }
-  | { type: 'options'; id: string; options: { label: string; recommended: boolean }[] }
   | { type: 'confirm'; id: string; name: string; title: string; details: Card['details']; destructive: boolean; approve?: string; decline?: string; noReason?: boolean; proof?: Card['proof'] }
   | { type: 'done'; answerId: string; requiresAction?: boolean; usage: { model: string; tokensIn: number; tokensOut: number; costUsd: number | null; ms: number } }
   | { type: 'error'; message: string }
@@ -219,7 +217,6 @@ export const resumeChat = async (a: { payload: Payload; user: Doc; workspace: nu
   if (!pending) return null
   return (async function* () {
     yield { type: 'context', label: a.context.label }
-    if (a.thread.request) return yield* resumeRequest({ who: env.who, ctx: env.ctx, thread: a.thread, pending, approved: a.approved })
     const tally: Answer['toolCalls'] = []
     const t0 = Date.now()
     let result: Block
