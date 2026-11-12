@@ -173,8 +173,8 @@ Role tiers, as `pack/factory.yaml` sets them. This table is what runs: `bauherr 
 | Role | Tier |
 |---|---|
 | orchestrator | cheap |
-| engineer | cheap |
-| reviewer | standard |
+| engineer | standard |
+| reviewer | strong |
 | security | standard |
 | ux | standard |
 | test | standard |

@@ -115,7 +115,7 @@ describe('connect', () => {
   })
 
   it('a tier role names the Workspace model of its tier', async () => {
-    expect((await connect('reviewer', { model: 'other' })).modelHint).toContain('claude-sonnet-5-5')
+    expect((await connect('reviewer', { model: 'other' })).modelHint).toContain('claude-opus-5-5')
   })
 
   it('the same session key revives the same row and releases the Runs the old process held', async () => {

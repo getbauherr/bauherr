@@ -11,8 +11,8 @@ The tier of each role is set in `team.roles` of the factory file (`tier:`) and l
 | Tier | Use for |
 |---|---|
 | cheap, low effort | search, file listing, formatting, running tests, summarising logs, mechanical edits |
-| standard, medium effort | work that needs judgement: the roles set to standard (review, security, UX, test) |
-| strong | adviser on a hard decision, root-cause of a failure that resisted two attempts, the escalation retry of a stuck Run |
+| standard, medium effort | work that needs judgement: the roles set to standard (engineer, security, UX, test) |
+| strong | the reviewer role's Runs, adviser on a hard decision, root-cause of a failure that resisted two attempts, the escalation retry of a stuck Run |
 
 ## Rules
 1. **Start with one agent.** Add threads only as `rules/team-policy.md` allows.
