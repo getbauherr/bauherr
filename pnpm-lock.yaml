@@ -116,9 +116,6 @@ importers:
       tailwind-merge:
         specifier: 3.7.0
         version: 3.7.0
-      tw-shimmer:
-        specifier: 0.4.14
-        version: 0.4.14(tailwindcss@4.3.4)
       yaml:
         specifier: ^2.8.0
         version: 2.9.1
@@ -4491,11 +4488,6 @@ packages:
     resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
     engines: {node: '>=18.0.0'}
     hasBin: true
-
-  tw-shimmer@0.4.14:
-    resolution: {integrity: sha512-Df4Mhpxa/b/YYvwCxhe6M/C0pZ1bYxFkAUrMjgmRO2vimu+QYi1gNHxV+9ZNTMpBtLJHEq9p6zuSzC7wiPeYYA==}
-    peerDependencies:
-      tailwindcss: '>=4.0.0-0'
 
   type-is@2.1.0:
     resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
@@ -9345,10 +9337,6 @@ snapshots:
       esbuild: 0.28.2
     optionalDependencies:
       fsevents: 2.3.3
-
-  tw-shimmer@0.4.14(tailwindcss@4.3.4):
-    dependencies:
-      tailwindcss: 4.3.4
 
   type-is@2.1.0:
     dependencies:

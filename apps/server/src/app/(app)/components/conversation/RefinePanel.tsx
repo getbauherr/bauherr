@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react'
+import { Check } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { refineChange, refineExplain, refineFinish, refinePick, refineRest, refineSay, refineState } from '../../lib/actions'
 import type { View } from '../../../../lib/refine/engine'
@@ -36,6 +37,12 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
   const [error, setError] = useState<string | null>(null)
   const [restore, setRestore] = useState('')
   const [kept, setKept] = useState(false)
+  const [recorded, setRecorded] = useState<string | null>(null)
+  useEffect(() => {
+    if (!recorded) return
+    const t = setTimeout(() => setRecorded(null), 2500)
+    return () => clearTimeout(t)
+  }, [recorded])
   const alive = useRef(true)
   useEffect(() => () => void (alive.current = false), [])
 
@@ -113,7 +120,8 @@ export const RefinePanel: FC<{ ticket: number; /** The Ticket page's one panel c
           <AssistantRuntimeProvider runtime={runtime}>
             <Conversation thread={view.thread} locked={locked} restore={restore} onRestored={() => setRestore('')}>
               {error && <p role="alert" data-testid="refine-error" className="small m-0 text-destructive">{error}</p>}
-              {!locked && current && <CurrentPoint point={current} open={open.length} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded') }} onWhy={() => void act(() => refineExplain(ticket, current.id))} onRest={() => void act(() => refineRest(ticket))} />}
+              {recorded && <p role="status" data-testid="recorded" className="small m-0 flex items-center gap-1.5 text-ok"><Check />Recorded. {recorded}</p>}
+              {!locked && current && <CurrentPoint point={current} open={open.length} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} onRest={() => void act(() => refineRest(ticket))} />}
               {view.summary && !(kept && !locked) && <SummaryCard summary={view.summary} sent={locked} busy={busy} onSend={() => void send()} onKeep={() => setKept(true)} />}
               {view.summary && kept && !locked && <div><Button type="button" size="sm" variant="outline" onClick={() => setKept(false)}>Review the summary</Button></div>}
             </Conversation>

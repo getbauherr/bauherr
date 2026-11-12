@@ -62,7 +62,6 @@
     "remark-gfm": "4.0.1",
     "shiki": "4.6.0",
     "tailwind-merge": "3.7.0",
-    "tw-shimmer": "0.4.14",
     "yaml": "^2.8.0"
   },
   "devDependencies": {

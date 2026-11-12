@@ -1,4 +1,5 @@
 'use client'
+import { ClipboardCheckIcon } from 'lucide-react'
 import type { FC } from 'react'
 import { ApprovalCard } from '../assistant-ui/elements/approval-card'
 import { CodeDiff } from '../assistant-ui/elements/code-diff'
@@ -26,6 +27,7 @@ export const SummaryCard: FC<{ summary: Summary; sent: boolean; busy: boolean; o
         subtitle={`${summary.decided.filter((d) => !d.dropped).length} answered, ${summary.decided.filter((d) => d.dropped).length} no longer needed`}
         description={`What happens next: ${summary.next}`}
         details={summary.decided.map((d) => ({ label: d.id, value: d.dropped ? `${d.title}: no longer needed` : `${d.title}: ${d.answer}` }))}
+        icon={<ClipboardCheckIcon className="size-4" />}
         allowOnceLabel="Send to planning"
         denyLabel="Keep refining"
         statusLabel={sent ? 'Sent to planning' : 'Sending'}

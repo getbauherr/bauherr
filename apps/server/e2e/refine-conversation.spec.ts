@@ -20,13 +20,17 @@ const signIn = async (page: Page) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
-const shoot = async (page: Page, name: string, widths = [1280, 390]) => {
+const shoot = async (page: Page, name: string, widths = [1280, 390], schemes: ('light' | 'dark')[] = ['light']) => {
   if (!shots) return
-  for (const width of widths) {
-    await page.setViewportSize({ width, height: width > 600 ? 900 : 844 })
-    await page.waitForTimeout(300)
-    await page.screenshot({ path: `${shots}/${name}-light-${width}.png`, fullPage: true })
+  for (const scheme of schemes) {
+    await page.emulateMedia({ colorScheme: scheme })
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: width > 600 ? 900 : 844 })
+      await page.waitForTimeout(300)
+      await page.screenshot({ path: `${shots}/${name}-${scheme}-${width}.png`, fullPage: true })
+    }
   }
+  await page.emulateMedia({ colorScheme: 'light' })
   await page.setViewportSize({ width: 1280, height: 900 })
 }
 
@@ -55,6 +59,8 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
   await card.getByRole('button', { name: 'Answer questions' }).click()
   const panel = card.getByTestId('refine-panel')
   await expect(panel).toBeVisible()
+  await expect(card).not.toContainText('Opens the questions with their defaults')
+  await expect(card).not.toContainText('Take the recommended default of each question')
   await expect(page).toHaveURL(/\/inbox$/)
   await expect(page.getByTestId('chat-dock')).toBeHidden()
   await expect(page.locator('html')).not.toHaveAttribute('data-chat', 'open')
@@ -81,6 +87,7 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
 
   // An option click records at once; the open points follow without a reload.
   await panel.getByTestId('current-point').getByRole('button', { name: /CSV/ }).click()
+  await expect(panel.getByTestId('recorded')).toContainText('CSV')
   await expect(points.locator('[data-point=D1]')).toHaveAttribute('data-status', 'answered')
   await expect(points.locator('[data-point=D1] [data-testid=point-answer]')).toHaveText('CSV')
   await expect(points).toContainText('4 of 5 open')
@@ -97,7 +104,7 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
   await expect(reply.getByTestId('speaker-executor')).toHaveText('Factory assistant')
   await expect(reply.getByTestId('speaker-model')).toHaveText('fake-refine')
   await expect(panel.getByTestId('current-point')).toContainText('Include archived invoices')
-  await shoot(page, 'inbox-expanded')
+  await shoot(page, 'inbox-expanded', [1280, 390], ['light', 'dark'])
 
   // Typed text never reached the helper: no helper answer, no helper thread of that text.
   await expect(panel).not.toContainText('[fake] you said')
@@ -113,7 +120,7 @@ test('the owner refines a Ticket in the Inbox card: answer by option, by free te
   await expect(summary).toContainText('The file is named by its date')
   await expect(summary).toContainText('Title: Export invoices as a dated file')
   await expect(summary).toContainText('No longer needed'.toLowerCase())
-  await shoot(page, 'summary')
+  await shoot(page, 'summary', [1280, 390], ['light', 'dark'])
 
   await summary.getByRole('button', { name: 'Keep refining' }).click()
   await expect(summary).toBeHidden()

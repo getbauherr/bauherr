@@ -69,13 +69,13 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
           </header>
         )}
         <h2 id={`ask-${item.id}`} className={compact ? 'sr-only' : 'm-0 text-[19px] leading-snug font-semibold text-balance'}>{d.ask}</h2>
-        {d.recommendation && (
+        {d.recommendation && !refining && (
           <p className="body m-0 max-w-none text-pretty">
             <span className="font-medium text-primary">Recommended </span>
             {d.recommendation}
           </p>
         )}
-        {d.why.length > 0 && (
+        {d.why.length > 0 && !refining && (
           <ul className="small m-0 flex list-disc flex-col gap-1 pl-5 text-muted-foreground">
             {d.why.map((w) => <li key={w}>{w}</li>)}
           </ul>
@@ -109,7 +109,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
               )}
               {pending && <span className="small text-muted-foreground" role="status">Working…</span>}
             </div>
-            <p className="small m-0 text-muted-foreground">{d.options.find((o) => o.primary)?.effect ?? d.next}</p>
+            {!refining && <p className="small m-0 text-muted-foreground">{d.options.find((o) => o.primary)?.effect ?? d.next}</p>}
             {error && <p role="alert" className="small m-0 text-destructive">{error}</p>}
           </footer>
         )}

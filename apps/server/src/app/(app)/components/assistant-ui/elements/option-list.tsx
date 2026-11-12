@@ -3,7 +3,9 @@
 import { useCallback, useState, type ComponentProps } from "react";
 import { CheckIcon, Loader2Icon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { inkButton, mono, paper } from "./surfaces";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { mono, paper } from "./surfaces";
 import { clamp } from "../utils/range";
 import { useReceiptFocus } from "./receipt-focus";
 
@@ -11,6 +13,8 @@ export interface OptionListOption {
   id: string;
   label: string;
   description?: string | undefined;
+  /** A small badge on the label's line ("Recommended"). */
+  badge?: string | undefined;
   disabled?: boolean | undefined;
 }
 
@@ -45,13 +49,14 @@ export interface OptionListProps extends Omit<
 }
 
 const row =
-  "flex w-full items-start gap-2.5 rounded-xl px-2 py-2 text-start transition-colors outline-none focus-visible:ring-1 focus-visible:ring-foreground/20";
+  "flex w-full items-start gap-2.5 rounded-md border border-border bg-card px-3 py-2 text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function OptionText({ option }: { option: OptionListOption }) {
   return (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span className="text-[13.5px] leading-5 break-words">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-5 break-words">
         {option.label}
+        {option.badge ? <Badge variant="accent">{option.badge}</Badge> : null}
       </span>
       {option.description ? (
         <span className="text-muted-foreground text-xs leading-4 break-words">
@@ -96,7 +101,7 @@ export function OptionList({
 
   const root = cn(
     paper,
-    "flex w-full max-w-sm flex-col gap-1 rounded-2xl p-2",
+    "flex w-full flex-col gap-2 p-2",
     className,
   );
 
@@ -233,9 +238,9 @@ export function OptionList({
             className={cn(
               row,
               isSelected
-                ? "bg-foreground/[0.06]"
-                : !unavailable && !locked && "hover:bg-foreground/[0.035]",
-              unavailable ? "text-muted-foreground" : "text-foreground/90",
+                ? "border-primary bg-accent"
+                : !unavailable && !locked && "hover:bg-secondary",
+              unavailable ? "text-muted-foreground" : "text-foreground",
               (unavailable || locked) && "cursor-default",
             )}
           >
@@ -257,14 +262,25 @@ export function OptionList({
                   ) : null}
                 </span>
               </span>
-            ) : pending?.includes(option.id) ? (
+            ) : (
               <span
                 aria-hidden
-                className="flex h-5 w-3.5 shrink-0 items-center justify-center"
+                className="flex h-5 w-4 shrink-0 items-center justify-center"
               >
-                <Loader2Icon className="text-muted-foreground size-3.5 animate-spin motion-reduce:animate-none" />
+                {pending?.includes(option.id) ? (
+                  <Loader2Icon className="text-primary size-4 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <span
+                    className={cn(
+                      "flex size-4 items-center justify-center rounded-full border",
+                      isSelected ? "border-primary" : "border-muted-foreground",
+                    )}
+                  >
+                    {isSelected ? <span className="bg-primary size-2 rounded-full" /> : null}
+                  </span>
+                )}
               </span>
-            ) : null}
+            )}
             <OptionText option={option} />
           </button>
         );
@@ -272,7 +288,7 @@ export function OptionList({
       {error ? (
         <p
           role="alert"
-          className="px-2 pb-1 text-xs break-words text-red-600 dark:text-red-400"
+          className="px-2 pb-1 text-xs break-words text-destructive"
         >
           {error}
         </p>
@@ -282,22 +298,17 @@ export function OptionList({
           <span className={cn(mono, "text-muted-foreground tabular-nums")}>
             {count} of {max}
           </span>
-          <button
+          <Button
             type="button"
             aria-disabled={!canConfirm || undefined}
-            onClick={() => {
-              if (!canConfirm) return;
+            disabled={!canConfirm}
+            onClick={() =>
               commit(
                 options
                   .filter((option) => selectedIds.includes(option.id))
                   .map((option) => option.id),
-              );
-            }}
-            className={cn(
-              inkButton,
-              "flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium",
-              !canConfirm && "cursor-default opacity-40 hover:opacity-40",
-            )}
+              )
+            }
           >
             {locked ? (
               <Loader2Icon
@@ -306,7 +317,7 @@ export function OptionList({
               />
             ) : null}
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

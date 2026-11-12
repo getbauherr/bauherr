@@ -13,7 +13,7 @@ export const CurrentPoint: FC<{ point: Point; open: number; busy: boolean; onPic
         key={point.id}
         aria-label={point.title}
         className="max-w-none border-0 bg-transparent p-0 dark:bg-transparent"
-        options={point.options.map((label, i) => ({ id: String(i), label, ...(label === point.default && { description: 'Recommended' }) }))}
+        options={point.options.map((label, i) => ({ id: String(i), label, ...(label === point.default && { badge: 'Recommended' }) }))}
         onConfirm={([i]) => onPick(Number(i))}
       />
     )}

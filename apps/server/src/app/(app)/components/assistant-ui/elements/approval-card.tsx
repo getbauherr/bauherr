@@ -3,7 +3,8 @@
 import { useId, type ComponentProps, type ReactNode } from "react";
 import { CheckIcon, Loader2Icon, TerminalIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { field, ghostButton, inkButton, mono, paper } from "./surfaces";
+import { Button } from "@/components/ui/button";
+import { field, mono, paper } from "./surfaces";
 import { useReceiptFocus } from "./receipt-focus";
 
 export type ApprovalState = "request" | "running" | "done" | "denied";
@@ -82,7 +83,7 @@ export function ApprovalCard({
       aria-describedby={description ? descriptionId : undefined}
       className={cn(
         paper,
-        "flex w-full max-w-sm flex-col gap-3.5 rounded-[20px] p-4",
+        "flex w-full flex-col gap-3 p-4",
         className,
       )}
     >
@@ -90,16 +91,16 @@ export function ApprovalCard({
         <span
           aria-hidden
           className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-xl",
+            "flex size-9 shrink-0 items-center justify-center rounded-md",
             variant === "destructive"
               ? "bg-red-600/10 text-red-600 dark:bg-red-400/10 dark:text-red-400"
-              : "bg-foreground/[0.05] text-muted-foreground",
+              : "bg-secondary text-muted-foreground",
           )}
         >
           {icon ?? <TerminalIcon className="size-4" />}
         </span>
         <div className="flex flex-col">
-          <p id={titleId} className="text-[13.5px] font-medium">
+          <p id={titleId} className="text-[15px] font-medium">
             {title}
           </p>
           <p className="text-muted-foreground text-xs">{subtitle}</p>
@@ -107,7 +108,7 @@ export function ApprovalCard({
       </div>
 
       {description ? (
-        <p id={descriptionId} className="text-foreground/60 text-[13px]">
+        <p id={descriptionId} className="text-muted-foreground text-[14px]">
           {description}
         </p>
       ) : null}
@@ -116,7 +117,7 @@ export function ApprovalCard({
         <div
           className={cn(
             field,
-            "text-foreground/70 rounded-xl px-3.5 py-2.5 font-mono text-xs",
+            "text-foreground rounded-md px-3 py-2 font-mono text-xs",
           )}
         >
           {command}
@@ -125,7 +126,7 @@ export function ApprovalCard({
 
       {details?.length ? (
         <dl
-          className={cn(field, "flex flex-col gap-2 rounded-xl px-3.5 py-2.5")}
+          className={cn(field, "flex flex-col gap-2 rounded-md px-3.5 py-2.5")}
         >
           {details.map((detail, index) => (
             <div
@@ -135,7 +136,7 @@ export function ApprovalCard({
               <dt className={cn(mono, "text-muted-foreground")}>
                 {detail.label}
               </dt>
-              <dd className="text-foreground/80 break-words">{detail.value}</dd>
+              <dd className="text-foreground break-words">{detail.value}</dd>
             </div>
           ))}
         </dl>
@@ -145,45 +146,19 @@ export function ApprovalCard({
         {state === "request" ? (
           <>
             {onDeny && (
-              <button
-                type="button"
-                data-slot="approval-card-deny"
-                onClick={onDeny}
-                className={cn(
-                  ghostButton,
-                  "h-8 px-3.5 text-xs font-medium whitespace-nowrap",
-                )}
-              >
+              <Button type="button" variant="outline" data-slot="approval-card-deny" onClick={onDeny}>
                 {denyLabel}
-              </button>
+              </Button>
             )}
             {onAlwaysAllow && (
-              <button
-                type="button"
-                data-slot="approval-card-always-allow"
-                onClick={onAlwaysAllow}
-                className={cn(
-                  ghostButton,
-                  "h-8 px-3.5 text-xs font-medium whitespace-nowrap",
-                )}
-              >
+              <Button type="button" variant="outline" data-slot="approval-card-always-allow" onClick={onAlwaysAllow}>
                 {alwaysAllowLabel}
-              </button>
+              </Button>
             )}
             {onAllowOnce && (
-              <button
-                type="button"
-                data-slot="approval-card-allow-once"
-                onClick={onAllowOnce}
-                className={cn(
-                  variant === "destructive"
-                    ? "text-background bg-red-600 transition-[background-color,scale] duration-150 hover:bg-red-600/90 active:scale-[0.96] motion-reduce:transition-none dark:bg-red-400 dark:text-red-950 dark:hover:bg-red-400/90"
-                    : inkButton,
-                  "flex h-8 items-center rounded-full px-3.5 text-xs font-medium whitespace-nowrap",
-                )}
-              >
+              <Button type="button" variant={variant === "destructive" ? "destructive" : "default"} data-slot="approval-card-allow-once" onClick={onAllowOnce}>
                 {allowOnceLabel}
-              </button>
+              </Button>
             )}
           </>
         ) : (

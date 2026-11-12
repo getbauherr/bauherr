@@ -3,7 +3,8 @@
 import type { ComponentProps } from "react";
 import { CheckIcon, ThumbsDownIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { field, inkButton, mono, paper } from "./surfaces";
+import { Button } from "@/components/ui/button";
+import { mono, paper } from "./surfaces";
 
 export function FeedbackDialog({
   reasons,
@@ -39,7 +40,7 @@ export function FeedbackDialog({
       data-slot="feedback-dialog"
       className={cn(
         paper,
-        "flex w-full max-w-sm rounded-[20px] p-4",
+        "flex w-full rounded-md p-4",
         sent ? "items-center gap-2.5 text-[13.5px]" : "flex-col gap-3",
         className,
       )}
@@ -70,10 +71,10 @@ export function FeedbackDialog({
       {sent ? null : (
         <>
           <div className="flex items-center gap-2.5">
-            <span className="bg-foreground/[0.05] text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-lg">
+            <span className="bg-secondary text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md">
               <ThumbsDownIcon className="size-3.5" />
             </span>
-            <span className="text-[13.5px] font-medium">What went wrong?</span>
+            <span className="text-[15px] font-medium">What went wrong?</span>
             <span className={cn(mono, "text-muted-foreground ms-auto")}>
               optional
             </span>
@@ -83,15 +84,10 @@ export function FeedbackDialog({
             {reasons.map((reason) => {
               const active = selected.includes(reason);
               const className = cn(
-                "rounded-full px-2.5 py-1 text-xs transition-[background-color,color,scale] duration-150",
-                onToggleReason && "active:scale-[0.96]",
-                active
-                  ? "bg-foreground text-background"
-                  : cn(
-                      field,
-                      "text-muted-foreground",
-                      onToggleReason && "hover:text-foreground/90",
-                    ),
+                "rounded-md border px-2.5 py-1 text-xs transition-colors",
+                                active
+                  ? "border-primary bg-accent text-foreground"
+                  : cn("border-border bg-card text-muted-foreground", onToggleReason && "hover:bg-secondary hover:text-foreground"),
               );
               return onToggleReason ? (
                 <button
@@ -123,23 +119,13 @@ export function FeedbackDialog({
             rows={2}
             placeholder="Anything else?"
             aria-label="Anything else?"
-            className={cn(
-              field,
-              "text-foreground/80 placeholder:text-muted-foreground focus-visible:ring-foreground/20 resize-none rounded-xl px-3 py-2 text-xs outline-none focus-visible:ring-1",
-            )}
+            className={"resize-none rounded-md border border-border bg-background px-3 py-2 text-[14px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"}
           />
 
           {onSubmit && (
-            <button
-              type="button"
-              onClick={onSubmit}
-              className={cn(
-                inkButton,
-                "flex h-8 items-center justify-center self-end rounded-full px-3.5 text-xs font-medium",
-              )}
-            >
-              Send feedback
-            </button>
+            <Button type="button" size="sm" className="self-end" onClick={onSubmit}>
+              Send
+            </Button>
           )}
         </>
       )}
