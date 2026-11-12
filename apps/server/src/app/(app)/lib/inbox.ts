@@ -1,4 +1,4 @@
-import { type Checkpoint, CHECKPOINTS, type Decision, PROOF_NEEDS, buildDecision, canDecide, humanStage, isNeed } from '../../../lib/decision'
+import { type Checkpoint, CHECKPOINTS, type Decision, PROOF_NEEDS, buildDecision, canDecide, humanStage, isNeed, urgentReasons } from '../../../lib/decision'
 import { SKILL_NEED } from '../../../lib/checkpoints'
 import { payloadClient } from './session'
 import { renderMarkdown } from './markdown'
@@ -12,9 +12,9 @@ export type InboxItem = { id: number; number: number; product: { id: number; nam
 export type InboxGroup = { checkpoint: Checkpoint; items: InboxItem[] }
 
 /** The view of a stored Decision (or one built from the row when the sweep has not reached the Ticket yet) that cards render. */
-export const cardOf = (t: Doc, product: { id: number; name: string; stagingUrl?: string | null }): InboxItem | null => {
+export const cardOf = (t: Doc, product: { id: number; name: string; stagingUrl?: string | null }, urgentReason?: string | null): InboxItem | null => {
   if (!isNeed(t.needsYou)) return null
-  const decision: Decision = t.decision?.need === t.needsYou ? t.decision : buildDecision(t.needsYou, { ticket: t as never, product, planTldr: t.planTldr, stagingTldr: t.stagingTldr, human: humanStage(t) })
+  const decision: Decision = t.decision?.need === t.needsYou ? t.decision : buildDecision(t.needsYou, { urgentReason, ticket: t as never, product, planTldr: t.planTldr, stagingTldr: t.stagingTldr, human: humanStage(t) })
   return { id: t.id, number: t.number, product: { id: product.id, name: product.name }, decision, detailsHtml: decision.details ? renderMarkdown(decision.details) : null, waiting: waited(decision.openSince) }
 }
 
@@ -39,10 +39,11 @@ export const loadInbox = async (workspace: number, user: { role?: string | null 
   ])
   const byId = new Map((products.docs as Doc[]).map((p) => [p.id as number, p]))
   const proposals = !canDecide(user, SKILL_NEED) ? [] : ((await payload.find({ collection: 'skill_proposals', where: { workspace: { equals: workspace }, status: { in: ['proposed', 'replayed'] }, pr: { exists: true } }, sort: 'createdAt', ...o, depth: 1 })).docs as Doc[])
+  const reasons = await urgentReasons(payload, (rows.docs as Doc[]).filter((t) => t.needsYou === 'Expedite?') as never)
   const items = [
     ...(rows.docs as Doc[]).flatMap((t) => {
       const p = byId.get(t.product)
-      const card = p && cardOf(t, p as never)
+      const card = p && cardOf(t, p as never, reasons.get(`${t.product}:${t.number}`))
       return card ? [card] : []
     }),
     ...proposals.flatMap((sp) => {
@@ -60,6 +61,6 @@ export const loadInbox = async (workspace: number, user: { role?: string | null 
       if (p) i.proof = p
     }
   }
-  const groups = CHECKPOINTS.map((checkpoint) => ({ checkpoint, items: items.filter((i) => i.decision.checkpoint === checkpoint).sort((a, b) => a.decision.openSince.localeCompare(b.decision.openSince) || a.number - b.number) })).filter((g) => g.items.length)
+  const groups = CHECKPOINTS.map((checkpoint) => ({ checkpoint, items: items.filter((i) => i.decision.checkpoint === checkpoint).sort((a, b) => Number(b.decision.need === 'Expedite?') - Number(a.decision.need === 'Expedite?') || a.decision.openSince.localeCompare(b.decision.openSince) || a.number - b.number) })).filter((g) => g.items.length)
   return { groups, products: (products.docs as Doc[]).map((p) => ({ id: p.id, name: p.name })), working: working.totalDocs }
 }

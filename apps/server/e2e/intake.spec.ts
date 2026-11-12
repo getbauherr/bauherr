@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { give, PNG } from './paste'
 import { email as admin } from './user'
-import { composer, dock, interview, lastAnswer, say, shoot, signIn, startRequest } from './request-dock'
+import { composer, dock, idle, interview, lastAnswer, productChosen, say, shoot, signIn, startRequest } from './request-dock'
 
 test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1, INTAKE_FAKE=1 and CHAT_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
@@ -41,7 +41,7 @@ test('a member files a request in the dock: product card, interview, draft card,
   await outcome.getByRole('link', { name: 'Open the request' }).click()
   await expect(page).toHaveURL(/\/requests\/\d+$/)
   await expect(page.getByRole('heading', { name: 'The invoice total is wrong' })).toBeVisible()
-  await expect(page.getByText('Sent', { exact: true })).toBeVisible()
+  await expect(page.locator('#main').getByTestId('request-card')).toHaveAttribute('data-state', 'sent')
   await expect(dock(page)).toBeVisible()
   await shoot(page, 'request-detail-dock')
   await dock(page).getByRole('button', { name: 'Close chat' }).click()
@@ -52,7 +52,7 @@ test('a member files a request in the dock: product card, interview, draft card,
 test('a declined draft creates nothing: the request stays a Draft and the interview goes on', async ({ page }) => {
   await signIn(page, member)
   await startRequest(page, /^New request · /)
-  if (await dock(page).getByTestId('product-card').isVisible()) await choose(page, 'Acme Web')
+  await productChosen(page)
   const title = `The decline check is broken ${Date.now()}`
   await interview(page, title)
   const card = dock(page).getByTestId('confirm-card').last()
@@ -62,8 +62,9 @@ test('a declined draft creates nothing: the request stays a Draft and the interv
   await expect(card.getByRole('button')).toHaveCount(0)
   await page.goto('/requests')
   await expect(page.getByTestId('draft').filter({ hasText: title })).toHaveCount(1) // still a Draft of the person, not a sent request
-  await expect(page.locator('tbody tr').filter({ hasText: title })).toHaveCount(0)
+  await expect(page.getByTestId('factory-row').filter({ hasText: title })).toHaveCount(0)
   await expect(page.getByTestId('chat-dock').locator('[data-role=assistant]').last()).toBeVisible()
+  await idle(page)
   await composer(page).fill('One more thing: also on the export')
   await composer(page).press('Enter')
   await expect(dock(page).getByTestId('confirm-card').last()).toHaveAttribute('data-state', 'pending', { timeout: 30_000 })
@@ -72,7 +73,7 @@ test('a declined draft creates nothing: the request stays a Draft and the interv
 test('a request with several problems ends in one confirmed list and one Ticket per problem', async ({ page }) => {
   await signIn(page, member)
   await startRequest(page, /^New request · /)
-  if (await dock(page).getByTestId('product-card').isVisible()) await choose(page, 'Acme Web')
+  await productChosen(page)
   await say(page, 'The invoice total is wrong and also the export is slow', /I will create 3 separate tickets/)
   await expect(dock(page).getByTestId('request-options').getByRole('button', { name: /Yes, create them/ })).toBeVisible()
   const card = dock(page).getByTestId('confirm-card').last()
@@ -86,13 +87,14 @@ test('a request with several problems ends in one confirmed list and one Ticket 
 test('a screenshot pasted into the dock is sent with the request and shown in the created Ticket', async ({ page }) => {
   await signIn(page, member)
   await startRequest(page, /^New request · /)
-  if (await dock(page).getByTestId('product-card').isVisible()) await choose(page, 'Acme Web')
+  await productChosen(page)
   await say(page, 'The shot check is broken', 'Who is affected, and since when?')
   await give(composer(page), 'paste', { name: 'pasted-shot.png', type: 'image/png', base64: PNG }) // mid-draft: the first message is already sent
   await expect(dock(page).getByTestId('attachment').locator('img')).toBeVisible()
   await composer(page).fill('Finance, last week')
   await composer(page).press('Enter')
   await expect(lastAnswer(page)).toContainText('How should it work once it is fixed?', { timeout: 30_000 })
+  await idle(page)
   await expect(dock(page).getByRole('img', { name: 'pasted-shot.png' }).first()).toBeVisible()
   await say(page, 'Totals should match', 'Anything to add before I send this?')
   await dock(page).getByTestId('confirm-card').last().getByRole('button', { name: 'Create request' }).click()
@@ -112,7 +114,7 @@ test('a screenshot pasted into the dock is sent with the request and shown in th
 test('after a reload the dock reopens on the same request thread with the interview so far', async ({ page }) => {
   await signIn(page, member)
   await startRequest(page, /^New request · /)
-  if (await dock(page).getByTestId('product-card').isVisible()) await choose(page, 'Acme Web')
+  await productChosen(page)
   await say(page, 'The resume check is broken', 'Who is affected, and since when?')
   await page.reload()
   await expect(dock(page)).toBeVisible()
@@ -152,7 +154,7 @@ test('/requests/new is a real page that opens the dock in request mode; a single
 test('Discard draft on the request page asks first; Keep draft leaves it, Discard removes it from Requests', async ({ page }) => {
   await signIn(page, member)
   await startRequest(page, /^New request · /)
-  if (await dock(page).getByTestId('product-card').isVisible()) await choose(page, 'Acme Web')
+  await productChosen(page)
   const title = `The discard check is broken ${Date.now()}`
   await say(page, title, 'Who is affected, and since when?')
   await page.goto('/requests')
@@ -167,7 +169,7 @@ test('Discard draft on the request page asks first; Keep draft leaves it, Discar
   await dialog.getByRole('button', { name: 'Discard', exact: true }).click()
   await expect(page).toHaveURL(/\/requests$/)
   await expect(page.getByTestId('draft').filter({ hasText: title })).toHaveCount(0)
-  await expect(page.locator('tbody tr').filter({ hasText: title })).toHaveCount(0)
+  await expect(page.getByTestId('factory-row').filter({ hasText: title })).toHaveCount(0)
 })
 
 test('several drafts live side by side: New request starts an empty one, Continue reopens the right conversation, Discard removes one', async ({ page }) => {
