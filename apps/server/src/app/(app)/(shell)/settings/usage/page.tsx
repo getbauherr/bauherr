@@ -8,6 +8,11 @@ import { currentWorkspace } from '../../../lib/session'
 import { isAdmin } from '../../../lib/settings'
 import { tracesUp, tracesUrl } from '../../../lib/admin-proxy'
 import { loadSpendUsd, loadUsage, type Bar, type CostRow } from '../../../lib/usage'
+import { GatewayStatus } from '../../../components/gateway/GatewayStatus'
+import { HarnessSetup } from '../../../components/gateway/HarnessSetup'
+import { loadGatewaySetup } from '../../../lib/gateway-setup'
+import { payloadClient } from '../../../lib/session'
+import { workflowFor } from '../../../../../lib/factory'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +68,8 @@ export default async function UsageSettings() {
   const u = await loadUsage(workspace.id)
   const admin = isAdmin(user)
   const tokens = u.unit === 'tokens'
+  const setup = await loadGatewaySetup(await payloadClient(), workspace, admin)
+  const roles = workflowFor(workspace.id).roles.map(({ id, title }) => ({ id, title }))
   return (
     <>
       <h2 className="heading">AI usage</h2>
@@ -86,6 +93,14 @@ export default async function UsageSettings() {
           <thead><tr className="label"><th>Tier</th><th>Model</th></tr></thead>
           <tbody>{u.tiers.map((t) => <tr key={t.tier}><td>{t.tier}</td><td>{t.model || <span className="text-muted-foreground">Preset default</span>}</td></tr>)}</tbody>
         </Table>
+      </section>
+      <section id="measure" aria-label="Measure session cost" className="flex flex-col gap-3">
+        <h3 className="heading">Measure session cost</h3>
+        <p className="small m-0 text-muted-foreground">A coding session you run yourself only has a cost in Insights when its model calls go through the gateway. Pick your tool, copy the lines and start the session from that terminal. Prompts and answers are not stored, only tokens, model and cost.</p>
+        <GatewayStatus status={setup.status} admin={admin} />
+        <p className="small m-0">Gateway address: <span className="mono">{setup.gateway}</span></p>
+        <HarnessSetup setup={setup} roles={roles} />
+        <a className="small text-primary" href="https://github.com/getbauherr/bauherr/blob/main/docs/gateway.md">How the gateway measures sessions</a>
       </section>
       <Costs title="Cost per Product" head="Product" rows={u.costs.product} />
       <p className="small m-0 text-muted-foreground">Tokens and cost per model, role, session, stage and Ticket, cost per finished Ticket and how many Runs report usage: <Link className="underline" href="/insights#cost">Insights, Cost &amp; tokens</Link>.</p>

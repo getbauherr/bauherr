@@ -262,6 +262,11 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
     const gate = await checksGate(payload, t, mr)
     if (gate.state === 'red') return { stage: t.stage as string, refused: `checks red: ${gate.failed.join(', ')}`, checks: gate.failed }
     if (gate.state === 'pending') {
+      // Already in Review (review was requested before the MR was linked): wait in Build like every other pending head, where watchChecks picks it up.
+      if (is(workflowFor(t.workspace), t.stage, 'review')) {
+        await parkForChecks(payload, t, mr, gate)
+        return { stage: nameOf(workflowFor(t.workspace), 'build'), waiting: 'checks' }
+      }
       await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: 'checks', waitingReason: null, reviewWaitingSince: t.waitingFor === 'checks' && t.reviewWaitingSince ? t.reviewWaitingSince : now() }, overrideAccess: true })
       return { stage: t.stage as string, waiting: 'checks' }
     }
@@ -324,6 +329,15 @@ export const checksGate = async (payload: Payload, t: Doc, mr: Mr, at = Date.now
 export const watchChecks = async (payload: Payload, at = Date.now()): Promise<number> => {
   const waiting = (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'build'), { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let moved = 0
+  // A Ticket in Review that still carries the checks wait is watched by nobody else: drop the wait and let the review start decide (green: Review Run, pending: back to waiting in Build, red: back to Build).
+  for (const t of (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'review'), { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
+    try {
+      await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
+      if (await startReviewIfReady(payload, { ...t, waitingFor: null })) moved++
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'watchChecks failed')
+    }
+  }
   for (const t of waiting) {
     try {
       const mr = await prOf(payload, t)

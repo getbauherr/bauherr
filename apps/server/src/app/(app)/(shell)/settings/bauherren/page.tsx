@@ -12,8 +12,8 @@ import { changeRole, createBauherr, createProductOwner, removeDoc, saveAssignmen
 
 export const dynamic = 'force-dynamic'
 
-const ROLES = ['bauherr', 'admin']
 const LABEL: Record<string, string> = { admin: 'Admin', bauherr: 'Bauherr', 'product-owner': 'Product owner' }
+const ROLES: [string, string][] = [['bauherr', LABEL.bauherr!], ['admin', LABEL.admin!]]
 
 export default async function BauherrenSettings() {
   const { user, workspace, workspaces } = await currentWorkspace()

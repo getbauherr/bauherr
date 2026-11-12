@@ -23,7 +23,7 @@ Usage: bauherr <command> [options]
   export   print the Workspace's active factory.yaml: export --workspace <slug> [--out <file>]
   pack lint  check a pack: pack lint [--pack pack] [--context CONTEXT.md] [--spec docs/spec/workflow.md]; exit 1 on findings
 
-Options: --dir <path> (default ./bauherr)  --port <n>  --url <public url; for apply/export the instance, default $BAUHERR_URL or http://localhost:3000>  --yes  --volumes
+Options: --dir <path> (default ./bauherr)  --port <n>  --gateway-port <n> (default 4000, loopback)  --url <public url; for apply/export the instance, default $BAUHERR_URL or http://localhost:3000>  --yes  --volumes
          --anthropic-key-file <path>  --admin-password-file <path>  (seed)
 eval:    --skills <dir> (default pack/skills)  --skill <name> (repeatable)  --changed-vs <git ref>  --model <subject>  --judge-model <judge>
          --baseline <eval-results.json>  --out <file>  --summary <file>  --case-threshold 0.8  --suite-threshold 0.9  --max-cases 40  --max-usd 2`
@@ -112,18 +112,26 @@ const open = (url: string) => {
   spawnSync(cmd!, a, { stdio: 'ignore' })
 }
 
-type Opts = { dir: string; port?: string | undefined; url?: string | undefined; yes: boolean }
+type Opts = { dir: string; port?: string | undefined; gatewayPort?: string | undefined; url?: string | undefined; yes: boolean }
 
-const init = async ({ dir, port, url, yes }: Opts) => {
+const validPort = (p: string) => {
+  if (!/^\d+$/.test(p) || +p < 1 || +p > 65535) throw new CliError(`Invalid port: ${p}`)
+}
+
+const init = async ({ dir, port, gatewayPort, url, yes }: Opts) => {
   const old = readEnv(dir)
   const defPort = port ?? old.get('PORT') ?? '3000'
   const chosenPort = yes ? defPort : await ask('Port', defPort)
-  if (!/^\d+$/.test(chosenPort) || +chosenPort < 1 || +chosenPort > 65535) throw new CliError(`Invalid port: ${chosenPort}`)
+  validPort(chosenPort)
+  const defGw = gatewayPort ?? old.get('GATEWAY_PORT') ?? '4000'
+  const chosenGw = yes ? defGw : await ask('Gateway port (loopback, for session cost)', defGw)
+  validPort(chosenGw)
+  if (chosenGw === chosenPort) throw new CliError('--port and --gateway-port must differ')
   const defUrl = url ?? old.get('PUBLIC_URL') ?? `http://localhost:${chosenPort}`
   const publicUrl = yes ? defUrl : await ask('Public URL (localhost = polling mode, a public URL enables webhooks)', defUrl)
   const own = existsSync(join(dir, 'compose.yaml')) && spawnSync('docker', ['compose', '--project-directory', dir, 'ps', '-q', 'app'], { encoding: 'utf8' }).stdout?.trim()
-  await preflight(+chosenPort, { skipPort: !!own })
-  writeProject(dir, cliVersion(), { PORT: chosenPort, PUBLIC_URL: publicUrl })
+  await preflight(+chosenPort, { skipPort: !!own, gatewayPort: +chosenGw })
+  writeProject(dir, cliVersion(), { PORT: chosenPort, GATEWAY_PORT: chosenGw, PUBLIC_URL: publicUrl })
   compose(dir, ['up', '-d', '--wait'])
   console.log(`\nBauherr ${cliVersion()} is running: ${publicUrl}\nFiles and secrets: ${dir} (env file mode 600)`)
   if (!yes) open(publicUrl)
@@ -135,7 +143,7 @@ const main = async () => {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
-      dir: { type: 'string', default: 'bauherr' }, port: { type: 'string' }, url: { type: 'string' },
+      dir: { type: 'string', default: 'bauherr' }, port: { type: 'string' }, 'gateway-port': { type: 'string' }, url: { type: 'string' },
       yes: { type: 'boolean', short: 'y', default: false }, volumes: { type: 'boolean', default: false },
       'anthropic-key-file': { type: 'string' }, 'admin-password-file': { type: 'string' },
       skills: { type: 'string', default: 'pack/skills' }, skill: { type: 'string', multiple: true }, 'changed-vs': { type: 'string' },
@@ -147,7 +155,7 @@ const main = async () => {
     },
   })
   const dir = resolve(values.dir)
-  const opts: Opts = { dir, port: values.port, url: values.url, yes: values.yes }
+  const opts: Opts = { dir, port: values.port, gatewayPort: values['gateway-port'], url: values.url, yes: values.yes }
   const [cmd] = positionals
   if (values.version) return console.log(cliVersion())
   if (values.help || !cmd) return console.log(usage)

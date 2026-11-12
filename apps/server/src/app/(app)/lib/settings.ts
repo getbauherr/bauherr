@@ -5,6 +5,8 @@ import { type Cause, FINDING_FRESH_MS } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
 import { gateOn, productionGateOn } from '../../../lib/mode'
 import { PRESETS, presetOf } from '../../../lib/providers'
+import { modelOptions } from './models'
+import { loadModelList, loadPriceStatus } from '../../../lib/prices'
 import { blockedBy } from '../../../lib/settings-guards'
 import { formatPathSets, missingSuggestions, neverRuns } from '../../../lib/path-sets'
 import { workflowFor } from '../../../lib/factory'
@@ -47,7 +49,7 @@ const o = { overrideAccess: true, depth: 0 } as const
 export async function presetFor(workspace: number) {
   const { docs } = await (await payloadClient()).find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', pagination: false, select: { config: true, slug: true }, ...o } as never)
   const conns = docs as unknown as { config?: never; slug: string }[]
-  return { ...PRESETS[presetOf(conns[0]?.config)], slugs: conns.map((c) => c.slug) }
+  return { ...PRESETS[presetOf(conns[0]?.config)], key: presetOf(conns[0]?.config), slugs: conns.map((c) => c.slug) }
 }
 
 export async function loadWorkspaceSettings(id: number) {
@@ -55,6 +57,8 @@ export async function loadWorkspaceSettings(id: number) {
   const ws = (await payload.findByID({ collection: 'workspaces', id, select: { gatewayKey: false }, ...o } as never)) as unknown as Record<string, any>
   const preset = await presetFor(id)
   const github = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: id } }, { kind: { equals: 'github' } }] }, select: { name: true }, pagination: false, ...o } as never)).docs as unknown as { id: number; name: string }[]
+  const modelByTier0 = (ws.modelByTier ?? {}) as Record<string, string>
+  const modelChoices = modelOptions(preset.key, preset.defaultModels ? Object.values(preset.defaultModels) : [], await loadModelList(payload), Object.values(modelByTier0).map((v) => (preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v)))
   const spend = gatewayEnabled() && process.env.GATEWAY_DATABASE_URL ? await budgetStatus(ws.slug).catch(() => null) : null
   return {
     name: ws.name as string,
@@ -66,7 +70,7 @@ export async function loadWorkspaceSettings(id: number) {
     routerBudgetShare: (ws.routerBudgetShare ?? 20) as number,
     // Tiers are stored as `<connection>/<model>`; the form shows the bare id of the first Connection, which `saveModels` qualifies again.
     modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
-    modelChoices: preset.defaultModels ? [...new Set(Object.values(preset.defaultModels))] : null,
+    modelChoices,
     defaultMode: (ws.defaultMode ?? '') as string,
     modeByStage: (ws.modeByStage ?? {}) as Record<string, string>,
     placeholders: preset.defaultModels ?? DEFAULT_MODEL_BY_TIER,

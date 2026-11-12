@@ -9,9 +9,10 @@ import { migrations } from './migrations'
 import { poolOptions } from './lib/db-pool'
 import { loginLimits } from './lib/login-lock'
 import { secret } from './lib/secrets'
+import { syncManagedConfig } from './lib/gateway'
 
 const tenantCollections = Object.fromEntries(
-  collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys'].includes(c.slug)).map((c) => [c.slug, {}]),
+  collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys', 'instance_state'].includes(c.slug)).map((c) => [c.slug, {}]),
 )
 
 const mediaBucket = process.env.MEDIA_S3_BUCKET
@@ -38,6 +39,7 @@ export default buildConfig({
   collections,
   onInit: async (payload) => {
     await syncJobEnums(payload)
+    if (process.env.GATEWAY_ADMIN_URL) await syncManagedConfig().catch((e) => payload.logger.warn({ err: e }, 'gateway config sync failed at boot'))
     await bootFactory(payload)
   },
   plugins: [

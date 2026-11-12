@@ -5,7 +5,7 @@ import pg from 'pg'
 import type { Payload, PayloadRequest } from 'payload'
 import { parse, stringify } from 'yaml'
 import { envInt } from './db-pool'
-import { PRESETS, presetOf } from './providers'
+import { KEY_HEADERS, PRESETS, presetOf } from './providers'
 import { decrypt, encrypt } from './secrets'
 
 export const DEFAULT_MODEL_BY_TIER = { cheap: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' }
@@ -14,6 +14,9 @@ type Ws = { id: number | string; slug: string; gatewayKey?: string | null; route
 type Resource = { id: string; value: { key: string; metadata?: { name?: string; kind?: string } } }
 
 /** Hooks no-op without a gateway (tests, seed outside compose). */
+/** Where a session on this machine reaches the gateway (loopback by default); set `GATEWAY_PUBLIC_URL` to the TLS address for remote sessions. */
+export const gatewayPublicUrl = (): string => (process.env.GATEWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.GATEWAY_PORT || 4000}`).replace(/\/+$/, '')
+
 export const gatewayEnabled = (): boolean => {
   if (process.env.GATEWAY_ADMIN_URL) return true
   console.info('gateway: GATEWAY_ADMIN_URL unset, skipping')
@@ -105,18 +108,22 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
  * Second consumer key per Workspace for the owner's own Claude Code session: `sub/*` (own login) and `ws-<slug>/*` (Workspace API key), see docs/legal.md.
  * The value lives in the gateway only; an existing key is reused. With BAUHERR_SESSION_KEY_FILE set it is written there (0600).
  */
-export const ensureSessionKey = async (ws: Ws): Promise<void> => {
+export const ensureSessionKey = async (ws: Ws, rotate = false): Promise<string> => {
   const existing = await keyNamed(sessionKeyName(ws.slug))
   const value = {
-    key: existing?.value.key ?? newKey(),
+    key: (!rotate && existing?.value.key) || newKey(),
     metadata: { name: sessionKeyName(ws.slug), user: keyName(ws.slug), kind: 'owner-session' },
-    allowedModels: ['sub/*', `ws-${ws.slug}/*`],
+    allowedModels: ['sub/*', 'claude-*', `ws-${ws.slug}/*`],
     budgets: [{ name: 'monthly', limit: { unit: 'USD', amount: envInt(process.env, 'SESSION_BUDGET_USD', 100) }, window: { rolling: '30d' }, onBudgetExceeded: 'Audit' }],
   }
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
   else await call('PUT', KEYS, { resources: [{ value }] })
   if (process.env.BAUHERR_SESSION_KEY_FILE) await writeSecretFile(process.env.BAUHERR_SESSION_KEY_FILE, value.key)
+  return value.key
 }
+
+/** A new session key for the Workspace; the old one stops working. Returned once to the caller, never stored by Bauherr. */
+export const rotateSessionKey = async (req: PayloadRequest, id: number | string): Promise<string> => ensureSessionKey(await loadWs(req, id), true)
 
 /** Gateway model IDs per tier; a tier the Workspace never set gets the default model of its (first) non-router LLM Connection, or fails the Run when it has none. `auto` is added only while the Workspace has a `router` Connection. */
 export const tierModels = async (payload: Payload, ws: Record<string, any>, req?: PayloadRequest): Promise<Record<string, string>> => {
@@ -267,6 +274,55 @@ export const renderRouter = async (req: PayloadRequest): Promise<void> => {
   await rename(tmp, path)
 }
 
+export const KEY_LOCATION = 'coalesce(request.headers["x-agw-key"], request.headers["x-api-key"], request.headers["x-goog-api-key"], request.headers["authorization"].stripPrefix("Bearer "))'
+const OLD_KEY_LOCATION = 'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))'
+
+/** Log fields every session call carries (docs/gateway.md); the template renders them for new installs, `ensureManaged` adds them to an older config. */
+export const SESSION_LOG_FIELDS = {
+  session: 'request.headers["x-bauherr-session"]',
+  role: 'request.headers["x-bauherr-role"]',
+  client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])',
+} as const
+
+/**
+ * Brings the parts of an existing config.yaml that the template owns up to date and lists every catalog file: the session log fields,
+ * the `claude-*` login passthrough (a copy of `sub/*` without the model rename) and `config.modelCatalog`. Returns whether anything changed.
+ */
+export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[]): boolean => {
+  const before = JSON.stringify(cfg)
+  const log = ((((cfg.frontendPolicies ??= {}).accessLog ??= {}).database ??= {}).add ??= {}) as Record<string, string>
+  for (const [k, v] of Object.entries(SESSION_LOG_FIELDS)) log[k] ??= v
+  const models = (cfg.llm?.models ?? []) as { name: string; transformation?: unknown; requestHeaders?: { remove?: string[] } }[]
+  const location = cfg.llm?.policies?.apiKey?.location
+  if (location?.expression === OLD_KEY_LOCATION) location.expression = KEY_LOCATION
+  for (const m of models.filter((x) => x.name === 'sub/*')) m.requestHeaders = { ...m.requestHeaders, remove: [...new Set([...(m.requestHeaders?.remove ?? []), ...KEY_HEADERS])] }
+  const sub = models.find((m) => m.name === 'sub/*')
+  if (sub && !models.some((m) => m.name === 'claude-*')) {
+    const { transformation: _t, ...rest } = structuredClone(sub)
+    models.splice(models.indexOf(sub) + 1, 0, { ...rest, name: 'claude-*' })
+  }
+  if (catalogFiles.length) cfg.config = { ...cfg.config, modelCatalog: catalogFiles.map((f) => ({ file: join(dir(), 'catalogs', f) })) }
+  return JSON.stringify(cfg) !== before
+}
+
+const catalogFiles = async (): Promise<string[]> => (await readdir(join(dir(), 'catalogs')).catch(() => [] as string[])).filter((f) => f.endsWith('.json')).sort()
+
+const writeConfig = async (path: string, cfg: unknown): Promise<void> => {
+  const tmp = `${path}.${process.pid}.tmp`
+  await rm(tmp, { force: true })
+  await writeSecretFile(tmp, stringify(cfg))
+  await rename(tmp, path)
+}
+
+/** Applies `ensureManaged` to the config on disk (no-op without one, or when nothing changes); the gateway hot-reloads it. */
+export const syncManagedConfig = async (): Promise<boolean> => {
+  const path = join(dir(), 'config.yaml')
+  const cfg = parse(await readFile(path, 'utf8').catch(() => ''))
+  if (!cfg || typeof cfg !== 'object' || !ensureManaged(cfg, await catalogFiles())) return false
+  await writeConfig(path, cfg)
+  return true
+}
+
 /** Rewrites (0600, inline secrets live here) the managed `ws-<slug>/<connection>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
@@ -302,13 +358,8 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const cfg = parse(await readFile(path, 'utf8'))
   const kept = ((cfg.llm?.models ?? []) as { name: string }[]).filter((m) => !m.name.startsWith('ws-'))
   cfg.llm = { ...cfg.llm, models: [...kept, ...models] }
-  const catalogs = (await readdir(join(dir(), 'catalogs')).catch(() => [] as string[])).filter((f) => f.endsWith('.json')).sort()
-  if (catalogs.length) cfg.config = { ...cfg.config, modelCatalog: catalogs.map((f) => ({ file: join(dir(), 'catalogs', f) })) }
-  const out = stringify(cfg)
-  const tmp = `${path}.tmp`
-  await rm(tmp, { force: true })
-  await writeSecretFile(tmp, out)
-  await rename(tmp, path)
+  ensureManaged(cfg, await catalogFiles())
+  await writeConfig(path, cfg)
   await renderRouter(req)
 }
 

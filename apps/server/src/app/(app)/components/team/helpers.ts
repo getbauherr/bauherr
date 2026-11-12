@@ -36,7 +36,7 @@ export const modelValue = (role: Pick<TeamRole, 'tier' | 'provider' | 'model'>):
 /** Short readable model name for a chip: "Cheap tier" or the model id. */
 export const modelName = (role: Pick<TeamRole, 'tier' | 'model'>): string | undefined => (role.tier ? `${role.tier[0]!.toUpperCase()}${role.tier.slice(1)} tier` : role.model)
 
-export const connectPrompt = (role: Pick<TeamRole, 'id'>): string => `Connect to the factory as ${role.id} and work until I tell you to stop.`
+export const connectPrompt = (role: Pick<TeamRole, 'id'>, session?: string): string => `Connect to the factory as ${role.id}${session ? ` with session "${session}"` : ''} and work until I tell you to stop.`
 
 /** Option groups in display order: tiers first, then one group per provider. */
 export const groupOptions = (options: ModelOption[]): [group: string, options: ModelOption[]][] => {

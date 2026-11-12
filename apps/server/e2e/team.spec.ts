@@ -26,6 +26,10 @@ test('Agent team is in the sidebar after Workflow, not in Settings; the roster i
 
   const roster = page.getByRole('radiogroup', { name: 'Roles' })
   const radios = roster.getByRole('radio')
+  // The list is as tall as its cards: no inner scroll hides the last role at a normal desktop height.
+  await page.setViewportSize({ width: 1280, height: 800 })
+  expect(await roster.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(0)
+  await expect(radios.last()).toBeVisible()
   await radios.first().focus()
   await expect(radios.first()).toBeChecked()
   await page.keyboard.press('ArrowDown')
@@ -41,7 +45,13 @@ test('Agent team is in the sidebar after Workflow, not in Settings; the roster i
   await expect(sheet.locator('#role-title')).toHaveText('Software engineer')
   await expect(sheet.getByRole('list', { name: 'Skills' })).toContainText('Small diffs')
   await expect(sheet.getByText('Works on')).toBeVisible()
-  await expect(sheet.getByTestId('connect')).toContainText('Connect to the factory as engineer and work until I tell you to stop.')
+  await expect(sheet.getByTestId('connect')).toContainText(/Connect to the factory as engineer with session "engineer-[0-9a-f]{4}" and work until I tell you to stop\./)
+  // One step connects and routes through the gateway: the tool picker carries the same session name as the prompt.
+  const name = /Connect to the factory as engineer with session "(engineer-[0-9a-f]{4})"/.exec(await sheet.getByTestId('connect').innerText())![1]!
+  await expect(sheet.getByTestId('connect-gateway').locator('pre').first()).toContainText(`BAUHERR_SESSION=${name}`)
+  await sheet.getByLabel('Coding tool').selectOption('codex')
+  await expect(sheet.getByTestId('connect-gateway')).toContainText('wire_api = "responses"')
+  await expect(sheet.getByTestId('connect-gateway')).not.toContainText(/sk-bauherr|bha_/)
   await expect(sheet.getByRole('link', { name: 'How sessions connect' })).toHaveAttribute('href', /session-mode\.md/)
 })
 

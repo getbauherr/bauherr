@@ -13,7 +13,7 @@ nav = [
   { "Home" = "index.md" },
   { "Get started" = ["features.md", "session-mode.md"] },
   { "Using the factory" = ["ui.md", "chat.md", "intake-embed.md", "media.md"] },
-  { "Operating it" = ["auth.md", "cost.md", "observability.md", "router.md", "releasing.md"] },
+  { "Operating it" = ["auth.md", "cost.md", "gateway.md", "observability.md", "router.md", "releasing.md"] },
   { "Reference" = ["spec/workflow.md", "spec/people.md"] },
   { "Legal" = ["legal.md"] },
 ]

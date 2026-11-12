@@ -9,7 +9,7 @@ import { CliError, portFree, preflight } from '../src/preflight.js'
 import { projectName, readEnv, renderCompose, writeProject } from '../src/render.js'
 
 const template = readFileSync(new URL('../templates/compose.yaml', import.meta.url), 'utf8')
-const settings = { PORT: '3100', PUBLIC_URL: 'http://localhost:3100' }
+const settings = { PORT: '3100', GATEWAY_PORT: '4100', PUBLIC_URL: 'http://localhost:3100' }
 const tmp = () => mkdtempSync(join(tmpdir(), 'bauherr-cli-'))
 
 test('renderCompose pins the image and drops build, container names and host ports', () => {
@@ -22,6 +22,9 @@ test('renderCompose pins the image and drops build, container names and host por
   assert.match(out, /PAYLOAD_SECRET: \$\{PAYLOAD_SECRET:\?/)
   assert.match(out, /ENCRYPTION_KEY: \$\{ENCRYPTION_KEY:\?/)
   assert.match(out, /ports: \["\$\{PORT:-3000\}:3000"\]/)
+  assert.match(out, /ports: \["127\.0\.0\.1:\$\{GATEWAY_PORT:-4000\}:4000"\]/)
+  assert.match(out, /GATEWAY_PORT: \$\{GATEWAY_PORT:-4000\}/)
+  assert.doesNotMatch(out, /"0\.0\.0\.0:|"\$\{GATEWAY_PORT:-4000\}:4000"/)
 })
 
 test('observability services run only under their profile, publish only loopback UIs and keep OTLP internal', () => {
@@ -50,11 +53,30 @@ test('writeProject creates secrets with mode 600 and keeps them on re-run', () =
   assert.equal(second.get('ENCRYPTION_KEY'), first.get('ENCRYPTION_KEY'))
   assert.equal(second.get('COMPOSE_PROJECT_NAME'), first.get('COMPOSE_PROJECT_NAME'))
   assert.equal(readEnv(dir).get('PORT'), '3200')
+  assert.equal(readEnv(dir).get('GATEWAY_PORT'), '4100')
   assert.equal(readEnv(dir).get('OIDC_ISSUER'), 'https://idp')
   assert.equal(statSync(join(dir, '.env')).mode & 0o777, 0o600)
   assert.match(readFileSync(join(dir, 'compose.yaml'), 'utf8'), /bauherr:1\.2\.4/)
   assert.ok(statSync(join(dir, 'deploy/gateway/config.yaml.tmpl')).isFile())
   assert.ok(statSync(join(dir, 'deploy/db-init.sql')).isFile())
+})
+
+test('an install without GATEWAY_PORT gets the default on re-render and keeps its other settings', () => {
+  const dir = tmp()
+  writeFileSync(join(dir, '.env'), 'PORT=3300\nPUBLIC_URL=http://localhost:3300\nPAYLOAD_SECRET=a\nENCRYPTION_KEY=b\nOIDC_ISSUER=https://idp\n')
+  const rerender = () => writeProject(dir, '1.2.4', { PORT: '3300', GATEWAY_PORT: readEnv(dir).get('GATEWAY_PORT') ?? '4000', PUBLIC_URL: 'http://localhost:3300' })
+  const env = rerender()
+  assert.equal(env.get('GATEWAY_PORT'), '4000')
+  assert.equal(env.get('PAYLOAD_SECRET'), 'a')
+  assert.equal(env.get('OIDC_ISSUER'), 'https://idp')
+  writeFileSync(join(dir, '.env'), readFileSync(join(dir, '.env'), 'utf8').replace('GATEWAY_PORT=4000', 'GATEWAY_PORT=4010'))
+  assert.equal(rerender().get('GATEWAY_PORT'), '4010')
+})
+
+test('preflight reports a busy gateway port with its own flag', async () => {
+  const ok = { status: 0, missing: false }
+  await assert.rejects(preflight(3000, { probe: () => ok, free: async (p) => p !== 4000, gatewayPort: 4000 }), /Port 4000 is already in use\. Pick another with --gateway-port/)
+  await preflight(3000, { probe: () => ok, free: async () => false, skipPort: true, gatewayPort: 4000 })
 })
 
 test('projectName differs per install dir', () => {

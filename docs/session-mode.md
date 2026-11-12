@@ -34,7 +34,7 @@ Rolling the migration back drops `agent_keys` but does not restore the disabled 
 
 ## Route your own session through the gateway
 
-Budgeted, logged and attributed like the factory, billed to your own Claude login. Legal line: [legal.md](legal.md#owner-session-passthrough).
+Budgeted, logged and measured per session like the factory, billed to your own Claude login. Legal line: [legal.md](legal.md#owner-session-passthrough). The easy way is the generated block in Settings › AI usage › Measure session cost or on the Agent team page, which also covers other coding tools and the Workspace API key: [gateway.md](gateway.md). It sets the session name that `connect` receives too, so one setup both connects and measures.
 
 The seed also creates the Workspace's second consumer key `workspace-<slug>-session` (`kind: owner-session`, `sub/*` plus `ws-<slug>/*` for the Workspace API key) and, with `BAUHERR_SESSION_KEY_FILE=/run/bauherr/session-key`, writes it 0600. The key has its own budget, `SESSION_BUDGET_USD` (default 100) USD per rolling 30 days, independent of the Workspace budget; it is Audit only, so going over it logs a warning and never blocks your session.
 
@@ -43,7 +43,7 @@ pnpm --filter server session:activate     # merges env into ~/.claude/settings.j
 pnpm --filter server session:deactivate   # restores the backup
 ```
 
-Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEADERS="x-agw-key: <session key>"` and maps the model tiers to `sub/claude-{haiku,sonnet,opus}-5-5`. Restart Claude Code afterwards. Claude Code keeps sending your own `Authorization`; the gateway forwards it to Anthropic and strips `x-agw-key`.
+Activate sets `ANTHROPIC_BASE_URL` to the gateway address (default `http://127.0.0.1:4000`, see [Where it listens](gateway.md#where-it-listens)), `ANTHROPIC_CUSTOM_HEADERS="x-agw-key: <session key>"` (no session name: it is fixed for every session of the machine, so the cost shows as "Unnamed gateway session"; prefer the generated block, which names each session) and maps the model tiers to `sub/claude-{haiku,sonnet,opus}-5-5`. Restart Claude Code afterwards. Claude Code keeps sending your own `Authorization`; the gateway forwards it to Anthropic and strips `x-agw-key`.
 
 ## Connect as a role
 
@@ -55,7 +55,7 @@ Connect to the factory as engineer and work until told to stop.
 
 The server instructions tell the session the rest:
 
-1. `connect {role, session?, label?, workspace?, client?, model?, provider?}` registers an agent session and returns `sessionId`, the role's `profile` and `stages` (name, kind, skill, outcomes), the model the role runs on (`role.model`, plus a one-sentence `modelHint` when the role names a model and you report another), and `pollAfterSeconds`. An unknown role is refused with the list of valid roles. `session` is your stable key (max 64 chars): connecting again with it revives the same session and puts back any Run the old process still held. `label` is the name the Team view shows.
+1. `connect {role, session?, label?, workspace?, client?, model?, provider?}` registers an agent session (pass the session name of the gateway setup as `session`: the gateway matches its cost to it) and returns `sessionId`, the role's `profile` and `stages` (name, kind, skill, outcomes), the model the role runs on (`role.model`, plus a one-sentence `modelHint` when the role names a model and you report another), and `pollAfterSeconds`. An unknown role is refused with the list of valid roles. `session` is your stable key (max 64 chars): connecting again with it revives the same session and puts back any Run the old process still held. `label` is the name the Team view shows.
 2. Loop `next_work {sessionId}`. It checks in and claims through the same path as `claim_next`, limited to the stages of your role: you get `{work: {...claim_next payload, skill, outcomes, roleReminder}}` or `{work: null, reason, pollAfterSeconds}` ("Nothing queued for Reviewer", "Reviewer is at its limit of 2 agents", "plan is at its WIP limit", "You still hold Run N"). Work the Run as in the Loop below (`load_skill`, `heartbeat`, `finish_run` ...).
 3. Pass `sessionId` on every call (every agent tool takes it, optional): it keeps the session present and attributes the Run to it. Without it nothing changes: `claim_next`, `claim_run` and `heartbeat` work as before and the Run has no session.
 4. `disconnect {sessionId}` when you stop; Runs you still hold go back to the queue.

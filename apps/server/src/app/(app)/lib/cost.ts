@@ -88,13 +88,18 @@ export const aggregate = (wf: Workflow, rows: Row[], done: { ids: number[]; rows
 }
 
 const COLS = sql`e."run_id", e."ticket_id", e."stage", e."role", e."model", e."source"::text AS "source", COALESCE(e."tokens_in", 0)::float8 + COALESCE(e."tokens_out", 0)::float8 AS "tokens", (COALESCE(e."cache_read", 0) + COALESCE(e."cache_write", 0))::float8 AS "cache", e."cost_usd"::float8 AS "cost", e."at"`
-/** A Run's session-reported rows are dropped once the gateway priced the Run (the gateway is exact). */
-const EFFECTIVE = sql`NOT (e."source" = 'session-reported' AND e."run_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."run_id" = e."run_id" AND g."source" = 'gateway'))`
+/**
+ * Session-reported rows are dropped once the gateway has priced the same thing (the gateway is exact): a Run with gateway rows, and every row of a session at or after that session's first gateway row.
+ * So a session that moves from the usage hook to the gateway never counts a call twice.
+ */
+const EFFECTIVE = sql`NOT (e."source" = 'session-reported' AND (
+  (e."run_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."run_id" = e."run_id" AND g."source" = 'gateway'))
+  OR (e."session_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."session_id" = e."session_id" AND g."source" = 'gateway' AND g."at" <= e."at"))))`
 
 const toRow = (r: Record<string, any>): Row => ({
   run: r.run_id == null ? null : Number(r.run_id),
-  group: r.session_label ?? (r.source === 'chat' ? 'Chat' : r.executor === 'ci' ? 'CI' : 'Runner'),
-  executor: r.session_label ? 'session' : r.source === 'chat' ? 'chat' : (r.executor ?? 'runner'),
+  group: r.session_label ?? (r.source === 'chat' ? 'Chat' : r.executor === 'ci' ? 'CI' : r.source === 'gateway' && r.run_id == null ? 'Unnamed gateway session' : 'Runner'),
+  executor: r.session_label ? 'session' : r.source === 'chat' ? 'chat' : r.source === 'gateway' && r.run_id == null ? 'session' : (r.executor ?? 'runner'),
   ticket: r.ticket_id == null ? null : Number(r.ticket_id),
   number: r.number == null ? null : Number(r.number),
   ticketTitle: r.title ?? null,
@@ -135,7 +140,7 @@ const loadCoverage = async (payload: Payload, workspace: number, since: Date, pr
     const r = rows.find((x) => x.mode === mode)
     return { runs: r?.runs ?? 0, covered: r?.covered ?? 0 }
   }
-  return [{ label: 'Runner and CI Runs (gateway)', ...of('autonomous') }, { label: 'Session Runs (reported)', ...of('session') }]
+  return [{ label: 'Runner and CI Runs (gateway)', ...of('autonomous') }, { label: 'Session Runs (gateway or reported)', ...of('session') }]
 }
 
 /** The "Cost & tokens" numbers of the last `days` days; cost per finished Ticket uses the Tickets that reached done in the range, with their whole history. */
