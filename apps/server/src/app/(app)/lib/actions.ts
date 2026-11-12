@@ -268,9 +268,9 @@ export const refinePick = async (ticket: number, point: string, option: number) 
 export const refineExplain = async (ticket: number, point: string) => refining({ ticket }, (x) => refineWhy(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
 /** "Use the recommended answers for the rest". */
 export const refineRest = async (ticket: number) => refining({ ticket }, (x) => refineRecommended(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
-/** "Change" on an answered point. */
 /** The model tier the conversation's next turns use. */
 export const refineTier = async (ticket: number, tier: string) => refining({ ticket }, (x) => refineModel(x.payload, x.user, { ticket, workspaceId: x.workspaceId, tier }))
+/** "Change" on an answered point. */
 export const refineChange = async (ticket: number, point: string) => refining({ ticket }, (x) => refineReopen(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
 /** "Send to planning". */
 export const refineFinish = async (ticket: number) => refining({ ticket }, (x) => refineSend(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
