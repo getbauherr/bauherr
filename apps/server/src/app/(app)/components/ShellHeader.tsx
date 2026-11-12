@@ -18,17 +18,17 @@ export function ShellHeader({ items, admin, setup, minimal, logout }: { items: P
       <SidebarTrigger />
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5 max-sm:hidden" />
       <Breadcrumbs owner={minimal} />
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      {!minimal && <div className="ml-auto flex shrink-0 items-center gap-2">
         {!path.startsWith('/requests/new') && (
           <RequestOpen request="new" variant="outline" className="max-sm:size-9 max-sm:px-0">
             <Plus />
             <span className="max-sm:sr-only">New request</span>
           </RequestOpen>
         )}
-        {!minimal && <PresencePill />}
-        {!minimal && <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />}
+        <PresencePill />
+        <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />
         <ChatButton />
-      </div>
+      </div>}
     </header>
   )
 }

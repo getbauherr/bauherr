@@ -1,18 +1,18 @@
 import { OpenOnLoad, RequestOpen } from '../../../components/chat/DockOpen'
 import { EmptyState } from '../../../components/EmptyState'
 import { ownsDraft } from '../../../lib/requests'
-import { currentPersonWorkspace, payloadClient } from '../../../lib/session'
-import { isBauherr, productsVisibleTo } from '../../../../../lib/people'
+import { isAdmin } from '../../../lib/settings'
+import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
 
 /** The link people bookmark: it opens the docked chat on a new, empty request. `?session=<id>` (an older draft link) continues that draft of the caller's instead. */
 export default async function NewRequest({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
   const { session } = await searchParams
-  const { user, workspace } = await currentPersonWorkspace()
+  const { user, workspace } = await currentWorkspace()
   const payload = await payloadClient()
-  const products = workspace ? (await payload.count({ collection: 'products', where: productsVisibleTo(user, workspace.id), overrideAccess: true })).totalDocs : 0
-  if (!products) return <><h1 className="title">New request</h1><EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.${user.role === 'admin' ? '' : isBauherr(user) ? ' Ask an Admin to set up the Workspace.' : ' Ask your Bauherr to assign a Product to you.'}`} action={user.role === 'admin' ? { href: '/setup', label: 'Set up your Workspace' } : undefined} /></>
+  const products = workspace ? (await payload.count({ collection: 'products', where: { workspace: { equals: workspace.id } }, overrideAccess: true })).totalDocs : 0
+  if (!products) return <><h1 className="title">New request</h1><EmptyState text={`No products in ${workspace?.name ?? 'any Workspace'} yet.${isAdmin(user) ? '' : ' Ask an Admin to set up the Workspace.'}`} action={isAdmin(user) ? { href: '/setup', label: 'Set up your Workspace' } : undefined} /></>
   const draft = workspace && session && /^\d{1,9}$/.test(session) && (await ownsDraft(user.id as number, workspace.id, Number(session))) ? Number(session) : 'new'
   return (
     <div className="flex flex-col gap-4">

@@ -132,7 +132,7 @@ describe('Requests of a Product owner', () => {
     expect(await loadOwnerTicket(ws.a, ticket.a2, other as never)).not.toBeNull()
   })
 
-  it('the pages: Requests, a request and the Ticket render for a Product owner and are 404 for Product B', async () => {
+  it('the pages: Requests, a request and the Ticket render for a Product owner and are 404 for Product B; New request is closed with the dock', async () => {
     session.cookie = cookie.po
     const notFound = (e: unknown) => /404|NEXT_NOT_FOUND/.test(String((e as { digest?: string })?.digest ?? e))
     const render = async (load: () => Promise<{ default: (p: any) => Promise<unknown> }>, params: Record<string, string>) => {
@@ -146,7 +146,7 @@ describe('Requests of a Product owner', () => {
     const requestPage = () => import('../src/app/(app)/(shell)/requests/[id]/page')
     const ticketPage = () => import('../src/app/(app)/(shell)/tickets/[id]/page')
     expect(await render(() => import('../src/app/(app)/(shell)/requests/page'), {})).toBe('rendered')
-    expect(await render(() => import('../src/app/(app)/(shell)/requests/new/page'), {})).toBe('rendered')
+    expect(await render(() => import('../src/app/(app)/(shell)/requests/new/page'), {})).toBe('404')
     expect(await render(requestPage, { id: String(request.sentA1) })).toBe('rendered')
     expect(await render(requestPage, { id: String(request.sentA2) })).toBe('404')
     expect(await render(requestPage, { id: String(request.draftOther) })).toBe('404')
@@ -159,97 +159,24 @@ describe('Requests of a Product owner', () => {
   })
 })
 
-describe('server actions open to a Product owner', () => {
-  it('discard, edit and screenshots work on their own draft only; a colleague\'s draft and Product B answer 404', async () => {
-    const actions = await import('../src/app/(app)/lib/actions')
-    const notFound = async (run: () => Promise<unknown>) => run().then(() => false, (e) => /404|NEXT_NOT_FOUND/.test(String((e as { digest?: string })?.digest ?? e)))
-    expect(await actions.loadRequestCard(request.draftOther!)).toBeNull()
-    expect(await actions.loadRequestCard(request.sentA2!)).toBeNull()
-    expect((await actions.loadRequestCard(request.draftMine!))?.session).toBe(request.draftMine)
-    expect(await actions.editRequestCard(request.draftOther!, { title: 'x' })).toHaveProperty('error')
-    expect(await notFound(() => actions.discardIntake(request.draftOther!))).toBe(true)
-    const edited = await actions.editRequestCard(request.draftMine!, { title: 'Edited by me' })
-    expect(edited).toMatchObject({ card: { title: 'Edited by me', product: { name: 'a1' } } })
-  })
-
-  it('the Product select offers only assigned Products', async () => {
-    const { cardData } = await import('../src/lib/chat/request')
-    const fresh = (await payload.create({ collection: 'intake_sessions', data: { persona: 'product-user', status: 'open', product: product.a1, workspace: ws.a, user: po.id, messages: [] } as never, ...o })).id as number
-    const s = await payload.findByID({ collection: 'intake_sessions', id: fresh, depth: 1, overrideAccess: true })
-    expect((await cardData({ payload, user: po, workspace: ws.a }, s as never, true)).productChoices.map((p) => p.name)).toEqual(['a1'])
-    expect((await cardData({ payload, user: other, workspace: ws.a }, s as never, true)).productChoices.map((p) => p.name)).toEqual(['a1', 'a2'])
-  })
-
-  it('a comment goes to the issue of an assigned Product, signed with the person; Product B is refused', async () => {
-    const actions = await import('../src/lib/actions')
-    await actions.postComment(payload, po, { ticket: ticket.a1, workspaceId: ws.a, body: 'Looks right', mediaIds: [] })
-    const { ts } = await actions.sourceOf(payload, (await payload.findByID({ collection: 'tickets', id: ticket.a1, ...o })) as never)
-    expect((await ts.listComments('1')).at(-1)?.body).toBe('owner (Product owner): Looks right')
-    await expect(actions.postComment(payload, po, { ticket: ticket.a2, workspaceId: ws.a, body: 'x', mediaIds: [] })).rejects.toThrow('not found')
-    await expect(actions.postComment(payload, po, { ticket: ticket.b1, workspaceId: ws.b, body: 'x', mediaIds: [] })).rejects.toThrow('not found')
-    await expect(actions.postComment(payload, po, { ticket: ticket.a1, workspaceId: ws.b, body: 'x', mediaIds: [] })).rejects.toThrow('not found')
-    await expect(actions.postComment(payload, bauherr, { ticket: ticket.a1, workspaceId: ws.a, body: 'plain', mediaIds: [] })).resolves.toEqual([])
-    expect((await ts.listComments('1')).at(-1)?.body).toBe('plain')
-  })
-
+describe('what a Product owner does not get', () => {
   it('an urgent request of a Product owner proposes the fast lane, never sets it', async () => {
     const { canPutOnFastLane } = await import('../src/lib/expedite')
     expect([po, other, bauherr, { role: 'admin' }].map(canPutOnFastLane)).toEqual([false, false, false, true])
   })
-})
 
-describe('the docked chat of a Product owner', () => {
-  const ctx = () => ({ payload, user: po, actor: { kind: 'human' as const }, workspace: ws.a })
-
-  it('offers only the tools a Product owner may use, and the server refuses every other one', async () => {
-    const { chatTools, kindOf, runChatTool, resolveInput } = await import('../src/lib/chat/tools')
-    expect(chatTools(po).map((t) => t.name).sort()).toEqual(['post_comment', 'request_status'])
-    expect(chatTools(bauherr).length).toBeGreaterThan(10)
-    expect(kindOf('approve', po)).toBeUndefined()
-    expect(kindOf('post_comment', po)).toBe('confirm')
-    for (const name of ['approve', 'accept_staging', 'decide', 'list_tickets', 'get_run', 'cost_summary', 'team_status', 'get_ticket', 'read_worklog', 'search_knowledge']) {
-      await expect(runChatTool(ctx(), name, { ticket: 1 }), name).rejects.toThrow(/forbidden/)
-    }
-    const out = (await runChatTool(ctx(), 'request_status', {})) as { requests: { request: number }[] }
-    expect(out.requests.map((r) => r.request)).toEqual([request.sentA1])
-    const missing = await resolveInput(ctx(), 'post_comment', { ticket: 2, body: 'x' })
-    expect(missing).toMatchObject({ ok: false })
-    expect('reply' in missing && missing.reply).toMatch(/No Ticket #2/)
-    expect(await resolveInput(ctx(), 'post_comment', { ticket: 1, body: 'x' })).toHaveProperty('input')
+  it('the card is read-only with images through the signed-in route', async () => {
+    const { loadRequest } = await import('../src/app/(app)/lib/requests')
+    const card = (await loadRequest(ws.a, request.draftMine!, po as never))!.card
+    expect(card.editable).toBe(false)
+    expect(card.productChoices).toEqual([])
+    expect(card.images.map((i) => i.url)).toEqual([`/intake/api/media/${image.shotDraftMine}`])
   })
 
-  it('every chat tool is decided: open to a Product owner, or closed', async () => {
-    const { chatToolAccess } = await import('../src/lib/chat/tools')
-    const access = chatToolAccess()
-    const open = Object.entries(access).filter(([, v]) => v.po).map(([k]) => k).sort()
-    expect(open).toEqual(['post_comment', 'request_status', 'submit_request'])
-    expect(Object.keys(access).length).toBeGreaterThan(open.length)
-  })
-
-  it('lists only request and Ticket threads, and a Ticket thread only for an assigned Product', async () => {
-    const threads = await import('../src/lib/chat/threads')
-    const w = { payload, user: po, workspace: ws.a }
-    await payload.create({ collection: 'chat_threads', data: { owner: po.id, workspace: ws.a, title: 'generic', lastMessageAt: new Date().toISOString() }, ...o })
-    expect(await threads.ticketThread(w, ticket.a2)).toBeNull()
-    expect(await threads.ticketThread(w, ticket.a1)).toMatchObject({ ticket: ticket.a1 })
-    const { requestThread } = await import('../src/lib/chat/request')
-    expect(await requestThread(w, request.draftMine)).not.toBeNull()
-    expect(await requestThread(w, request.draftOther)).toBeNull()
-    expect(await requestThread(w, request.sentA2)).toBeNull()
-    expect((await threads.listThreads(w)).map((t) => t.title)).not.toContain('generic')
-    expect((await threads.listThreads(w)).length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('the page context of a Product owner is the reduced Ticket, a visible request, or nothing', async () => {
-    const { resolveContext } = await import('../src/lib/chat/context')
-    const at = (path: string) => resolveContext(payload, po, ws.a, { path })
-    const shown = await at(`/tickets/${ticket.a1}`)
-    expect(shown.label).toContain('#1')
-    expect(shown.markdown).not.toMatch(/Run \d|cost|stage:/i)
-    expect((await at(`/tickets/${ticket.a2}`)).label).toBe('Not found')
-    expect((await at(`/requests/${request.sentA2}`)).label).toBe('Not found')
-    expect((await at(`/requests/${request.sentA1}`)).label).toBe(`Request ${request.sentA1}`)
-    for (const path of ['/', '/inbox', '/runs', '/insights', '/settings/models', '/workflow/edit', `/runs/1`]) expect((await at(path)).markdown, path).not.toMatch(/Workflow|Inbox|cost|Model tiers|stages/i)
+  it('the dock is closed: the chat routes refuse a Product owner', async () => {
+    const { GET } = await import('../src/app/api/chat/threads/route')
+    const res = await GET(new Request('http://t/api/chat/threads', { headers: { cookie: cookie.po } }))
+    expect(res.status).toBe(403)
   })
 })
 

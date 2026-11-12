@@ -12,8 +12,6 @@ import { ticketStatus } from '../../app/(app)/lib/status'
 import { duration } from '../../app/(app)/lib/format'
 import { graph } from '../workflow'
 import { canDecide } from '../decision'
-import { canSeeProduct, isProductOwner, requestsVisibleTo } from '../people'
-import { loadProgress } from '../progress'
 
 type Doc = Record<string, any>
 export type PageContext = { label: string; markdown: string; entity?: { kind: 'ticket' | 'run' | 'request' | 'product'; id: number | string } }
@@ -87,8 +85,8 @@ const runPage = async (payload: Payload, user: Doc, ws: number, id: number): Pro
   ], { kind: 'run', id })
 }
 
-const requestPage = async (payload: Payload, user: Doc, ws: number, id: number): Promise<PageContext> => {
-  const s = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, requestsVisibleTo(user, ws)] }, limit: 1, depth: 1, overrideAccess: true })).docs[0] as Doc | undefined
+const requestPage = async (payload: Payload, ws: number, id: number): Promise<PageContext> => {
+  const s = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, { 'product.workspace': { equals: ws } }] }, limit: 1, depth: 1, overrideAccess: true })).docs[0] as Doc | undefined
   if (!s) return gone()
   return make(`Request ${s.id}`, [`Request ${s.id} (${s.status}) for Product ${line(s.product?.name)}`, `Problem: ${line(s.draft?.problem, 300) || 'not stated yet'}`, ...(s.ticketNumber != null ? [`Became Ticket #${s.ticketNumber}`] : [])], { kind: 'request', id })
 }
@@ -155,36 +153,17 @@ const insightsPage = async (payload: Payload, ws: number, path: string): Promise
   ])
 }
 
-/** The Ticket as a Product owner sees it: title, plain-word progress and who it waits for. No Runs, stage names, cost or plan. */
-const ownerTicketPage = async (payload: Payload, user: Doc, ws: number, id: number): Promise<PageContext> => {
-  const t = (await payload.find({ collection: 'tickets', where: { and: [{ id: { equals: id } }, { workspace: { equals: ws } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
-  if (!t || !canSeeProduct(user, { id: t.product, workspace: ws })) return gone()
-  const p = (await loadProgress(payload, [t])).get(t.id)
-  return make(`Ticket #${t.number} ${line(t.title, 60)}`, [`Ticket #${t.number}: ${line(t.title)}`, ...(p ? [`Status: ${line(p.headline)}`, ...(p.detail ? [line(p.detail, 300)] : []), ...(p.next ? [`Next: ${line(p.next, 200)}`] : [])] : [])], { kind: 'ticket', id })
-}
-
-/** What a Product owner's assistant knows: their requests and the reduced Ticket page, nothing else. */
-const ownerContext = async (payload: Payload, user: Doc, ws: number, path: string): Promise<PageContext> => {
-  const [, section, id, ...more] = path.split('/')
-  const n = numeric(id ?? '')
-  if (!more.length && n !== null && section === 'requests') return requestPage(payload, user, ws, n)
-  if (!more.length && n !== null && section === 'tickets') return ownerTicketPage(payload, user, ws, n)
-  const label = ({ '/requests': 'Requests', '/requests/new': 'New request', '/settings/profile': 'Settings: Profile' } as Record<string, string>)[path]
-  return make(label ?? 'Unknown page', [label ? `${label} page.` : 'A page the assistant has no details for.'])
-}
-
 /** What the person is looking at, from the PATH only (never client-sent content), limited to the Workspace they act in; a foreign or unknown id reads as "not found". */
 export const resolveContext = async (payload: Payload, user: Doc, workspace: number | string, a: { path: string }): Promise<PageContext> => {
   const ws = Number(workspace)
   if (user.role !== 'admin' && !tenantsOf(user).map(Number).includes(ws)) return gone()
   const path = (a.path.split(/[?#]/)[0] || '/').replace(/\/+$/, '') || '/'
-  if (isProductOwner(user)) return ownerContext(payload, user, ws, path)
   const [, section, id, ...more] = path.split('/')
   const n = numeric(id ?? '')
   if (!more.length && n !== null) {
     if (section === 'tickets') return ticketPage(payload, user, ws, n)
     if (section === 'runs') return runPage(payload, user, ws, n)
-    if (section === 'requests') return requestPage(payload, user, ws, n)
+    if (section === 'requests') return requestPage(payload, ws, n)
   }
   if (section === 'settings' && id === 'products' && more.length === 1 && numeric(more[0]!) !== null) return productPage(payload, ws, numeric(more[0]!)!)
   if (section === 'settings' && id && !more.length && PAGES[path]) return settingsPage(payload, ws, id, PAGES[path])

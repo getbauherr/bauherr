@@ -30,12 +30,12 @@ const setupOf = async (workspace: number) => {
   return { done: s.count, total: SETUP_STEPS.length, complete: s.complete }
 }
 
-/** What a Product owner gets: Requests, Profile and the user menu, the docked chat for their requests. No Workspace switcher, no polling, nothing of the factory. */
+/** What a Product owner gets: Requests, Profile and the user menu. No dock, no Workspace switcher, no polling, nothing of the factory. */
 async function ProductOwnerShell({ person, children }: { person: Person; children: ReactNode }) {
   const { workspace } = await currentPersonWorkspace()
   const drafts = workspace ? await countOwnDrafts(person.id as number, workspace.id) : 0
   return (
-    <AppShell defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'} minimal email={person.email} admin={false} workspaces={[]} presence={{ working: 0, idle: 0 }} version={appVersion()} needsYou={0} drafts={drafts} hasKnowledge={false} dock={workspace && <ChatDock userId={person.id} />} logout={logout} selectWorkspace={selectWorkspace}>
+    <AppShell defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'} minimal email={person.email} admin={false} workspaces={[]} presence={{ working: 0, idle: 0 }} version={appVersion()} needsYou={0} drafts={drafts} hasKnowledge={false} logout={logout} selectWorkspace={selectWorkspace}>
       {children}
     </AppShell>
   )

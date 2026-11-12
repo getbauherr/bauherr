@@ -75,7 +75,9 @@ test('a Product owner works in Requests: home, own Product, no factory internals
   await expect(ticket.getByTestId('request-headline')).toBeVisible()
   await expect(ticket.getByTestId('progress-path')).toBeVisible()
   await expect(ticket.getByTestId('request-comment').filter({ hasText: 'Please check the contrast' })).toBeVisible({ timeout: 30_000 })
-  await expect(ticket.getByRole('button', { name: 'Comment on #1' })).toBeVisible()
+  await expect(page.getByTestId('chat-open')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /New request/ })).toHaveCount(0)
+  await expect(ticket.getByRole('button')).toHaveCount(0) // no question card, no decision, no dock button
   for (const heading of ['Runs', 'Steps', 'Plan', 'Worklog', 'Path', 'Details']) await expect(page.getByRole('heading', { name: heading, exact: true })).toHaveCount(0)
   await expect(main).not.toContainText(/claude-lab-secret-model|1\.234|\$|tokens|budget|executor|Run #|Fix state|Expedite/i)
   await expect(page.getByRole('link', { name: /Runs|Insights|Agent team|Inbox|Workflow|Settings/ })).toHaveCount(0)
@@ -85,8 +87,8 @@ test('a Product owner works in Requests: home, own Product, no factory internals
   for (const path of [`/tickets/${betaTicket}`, `/requests/${betaRequest}`]) expect((await page.goto(path))?.status(), path).toBe(404)
   expect((await call(page, `/api/tickets/${alphaTicket}/artifacts/${alphaArtifact}`)).status).toBe(200)
   expect((await call(page, `/api/tickets/${betaTicket}/artifacts/${betaArtifact}`)).status).toBe(404)
-  expect((await call(page, `/api/chat/context?path=/tickets/${betaTicket}`)).body?.label).toBe('Not found')
-  expect((await call(page, `/api/chat/context?path=/tickets/${alphaTicket}`)).body?.label).toContain('Lab Alpha ticket')
+  for (const path of [`/api/chat/context?path=/tickets/${alphaTicket}`, '/api/chat/threads']) expect([401, 403, 404], path).toContain((await call(page, path)).status)
+  expect((await page.goto('/requests/new'))?.status()).toBe(404)
 
   // The same Ticket for a Bauherr shows what the Product owner must not see (screenshot for comparison).
   await control.goto(`/tickets/${alphaTicket}`)

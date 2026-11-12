@@ -19,7 +19,7 @@ import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock
 import { homeOf, requestsVisibleTo } from '../../../lib/people'
 import { id } from '../../../lib/release'
 import { emptyDraft } from '../../../lib/intake/engine'
-import { currentPersonWorkspace, currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
+import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
@@ -66,13 +66,6 @@ const acting = async () => {
   const { workspace } = await currentWorkspace()
   if (!workspace) notFound()
   return { user: await requireBauherr(), payload: await payloadClient(), workspaceId: workspace.id }
-}
-
-/** The acting person (a Product owner too) and their Workspace: only for the few actions open to both. Every other action uses `acting` and is closed to a Product owner. */
-const actingPerson = async () => {
-  const { user, workspace } = await currentPersonWorkspace()
-  if (!workspace) notFound()
-  return { user, payload: await payloadClient(), workspaceId: workspace.id }
 }
 
 const inWorkspace = <T>(run: Promise<T>): Promise<T> =>
@@ -186,20 +179,20 @@ export async function requestChangesAction(form: FormData) {
 
 /** Discards one of the caller's open drafts and its conversation ("Discard" on the Requests page and "Discard draft" on the Request page). */
 export async function discardIntake(session: number) {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   await inWorkspace(discardRequest({ payload, user, workspace: workspaceId }, session))
   revalidatePath('/requests')
 }
 
 /** The Product select of a request thread in the dock: starts the interview session for a Product of the selected Workspace. Null when the thread or the Product is not theirs. */
 export async function chooseRequestProduct(thread: number, product: number): Promise<{ session: number; product: string } | null> {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   return chooseProduct({ payload, user, workspace: workspaceId }, thread, product)
 }
 
 /** The request card of one of the caller's requests (the dock reloads it after every turn); null when it is not theirs. */
 export async function loadRequestCard(session: number): Promise<CardData | null> {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   return requestCard({ payload, user, workspace: workspaceId }, session)
 }
 
@@ -207,7 +200,7 @@ const cardError = (e: unknown): { error: string } => ({ error: e instanceof Erro
 
 /** A direct edit of the request card by its author; the next interview turn keeps it. */
 export async function editRequestCard(session: number, patch: CardPatch): Promise<{ card: CardData } | { error: string }> {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   try {
     const card = await editCard({ payload, user, workspace: workspaceId }, session, patch)
     revalidatePath('/requests')
@@ -219,7 +212,7 @@ export async function editRequestCard(session: number, patch: CardPatch): Promis
 
 /** Adds an uploaded image (`/api/chat/media`) to the request's screenshots, or removes one. */
 export async function changeRequestImage(session: number, mediaId: number, change: 'add' | 'remove'): Promise<{ card: CardData } | { error: string }> {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   try {
     return { card: await (change === 'add' ? attachImage : removeImage)({ payload, user, workspace: workspaceId }, session, mediaId) }
   } catch (e) {
@@ -229,7 +222,7 @@ export async function changeRequestImage(session: number, mediaId: number, chang
 
 /** "Report a problem" on a released request: a new Bug draft of the same Product, linked to the original ("Follow-up to #n" on the filed issue). Returns the new request's id. */
 export async function reportProblem(session: number): Promise<{ session: number } | { error: string }> {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   const o = { overrideAccess: true, depth: 0 } as const
   const from = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: session } }, requestsVisibleTo(user, workspaceId), { status: { equals: 'submitted' } }, { persona: { equals: 'product-user' } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
   if (!from) return { error: 'This request cannot be followed up.' }
@@ -374,7 +367,7 @@ export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Pro
 
 /** The docked chat's `/comment`: posts text and the composer's pasted images (media ids from the chat upload) to the Ticket's issue. */
 export async function postDockComment(ticket: number, body: string, mediaIds: number[]): Promise<{ images: string[] } | { error: string }> {
-  const { user, payload, workspaceId } = await actingPerson()
+  const { user, payload, workspaceId } = await acting()
   try {
     return { images: await postCommentFromChat(payload, user, { ticket, workspaceId, body, mediaIds }) }
   } catch (e) {

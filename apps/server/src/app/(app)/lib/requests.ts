@@ -205,6 +205,9 @@ export const timelineOf = (sentAt: string, events: EventRow[], closedWithChange:
   return out
 }
 
+/** The card as a Product owner reads it: never editable here (no dock), and its images through the signed-in route instead of the public link. */
+const cardFor = (user: Viewer, card: CardData): CardData => (isProductOwner(user) ? { ...card, editable: false, productChoices: [], images: card.images.map((i) => ({ ...i, url: `/intake/api/media/${i.id}` })) } : card)
+
 export type RequestPage = {
   id: number
   title: string
@@ -242,7 +245,7 @@ export async function loadRequest(workspaceId: number, id: number, user: Viewer 
     sent: s.status === 'submitted',
     own: s.status === 'open' && mine,
     mine,
-    card: await cardData({ payload, user: user as never, workspace: workspaceId }, s as never, mine),
+    card: cardFor(user, await cardData({ payload, user: user as never, workspace: workspaceId }, s as never, mine)),
     tickets: docs.map((t) => {
       const stand = t.state === 'closed' ? { status: 'Done', waits: null, lane: null } : lifecycleOf(wf, t, progress.get(t.id)?.key ?? null, mine)
       return { id: t.id, number: t.number, title: t.title, url: t.url ?? null, ...stand, kind: kindOfLabels(t.labels), progress: progress.get(t.id)!, need: t.state === 'closed' ? null : (t.needsYou as Need | null) ?? null }
@@ -271,7 +274,7 @@ export async function loadOwnerTicket(workspaceId: number, id: number, user: Vie
     ticket: { id: t.id, number: t.number, title: t.title, url: null, ...stand, kind: kindOfLabels(t.labels), progress: p, need: closed ? null : (t.needsYou as Need | null) ?? null },
     product,
     request: s?.id ?? null,
-    card: s ? await cardData({ payload, user: user as never, workspace: workspaceId }, s as never, false) : null,
+    card: s ? cardFor(user, await cardData({ payload, user: user as never, workspace: workspaceId }, s as never, false)) : null,
     timeline: timelineOf(String(t.createdAt ?? s?.updatedAt), events, released),
     released,
     note: released ? (p.detail?.split('\n')[0] ?? null) : null,

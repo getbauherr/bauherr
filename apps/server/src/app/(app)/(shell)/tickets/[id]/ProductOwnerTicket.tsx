@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
-import { DockOpen } from '../../../components/chat/DockOpen'
 import { PageTitle } from '../../../components/PageTitle'
 import { ProgressPath } from '../../../components/ProgressPath'
 import { ProofList } from '../../../components/ProofList'
@@ -57,7 +56,6 @@ export async function ProductOwnerTicket({ id }: { id: string }) {
       {proof && <div className="max-w-[860px]"><ProofList data={proof} /></div>}
       <section className="flex flex-col gap-2" aria-labelledby="comments">
         <h2 className="heading" id="comments">Comments</h2>
-        <div><DockOpen ticket={t.id} mode="comment" size="sm" variant="outline">Comment on #{t.number}</DockOpen></div>
         <Suspense fallback={<div className="h-16 animate-pulse rounded-sm bg-secondary" aria-busy="true" />}>
           <Comments tickets={[{ id: t.id, number: t.number }]} owner />
         </Suspense>

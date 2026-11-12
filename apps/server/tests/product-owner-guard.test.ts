@@ -20,47 +20,27 @@ const PO_PAGES: Record<string, string> = {
   'settings/profile': 'the profile',
   requests: 'the four sections, limited to requests of assigned Products and their own drafts',
   'requests/[id]': 'one request: the card, timeline, "waits for", comments; 404 outside the assignment',
-  'requests/new': 'opens the request chat; the Product select lists assigned Products only',
   'tickets/[id]': 'the reduced Ticket page; 404 outside the assignment',
 }
-const BAUHERR_PAGES = ['', 'inbox', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'tickets/n/[number]', 'workflow/edit']
+const BAUHERR_PAGES = ['', 'inbox', 'requests/new', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'tickets/n/[number]', 'workflow/edit']
 /** Route handlers (relative to src/app, `<path> <METHOD>`) that answer a Product owner's session. */
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
   'm/[id]/[sig] GET': 'public, signed image link for forge issues; the session is not read',
-  'api/chat/context GET': 'the page context, resolved for a Product owner from their assignment',
-  'api/chat/media POST': 'a pasted screenshot of their Workspace',
-  'api/chat/threads GET': 'own request and Ticket threads only',
-  'api/chat/threads POST': 'a new request, a thread of their request or of a Ticket of an assigned Product',
-  'api/chat/threads/[id] GET': 'own threads',
-  'api/chat/threads/[id] PATCH': 'own threads',
-  'api/chat/threads/[id] DELETE': 'own threads',
-  'api/chat/threads/[id]/confirm POST': 'own threads; the tools of a Product owner only',
-  'api/chat/threads/[id]/feedback POST': 'own threads',
-  'api/chat/threads/[id]/messages GET': 'own threads',
-  'api/chat/threads/[id]/messages PUT': 'own threads',
-  'api/chat/threads/[id]/run POST': 'own threads; the tools of a Product owner only',
   'api/tickets/[id]/artifacts/[artifactId] GET': 'review artifacts of assigned Products; 404 elsewhere',
   'intake/api/media/[id] GET': 'files of assigned Products through the signed-in route; 404 elsewhere',
 }
-const BAUHERR_ROUTES = [...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), 'api/changes GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
+const BAUHERR_ROUTES = ['api/chat/context GET', 'api/chat/media POST', 'api/chat/threads GET', 'api/chat/threads POST', 'api/chat/threads/[id] DELETE', 'api/chat/threads/[id] GET', 'api/chat/threads/[id] PATCH', 'api/chat/threads/[id]/confirm POST', 'api/chat/threads/[id]/feedback POST', 'api/chat/threads/[id]/messages GET', 'api/chat/threads/[id]/messages PUT', 'api/chat/threads/[id]/run POST', ...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), 'api/changes GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
 /** Exported server actions (`<file>#<name>`, file relative to src/app/(app)) a Product owner may call. */
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
-  'lib/actions.ts#discardIntake': 'their own open draft',
-  'lib/actions.ts#chooseRequestProduct': 'the Product of their own request thread, from assigned Products',
-  'lib/actions.ts#loadRequestCard': 'the card of their own request',
-  'lib/actions.ts#editRequestCard': 'their own open draft',
-  'lib/actions.ts#changeRequestImage': 'screenshots of their own open draft',
-  'lib/actions.ts#reportProblem': 'a follow-up draft to a sent request they see',
-  'lib/actions.ts#postDockComment': 'a comment on a Ticket of an assigned Product',
 }
 const BAUHERR_ACTIONS = [
   'approvePlanAction', 'expediteAction', 'decideOutcomeAction', 'acceptStagingAction', 'approveProductionAction', 'approveSkillProposalAction', 'rejectSkillProposalAction', 'grantReviewRoundAction', 'stopReviewAction', 'backToBuildAction', 'backToBacklogAction', 'requestChangesAction',
-  'selectWorkspace', 'orderRequests', 'startOwnerChat', 'askOwnerChat', 'rerunStage', 'decideAction', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
+  'selectWorkspace', 'discardIntake', 'chooseRequestProduct', 'loadRequestCard', 'editRequestCard', 'changeRequestImage', 'reportProblem', 'postDockComment', 'orderRequests', 'startOwnerChat', 'askOwnerChat', 'rerunStage', 'decideAction', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
 ].map((n) => `lib/actions.ts#${n}`).concat([
   'lib/search.ts#searchTickets', '(shell)/team/actions.ts#saveRole',
   ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate'].map((n) => `(shell)/settings/actions.ts#${n}`),
@@ -70,9 +50,9 @@ const BAUHERR_ACTIONS = [
 ])
 /** MCP tools a Product owner may call (none: `/mcp` refuses them behind any key). */
 const OPEN_TOOLS: Record<string, string> = {}
-/** Chat tools (the docked chat) open to a Product owner; every other chat tool is offered to Bauherren only and refused for a Product owner when it runs. */
-const PO_CHAT_TOOLS = ['post_comment', 'request_status', 'submit_request']
-const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'approve_skill_proposal', 'reject_skill_proposal']
+/** Chat tools: none is open to a Product owner (the dock is closed to them: `chatWho` refuses every chat route). */
+const PO_CHAT_TOOLS: string[] = []
+const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'post_comment', 'approve_skill_proposal', 'reject_skill_proposal']
 /** Collections a Product owner may touch, and how. Every other collection is `BAUHERR_COLLECTIONS`: no operation at all, also over Payload REST. `artifacts` stay closed: proof reaches a Product owner through the Ticket page and its artifact route, never over REST. */
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs and password only' },
@@ -366,53 +346,16 @@ describe('what is open to a Product owner answers 404 outside the assignment', (
     for (const id of [foreign.otherProduct.ticket, foreign.otherWorkspace.ticket, 999_999]) expect(await render(page('tickets/[id]'), { id: String(id) }), `ticket ${id}`).toBe('404')
   })
 
-  it('the open server actions refuse what is not theirs', async () => {
-    asPo()
-    const actions = await import('../src/app/(app)/lib/actions')
-    const hidden = async (run: () => Promise<unknown>) => run().then((r) => (r === null || (r && typeof r === 'object' && 'error' in r) ? 'refused' : 'ran'), (e) => (notFound(e) ? '404' : `threw ${String(e)}`))
-    for (const [what, run] of Object.entries({
-      loadRequestCard: () => actions.loadRequestCard(foreign.otherProduct.request),
-      editRequestCard: () => actions.editRequestCard(foreign.otherProduct.draft, { title: 'x' }),
-      changeRequestImage: () => actions.changeRequestImage(foreign.otherProduct.draft, foreign.media, 'add'),
-      reportProblem: () => actions.reportProblem(foreign.otherProduct.request),
-      chooseRequestProduct: () => actions.chooseRequestProduct(foreign.thread, 1),
-      discardIntake: () => actions.discardIntake(foreign.otherProduct.draft),
-      postDockComment: () => actions.postDockComment(foreign.otherProduct.ticket, 'x', []),
-    })) expect(['refused', '404'], what).toContain(await hidden(run))
-  })
-
-  it('the chat routes: foreign threads and Tickets are 404, the page context says "Not found"', async () => {
-    const call = async (route: string, method: string, params: Record<string, string>, body?: unknown, url = 'http://t/x') => {
-      const mod = (await routeModules[`${APP}${route}/route.ts`]!()) as Record<string, (r: Request, c: unknown) => Promise<Response>>
-      return mod[method]!(new Request(url, { method, headers: { cookie: productOwnerCookie, 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), { params: Promise.resolve(params) })
-    }
-    const id = { id: String(foreign.thread) }
-    for (const [route, method, body] of [['api/chat/threads/[id]', 'GET'], ['api/chat/threads/[id]', 'PATCH', { title: 'x' }], ['api/chat/threads/[id]', 'DELETE'], ['api/chat/threads/[id]/confirm', 'POST', { toolCallId: 'x', approved: true }], ['api/chat/threads/[id]/feedback', 'POST', { messageId: 'x', value: 'up' }], ['api/chat/threads/[id]/messages', 'GET'], ['api/chat/threads/[id]/run', 'POST', { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], context: { path: '/' } }]] as [string, string, unknown?][]) {
-      expect((await call(route, method, id, body)).status, `${method} ${route}`).toBe(404)
-    }
-    expect((await call('api/chat/threads', 'POST', {}, { ticket: foreign.otherProduct.ticket })).status).toBe(404)
-    expect((await call('api/chat/threads', 'POST', {}, { requestSession: foreign.otherProduct.request })).status).toBe(404)
-    expect((await call('api/chat/threads', 'POST', {}, { ticket: mine.ticket })).status).toBe(200)
-    expect((await call('api/chat/threads', 'POST', {}, { requestSession: mine.request })).status).toBe(404) // theirs only: this request was filed by someone else
-    for (const path of [`/tickets/${foreign.otherProduct.ticket}`, `/requests/${foreign.otherProduct.request}`, `/tickets/${foreign.otherWorkspace.ticket}`]) {
-      const res = await call('api/chat/context', 'GET', {}, undefined, `http://t/api/chat/context?path=${encodeURIComponent(path)}`)
-      expect(((await res.json()) as { label: string }).label, path).toBe('Not found')
-    }
-    expect(((await (await call('api/chat/threads', 'GET', {})).json()) as { threads: { title: string }[] }).threads.map((t) => t.title)).not.toContain('theirs')
-  })
-
   it('files: media and review artifacts of Product B are 404 for a Product owner', async () => {
     const get = async (route: string, params: Record<string, string>) => ((await routeModules[`${APP}${route}/route.ts`]!()).GET as (r: Request, c: unknown) => Promise<Response>)(new Request('http://t/x', { headers: { cookie: productOwnerCookie } }), { params: Promise.resolve(params) })
     expect((await get('intake/api/media/[id]', { id: String(foreign.media) })).status).toBe(404)
     expect((await get('api/tickets/[id]/artifacts/[artifactId]', { id: String(foreign.otherProduct.ticket), artifactId: String(foreign.artifact) })).status).toBe(404)
   })
 
-  it('the chat tools are decided, and the server lists only the Product owner\'s', async () => {
-    const { chatToolAccess, chatTools } = await import('../src/lib/chat/tools')
-    const access = chatToolAccess()
-    partition('chat tools', Object.keys(access), PO_CHAT_TOOLS, BAUHERR_CHAT_TOOLS)
-    expect(Object.entries(access).filter(([, v]) => v.po).map(([k]) => k).sort()).toEqual([...PO_CHAT_TOOLS].sort())
-    expect(chatTools(po).map((t) => t.name).sort()).toEqual(PO_CHAT_TOOLS.filter((n) => !access[n]!.hidden).sort())
-    expect(chatTools({ role: 'admin' }).map((t) => t.name).sort()).toEqual([...BAUHERR_CHAT_TOOLS, ...PO_CHAT_TOOLS].filter((n) => !access[n]!.hidden).sort())
+  it('every chat tool is closed to a Product owner, and every chat route refuses them', async () => {
+    const { chatTools } = await import('../src/lib/chat/tools')
+    partition('chat tools', chatTools({ role: 'admin' }).map((t) => t.name), PO_CHAT_TOOLS, BAUHERR_CHAT_TOOLS)
+    const { GET } = await import('../src/app/api/chat/threads/route')
+    expect((await GET(new Request('http://t/x', { headers: { cookie: productOwnerCookie } }))).status).toBe(403)
   })
 })

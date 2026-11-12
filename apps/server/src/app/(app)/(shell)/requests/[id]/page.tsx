@@ -42,20 +42,20 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
       <div className="max-w-xl"><RequestCardPage card={request.card} /></div>
       <section className="flex flex-col gap-2" aria-labelledby="next">
         <h2 className="heading" id="next">Next step</h2>
-        {request.own ? (
+        {owner ? (
+          <p className="m-0" data-testid="waits-for-you">{next ? `Waiting for you: ${next.need} on #${next.number}.` : request.sent ? 'Nothing for you to do.' : 'A draft.'}</p>
+        ) : request.own ? (
           <div className="flex flex-wrap gap-2">
             <RequestOpen request={request.id}>Continue draft</RequestOpen>
             <DiscardDraft session={request.id} title={request.title} />
           </div>
-        ) : next && owner ? (
-          <p className="m-0" data-testid="waits-for-you">Waiting for you: {next.need} on #{next.number}.</p>
         ) : next ? (
           <Button asChild className="self-start"><Link href={`/tickets/${next.id}`}>{next.need} on #{next.number}</Link></Button>
         ) : (
           <p className="text-muted-foreground">{request.sent ? 'Nothing for you to do.' : 'Only its author can continue this draft.'}</p>
         )}
-        {request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
-        {request.released && <ReportProblem session={request.id} />}
+        {!owner && request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
+        {!owner && request.released && <ReportProblem session={request.id} />}
       </section>
       {request.timeline.length > 0 && (
         <section className="flex flex-col gap-2" aria-labelledby="timeline">
@@ -84,7 +84,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {!owner && (t.need === 'Answer questions' || t.need === 'Answer decisions') && <DockOpen ticket={t.id} mode="answer" size="sm">{t.need}</DockOpen>}
-                    <DockOpen ticket={t.id} mode="comment" size="sm" variant="outline">Comment on #{t.number}</DockOpen>
+                    {!owner && <DockOpen ticket={t.id} mode="comment" size="sm" variant="outline">Comment on #{t.number}</DockOpen>}
                   </div>
                   <p className="body m-0 font-medium" data-testid="request-headline">{t.progress.headline}{t.progress.since && <span className="small font-normal text-muted-foreground"> · since {ago(t.progress.since).replace(/ ago$/, '')}</span>}</p>
                   <ProgressPath step={t.progress.step} large />
