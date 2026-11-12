@@ -205,7 +205,9 @@ export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[] }) => P
   }
   if (!stages.length) return none(`${role.title} has no stage in this workflow`)
   const waiting = await c.payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: wsId } }, { state: { equals: 'open' } }, { waitingFor: { in: stages } }] }, limit: 1, ...o })
-  return none(waiting.docs[0] ? `${stageTitle(wf, waiting.docs[0].waitingFor)} is at its WIP limit` : `Nothing queued for ${role.title}`)
+  const w = waiting.docs[0] as Doc | undefined
+  // A Ticket can wait for a stage for another reason than a full column (it overlaps a Ticket in flight): say that one, not "WIP limit".
+  return none(!w ? `Nothing queued for ${role.title}` : w.waitingReason ? `#${w.number} waits for ${stageTitle(wf, w.waitingFor)}: ${w.waitingReason}` : `${stageTitle(wf, w.waitingFor)} is at its WIP limit`)
 }
 
 /** Puts the Runs a session still holds back in the queue (as `release_run` does without the token: the session is gone) and unassigns its login. */
