@@ -23,7 +23,7 @@ import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../../lib/summary'
 import { cardOf } from '../../../lib/inbox'
-import { forgeKinds, loadEpic, within } from '../../../lib/overview'
+import { forgeKinds, kindOfLabels, loadEpic, within } from '../../../lib/overview'
 import { buildSteps } from '../../../lib/steps'
 import { skips, timeline } from '../../../../../lib/history'
 import { renderMarkdown } from '../../../lib/markdown'
@@ -38,6 +38,7 @@ import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../l
 import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
+import { KindChip } from '../../../components/RequestParts'
 import { waitingLabel } from '../../../../../lib/wip'
 import { connectedOfRole } from '../../../../../lib/presence'
 
@@ -230,6 +231,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <div className="flex min-w-0 flex-col gap-6">
             <header className="flex flex-col gap-2">
               <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
+              {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
               <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
                 <Badge variant={status.tone}>{status.label}</Badge>
                 {status.detail && <span>{status.detail}</span>}

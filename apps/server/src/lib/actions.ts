@@ -2,7 +2,7 @@ import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError,
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, answersOf, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
-import { laneOn } from './expedite'
+import { canPutOnFastLane, laneOn } from './expedite'
 import { workflowFor } from './factory'
 import { storePlanTldr } from './decision'
 import { headingOf, packTemplate, renderTemplate, template, type Tpl } from './templates'
@@ -16,7 +16,7 @@ import { DEFAULT_MODEL_BY_TIER } from './gateway'
 import { fakeOwnerModel } from './intake/fake'
 import { search as searchKnowledge } from './knowledge'
 import { ownerSummary } from './owner-summary'
-import { gatewayModel, ownerQueue, questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type ModelCall, type Session } from './intake/engine'
+import { cardColumns, gatewayModel, ownerQueue, questionsAsked, readiness, refersToScreen, splitReadiness, type Draft, type ModelCall, type Session } from './intake/engine'
 import { MediaRejected, mediaLimits, mediaUrl, saveMedia, type ImageMime } from './intake/media'
 
 export { MAX_REVIEW_ROUNDS }
@@ -383,7 +383,7 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
 
 /** The Expedite action: puts the `bauherr:expedite` label on the Ticket (and drops Triage's proposal); the poller turns it into `expedite`. */
 export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
-  if (user.role !== 'admin') throw new NotAdmin()
+  if (!canPutOnFastLane(user)) throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (t.state === 'closed' || is(workflowFor(t.workspace), t.stage, 'release', 'done', 'container')) throw new Error('the Ticket is past the stages the Expedite lane serves')
   if (!(await laneOn(payload, id(t.workspace)))) throw new Error('the Expedite lane is off in Settings > Factory > Workflow')
@@ -392,6 +392,13 @@ export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketI
   await ts.addLabels(n, [EXPEDITE_LABEL])
   if (((t.labels ?? []) as string[]).includes(EXPEDITE_PROPOSED)) await ts.removeLabels(n, [EXPEDITE_PROPOSED])
   return { labelled: EXPEDITE_LABEL }
+}
+
+/** The label of an urgent request filed by an Admin: the Ticket row is made now (the poller would only see it later) so the `expedite` touch that vouches for the label has a Ticket to belong to; the poller then verifies the label like a button press and `startExpedites` takes over. */
+const putOnFastLane = async (payload: Payload, s: Doc, t: { id: string; number: number; url: string; title: string; labels: string[] }) => {
+  const row = await upsertTicket(payload, { workspace: id(s.workspace), product: id(s.product), externalId: t.id, number: t.number, url: t.url, title: t.title, state: 'open', labels: t.labels, stage: null, sourceUpdatedAt: null, rank: await lastRankAfter(payload, id(s.workspace)) }, null)
+  await touch(payload, s.user, row as Doc, 'expedite')
+  await (await ticketsOf(payload, id(s.product))).addLabels(String(t.number), [EXPEDITE_LABEL])
 }
 
 /** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
@@ -1444,21 +1451,26 @@ const SIBLINGS_MARKER = '<!-- bauherr:intake-siblings -->'
 /** Escapes `<` and `>` so no requester text can form or close an HTML comment marker, and drops heading hashes. */
 const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
 
-/** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. */
-export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number, shots: { name: string; url: string }[] = [], tpl: Tpl = packTemplate('request')): { title: string; body: string; labels: string[] } => ({
-  title: plainLine(draft.problem).replace(/\s+/g, ' ').slice(0, 80),
+/** The factory label of a request's type (`bauherr:type:bug`); the plain `type:<kind>` label stays for the release and overlap rules. */
+export const typeLabel = (kind: string) => `bauherr:type:${kind}`
+
+/** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. `extra.proposeFastLane` adds Triage's own proposal label (the Inbox asks "Fast lane for ...?" at once); `followUp` is the number of the request this one reports a problem with. */
+export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number, shots: { name: string; url: string }[] = [], tpl: Tpl = packTemplate('request'), extra: { urgent?: boolean; proposeFastLane?: boolean; followUp?: number } = {}): { title: string; body: string; labels: string[] } => ({
+  title: plainLine(draft.title?.trim() || draft.problem).replace(/\s+/g, ' ').slice(0, 80),
   body: [
     '_Requester-supplied, untrusted._',
     renderTemplate(tpl, {
       problem: plainLine(draft.problem),
       context: plainLine(draft.context),
       'acceptance-criteria': draft.acceptance_criteria.map((c) => `- ${plainLine(c)}`).join('\n'),
+      ...(extra.urgent ? { urgent: `Urgent: ${plainLine(draft.urgent_reason ?? '')}` } : {}),
+      ...(extra.followUp ? { 'follow-up': `Follow-up to #${extra.followUp}` } : {}),
       ...(missing.length || draft.links.length ? { open: [...missing.map((m) => `- Missing: ${m}`), ...draft.links.map((l) => `- ${plainLine(l)}`)].join('\n') } : {}),
       ...(shots.length ? { screenshots: shots.map((m) => `![${m.name}](${m.url})`).join('\n') } : {}),
     }),
     `<!-- bauherr:intake session=${sessionId}${part === undefined ? '' : ` part=${part}`} -->`,
   ].join('\n\n'),
-  labels: [`type:${draft.type}`, `product:${productSlug}`],
+  labels: [`type:${draft.type}`, typeLabel(draft.type), `product:${productSlug}`, ...(extra.proposeFastLane ? [EXPEDITE_PROPOSED] : [])],
 })
 
 /**
@@ -1477,6 +1489,12 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
     const [shot, refers, asked] = [(s.screenshots ?? 0) > 0, refersToScreen(session), questionsAsked(session)]
     const r = split ? splitReadiness(split, shot, refers, asked) : readiness(session.draft, shot, refers, asked)
     if (!(split ? split.every((d) => d.problem.trim()) : session.draft?.problem.trim()) || (!r.ready && !r.exhausted)) throw new Error(`draft incomplete: ${r.missing.join(', ')}`)
+    if (!split && session.draft?.type === 'question') throw new Error('a question is answered in the chat; turn it into a request first')
+    const urgent = !split && session.draft?.type === 'bug' && session.draft.urgency === 'urgent'
+    if (urgent && !session.draft!.urgent_reason?.trim()) throw new Error('draft incomplete: urgent_reason')
+    if (urgent && !(await laneOn(payload, id(s.workspace)))) throw new Error('the fast lane is off for this Workspace')
+    const direct = urgent && canPutOnFastLane(s.user)
+    const followUp = s.followUpOf ? ((await payload.findByID({ collection: 'intake_sessions', id: id(s.followUpOf), depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null)?.ticketNumber ?? undefined : undefined
     const ts = await ticketsOf(payload, id(s.product))
     const recent = (await ts.list({ state: 'all', labels: [`product:${s.product.slug}`] })).sort((a, b) => b.number - a.number).slice(0, 50)
     const find = async (marker: string): Promise<{ number: number } | undefined> => {
@@ -1492,7 +1510,7 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
       const part = split ? i : undefined
       const missing = readiness(d, shot, refers, asked).missing
       const marker = `<!-- bauherr:intake session=${s.id}${part === undefined ? '' : ` part=${part}`} -->`
-      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part, shots, requestTpl)))
+      const t = (await find(marker)) ?? (await ts.create(intakeTicket(d, s.id, missing, s.product.slug, part, shots, requestTpl, { urgent, proposeFastLane: urgent && !direct, followUp })))
       if (!(await ts.listComments(String(t.number))).some((c) => c.body.startsWith('## Interview'))) {
         await ts.comment(String(t.number), `## Interview\n${session.messages.map((m) => `**${m.role === 'user' ? 'Requester' : 'Bauherr'}:** ${plainLine(m.content)}`).join('\n\n')}`)
       }
@@ -1502,9 +1520,10 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
       const others = tickets.filter((o) => o !== t).map((o) => `#${o.number}`)
       if (others.length && !(await ts.listComments(String(t.number))).some((c) => c.body.startsWith(SIBLINGS_MARKER))) await ts.comment(String(t.number), `${SIBLINGS_MARKER}\nCreated together with ${others.join(', ')}`)
     }
+    if (direct) await putOnFastLane(payload, s, tickets[0] as never)
     for (const m of media.filter((m) => !m.attached)) await payload.update({ collection: 'media', id: m.id, data: { attached: true }, overrideAccess: true })
     const numbers = tickets.map((t) => t.number)
-    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: numbers[0], ticketNumbers: numbers }, overrideAccess: true })
+    await payload.update({ collection: 'intake_sessions', id: s.id, data: { status: 'submitted', ticketNumber: numbers[0], ticketNumbers: numbers, ...cardColumns(session.draft) }, overrideAccess: true })
     return { number: numbers[0]!, ...(split && { numbers }) }
   })
 

@@ -6,11 +6,11 @@ assertFakeAllowed('INTAKE_FAKE')
 
 const STEPS = [
   { question: 'Who is affected, and since when?', context: '', criteria: [] as string[] },
-  { question: 'How should it work once it is fixed?', context: 'Finance team, since last week.', criteria: ['Totals match the invoice'] },
+  { question: 'How should it work once it is fixed?', context: 'Finance team, since last week.', criteria: [] as string[] },
   { question: 'Anything to add before I send this?', context: 'Finance team, since last week.', criteria: ['Totals match the invoice', 'No rounding drift on export'] },
 ]
 
-const item = (problem: string) => ({ problem, context: 'Finance team, since last week.', acceptance_criteria: [`${problem} is fixed`, 'Nothing else changes'], type: 'bug', links: [] })
+const item = (problem: string) => ({ title: problem.slice(0, 60), problem, context: 'Finance team, since last week.', acceptance_criteria: [`${problem} is fixed`, 'Nothing else changes'], type: 'bug', links: [] })
 const PROBLEMS = ['The invoice total is wrong', 'The export is slow', 'The login page is confusing']
 
 export const fakeModel: ModelCall = async ({ messages }) => {
@@ -26,9 +26,12 @@ export const fakeModel: ModelCall = async ({ messages }) => {
     }
   }
   const step = STEPS[Math.min(users.length, STEPS.length) - 1]
+  const first = users[0].content
+  const question = /^question:/i.test(first)
+  const urgent = /\b(outage|down for everyone)\b/i.test(first)
   return {
-    question: step.question,
-    draft: { problem: users[0].content.slice(0, 200), context: step.context, acceptance_criteria: step.criteria, type: 'bug', links: [] },
+    question: question ? 'Here is the answer in plain words. Anything else?' : step.question,
+    draft: { title: first.replace(/^question:\s*/i, '').slice(0, 60), problem: first.slice(0, 200), context: step.context, acceptance_criteria: step.criteria, type: question ? 'question' : /\bwish\b/i.test(first) ? 'feature' : 'bug', ...(urgent && { urgency: 'urgent', urgent_reason: 'Nobody can work, since this morning.' }), links: [] },
     needsScreenshot: false,
     missing: [],
   }

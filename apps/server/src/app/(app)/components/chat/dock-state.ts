@@ -2,8 +2,9 @@ import { remember } from './api'
 
 const EVENT = 'chat-dock'
 let storageKey: string | null = null
-export type DockRequest = 'focus' | 'new' | { ticket: number; mode: 'answer' | 'comment' } | { request: number | 'new' }
+export type DockRequest = 'focus' | 'new' | { ticket: number; mode: 'answer' | 'comment' } | { request: number | 'new'; send?: boolean }
 let pending: DockRequest | null = null
+let sending: number | null = null
 
 type Saved = { open?: boolean; w?: number }
 export const readSaved = (): Saved => {
@@ -34,6 +35,7 @@ export const subscribe = (cb: () => void) => {
 /** Asks the (possibly not yet loaded) chat panel to do something once it is there: focus the composer, start a new chat, open the Ticket's thread (`answer`: its question card; `comment`: the composer ready for `/comment`), or open request mode (`'new'`: a thread for a new request; an id: the thread of that request). */
 export function request(action: DockRequest) {
   pending = action
+  if (typeof action === 'object' && 'request' in action && action.send && typeof action.request === 'number') sending = action.request
   setOpen(true)
   dispatchEvent(new Event(`${EVENT}-request`))
 }
@@ -45,4 +47,11 @@ export const takeRequest = (): DockRequest | null => {
 export const onRequest = (cb: () => void) => {
   addEventListener(`${EVENT}-request`, cb)
   return () => removeEventListener(`${EVENT}-request`, cb)
+}
+
+/** Whether the request page asked for "Send to the factory" on this request: read once the thread shows its card. */
+export const takeSend = (session: number): boolean => {
+  const mine = sending === session
+  if (mine) sending = null
+  return mine
 }

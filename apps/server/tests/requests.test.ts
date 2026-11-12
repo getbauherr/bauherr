@@ -30,52 +30,96 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-describe('loadRequests', () => {
-  it('returns a plain row: Ticket number only, no stage or children; Product column only for several Products', async () => {
-    const r = await requests.loadRequests(ws)
+const admin = (id: number) => ({ id, role: 'admin' })
+const asMe = () => ({ id: me, role: 'bauherr' })
+
+describe('loadWorkbench', () => {
+  it('returns plain rows: Ticket number only, no stage or children; Product column only for several Products', async () => {
+    const r = await requests.loadWorkbench(ws, asMe())
     expect(r.multiProduct).toBe(false)
-    expect(r.rows).toEqual([expect.objectContaining({ title: 'Export totals drift', linked: true, ticket: { number: 7, id: undefined } })])
+    expect(r.factory).toEqual([expect.objectContaining({ title: 'Export totals drift', href: expect.stringMatching(/^\/requests\/\d+$/), ticket: { number: 7, id: undefined }, status: 'Being looked at', waits: 'The factory' })])
     await payload.create({ collection: 'products', data: { name: 'Two', slug: 'two', workspace: ws }, ...o })
-    expect((await requests.loadRequests(ws)).multiProduct).toBe(true)
+    expect((await requests.loadWorkbench(ws, asMe())).multiProduct).toBe(true)
   })
 
-  it('leaves the caller\'s own open Drafts to loadDrafts, lists other people\'s as rows without a link, and hides owner-persona sessions', async () => {
+  it('lists only sent requests (other people\'s drafts stay private), hides owner sessions, and filters by type and by Mine', async () => {
     const draft = (problem: string) => ({ problem, context: '', acceptance_criteria: [], type: 'bug', links: [] })
     const mk = (problem: string, extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'open', persona: 'product-user', messages: [], draft: draft(problem), ...extra }, ...o } as never)
-    const mine = await mk('Own draft', { user: me })
+    await mk('Own draft', { user: me })
     await mk('Embed draft', {})
-    await mk('Owner flow', { user: me, persona: 'owner' })
-    const { rows } = await requests.loadRequests(ws, me)
-    expect(rows.some((r) => r.id === Number(mine.id))).toBe(false)
-    expect(rows.find((r) => r.title === 'Embed draft')).toMatchObject({ linked: false, href: null })
-    expect(rows.some((r) => r.title === 'Owner flow')).toBe(false)
-    expect((await requests.loadRequests(ws)).rows.some((r) => r.title === 'Own draft')).toBe(true)
+    await mk('Owner flow', { user: me, persona: 'owner', status: 'submitted' })
+    await mk('Mine sent', { user: me, status: 'submitted', ticketNumber: 31, kind: 'feature', title: 'My nice title' })
+    const { factory } = await requests.loadWorkbench(ws, asMe())
+    expect(factory.map((r) => r.title)).toEqual(expect.arrayContaining(['Export totals drift', 'My nice title']))
+    expect(factory.some((r) => ['Own draft', 'Embed draft', 'Owner flow'].includes(r.title))).toBe(false)
+    expect((await requests.loadWorkbench(ws, asMe(), { kind: 'feature' })).factory.map((r) => r.title)).toEqual(['My nice title'])
+    expect((await requests.loadWorkbench(ws, asMe(), { mine: true })).factory.map((r) => r.title)).toEqual(['My nice title'])
+  })
+
+  it('requestsVisibleTo: an Admin or a Bauherr sees the Workspace, anyone else only their own', () => {
+    expect(requests.requestsVisibleTo({ id: 1, role: 'admin' }, 5)).toEqual({ 'product.workspace': { equals: 5 } })
+    expect(requests.requestsVisibleTo({ id: 1, role: 'bauherr' }, 5)).toEqual({ 'product.workspace': { equals: 5 } })
+    expect(requests.requestsVisibleTo({ id: 1, role: 'product-owner' }, 5)).toEqual({ 'product.workspace': { equals: 5 }, user: { equals: 1 } })
+  })
+
+  it('sorts the sections: a need of the viewer is "Needs you", a closed Ticket is Done with its release note or the decline reason', async () => {
+    const mkTicket = (number: number, extra: Record<string, unknown>) => payload.create({ collection: 'tickets', data: { title: `W${number}`, externalId: `wb-${number}`, number, url: `https://x/${number}`, state: 'open', labels: [], product, workspace: ws, rank: String(number), ...extra }, ...o } as never)
+    const mkSession = (number: number, extra: Record<string, unknown> = {}) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'submitted', persona: 'product-user', messages: [], draft: { problem: `Work ${number}`, context: '', acceptance_criteria: [], type: 'bug', links: [] }, ticketNumber: number, user: me, ...extra }, ...o } as never)
+    await mkTicket(41, { stage: 'triage', needsYou: 'Answer questions', labels: ['bauherr:needs-refinement'] })
+    await mkTicket(42, { stage: 'triage', labels: ['bauherr:expedite-proposed'], needsYou: 'Expedite?' })
+    await mkTicket(43, { stage: 'done', state: 'closed', mergeSha: 'abc', releasedIn: 'v1', labels: [] })
+    const declined = await mkTicket(44, { stage: 'done', state: 'closed', labels: [] })
+    await payload.create({ collection: 'runs', data: { ticket: declined.id, workspace: ws, stage: 'triage', kind: 'triage', status: 'succeeded', artifacts: { triage: { outcome: 'skip', reason: 'Already possible with the export button' } } }, ...o } as never)
+    for (const n of [41, 42, 43, 44]) await mkSession(n)
+    const mine = await requests.loadWorkbench(ws, asMe())
+    expect(mine.needs.map((r) => [r.ticket?.number, r.status, r.waits])).toEqual([[41, 'Waiting for your answer', 'You']])
+    const urgent = mine.factory.find((r) => r.ticket?.number === 42)
+    expect(urgent).toMatchObject({ status: 'Urgent · waiting for the Bauherr', waits: 'The Bauherr', lane: 'proposed' })
+    expect(mine.needs.some((r) => r.ticket?.number === 42)).toBe(false) // an Expedite is an Admin's decision, not this Bauherr's
+    expect((await requests.loadWorkbench(ws, admin(me))).needs.map((r) => r.ticket?.number).sort()).toEqual([41, 42])
+    expect(mine.done.find((r) => r.ticket?.number === 44)?.status).toBe('Declined: Already possible with the export button')
+    expect(mine.done.find((r) => r.ticket?.number === 43)).toMatchObject({ status: 'Done' })
+    // someone else's request: the requester's steps wait for "the requester", not "You"
+    const other = Number((await payload.create({ collection: 'bauherren', data: { email: 'wb-other@example.com', password: 'x-pass-123', role: 'bauherr' }, ...o } as never)).id)
+    await mkTicket(45, { stage: 'triage', needsYou: 'Answer questions', labels: [] })
+    await mkSession(45, { user: other })
+    const seen = await requests.loadWorkbench(ws, asMe())
+    expect(seen.factory.find((r) => r.ticket?.number === 45)).toMatchObject({ waits: 'The requester', mine: false })
+    expect(seen.needs.some((r) => r.ticket?.number === 45)).toBe(false)
+  })
+})
+
+describe('timelineOf', () => {
+  it('turns Ticket events into plain, once-only steps', () => {
+    const e = (at: string, cause: string, stageKind: string, phase = 'working') => ({ at, cause, stageKind, phase })
+    const t = requests.timelineOf('2026-11-11T08:00:00Z', [e('09', 'run:started', 'triage', 'human'), e('10', 'gate:approve:plan', 'plan'), e('11', 'run:claimed', 'review'), e('12', 'run:claimed', 'build'), e('13', 'run:claimed', 'review'), e('14', 'release:on_staging', 'release'), e('15', 'gate:accept:staging', 'release'), e('16', 'poll', 'done', 'closed')], true)
+    expect(t.map((x) => x.text)).toEqual(['Sent', 'Question for you', 'Plan approved', 'Built', 'Ready for you to test', 'Accepted', 'Live'])
+    expect(requests.timelineOf('x', [e('1', 'poll', 'done', 'closed')], false).map((x) => x.text)).toEqual(['Sent', 'Closed'])
   })
 })
 
 describe('loadRequest', () => {
-  it('links a split request to both Tickets with plain status and a need, and hides foreign Workspaces and owner sessions', async () => {
+  it('links a split request to both Tickets with plain status and a need, and hides foreign Workspaces, owner sessions and other people\'s requests from a Product owner', async () => {
     const mkTicket = (number: number, extra: Record<string, unknown>) => payload.create({ collection: 'tickets', data: { title: `T${number}`, externalId: `req-${number}`, number, url: `https://x/${number}`, state: 'open', labels: [], product, workspace: ws, rank: String(number), ...extra }, ...o } as never)
-    await mkTicket(21, { stage: 'build', labels: ['bauherr:stage:build'] })
+    await mkTicket(21, { stage: 'build', labels: ['bauherr:stage:build', 'bauherr:type:bug'] })
     await mkTicket(22, { stage: 'release', releaseState: 'timed_out', needsYou: 'Staging not confirmed', labels: ['bauherr:stage:release'] })
     const draft = { problem: 'Split request', context: 'ctx', acceptance_criteria: ['a', ' '], type: 'bug', links: [] }
     const mk = (extra: Record<string, unknown>) => payload.create({ collection: 'intake_sessions', data: { product, workspace: ws, status: 'submitted', persona: 'product-user', messages: [], draft, ...extra }, ...o } as never).then((s) => Number(s.id))
     const split = await mk({ ticketNumber: 21, ticketNumbers: [21, 22] })
-    const r = await requests.loadRequest(ws, split, me)
-    expect(r).toMatchObject({ sent: true, own: false, problem: 'Split request', criteria: ['a'] })
-    expect(r?.tickets.map((t) => [t.number, t.status, t.need])).toEqual([[21, 'Being built', null], [22, 'On staging', 'Staging not confirmed']])
+    const r = await requests.loadRequest(ws, split, asMe())
+    expect(r).toMatchObject({ sent: true, own: false, title: 'Split request', card: { problem: 'Split request', criteria: ['a'], editable: false, sent: true } })
+    expect(r?.tickets.map((t) => [t.number, t.status, t.need, t.kind])).toEqual([[21, 'Being built', null, 'bug'], [22, 'Going live', 'Staging not confirmed', null]])
     expect(r?.tickets.map((t) => [t.progress.headline, t.progress.step])).toEqual([['Being built.', 2], ['Stuck: the change could not be confirmed on staging.', 4]])
-    expect((await requests.loadRequests(ws)).rows.find((x) => x.id === split)?.progress).toMatchObject({ headline: 'Being built.', step: 2 })
-    expect((await requests.loadRequest(ws, await mk({ ticketNumber: 21 })))?.tickets).toHaveLength(1)
+    expect((await requests.loadWorkbench(ws, asMe())).factory.find((x) => x.id === split)?.progress).toMatchObject({ headline: 'Being built.', step: 2 })
+    expect((await requests.loadRequest(ws, await mk({ ticketNumber: 21 }), asMe()))?.tickets).toHaveLength(1)
     const ws2 = Number((await payload.create({ collection: 'workspaces', data: { name: 'r3', slug: 'r3' }, ...o })).id)
-    expect(await requests.loadRequest(ws2, split)).toBeNull()
-    expect(await requests.loadRequest(ws, await mk({ persona: 'owner' }))).toBeNull()
+    expect(await requests.loadRequest(ws2, split, asMe())).toBeNull()
+    expect(await requests.loadRequest(ws, await mk({ persona: 'owner' }), asMe())).toBeNull()
     const own = await mk({ status: 'open', user: me })
-    expect(await requests.loadRequest(ws, own, me)).toMatchObject({ sent: false, own: true, mine: true, tickets: [] })
-    expect(await requests.loadRequest(ws, own)).toMatchObject({ own: false, mine: false })
-    expect((await requests.loadRequests(ws, me)).rows.find((x) => x.id === split)?.href).toBe(`/requests/${split}`)
-    expect((await requests.loadRequests(ws, me)).rows.find((x) => x.id === own)).toBeUndefined() // an own Draft is listed by loadDrafts, not in the table
-    expect((await requests.loadRequests(ws)).rows.find((x) => x.id === own)).toMatchObject({ linked: false, href: null }) // another person's Draft is a row without a link
+    expect(await requests.loadRequest(ws, own, asMe())).toMatchObject({ sent: false, own: true, mine: true, tickets: [], card: { editable: true } })
+    expect(await requests.loadRequest(ws, own, { id: me + 1000, role: 'bauherr' })).toMatchObject({ own: false, mine: false, card: { editable: false } })
+    expect(await requests.loadRequest(ws, split, { id: me + 1000, role: 'product-owner' })).toBeNull()
+    expect((await requests.loadWorkbench(ws, asMe())).factory.find((x) => x.id === split)?.href).toBe(`/requests/${split}`)
   })
 })
 

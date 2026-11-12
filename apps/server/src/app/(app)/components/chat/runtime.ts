@@ -88,11 +88,12 @@ const withQuestions = (items: HistoryItem[], ticket: number): HistoryItem[] => {
 
 const PRODUCT = (thread: string) => `product-${thread}`
 
-/** A request thread that can still pick its Product starts with the card to choose one (not stored); the first stored message hangs off it. */
-const withProduct = (items: HistoryItem[], thread: string, products: RequestInfo['products'], current: number | null): HistoryItem[] => {
+/** A request thread that is not sent starts with its cards (not stored): the Product to choose while that is still possible, and the request card; the first stored message hangs off them. */
+const withCards = (items: HistoryItem[], thread: string, request: RequestInfo): HistoryItem[] => {
   const id = PRODUCT(thread)
-  const part = { type: 'tool-call' as const, toolCallId: id, toolName: 'choose_product', args: {}, argsText: '{}', artifact: { kind: 'product', thread: Number(thread), products, current } satisfies Artifact }
-  const message = { id, role: 'assistant', createdAt: new Date(0), content: [part], status: { type: 'complete', reason: 'unknown' }, metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { synthetic: true } } }
+  const call = (name: string, artifact: Artifact) => ({ type: 'tool-call' as const, toolCallId: `${id}-${name}`, toolName: name, args: {}, argsText: '{}', artifact })
+  const content = [...(request.products.length ? [call('choose_product', { kind: 'product', thread: Number(thread), products: request.products, current: request.productId })] : []), call('request_card', { kind: 'request-card', session: request.session })]
+  const message = { id, role: 'assistant', createdAt: new Date(0), content, status: { type: 'complete', reason: 'unknown' }, metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { synthetic: true } } }
   return [{ parentId: null, message } as HistoryItem, ...items.map((i) => (i.parentId ? i : ({ ...i, parentId: id } as HistoryItem)))]
 }
 
@@ -110,7 +111,7 @@ const listAdapter = (hooks: RefObject<Hooks>): RemoteThreadListAdapter => {
       const d = await api.messages(id)
       hooks.current.onLoaded(id, d.context, d.ticket, d.request)
       const items = withPending(d.messages.map(decode), d.pending)
-      return { messages: withoutOrphans(d.ticket ? withQuestions(items, d.ticket) : d.request?.products.length ? withProduct(items, id, d.request.products, d.request.productId) : items) }
+      return { messages: withoutOrphans(d.ticket ? withQuestions(items, d.ticket) : d.request && !d.request.sent ? withCards(items, id, d.request) : items) }
     },
     append: async (entry) => {
       const id = await remoteId(item())

@@ -15,7 +15,7 @@ test('a Sent request opens its page with Tickets, plain status and a merged comm
   await expect(page.getByRole('banner')).toBeVisible()
 
   await page.goto('/requests')
-  await page.locator('tbody tr').filter({ hasText: 'Invoice filter and CSV export' }).getByRole('link', { name: 'Invoice filter and CSV export' }).click()
+  await page.getByRole('link', { name: 'Invoice filter and CSV export' }).click() // in "Needs you" for the Admin (a plan waits for approval), else in "In the factory"
   await expect(page).toHaveURL(/\/requests\/\d+$/)
   await expect(page.getByRole('heading', { name: 'Invoice filter and CSV export' })).toBeVisible()
   const tickets = page.getByTestId('request-ticket')

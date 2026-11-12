@@ -290,6 +290,24 @@ const request = async (key: string, status: string, extra: Record<string, unknow
 await request('Export totals drift', 'open', { user: draftOwner })
 await request('Dark theme for the dashboard', 'submitted', { ticketNumber: 1 })
 await request('Invoice filter and CSV export', 'submitted', { ticketNumber: 6, ticketNumbers: [6, 7] })
+// request-card.spec.ts, requests.spec.ts: a member with a workbench of their own (nothing else signs in as them): a draft (urgent bug), a request that waits for their answer (#601), two they can order (#602, #603), an urgent one waiting for the Bauherr (#604) and a released one (#605; numbers high enough that no fake-forge issue created by another spec collides).
+const cardOwner = (await ensure('bauherren', { email: 'card-owner@example.com' }, { email: 'card-owner@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] })).id
+const mine = (key: string, status: string, extra: Record<string, unknown>) => request(key, status, { user: cardOwner, ...extra })
+await mine('Checkout is down', 'open', { title: 'Checkout is down', kind: 'bug', urgency: 'urgent', urgentReason: 'Checkout is down for all customers since 9.', messages: [{ role: 'user', content: 'Checkout is down' }], draft: { title: 'Checkout is down', problem: 'Checkout is down', context: 'Checkout page', acceptance_criteria: [], type: 'bug', urgency: 'urgent', urgent_reason: 'Checkout is down for all customers since 9.', links: [] } })
+const kinded = (n: number, title: string, kind: string, extra: Record<string, unknown> = {}) => ({ title, kind, ticketNumber: n, draft: { title, problem: title, context: '', acceptance_criteria: [], type: kind, links: [] }, ...extra })
+const typed = (kind: string) => [`bauherr:type:${kind}`, `type:${kind}`]
+await ticket(601, 'Add an invoice filter', 'triage', product, { stage: null, labels: ['bauherr:needs-refinement', ...typed('feature')] })
+await mine('Add an invoice filter', 'submitted', kinded(601, 'Add an invoice filter', 'feature'))
+await ticket(602, 'CSV export misses its total row', 'build', product, { labels: ['bauherr:stage:build', ...typed('bug')] })
+await mine('CSV export misses its total row', 'submitted', kinded(602, 'CSV export misses its total row', 'bug'))
+await ticket(603, 'Show the due date on invoices', 'plan', product, { labels: ['bauherr:stage:plan', ...typed('change')] })
+await mine('Show the due date on invoices', 'submitted', kinded(603, 'Show the due date on invoices', 'change'))
+await ticket(604, 'Checkout fails for every customer', 'triage', product, { stage: null, labels: ['bauherr:expedite-proposed', ...typed('bug')] })
+await mine('Checkout fails for every customer', 'submitted', kinded(604, 'Checkout fails for every customer', 'bug', { urgency: 'urgent', urgentReason: 'Checkout is down for all customers since 9.' }))
+const released = await ticket(605, 'Dark theme for the invoice page', 'done', product, { state: 'closed', labels: typed('feature'), mergeSha: 'sha-605', releasedIn: 'v0.4.0', stagingTldr: { whatYouGet: '- The invoice page follows the dark theme.\n**Found:** nothing', found: 'nothing' } })
+await mine('Dark theme for the invoice page', 'submitted', kinded(605, 'Dark theme for the invoice page', 'feature'))
+const sentAt = (m: number) => new Date(now - m * 6e4).toISOString()
+for (const [at, stage, kind, phase, cause] of [[600, 'triage', 'triage', 'working', 'poll'], [580, 'plan', 'plan', 'queued', 'run:queued'], [560, 'plan', 'plan', 'queued', 'gate:approve:plan'], [500, 'review', 'review', 'working', 'run:claimed'], [400, 'release', 'release', 'ci', 'release:on_staging'], [380, 'release', 'release', 'queued', 'gate:accept:staging'], [300, 'done', 'done', 'closed', 'poll']] as const) await ensure('ticket_events', { ticket: released, cause, at: sentAt(at) }, { ticket: released, workspace, at: sentAt(at), stage, stageKind: kind, phase, cause })
 // No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined

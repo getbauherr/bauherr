@@ -4,7 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, startOwnerIntake, askOwnerIntake } from '../../../lib/actions'
-import { chooseProduct, discardRequest } from '../../../lib/chat/request'
+import { attachImage, chooseProduct, discardRequest, editCard, removeImage, requestCard, type CardPatch } from '../../../lib/chat/request'
+import type { CardData } from '../../../lib/intake/card'
+import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunIfNeeded } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
@@ -14,6 +16,9 @@ import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock'
+import { id } from '../../../lib/release'
+import { emptyDraft } from '../../../lib/intake/engine'
+import { requestsVisibleTo } from './requests'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
@@ -50,6 +55,8 @@ export async function selectWorkspace(slug: string) {
   }
   redirect('/')
 }
+
+type Doc = Record<string, any>
 
 /** The acting Bauherr and the selected Workspace; 404 when none is selected. */
 const acting = async () => {
@@ -178,6 +185,59 @@ export async function discardIntake(session: number) {
 export async function chooseRequestProduct(thread: number, product: number): Promise<{ session: number; product: string } | null> {
   const { user, payload, workspaceId } = await acting()
   return chooseProduct({ payload, user, workspace: workspaceId }, thread, product)
+}
+
+/** The request card of one of the caller's requests (the dock reloads it after every turn); null when it is not theirs. */
+export async function loadRequestCard(session: number): Promise<CardData | null> {
+  const { user, payload, workspaceId } = await acting()
+  return requestCard({ payload, user, workspace: workspaceId }, session)
+}
+
+const cardError = (e: unknown): { error: string } => ({ error: e instanceof Error ? e.message : 'This could not be saved.' })
+
+/** A direct edit of the request card by its author; the next interview turn keeps it. */
+export async function editRequestCard(session: number, patch: CardPatch): Promise<{ card: CardData } | { error: string }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    const card = await editCard({ payload, user, workspace: workspaceId }, session, patch)
+    revalidatePath('/requests')
+    return { card }
+  } catch (e) {
+    return cardError(e)
+  }
+}
+
+/** Adds an uploaded image (`/api/chat/media`) to the request's screenshots, or removes one. */
+export async function changeRequestImage(session: number, mediaId: number, change: 'add' | 'remove'): Promise<{ card: CardData } | { error: string }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    return { card: await (change === 'add' ? attachImage : removeImage)({ payload, user, workspace: workspaceId }, session, mediaId) }
+  } catch (e) {
+    return cardError(e)
+  }
+}
+
+/** "Report a problem" on a released request: a new Bug draft of the same Product, linked to the original ("Follow-up to #n" on the filed issue). Returns the new request's id. */
+export async function reportProblem(session: number): Promise<{ session: number } | { error: string }> {
+  const { user, payload, workspaceId } = await acting()
+  const o = { overrideAccess: true, depth: 0 } as const
+  const from = (await payload.find({ collection: 'intake_sessions', where: { and: [{ id: { equals: session } }, requestsVisibleTo(user, workspaceId), { status: { equals: 'submitted' } }, { persona: { equals: 'product-user' } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
+  if (!from) return { error: 'This request cannot be followed up.' }
+  const created = await payload.create({ collection: 'intake_sessions', data: { product: id(from.product), workspace: workspaceId, persona: 'product-user', status: 'open', messages: [], user: user.id, kind: 'bug', draft: { ...emptyDraft(), type: 'bug' }, edited: ['type'], followUpOf: from.id }, ...o } as never)
+  revalidatePath('/requests')
+  return { session: Number(created.id) }
+}
+
+/** Saves the person's order of their own open requests in one Product (see `orderOwnRequests`). */
+export async function orderRequests(ticketIds: number[]): Promise<{ error?: string }> {
+  const { user, payload, workspaceId } = await acting()
+  try {
+    await orderOwnRequests(payload, user, workspaceId, ticketIds)
+    revalidatePath('/requests')
+    return {}
+  } catch (e) {
+    return cardError(e)
+  }
 }
 
 /** Opens (or resumes) the owner's questions over the Ticket's open decision rows; null when none is open. */

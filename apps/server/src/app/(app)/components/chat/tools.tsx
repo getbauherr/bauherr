@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { artifactOf, type Decision, type Outcome } from './adapter'
 import { ChevronRight, Shield } from './icons'
 import { Questions } from './questions'
-import { Options, ProductCard } from './request'
+import { Options, ProductCard, RequestCardSlot } from './request'
 import { ProofList } from '../ProofList'
 
 /** One line per read tool: what it looked up and whether it worked; the result is one click away. */
@@ -79,6 +79,7 @@ export const ToolPart: FC<ToolCallMessagePartProps> = (props) => {
   if (a?.kind === 'confirm') return <Card {...props} />
   if (a?.kind === 'outcome') return <OutcomeLine result={props.result as Outcome | undefined} href={a.href} />
   if (a?.kind === 'product') return <ProductCard thread={a.thread} products={a.products} current={a.current} />
+  if (a?.kind === 'request-card') return <RequestCardSlot session={a.session} />
   if (a?.kind === 'options') return <Options options={a.options} />
   return <Receipt summary={(a as { summary?: string } | undefined)?.summary ?? props.toolName} result={props.result as Outcome | undefined} />
 }

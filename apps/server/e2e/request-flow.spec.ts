@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { composer, dock, interview, say, shoot, signIn, startRequest } from './request-dock'
+import { composer, dock, interview, productChosen, say, shoot, signIn, startRequest } from './request-dock'
 import { email } from './user'
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
@@ -10,10 +10,7 @@ test('a draft saved before logout is reopened from Requests, finished and sent i
   const title = `The flow check is broken ${Date.now()}`
   await signIn(page, 'signout-flow@example.com') // signing out ends every session of the user, so this test has one of its own
   await startRequest(page, /^New request · /)
-  if (await dock(page).getByTestId('product-card').isVisible()) {
-    await dock(page).getByRole('combobox', { name: 'Product' }).click()
-    await page.getByRole('option', { name: 'Acme Web' }).click()
-  }
+  await productChosen(page)
   await say(page, title, 'Who is affected, and since when?')
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
@@ -40,8 +37,8 @@ test('a draft saved before logout is reopened from Requests, finished and sent i
   if (!synced) await api('tickets', { title, externalId: `e2e-flow-${number}`, number: Number(number), state: 'open', stage: 'triage', product: product.id, workspace: product.workspace })
 
   await page.goto('/requests')
-  const sent = page.locator('tbody tr').filter({ hasText: title })
-  await expect(sent).toContainText('Sent')
+  const sent = page.getByTestId('factory-row').filter({ hasText: title })
+  await expect(sent).toContainText('Being looked at')
   await sent.getByRole('link', { name: title }).click()
   await expect(page).toHaveURL(/\/requests\/\d+$/)
   await expect(page.getByRole('heading', { name: title })).toBeVisible()

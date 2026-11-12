@@ -19,6 +19,9 @@ const HAS_PLAN = /^##\s+(Plan|Steps)\b/im
 export const laneOn = async (payload: Payload, workspace: number | string): Promise<boolean> =>
   ((await payload.findByID({ collection: 'workspaces', id: workspace, select: { expediteLane: true }, ...o })) as Doc).expediteLane !== false
 
+/** Who may put a Ticket on the fast lane at once (the Expedite action, an urgent request they file): an Admin; everyone else proposes it and an Admin decides. The one place that rule lives. */
+export const canPutOnFastLane = (user: Doc | null | undefined): boolean => user?.role === 'admin'
+
 const inFlight = (payload: Payload, t: Doc, extra: Where) =>
   payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: id(t.workspace) } }, { expedite: { equals: true } }, { state: { equals: 'open' } }, { stage: { in: inFlightStages(workflowFor(t.workspace)) } }, { id: { not_equals: t.id } }, extra] }, overrideAccess: true })
 

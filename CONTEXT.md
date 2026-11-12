@@ -201,6 +201,18 @@ _Avoid_: Conversation, session
 What the assistant is told about the page the person is looking at, built on the server from the URL path alone (never from text the browser sends) and limited to the person's current Workspace.
 _Avoid_: Screen state, page content
 
+**Request**:
+What a person asks the factory for: an Intake session that has been sent, with its Ticket(s). Before it is sent it is a draft with a request card (title, type, product, urgency, what is wrong or wanted, "It is done when", screenshots). The type is Bug, Feature, Change or Question; it becomes the label `bauherr:type:<kind>` on the issue and a chip on request rows, the Ticket page and the Workflow list. A Question is answered in the thread and files nothing.
+_Avoid_: Ticket (the factory's own record of it), order, wish
+
+**Urgent request**:
+A Bug marked "Urgent: something is broken for users now", with the reason (what is broken, for whom, since when). It is offered only while the Workspace's fast lane is on. An Admin who sends one puts it on the fast lane at once; anyone else's asks the Bauherr ("Fast lane for ...?" at the top of the Inbox).
+_Avoid_: Hotfix request, P1, emergency
+
+**Fast lane**:
+What the user sees of the expedite lane: a Ticket on it skips Triage and plan approval and jumps the queue, one at a time. The data names stay `expedite` (`tickets.expedite`, `bauherr:expedite`, `workspaces.expediteLane`).
+_Avoid_: Expedite (in text people read), hotfix lane
+
 **Intake session**:
 A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run. In the app it is held in the docked chat (a request thread); the embeddable widget is its other surface.
 _Avoid_: Chat, interview, request
