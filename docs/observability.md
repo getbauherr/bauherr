@@ -10,8 +10,8 @@ OTEL_ENABLED=1 docker compose --profile observability up -d
 
 | What | Where |
 |---|---|
-| Prometheus UI | `http://127.0.0.1:9090`, target `agentgateway` (`gateway:15020/metrics`, every 15 s), config in [`deploy/prometheus/prometheus.yml`](../deploy/prometheus/prometheus.yml) |
-| Jaeger UI | `http://127.0.0.1:16686/-/traces` (base path `/-/traces`), config in [`deploy/jaeger/config.yaml`](../deploy/jaeger/config.yaml) |
+| Prometheus UI | `http://127.0.0.1:9090`, target `agentgateway` (`gateway:15020/metrics`, every 15 s), config in [`deploy/prometheus/prometheus.yml`](https://github.com/getbauherr/bauherr/blob/main/deploy/prometheus/prometheus.yml) |
+| Jaeger UI | `http://127.0.0.1:16686/-/traces` (base path `/-/traces`), config in [`deploy/jaeger/config.yaml`](https://github.com/getbauherr/bauherr/blob/main/deploy/jaeger/config.yaml) |
 
 - Prometheus keeps 30 days in the `bauherr-prometheus` volume.
 - Jaeger stores traces in memory only: the newest 50 000 (`max_traces` in its config), older ones are evicted, a restart clears them.

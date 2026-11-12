@@ -56,4 +56,4 @@ If you add a dashboards stack licensed under AGPL-3.0 (such as Grafana or Loki),
 
 "Bauherr" is a project name; Apache-2.0 Section 6 grants no trademark rights. "Claude" and "Claude Code" are trademarks of Anthropic. You may say in plain text that Bauherr runs Claude Code. Do not use their names or logos in a product name or logo, or imply endorsement.
 
-See [NOTICE](../NOTICE) for third-party licences.
+See [NOTICE](https://github.com/getbauherr/bauherr/blob/main/NOTICE) for third-party licences.
