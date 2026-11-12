@@ -30,6 +30,7 @@ test('Members: Role defaults to bauherr and Workspaces are checkboxes, not ids',
   await page.goto('/settings/bauherren')
   const add = page.locator('section', { hasText: 'Add Bauherr' })
   await expect(add.getByLabel('Role')).toHaveValue('bauherr')
+  await expect(add.getByLabel('Role').locator('option')).toHaveText(['Bauherr', 'Admin'])
   await expect(add.getByRole('checkbox', { name: 'Acme' })).toBeChecked()
   await expect(add.getByLabel(/workspace.*id/i)).toHaveCount(0)
 })

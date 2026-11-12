@@ -152,7 +152,7 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcp
 
   return (
     <div className="grid gap-6 lg:grid-cols-[24rem_minmax(0,1fr)]">
-      <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:sticky lg:top-4 lg:mx-0 lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:self-start lg:overflow-y-auto lg:px-1">
+      <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-1">
         {roles.map((r) => <Card key={r.id} role={r} chosen={r.id === id} hot={hot === r.id} onPick={() => setId(r.id)} onHot={(on) => setHot(on ? r.id : undefined)} />)}
       </div>
       <section aria-labelledby="role-title" className={cn('flex flex-col gap-6 rounded-md border border-border bg-card p-6', !preview && 'min-h-[40rem]')}>
