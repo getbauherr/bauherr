@@ -17,11 +17,26 @@ export const composer = (page: Page) => dock(page).getByRole('textbox', { name: 
 export const chip = (page: Page) => dock(page).getByTestId('context-chip')
 export const lastAnswer = (page: Page) => dock(page).locator('[data-role=assistant]').last()
 
-/** Sends a message and waits for the reply; the composer only takes text once the request thread is open (its chip shows). */
+/** The end of a chat turn: the Stop button is gone (it shows while a run is going). */
+export const idle = (page: Page) => expect(dock(page).getByRole('button', { name: 'Stop' })).toHaveCount(0, { timeout: 30_000 })
+
+/** Sends a message and waits for the reply and for the end of its turn; the previous turn must have ended first (a message sent during a run is lost). The composer only takes text once the request thread is open (its chip shows). */
 export const say = async (page: Page, text: string, reply: string | RegExp) => {
+  await idle(page)
   await composer(page).fill(text)
   await composer(page).press('Enter')
   await expect(lastAnswer(page)).toContainText(reply, { timeout: 30_000 })
+  await idle(page)
+}
+
+/** Waits until the new request's Product is known before anything is typed: with several Products it is picked on the card, with one the chip names it at once. A message sent earlier would get "Choose a product first". */
+export const productChosen = async (page: Page, name = 'Acme Web') => {
+  await expect(chip(page)).toContainText(/^New request · /, { timeout: 30_000 })
+  if ((await chip(page).innerText()).includes('choose a product')) {
+    await dock(page).getByTestId('product-card').getByRole('combobox', { name: 'Product' }).click()
+    await page.getByRole('option', { name }).click()
+  }
+  await expect(chip(page)).toHaveText(`New request · ${name}`, { timeout: 30_000 })
 }
 
 /** Opens the dock in request mode with the header button and waits for the thread (the chip names the Product). */

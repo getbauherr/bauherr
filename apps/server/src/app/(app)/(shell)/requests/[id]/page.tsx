@@ -7,6 +7,9 @@ import { Markdown } from '../../../components/Markdown'
 import { DockOpen, RequestOpen } from '../../../components/chat/DockOpen'
 import { DiscardDraft } from '../../../components/DiscardDraft'
 import { ProgressPath } from '../../../components/ProgressPath'
+import { KindChip, LaneChip, StatusLine } from '../../../components/RequestParts'
+import { ReportProblem } from '../../../components/ReportProblem'
+import { RequestCardPage } from '../../../components/RequestCardPage'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ago } from '../../../lib/format'
@@ -23,29 +26,29 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   const { id } = await params
   const { user, workspace } = await currentWorkspace()
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
-  const request = await loadRequest(workspace.id, Number(id), user.id as number)
+  const request = await loadRequest(workspace.id, Number(id), user as { id: number })
   if (!request) notFound()
   const next = request.tickets.find((t) => t.need)
+  const lead = request.tickets[0]
 
   return (
     <div className="flex flex-col gap-4">
       <p className="small"><Link className="text-primary" href="/requests">Requests</Link></p>
-      <PageTitle>{request.problem || 'Untitled request'}</PageTitle>
-      <h1 className="title">{request.problem || 'Untitled request'}</h1>
-      <p className="small text-muted-foreground">{request.product} · <Badge variant={request.sent ? 'ok' : 'neutral'}>{request.sent ? 'Sent' : 'Draft'}</Badge></p>
-      {request.context && <Markdown html={renderMarkdown(request.context)} />}
-      {request.criteria.length > 0 && (
-        <section className="flex flex-col gap-2" aria-labelledby="criteria">
-          <h2 className="heading" id="criteria">Acceptance criteria</h2>
-          <ul className="m-0 pl-6">{request.criteria.map((c) => <li key={c}>{c}</li>)}</ul>
-        </section>
-      )}
+      <PageTitle>{request.title}</PageTitle>
+      <h1 className="title">{request.title}</h1>
+      <p className="small flex flex-wrap items-center gap-2 text-muted-foreground">
+        {request.card.product?.name} · <Badge variant={request.sent ? 'ok' : 'neutral'}>{request.sent ? 'Sent' : 'Draft'}</Badge>
+        <KindChip kind={request.card.kind} />
+        <LaneChip urgent={request.card.urgency === 'urgent' && lead?.lane == null} lane={lead?.lane} />
+        {lead && <StatusLine status={lead.status} waits={lead.waits} />}
+      </p>
+      <div className="max-w-xl"><RequestCardPage card={request.card} /></div>
       <section className="flex flex-col gap-2" aria-labelledby="next">
         <h2 className="heading" id="next">Next step</h2>
         {request.own ? (
           <div className="flex flex-wrap gap-2">
             <RequestOpen request={request.id}>Continue draft</RequestOpen>
-            <DiscardDraft session={request.id} title={request.problem || 'Untitled request'} />
+            <DiscardDraft session={request.id} title={request.title} />
           </div>
         ) : next ? (
           <Button asChild className="self-start"><Link href={`/tickets/${next.id}`}>{next.need} on #{next.number}</Link></Button>
@@ -53,7 +56,18 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
           <p className="text-muted-foreground">{request.sent ? 'Nothing for you to do.' : 'Only its author can continue this draft.'}</p>
         )}
         {request.mine && request.sent && <RequestOpen request={request.id} variant="outline" className="self-start">Open the conversation</RequestOpen>}
+        {request.released && <ReportProblem session={request.id} />}
       </section>
+      {request.timeline.length > 0 && (
+        <section className="flex flex-col gap-2" aria-labelledby="timeline">
+          <h2 className="heading" id="timeline">What happened</h2>
+          <ol className="m-0 flex list-none flex-col gap-1 p-0" data-testid="timeline">
+            {request.timeline.map((e) => (
+              <li key={e.text} className="flex gap-3 text-[14px]" data-testid="timeline-entry"><time className="w-16 shrink-0 text-muted-foreground" dateTime={e.at}>{new Date(e.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</time>{e.text}</li>
+            ))}
+          </ol>
+        </section>
+      )}
       {request.sent && (
         <section className="flex flex-col gap-2" aria-labelledby="tickets">
           <h2 className="heading" id="tickets">Tickets</h2>
@@ -64,6 +78,8 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                   <div className="flex flex-wrap items-center gap-2">
                     <Link className="text-primary" href={`/tickets/${t.id}`}>#{t.number} {t.title}</Link>
                     <Badge variant={t.status === 'Done' ? 'ok' : 'neutral'}>{t.status}</Badge>
+                    <KindChip kind={t.kind} />
+                    <LaneChip lane={t.lane} />
                     {t.need && <Badge variant="warn">{t.need}</Badge>}
                     {t.url && <a className="small text-primary" href={t.url}>Open the issue</a>}
                   </div>

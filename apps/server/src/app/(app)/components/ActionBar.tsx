@@ -35,12 +35,15 @@ type Props = {
   answerable?: number
 }
 
-const Post = ({ ticket, action, children, variant = 'default' }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; variant?: 'default' | 'outline' }) => (
+const Post = ({ ticket, action, children, variant = 'default', title }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; variant?: 'default' | 'outline'; title?: string }) => (
   <form action={action}>
     <input type="hidden" name="ticket" value={ticket} />
-    <SubmitButton variant={variant}>{children}</SubmitButton>
+    <SubmitButton variant={variant} title={title}>{children}</SubmitButton>
   </form>
 )
+
+/** What the fast lane does, in one line (the button's tooltip). */
+export const FAST_LANE_HELP = 'Skips Triage and plan approval, jumps the queue. One at a time.'
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
 export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask, answerable = 0 }: Props) {
@@ -85,7 +88,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
       {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
       {secondary}
-      {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline">Expedite</Post>}
+      {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</Post>}
       {answerable > 0 && !step.node && <DockOpen ticket={ticket} mode="answer" variant="outline">Answer {answerable} question{answerable === 1 ? '' : 's'}</DockOpen>}
       <DockOpen ticket={ticket} mode="comment" variant="outline">Comment</DockOpen>
       {step.form}

@@ -5,7 +5,7 @@ export type NavItem = { href: string; label: string; Icon: typeof Ticket; match:
 /** Sidebar destinations of the main group; Knowledge needs a Knowledge repo, Runs an Admin. */
 export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admin: boolean }): NavItem[] => [
   { href: '/inbox', label: 'Inbox', Icon: Inbox, match: (p) => p.startsWith('/inbox') },
-  { href: '/', label: 'Workflow', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') },
+  { href: '/', label: 'Workflow', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') || p.startsWith('/workflow/edit') },
   { href: '/team', label: 'Agent team', Icon: Bot, match: (p) => p.startsWith('/team') },
   { href: '/requests', label: 'Requests', Icon: MessageSquare, match: (p) => p.startsWith('/requests') },
   { href: '/releases', label: 'Releases', Icon: Package, match: (p) => p.startsWith('/releases') },
@@ -15,7 +15,7 @@ export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admi
 ]
 
 /** The sidebar Settings link opens the first page everyone may open. */
-export const settingsItem = (label = 'Settings'): NavItem => ({ href: '/settings/profile', label, Icon: Settings, match: (p) => p.startsWith('/settings') || p.startsWith('/workflow/edit') })
+export const settingsItem = (label = 'Settings'): NavItem => ({ href: '/settings/profile', label, Icon: Settings, match: (p) => p.startsWith('/settings') })
 
 type Entry = [label: string, href: string]
 export type SettingsGroup = { heading: string; entries: Entry[] }

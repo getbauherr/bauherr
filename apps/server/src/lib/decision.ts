@@ -1,5 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
+import type { Payload, Where } from 'payload'
 import { type Need, NEEDS } from './needs-you'
 import { GRAPH_CHECKPOINT, SKILL_NEED, checkpointOfNeed } from './checkpoints'
 import { workflowFor } from './factory'
@@ -48,6 +48,8 @@ export type DecisionFacts = {
   human?: { title: string; outcomes: string[] } | null
   /** The distilled skill a person is asked to merge (`Approve skill proposal`). */
   skill?: { name: string; score: number | null; baseline: number | null; pr: number | null } | null
+  /** What the requester wrote on an urgent request: what is broken, for whom, since when. */
+  urgentReason?: string | null
   now?: string
   /** The stored decision, so `openSince` survives a rebuild of the same need. */
   previous?: Pick<Decision, 'need' | 'openSince'> | null
@@ -228,10 +230,10 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
       }
       case 'Expedite?':
         return {
-          ask: sentence('Move into the Expedite lane:', t.title),
-          recommendation: 'Expedite only if users are affected right now; otherwise skip it.',
-          why: ['Triage proposes the Expedite lane for this ticket', 'The lane skips the queue and the plan approval'],
-          options: [{ label: 'Expedite', action: 'expedite', primary: true, effect: 'The ticket jumps the queue and needs no plan approval.' }],
+          ask: sentence('Fast lane for', t.title, '?'),
+          recommendation: 'Put it on the fast lane only if users are affected right now; otherwise leave it in the queue.',
+          why: [f.urgentReason ? `Urgent, as the requester says: ${clip(one(f.urgentReason), 200)}` : 'Triage proposes the fast lane for this ticket', 'The fast lane skips Triage and plan approval and jumps the queue; one ticket at a time'],
+          options: [{ label: 'Put on the fast lane', action: 'expedite', primary: true, effect: 'The ticket jumps the queue and needs no plan approval.' }],
           next: 'The ticket jumps the queue and needs no plan approval.',
         }
     }
@@ -277,6 +279,13 @@ export const humanStage = (t: Doc): { title: string; outcomes: string[] } | null
   return def?.kind === 'human' ? { title: def.title, outcomes: def.outcomeOrder ?? Object.keys(def.outcomes) } : null
 }
 
+/** What the requesters wrote on their urgent requests, by `<product>:<number>` of the Ticket: the reason on the card "Fast lane for ...?". Database only. */
+export const urgentReasons = async (payload: Payload, tickets: { product: unknown; number: number }[]): Promise<Map<string, string>> => {
+  if (!tickets.length) return new Map()
+  const { docs } = await payload.find({ collection: 'intake_sessions', where: { and: [{ urgency: { equals: 'urgent' } }, { status: { equals: 'submitted' } }, { or: tickets.map((t): Where => ({ and: [{ product: { equals: id(t.product) } }, { ticketNumber: { equals: t.number } }] })) }] }, select: { product: true, ticketNumber: true, urgentReason: true }, pagination: false, depth: 0, overrideAccess: true })
+  return new Map(docs.flatMap((s) => (s.urgentReason ? [[`${id(s.product)}:${s.ticketNumber}`, s.urgentReason as string] as const] : [])))
+}
+
 /** The Decision of a Ticket row for the sweep: the Product and the newest MR link are the only extra reads, none of them on the forge. */
 export const prepareDecision = async (payload: Payload, t: Doc, need: Need, run: Doc | null): Promise<Decision> => {
   const o = { overrideAccess: true, depth: 0 } as const
@@ -285,7 +294,8 @@ export const prepareDecision = async (payload: Payload, t: Doc, need: Need, run:
     payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 5, select: { artifacts: true }, ...o }),
   ])
   const mrUrl = (builds.docs as Doc[]).map((r) => r.artifacts?.prUrl as string | undefined).find(Boolean) ?? null
-  return buildDecision(need, { ticket: t as DecisionFacts['ticket'], product: product as DecisionFacts['product'], run: run as DecisionFacts['run'], mrUrl, planTldr: t.planTldr, stagingTldr: t.stagingTldr, productionGate: productionGateOn(workflowFor(t.workspace), product), human: humanStage(t), previous: t.decision })
+  const urgentReason = need === 'Expedite?' ? (await urgentReasons(payload, [t as { product: unknown; number: number }])).get(`${id(t.product)}:${t.number}`) : undefined
+  return buildDecision(need, { urgentReason, ticket: t as DecisionFacts['ticket'], product: product as DecisionFacts['product'], run: run as DecisionFacts['run'], mrUrl, planTldr: t.planTldr, stagingTldr: t.stagingTldr, productionGate: productionGateOn(workflowFor(t.workspace), product), human: humanStage(t), previous: t.decision })
 }
 
 /** Stores the plan's parsed TL;DR (null when it has none) so pages and the sweep read it from the Ticket row. */

@@ -2,8 +2,11 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { abandonIntake, exclusive } from '../actions'
 import { SESSIONS_PER_USER_HOUR } from '../intake/api'
-import type { Draft } from '../intake/engine'
-import { mediaLimits } from '../intake/media'
+import { cardOf, type CardData } from '../intake/card'
+import { KIND_LABEL, SEND_TEXT } from '../intake/kinds'
+import { CARD_FIELDS, KINDS, cardColumns, emptyDraft, type CardField, type Draft, type Kind } from '../intake/engine'
+import { laneOn } from '../expedite'
+import { mediaLimits, mediaUrl, type ImageMime } from '../intake/media'
 import { advanceIntake } from '../intake/turn'
 import type { ChatEvent, ChatInput } from './engine'
 import { deleteThread, dropPending, finishAnswer, startAnswer, storePending, upsertMessage, ownThread, type Answer, type Who } from './threads'
@@ -98,7 +101,7 @@ export const requestThread = async (w: Who, session: unknown): Promise<Doc | nul
   const find = async () => (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { intakeSession: { equals: s.id } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
   let t = await find()
   if (!t) {
-    const title = String(s.draft?.problem ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Request'
+    const title = String(s.title || s.draft?.problem || '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Request'
     t = (await w.payload.create({ collection: 'chat_threads', data: { owner: w.user.id, workspace: w.workspace, request: true, intakeSession: s.id, title, context: { path: `/requests/${s.id}`, label: `Request: ${title}` }, lastMessageAt: new Date().toISOString() }, ...o }).catch(find)) as Doc | undefined
     if (t) {
       let parent: string | null = null
@@ -114,21 +117,113 @@ export const requestThread = async (w: Who, session: unknown): Promise<Doc | nul
   return t.archivedAt ? ((await w.payload.update({ collection: 'chat_threads', id: t.id, data: { archivedAt: null }, ...o })) as Doc) : t
 }
 
+/** The card of one of the person's requests; null when it is not theirs. */
+export const requestCard = async (w: Who, id: unknown): Promise<CardData | null> => {
+  const s = await ownSessionOf(w, id)
+  return s ? cardData(w, s, true) : null
+}
+
+/** The card of any request of the Workspace for a viewer (`editable`: the author of an open draft). */
+export const cardData = async (w: Who, s: Doc, editable: boolean): Promise<CardData> => {
+  const media = (await w.payload.find({ collection: 'media', where: { session: { equals: s.id } }, sort: 'id', pagination: false, select: { name: true, mime: true, mimeType: true }, ...o })).docs as Doc[]
+  const followUp = s.followUpOf ? ((await w.payload.findByID({ collection: 'intake_sessions', id: idOf(s.followUpOf), depth: 0, select: { ticketNumber: true }, overrideAccess: true }).catch(() => null)) as Doc | null)?.ticketNumber ?? null : null
+  return cardOf(s, { editable, images: media.map((m) => ({ id: m.id, name: m.name, url: mediaUrl(m.id, (m.mime ?? m.mimeType) as ImageMime) })), fastLane: await laneOn(w.payload, w.workspace), maxImages: mediaLimits().maxPerSession, products: editable ? await productsOf(w) : [], followUp })
+}
+
+export type CardPatch = Partial<{ title: string; type: Kind; urgency: 'normal' | 'urgent'; urgent_reason: string; problem: string; context: string; acceptance_criteria: string[]; product: number }>
+const CAPS = { title: 80, problem: 1000, context: 2000, urgent_reason: 500 } as const
+
+/** A direct edit of the card by the person: stored on the draft and the session, and remembered as theirs, so the next turn keeps it and the interview sees it. Throws a plain-words error for what the card does not allow. */
+export const editCard = async (w: Who, id: unknown, patch: CardPatch): Promise<CardData> => {
+  const s = await ownSessionOf(w, id)
+  if (!s || s.status !== 'open') throw new Error('This request cannot be edited.')
+  await exclusive(`intake:${s.id}`, async () => {
+    const have = (await w.payload.findByID({ collection: 'intake_sessions', id: s.id, ...o })) as Doc
+    const draft: Draft = { ...emptyDraft(), ...(have.draft ?? {}) }
+    const edited = new Set<CardField>((have.edited ?? []) as CardField[])
+    const set = <K extends CardField>(k: K, v: Draft[K] | undefined) => {
+      if (v === undefined) delete (draft as Record<string, unknown>)[k]
+      else (draft as Record<string, unknown>)[k] = v
+      edited.add(k)
+    }
+    for (const k of ['title', 'problem', 'context', 'urgent_reason'] as const) if (patch[k] !== undefined) set(k, (k === 'title' ? String(patch[k]).replace(/\s+/g, ' ') : String(patch[k])).trim().slice(0, CAPS[k]))
+    if (patch.acceptance_criteria) set('acceptance_criteria', patch.acceptance_criteria.map((c) => String(c).trim().slice(0, 500)).filter(Boolean).slice(0, 10))
+    if (patch.type) {
+      if (!KINDS.includes(patch.type)) throw new Error('Choose a type from the list.')
+      set('type', patch.type)
+    }
+    if (draft.type !== 'bug' && draft.urgency) {
+      set('urgency', undefined)
+      set('urgent_reason', undefined)
+    }
+    if (patch.urgency === 'urgent') {
+      if (draft.type !== 'bug') throw new Error('Only a bug can be urgent.')
+      if (have.split?.length) throw new Error('An urgent request is sent alone.')
+      if (!(await laneOn(w.payload, w.workspace))) throw new Error('The fast lane is off for this Workspace, so nothing can be marked urgent.')
+      set('urgency', 'urgent')
+    }
+    if (patch.urgency === 'normal') {
+      set('urgency', undefined)
+      set('urgent_reason', undefined)
+    }
+    const data: Doc = { draft, ...cardColumns(draft), edited: CARD_FIELDS.filter((f) => edited.has(f)) }
+    if (patch.product !== undefined) {
+      if (have.messages?.length) throw new Error('The product is fixed once the conversation has started.')
+      const p = (await productsOf(w)).find((x) => x.id === Number(patch.product))
+      if (!p) throw new Error('This product could not be chosen.')
+      data.product = p.id
+    }
+    await w.payload.update({ collection: 'intake_sessions', id: s.id, data, ...o })
+  })
+  return (await requestCard(w, id))!
+}
+
+/** Adds an uploaded, unused image of the Workspace to the request's screenshots. */
+export const attachImage = async (w: Who, id: unknown, mediaId: number): Promise<CardData> => {
+  const s = await ownSessionOf(w, id)
+  if (!s || s.status !== 'open') throw new Error('This request cannot be edited.')
+  await exclusive(`intake:${s.id}`, async () => {
+    const m = (await w.payload.find({ collection: 'media', where: { and: [{ id: { equals: mediaId } }, { workspace: { equals: w.workspace } }, { session: { exists: false } }, { product: { exists: false } }, { attached: { equals: false } }] }, limit: 1, ...o })).docs[0]
+    if (!m) throw new Error('The image is missing or already used.')
+    const have = (await w.payload.findByID({ collection: 'intake_sessions', id: s.id, ...o })) as Doc
+    if ((have.screenshots ?? 0) + 1 > mediaLimits().maxPerSession) throw new Error(`At most ${mediaLimits().maxPerSession} screenshots per request.`)
+    await w.payload.update({ collection: 'media', id: m.id, data: { session: s.id }, ...o })
+    await w.payload.update({ collection: 'intake_sessions', id: s.id, data: { screenshots: (have.screenshots ?? 0) + 1 }, ...o })
+  })
+  return (await requestCard(w, id))!
+}
+
+/** Removes one of the request's screenshots (an open draft only). */
+export const removeImage = async (w: Who, id: unknown, mediaId: number): Promise<CardData> => {
+  const s = await ownSessionOf(w, id)
+  if (!s || s.status !== 'open') throw new Error('This request cannot be edited.')
+  await exclusive(`intake:${s.id}`, async () => {
+    const m = (await w.payload.find({ collection: 'media', where: { and: [{ id: { equals: mediaId } }, { session: { equals: s.id } }] }, limit: 1, ...o })).docs[0]
+    if (!m) return
+    await w.payload.delete({ collection: 'media', id: m.id, ...o })
+    const have = (await w.payload.findByID({ collection: 'intake_sessions', id: s.id, ...o })) as Doc
+    await w.payload.update({ collection: 'intake_sessions', id: s.id, data: { screenshots: Math.max(0, (have.screenshots ?? 0) - 1) }, ...o })
+  })
+  return (await requestCard(w, id))!
+}
+
 const lineOf = (v: string, n = 300) => (v.length > n ? `${v.slice(0, n)}…` : v)
 
 /** The confirmation card of a finished draft: Product, request(s), context, criteria and what the Ticket does next. */
-const cardOf = (product: string, out: { draft: Draft; split?: Draft[]; ready: boolean; missing: string[] }): Card => {
+const confirmCard = (product: string, out: { draft: Draft; split?: Draft[]; ready: boolean; missing: string[] }): Card => {
   const many = out.split && out.split.length > 1 ? out.split : undefined
   const criteria = (many ?? [out.draft]).flatMap((d) => d.acceptance_criteria)
   return {
     title: many ? `Send these ${many.length} requests` : 'Send this request',
     details: [
       { label: 'Product', value: product },
+      ...(many ? [] : [{ label: 'Type', value: KIND_LABEL[out.draft.type] }]),
+      ...(!many && out.draft.urgency === 'urgent' ? [{ label: 'Urgent', value: lineOf(out.draft.urgent_reason ?? '', 200) }] : []),
       { label: many ? 'Requests' : 'Request', value: many ? many.map((d, i) => `${i + 1}. ${lineOf(d.problem, 160)}`).join('\n') : lineOf(out.draft.problem, 400) },
       ...(out.draft.context ? [{ label: 'Context', value: lineOf(out.draft.context) }] : []),
       ...(criteria.length ? [{ label: 'It is done when', value: criteria.slice(0, 6).map((c) => `- ${lineOf(c, 160)}`).join('\n') }] : []),
       ...(out.ready ? [] : [{ label: 'Still open', value: out.missing.join(', ') }]),
-      { label: 'What happens next', value: many ? `${many.length} Tickets are created and go to Triage` : 'A Ticket is created and goes to Triage' },
+      { label: 'What happens next', value: many ? `${many.length} Tickets are created and go to Triage` : out.draft.urgency === 'urgent' ? 'A Ticket is created and asks the Bauherr for the fast lane' : 'A Ticket is created and goes to Triage' },
     ],
     approve: many ? `Create ${many.length} tickets` : 'Create request',
     decline: 'Keep editing',
@@ -161,6 +256,25 @@ export async function* runRequest(a: { payload: Payload; user: Doc; workspace: n
     if (s.status !== 'open') return yield* say('This request is already sent. Comment on its Ticket, or type /request to start another one.')
     const last = a.messages.at(-1)!
     const text = last.content.map((p) => (p.type === 'text' ? p.text : '')).join('\n')
+    const offer = async function* (draft: Draft, split: Draft[] | undefined, ready: boolean, missing: string[]): AsyncGenerator<ChatEvent, boolean> {
+      const card = confirmCard((s.product as Doc).name, { draft, split, ready, missing })
+      const id = `request-${answerId}`
+      const input = { session: Number(s.id), ...(split?.length && { expect: split.length }) }
+      if (!(await storePending(who, a.thread.id, { toolCallId: id, name: 'submit_request', kind: 'confirm', input, summary: card.title, issuedAt: new Date().toISOString(), card, state: { messages: [], results: [], rounds: 0 } }))) return false
+      yield { type: 'tool-call', id, name: 'submit_request', kind: 'confirm', input, summary: card.title }
+      yield { type: 'confirm', id, name: 'submit_request', title: card.title, details: card.details, destructive: false, approve: card.approve, decline: card.decline, noReason: card.noReason }
+      await finish()
+      yield { type: 'done', answerId, requiresAction: true, usage: usage(t0) }
+      return true
+    }
+    if (text.trim() === SEND_TEXT) {
+      const card = (await requestCard(who, s.id))!
+      if (card.kind === 'question') return yield* say('A question is answered here and files nothing. Press "Turn into a request" on the card to send it.')
+      if (!card.canSend) return yield* say(`Not ready to send yet. Still needed: ${card.missing.join(', ')}.`)
+      yield { type: 'delta', text: 'Here is what I will send.' }
+      if (yield* offer(s.draft as Draft, s.split?.length ? s.split : undefined, !card.missing.length, card.missing)) return
+      return yield* say('This request is already waiting for your confirmation.')
+    }
     const ids = last.content.flatMap((p) => (p.type === 'image' ? [Number(p.mediaId)] : []))
     const { maxPerSession } = mediaLimits()
     const shots = await exclusive(`intake:${s.id}`, async () => {
@@ -177,20 +291,8 @@ export async function* runRequest(a: { payload: Payload; user: Doc; workspace: n
     const out = await advanceIntake(a.payload, { user: a.user, token: null }, String(s.id), text, shots)
     yield { type: 'delta', text: out.question }
     if (out.options?.length) yield { type: 'options', id: `options-${answerId}`, options: out.options.map((x) => ({ label: x.label, recommended: !!x.recommended })) }
-    if (out.ready || out.exhausted) {
-      const draft = out.draft as Draft
-      const card = cardOf((s.product as Doc).name, { draft, split: out.split as Draft[] | undefined, ready: out.ready, missing: out.missing })
-      const split = out.split as Draft[] | undefined
-      const id = `request-${answerId}`
-      const input = { session: Number(s.id), ...(split?.length && { expect: split.length }) }
-      if (await storePending(who, a.thread.id, { toolCallId: id, name: 'submit_request', kind: 'confirm', input, summary: card.title, issuedAt: new Date().toISOString(), card, state: { messages: [], results: [], rounds: 0 } })) {
-        yield { type: 'tool-call', id, name: 'submit_request', kind: 'confirm', input, summary: card.title }
-        yield { type: 'confirm', id, name: 'submit_request', title: card.title, details: card.details, destructive: false, approve: card.approve, decline: card.decline, noReason: card.noReason }
-        await finish()
-        yield { type: 'done', answerId, requiresAction: true, usage: usage(t0) }
-        return
-      }
-    }
+    const draft = out.draft as Draft
+    if ((out.ready || out.exhausted) && draft.type !== 'question' && (yield* offer(draft, out.split as Draft[] | undefined, out.ready, out.missing))) return
     await finish()
     yield { type: 'done', answerId, usage: usage(t0) }
   } catch (e) {
