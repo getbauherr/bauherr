@@ -37,3 +37,17 @@ it('gives the same events when the stream arrives in 7-byte chunks and with CRLF
 it('throws on a stream error event', async () => {
   await expect(collect(body('event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n', 64))).rejects.toThrow('Overloaded')
 })
+
+it('a call that must end in one tool never sends a forced tool_choice (current models answer it with HTTP 400)', async () => {
+  const { chatBody, mustCall, upstreamReason } = await import('../src/lib/chat/stream')
+  const forced = chatBody('ws-a/b/m', { system: 'S', messages: [], tools: [], forceTool: 'refine' })
+  expect(forced.tool_choice).toEqual({ type: 'auto', disable_parallel_tool_use: true })
+  expect(forced.system).toBe('S' + mustCall('refine'))
+  expect(String(forced.system)).toContain('`refine`')
+  const plain = chatBody('ws-a/b/m', { system: 'S', messages: [], tools: [] })
+  expect(plain.tool_choice).toBeUndefined()
+  expect(plain.system).toBe('S')
+  expect(chatBody('ws-a/b/m', { system: 'S', messages: [], tools: [], noTools: true }).tool_choice).toEqual({ type: 'none' })
+  expect(upstreamReason('{"type":"error","error":{"type":"invalid_request_error","message":"tool_choice: type \\"tool\\" and \\"any\\" are not supported for this model."}}')).toContain('not supported for this model')
+  expect(upstreamReason('<html>')).toBe('')
+})
