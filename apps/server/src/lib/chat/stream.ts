@@ -13,7 +13,7 @@ export type ModelEvent =
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'usage'; tokensIn: number; tokensOut: number; model?: string }
 
-export type ModelCall = (a: { system: string; messages: ModelMessage[]; tools: ToolDef[]; noTools?: boolean; signal?: AbortSignal }) => AsyncIterable<ModelEvent>
+export type ModelCall = (a: { system: string; messages: ModelMessage[]; tools: ToolDef[]; noTools?: boolean; /** Name of the one tool the model must call. */ forceTool?: string; signal?: AbortSignal }) => AsyncIterable<ModelEvent>
 
 /** Anthropic Messages API stream (`stream: true`) as normalised events: text deltas, finished tool_use blocks (input_json_delta joined and parsed at content_block_stop) and the usage of the message. Throws on an `error` event. */
 export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): AsyncGenerator<ModelEvent> {
@@ -76,11 +76,11 @@ export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): A
 
 /** One streaming Messages-API call through the gateway as the Workspace. */
 export const gatewayChatModel = (a: { slug: string; key: string; model: string }): ModelCall =>
-  async function* ({ system, messages, tools, noTools, signal }) {
+  async function* ({ system, messages, tools, noTools, forceTool, signal }) {
     const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${a.key}` },
-      body: JSON.stringify({ model: `ws-${a.slug}/${a.model}`, max_tokens: 4096, stream: true, system, messages, tools, ...(noTools && { tool_choice: { type: 'none' } }) }),
+      body: JSON.stringify({ model: `ws-${a.slug}/${a.model}`, max_tokens: 4096, stream: true, system, messages, tools, ...(noTools && { tool_choice: { type: 'none' } }), ...(forceTool && { tool_choice: { type: 'tool', name: forceTool } }) }),
       signal,
     })
     if (!res.ok || !res.body) throw new Error(`chat model call failed: HTTP ${res.status}`)

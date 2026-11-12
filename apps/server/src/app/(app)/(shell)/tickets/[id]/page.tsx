@@ -11,6 +11,7 @@ import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
+import { RefinePanel } from '../../../components/conversation/RefinePanel'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { ProofList } from '../../../components/ProofList'
@@ -243,6 +244,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </header>
             {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
             <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
+            <RefinePanel ticket={ticket.id} anchor />
             <Suspense fallback={null}><Proof P={P} d={d} /></Suspense>
             {epic ? (
               <section className="flex flex-col gap-4" aria-labelledby="subtickets">

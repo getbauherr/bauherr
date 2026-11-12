@@ -68,7 +68,7 @@ test('Details shows the merge commit to an Admin only', async ({ page }) => {
   await open(page, 'Ship the export header')
   await page.getByText('Details', { exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
-  await expect(page.locator('details')).not.toContainText(/abc1234|Merge commit/)
+  await expect(page.locator('details', { has: page.locator('#details') })).not.toContainText(/abc1234|Merge commit/)
 })
 
 test('dependencies are visible on cards and the Ticket page', async ({ page }) => {

@@ -96,7 +96,7 @@ test('Requests has four sections with counts; ordering your own requests persist
   await expect(page.getByTestId('count-needs')).toHaveText('1')
   await expect(page.getByTestId('needs-row')).toContainText('Add an invoice filter')
   await expect(page.getByTestId('needs-row')).toContainText('Waiting for your answer')
-  await expect(page.getByTestId('needs-row').getByRole('button', { name: 'Answer questions' })).toBeVisible()
+  await expect(page.getByTestId('needs-row').getByRole('link', { name: 'Answer questions' })).toBeVisible()
   await expect(page.getByTestId('count-factory')).toHaveText(/^([3-9]|\d\d+)$/) // other specs' requests are in the list too
   for (const t of ['CSV export misses its total row', 'Show the due date on invoices', 'Checkout fails for every customer']) await expect(page.getByTestId('factory-row').filter({ hasText: t })).toHaveCount(1)
   const urgent = page.getByTestId('factory-row').filter({ hasText: 'Checkout fails for every customer' })

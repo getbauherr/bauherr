@@ -6,7 +6,22 @@ assertFakeAllowed('CHAT_FAKE')
 
 const usage = (text: string): ModelEvent => ({ type: 'usage', tokensIn: 10, tokensOut: Math.max(1, Math.ceil(text.length / 4)), model: 'fake' })
 
-export const fakeChatModel: ModelCall = async function* ({ messages }) {
+/** The refine engine's turn (`tools` holds `refine`): the person's text starting `refine:` carries the whole result as JSON; any other text settles the first open point with it. */
+const fakeRefine = (said: string): Record<string, unknown> => {
+  const open = (JSON.parse(/<state>([\s\S]*)<\/state>/.exec(said)?.[1] ?? '{}') as { points?: { id: string; status: string }[] }).points?.filter((p) => p.status === 'open') ?? []
+  const text = /<person>([\s\S]*)<\/person>/.exec(said)?.[1]?.trim() ?? ''
+  if (text.startsWith('refine:')) return JSON.parse(text.slice(7))
+  const first = open[0]
+  return { reply: first ? 'Noted.' : 'Noted, nothing else is open.', settled: first ? [{ id: first.id, answer: text.slice(0, 500) }] : [], dropped: [], added: [], next: open.length > 1 ? 'ask' : 'summary' }
+}
+
+export const fakeChatModel: ModelCall = async function* ({ messages, tools }) {
+  if (tools.some((t) => t.name === 'refine')) {
+    const said = messages.at(-1)!.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ')
+    yield { type: 'tool_use', id: `toolu_fake_refine_${messages.length}`, name: 'refine', input: fakeRefine(said) }
+    yield { type: 'usage', tokensIn: 10, tokensOut: 20, model: 'fake-refine' }
+    return
+  }
   const last = messages.at(-1)!
   const results = last.content.filter((b) => b.type === 'tool_result')
   if (results.length) {

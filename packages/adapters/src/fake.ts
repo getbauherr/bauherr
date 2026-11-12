@@ -449,6 +449,12 @@ class FakeTickets implements TicketSource {
     this.touch(t);
     return c;
   }
+  async update(id: string, patch: { title?: string; body?: string }) {
+    const t = this.t(id);
+    if (patch.title !== undefined) t.title = patch.title;
+    if (patch.body !== undefined) t.body = this.b.opts.native ? patch.body : renderRelations(patch.body, parseRelations(t.body).relations);
+    this.touch(t);
+  }
   async updateComment(id: string, commentId: string, body: string) {
     const t = this.t(id);
     const c = t.comments.find((x) => x.id === commentId);

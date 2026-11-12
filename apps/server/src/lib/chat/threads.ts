@@ -26,8 +26,9 @@ export const ownThread = async (w: Who, id: string | number): Promise<Doc | null
   return docs[0] ?? null
 }
 
+/** The helper's threads: the refinement conversations of Tickets (an `intakeSession` without `request`) belong to their panel and are not listed. */
 export const listThreads = async (w: Who, { archived = false }: { archived?: boolean } = {}): Promise<Meta[]> =>
-  (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { archivedAt: { exists: archived } }] }, sort: '-lastMessageAt', limit: LIST_LIMIT, pagination: false, ...o })).docs.map(meta)
+  (await w.payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: w.user.id } }, { workspace: { equals: w.workspace } }, { archivedAt: { exists: archived } }, { or: [{ request: { equals: true } }, { intakeSession: { exists: false } }] }] }, sort: '-lastMessageAt', limit: LIST_LIMIT, pagination: false, ...o })).docs.map(meta)
 
 export const createThread = async (w: Who, context?: { path: string; label: string }): Promise<Meta> =>
   meta(await w.payload.create({ collection: 'chat_threads', data: { owner: w.user.id, workspace: w.workspace, context, lastMessageAt: new Date().toISOString() }, ...o }))
