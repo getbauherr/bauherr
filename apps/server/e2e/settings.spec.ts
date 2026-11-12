@@ -1,15 +1,19 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
 import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
+/** The Workspace of this spec (`seed-e2e.ts`): it saves budget, models, Knowledge and a Connection, so no other spec may read it. */
+const ownWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+
 const fake = !!process.env.E2E_FAKE_FORGE // the fake forge lists repositories; the real one fails with the dummy token (the fallback)
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 test('Admin edits budget, adds a Connection with a missing field and a Bauherr', async ({ page }) => {
+  await ownWorkspace(page)
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -34,7 +38,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(page.getByLabel('Budget per 30 days')).toHaveValue(amount)
 
   await page.getByRole('link', { name: 'Products' }).click()
-  await expect(page.getByRole('cell', { name: 'acme/web' }).first()).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'settingsco/app' }).first()).toBeVisible()
 
   const nav = page.getByRole('navigation', { name: 'Settings' })
   await expect(nav.getByRole('link', { name: 'General' })).toBeVisible()
@@ -61,7 +65,7 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(add.getByText('Temporary password (shown once)')).toBeVisible()
   const row = page.getByRole('row', { name: new RegExp(added) })
   await expect(row).toContainText('Bauherr')
-  await expect(row).toContainText('Acme')
+  await expect(row).toContainText('Settingsco')
   await row.getByText('Edit', { exact: true }).click()
   await expect(row.getByLabel('Role')).toBeVisible()
   await row.getByText('Edit', { exact: true }).click()
@@ -95,8 +99,9 @@ test('at 390 px the Next step bar does not cover the last field of the Models & 
   expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
 })
 
-// Lives in this file (not selects.spec.ts): it saves the whole Models & budget form and the Knowledge form, so it must not run in parallel with the budget test above.
+// Lives in this file (not selects.spec.ts): it saves the whole Models & budget form and the Knowledge form of the Workspace `settingsco`, which these tests own and run one after the other.
 test('Models & budget: model tiers are selects with Other...; Knowledge: the repository is a select or, with a failing forge, text', async ({ page }) => {
+  await ownWorkspace(page)
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())

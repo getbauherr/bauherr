@@ -29,6 +29,9 @@ const productionOn = async (page: Page) => {
   await tab(page, 'Deploy')
 }
 
+/** The check picker renders at once and is replaced when the forge's recent checks arrive (3 s cap): what is typed or ticked before that is lost, so wait for the read before touching it. */
+const checksLoaded = (page: Page, section: string) => expect(page.locator(section).getByText('Loading recent checks from the forge…')).toHaveCount(0)
+
 const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
   // matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one; hydration can close the <details> again, so it is opened on every attempt
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
@@ -96,6 +99,7 @@ test('list, Product page, save, validation and the single Delete section', async
   await page.getByRole('textbox', { name: 'Staging site' }).fill('https://staging.e2e.example.com')
   await productionOn(page)
   await page.getByRole('textbox', { name: 'Staging site' }).fill('https://staging.e2e.example.com')
+  await checksLoaded(page, '#production')
   await page.locator('#production').getByRole('textbox', { name: 'Add a check that has not run yet' }).fill('deploy-production')
   await page.locator('#production').getByRole('button', { name: 'Add' }).click()
   await expect(page.locator('#production').getByRole('checkbox', { name: /deploy-production/ })).toBeChecked()
@@ -187,6 +191,7 @@ test('the check picker offers the checks the forge reported and the callout turn
   const production = page.locator('#production')
   if (!forced) await expect(production.getByRole('status')).toHaveCount(0) // the gate is off: the section only points at Approvals
   await productionOn(page)
+  await checksLoaded(page, '#production')
   await expect(production.getByRole('status').first()).toContainText('Not ready')
   await expect(production.getByRole('checkbox', { name: /deploy-production.*seen on 1 of 1 recent commits/ })).not.toBeChecked()
   await expect(production.getByRole('checkbox', { name: /lint/ })).not.toBeChecked()
@@ -228,7 +233,8 @@ test('Members: an unknown GitHub login is refused, a known one is saved', async 
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (knows the logins fake and e2e-admin; e2e-admin is the seeded Admin\'s, so the member links `fake`)')
   await signIn(page)
   await page.goto('/settings/bauherren')
-  const row = page.getByRole('row', { name: new RegExp('^member@example\\.com') })
+  // members-edit is the account of this test alone: a sign-in of an edited account writes back the user it read.
+  const row = page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') })
   await row.getByText('Edit', { exact: true }).click()
   await row.getByLabel('GitHub login').fill('nobody-here')
   await row.getByRole('button', { name: 'Save' }).click()
@@ -237,18 +243,18 @@ test('Members: an unknown GitHub login is refused, a known one is saved', async 
   await row.getByRole('button', { name: 'Save' }).click()
   await expect(row.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
   await page.reload()
-  await page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByText('Edit', { exact: true }).click()
-  await expect(page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByLabel('GitHub login')).toHaveValue('fake')
+  await page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') }).getByText('Edit', { exact: true }).click()
+  await expect(page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') }).getByLabel('GitHub login')).toHaveValue('fake')
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Checks' }).click()
   await tab(page, 'Approvals')
   await expect(page.getByText(/Every Bauherr and Admin with a forge login \(.*@e2e-admin.*@fake/)).toBeVisible()
 
   await page.goto('/settings/bauherren')
-  await page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByText('Edit', { exact: true }).click()
-  await page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByLabel('GitHub login').fill('')
-  await page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByRole('row', { name: new RegExp('^member@example\\.com') }).getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') }).getByText('Edit', { exact: true }).click()
+  await page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') }).getByLabel('GitHub login').fill('')
+  await page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') }).getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 })
 
 test('a Product with Tickets or a widget cannot be deleted', async ({ page }) => {

@@ -102,3 +102,93 @@ test('a blocked card is ranked like any other and says why it waits', async ({ p
   await menu(page, 'Blocked: add the invoice filter', toTop ? 'Send to top' : 'Send to bottom')
   await stays(page, (t) => expect(toTop ? t[0] : t.at(-1)).toBe('Blocked: add the invoice filter'))
 })
+
+// Moved here from overview.spec.ts: they reorder the same Build column as the tests above, and tests of one file run one after the other, so no drop shifts a position another test asserts.
+test('drag a Board card above another: the order survives a reload', async ({ page }) => {
+  const titles = () => page.locator('.col[data-stage=build] .card .ticket-title').allTextContents()
+  const a = 'Blocker: migrate the invoice table'
+  const b = 'Export invoices as CSV'
+  await expect(page.locator('.col[data-stage=build] .card')).not.toHaveCount(0)
+  const [first, second] = (await titles()).indexOf(a) < (await titles()).indexOf(b) ? [a, b] : [b, a]
+  await page.locator('.col[data-stage=build] .card', { hasText: second }).dragTo(page.locator('.col[data-stage=build] .card', { hasText: first }))
+  await expect.poll(async () => (await titles()).indexOf(second) < (await titles()).indexOf(first)).toBe(true)
+  await expect(async () => {
+    await page.reload()
+    const after = await titles()
+    expect(after.indexOf(second)).toBeLessThan(after.indexOf(first))
+  }).toPass()
+})
+
+test('dragging a Board card shows the drop position', async ({ page }) => {
+  const col = page.locator('.col[data-stage=build]')
+  const card = (name: string) => col.locator('.card[draggable=true]', { hasText: name })
+  const marks = col.locator('[data-drop]')
+  const titles = () => col.locator('.card .ticket-title').allTextContents()
+  const a = 'Blocker: migrate the invoice table'
+  const b = 'Export invoices as CSV'
+  await expect(col.locator('.card')).not.toHaveCount(0)
+  const start = await titles()
+  const [upper, lower] = start.indexOf(a) < start.indexOf(b) ? [a, b] : [b, a]
+  const centre = async (name: string) => {
+    await card(name).scrollIntoViewIfNeeded()
+    const box = (await card(name).boundingBox())!
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  }
+  const hover = async (name: string) => {
+    const c = await centre(name)
+    await page.mouse.move(c.x, c.y, { steps: 10 })
+  }
+  const grab = async (name: string) => {
+    const c = await centre(name)
+    await page.mouse.move(c.x, c.y)
+    await page.mouse.down()
+  }
+  const above = async () => {
+    const after = await titles()
+    return after.indexOf(lower) < after.indexOf(upper)
+  }
+  const cancel = async () => {
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    await expect(marks).toHaveCount(0)
+    expect(await above()).toBe(false)
+  }
+
+  await grab(lower)
+  await hover(upper)
+  await expect(marks).toHaveCount(1)
+  await expect(card(upper)).toHaveAttribute('data-drop', 'before')
+  const shots = process.env.SHOTS_DIR
+  if (shots) {
+    for (const [w, h] of [[1280, 2400]] as const) {
+      await page.setViewportSize({ width: w, height: h })
+      for (const scheme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: scheme })
+        await hover(upper)
+        await expect(marks).toHaveCount(1)
+        await page.screenshot({ path: `${shots}/workflow-drop-line-${scheme}-${w}x${h}.png` })
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await hover(upper)
+  }
+  await hover(lower)
+  await expect(marks).toHaveCount(0)
+  await cancel()
+
+  await grab(upper)
+  await hover(lower)
+  await expect(card(lower)).toHaveAttribute('data-drop', 'after')
+  await cancel()
+
+  await grab(lower)
+  await hover(upper)
+  await expect(card(upper)).toHaveAttribute('data-drop', 'before')
+  await page.mouse.up()
+  await expect(marks).toHaveCount(0)
+  await expect.poll(above).toBe(true)
+  await expect(async () => {
+    await page.reload()
+    expect(await above()).toBe(true)
+  }).toPass()
+})

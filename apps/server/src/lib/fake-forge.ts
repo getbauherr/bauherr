@@ -201,6 +201,10 @@ const build = (): FakeBackend => {
   // #41 is ticket-dock.spec.ts's own Ticket held by Triage with one question (answered from the Inbox card into the docked chat).
   void ts.create({ title: 'Name the export file', labels: ['bauherr:needs-refinement'] })
   void ts.comment('41', QUESTIONS.replace('Which export format, critical', 'Which file name').replace('Default: CSV. Alternatives: XLSX; JSON.', 'Default: export.csv. Alternatives: report.csv; data.csv.'))
+  // #42 is the retry twin of #24 (ticket.spec.ts answers and approves one of them per attempt).
+  void ts.create({ title: 'Switch the dashboard to a light theme', labels: ['bauherr:stage:plan'] })
+  void ts.comment('42', PLAN)
+  void ts.comment('42', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))

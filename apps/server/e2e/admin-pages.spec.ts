@@ -110,7 +110,7 @@ test('by default /admin redirects to /settings, also for an Admin, and /api stay
   expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
   const fn = await page.request.post('/admin', { headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' }, data: '[]', maxRedirects: 0 })
   expect(fn.status()).toBe(307)
-  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200)
+  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200) // allow-page-request: only that /api answers; the anonymous answer is 200 too
 })
 
 // Needs a dev server started with BAUHERR_ENABLE_ADMIN=1; run with E2E_ADMIN_ENABLED=1.

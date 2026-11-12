@@ -81,7 +81,8 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
   const shots = process.env.SHOTS_DIR
   if (shots) await page.screenshot({ path: `${shots}/graph-running-1280x800.png`, fullPage: true })
 
-  const node = page.locator('a.gnode[data-ticket="123"]')
+  // Ticket #140 (`seed-e2e.ts`) is this test's own: its Run is flipped to succeeded and back below, which no other spec may see
+  const node = page.locator('a.gnode[data-ticket="140"]')
   await expect(node).toHaveAttribute('data-running', '')
   await expect(node.locator('text.act')).toHaveText(/^building/)
   await expect(node).toHaveAttribute('aria-label', /, building/)
@@ -92,14 +93,15 @@ test('Graph view: execution order, grouped no-dependency grid, running Ticket an
   if (shots) await page.screenshot({ path: `${shots}/graph-reduced-motion-1280x800.png`, fullPage: true })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
 
-  const runs = await (await page.request.get('/api/runs?where[status][equals]=running&where[stage][equals]=build&limit=50&depth=1')).json()
+  // fetched from the page: `page.request` is anonymous where the cookie rule needs the Origin (production image)
+  const patch = (id: number, status: string) => page.evaluate(async ([i, st]) => (await fetch(`/api/runs/${i}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: st }) })).ok, [id, status] as const)
+  const runs = await page.evaluate(async () => (await fetch('/api/runs?where[status][equals]=running&where[stage][equals]=build&limit=50&depth=1')).json())
   // The production-image job serves no /api/runs; the fake-forge job covers the stop.
   if (!runs.docs) return
-  const live = runs.docs.find((r: { ticket: { number: number } }) => r.ticket.number === 123)
-  const done = await page.request.patch(`/api/runs/${live.id}`, { data: { status: 'succeeded' }, headers: { Origin: new URL(page.url()).origin } })
-  expect(done.ok()).toBe(true)
+  const live = runs.docs.find((r: { ticket: { number: number } }) => r.ticket.number === 140)
+  expect(await patch(live.id, 'succeeded')).toBe(true)
   await expect(node).not.toHaveAttribute('data-running', '', { timeout: 12000 })
   await expect(node.locator('text.act')).toHaveCount(0)
   if (shots) await page.screenshot({ path: `${shots}/graph-stopped-1280x800.png`, fullPage: true })
-  await page.request.patch(`/api/runs/${live.id}`, { data: { status: 'running' }, headers: { Origin: new URL(page.url()).origin } })
+  await patch(live.id, 'running')
 })
