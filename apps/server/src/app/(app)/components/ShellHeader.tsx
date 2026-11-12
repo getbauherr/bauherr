@@ -17,7 +17,7 @@ export function ShellHeader({ items, admin, setup, minimal, logout }: { items: P
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4 max-sm:gap-1 max-sm:px-2">
       <SidebarTrigger />
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5 max-sm:hidden" />
-      <Breadcrumbs />
+      <Breadcrumbs owner={minimal} />
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {!path.startsWith('/requests/new') && (
           <RequestOpen request="new" variant="outline" className="max-sm:size-9 max-sm:px-0">

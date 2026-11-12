@@ -11,21 +11,21 @@ const signIn = async (page: Page) => {
   await page.getByLabel('Email').fill(owner)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).toHaveURL(/\/settings\/profile$/)
+  await expect(page).toHaveURL(/\/requests$/)
 }
 
-test('a Product owner lands on the minimal shell: brand, Profile, user menu, one sentence', async ({ page }) => {
+test('a Product owner lands on Requests; the shell has Requests, Profile and the user menu, nothing of the factory', async ({ page }) => {
   await signIn(page)
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link')).toHaveText(['Profile'])
-  await expect(page.getByRole('main').getByText('Your account is set up. The pages for your Products follow.')).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Product owner' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Acme Web' })).toBeVisible()
+  await expect(nav.getByRole('link')).toHaveText(['Requests', 'Profile'])
+  await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
   const bar = page.getByRole('banner')
-  await expect(bar.getByRole('link', { name: 'New request' })).toHaveCount(0)
-  await expect(page.getByTestId('chat-open')).toHaveCount(0)
+  await expect(bar.getByRole('button', { name: 'New request' })).toBeVisible()
   await expect(bar.getByRole('button', { name: /Search/i })).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0)
+  await nav.getByRole('link', { name: 'Profile' }).click()
+  await expect(page.getByRole('cell', { name: 'Product owner' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Acme Web' })).toBeVisible()
   await page.getByRole('button', { name: 'User menu' }).click()
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Release notes' })).toHaveCount(0)
@@ -36,7 +36,7 @@ test('a Product owner lands on the minimal shell: brand, Profile, user menu, one
 
 test('every page of the factory is a 404 for a Product owner', async ({ page }) => {
   await signIn(page)
-  for (const path of ['/', '/tickets/1', '/requests', '/requests/new', '/inbox', '/team', '/insights', '/releases', '/knowledge', '/runs', '/release-notes', '/setup', '/settings/workspace', '/settings/bauherren', '/settings/api-key', '/settings/products', '/workflow/edit']) {
+  for (const path of ['/', '/inbox', '/team', '/insights', '/releases', '/knowledge', '/runs', '/release-notes', '/setup', '/settings/workspace', '/settings/bauherren', '/settings/api-key', '/settings/products', '/workflow/edit']) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
   }
@@ -49,7 +49,7 @@ const call = (page: Page, path: string, init?: { method: string; body?: string; 
     return { status: r.status, body: (await r.json().catch(() => null)) as { docs?: { email: string }[] } | null }
   }, [path, init ?? null] as const)
 
-const PATHS = ['/api/tickets', '/api/runs', '/api/connections', '/api/products', '/api/workspaces', '/api/agent_keys', '/api/chat/threads', '/api/presence', '/api/changes']
+const PATHS = ['/api/tickets', '/api/runs', '/api/connections', '/api/products', '/api/workspaces', '/api/agent_keys', '/api/presence', '/api/changes']
 
 test('the API refuses a Product owner on every path the same call of a signed-in Bauherr succeeds on', async ({ page, browser, baseURL }) => {
   const control = await (await browser.newContext({ baseURL })).newPage()

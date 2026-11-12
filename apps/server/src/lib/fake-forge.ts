@@ -78,6 +78,10 @@ const build = (): FakeBackend => {
   void gated.create({ title: 'Ship the gated export', labels: ['bauherr:stage:release'] })
   void gated.comment('1', WORKLOG)
   void gated.comment('1', summary(1))
+  // acme/lab-alpha and acme/lab-beta: the Products of product-owner-view.spec.ts's own Workspace, one Ticket (#1) each; Alpha's has a comment.
+  void fake.tickets('acme/lab-alpha').create({ title: 'Lab Alpha ticket', labels: ['bauherr:stage:build'] })
+  void fake.tickets('acme/lab-alpha').comment('1', 'Please check the contrast of the new header.')
+  void fake.tickets('acme/lab-beta').create({ title: 'Lab Beta ticket', labels: ['bauherr:stage:build'] })
   // newco/shop: the repository and open issues the setup wizard's e2e picks on the Workspace `newco`.
   fake.commit('newco/shop', 'main', 'README.md', '# Shop\n')
   const shop = fake.tickets('newco/shop')

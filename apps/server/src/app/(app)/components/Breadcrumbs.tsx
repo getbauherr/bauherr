@@ -24,13 +24,13 @@ const settingsPage: Record<string, string> = { profile: 'Profile', workspace: 'G
 
 type Crumb = { label: string; href?: string }
 
-/** Section › page from the pathname; a page replaces the last label with `<PageTitle>`. */
-export function Breadcrumbs() {
+/** Section › page from the pathname; a page replaces the last label with `<PageTitle>`. A Product owner's Tickets sit under Requests (they have no Workflow page). */
+export function Breadcrumbs({ owner }: { owner?: boolean }) {
   const path = usePathname()
   const title = usePageTitle()
   const [first, second, third] = path.split('/').filter(Boolean)
-  const section = first ? (sections[first] ?? { label: first, one: first }) : sections.tickets
-  const crumbs: Crumb[] = [{ label: section.label, href: first === 'settings' ? undefined : first && first !== 'tickets' && first !== 'workflow' ? `/${first}` : '/' }]
+  const section = owner && first === 'tickets' ? { label: 'Requests', one: 'Ticket' } : first ? (sections[first] ?? { label: first, one: first }) : sections.tickets
+  const crumbs: Crumb[] = [{ label: section.label, href: first === 'settings' ? undefined : owner && first === 'tickets' ? '/requests' : first && first !== 'tickets' && first !== 'workflow' ? `/${first}` : '/' }]
   if (first === 'settings' && second) crumbs.push({ label: settingsPage[second] ?? cap(second), href: third ? `/settings/${second}` : undefined })
   else if (second) crumbs.push({ label: /^\d+$/.test(second) ? section.one : cap(second) })
   if (third) crumbs.push({ label: /^\d+$/.test(third) ? 'Product' : cap(third) })
