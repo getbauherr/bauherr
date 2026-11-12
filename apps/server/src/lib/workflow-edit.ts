@@ -1,5 +1,5 @@
 import { isMap, parseDocument, type Document, type YAMLMap, type YAMLSeq } from 'yaml'
-import { lint, NEEDS_ROLE, RESERVED, WIP, type Kind } from './workflow-rules'
+import { askedBy, lint, NEEDS_ROLE, RESERVED, WIP, type Addressee, type Kind } from './workflow-rules'
 import type { CheckpointKey } from './workflow-labels'
 import type { When } from './workflow-when'
 
@@ -98,7 +98,24 @@ export const setCheckpoint = (yaml: string, which: Exclude<CheckpointKey, 'refin
   if (!s) throw new Error(`no ${kind} step`)
   return setStageField(yaml, s.name, key, on ? 'human' : undefined)
 }
-export const checkpointOn = (s: Doc | undefined, which: Exclude<CheckpointKey, 'refine'>): boolean => s?.[GATE[which][1]] === 'human'
+export const checkpointOn = (s: Doc | undefined, which: Exclude<CheckpointKey, 'refine'>): boolean => askedBy(s?.[GATE[which][1]]) !== undefined
+
+/** Who a checkpoint asks in the file: `gate: {by}`, `production_gate: {by}`, `refine: {by}` of the triage stage or `by` of a human stage; the Bauherr when the file does not say. */
+export const askedOf = (s: Doc | undefined, which: CheckpointKey | 'human'): Addressee =>
+  (which === 'refine' ? askedBy(s?.refine) : which === 'human' ? askedBy({ by: s?.by }) : askedBy(s?.[GATE[which][1]])) ?? 'bauherr'
+
+/** Sets whom a checkpoint asks: the Bauherr is the plain `human` (nothing for refine and human steps), the Product owner a `{by: product-owner}` map. `stage` is the step that carries it. */
+export const setAsked = (yaml: string, which: CheckpointKey | 'human', stage: string, by: Addressee): string =>
+  edit(yaml, (d) => {
+    const key = which === 'refine' ? 'refine' : which === 'human' ? 'by' : GATE[which][1]
+    const path = ['workflow', 'stages', at(d, stage), key]
+    if (by === 'bauherr' && (which === 'refine' || which === 'human')) return void d.deleteIn(path)
+    if (which === 'human') return void d.setIn(path, by)
+    if (by === 'bauherr') return void d.setIn(path, 'human')
+    const n = d.createNode({ by }) as YAMLMap
+    n.flow = true
+    d.setIn(path, n)
+  })
 
 export const setPath = (yaml: string, stage: string, outcome: string, target: string): string =>
   edit(yaml, (d) => void d.setIn(['workflow', 'stages', at(d, stage), 'outcomes', outcome], target))
@@ -231,13 +248,13 @@ export const foldWip = (yaml: string, limits: Record<string, number> | null | un
   })
 }
 
-export type Checkpoint = { key: CheckpointKey | 'human'; stage: string; on: boolean; always?: boolean }
+export type Checkpoint = { key: CheckpointKey | 'human'; stage: string; on: boolean; always?: boolean; by: Addressee }
 
 /** Every place the factory can ask a person, in flow order; `on` ones are the points the person is asked at. */
 export const checkpointsOf = (doc: Doc): Checkpoint[] => {
   const out: Checkpoint[] = []
   for (const s of stagesOf(doc)) {
-    const add = (key: Checkpoint['key'], on: boolean, always?: boolean) => out.push({ key, stage: s.name, on, ...(always && { always }) })
+    const add = (key: Checkpoint['key'], on: boolean, always?: boolean) => out.push({ key, stage: s.name, on, by: askedOf(s, key), ...(always && { always }) })
     if (s.kind === 'triage') add('refine', true, true)
     else if (s.kind === 'plan') add('plan', checkpointOn(s, 'plan'))
     else if (s.kind === 'release') {

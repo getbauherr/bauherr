@@ -5,18 +5,19 @@ import { ChatDock } from '../components/chat/ChatDock'
 import { SIDEBAR_COOKIE } from '../components/ui/sidebar-cookie'
 import { logout, selectWorkspace } from '../lib/actions'
 import { countOwnDrafts } from '../lib/requests'
-import { isProductOwner } from '../../../lib/people'
+import { isProductOwner, productScope } from '../../../lib/people'
+import { asksOwner } from '../../../lib/addressee'
 import { currentPersonWorkspace, currentWorkspace, payloadClient, requirePerson, type Person } from '../lib/session'
 import { isAdmin } from '../lib/settings'
 import { loadPresence } from '../../../lib/presence'
 import { loadSetup, SETUP_STEPS } from '../lib/setup'
 import { appVersion } from '../lib/version'
 
-/** Open Tickets whose `needsYou` column (written by the gate sweep) is set, plus for an Admin the skill proposals that wait for a merge: indexed counts instead of the overview. */
-const countNeedsYou = async (workspace: number, admin: boolean): Promise<number> => {
+/** Open Tickets whose `needsYou` column (written by the gate sweep) is set, plus for an Admin the skill proposals that wait for a merge: indexed counts instead of the overview. A Product owner (`owner`) counts only what asks them (`needsBy`) on their Products. */
+const countNeedsYou = async (workspace: number, admin: boolean, owner?: Person): Promise<number> => {
   const payload = await payloadClient()
   const [tickets, skills] = await Promise.all([
-    payload.count({ collection: 'tickets', where: { workspace: { equals: workspace }, state: { equals: 'open' }, needsYou: { exists: true } }, overrideAccess: true }),
+    payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [asksOwner, productScope(owner, workspace)] : [])] }, overrideAccess: true }),
     admin ? payload.count({ collection: 'skill_proposals', where: { workspace: { equals: workspace }, status: { in: ['proposed', 'replayed'] }, pr: { exists: true } }, overrideAccess: true }) : { totalDocs: 0 },
   ])
   return tickets.totalDocs + skills.totalDocs
@@ -33,9 +34,9 @@ const setupOf = async (workspace: number) => {
 /** What a Product owner gets: Requests, Profile and the user menu. No dock, no Workspace switcher, no polling, nothing of the factory. */
 async function ProductOwnerShell({ person, children }: { person: Person; children: ReactNode }) {
   const { workspace } = await currentPersonWorkspace()
-  const drafts = workspace ? await countOwnDrafts(person.id as number, workspace.id) : 0
+  const [drafts, needsYou] = workspace ? await Promise.all([countOwnDrafts(person.id as number, workspace.id), countNeedsYou(workspace.id, false, person)]) : [0, 0]
   return (
-    <AppShell defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'} minimal email={person.email} admin={false} workspaces={[]} presence={{ working: 0, idle: 0 }} version={appVersion()} needsYou={0} drafts={drafts} hasKnowledge={false} logout={logout} selectWorkspace={selectWorkspace}>
+    <AppShell defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'} minimal email={person.email} admin={false} workspaces={[]} presence={{ working: 0, idle: 0 }} version={appVersion()} needsYou={needsYou} drafts={drafts} hasKnowledge={false} logout={logout} selectWorkspace={selectWorkspace}>
       {children}
     </AppShell>
   )

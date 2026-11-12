@@ -13,7 +13,7 @@ import { Markdown } from './Markdown'
 import { ProofList } from './ProofList'
 import type { ProofData } from '../lib/proof'
 
-export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData }
+export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData; /** The card asks the Product owner; a Bauherr sees it too and may step in. */ asked?: 'product-owner' }
 
 const external = (url: string) => /^https?:\/\//.test(url)
 
@@ -56,6 +56,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
         {!compact && (
           <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Badge variant="accent">{d.checkpoint}</Badge>
+            {item.asked && <Badge variant="neutral" data-testid="asked">Asked: Product owner</Badge>}
             <span className="small text-muted-foreground">{item.waiting}</span>
             <Link href={`/tickets/${item.id}`} className="small ml-auto min-w-0 truncate text-muted-foreground hover:text-foreground max-sm:ml-0 max-sm:basis-full">
               #{item.number} {d.title}{item.product ? ` · ${item.product}` : ''}

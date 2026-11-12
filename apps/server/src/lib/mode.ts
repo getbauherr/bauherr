@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import type { Payload, PayloadRequest } from 'payload'
 import { parse } from 'yaml'
 import { workflowFor } from './factory'
-import { gates, order, type Workflow } from './workflow'
+import { checkpointBy, gates, order, type Workflow } from './workflow'
 
 export type Mode = 'session' | 'autonomous'
 const isMode = (v: unknown): v is Mode => v === 'session' || v === 'autonomous'
@@ -36,8 +36,11 @@ export const packed = (wf: Workflow): PackStage[] => {
 
 export type HumanGate = 'refine' | 'plan' | 'staging' | 'production'
 
-/** Whether `gate: human` is set on the optional `plan` or `release` stage of the workflow. */
-export const gateOn = (wf: Workflow, stage: 'plan' | 'release'): boolean => gates(wf)[stage === 'plan' ? 'plan' : 'staging']
+/** Whether `gate: human` is set on the optional `plan` or `release` stage of the workflow. The release gate counts here only when it asks the Bauherr (always on for every Product); one that asks the Product owner is per Product, see `stagingGateOn`. */
+export const gateOn = (wf: Workflow, stage: 'plan' | 'release'): boolean => (stage === 'plan' ? gates(wf).plan : gates(wf).staging && checkpointBy(wf, 'staging') === 'bauherr')
+
+/** Acceptance on staging for one Product: on for every Product when it asks the Bauherr; when it asks the Product owner, only for a Product that has an assigned Product owner and the switch "Product owner tests on staging" on (else there is no checkpoint, as without a gate). */
+export const stagingGateOn = (wf: Workflow, product: { productOwnerTestsStaging?: boolean | null }, ownerAssigned: boolean): boolean => gateOn(wf, 'release') || (gates(wf).staging && !!product.productOwnerTestsStaging && ownerAssigned)
 
 /** Production gate: on by default (`production_gate: human` on `release`); a Product can also turn it on itself. Without `productionChecks` it is not skipped but shown as a "Configure production checks" gate. */
 export const productionGateOn = (wf: Workflow, product: { productionGate?: boolean | null } = {}): boolean => gates(wf).production || !!product.productionGate
@@ -45,11 +48,11 @@ export const productionGateOn = (wf: Workflow, product: { productionGate?: boole
 /** Whether the Product can observe a production deploy (`beginProduction` needs it). */
 export const hasProductionChecks = (product: { productionChecks?: string | null }): boolean => !!product.productionChecks?.trim()
 
-/** Human gates the workflow enables, in flow order. `refine` is always on (Triage's questions); `plan` and `staging` are optional; `production` is on unless `production_gate` is removed from `release`. */
-export const humanGates = (wf: Workflow): HumanGate[] => [
+/** Human gates the workflow enables, in flow order (`staging`: the Product's `stagingGateOn`, default what the workflow asks of every Product). `refine` is always on (Triage's questions); `plan` and `staging` are optional; `production` is on unless `production_gate` is removed from `release`. */
+export const humanGates = (wf: Workflow, staging = gateOn(wf, 'release')): HumanGate[] => [
   'refine',
   ...(gateOn(wf, 'plan') ? (['plan'] as const) : []),
-  ...(gateOn(wf, 'release') ? (['staging'] as const) : []),
+  ...(staging ? (['staging'] as const) : []),
   ...(productionGateOn(wf) ? (['production'] as const) : []),
 ]
 

@@ -116,7 +116,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
     [router],
   )
   const { turn, run, stop } = useRefineTurn(ticket, onView)
-  const model = view ? view.models.find((m) => m.tier === view.tier)!.model : null
+  const model = view ? (view.models.find((m) => m.tier === view.tier)?.model ?? '') : null
   const messages = useMemo(() => {
     const stored = (view?.messages ?? []).map(toMessage)
     if (!turn?.user) return stored // a re-check shows no message while it runs
@@ -141,7 +141,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
     },
   })
 
-  if (!view || !model) return error ? <p role="alert" className="m-0 text-destructive">{error}</p> : <p role="status" className="m-0 animate-pulse text-muted-foreground">Loading the conversation...</p>
+  if (!view || model === null) return error ? <p role="alert" className="m-0 text-destructive">{error}</p> : <p role="status" className="m-0 animate-pulse text-muted-foreground">Loading the conversation...</p>
   const open = openOf(view.points)
   const current = open[0]
   const locked = view.sent

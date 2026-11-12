@@ -1,13 +1,14 @@
 'use client'
 import { checkpointsOf, forwardKey, isCustom, stagesOf, takesRole, type Checkpoint, type Doc } from '../../../../lib/workflow-edit'
 import { whenText } from '../../../../lib/workflow-when'
-import { CHECKPOINT, humanize, pathLabel, plainFinding, STEP_TEXT, SPECIAL_TARGET, stageTitle } from '../../../../lib/workflow-labels'
-import type { Kind } from '../../../../lib/workflow-rules'
+import { CHECKPOINT, humanize, OWNER_ROW, pathLabel, plainFinding, STEP_TEXT, SPECIAL_TARGET, stageTitle } from '../../../../lib/workflow-labels'
+import type { Addressee, Kind } from '../../../../lib/workflow-rules'
 import { cn } from '@/lib/utils'
 import { CornerUpLeft, Ellipsis, Lock, Plus, User } from '../icons'
 import { RoleAvatar } from '../team/RoleAvatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { Switch } from '../ui/switch'
+import { Asked } from './Asked'
 import { targetTitle, type RoleView } from './model'
 
 export type FlowProps = {
@@ -23,6 +24,7 @@ export type FlowProps = {
   slotOk: Record<string, boolean>
   moveOk: (name: string, dir: 1 | -1) => boolean
   onToggle: (which: 'plan' | 'staging' | 'production', on: boolean) => void
+  onAsk: (key: 'refine' | 'plan' | 'staging' | 'production', stage: string, by: Addressee) => void
   onAdd: (after: string, kind: 'agent' | 'human') => void
   onSeat: (stage: string, role: string) => void
   onMove: (name: string, dir: 1 | -1) => void
@@ -52,15 +54,18 @@ function Paths({ s, doc, order }: { s: Doc; doc: Doc; order: string[] }) {
   )
 }
 
-function CheckpointRow({ c, doc, onToggle }: { c: Checkpoint; doc: Doc; onToggle: FlowProps['onToggle'] }) {
+function CheckpointRow({ c, doc, onToggle, onAsk }: { c: Checkpoint; doc: Doc; onToggle: FlowProps['onToggle']; onAsk: FlowProps['onAsk'] }) {
   const text = CHECKPOINT[c.key as keyof typeof CHECKPOINT]
   const switchKey = rowSwitch[c.key]
   return (
     <div id={checkpointId(c)} data-testid="checkpoint" data-on={c.on} className={cn('scroll-mt-24 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2', c.on ? AMBER : 'border-dashed border-border text-muted-foreground')}>
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <User className={cn('size-4 shrink-0', c.on && 'text-warn')} />
-        {c.on ? <span className="min-w-0 font-medium text-foreground"><b className="text-warn">You</b> {text.row.replace(/^You /, '')}</span> : <span className="min-w-0">{text.off}</span>}
+        {c.on ? (
+          <span className="min-w-0 font-medium text-foreground">{c.by === 'bauherr' ? <><b className="text-warn">You</b> {text.row.replace(/^You /, '')}</> : <><b className="text-warn">The Product owner</b> {OWNER_ROW[c.key as keyof typeof OWNER_ROW]}</>}</span>
+        ) : <span className="min-w-0">{text.off}</span>}
       </span>
+      {c.on && c.key !== 'human' && <Asked what={text.chip} value={c.by} onChange={(by) => onAsk(c.key as 'refine' | 'plan' | 'staging' | 'production', c.stage, by)} />}
       {c.always ? (
         <span className="small flex items-center gap-1 text-muted-foreground"><Lock className="size-3.5" /> always on</span>
       ) : (
@@ -197,7 +202,7 @@ export function Flow(p: FlowProps) {
             {/* A container stage is a side track of the plan step, not a step every ticket passes: indented, no dot on the path. */}
             {s.kind === 'container' ? <span className="small text-muted-foreground">Side track: only tickets that were split wait here</span> : <span className={cn('absolute top-4 left-[5px] size-[15px] rounded-full border-2 bg-background', s.kind === 'human' ? 'border-warn' : 'border-border')} aria-hidden />}
             <StageCard s={s} p={p} order={order} bad={p.findings.get(s.name) ?? []} />
-            {mine.map((c) => <CheckpointRow key={c.key} c={c} doc={p.doc} onToggle={p.onToggle} />)}
+            {mine.map((c) => <CheckpointRow key={c.key} c={c} doc={p.doc} onToggle={p.onToggle} onAsk={p.onAsk} />)}
           </li>,
           s.kind !== 'done' && s.kind !== 'container' ? <Slot key={`${s.name}+`} after={s} p={p} reason={`Steps cannot be added here: the factory fixes where ${stageTitle(s)} leads.`} /> : null,
         ]

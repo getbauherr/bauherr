@@ -6,14 +6,16 @@ import { backendFor } from './adapters'
 import { retryRed, settleRetries } from './check-retry'
 import { connectionInput, webOrigin } from './connection'
 import { EXPEDITE_SKIP_TOUCH } from './needs-you'
-import { APPROVED_STAGING, GATE_LABELS, gateIsOn, verifyGateLabels } from './gate-labels'
+import { APPROVED_STAGING, GATE_LABELS, verifyGateLabels } from './gate-labels'
 import { completeCheap } from './gateway'
 import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
-import { gateOn, productionGateOn } from './mode'
+import { gateOn, humanGates, productionGateOn, stagingGateOn } from './mode'
+import { gatesOf } from './staging'
 import { record } from './history'
 import { inKindStage } from './stage-scope'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
+import { decidingAs, ownerAssigned, productOwnersOf } from './people'
 import { SUMMARY_MARKER, buildStagingSummary } from './summary'
 import { proofMarkdown } from './artifacts'
 import { publicUrl } from './oidc'
@@ -183,7 +185,7 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   }
   const issue = await ts.get(n)
   if (issue.state === 'open') return syncOpen()
-  const accepted = gateIsOn(workflowFor(t.workspace), 'staging')
+  const accepted = ((await gatesOf(payload, workflowFor(t.workspace), t)) ?? humanGates(workflowFor(t.workspace))).includes('staging')
     ? t.labels?.includes(APPROVED_STAGING) || (await verifyGateLabels(payload, t, issue.labels, ts, GATE_LABELS.filter((g) => g.label === APPROVED_STAGING))).accepted.length > 0
     : !!t.productionState
   if (accepted && t.productionState) return 'held'
@@ -248,10 +250,18 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const wf = workflowFor(w.id)
       const review = byKind(wf, 'review')?.name
       const release = byKind(wf, 'release')?.name
-      return review && release ? [[Number(w.id), { review, release, auto: !gateOn(wf, 'release') }] as const] : []
+      return review && release ? [[Number(w.id), { review, release, auto: !gateOn(wf, 'release'), wf }] as const] : []
     }),
   )
   if (!stages.size) return out
+  const owners = new Map<number, Promise<Doc[]>>()
+  /** Whether staging acceptance is asked for this Product (see `stagingGateOn`); the owner lookup is one query per Workspace and sweep, and only for a workflow that asks the Product owner. */
+  const stagingAsked = async (wf: ReturnType<typeof workflowFor>, p: Doc): Promise<boolean> => {
+    const ws = Number(id(p.workspace))
+    if (!owners.has(ws)) owners.set(ws, productOwnersOf(payload, ws))
+    return stagingGateOn(wf, p, ownerAssigned(await owners.get(ws)!, { id: p.id, workspace: ws }))
+  }
+  /** `auto`: staging acceptance is not asked of every Product, so every Ticket on staging is looked at (a gate that asks the Product owner is decided per Product below). */
   const whereOf = (ws: number, { review, release, auto }: { review: string; release: string; auto: boolean }): Where => {
     const waiting: Where = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [{ and: [{ releaseState: { equals: 'on_staging' } }, { expedite: { equals: true } }] }])] }
     return { and: [{ workspace: { equals: ws } }, { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: review } }, { and: [{ stage: { equals: release } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: [review, release] } }] }] }] }
@@ -259,10 +269,11 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
   const tickets = (await payload.find({ collection: 'tickets', where: { or: [...stages].map(([ws, st]) => whereOf(ws, st)) }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
-      const { review, release, auto } = stages.get(Number(id(t.workspace)))!
+      const { review, release, wf, auto: loose } = stages.get(Number(id(t.workspace)))!
       const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
+      const auto = loose && !(await stagingAsked(wf, product))
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
       // Product `expediteSkipStaging` is the human decision to skip the staging gate for a Hotfix; passStaging still records the staging touch.
       if (t.stage === release && (auto || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
@@ -351,12 +362,12 @@ export const clearApprovalLabel = (payload: Payload, ts: TicketSource, n: string
   ts.removeLabels(n, [APPROVED_PRODUCTION]).catch((e) => payload.logger.error({ err: e, ticket: n }, 'could not remove the production label'))
 
 /** Starts the production deploy of a Ticket in `awaiting_approval | failed | timed_out` after an explicit approval by a person: the human touch is written first (no deploy without an audit row; removed again when the CAS is lost), then one CAS records the approval for the current merge sha and moves to `deploying` (a lost race or a changed merge sha changes nothing), then the output label. A label failure is retried by `watchProduction`. The Product's pipeline reacts to the label or the webhook; the factory deploys nothing. */
-export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now = Date.now()): Promise<void> => {
+export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now = Date.now(), addressee?: 'bauherr' | 'product-owner'): Promise<void> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
   if (!productionNames(product).length) throw new Error('configure productionChecks on the Product first')
   if (!t.mergeSha) throw new Error('the Ticket has no merge commit to deploy')
   const at = new Date(now).toISOString()
-  const touch = await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at }, ...o })
+  const touch = await payload.create({ collection: 'human_touches', data: { kind: 'approve:production', ticket: t.id, workspace: id(t.workspace), actor: personOf(user), as: decidingAs(user), ...(addressee && { addressee }), at }, ...o })
   const won = await cas(payload, t.id, sql`"production_state" = 'deploying', "production_approved_sha" = ${t.mergeSha}, "production_requested_at" = ${at}, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"merge_sha" = ${t.mergeSha} AND "production_state" IN ('awaiting_approval', 'failed', 'timed_out')`)
   if (!won) {
     await payload.delete({ collection: 'human_touches', id: touch.id, ...o })

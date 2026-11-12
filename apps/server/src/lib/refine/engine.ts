@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { APPROVED_PLAN } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { addedOf, answersOf, dropLine, parseAnswers, parseDecisions, sheetOf } from '../../app/(app)/lib/plan'
-import { NotInWorkspace, exclusive, finishRefinement, loadIn, postDecisions, sourceOf } from '../actions'
+import { NotInWorkspace, exclusive, finishRefinement, loadGate, postDecisions, sourceOf } from '../actions'
+import { isBauherr } from '../people'
 import { chatModelFor, tierModels, withImages } from '../chat/engine'
 import { priceOf } from '../cost'
 import { mediaUrl, type ImageMime } from '../intake/media'
@@ -12,7 +13,7 @@ import { workflowFor } from '../factory'
 import { NEEDS_REFINEMENT } from '../needs-you'
 import { sessionTimeoutS } from '../sessions'
 import { kindOfRun } from '../stage-text'
-import { nameOf, roleOf } from '../workflow'
+import { checkpointBy, gates, is, nameOf, roleOf } from '../workflow'
 import { buildArtifact, type Artifact } from './artifact'
 import { MAX_TEXT, MAX_USER_MESSAGES, REFINE_TOOL, TIERS, applyRefine, normalizeRefine, openOf, pointsOf, type Image, type Msg, type Point, type Refine, type Speaker, type Tier } from './model'
 
@@ -27,6 +28,8 @@ export type Participant = { role: string; avatar: string; about: string; session
 export type TurnCost = { id: string; at: string; model: string; tokensIn: number; tokensOut: number; usd: number | null }
 /** What the panel shows; every action answers it whole, so the client never merges. */
 export type View = {
+  /** Who is looking: a Product owner sees only their rows, no model choice and no cost (`models` and `cost` are empty for them). */
+  viewer: 'bauherr' | 'product-owner'
   ticket: { id: number; number: number; title: string }
   sent: boolean
   points: Point[]
@@ -102,16 +105,31 @@ const workspaceDoc = async (payload: Payload, t: Doc): Promise<Doc> => (await pa
 type Ctx = { t: Doc; s: Doc | null; thread: Doc | null; points: Point[]; body: string; labels: string[]; edits: { title?: string; body?: string } | null; triage: Awaited<ReturnType<typeof triageSpeaker>>; tier: Tier; version: { n: number; at: string | null } }
 
 const read = async (payload: Payload, user: User, ticket: number, workspaceId: number | string): Promise<Ctx> => {
-  const t = await loadIn(payload, user, ticket, workspaceId)
+  // `product-owner`: the precondition for a Product owner is only that the Ticket is theirs to see; each point is checked below by its own addressee.
+  const t = await loadGate(payload, user, { ticket, workspaceId }, 'refine', 'product-owner')
   const { ts, n } = await sourceOf(payload, t)
   const [comments, issue, triage] = [await ts.listComments(n), await ts.get(n), await triageSpeaker(payload, t)]
   const sheet = sheetOf(comments)
-  const points = pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), triage.speaker.run ?? null)
+  const wf = workflowFor(t.workspace)
+  const all = pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), triage.speaker.run ?? null, checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine'))
+  const points = isBauherr(user) ? all : all.filter((p) => p.for === 'product-owner')
   // An approved plan no longer asks anything: its leftover rows start no conversation (an existing one stays as history).
   const s = await sessionOf(payload, user, t, openOf(points).length > 0 && !issue.labels.includes(APPROVED_PLAN))
   const thread = s ? await threadOf(payload, user, t, s) : null
   const tier = TIERS.includes(s?.draft?.tier) ? (s!.draft.tier as Tier) : 'standard'
   return { t, s, thread, points, body: issue.body ?? '', labels: issue.labels, edits: s?.draft?.edits ?? null, triage, tier, version: s?.draft?.version ?? { n: 1, at: null } }
+}
+
+/** Whether the person has at least one row to answer (a Product owner: only rows addressed to them, on a Ticket of their Products); reads, writes nothing. For the turn route to answer 404 before it streams. */
+export const hasRows = async (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string }): Promise<boolean> => {
+  const t = await loadGate(payload, user, a, 'refine', 'product-owner').catch(() => null)
+  if (!t) return false
+  const { ts, n } = await sourceOf(payload, t)
+  const comments = await ts.listComments(n)
+  const sheet = sheetOf(comments)
+  const wf = workflowFor(t.workspace)
+  const by = checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine')
+  return pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), null, by).some((p) => isBauherr(user) || p.for === 'product-owner')
 }
 
 const costOf = (messages: Msg[]): View['cost'] => {
@@ -121,24 +139,30 @@ const costOf = (messages: Msg[]): View['cost'] => {
 
 const view = async (payload: Payload, user: User, c: Ctx, workspaceId: number | string): Promise<View | null> => {
   if (!c.points.length || !c.s || !c.thread) return null
+  const viewer = isBauherr(user) ? 'bauherr' : 'product-owner'
   const [earlier, w, stored_] = [await earlierOf(payload, user, c.t), await workspaceDoc(payload, c.t), await stored(payload, c.thread.id)]
   const { speaker, about, client } = c.triage
   const models = tierModels(w)
   const wf = workflowFor(c.t.workspace)
-  const messages = stored_.map((m) => (m.speaker.kind === 'person' ? m : { ...m, speaker: { ...m.speaker, role: speaker.role, avatar: speaker.avatar } }))
+  // A Product owner sees no model, no usage and no session of the executor.
+  const hide = <T extends { speaker: Speaker; usage?: unknown }>(m: T): T => (viewer === 'bauherr' ? m : { ...m, usage: undefined, speaker: { ...m.speaker, model: null } })
+  const messages = stored_.map((m) => hide(m.speaker.kind === 'person' ? m : { ...m, speaker: { ...m.speaker, role: speaker.role, avatar: speaker.avatar } }))
   const planner = roleOf(wf, nameOf(wf, 'plan'))?.title ?? 'planner'
-  const next = `Then: the ${speaker.role} finishes Triage, the ${planner} plans, you approve the plan.`
+  const planBy = gates(wf).plan ? checkpointBy(wf, 'plan') : null
+  const approves = planBy === null || (planBy === 'bauherr' && viewer === 'bauherr') ? ', you approve the plan' : planBy === viewer ? ', you approve the plan' : `, the ${planBy === 'bauherr' ? 'Bauherr' : 'Product owner'} approves the plan`
+  const next = `Then: the ${speaker.role} finishes Triage, the ${planner} plans${approves}.`
   return {
+    viewer,
     ticket: { id: c.t.id, number: c.t.number, title: c.t.title },
     sent: c.s.status === 'submitted',
     points: c.points,
     messages,
     earlier,
-    participant: { role: speaker.role, avatar: speaker.avatar, about, session: speaker.session ? { label: speaker.session, live: !!speaker.live, client, model: speaker.model ?? null, run: speaker.run ?? null } : null },
+    participant: { role: speaker.role, avatar: speaker.avatar, about, session: viewer === 'bauherr' && speaker.session ? { label: speaker.session, live: !!speaker.live, client, model: speaker.model ?? null, run: speaker.run ?? null } : null },
     artifact: buildArtifact({ title: c.edits?.title ?? c.t.title, currentTitle: c.t.title, current: c.body, pending: c.edits?.body ?? c.body, points: c.points, version: c.version }),
-    models: TIERS.map((tier) => ({ tier, model: models[tier] })),
+    models: viewer === 'bauherr' ? TIERS.map((tier) => ({ tier, model: models[tier] })) : [],
     tier: c.tier,
-    cost: costOf(messages),
+    cost: viewer === 'bauherr' ? costOf(messages) : { turns: [], tokens: 0, usd: null },
     planner,
     next,
     thread: c.thread.id,
@@ -381,6 +405,7 @@ export const refineSend = (payload: Payload, user: User, a: { ticket: number; wo
 /** The model for the next turns of this conversation: one of the Workspace's tiers. No message, no model call. */
 export const refineModel = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string; tier: string }): Promise<View> =>
   lock(a, async () => {
+    if (!isBauherr(user)) throw new NotInWorkspace() // the model choice is the Bauherr's
     const c = await read(payload, user, a.ticket, a.workspaceId)
     live(c)
     if (!TIERS.includes(a.tier as Tier)) throw new Error('unknown tier')

@@ -5,6 +5,7 @@ import { gateOwnersOf, logins } from './gates'
 import { EXPEDITE_LABEL, EXPEDITE_SKIP_TOUCH } from './needs-you'
 import { workflowFor } from './factory'
 import { humanGates } from './mode'
+import { gatesOf } from './staging'
 import type { Workflow } from './workflow'
 import { id } from './release'
 
@@ -49,6 +50,9 @@ export interface GateVerdict {
 export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: string[], ts: Forge, gates: readonly (typeof GATE_LABELS)[number][] = GATE_LABELS): Promise<GateVerdict> => {
   const verdict: GateVerdict = { accepted: [], rejected: [], pending: [] }
   const wf = workflowFor(ticket.workspace)
+  // Acceptance on staging that asks the Product owner is on per Product: the Ticket's own gates, else the workflow's.
+  const mine = (await gatesOf(payload, wf, ticket)) ?? humanGates(wf)
+  const gateIsOn = (_: Workflow, gate: (typeof GATE_LABELS)[number]['gate']) => gate === 'expedite' || mine.includes(gate)
   const inPlay = gates.filter((g) => labels.includes(g.label))
   verdict.accepted.push(...inPlay.filter((g) => !g.strictWhenOff && !gateIsOn(wf, g.gate)).map((g) => g.label))
   const present = inPlay.filter((g) => g.strictWhenOff || gateIsOn(wf, g.gate))

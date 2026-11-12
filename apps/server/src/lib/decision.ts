@@ -262,9 +262,9 @@ export const DECIDED_GRACE_MS = 2 * 60_000
 export const justDecided = (t: { decidedAt?: string | null; decidedNeed?: string | null }, need: Need | null, at = Date.now()): boolean =>
   !!need && t.decidedNeed === need && !!t.decidedAt && at - Date.parse(t.decidedAt) < DECIDED_GRACE_MS
 
-/** The owner took the Ticket's decision: clears `needsYou` and `decision` at once (conditional, so a newer need is never cleared) and remembers what was decided. */
+/** The owner took the Ticket's decision: clears `needsYou`, `needsBy` and `decision` at once (conditional, so a newer need is never cleared) and remembers what was decided. */
 export const settleDecision = (payload: Payload, ticket: number | string): Promise<boolean> =>
-  cas(payload, ticket, sql`"decided_need" = "needs_you", "decided_at" = now(), "needs_you" = NULL, "decision" = NULL`, sql`"needs_you" IS NOT NULL`)
+  cas(payload, ticket, sql`"decided_need" = "needs_you", "decided_at" = now(), "needs_you" = NULL, "needs_by" = NULL, "decision" = NULL`, sql`"needs_you" IS NOT NULL`)
 
 /** Whether the person may decide the need: an Expedite is an Admin's, every other checkpoint belongs to the Workspace's members (as the Ticket page's buttons). */
 export const canDecide = (user: { role?: string | null }, need: Need | typeof SKILL_NEED): boolean => (need !== 'Expedite?' && need !== SKILL_NEED) || user.role === 'admin'

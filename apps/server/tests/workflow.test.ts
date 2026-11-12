@@ -53,14 +53,15 @@ describe('derived lists reproduce the constants they replace', () => {
 
 describe('gates match tests/human-gates.test.ts', () => {
   it.each([
-    [undefined, { plan: true, staging: false, production: true }],
-    ['gated-pack', { plan: true, staging: true, production: false }],
-    ['bare-pack', { plan: false, staging: false, production: false }],
-  ] as const)('%s', async (name, expected) => {
+    // the shipped file asks the Product owner for staging acceptance per Product: the gate exists but is not on for every Product (`stagingGateOn`)
+    [undefined, { plan: true, staging: true, production: true }, ['refine', 'plan', 'production']],
+    ['gated-pack', { plan: true, staging: true, production: false }, ['refine', 'plan', 'staging']],
+    ['bare-pack', { plan: false, staging: false, production: false }, ['refine']],
+  ] as const)('%s', async (name, expected, human) => {
     if (name) process.env.BAUHERR_PACK_DIR = pack(name)
     expect(w.gates(w.DEFAULT())).toEqual(expected)
     const mode = await import('../src/lib/mode')
-    expect(mode.humanGates(w.DEFAULT())).toEqual(['refine', ...(expected.plan ? ['plan'] : []), ...(expected.staging ? ['staging'] : []), ...(expected.production ? ['production'] : [])])
+    expect(mode.humanGates(w.DEFAULT())).toEqual(human)
   })
   it('DEFAULT uses the core pack factory.yaml for a pack dir without one', () => {
     process.env.BAUHERR_PACK_DIR = pack('does-not-exist')
@@ -162,6 +163,7 @@ it('graph of the default file', () => {
       { id: 'build', title: 'Build', kind: 'build', role: 'engineer', checkpoint: false },
       { id: 'review', title: 'Review', kind: 'review', role: 'reviewer', checkpoint: false },
       { id: 'release', title: 'Staging', kind: 'release', checkpoint: false },
+      { id: 'release:gate', title: 'Accept on staging', kind: 'human', checkpoint: true },
       { id: 'release:production', title: 'Approve production', kind: 'human', checkpoint: true },
       { id: 'done', title: 'Done', kind: 'done', checkpoint: false },
     ],

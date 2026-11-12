@@ -1,4 +1,5 @@
-import type { Where } from 'payload'
+import type { Payload, Where } from 'payload'
+import type { Addressee } from './workflow-rules'
 
 type Doc = Record<string, any>
 
@@ -90,3 +91,27 @@ export const resyncRole = (stored: string | undefined, claimed: Role): Role => (
 /** The words of an assignment for the People table, e.g. "All Products of Acme" or "Acme Shop, Acme Web". */
 export const assignmentWords = (rows: { workspace: string; scope: 'workspace' | 'products'; products: string[] }[]): string =>
   rows.length ? rows.map((r) => (r.scope === 'workspace' ? `All Products of ${r.workspace}` : r.products.join(', ') || `No Products in ${r.workspace}`)).join('; ') : 'Nothing assigned'
+
+/** Whom a decision is recorded as: a Product owner decides as `product-owner`, a Bauherr or Admin as `bauherr` (also when stepping in for a checkpoint addressed to the Product owner). */
+export const decidingAs = (user: Doc): Addressee => (isProductOwner(user) ? 'product-owner' : 'bauherr')
+
+/** Whether the person may take a decision addressed to `addressee` on the Ticket: a Bauherr or Admin of the Ticket's Workspace always; a Product owner only when it is addressed to the Product owner AND the Ticket's Product is in their assignment. Anyone else never. */
+export const mayDecide = (user: Doc, { ticket, addressee }: { ticket: Doc; addressee: Addressee }): boolean => {
+  const product = id(ticket.product)
+  if (!user || product === undefined || !canSeeProduct(user, { id: product, workspace: ticket.workspace })) return false
+  return isBauherr(user) || (isProductOwner(user) && addressee === 'product-owner')
+}
+
+/** The Product owner accounts with an assignment in the Workspace (whether it reaches a given Product is `ownerAssigned`). */
+export const productOwnersOf = async (payload: Payload, workspace: number | string): Promise<Doc[]> =>
+  (await payload.find({ collection: 'bauherren', where: { and: [{ role: { equals: 'product-owner' } }, { 'assignments.workspace': { equals: Number(workspace) } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+
+/** Whether one of the Product owners (`productOwnersOf`) is assigned to the Product. */
+export const ownerAssigned = (owners: Doc[], product: { id: number | string; workspace: unknown }): boolean => owners.some((u) => canSeeProduct(u, product))
+
+/** The Product owners assigned to the Product of a Ticket row. */
+export const productOwnersOfTicket = async (payload: Payload, t: Doc): Promise<Doc[]> => {
+  const workspace = id(t.workspace)
+  const product = id(t.product)
+  return workspace === undefined || product === undefined ? [] : (await productOwnersOf(payload, workspace)).filter((u) => canSeeProduct(u, { id: product, workspace }))
+}

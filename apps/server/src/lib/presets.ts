@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { parseDocument, stringify } from 'yaml'
 import { inlineProfiles } from './factory'
 import { profileOf, type TeamRole } from './sessions'
-import { compile, corePack, gates, packDir, type Workflow } from './workflow'
+import { checkpointBy, compile, corePack, gates, packDir, type Workflow } from './workflow'
 
 export const PRESETS = ['solo', 'standard', 'careful'] as const
 export type PresetId = (typeof PRESETS)[number]
@@ -12,8 +12,8 @@ export const isPreset = (v: unknown): v is PresetId => PRESETS.includes(v as Pre
 /** Card text of each setup preset; roles and approvals on the card come from the compiled file, so they cannot drift from it. */
 export const PRESET_TEXT: Record<PresetId, { title: string; blurb: string }> = {
   solo: { title: 'Solo', blurb: 'One engineer does everything. Plans pass without your approval.' },
-  standard: { title: 'Standard', blurb: 'An orchestrator triages, an engineer builds, a reviewer checks. You approve plans. A security review runs when a change touches the security paths of the Product.' },
-  careful: { title: 'Careful', blurb: 'Standard, plus specialist reviews when a change needs them (security paths, user-facing paths, bug fixes) before the code review, and your acceptance on staging.' },
+  standard: { title: 'Standard', blurb: 'An orchestrator triages, an engineer builds, a reviewer checks. You approve plans; where a Product has a Product owner, they answer Triage questions and accept on staging. A security review runs when a change touches the security paths of the Product.' },
+  careful: { title: 'Careful', blurb: 'Standard, plus specialist reviews when a change needs them (security paths, user-facing paths, bug fixes) before the code review, and your acceptance on staging. A Product owner, where a Product has one, answers Triage questions.' },
 }
 
 /** `presets/<id>.yaml` of the pack dir, else of the core pack, with the role profiles inlined (read relative to the pack that holds the file). */
@@ -33,9 +33,10 @@ export const presetWorkflow = (id: PresetId): Workflow => compile(parseDocument(
 export const presetFacts = (wf: Workflow): { roles: { id: string; title: string; avatar: string }[]; asks: string[] } => {
   const used = [...new Set(wf.stages.map((s) => s.role).filter((r): r is string => !!r))]
   const g = gates(wf)
+  const by = (key: 'refine' | 'plan' | 'staging' | 'production') => (checkpointBy(wf, key) === 'product-owner' ? ' (Product owner)' : '')
   return {
     roles: used.map((id) => wf.roles.find((r) => r.id === id)!).map((r) => ({ id: r.id, title: r.title, avatar: r.avatar ?? r.id })),
-    asks: ['Questions Triage cannot answer itself', ...(g.plan ? ['Approve each plan'] : []), ...(g.staging ? ['Accept on staging'] : []), ...(g.production ? ['Approve production'] : [])],
+    asks: [`Questions Triage cannot answer itself${by('refine')}`, ...(g.plan ? [`Approve each plan${by('plan')}`] : []), ...(g.staging ? [`Accept on staging${by('staging')}`] : []), ...(g.production ? [`Approve production${by('production')}`] : [])],
   }
 }
 

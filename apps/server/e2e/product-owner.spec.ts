@@ -14,10 +14,10 @@ const signIn = async (page: Page) => {
   await expect(page).toHaveURL(/\/requests$/)
 }
 
-test('a Product owner lands on Requests; the shell has Requests, Profile and the user menu, nothing of the factory', async ({ page }) => {
+test('a Product owner lands on Requests; the shell has Inbox, Requests, Profile and the user menu, nothing of the factory', async ({ page }) => {
   await signIn(page)
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link')).toHaveText(['Requests', 'Profile'])
+  await expect(nav.getByRole('link')).toHaveText([/^Inbox/, /^Requests/, 'Profile'])
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
   const bar = page.getByRole('banner')
   await expect(bar.getByRole('button', { name: 'New request' })).toHaveCount(0)
@@ -37,7 +37,7 @@ test('a Product owner lands on Requests; the shell has Requests, Profile and the
 
 test('every page of the factory is a 404 for a Product owner', async ({ page }) => {
   await signIn(page)
-  for (const path of ['/', '/requests/new', '/inbox', '/team', '/insights', '/releases', '/knowledge', '/runs', '/release-notes', '/setup', '/settings/workspace', '/settings/bauherren', '/settings/api-key', '/settings/products', '/workflow/edit']) {
+  for (const path of ['/', '/requests/new', '/team', '/insights', '/releases', '/knowledge', '/runs', '/release-notes', '/setup', '/settings/workspace', '/settings/bauherren', '/settings/api-key', '/settings/products', '/workflow/edit']) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
   }

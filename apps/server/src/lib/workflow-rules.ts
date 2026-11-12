@@ -3,7 +3,10 @@ import { asList, REQUEST_TYPES, SET_NAME, WHEN_KEYS, type When } from './workflo
 
 // Browser-safe: no node: imports. The pure half of workflow.ts (types, kind rules, lint); workflow.ts re-exports it.
 export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'release' | 'done' | 'agent' | 'human'
-export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; production_gate?: 'human'; wip?: number; exclude_labels?: string[]; /** A step of kind agent or human that runs only when the change matches; otherwise the Ticket moves on (see `skipTarget`). */ when?: When; skip_to?: string; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
+/** Who a checkpoint asks. `gate: human` is `{by: bauherr}`; a Bauherr or Admin can always step in for the Product owner. */
+export const ADDRESSEES = ['bauherr', 'product-owner'] as const
+export type Addressee = (typeof ADDRESSEES)[number]
+export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; /** Compiled `gate: {by}`; absent = bauherr. */ gate_by?: Addressee; production_gate?: 'human'; production_gate_by?: Addressee; /** Triage's questions (`refine: {by}` on the triage stage); absent = bauherr. */ refine_by?: Addressee; /** Who decides a `human` stage; absent = bauherr. */ by?: Addressee; wip?: number; exclude_labels?: string[]; /** A step of kind agent or human that runs only when the change matches; otherwise the Ticket moves on (see `skipTarget`). */ when?: When; skip_to?: string; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
 export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; skills?: string[]; exceptions?: boolean; profile?: string; profile_file?: string }
 /** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
@@ -27,6 +30,12 @@ export const LIVE: Kind[] = ['plan', 'build', 'review', 'agent']
 
 const obj = (v: unknown): Record<string, any> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : undefined)
 const posInt = (v: unknown) => Number.isInteger(v) && (v as number) > 0
+const addressee = (v: unknown): v is Addressee => (ADDRESSEES as readonly unknown[]).includes(v)
+/** `human` or `{by: <addressee>}` (nothing else in the map): who the checkpoint asks; undefined when the value is neither. */
+export const askedBy = (v: unknown): Addressee | undefined => {
+  const m = obj(v)
+  return v === 'human' ? 'bauherr' : m && Object.keys(m).length === 1 && addressee(m.by) ? m.by : undefined
+}
 
 /** Where a Ticket goes when the conditional step `s` does not match: `skip_to`, else the target of its first outcome in file order (`outcomeOrder` once compiled). */
 export const skipTarget = (s: { outcomes?: Record<string, string>; outcomeOrder?: string[]; skip_to?: string }): string | undefined => s.skip_to ?? s.outcomes?.[(s.outcomeOrder ?? Object.keys(s.outcomes ?? {}))[0] as string]
@@ -123,8 +132,12 @@ export const lint = (doc: unknown): string[] => {
     if (k === 'agent' && !s.skill) out.push(`stage "${n}" (agent): skill is required`)
     if (k === 'human' && (keys.length > 4 || keys.some((x) => !/^[a-z][a-z0-9_-]*$/.test(x)))) out.push(`stage "${n}" (human): 1 to 4 outcome keys matching ^[a-z][a-z0-9_-]*$`)
     if (NO_ROLE.includes(k) && s.role) out.push(`stage "${n}" (${k}): role is not allowed`)
-    if (s.gate !== undefined && !(s.gate === 'human' && (k === 'plan' || k === 'release'))) out.push(`stage "${n}": gate: human is only allowed on the plan and release stages`)
-    if (s.production_gate !== undefined && !(s.production_gate === 'human' && k === 'release')) out.push(`stage "${n}": production_gate: human is only allowed on the release stage`)
+    if (s.gate !== undefined && !(k === 'plan' || k === 'release')) out.push(`stage "${n}": gate: human is only allowed on the plan and release stages`)
+    else if (s.gate !== undefined && !askedBy(s.gate)) out.push(`stage "${n}": gate must be human or {by: bauherr | product-owner}`)
+    if (s.production_gate !== undefined && k !== 'release') out.push(`stage "${n}": production_gate: human is only allowed on the release stage`)
+    else if (s.production_gate !== undefined && !askedBy(s.production_gate)) out.push(`stage "${n}": production_gate must be human or {by: bauherr | product-owner}`)
+    if (s.refine !== undefined && !(k === 'triage' && obj(s.refine) && Object.keys(s.refine).length === 1 && addressee(s.refine.by))) out.push(`stage "${n}": refine: {by: bauherr | product-owner} is only allowed on the triage stage`)
+    if (s.by !== undefined && !(k === 'human' && addressee(s.by))) out.push(`stage "${n}": by: bauherr | product-owner is only allowed on a human stage`)
     if (s.wip !== undefined && !(posInt(s.wip) && WIP.includes(k))) out.push(`stage "${n}": wip must be a positive integer on a plan, build, review, release, agent or human stage`)
     if (s.when !== undefined) {
       const w = obj(s.when)

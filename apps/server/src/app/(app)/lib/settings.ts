@@ -4,6 +4,7 @@ import { ValidationError } from 'payload'
 import { type Cause, FINDING_FRESH_MS } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
 import { gateOn, productionGateOn } from '../../../lib/mode'
+import { gates } from '../../../lib/workflow'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { modelOptions } from './models'
 import { loadModelList, loadPriceStatus } from '../../../lib/prices'
@@ -104,7 +105,7 @@ export async function loadProducts(workspace: number) {
           id: p.id as number,
           name: p.name as string,
           slug: p.slug as string,
-          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, gateOwners: (p.gateOwners ?? '') as string, productOwnerTestsStaging: !!p.productOwnerTestsStaging, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           overlap: overlapOf(p),
@@ -143,7 +144,7 @@ export async function loadProduct(workspace: number, id: number, viewerIsAdmin =
     payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security' } }] }, sort: '-number', limit: 5, select: { number: true }, ...o } as never),
   ])
   const scan = { run: ((lastRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (findings.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
-  return { product, scan, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release') } }
+  return { product, scan, connections, members, adminApprover: all.some((m) => m.admin), workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }

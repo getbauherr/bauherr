@@ -1,0 +1,17 @@
+# Every checkpoint but production asks the Product owner: Triage's questions (`refine`), the plan (`gate`), acceptance on staging (`gate` on release, per Product) and the human step `signoff` (`by`); production asks the Bauherr. Used by tests/checkpoints-who.test.ts.
+version: 1
+team:
+  roles:
+    orchestrator: {title: Orchestrator, tier: cheap}
+    engineer:     {title: Software engineer, tier: cheap}
+    reviewer:     {title: Reviewer, tier: standard}
+workflow:
+  stages:
+    - {name: triage, kind: triage, role: orchestrator, skill: triage, refine: {by: product-owner}, outcomes: {plan: plan, refine: triage, skip: backlog}}
+    - {name: plan, kind: plan, role: engineer, skill: run-contract, gate: {by: product-owner}, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
+    - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: signoff, stuck: escalate, replan: plan}}
+    - {name: signoff, kind: human, title: Sign-off, by: product-owner, outcomes: {approve: review, reject: build}}
+    - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
+    - {name: release, kind: release, title: Staging, gate: {by: product-owner}, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
+    - {name: done, kind: done}

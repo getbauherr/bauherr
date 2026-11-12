@@ -16,11 +16,11 @@ import { RERUNNABLE } from './run'
 import { EditRefused, saveDocument } from '../../../lib/knowledge-edit'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock'
-import { homeOf, requestsVisibleTo } from '../../../lib/people'
+import { canSeeProduct, homeOf, isBauherr, requestsVisibleTo } from '../../../lib/people'
 import { id } from '../../../lib/release'
 import { emptyDraft } from '../../../lib/intake/engine'
 import { loadRefine, refineModel, refineOption, refineRecommended, refineReopen, refineSend, refineTurn, refineWhy, type View as RefineView } from '../../../lib/refine/engine'
-import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
+import { type Bauherr, currentPersonWorkspace, currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
@@ -67,6 +67,13 @@ const acting = async () => {
   const { workspace } = await currentWorkspace()
   if (!workspace) notFound()
   return { user: await requireBauherr(), payload: await payloadClient(), workspaceId: workspace.id }
+}
+
+/** Like `acting`, for the few actions open to a Product owner too (an addressed decision, the refinement conversation): their Workspace is one they are assigned in. Every function behind it decides by `mayDecide`. */
+const actingPerson = async () => {
+  const { user, workspace } = await currentPersonWorkspace()
+  if (!workspace) notFound()
+  return { user, payload: await payloadClient(), workspaceId: workspace.id }
 }
 
 const inWorkspace = <T>(run: Promise<T>): Promise<T> =>
@@ -245,8 +252,8 @@ export async function orderRequests(ticketIds: number[]): Promise<{ error?: stri
 }
 
 /** Runs one action of the refinement panel as the acting person and answers the panel's whole state (or the refusal as text), then refreshes the pages that show the Ticket. */
-const refining = async <T extends { ticket: number }>(a: T, run: (x: Awaited<ReturnType<typeof acting>> & T) => Promise<RefineView | null>): Promise<{ view: RefineView | null } | { error: string }> => {
-  const ctx = await acting()
+const refining = async <T extends { ticket: number }>(a: T, run: (x: { user: Doc; payload: Awaited<ReturnType<typeof payloadClient>>; workspaceId: number } & T) => Promise<RefineView | null>, person = true): Promise<{ view: RefineView | null } | { error: string }> => {
+  const ctx = person ? await actingPerson() : await acting()
   try {
     const view = await inWorkspace(run({ ...ctx, ...a }))
     revalidatePath(`/tickets/${a.ticket}`)
@@ -269,7 +276,7 @@ export const refineExplain = async (ticket: number, point: string) => refining({
 /** "Use the recommended answers for the rest". */
 export const refineRest = async (ticket: number) => refining({ ticket }, (x) => refineRecommended(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
 /** The model tier the conversation's next turns use. */
-export const refineTier = async (ticket: number, tier: string) => refining({ ticket }, (x) => refineModel(x.payload, x.user, { ticket, workspaceId: x.workspaceId, tier }))
+export const refineTier = async (ticket: number, tier: string) => refining({ ticket }, (x) => refineModel(x.payload, x.user, { ticket, workspaceId: x.workspaceId, tier }), false)
 /** "Change" on an answered point. */
 export const refineChange = async (ticket: number, point: string) => refining({ ticket }, (x) => refineReopen(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
 /** "Send to planning". */
@@ -298,11 +305,14 @@ export async function rerunStage(runId: number) {
 
 /** One decision of the Inbox card: runs the existing action of the option for the Ticket (a note goes where the action takes one), then closes the card at once. A card for a need the Ticket no longer has is refused. Answers an error text instead of throwing. */
 export async function decideAction(ticket: number, need: string, action: DecisionAction, note = '', outcome = ''): Promise<{ error?: string }> {
-  const { user, payload, workspaceId } = await acting()
+  const { user, payload, workspaceId } = await actingPerson()
   const a = { ticket, workspaceId }
+  // A Product owner takes only the decisions of a checkpoint addressed to them: each function behind these actions asks `mayDecide`; everything else is a Bauherr's.
+  if (!isBauherr(user) && !['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'decide', 'open'].includes(action)) return { error: 'Only a Bauherr can do this.' }
   try {
-    const row = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null; workspace: unknown } | null
-    if (!row || String((row.workspace as { id?: number })?.id ?? row.workspace) !== String(workspaceId)) notFound()
+    const row = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null; workspace: unknown; product: unknown } | null
+    // A Ticket outside the person's Products is a 404 before anything else is said about it.
+    if (!row || String((row.workspace as { id?: number })?.id ?? row.workspace) !== String(workspaceId) || !canSeeProduct(user, { id: id(row.product), workspace: workspaceId })) notFound()
     if (need === SKILL_NEED) {
       if (!canDecide(user, need)) return { error: 'Only an Admin can decide this.' }
       const proposal = (await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: ticket } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
@@ -328,10 +338,11 @@ export async function decideAction(ticket: number, need: string, action: Decisio
     else if (action === 'decide') await decide(payload, user, { ...a, outcome, note })
     else if (action === 'rerun') {
       const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: ticket } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
-      if (!latest || !(await startRerun(user, payload, latest.id as number))) return { error: 'The latest step cannot be re-run.' }
+      if (!latest || !(await startRerun(user as Bauherr, payload, latest.id as number))) return { error: 'The latest step cannot be re-run.' }
     } else return { error: 'Open the ticket to do this.' }
   } catch (e) {
     if (e instanceof NotInWorkspace) notFound()
+    if ((e as { digest?: string }).digest?.startsWith('NEXT_')) throw e
     return { error: e instanceof Error ? e.message : 'The action failed.' }
   }
   await settleDecision(payload, ticket)

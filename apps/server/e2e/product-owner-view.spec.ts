@@ -47,7 +47,7 @@ test('a Product owner works in Requests: home, own Product, no factory internals
   await signIn(page, owner, /\/requests$/)
   const main = page.getByRole('main')
   await expect(page.getByRole('heading', { name: 'Requests', level: 1 })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText([/^Requests/, 'Profile']) // the first one carries the draft count
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText([/^Inbox/, /^Requests/, 'Profile']) // the second one carries the draft count
   await expect(page.getByRole('navigation', { name: 'Account' })).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0)
 
@@ -80,7 +80,7 @@ test('a Product owner works in Requests: home, own Product, no factory internals
   await expect(ticket.getByRole('button')).toHaveCount(0) // no question card, no decision, no dock button
   for (const heading of ['Runs', 'Steps', 'Plan', 'Worklog', 'Path', 'Details']) await expect(page.getByRole('heading', { name: heading, exact: true })).toHaveCount(0)
   await expect(main).not.toContainText(/claude-lab-secret-model|1\.234|\$|tokens|budget|executor|Run #|Fix state|Expedite/i)
-  await expect(page.getByRole('link', { name: /Runs|Insights|Agent team|Inbox|Workflow|Settings/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /Runs|Insights|Agent team|Workflow|Settings/ })).toHaveCount(0)
   await shot(page, 'po-ticket')
 
   // Product B, same Workspace: every door answers 404, and the factory's API says nothing.

@@ -20,9 +20,10 @@ const PO_PAGES: Record<string, string> = {
   'settings/profile': 'the profile',
   requests: 'the four sections, limited to requests of assigned Products and their own drafts',
   'requests/[id]': 'one request: the card, timeline, "waits for", comments; 404 outside the assignment',
-  'tickets/[id]': 'the reduced Ticket page; 404 outside the assignment',
+  'tickets/[id]': 'the reduced Ticket page and, where a checkpoint asks them, its decision card and the refinement conversation; 404 outside the assignment',
+  inbox: 'only the cards that ask a Product owner (`tickets.needsBy`) on assigned Products',
 }
-const BAUHERR_PAGES = ['', 'inbox', 'requests/new', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'tickets/n/[number]', 'workflow/edit']
+const BAUHERR_PAGES = ['', 'requests/new', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'tickets/n/[number]', 'workflow/edit']
 /** Route handlers (relative to src/app, `<path> <METHOD>`) that answer a Product owner's session. */
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
@@ -31,16 +32,19 @@ const PO_ROUTES: Record<string, string> = {
   'm/[id]/[sig] GET': 'public, signed image link for forge issues; the session is not read',
   'api/tickets/[id]/artifacts/[artifactId] GET': 'review artifacts of assigned Products; 404 elsewhere',
   'intake/api/media/[id] GET': 'files of assigned Products through the signed-in route; 404 elsewhere',
+  'api/refine/[ticket]/turn POST': 'a typed answer of the refinement conversation: only rows addressed to the Product owner, on assigned Products (`loadGate`); 404 elsewhere',
 }
-const BAUHERR_ROUTES = ['api/chat/context GET', 'api/chat/media POST', 'api/chat/threads GET', 'api/chat/threads POST', 'api/chat/threads/[id] DELETE', 'api/chat/threads/[id] GET', 'api/chat/threads/[id] PATCH', 'api/chat/threads/[id]/confirm POST', 'api/chat/threads/[id]/feedback POST', 'api/chat/threads/[id]/messages GET', 'api/chat/threads/[id]/messages PUT', 'api/chat/threads/[id]/run POST', 'api/refine/[ticket]/turn POST', 'api/chat/fake-gate POST', 'api/chat/fake-requests GET', ...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), 'api/changes GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
+const BAUHERR_ROUTES = ['api/chat/context GET', 'api/chat/media POST', 'api/chat/threads GET', 'api/chat/threads POST', 'api/chat/threads/[id] DELETE', 'api/chat/threads/[id] GET', 'api/chat/threads/[id] PATCH', 'api/chat/threads/[id]/confirm POST', 'api/chat/threads/[id]/feedback POST', 'api/chat/threads/[id]/messages GET', 'api/chat/threads/[id]/messages PUT', 'api/chat/threads/[id]/run POST', 'api/chat/fake-gate POST', 'api/chat/fake-requests GET', ...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), 'api/changes GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
 /** Exported server actions (`<file>#<name>`, file relative to src/app/(app)) a Product owner may call. */
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
+  'lib/actions.ts#decideAction': 'a card of the Inbox: only decisions addressed to the Product owner on assigned Products (`mayDecide` in every gate function); every other action of a card is refused',
+  ...Object.fromEntries(['refineState', 'refineSay', 'refinePick', 'refineExplain', 'refineRest', 'refineChange', 'refineFinish'].map((n) => [`lib/actions.ts#${n}`, 'the refinement conversation: only rows addressed to the Product owner (`loadGate`, `postDecisions`); no model choice, no cost'])),
 }
 const BAUHERR_ACTIONS = [
   'approvePlanAction', 'expediteAction', 'decideOutcomeAction', 'acceptStagingAction', 'approveProductionAction', 'approveSkillProposalAction', 'rejectSkillProposalAction', 'grantReviewRoundAction', 'stopReviewAction', 'backToBuildAction', 'backToBacklogAction', 'requestChangesAction',
-  'selectWorkspace', 'discardIntake', 'chooseRequestProduct', 'loadRequestCard', 'editRequestCard', 'changeRequestImage', 'reportProblem', 'postDockComment', 'orderRequests', 'refineState', 'refineSay', 'refinePick', 'refineExplain', 'refineRest', 'refineChange', 'refineTier', 'refineFinish', 'rerunStage', 'decideAction', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
+  'selectWorkspace', 'discardIntake', 'chooseRequestProduct', 'loadRequestCard', 'editRequestCard', 'changeRequestImage', 'reportProblem', 'postDockComment', 'orderRequests', 'refineTier', 'rerunStage', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
 ].map((n) => `lib/actions.ts#${n}`).concat([
   'lib/search.ts#searchTickets', '(shell)/team/actions.ts#saveRole',
   ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'createSessionKey', 'updatePricesNow', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate'].map((n) => `(shell)/settings/actions.ts#${n}`),
@@ -350,6 +354,34 @@ describe('what is open to a Product owner answers 404 outside the assignment', (
     const get = async (route: string, params: Record<string, string>) => ((await routeModules[`${APP}${route}/route.ts`]!()).GET as (r: Request, c: unknown) => Promise<Response>)(new Request('http://t/x', { headers: { cookie: productOwnerCookie } }), { params: Promise.resolve(params) })
     expect((await get('intake/api/media/[id]', { id: String(foreign.media) })).status).toBe(404)
     expect((await get('api/tickets/[id]/artifacts/[artifactId]', { id: String(foreign.otherProduct.ticket), artifactId: String(foreign.artifact) })).status).toBe(404)
+  })
+
+  it('the decision and conversation actions and the turn route open to them answer 404 for Product B, and a Bauherr-only option is refused', async () => {
+    asPo()
+    const actions = await appModules[`${APP}(app)/lib/actions.ts`]!()
+    const call = async (name: string, ...args: unknown[]) => {
+      try {
+        return { returned: await (actions[name] as (...a: unknown[]) => Promise<unknown>)(...args) }
+      } catch (e) {
+        return { outcome: notFound(e) ? '404' : `threw ${String(e)}` }
+      }
+    }
+    for (const id of [foreign.otherProduct.ticket, foreign.otherWorkspace.ticket, 999_999]) {
+      expect(await call('refineState', id), `refineState ${id}`).toEqual({ outcome: '404' })
+      expect(await call('refinePick', id, 'D1', 0), `refinePick ${id}`).toEqual({ outcome: '404' })
+      expect(await call('refineFinish', id), `refineFinish ${id}`).toEqual({ outcome: '404' })
+      expect(await call('decideAction', id, 'Approve plan', 'approvePlan'), `decideAction ${id}`).toEqual({ outcome: '404' })
+    }
+    // their own Ticket: nothing is addressed to them there, so nothing happens; the options only a Bauherr has are refused up front
+    expect(await call('decideAction', mine.ticket, 'Run failed', 'rerun')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
+    expect(await call('decideAction', mine.ticket, 'Expedite?', 'expedite')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
+    expect((await call('refineState', mine.ticket)).outcome).toBeUndefined() // reached: the harness has no forge, so it answers an error text, not a 404
+    expect(await call('refineTier', mine.ticket, 'strong')).toEqual({ outcome: '404' })
+    const { POST } = (await routeModules[`${APP}api/refine/[ticket]/turn/route.ts`]!()) as { POST: (r: Request, c: unknown) => Promise<Response> }
+    for (const id of [foreign.otherProduct.ticket, foreign.otherWorkspace.ticket, 999_999]) {
+      const res = await POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello' }) }), { params: Promise.resolve({ ticket: String(id) }) })
+      expect(res.status, `turn ${id}`).toBe(404)
+    }
   })
 
   it('every chat tool is closed to a Product owner, and every chat route refuses them', async () => {

@@ -43,6 +43,11 @@ export const CHECKPOINT: Record<CheckpointKey, { chip: string; row: string; off:
   production: { chip: 'Approve production', row: 'You approve production', off: 'Not asked: approve production' },
 }
 
+/** The two people a checkpoint can ask, in the words of the editor. */
+export const ASKED: Record<'bauherr' | 'product-owner', string> = { bauherr: 'Bauherr', 'product-owner': 'Product owner' }
+/** The row of a checkpoint that asks the Product owner (the Bauherr's is `CHECKPOINT[key].row`, written as "You ..."). */
+export const OWNER_ROW: Record<CheckpointKey, string> = { refine: 'answers open questions', plan: 'approves the plan', staging: 'accepts the result on staging', production: 'approves production' }
+
 /** The plain words of a rule finding: the editor says step and path, not stage and outcome. */
 export const plainFinding = (f: string): string => f.replace(/\bstages\b/g, 'steps').replace(/\bstage\b/g, 'step').replace(/\boutcomes\b/g, 'paths').replace(/\boutcome\b/g, 'path')
 

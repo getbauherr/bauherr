@@ -2,7 +2,7 @@ import config from '@payload-config'
 import { getPayload } from 'payload'
 import { tenantsOf } from '../actions'
 import { loadWorkflows } from '../factory'
-import { isBauherr } from '../people'
+import { assignmentOf, isBauherr, isProductOwner } from '../people'
 import type { ChatEvent } from './engine'
 import type { Who } from './threads'
 
@@ -18,17 +18,18 @@ export const fail = (error: string, status: number): Response => Response.json({
 const cookie = (req: Request, name: string): string | undefined =>
   req.headers.get('cookie')?.split(/;\s*/).map((c) => c.split('=')).find(([k]) => k === name)?.slice(1).join('=')
 
-/** The signed-in person and their current Workspace (the `bauherr-ws` cookie, checked against their memberships; the first one without it), or a 401/404 Response. */
-export const chatWho = async (req: Request): Promise<Who | Response> => {
+/** The signed-in person and their current Workspace (the `bauherr-ws` cookie, checked against their memberships; the first one without it), or a 401/404 Response. `owner`: a Product owner may call it too, in a Workspace they are assigned in (only the refinement turn route opens it). */
+export const chatWho = async (req: Request, opts: { owner?: boolean } = {}): Promise<Who | Response> => {
   const payload = await getPayload({ config })
   await loadWorkflows(payload)
   const { user } = await payload.auth({ headers: req.headers })
   if (!user) return fail('unauthorized', 401)
-  if (!isBauherr(user)) return fail('forbidden', 403)
+  if (!isBauherr(user) && !(opts.owner && isProductOwner(user))) return fail('forbidden', 403)
   const u = user as Doc
   const slug = cookie(req, WS_COOKIE)
   const { docs } = await payload.find({ collection: 'workspaces', where: u.role === 'admin' ? {} : { id: { in: tenantsOf(u) } }, sort: 'name', pagination: false, depth: 0, overrideAccess: true })
-  const w = (docs as Doc[]).find((d) => d.slug === slug) ?? docs[0]
+  const mine = (docs as Doc[]).filter((d) => !isProductOwner(u) || assignmentOf(u, d.id))
+  const w = mine.find((d) => d.slug === slug) ?? mine[0]
   return w ? { payload, user: u, workspace: w.id } : fail('no workspace', 404)
 }
 

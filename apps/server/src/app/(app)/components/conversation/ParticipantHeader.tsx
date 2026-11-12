@@ -27,7 +27,7 @@ export const ParticipantHeader: FC<{ view: View; model: string; subtitle: string
           <PopoverTrigger asChild>
             <button type="button" data-testid="participant-line" aria-label="Who is talking" className="flex w-fit max-w-full cursor-pointer items-center gap-1.5 text-left text-[13px] text-muted-foreground hover:text-foreground">
               {s && <span role="img" aria-label={s.live ? 'connected' : 'not connected'} className={cn('size-2 shrink-0 rounded-full', s.live ? 'bg-ok' : 'bg-muted-foreground/50')} />}
-              <span className="min-w-0 truncate">{s && <span className="max-sm:hidden">{s.label} asked · </span>}Factory assistant replies<span className="max-sm:hidden"> · <span data-testid="header-model" className="font-mono text-[12px]">{model}</span></span></span>
+              <span className="min-w-0 truncate">{s && <span className="max-sm:hidden">{s.label} asked · </span>}Factory assistant replies{model && <span className="max-sm:hidden"> · <span data-testid="header-model" className="font-mono text-[12px]">{model}</span></span>}</span>
               <ChevronDown className="size-3.5 shrink-0" />
             </button>
           </PopoverTrigger>
@@ -40,7 +40,7 @@ export const ParticipantHeader: FC<{ view: View; model: string; subtitle: string
               facts={[
                 ...(s ? [{ label: 'Asked by session', value: s.label }, { label: 'Client', value: s.client ?? '—' }, { label: 'Session model', value: s.model ?? '—' }] : []),
                 { label: 'Replies', value: 'Factory assistant' },
-                { label: 'Reply model', value: <span className="font-mono">{model}</span> },
+                ...(model ? [{ label: 'Reply model', value: <span className="font-mono">{model}</span> }] : []),
               ]}
             >
               {s?.run != null && <Link href={`/runs/${s.run}`} className="text-[13px] text-primary hover:underline">Run #{s.run}</Link>}

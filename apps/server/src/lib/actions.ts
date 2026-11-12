@@ -2,7 +2,7 @@ import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError,
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
 import type { Decision } from '../app/(app)/lib/plan'
-import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, addedOf, answersOf, formatDecision, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, subTickets } from '../app/(app)/lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, addedOf, answersOf, formatDecision, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
 import { canPutOnFastLane, laneOn } from './expedite'
 import { workflowFor } from './factory'
 import { storePlanTldr } from './decision'
@@ -21,7 +21,9 @@ import { record } from './history'
 import { inKindStage, stagesOfKind } from './stage-scope'
 import { moveStage, stageOf } from './stage-move'
 import { kindOfRun } from './stage-text'
-import { byKind, is, liveStages, nameOf, repairable, stage as stageDef } from './workflow'
+import { byKind, checkpointBy, is, liveStages, nameOf, repairable, stage as stageDef, type CheckpointOf } from './workflow'
+import { canSeeProduct, decidingAs, isBauherr, mayDecide } from './people'
+import type { Addressee } from './workflow-rules'
 import { preReviewFailures } from './pre-review'
 import { advance } from './advance'
 import { enterStage, wipCount } from './wip'
@@ -62,6 +64,21 @@ export class NotInWorkspace extends Error {
 export const loadIn = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId?: TicketId): Promise<Doc> => {
   const t = await loadTicket(payload, user, ticket)
   if (workspaceId !== undefined && String(id(t.workspace)) !== String(workspaceId)) throw new NotInWorkspace()
+  return t
+}
+
+/** A person tried a decision that is addressed to someone else (the Ticket itself is theirs to see). */
+export class NotAddressed extends Error {
+  constructor() {
+    super('this decision is not addressed to you')
+  }
+}
+
+/** The Ticket of a gate decision, for the people the checkpoint may ask: `row` is the addressee of a decision row, else the checkpoint's own (`checkpointBy` of `key`). A Bauherr or Admin passes for every checkpoint of their Workspaces; a Product owner only for one addressed to them on a Product of their assignment (any other Ticket is not found for them). Every gate function starts here, so the UI, the MCP human tools and the chat tools share the rule. */
+export const loadGate = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }, key: CheckpointOf, row?: Addressee): Promise<Doc> => {
+  const t = isBauherr(user) ? await loadIn(payload, user, a.ticket, a.workspaceId) : ((await payload.findByID({ collection: 'tickets', id: a.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null)
+  if (!t || (a.workspaceId !== undefined && String(id(t.workspace)) !== String(a.workspaceId)) || !canSeeProduct(user, { id: id(t.product), workspace: id(t.workspace) })) throw new NotInWorkspace()
+  if (!mayDecide(user, { ticket: t, addressee: row ?? checkpointBy(workflowFor(t.workspace), key, t.stage) })) throw new NotAddressed()
   return t
 }
 
@@ -366,9 +383,9 @@ export const watchChecks = async (payload: Payload, at = Date.now()): Promise<nu
   return moved
 }
 
-/** Records the human touch; a gate action also ends the Ticket's wait for the owner in its history. */
-const touch = async (payload: Payload, user: Doc, t: Doc, kind: string) => {
-  const row = await payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), at: now() }, overrideAccess: true })
+/** Records the human touch (who acted, as whom, and for the checkpoint's addressee); a gate action also ends the Ticket's wait for the owner in its history. */
+const touch = async (payload: Payload, user: Doc, t: Doc, kind: string, addressee?: Addressee) => {
+  const row = await payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), as: decidingAs(user), ...(addressee && { addressee }), at: now() }, overrideAccess: true })
   if (/^(approve:plan|accept:staging|request-changes|review-cap:grant|decide:)/.test(kind)) await record(payload, t.id, { phase: 'queued', executor: 'human', actor: personOf(user), cause: `gate:${kind}` })
   return row
 }
@@ -381,11 +398,11 @@ const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
 
 /** Plan gate: refuses while critical decisions are unanswered, then adds `bauherr:approved:plan` and records the human touch. */
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'plan')
   const { ts, n } = await sourceOf(payload, t)
   const open = openCritical(await ts.listComments(n))
   if (open.length) throw new Error(`Answer the critical decisions first: ${open.map((d) => d.id).join(', ')}`)
-  await touch(payload, user, t, 'approve:plan')
+  await touch(payload, user, t, 'approve:plan', checkpointBy(workflowFor(t.workspace), 'plan'))
   await ts.addLabels(n, [APPROVED_PLAN])
   await spawnSubTickets(payload, t)
   return { approved: APPROVED_PLAN }
@@ -628,11 +645,18 @@ export const postDecisions = async (
     release?: boolean
   },
 ) => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'refine', 'product-owner')
   return exclusive(String(t.id), async () => {
     const src = await sourceOf(payload, t)
     const comments = await src.ts.listComments(src.n)
     const existing = answersOf(comments)
+    // Each row has its own addressee (`for:`, else the checkpoint's): a Product owner answers, reopens and adds only rows addressed to them.
+    const sheet = sheetOf(comments)
+    const wf = workflowFor(t.workspace)
+    const by = checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine')
+    const known = [...(sheet ? parseDecisions(sheet.body) : []), ...addedOf(comments)]
+    const may = (row?: Addressee) => mayDecide(user, { ticket: t, addressee: row ?? by })
+    if (![...a.answers.map((x) => x.id), ...(a.reopen ?? [])].every((rid) => may(known.find((d) => d.id === rid)?.for)) || !(a.added ?? []).every((d) => may(d.for))) throw new NotAddressed()
     const previous = existing ? parseAnswers(existing.body) : {}
     const changed = a.answers.filter((x) => previous[x.id] !== x.answer)
     const merged = { ...previous, ...Object.fromEntries(a.answers.map((x) => [x.id, x.answer])) }
@@ -659,7 +683,7 @@ export const postDecisions = async (
  * Refused while a critical point is open.
  */
 export const finishRefinement = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; edits?: { title?: string; body?: string } }) => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'refine')
   return exclusive(String(t.id), async () => {
     const src = await sourceOf(payload, t)
     const open = openCritical(await src.ts.listComments(src.n))
@@ -690,24 +714,24 @@ export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticke
   return publishStagingSummary(payload, t)
 }
 
-/** Staging gate: any Admin or Workspace member (the scoped load enforces it) accepts; the Ticket moves to `done` unless a production gate is on. */
+/** Staging gate: the checkpoint's addressee (`loadGate`: the Product owner of the Product where the workflow asks them, a Bauherr or Admin always) accepts; the Ticket moves to `done` unless a production gate is on. */
 export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'staging')
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'release')) throw new Error('the Ticket is not in release')
-  return passStaging(payload, t, () => touch(payload, user, t, 'accept:staging'))
+  return passStaging(payload, t, () => touch(payload, user, t, 'accept:staging', checkpointBy(wf, 'staging')))
 }
 
 /** The owner's decision in a `human` stage: records the touch `decide:<stage>:<outcome>` and takes the Ticket along the outcome the stage maps (an optional note is posted on the Ticket). */
 export const decide = async (payload: Payload, user: Doc, a: { ticket: TicketId; outcome: string; note?: string; workspaceId?: TicketId }) => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'human')
   const wf = workflowFor(t.workspace)
   const def = stageDef(wf, t.stage ?? '')
   if (t.state === 'closed' || def?.kind !== 'human') throw new Error('the Ticket is not waiting for a decision')
   if (!(a.outcome in def.outcomes)) throw new Error(`outcome must be one of ${Object.keys(def.outcomes).join(', ')}`)
   const { ts, n } = await sourceOf(payload, t)
   const note = a.note?.trim()
-  await touch(payload, user, t, `decide:${def.name}:${a.outcome}`)
+  await touch(payload, user, t, `decide:${def.name}:${a.outcome}`, checkpointBy(wf, 'human', def.name))
   if (note) await ts.comment(n, `${def.title}: ${a.outcome} by ${user.email}.\n\n${note}`)
   const moved = await advance(payload, ts, t, a.outcome, { by: personOf(user), note })
   return { stage: moved.stage, entered: moved.entered }
@@ -715,10 +739,10 @@ export const decide = async (payload: Payload, user: Doc, a: { ticket: TicketId;
 
 /** Production gate: a Workspace member approves the deploy; the Product's own pipeline deploys, `watchProduction` observes. Also the retry after a failed or timed out deploy. */
 export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'production')
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'release') || !['awaiting_approval', 'failed', 'timed_out'].includes(t.productionState)) throw new Error('the Ticket is not waiting for production approval')
-  await beginProduction(payload, t, user)
+  await beginProduction(payload, t, user, Date.now(), checkpointBy(wf, 'production'))
   await payload.jobs.queue({ task: 'publish-release', queue: 'poll', input: {} }).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not queue publish-release, the scheduled run picks it up'))
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
@@ -800,7 +824,7 @@ const setInstructions = (worklog: string, text: string): string => setSection(wo
 export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
   const rawNote = a.note?.trim()
   if (!rawNote) throw new Error('a note is required')
-  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  const t = await loadGate(payload, user, a, 'staging')
   const wf = workflowFor(t.workspace)
   const active = is(wf, t.stage, 'build') && (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { in: ACTIVE } }] }, overrideAccess: true })).totalDocs
   if (!is(wf, t.stage, 'release') && !(is(wf, t.stage, 'build') && !active)) throw new Error('the Ticket is not in release')
@@ -813,7 +837,7 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   await moveStage(payload, src.ts, t, nameOf(wf, 'build'), 'request_changes')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
   await clearApprovalLabel(payload, src.ts, src.n)
-  await touch(payload, user, t, 'request-changes:staging')
+  await touch(payload, user, t, 'request-changes:staging', checkpointBy(wf, 'staging'))
   return { stage: nameOf(wf, 'build'), run: run.id as TicketId }
 }
 
@@ -1481,6 +1505,7 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
     if (t.outcome === 'refine') {
       await ts.comment(n, triageSheet(t, await template(payload, id(doc.workspace), 'triage-questions')))
       await ts.addLabels(n, [NEEDS_REFINEMENT])
+      await storeOpenCritical(payload, doc.id, await ts.listComments(n)).catch((e) => payload.logger.warn({ err: e, ticket: doc.id }, 'open critical decisions not stored'))
     } else await ts.comment(n, `Bauherr triage: not planned. ${t.reason}`)
     await payload.update({ collection: 'tickets', id: doc.id, data: await covered(ts, n), overrideAccess: true })
   }

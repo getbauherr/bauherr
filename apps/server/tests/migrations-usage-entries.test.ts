@@ -46,6 +46,8 @@ it('the migration adds usage_entries, usage_cursors and the session-reported cos
   await run(sql`INSERT INTO runs (ticket_id, stage, workspace_id, cost_source, gateway_cost_usd, gateway_tokens_in, gateway_tokens_out, model) VALUES (${ticket}, 'build', ${ws}, 'gateway', 0.5, 10, 5, 'claude-opus-5-5')`)
 
   await payload.db.migrate({ migrations: migrations.slice(i, i + 1) as never })
+  // the Payload API below reads with today's schema, which later migrations extend
+  await payload.db.migrate({ migrations: migrations.slice(i + 1) as never })
   const o = { overrideAccess: true } as const
   const backfilled = (await run(sql`SELECT model, source::text AS source, cost_usd::float8 AS cost FROM usage_entries`)).rows
   expect(backfilled).toEqual([{ model: 'claude-opus-5-5', source: 'gateway', cost: 0.5 }])

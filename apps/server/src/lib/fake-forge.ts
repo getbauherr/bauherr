@@ -50,6 +50,16 @@ Triage needs your answers before this Ticket can be planned.
 - **D4 How is staleness judged?**. Default: Changed by a merged MR after the page was last edited. Alternatives: Older than 90 days. Why: Decides what the agent compares.
 `
 
+const MIXED = `<!-- bauherr:triage -->
+## Questions
+Triage needs your answers before this Ticket can be planned.
+
+## Decisions
+- **D1** Which licence terms apply? Alternatives: Custom terms. Default: Standard terms. Why: Legal risk. critical: true. for: bauherr.
+- **D2** What should the header say? Alternatives: Hello again. Default: Welcome back. Why: It is the first thing users read. critical: true.
+- **D3** Which icon goes with it? Alternatives: A square one. Default: A round one. critical: false. for: product-owner.
+`
+
 const summary = (n: number) => `<!-- bauherr:staging-summary -->
 
 # Staging summary: #${n} Ship the export
@@ -93,6 +103,18 @@ const build = (): FakeBackend => {
   void fake.tickets('acme/lab-alpha').create({ title: 'Lab Alpha ticket', labels: ['bauherr:stage:build'] })
   void fake.tickets('acme/lab-alpha').comment('1', 'Please check the contrast of the new header.')
   void fake.tickets('acme/lab-beta').create({ title: 'Lab Beta ticket', labels: ['bauherr:stage:build'] })
+  // acme/who-alpha and acme/who-beta: the Products of checkpoints-who.spec.ts's own Workspace; each has #1 on staging, #2 a plan to approve and #3 held by Triage with a mixed sheet (D1 for the Bauherr, D2 and D3 for whom the checkpoint asks).
+  for (const [repo, name] of [['acme/who-alpha', 'Alpha'], ['acme/who-beta', 'Beta']] as const) {
+    const who = fake.tickets(repo)
+    void who.create({ title: `${name}: check the new header on staging`, labels: ['bauherr:stage:release'] })
+    void who.comment('1', WORKLOG)
+    void who.comment('1', summary(1))
+    void who.create({ title: `${name}: approve the retry policy`, labels: ['bauherr:stage:plan'] })
+    void who.comment('2', PLAN.replace(/\n## Decisions[\s\S]*$/, ''))
+    void who.comment('2', WORKLOG)
+    void who.create({ title: `${name}: settle the header copy`, labels: ['bauherr:needs-refinement'] })
+    void who.comment('3', MIXED)
+  }
   // newco/shop: the repository and open issues the setup wizard's e2e picks on the Workspace `newco`.
   fake.commit('newco/shop', 'main', 'README.md', '# Shop\n')
   const shop = fake.tickets('newco/shop')

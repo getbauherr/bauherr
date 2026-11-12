@@ -6,7 +6,7 @@ export const INVESTIGATION_MARKER = '<!-- bauherr:investigation -->'
 export const SECURITY_FINDING_MARKER = (key: string) => `<!-- bauherr:security-finding:${key} -->`
 export const DECISIONS_MARKER = '<!-- bauherr:decisions -->'
 
-export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[]; /** The row's `Why:` text, when it has one. */ why?: string }
+export type Decision = { id: string; title: string; critical: boolean; default: string; options: string[]; /** The row's `Why:` text, when it has one. */ why?: string; /** Who answers the row (`for: product-owner | bauherr`); absent = whom the checkpoint asks. */ for?: 'bauherr' | 'product-owner' }
 
 type Commentish = { body: string }
 /** Newest comment starting with `marker`. */
@@ -40,6 +40,8 @@ const split = (text: string, semi: boolean, q = false): string[] => {
 
 const CRITICAL = /(?:,\s*|\s+[—–-]\s+)critical\s*\.?$|\s*\(critical\)\s*\.?$/i
 const CRITICAL_FIELD = /\s*\bcritical:\s*(true|yes|false|no)\b(?:\s*\([^)]*\))?\.?/gi
+const FOR_FIELD = /\s*\bfor:\s*(product-owner|bauherr)\b\.?/gi
+const forOf = (text: string): Decision['for'] => ([...text.matchAll(FOR_FIELD)].at(-1)?.[1]?.toLowerCase() as Decision['for']) ?? undefined
 const TITLE_FIELD = /\s*\(\s*critical:\s*(?:true|yes|false|no)\s*\)/gi
 const LETTERED = /\s+(?=\(\w\)\s)/
 const isCritical = (title: string, body: string): boolean =>
@@ -58,8 +60,9 @@ export const parseDecisions = (plan: string): Decision[] =>
   section(plan, /Decisions\b/).split(ROW).flatMap((b) => {
     const t = /^\s*\|\s*(D\d+)\s*\|(.*)$/m.exec(b)
     if (t) {
-      const [question = '', options = '', def = '', why = '', crit = ''] = t[2]!.split('|').map((c) => c.trim())
-      return [{ id: t[1]!, title: question, critical: /^(yes|true)\b/i.test(crit), default: def || options.split(' / ')[0]!, options: [def, ...options.split(' / ').filter((o) => o !== def)].filter(Boolean), ...(why && { why })}]
+      const [question = '', options = '', def = '', why = '', crit = '', who = ''] = t[2]!.split('|').map((c) => c.trim())
+      const by = /^(product-owner|bauherr)$/i.test(who) ? (who.toLowerCase() as Decision['for']) : undefined
+      return [{ id: t[1]!, title: question, critical: /^(yes|true)\b/i.test(crit), default: def || options.split(' / ')[0]!, options: [def, ...options.split(' / ').filter((o) => o !== def)].filter(Boolean), ...(why && { why }), ...(by && { for: by }) }]
     }
     const m = /^\s*[-*]\s+\*\*(D\d+)(?:\s+(.+?))?\*\*[.:]?\s*([\s\S]*)$/.exec(b)
     if (!m) return []
@@ -72,8 +75,9 @@ export const parseDecisions = (plan: string): Decision[] =>
       body = more.join('. ')
     }
     const critical = isCritical(title, body)
-    body = body.replace(CRITICAL_FIELD, '')
-    title = title.replace(TITLE_FIELD, '').replace(CRITICAL_FIELD, '')
+    const by = forOf(`${title} ${body}`)
+    body = body.replace(CRITICAL_FIELD, '').replace(FOR_FIELD, '')
+    title = title.replace(TITLE_FIELD, '').replace(CRITICAL_FIELD, '').replace(FOR_FIELD, '')
     const alts = [...body.matchAll(/(?:Alternatives?|Options):\s*(.+?)(?=\s*(?:Alternatives?:|Options:|(?:Recommended\s+default|Default):?\s|Why:)|$)/g)].flatMap((a) => split(a[1]!, true).flatMap((x) => x.split(LETTERED)).flatMap((x) => x.split(' / ')))
     const marked = /\b(?:Recommended\s+default|Default):?\s+(.*?)(?=\s*(?:Alternatives?:|Options:|Why:)|$)/.exec(body)?.[1]
     const why = /\bWhy:\s*(.*?)(?=\s*(?:Alternatives?:|Options:|(?:Recommended\s+default|Default):?\s|critical\b)|$)/i.exec(body)?.[1]?.trim().replace(/\.$/, '')
@@ -88,6 +92,7 @@ export const parseDecisions = (plan: string): Decision[] =>
       default: def,
       options: [...new Set([def, ...alternatives])],
       ...(why && { why }),
+      ...(by && { for: by }),
     }]
   })
 
@@ -104,11 +109,11 @@ export const dropLine = (reason: string): string => `${DROPPED} ${reason}`.trim(
 /** `{ dropped, text }` of a stored answer: the reason of a dropped point, or the person's words. */
 export const readAnswer = (a: string): { dropped: boolean; text: string } => (a.startsWith(DROPPED) ? { dropped: true, text: a.slice(DROPPED.length).trim() } : { dropped: false, text: a })
 
-/** A row in the canonical shape `parseDecisions` reads back. Options are one line each, without the `;` and `. ` the parser splits at. */
+/** A row in the canonical shape `parseDecisions` reads back (`for:` only when the row names its addressee). Options are one line each, without the `;` and `. ` the parser splits at. */
 export const formatDecision = (d: Decision): string => {
   const clean = (v: string) => v.replace(/\s+/g, ' ').replace(/;/g, ',').replace(/\?(?=\s)/g, ',').replace(/\.\s/g, ' - ').replace(/\.$/, '').trim()
   const alts = d.options.filter((o) => o !== d.default).map(clean)
-  return `- **${d.id}** ${clean(d.title)}${/[?]$/.test(clean(d.title)) ? '' : '?'}${alts.length ? ` Alternatives: ${alts.join('; ')}.` : ''} Default: ${clean(d.default)}.${d.why ? ` Why: ${clean(d.why)}.` : ''} critical: ${d.critical}.`
+  return `- **${d.id}** ${clean(d.title)}${/[?]$/.test(clean(d.title)) ? '' : '?'}${alts.length ? ` Alternatives: ${alts.join('; ')}.` : ''} Default: ${clean(d.default)}.${d.why ? ` Why: ${clean(d.why)}.` : ''} critical: ${d.critical}.${d.for ? ` for: ${d.for}.` : ''}`
 }
 
 /** Rows the conversation added: the `## Decisions` block of the decisions Comment (the sheet itself is the agent's and never edited). */
@@ -161,6 +166,13 @@ export const openCritical = (comments: Commentish[]): Decision[] => {
   const sheet = sheetOf(comments)
   if (!sheet) return []
   return unansweredCritical(parseDecisions(sheet.body), parseAnswers(answersOf(comments)?.body ?? ''))
+}
+
+/** Unanswered rows of the sheet in force that name the Product owner (`for: product-owner`), also on a checkpoint that asks the Bauherr. */
+export const openOwnerRows = (comments: Commentish[]): number => {
+  const sheet = sheetOf(comments)
+  const answers = parseAnswers(answersOf(comments)?.body ?? '')
+  return sheet ? [...parseDecisions(sheet.body), ...addedOf(comments)].filter((d) => d.for === 'product-owner' && !answers[d.id]).length : 0
 }
 
 export const unansweredCriticalCount = (comments: Commentish[]): number => openCritical(comments).length

@@ -73,7 +73,7 @@ export function ApprovalsSection({ data: { product: p, workflow, members, adminA
   const [off] = productionCallouts({ checks: namesOf(d.productionChecks), seen: null, notifiable, on: false })
   return (
     <SettingsSection id="approvals" n={n} title="Approvals" purpose="Where the process waits for you. Everything else runs on its own.">
-      <GateLadder plan={workflow.plan} staging={workflow.staging}>
+      <GateLadder plan={workflow.plan} staging={workflow.staging || (workflow.stagingOwner && d.productOwnerTestsStaging)}>
         <ToggleRow name="productionGate" label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. Your own pipeline does the deploy." defaultChecked={p.productionOn} disabled={workflow.forcesProduction} reason={workflow.forcesProduction ? 'On for every Product by the workflow.' : undefined} />
       </GateLadder>
       <div className="[form:has(input[name=productionGate]:checked)_&]:hidden">
@@ -81,6 +81,12 @@ export function ApprovalsSection({ data: { product: p, workflow, members, adminA
       </div>
       <p className="small text-muted-foreground">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/workflow/edit">See the workflow</Link>.</>}</p>
       <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
+      {workflow.stagingOwner && (
+        <>
+          <input type="hidden" name="poStagingShown" value="1" />
+          <ToggleRow name="productOwnerTestsStaging" label="Product owner tests on staging" help="The Product owner accepts changes on staging before they move on; needs a Product owner assigned to this Product. Off, or without one, nobody is asked and a change passes staging by itself." defaultChecked={d.productOwnerTestsStaging} />
+        </>
+      )}
       {workflow.staging && <ToggleRow name="expediteSkipStaging" label="Skip staging approval for Hotfixes" help="A Hotfix Ticket moves on from staging without your Accept. The production approval still waits for you." defaultChecked={d.expediteSkipStaging} />}
       {retries && <CheckRetriesField value={d.checkRetries} />}
       <MultiPick

@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { needsOf } from './needs-you'
 import { cas } from './release'
+import { gatesOf } from './staging'
 import { activeVersion, workflowFor } from './factory'
 import { is, type Kind, kindOf, nameOf, stage as stageDef, type Workflow } from './workflow'
 
@@ -13,13 +14,13 @@ export type Executor = 'session' | 'runner' | 'ci' | 'human' | 'factory'
 type RunRow = { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null
 
 /** Where a Ticket's time goes right now. First match: closed; a live Run (running = working, queued or awaiting a session = queued); needs the owner = human; waiting on checks, the merge queue or a deploy = ci; else queued. */
-export const phaseOf = (wf: Workflow, t: Doc, run: RunRow): Phase => {
+export const phaseOf = (wf: Workflow, t: Doc, run: RunRow, gates?: Parameters<typeof needsOf>[4]): Phase => {
   const stage = t.stage ?? nameOf(wf, 'triage')
   if (t.state === 'closed' || is(wf, stage, 'done')) return 'closed'
   // Only a Run of the Ticket's own stage is its work: a Build Run still ending while the Ticket already sits in review is not.
   if (run && run.stage === stage && run.status === 'running') return 'working'
   if (run && run.stage === stage && (run.status === 'queued' || run.status === 'awaiting_session')) return 'queued'
-  if (needsOf(wf, { ...t, stage }, run, false)) return 'human'
+  if (needsOf(wf, { ...t, stage }, run, false, gates)) return 'human'
   const at = (...k: Kind[]) => is(wf, stage, ...k)
   if (t.waitingFor === 'checks' || (at('review') && ['waiting_checks', 'queued'].includes(t.reviewState)) || (at('release') && (t.releaseState === 'waiting' || t.productionState === 'deploying')) || t.releaseChecksState === 'waiting') return 'ci'
   return 'queued'
@@ -40,7 +41,7 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
     if (opts.stage && !stageDef(wf, opts.stage)) return
     const run = loaded ? loaded.run : (((await payload.find({ collection: 'runs', where: { ticket: { equals: ticketId } }, sort: '-createdAt', limit: 1, ...o })).docs[0] as Doc | undefined) ?? null)
     const stage = stageDef(wf, opts.stage ?? ticket.stage ?? '')?.name ?? nameOf(wf, 'triage')
-    const phase = opts.phase ?? phaseOf(wf, { ...ticket, stage }, run as RunRow)
+    const phase = opts.phase ?? phaseOf(wf, { ...ticket, stage }, run as RunRow, await gatesOf(payload, wf, { ...ticket, stage }))
     const key = `${stage}|${phase}`
     if (key === ticket.historyKey) return
     // A sweep right after a gate action still sees the old labels: it must not turn the Ticket back to "waiting for a human".
