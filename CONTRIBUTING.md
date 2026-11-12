@@ -18,15 +18,11 @@ Bauherr's own UI rules, for the UX specialist and any agent changing the UI of t
 
 ## Regenerate README screenshots
 
-`apps/server/e2e/screenshots.spec.ts` writes the PNGs of the README to `docs/assets/` (1440x900, 2x). It is skipped unless `SCREENSHOTS=1`. It needs a freshly seeded e2e database (`pnpm seed:e2e`) and a server started the way the `e2e-fake` CI job does it (`BAUHERR_E2E_FAKE_FORGE=1`, `CHAT_FAKE=1`, `INTAKE_FAKE=1`, `BAUHERR_PACK_DIR=apps/server/tests/fixtures/gated-pack`). The spec renames the seeded rows to the names of a small product in that database only, so give it a database of its own. From `apps/server`, with Playwright's Docker image like the other e2e specs:
-
 ```bash
-docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp --add-host=host.docker.internal:host-gateway \
-  -v "$PWD/../..:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server \
-  -e BASE_URL=http://host.docker.internal:3000 -e E2E_EMAIL=e2e@example.com -e E2E_PASSWORD_FILE=/pw \
-  -e SCREENSHOTS=1 -e DATABASE_URL=postgres://bauherr:bauherr@host.docker.internal:54330/<screenshot db> \
-  mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test e2e/screenshots.spec.ts
+pnpm screenshots
 ```
+
+Starts a throwaway Postgres 17 container and the app on seeded demo data, runs `apps/server/e2e/screenshots.spec.ts` in Playwright's Docker image and writes every picture of the README and the landing page, light and dark (1440x900, 2x), to `docs/assets/`; a rerun replaces them. The spec fails when a seeded e2e identifier is visible on a page. Needs Docker, Node 24 and pnpm. A new picture also needs a symlink in `docs/site/docs/screenshots/`.
 
 Look at every PNG before you commit it. The banner (`docs/assets/banner*.svg`) is hand-written SVG.
 
