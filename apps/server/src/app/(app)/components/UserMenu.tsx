@@ -10,7 +10,7 @@ import { SidebarMenuButton, useSidebar } from './ui/sidebar'
 const initials = (email: string) => email.slice(0, 2).toUpperCase()
 
 /** Client component: Radix `asChild` items cannot take server-rendered children (React 19 lazy elements). */
-export function UserMenu({ email, logout }: { email: string; logout: () => Promise<void> }) {
+export function UserMenu({ email, logout, minimal }: { email: string; logout: () => Promise<void>; minimal?: boolean }) {
   const { isMobile } = useSidebar()
   return (
     <DropdownMenu>
@@ -26,9 +26,11 @@ export function UserMenu({ email, logout }: { email: string; logout: () => Promi
         <DropdownMenuSeparator />
         <ThemeRow />
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/release-notes"><FileText />Release notes<LinkPending /></Link>
-        </DropdownMenuItem>
+        {!minimal && (
+          <DropdownMenuItem asChild>
+            <Link href="/release-notes"><FileText />Release notes<LinkPending /></Link>
+          </DropdownMenuItem>
+        )}
         <form action={logout}>
           <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
             <button><LogOut />Sign out</button>

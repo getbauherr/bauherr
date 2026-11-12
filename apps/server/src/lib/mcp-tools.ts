@@ -27,6 +27,7 @@ import { goalFor, type GoalStage } from './run-ctx'
 import * as knowledge from './knowledge'
 import * as sessions from './sessions'
 import { reportRunUsage } from './cost'
+import { isBauherr } from './people'
 
 type Doc = Record<string, any>
 export interface Ctx {
@@ -888,6 +889,7 @@ export const digest = (input: unknown): string =>
 export const callTool = async (c: Ctx, name: string, input: unknown): Promise<unknown> => {
   const tool = tools.find((t) => t.name === name)
   if (!tool) throw new Error(`unknown tool ${name}`)
+  if (!isBauherr(c.user)) throw new Error(`forbidden: ${name} is not open to this account`)
   const t0 = Date.now()
   c.tool = name
   let ok = false

@@ -1,8 +1,10 @@
 import { Markdown } from '../../components/Markdown'
 import { renderMarkdown } from '../../lib/markdown'
+import { requireBauherr } from '../../lib/session'
 import { appVersion, changelog } from '../../lib/version'
 
-export default function ReleaseNotes() {
+export default async function ReleaseNotes() {
+  await requireBauherr()
   return (
     <>
       <h1>Release notes</h1>

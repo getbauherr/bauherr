@@ -25,7 +25,7 @@ const factoryAs = async (yaml: string, base: number | null, opts: { dryRun?: boo
 export const reviewDraft = async (yaml: string, base: number | null): Promise<ApplyResult> => factoryAs(yaml, base, { dryRun: true })
 
 /** Admin: applies the draft as a new version; refused when the active version moved since the page loaded. */
-export const applyDraft = async (yaml: string, base: number | null, note: string): Promise<ApplyResult> => factoryAs(yaml, base, { note: note.trim() || undefined })
+export const applyDraft = async (yaml: string, base: number | null, note: string): Promise<ApplyResult> => factoryAs(yaml, base, { note: (note ?? '').trim() || undefined })
 
 /** Admin: the fast lane switch, saved right away (it is not part of the file). */
 export const setExpediteLane = async (on: boolean): Promise<{ error?: string }> => {
