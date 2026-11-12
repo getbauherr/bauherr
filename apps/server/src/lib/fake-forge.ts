@@ -39,16 +39,15 @@ Triage needs your answers before this Ticket can be planned: the export scope is
 - **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON.
 `
 
-const REFINE = `<!-- bauherr:triage -->
+const CONV = `<!-- bauherr:triage -->
 ## Questions
 Triage needs your answers before this Ticket can be planned.
 
 ## Decisions
-- **D1 Which export format, critical**. Default: CSV. Alternatives: XLSX; JSON. Why: Finance opens the file in Excel, a wrong format costs a rebuild.
-- **D2 Who may export**. Default: Admins only. Alternatives: Everyone in the Workspace. Why: The file holds every customer's invoices.
-- **D3 Keep an audit trail of exports**. Default: No. Alternatives: Yes. Why: An audit trail needs its own table and a retention rule.
-- **D4 Include archived invoices**. Default: No. Alternatives: Yes. Why: Archived invoices make the file much larger.
-- **D5 Name the file after the date**. Default: Yes. Alternatives: No. Why: Finance files the exports by month.
+- **D1 What should it deliver?**. Default: A recurring Docs Agent. Alternatives: A one-off docs audit. Why: A role and a task are planned very differently.
+- **D2 What triggers a docs run?**. Default: Manually by the owner. Alternatives: After every merged MR; On a schedule. Why: Decides whether the agent needs a webhook or a timer.
+- **D3 Which docs are in scope?**. Default: The published docs. Alternatives: Everything in docs/; README.md only. Why: Sets what the agent reads and may change on each run.
+- **D4 How is staleness judged?**. Default: Changed by a merged MR after the page was last edited. Alternatives: Older than 90 days. Why: Decides what the agent compares.
 `
 
 const summary = (n: number) => `<!-- bauherr:staging-summary -->
@@ -106,10 +105,12 @@ const build = (): FakeBackend => {
   // acme/editor: the Product of workflow-editor.spec.ts's own Workspace; its one Ticket (#1) is in Build.
   fake.commit('acme/editor', 'main', 'README.md', '# Editor\n')
   void fake.tickets('acme/editor').create({ title: 'Editor lab: build the thing', labels: ['bauherr:stage:build'] })
-  // acme/refine: the Product of refine-conversation.spec.ts's own Workspace; its one Ticket (#1) is held by Triage with five open points.
-  fake.commit('acme/refine', 'main', 'README.md', '# Refine\n')
-  void fake.tickets('acme/refine').create({ title: 'Export invoices as a file', body: '## Problem\nFinance cannot get the invoices out of the portal.\n\n## Done when\n- An export button exists', labels: ['bauherr:needs-refinement'] })
-  void fake.tickets('acme/refine').comment('1', REFINE)
+  // acme/conv: the Product of conversation.spec.ts's own Workspace; its Tickets #1 (Docs Agent), #2 and #3 are held by Triage with four open points each.
+  fake.commit('acme/conv', 'main', 'README.md', '# Conv\n')
+  const conv = fake.tickets('acme/conv')
+  const body = 'A recurring Docs Agent keeps the docs in step.\n\n## Trigger\nTo be decided.\n\n## Acceptance criteria\n- The agent opens a merge request with the doc changes'
+  for (const title of ['Docs Agent', 'Export the invoices', 'Name the export file']) void conv.create({ title, body, labels: ['bauherr:needs-refinement', 'bauherr:type:feature'] })
+  for (const n of ['1', '2', '3']) void conv.comment(n, CONV)
   // acme/merge: a merge queue is on, but the only workflow has no merge_group trigger; the merge-mode spec re-detects it.
   fake.commit('acme/merge', 'main', '.github/workflows/ci.yml', 'name: ci\non:\n  pull_request:\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps: []\n')
   fake.setQueueSupport('acme/merge', true)

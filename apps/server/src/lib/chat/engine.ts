@@ -5,7 +5,7 @@ import { DEFAULT_MODEL_BY_TIER } from '../gateway'
 import type { Ctx } from '../mcp-tools'
 import { decrypt } from '../secrets'
 import { mediaBytes } from '../intake/media'
-import { fakeChatModel } from './fake'
+import { fakeChatModelOf } from './fake'
 import { gatewayChatModel, type Block, type ModelCall, type ModelMessage } from './stream'
 import { resumeRequest } from './request'
 import { chatTools, describe, kindOf, resolveInput, runChatTool, summarize, type Card } from './tools'
@@ -41,10 +41,14 @@ const systemPrompt = async (ctx: PageContext): Promise<string> =>
   `${await skill()}\n\nToday is ${new Date().toISOString().slice(0, 10)}.\n\n<page label="${ctx.label.replace(/"/g, "'")}">\n${ctx.markdown.replace(/<\/?page/gi, '')}\n</page>`
 
 /** The model for the person's Workspace (standard tier), or the scripted one under CHAT_FAKE / INTAKE_FAKE. */
-export const chatModelFor = async (payload: Payload, workspace: number): Promise<ModelCall> => {
-  if (process.env.CHAT_FAKE === '1' || process.env.INTAKE_FAKE === '1') return fakeChatModel
+/** The model a Workspace's tier names (`standard` by default). */
+export const tierModels = (w: Doc): Record<'cheap' | 'standard' | 'strong', string> => ({ ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier })
+
+export const chatModelFor = async (payload: Payload, workspace: number, tier: 'cheap' | 'standard' | 'strong' = 'standard'): Promise<ModelCall> => {
   const w = (await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true })) as Doc
-  return gatewayChatModel({ slug: w.slug, key: decrypt(w.gatewayKey), model: { ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier }.standard })
+  const model = tierModels(w)[tier]
+  if (process.env.CHAT_FAKE === '1' || process.env.INTAKE_FAKE === '1') return fakeChatModelOf(model)
+  return gatewayChatModel({ slug: w.slug, key: decrypt(w.gatewayKey), model })
 }
 
 /** The client's turns as model turns; empty ones are dropped. Images stay references until the call. */
@@ -55,7 +59,7 @@ const history = (messages: ChatInput[]): ModelMessage[] =>
   })
 
 /** image_ref -> base64 image of a file in the person's Workspace. */
-const withImages = async (payload: Payload, workspace: number, messages: ModelMessage[]): Promise<ModelMessage[]> =>
+export const withImages = async (payload: Payload, workspace: number, messages: ModelMessage[]): Promise<ModelMessage[]> =>
   Promise.all(
     messages.map(async (m) => ({
       ...m,

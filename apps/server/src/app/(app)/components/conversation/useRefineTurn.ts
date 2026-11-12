@@ -5,7 +5,7 @@ import type { View } from '../../../../lib/refine/engine'
 
 /** A turn in flight: what the person sent (null for the background re-check) and the reply as far as it has come. */
 export type Turn = { user: string | null; reply: string }
-export type TurnBody = { text: string } | { recheck: { point: string } }
+export type TurnBody = { text: string; images?: number[] } | { recheck: { point: string } }
 export type TurnResult = { ok: true; view: View | null } | { ok: false; aborted: boolean; error: string }
 
 /**

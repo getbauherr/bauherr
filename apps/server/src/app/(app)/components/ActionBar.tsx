@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
@@ -31,7 +32,7 @@ type Props = {
   canExpedite?: boolean
   /** The prepared Decision's ask: the bar's sentence, so the Inbox and this page say the same. */
   ask?: string | null
-  /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary jumps to the refinement panel. */
+  /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary opens the conversation. */
   answerable?: number
 }
 
@@ -77,7 +78,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       case 'rerun': return { primary: { label: verb, form: fid }, form: <form id={fid} action={rerunStage.bind(null, run!)}><FormPending /></form> }
       case 'link': {
         const l = action as Extract<Action, { kind: 'link' }>
-        if (l.href === '#answer') return { node: <Button asChild data-testid="answer-questions"><a href="#refine">{l.label ?? verb}</a></Button> }
+        if (l.href === '#answer') return { node: <Button asChild data-testid="answer-questions"><Link href={`/tickets/${ticket}?view=conversation`}>{l.label ?? verb}</Link></Button> }
         return { primary: { label: l.label ?? verb, href: l.href, ...(l.newTab ? { newTab: true } : {}) } }
       }
     }
@@ -89,7 +90,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
       {secondary}
       {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</Post>}
-      {answerable > 0 && !step.node && <Button asChild variant="outline" data-testid="answer-questions"><a href="#refine">Answer {answerable} question{answerable === 1 ? '' : 's'}</a></Button>}
+      {answerable > 0 && !step.node && <Button asChild variant="outline" data-testid="answer-questions"><Link href={`/tickets/${ticket}?view=conversation`}>Answer {answerable} question{answerable === 1 ? '' : 's'}</Link></Button>}
       <DockOpen ticket={ticket} variant="outline">Comment</DockOpen>
       {step.form}
       {step.node}

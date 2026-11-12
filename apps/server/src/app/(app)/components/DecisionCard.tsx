@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import type { Decision, DecisionOption } from '../../../lib/decision'
 import { decideAction } from '../lib/actions'
 import { Badge } from './ui/badge'
@@ -9,7 +9,6 @@ import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Textarea } from './ui/textarea'
-import { RefinePanel } from './conversation/RefinePanel'
 import { Markdown } from './Markdown'
 import { ProofList } from './ProofList'
 import type { ProofData } from '../lib/proof'
@@ -30,11 +29,6 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gone, setGone] = useState(false)
-  const [refining, setRefining] = useState(false)
-  // `/inbox#t<id>` of a question card opens the conversation in place.
-  useEffect(() => {
-    if (!compact && location.hash === `#t${item.id}` && d.options.some((o) => o.href?.endsWith('#answer'))) setRefining(true)
-  }, [compact, item.id, d.options])
   const run = (o: DecisionOption, text = '') => {
     setError(null)
     setAsking(null)
@@ -69,13 +63,13 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
           </header>
         )}
         <h2 id={`ask-${item.id}`} className={compact ? 'sr-only' : 'm-0 text-[19px] leading-snug font-semibold text-balance'}>{d.ask}</h2>
-        {d.recommendation && !refining && (
+        {d.recommendation && (
           <p className="body m-0 max-w-none text-pretty">
             <span className="font-medium text-primary">Recommended </span>
             {d.recommendation}
           </p>
         )}
-        {d.why.length > 0 && !refining && (
+        {d.why.length > 0 && (
           <ul className="small m-0 flex list-disc flex-col gap-1 pl-5 text-muted-foreground">
             {d.why.map((w) => <li key={w}>{w}</li>)}
           </ul>
@@ -97,8 +91,10 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
           <footer className="mt-1 flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               {d.options.map((o) =>
-                o.action === 'open' && o.href?.endsWith('#answer') ? (
-                  <Button key={o.label} variant={o.primary ? 'default' : 'outline'} title={o.effect} aria-expanded={refining} data-testid="answer-questions" onClick={() => setRefining((x) => !x)}>{refining ? 'Hide the conversation' : o.label}</Button>
+                o.action === 'open' && o.href?.includes('?view=conversation') ? (
+                  <Button key={o.label} asChild variant={o.primary ? 'default' : 'outline'} title={o.effect} data-testid="answer-questions">
+                    <Link href={o.href}>{o.label}</Link>
+                  </Button>
                 ) : o.action === 'open' ? (
                   <Button key={o.label} asChild variant={o.primary ? 'default' : 'outline'} title={o.effect}>
                     <a href={o.href} {...(o.href && external(o.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{o.label}</a>
@@ -109,11 +105,10 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
               )}
               {pending && <span className="small text-muted-foreground" role="status">Working…</span>}
             </div>
-            {!refining && <p className="small m-0 text-muted-foreground">{d.options.find((o) => o.primary)?.effect ?? d.next}</p>}
+            <p className="small m-0 text-muted-foreground">{d.options.find((o) => o.primary)?.effect ?? d.next}</p>
             {error && <p role="alert" className="small m-0 text-destructive">{error}</p>}
           </footer>
         )}
-        {refining && !compact && <RefinePanel ticket={item.id} onSent={() => { setGone(true); onDecided?.(item.id); router.refresh() }} />}
         <Dialog open={!!asking} onOpenChange={(open) => !open && setAsking(null)}>
           <DialogContent>
             <DialogHeader>

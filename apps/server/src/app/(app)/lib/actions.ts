@@ -19,7 +19,7 @@ import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock
 import { homeOf, requestsVisibleTo } from '../../../lib/people'
 import { id } from '../../../lib/release'
 import { emptyDraft } from '../../../lib/intake/engine'
-import { loadRefine, refineOption, refineRecommended, refineReopen, refineSend, refineTurn, refineWhy, type View as RefineView } from '../../../lib/refine/engine'
+import { loadRefine, refineModel, refineOption, refineRecommended, refineReopen, refineSend, refineTurn, refineWhy, type View as RefineView } from '../../../lib/refine/engine'
 import { currentWorkspace, payloadClient, WS_COOKIE, workspacesOf, requireBauherr } from './session'
 
 export async function login(form: FormData) {
@@ -268,6 +268,8 @@ export const refinePick = async (ticket: number, point: string, option: number) 
 export const refineExplain = async (ticket: number, point: string) => refining({ ticket }, (x) => refineWhy(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
 /** "Use the recommended answers for the rest". */
 export const refineRest = async (ticket: number) => refining({ ticket }, (x) => refineRecommended(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
+/** The model tier the conversation's next turns use. */
+export const refineTier = async (ticket: number, tier: string) => refining({ ticket }, (x) => refineModel(x.payload, x.user, { ticket, workspaceId: x.workspaceId, tier }))
 /** "Change" on an answered point. */
 export const refineChange = async (ticket: number, point: string) => refining({ ticket }, (x) => refineReopen(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
 /** "Send to planning". */

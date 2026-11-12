@@ -44,7 +44,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 |---|---|---|---|
 | Inbox | One prepared card per decision: the ask, a recommendation, the facts and the real options; grouped by checkpoint, filtered by Product | `/inbox` | Live |
 | Approve plan | Approve the plan, refused while a critical decision is open | Inbox card, Ticket page, chat | Live |
-| Answer questions and decisions | The owner refines the Ticket in one conversation embedded in the Ticket page and the Inbox card: open points pinned beside it, options and free text, who speaks on every message, a summary with the text changes, "Send to planning" | `/tickets/[id]`, Inbox | Live |
+| Answer questions and decisions | The Ticket page of a Ticket that waits for answers is the conversation: chat on the left (the role as partner, who really speaks, question card, options and free text, model and cost chips, screenshots), the refined Ticket as a living artifact on the right (open-points checklist, changed sections highlighted, reviewable diff, version), "Send to planning" at its foot; the Inbox card links to it | `/tickets/[id]`, Inbox | Live |
 | Accept on staging (optional), approve production | Accept a change on staging, then approve the deploy | Inbox card, Ticket page, chat | Live |
 | Review round cap | Give the review one more round, or stop | Inbox card, Ticket page | Live |
 | Request changes, back to Build or backlog | Send a Ticket back with a note | Ticket page, Inbox | Live |

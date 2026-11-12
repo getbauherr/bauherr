@@ -8,15 +8,16 @@ export const dynamic = 'force-dynamic'
 export type TurnEvent = { type: 'reply'; text: string } | { type: 'done'; view: View | null } | { type: 'error'; message: string }
 
 /**
- * Body `{ text }` (a typed message) or `{ recheck: { point } }` (the short turn after an option click); streams NDJSON `TurnEvent`s. Bauherr/Admin only.
+ * Body `{ text, images? }` (a typed message, `images`: ids from `api/chat/media`) or `{ recheck: { point } }` (the short turn after an option click); streams NDJSON `TurnEvent`s. Bauherr/Admin only.
  * A client abort aborts the model call; nothing is stored then, nor when the result is invalid.
  */
 export const POST = async (req: Request, { params }: { params: Promise<{ ticket: string }> }): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w
   const ticket = Number((await params).ticket)
-  const body = (await req.json().catch(() => null)) as { text?: unknown; recheck?: { point?: unknown } } | null
+  const body = (await req.json().catch(() => null)) as { text?: unknown; images?: unknown; recheck?: { point?: unknown } } | null
   const text = typeof body?.text === 'string' ? body.text : null
+  const images = Array.isArray(body?.images) && body.images.every((i) => Number.isInteger(i)) ? (body.images as number[]) : []
   const point = typeof body?.recheck?.point === 'string' ? body.recheck.point : null
   if (!Number.isInteger(ticket) || (text === null) === (point === null)) return fail('a Ticket id and either text or recheck.point required', 400)
   const enc = new TextEncoder()
@@ -30,7 +31,7 @@ export const POST = async (req: Request, { params }: { params: Promise<{ ticket:
         }
         const run = { ticket, workspaceId: w.workspace, signal: abort.signal }
         try {
-          send({ type: 'done', view: await (text !== null ? refineTurn(w.payload, w.user, { ...run, text, onReply: (t) => send({ type: 'reply', text: t }) }) : refineRecheck(w.payload, w.user, { ...run, point: point! })) })
+          send({ type: 'done', view: await (text !== null ? refineTurn(w.payload, w.user, { ...run, text, images, onReply: (t) => send({ type: 'reply', text: t }) }) : refineRecheck(w.payload, w.user, { ...run, point: point! })) })
         } catch (e) {
           send({ type: 'error', message: e instanceof Error ? e.message : 'The turn failed.' })
         }

@@ -7,11 +7,16 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { OPEN_WORDS, sourceOf, type OpenItem } from '../../../../../lib/actions'
+import { expediteAction } from '../../../lib/actions'
+import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
+import { Button } from '../../../components/ui/button'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
-import { ActionBar } from '../../../components/ActionBar'
+import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
-import { RefinePanel } from '../../../components/conversation/RefinePanel'
+import { DockOpen } from '../../../components/chat/DockOpen'
+import { RefineConversation } from '../../../components/conversation/RefineConversation'
+import { SubmitButton } from '../../../components/SubmitButton'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { ProofList } from '../../../components/ProofList'
@@ -42,6 +47,7 @@ import { isAdmin } from '../../../lib/settings'
 import { currentWorkspace, payloadClient, requirePerson } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import { KindChip } from '../../../components/RequestParts'
+import { KIND_LABEL } from '../../../../../lib/intake/kinds'
 import { waitingLabel } from '../../../../../lib/wip'
 import { connectedOfRole } from '../../../../../lib/presence'
 
@@ -104,14 +110,16 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const idle = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
   const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
-  return { forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
+  return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
 }
 type Derived = Awaited<ReturnType<typeof derive>>
+
+const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ticket.expedite && P.ws.expediteLane !== false && !is(P.wf, stageOf(P.wf, P.ticket), 'release', 'container')
 
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} answerable={x.decisionsShown ? x.decisions.length - x.answered : 0} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={admin && ticket.state === 'open' && !ticket.expedite && ws.expediteLane !== false && !is(P.wf, stageOf(P.wf, ticket), 'release', 'container')} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} answerable={x.decisionsShown ? x.decisions.length - x.answered : 0} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -136,6 +144,12 @@ async function Proof({ P, d }: { P: Page; d: Promise<Derived> }) {
 async function DecisionRow({ d }: { d: Promise<Derived> }) {
   const x = await d
   return x.decisions.length > 0 ? <><dt>Decisions</dt><dd>{x.approved ? `${x.answered} answered` : `${x.answered} of ${x.decisions.length} answered · ${x.missing.length} critical open`}</dd></> : null
+}
+
+/** The entry to the conversation (read-only once the Ticket was sent on) for a Ticket that ever had open points. */
+async function ConversationLink({ ticket, d }: { ticket: number; d: Promise<Derived> }) {
+  const x = await d
+  return x.decisions.length > 0 ? <p className="m-0"><Button asChild variant="outline" size="sm" data-testid="open-conversation"><Link href={`/tickets/${ticket}?view=conversation`}>Conversation</Link></Button></p> : null
 }
 
 const Section = ({ id, title, children }: { id: string; title: string; children: ReactNode }) => (
@@ -168,8 +182,9 @@ const Noted = ({ items }: { items: OpenItem[] }) =>
     </Section>
   ) : null
 
-export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TicketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> }) {
   const { id } = await params
+  const { view } = await searchParams
   if (isProductOwner(await requirePerson())) return await ProductOwnerTicket({ id })
   const { user, workspace } = await currentWorkspace()
   const wf = workflowFor(workspace?.id)
@@ -226,6 +241,36 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   ]
   const budget = ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : '$' + ws.budgetUsd30d + ' / 30 days'
 
+  const x = await d
+  const waiting = x.labels.includes(NEEDS_REFINEMENT) && x.decisions.length > 0 && !x.approved
+  if (view === 'conversation' || (waiting && view !== 'ticket')) {
+    return (
+      <>
+        <PageTitle>{`#${ticket.number}`}</PageTitle>
+        <RefineConversation
+          ticket={ticket.id}
+          kind={kindOfLabels(ticket.labels) ? KIND_LABEL[kindOfLabels(ticket.labels)!] : null}
+          where={[status.label, status.detail].filter(Boolean).join(' · ')}
+          info={
+            <>
+              <TicketFacts product={product.name} stage={stageTitle(wf, stageOf(wf, ticket))} totals={steps.totals} runs={runs.length} models={[...new Set(runs.map((r) => r.model as string | null).filter((m): m is string => !!m))]} executor={executor} links={links} />
+              {(blockers.length > 0 || blocks.length > 0) && (
+                <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
+                  {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link></li>)}
+                  {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
+                </ul>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {canExpediteOf(P) && <form action={expediteAction}><input type="hidden" name="ticket" value={ticket.id} /><SubmitButton variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</SubmitButton></form>}
+                <DockOpen ticket={ticket.id} variant="outline">Comment</DockOpen>
+              </div>
+            </>
+          }
+        />
+      </>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Suspense fallback={<Pulse h="h-12" />}><Top P={P} d={d} /></Suspense>
@@ -236,6 +281,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <header className="flex flex-col gap-2">
               <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
               {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
+              <Suspense fallback={null}><ConversationLink ticket={ticket.id} d={d} /></Suspense>
               <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
                 <Badge variant={status.tone}>{status.label}</Badge>
                 {status.detail && <span>{status.detail}</span>}
@@ -244,7 +290,6 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </header>
             {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
             <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
-            <RefinePanel ticket={ticket.id} anchor />
             <Suspense fallback={null}><Proof P={P} d={d} /></Suspense>
             {epic ? (
               <section className="flex flex-col gap-4" aria-labelledby="subtickets">

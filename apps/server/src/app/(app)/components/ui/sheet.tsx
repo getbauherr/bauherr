@@ -8,11 +8,11 @@ export const Sheet = SheetPrimitive.Root
 export const SheetTitle = SheetPrimitive.Title
 export const SheetDescription = SheetPrimitive.Description
 
-export function SheetContent({ className, children, side = 'left', ...props }: ComponentProps<typeof SheetPrimitive.Content> & { side?: 'left' | 'right' }) {
+export function SheetContent({ className, children, side = 'left', ...props }: ComponentProps<typeof SheetPrimitive.Content> & { side?: 'left' | 'right' | 'bottom' }) {
   return (
     <SheetPrimitive.Portal>
       <DialogOverlay />
-      <SheetPrimitive.Content data-slot="sheet-content" className={cn('fixed inset-y-0 z-50 flex h-full w-3/4 flex-col gap-4 border-border bg-popover text-popover-foreground sm:max-w-sm', side === 'left' ? 'left-0 border-r' : 'right-0 border-l', className)} {...props}>
+      <SheetPrimitive.Content data-slot="sheet-content" className={cn('fixed z-50 flex flex-col gap-4 border-border bg-popover text-popover-foreground', side === 'bottom' ? 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t' : cn('inset-y-0 h-full w-3/4 sm:max-w-sm', side === 'left' ? 'left-0 border-r' : 'right-0 border-l'), className)} {...props}>
         {children}
       </SheetPrimitive.Content>
     </SheetPrimitive.Portal>
