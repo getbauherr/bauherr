@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
 import { loadWorkflows } from '../../../lib/factory'
-import { isBauherr, isProductOwner, type Role } from '../../../lib/people'
+import { assignmentOf, isBauherr, isProductOwner, type Role } from '../../../lib/people'
 
 export type Workspace = { id: number; name: string; slug: string; knowledgeRepo?: string | null; knowledgeConnection?: unknown }
 export type Person = TypedUser & { email: string; role: Role; uiPrefs?: { epic?: number | null } | null; tenants?: { tenant: Workspace | number | null }[]; assignments?: unknown[] }
@@ -43,8 +43,8 @@ export const rememberEpic = async (user: Bauherr, epic: number | null): Promise<
   await (await payloadClient()).update({ collection: 'bauherren', id: user.id, data: { uiPrefs: { ...user.uiPrefs, epic } }, overrideAccess: true, depth: 0 })
 }
 
-/** Admin: all Workspaces; otherwise those in the Bauherr's `tenants`. */
-export const workspacesOf = cache(async (user: Bauherr): Promise<Workspace[]> => {
+/** Admin: all Workspaces; a Bauherr those in their `tenants`; a Product owner those they have an assignment in. */
+export const workspacesOf = cache(async (user: Person): Promise<Workspace[]> => {
   const payload = await payloadClient()
   const ids = (user.tenants ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant?.id : t.tenant)).filter((id) => id != null)
   if (user.role !== 'admin' && !ids.length) return []
@@ -56,12 +56,21 @@ export const workspacesOf = cache(async (user: Bauherr): Promise<Workspace[]> =>
     depth: 0,
     overrideAccess: true,
   })
-  return docs as unknown as Workspace[]
+  return (docs as unknown as Workspace[]).filter((w) => !isProductOwner(user) || assignmentOf(user, w.id))
 })
 
 /** Selected Workspace (cookie slug), falling back to the first; null when the Bauherr has none. */
 export const currentWorkspace = async (): Promise<{ user: Bauherr; workspace: Workspace | null; workspaces: Workspace[] }> => {
   const user = await requireBauherr()
+  const workspaces = await workspacesOf(user)
+  const slug = (await cookies()).get(WS_COOKIE)?.value
+  return { user, workspaces, workspace: workspaces.find((w) => w.slug === slug) ?? workspaces[0] ?? null }
+}
+
+/** Like `currentWorkspace`, for the pages and actions open to a Product owner too: their Workspace is one they are assigned in (the cookie's, else the first). */
+export const currentPersonWorkspace = async (): Promise<{ user: Person; workspace: Workspace | null; workspaces: Workspace[] }> => {
+  const user = await requirePerson()
+  if (!isBauherr(user) && !isProductOwner(user)) notFound()
   const workspaces = await workspacesOf(user)
   const slug = (await cookies()).get(WS_COOKIE)?.value
   return { user, workspaces, workspace: workspaces.find((w) => w.slug === slug) ?? workspaces[0] ?? null }

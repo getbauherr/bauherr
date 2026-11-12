@@ -1,3 +1,5 @@
+import type { Where } from 'payload'
+
 type Doc = Record<string, any>
 
 export const ROLES = ['admin', 'bauherr', 'product-owner'] as const
@@ -16,8 +18,8 @@ export const rank = (user: Doc | null | undefined): number => RANK[user?.role as
 export const isBauherr = (user: Doc | null | undefined): boolean => rank(user) >= RANK.bauherr
 export const isProductOwner = (user: Doc | null | undefined): boolean => user?.role === 'product-owner'
 
-/** Where a person lands after sign-in: a Product owner on their profile, everyone else on the Workflow. */
-export const homeOf = (user: Doc | null | undefined): string => (isProductOwner(user) ? '/settings/profile' : '/')
+/** Where a person lands after sign-in: a Product owner on Requests, everyone else on the Workflow. */
+export const homeOf = (user: Doc | null | undefined): string => (isProductOwner(user) ? '/requests' : '/')
 
 /** The Workspace ids of the account's `tenants` rows. */
 export const tenantIds = (user: Doc): number[] => ((user.tenants as { tenant: unknown }[] | undefined) ?? []).flatMap((t) => id(t.tenant) ?? [])
@@ -38,6 +40,37 @@ export const canSeeProduct = (user: Doc, product: { id: number | string; workspa
   if (user.role === 'bauherr') return tenantIds(user).includes(ws)
   const a = assignmentOf(user, ws)
   return a?.scope === 'workspace' || (a?.scope === 'products' && a.products.includes(Number(product.id)))
+}
+
+const NOTHING = { equals: -1 } as const
+
+/** The ONE filter of "which Products of a Workspace may this person see" for a collection with a `field` relation to products (Bauherr/Admin: the Workspace; Product owner: the assignment; anyone else: nothing). */
+export const productScope = (user: Doc, workspace: number | string, field = 'product'): Where => {
+  const ws = Number(workspace)
+  if (isBauherr(user)) return { [`${field}.workspace`]: { equals: ws } }
+  const a = assignmentOf(user, ws)
+  if (a?.scope === 'workspace') return { [`${field}.workspace`]: { equals: ws } }
+  return { [field]: a?.scope === 'products' && a.products.length ? { in: a.products } : NOTHING }
+}
+
+/** The products of a Workspace this person may see, as a `where` on the `products` collection. */
+export const productsVisibleTo = (user: Doc, workspace: number | string): Where => {
+  const a = assignmentOf(user, workspace)
+  return { and: [{ workspace: { equals: Number(workspace) } }, ...(isBauherr(user) || a?.scope === 'workspace' ? [] : [{ id: a?.scope === 'products' && a.products.length ? { in: a.products } : NOTHING }])] }
+}
+
+/** Which requests of a Workspace a person sees: Bauherren and Admins all, a Product owner those of their Products that were sent, plus their own drafts. */
+export const requestsVisibleTo = (user: Doc, workspace: number | string): Where => ({
+  and: [productScope(user, workspace), ...(isProductOwner(user) ? [{ or: [{ status: { equals: 'submitted' } }, { user: { equals: user.id } }] }] : [])],
+})
+
+/** Whether a stored file (a media row read at depth 1) may be served to this person: it belongs to a Product they see, and a request draft's files only to its author. */
+export const mediaVisibleTo = (user: Doc, m: Doc): boolean => {
+  const s = m.session && typeof m.session === 'object' ? m.session : null
+  const workspace = id(s?.workspace ?? m.workspace)
+  const product = id(s?.product ?? m.product)
+  if (workspace === undefined || product === undefined || !canSeeProduct(user, { id: product, workspace })) return false
+  return !(isProductOwner(user) && s && s.status !== 'submitted' && id(s.user) !== Number(user.id))
 }
 
 export type AssignmentRow = { workspace: number; scope: 'workspace' | 'products'; products: number[] }
