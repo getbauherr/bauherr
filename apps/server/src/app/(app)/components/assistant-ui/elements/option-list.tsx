@@ -49,7 +49,7 @@ export interface OptionListProps extends Omit<
 }
 
 const row =
-  "flex w-full items-start gap-2.5 rounded-md border border-border bg-card px-3 py-2 text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex w-full items-center gap-2.5 rounded-md border border-border bg-card px-3 py-2 text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function OptionText({ option }: { option: OptionListOption }) {
   return (
