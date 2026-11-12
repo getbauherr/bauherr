@@ -214,6 +214,13 @@ describe('next_work', () => {
     expect((await call('next_work', { sessionId: eng.sessionId })).reason).toBe('Build is at its WIP limit')
   })
 
+  it('names the real reason when a Ticket waits for a stage that is not full', async () => {
+    const t = await ticket('overlap', 'plan', { run: false })
+    await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: 'build', waitingReason: 'overlaps #516' }, ...o })
+    const eng = await connect('engineer')
+    expect((await call('next_work', { sessionId: eng.sessionId })).reason).toBe(`#${t.number} waits for Build: overlaps #516`)
+  })
+
   it('claim_next without a sessionId behaves as before and leaves the Run unattached', async () => {
     const t = await ticket('legacy', 'build')
     const r = await call('claim_next', {})
