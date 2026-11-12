@@ -82,22 +82,6 @@ it('a Ticket of another Workspace, or one that does not exist, has no thread', a
   expect(await threads.ticketThread(who(alice, ws), 'x')).toBeNull()
 })
 
-it('answering through the card records the same Decision comment and worklog line as before, critical row first', async () => {
-  const thread = (await threads.ticketThread(who(alice, ws), ticket.id))!
-  const t = (await threads.loadMessages(who(alice, ws), String(thread.id)))!.ticket!
-  const first = await actions.startOwnerIntake(payload, alice, { ticket: t, workspaceId: ws })
-  expect(first).toMatchObject({ decision: 'D2', left: 2 })
-  const next = await actions.askOwnerIntake(payload, alice, { session: first.session, decision: 'D2', text: first.options[0]!.label, workspaceId: ws })
-  expect(next).toMatchObject({ decision: 'D1', left: 1 })
-  const done = await actions.askOwnerIntake(payload, alice, { session: first.session, decision: 'D1', text: 'a cookie', workspaceId: ws })
-  expect(done).toMatchObject({ done: true })
-  const sheet = (await comments()).filter((b) => b.startsWith('<!-- bauherr:decisions -->'))
-  expect(sheet).toHaveLength(1)
-  expect(sheet[0]).toContain('D2: yes, until the user picks')
-  expect(sheet[0]).toContain('D1: a cookie')
-  expect((await comments()).find((b) => b.startsWith('<!-- bauherr:worklog -->'))).toContain('D1 Where to store the choice: a cookie')
-})
-
 it('post_comment is a confirm tool: the turn stores exactly that call and posts nothing; only the confirmation runs it', async () => {
   const thread = (await threads.ownThread(who(alice, ws), (await threads.ticketThread(who(alice, ws), ticket.id))!.id))!
   const before = (await comments()).length

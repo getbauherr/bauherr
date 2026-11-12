@@ -10,7 +10,7 @@ const SHEET = `<!-- bauherr:triage -->
 `
 const sheet = parseDecisions(SHEET)
 const points = (answers: Record<string, string> = {}) => pointsOf(sheet, [], answers, 7)
-const ok = (r: Partial<Refine> & Record<string, unknown>) => ({ reply: 'ok', settled: [], dropped: [], added: [], next: 'ask', ...r })
+const ok = (r: Record<string, unknown>): any => ({ reply: 'ok', settled: [], dropped: [], added: [], next: 'ask', ...r })
 const body = '## Problem\nx\n<!-- bauherr:intake session=1 -->'
 
 describe('points', () => {
