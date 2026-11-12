@@ -65,9 +65,11 @@ describe('on a plan sheet with D2 critical and D1', () => {
     const v = (await refine.loadRefine(payload, user, w()))!
     expect(v.points.map((p) => [p.id, p.status])).toEqual([['D2', 'open'], ['D1', 'open']])
     expect(v.messages).toHaveLength(1)
-    expect(v.messages[0]).toMatchObject({ role: 'assistant', speaker: { kind: 'session', role: expect.stringContaining('Triage') } })
+    expect(v.messages[0]).toMatchObject({ role: 'assistant', speaker: { kind: 'session', role: v.participant.role, avatar: v.participant.avatar } })
     expect(v.messages[0]!.text).toBe('Triage asked 2 questions about this Ticket. All 2 are still open.\n\nFollow the system setting\nRecommended: yes, until the user picks.')
-    expect(v.strip).toMatchObject({ assistant: 'Factory assistant' })
+    expect(v.participant).toMatchObject({ role: expect.any(String), session: null })
+    expect(v.tier).toBe('standard')
+    expect(v.models.map((m) => m.tier)).toEqual(['cheap', 'standard', 'strong'])
     expect((await refine.loadRefine(payload, user, w()))!.messages).toHaveLength(1) // resuming does not seed again
   })
 
@@ -116,11 +118,11 @@ describe('on a plan sheet with D2 critical and D1', () => {
     expect(body).toContain('D1: localStorage')
     expect(body).toContain('## Decisions\n- **D3** Which key name')
     expect(v.messages.slice(-2).map((m) => [m.role, m.speaker.model ?? null, m.speaker.kind])).toEqual([['user', null, 'person'], ['assistant', 'm-1', 'assistant']])
-    expect(v.summary).toBeNull()
+    expect(v.artifact).toMatchObject({ title: 'Dark theme, remembered', titleChanged: true, changes: 1, version: { n: 2 } })
   })
 
   it('the ticket text edit is kept for the end; typed text never touched the helper thread', async () => {
-    expect((await refine.loadRefine(payload, user, w()))!.summary).toBeNull()
+    expect((await refine.loadRefine(payload, user, w()))!.artifact.changes).toBe(1)
     expect(await payload.count({ collection: 'chat_threads', where: { ticket: { equals: plan } }, ...o })).toMatchObject({ totalDocs: 0 })
     const { totalDocs } = await payload.count({ collection: 'chat_messages', where: { 'thread.ticket': { equals: plan } }, ...o })
     expect(totalDocs).toBe(0)
@@ -129,7 +131,8 @@ describe('on a plan sheet with D2 critical and D1', () => {
   it('"Use the recommended answers for the rest" settles the rest in one step and the summary is next', async () => {
     const v = await refine.refineRecommended(payload, user, w())
     expect(v.points.find((p) => p.id === 'D3')).toMatchObject({ status: 'answered', answer: 'theme' })
-    expect(v.summary).toMatchObject({ decided: [expect.objectContaining({ id: 'D2' }), expect.objectContaining({ id: 'D1' }), expect.objectContaining({ id: 'D3', answer: 'theme' })], title: { to: 'Dark theme, remembered' } })
+    expect(v.points.some((p) => p.status === 'open')).toBe(false)
+    expect(v.artifact.sections.some((x) => x.point)).toBe(false)
     await expect(refine.refineRecommended(payload, user, w())).rejects.toThrow('no open point')
   })
 
@@ -139,7 +142,6 @@ describe('on a plan sheet with D2 critical and D1', () => {
     const v = await refine.refineTurn(payload, user, { ...w(), text: 'never mind that', model })
     expect(v.points.find((p) => p.id === 'D4')).toMatchObject({ status: 'dropped', answer: 'we skip it' })
     expect((await decisions(plan))[0]).toContain('D4: (no longer needed) we skip it')
-    expect(v.summary!.decided.find((d) => d.id === 'D4')).toMatchObject({ dropped: true })
   })
 
   it('the model never receives a message of the panel as the helper does: the call forces the refine tool and carries the person text in <person>', async () => {
@@ -173,7 +175,7 @@ describe('on a Triage hold', () => {
   it('answering the last row does not release the hold; sending does, the way the last decision row does, and the conversation becomes history', async () => {
     const { model } = scripted(ok({ reply: 'Thanks.', settled: [{ id: 'D1', answer: 'XLSX' }], ticket: { body: 'Export as XLSX.' } }))
     const v = await refine.refineTurn(payload, user, { ...h(), text: 'XLSX please', model })
-    expect(v.summary).not.toBeNull()
+    expect(v.points.some((p) => p.status === 'open')).toBe(false)
     expect(v.hold).toBe(true)
     expect(await labels()).toContain('bauherr:needs-refinement')
     await expect(refine.refineSend(payload, user, { ...h(), workspaceId: ws })).resolves.toMatchObject({ sent: true })
@@ -331,5 +333,44 @@ Triage needs your answers.
     } finally {
       spy.restore()
     }
+  })
+})
+
+describe('the model of a conversation, its images and its cost', () => {
+  const tierOf = async (tier: string) => refine.refineModel(payload, user, { ...w(), tier })
+
+  it('the chosen tier is stored on the conversation, shown, and used by the next turn', async () => {
+    const v = await tierOf('strong')
+    expect(v.tier).toBe('strong')
+    expect(v.models.find((m) => m.tier === 'strong')!.model).toBe('claude-opus-5-5')
+    expect((await refine.loadRefine(payload, user, w()))!.tier).toBe('strong')
+    await expect(tierOf('huge')).rejects.toThrow('unknown tier')
+    const used: string[] = []
+    const engine = await import('../src/lib/chat/engine')
+    const spy = vi.spyOn(engine, 'chatModelFor').mockImplementation(async (_p, _w, tier) => (used.push(tier ?? 'standard'), scripted(ok({ reply: 'Hi.' })).model))
+    await refine.refineTurn(payload, user, { ...w(), text: 'hello' })
+    spy.mockRestore()
+    expect(used).toEqual(['strong'])
+  })
+
+  it('cost is the sum of the stored turns, priced by the catalog; a model without a price makes it unpriced', async () => {
+    const v = await refine.loadRefine(payload, user, w())
+    const turns = v!.cost.turns
+    expect(turns.length).toBeGreaterThan(0)
+    expect(v!.cost.tokens).toBe(turns.reduce((n, t) => n + t.tokensIn + t.tokensOut, 0))
+    // the scripted model reports `m-1`, which has no price
+    expect(turns.every((t) => t.usd === null)).toBe(true)
+    expect(v!.cost.usd).toBeNull()
+  })
+
+  it('an image of another Workspace is refused, one of this Workspace goes to the model as an image block and is shown on the message', async () => {
+    const { saveMedia } = await import('../src/lib/intake/media')
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+    const mine = await saveMedia(payload, { bytes: png, name: 's.png', workspace: ws })
+    await expect(refine.refineTurn(payload, user, { ...w(), text: 'see', images: [999999], model: scripted(ok({})).model })).rejects.toThrow('unknown image')
+    const { model, calls } = scripted(ok({ reply: 'Seen.' }))
+    const v = await refine.refineTurn(payload, user, { ...w(), text: 'see this', images: [mine.id as number], model })
+    expect(JSON.stringify(calls.mock.calls[0]![0].messages.at(-1).content[0])).toContain('"type":"image"')
+    expect(v.messages.filter((m) => m.role === 'user').at(-1)!.images).toEqual([{ id: mine.id, url: expect.stringContaining(`/m/${mine.id}/`) }])
   })
 })

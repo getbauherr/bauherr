@@ -22,7 +22,14 @@ export const releaseFakeGate = (): void => void gates.__fakeGate?.resolve()
 const HOLD_AT = '{"reply":"'.length + 30
 const CHUNK = 16
 
-export const fakeChatModel: ModelCall = async function* ({ messages, tools, signal }) {
+/** Every request the fake model got (model it was asked as, the last user text, image blocks in it), for e2e assertions on what a turn sent (`api/chat/fake-requests`). On `globalThis` like the gate. */
+type Recorded = { model: string; text: string; images: number }
+const log = globalThis as { __fakeRequests?: Recorded[] }
+export const fakeRequests = (): Recorded[] => log.__fakeRequests ?? []
+
+const run = async function* ({ messages, tools, signal }: Parameters<ModelCall>[0], model: string): AsyncGenerator<ModelEvent> {
+  const sent = messages.at(-1)!
+  ;(log.__fakeRequests ??= []).push({ model, text: sent.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ').slice(0, 2000), images: sent.content.filter((b) => b.type === 'image').length })
   if (tools.some((t) => t.name === 'refine')) {
     const said = messages.at(-1)!.content.map((b) => (b.type === 'text' ? b.text : '')).join(' ')
     const { reply, ...rest } = fakeRefine(said)
@@ -41,7 +48,7 @@ export const fakeChatModel: ModelCall = async function* ({ messages, tools, sign
       }
     }
     yield { type: 'tool_use', id, name: 'refine', input: { reply, ...rest } }
-    yield { type: 'usage', tokensIn: 10, tokensOut: 20, model: 'fake-refine' }
+    yield { type: 'usage', tokensIn: 10, tokensOut: 20, model }
     return
   }
   const last = messages.at(-1)!
@@ -77,3 +84,7 @@ export const fakeChatModel: ModelCall = async function* ({ messages, tools, sign
   yield { type: 'text', text: text.slice(8) }
   yield usage(text)
 }
+
+/** The fake model as the named Workspace model: it answers like `fakeChatModel` but reports (and records) that name. */
+export const fakeChatModelOf = (model: string): ModelCall => (a) => run(a, model)
+export const fakeChatModel = fakeChatModelOf('fake-refine')

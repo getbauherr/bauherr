@@ -102,7 +102,7 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
           ask: n ? `Answer ${n} critical question${s(n)} before the plan can be approved` : 'Answer the critical questions before the plan can be approved',
           recommendation: 'Take the recommended default of each question unless it is wrong for you; every question has one.',
           why: [n ? `${n} critical question${s(n)} still open` : 'Critical questions are still open', 'Approving the plan is blocked until they are answered'],
-          options: [open('Answer questions', `/tickets/${tid}#answer`, 'Opens the questions with their defaults.')],
+          options: [open('Answer questions', `/tickets/${tid}?view=conversation`, 'Opens the questions with their defaults.')],
           next: 'You can then approve the plan.',
         }
       }
@@ -111,7 +111,7 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
           ask: sentence('Answer the questions Triage asked about', t.title),
           recommendation: 'Take the recommended default of each question unless it is wrong for you; every question has one.',
           why: ['Planning is on hold until the questions are answered', 'Each question names what a wrong default would cost'],
-          options: [open('Answer questions', `/tickets/${tid}#answer`, 'Opens the questions with their defaults.')],
+          options: [open('Answer questions', `/tickets/${tid}?view=conversation`, 'Opens the questions with their defaults.')],
           next: 'Planning starts when all are answered.',
         }
       case 'Accept on staging':

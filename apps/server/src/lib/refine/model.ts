@@ -13,8 +13,12 @@ export type PointStatus = 'open' | 'answered' | 'dropped'
 export type Point = { id: string; title: string; why?: string; options: string[]; default: string; critical: boolean; status: PointStatus; answer?: string; source: 'triage' | 'conversation'; run?: number | null }
 
 /** Who spoke a message: the Triage session that asked, or the Factory assistant (`model` null: no model call). */
-export type Speaker = { kind: 'session' | 'assistant' | 'person'; role?: string; session?: string; live?: boolean; run?: number | null; model?: string | null; at: string }
-export type Msg = { id: string; role: 'user' | 'assistant'; text: string; speaker: Speaker; feedback?: 'up' | 'down' | null }
+export type Speaker = { kind: 'session' | 'assistant' | 'person'; role?: string; avatar?: string; session?: string; live?: boolean; run?: number | null; model?: string | null; at: string }
+export type Tier = 'cheap' | 'standard' | 'strong'
+export const TIERS: Tier[] = ['cheap', 'standard', 'strong']
+export type Image = { id: number; url: string }
+export type Usage = { model: string; tokensIn: number; tokensOut: number }
+export type Msg = { id: string; role: 'user' | 'assistant'; text: string; speaker: Speaker; images?: Image[]; usage?: Usage; /** Ids of the points this message settled or dropped (shown as chips under it). */ settled?: string[]; feedback?: 'up' | 'down' | null }
 
 export type Refine = {
   reply: string

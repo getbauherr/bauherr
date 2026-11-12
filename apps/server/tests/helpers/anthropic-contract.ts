@@ -5,7 +5,7 @@ type Json = Record<string, any>
 /**
  * The request rules of the Messages API we know and that a scripted model never enforces (the real API answers a broken body with HTTP 400):
  * model and max_tokens set; no forced tool_choice (`tool`, `any`: current models reject it); messages start with the user and carry no empty content or empty text block;
- * every tool has a name and an object input_schema. Returns the broken rules, empty when the body is fine.
+ * an image block is base64 data of png, jpeg, gif or webp (never a stored reference), every tool has a name and an object input_schema. Returns the broken rules, empty when the body is fine.
  */
 export const contractViolations = (body: Json): string[] => {
   const bad: string[] = []
@@ -19,7 +19,11 @@ export const contractViolations = (body: Json): string[] => {
   messages.forEach((m, i) => {
     if (m.role !== 'user' && m.role !== 'assistant') bad.push(`message ${i}: bad role`)
     if (!Array.isArray(m.content) || !m.content.length) bad.push(`message ${i}: empty content`)
-    for (const b of Array.isArray(m.content) ? m.content : []) if (b.type === 'text' && !String(b.text ?? '').trim()) bad.push(`message ${i}: empty text block`)
+    for (const b of Array.isArray(m.content) ? m.content : []) {
+      if (b.type === 'text' && !String(b.text ?? '').trim()) bad.push(`message ${i}: empty text block`)
+      if (b.type === 'image_ref') bad.push(`message ${i}: unresolved image reference`)
+      if (b.type === 'image' && (b.source?.type !== 'base64' || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(b.source?.media_type) || !String(b.source?.data ?? ''))) bad.push(`message ${i}: bad image block`)
+    }
   })
   for (const t of Array.isArray(body.tools) ? body.tools : []) {
     if (typeof t.name !== 'string' || !t.name) bad.push('tool without name')
