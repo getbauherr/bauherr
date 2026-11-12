@@ -5,7 +5,8 @@ import pg from 'pg'
 import { email as seeded } from './user'
 
 /**
- * Regenerates the README screenshots in `docs/assets/` on the seeded e2e data (see CONTRIBUTING.md, "Regenerate README screenshots").
+ * Regenerates the README and landing-page screenshots in `docs/assets/`, each in a light and a dark variant, on the seeded e2e data (`pnpm screenshots`, see CONTRIBUTING.md).
+ * Every shot fails when a seeded e2e identifier is visible on the page.
  * Skipped unless `SCREENSHOTS=1`. Needs the server of the fake-forge job (`BAUHERR_E2E_FAKE_FORGE=1`, `CHAT_FAKE=1`, the gated pack) and `DATABASE_URL`
  * of the screenshot database: the setup gives the seeded rows the names of a small real product there, and nowhere else.
  */
@@ -14,6 +15,8 @@ test.skip(!seeded || !process.env.E2E_PASSWORD_FILE || !process.env.DATABASE_URL
 test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })
 
 const email = 'maria@acme.dev'
+const owner = 'jonas@acme.dev'
+const seededIdentifiers = ['e2e@example.com', 'e2e-', 'ses_e2e', 'card-owner', 'draft-owner', '-w1@']
 const out = resolve(process.cwd(), '../../docs/assets')
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -46,6 +49,7 @@ test.beforeAll(async () => {
   await db.query('UPDATE runs SET session_label = $2::text WHERE session_label = $1::text', ['e2e-laptop', 'marias-laptop'])
   for (const [table, column] of [['human_touches', 'actor'], ['ticket_events', 'actor']]) await db.query(`UPDATE ${table} SET ${column} = $2::text WHERE ${column} = $1::text`, [seeded, email])
   await db.query('UPDATE bauherren SET email = $2::text WHERE email = $1::text', [seeded, email])
+  await db.query('UPDATE bauherren SET email = $2::text WHERE email = $1::text', ['card-owner@example.com', owner])
   await db.query('DELETE FROM chat_messages')
   await db.query('DELETE FROM chat_threads')
   const { rows } = await db.query('SELECT b.id AS owner, (SELECT id FROM workspaces WHERE slug = $2::text) AS workspace FROM bauherren b WHERE b.email = $1::text', [email, 'acme'])
@@ -69,91 +73,87 @@ test.beforeAll(async () => {
   await db.end()
 })
 
-const signIn = async (page: Page, theme: 'light' | 'dark') => {
+const signIn = async (page: Page, theme: 'light' | 'dark', who = email) => {
   await page.addInitScript((t) => localStorage.setItem('bauherr-theme', t), theme)
   await page.goto('/login')
   await page.waitForLoadState('networkidle')
-  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Email').fill(who)
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
 }
-const shoot = async (page: Page, name: string, opts: { fullPage?: boolean } = {}) => {
+const shoot = async (page: Page, name: string) => {
   await page.addStyleTag({ content: 'nextjs-portal{display:none!important}*{caret-color:transparent!important}' })
   await page.waitForLoadState('networkidle')
   await page.mouse.move(1, 1)
-  await page.screenshot({ path: `${out}/${name}.png`, animations: 'disabled', ...opts })
+  const visible = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll<HTMLInputElement>('input,textarea')].map((e) => e.value).join(' '))
+  expect(seededIdentifiers.filter((id) => visible.includes(id)), `seeded identifiers visible on ${name}`).toEqual([])
+  await page.screenshot({ path: `${out}/${name}.png`, animations: 'disabled' })
 }
 
-for (const theme of ['light', 'dark'] as const) {
-  test(`workflow ${theme}`, async ({ page }) => {
-    await signIn(page, theme)
+const shots: [string, string, (page: Page) => Promise<void>][] = [
+  ['workflow', email, async (page) => {
     await page.goto('/')
     await expect(page.getByTestId('workflow')).toBeVisible()
-    await shoot(page, theme === 'light' ? 'screenshot-workflow' : 'screenshot-workflow-dark')
-  })
-}
-
-for (const theme of ['light', 'dark'] as const) {
-  test(`workflow editor ${theme}`, async ({ page }) => {
-    await signIn(page, theme)
+  }],
+  ['workflow-editor', email, async (page) => {
     await page.goto('/workflow/edit')
     await expect(page.getByTestId('step').first()).toBeVisible()
-    await shoot(page, theme === 'light' ? 'screenshot-workflow-editor' : 'screenshot-workflow-editor-dark')
-  })
+  }],
+  ['inbox', email, async (page) => {
+    await page.goto('/inbox?checkpoint=Approve+plan')
+    await expect(page.locator('article[data-decision]').first()).toBeVisible()
+  }],
+  ['ticket', email, async (page) => {
+    await page.goto('/')
+    await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
+    await expect(page).toHaveURL(/\/tickets\/\d+$/)
+  }],
+  ['insights', email, async (page) => {
+    await page.goto('/insights')
+    await expect(page.getByRole('heading', { name: 'Insights', level: 1 })).toBeVisible()
+  }],
+  ['requests', owner, async (page) => {
+    await page.goto('/requests')
+    await expect(page.getByTestId('needs-row')).toContainText('Add an invoice filter')
+  }],
+  ['request-card', owner, async (page) => {
+    await page.goto('/requests')
+    await page.getByTestId('draft').getByRole('link', { name: 'Checkout is down' }).click()
+    await expect(page.getByTestId('request-card').getByLabel('Title')).toHaveValue('Checkout is down')
+  }],
+  ['chat', email, async (page) => {
+    await page.goto('/inbox')
+    await page.getByTestId('chat-open').click()
+    const dock = page.getByTestId('chat-dock')
+    const input = dock.getByRole('textbox', { name: 'Message the factory' })
+    await dock.getByTestId('thread-list-button').click()
+    await page.getByTestId('thread-item').first().click()
+    await expect(dock).toContainText('22 decisions wait for you', { timeout: 30_000 })
+    await input.fill('approve #40')
+    await input.press('Enter')
+    await expect(dock.getByTestId('confirm-card')).toBeVisible({ timeout: 30_000 })
+  }],
+  ['templates', email, async (page) => {
+    await page.goto('/settings/templates')
+    await page.locator('table a').first().click()
+  }],
+  ['team', email, async (page) => {
+    await page.goto('/team')
+    await page.getByRole('radiogroup', { name: 'Roles' }).locator('[data-role=reviewer]').click()
+    await expect(page.locator('#ses_e2e_working')).toContainText('Working')
+    await expect(page.locator('#ses_e2e_idle')).toContainText('Idle')
+    await page.addStyleTag({ content: '[data-testid=connect]{display:none!important}section[aria-labelledby=role-title]{min-height:0!important}section[aria-labelledby=sessions-engineer]{display:none!important}' }) // roster, role, a working and an idle session in one view
+    await page.setViewportSize({ width: 1440, height: 1100 })
+  }],
+]
+
+for (const [name, who, prepare] of shots) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`${name} ${theme}`, async ({ page }) => {
+      await signIn(page, theme, who)
+      await prepare(page)
+      await shoot(page, `screenshot-${name}${theme === 'dark' ? '-dark' : ''}`)
+    })
+  }
 }
-
-test('inbox', async ({ page }) => {
-  await signIn(page, 'light')
-  await page.goto('/inbox?checkpoint=Approve+plan')
-  await expect(page.locator('article[data-decision]').first()).toBeVisible()
-  await shoot(page, 'screenshot-inbox')
-})
-
-test('ticket', async ({ page }) => {
-  await signIn(page, 'light')
-  await page.goto('/')
-  await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
-  await expect(page).toHaveURL(/\/tickets\/\d+$/)
-  await shoot(page, 'screenshot-ticket')
-})
-
-test('insights', async ({ page }) => {
-  await signIn(page, 'light')
-  await page.goto('/insights')
-  await expect(page.getByRole('heading', { name: 'Insights', level: 1 })).toBeVisible()
-  await shoot(page, 'screenshot-insights')
-})
-
-test('chat', async ({ page }) => {
-  await signIn(page, 'light')
-  await page.goto('/inbox')
-  await page.getByTestId('chat-open').click()
-  const dock = page.getByTestId('chat-dock')
-  const input = dock.getByRole('textbox', { name: 'Message the factory' })
-  await dock.getByTestId('thread-list-button').click()
-  await page.getByTestId('thread-item').first().click()
-  await expect(dock).toContainText('22 decisions wait for you', { timeout: 30_000 })
-  await input.fill('approve #40')
-  await input.press('Enter')
-  await expect(dock.getByTestId('confirm-card')).toBeVisible({ timeout: 30_000 })
-  await shoot(page, 'screenshot-chat')
-})
-
-test('templates', async ({ page }) => {
-  await signIn(page, 'light')
-  await page.goto('/settings/templates')
-  await page.locator('table a').first().click()
-  await shoot(page, 'screenshot-templates')
-})
-
-test('team', async ({ page }) => {
-  await signIn(page, 'light')
-  await page.goto('/team')
-  await page.getByRole('radiogroup', { name: 'Roles' }).locator('[data-role=reviewer]').click()
-  await expect(page.locator('#ses_e2e_working')).toContainText('Working')
-  await expect(page.locator('#ses_e2e_idle')).toContainText('Idle')
-  await page.addStyleTag({ content: '[data-testid=connect]{display:none!important}section[aria-labelledby=role-title]{min-height:0!important}section[aria-labelledby=sessions-engineer]{display:none!important}' }) // roster, role, a working and an idle session in one view
-  await page.setViewportSize({ width: 1440, height: 1100 })
-  await shoot(page, 'screenshot-team')
-})

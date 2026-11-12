@@ -17,10 +17,8 @@ Bauherr connects to the issue tracker and repositories you already use. Agents p
 [Read the docs](features.md){ .md-button }
 [Source on GitHub](https://github.com/getbauherr/bauherr){ .md-button }
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="screenshots/screenshot-workflow-dark.png">
-  <img class="bh-shot bh-shot--hero" src="screenshots/screenshot-workflow.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints">
-</picture>
+<img class="bh-shot bh-shot--hero bh-light" src="screenshots/screenshot-workflow.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints">
+<img class="bh-shot bh-shot--hero bh-dark" src="screenshots/screenshot-workflow-dark.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints (dark theme)">
 
 Pre-release: the data model and the workflow can still change between versions. Back up the database before you upgrade.
 
@@ -95,7 +93,8 @@ You are asked at **Answer questions**, **Approve plan** and **Approve production
 One prepared card per decision, grouped by checkpoint: the ask, a recommendation, the facts and the real options. Approve a plan, accept on staging, approve production, or give a review one more round. More in [Features](features.md#decisions).
 
 </div>
-<img class="bh-shot" src="screenshots/screenshot-inbox.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts">
+<img class="bh-shot bh-light" src="screenshots/screenshot-inbox.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-inbox-dark.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts (dark theme)">
 </section>
 
 <section class="bh-feature bh-feature--flip" markdown>
@@ -106,7 +105,20 @@ One prepared card per decision, grouped by checkpoint: the ask, a recommendation
 The stages a Ticket visited on the same graph, and a Steps timeline with every wait and every piece of work, with its executor, model, outcome and cost. More in [Features](features.md#tickets).
 
 </div>
-<img class="bh-shot" src="screenshots/screenshot-ticket.png" alt="Ticket page with the Path through the stages and the Steps timeline">
+<img class="bh-shot bh-light" src="screenshots/screenshot-ticket.png" alt="Ticket page with the Path through the stages and the Steps timeline">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-ticket-dark.png" alt="Ticket page with the Path through the stages and the Steps timeline (dark theme)">
+</section>
+
+<section class="bh-feature" markdown>
+<div markdown>
+
+## Requests: ask in plain words
+
+A chat fills a request card with the type, the problem, what is done when it works and how urgent it is. Every field stays editable, and you send it to the factory when it is ready. The Requests page lists your drafts and your sent requests. See [Chat](chat.md).
+
+</div>
+<img class="bh-shot bh-light" src="screenshots/screenshot-request-card.png" alt="Request card for an urgent bug: title, what is broken, for whom and since when, and what is still missing before it can be sent">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-request-card-dark.png" alt="Request card for an urgent bug: title, what is broken, for whom and since when, and what is still missing before it can be sent (dark theme)">
 </section>
 
 <section class="bh-feature" markdown>
@@ -117,7 +129,8 @@ The stages a Ticket visited on the same graph, and a Steps timeline with every w
 Lead time, cycle time and time per stage with the bottleneck, and [tokens and cost](cost.md) per model, role, session, stage and Ticket.
 
 </div>
-<img class="bh-shot" src="screenshots/screenshot-insights.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck">
+<img class="bh-shot bh-light" src="screenshots/screenshot-insights.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-insights-dark.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck (dark theme)">
 </section>
 
 <section class="bh-feature bh-feature--flip" markdown>
@@ -128,7 +141,8 @@ Lead time, cycle time and time per stage with the bottleneck, and [tokens and co
 A chat on every page that knows the page, with stored threads. An action such as approve, accept or stop is shown as a card and runs only when you confirm it. See [Chat](chat.md).
 
 </div>
-<img class="bh-shot" src="screenshots/screenshot-chat.png" alt="Docked chat with an answer and a confirm card for approving a plan">
+<img class="bh-shot bh-light" src="screenshots/screenshot-chat.png" alt="Docked chat with an answer and a confirm card for approving a plan">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-chat-dark.png" alt="Docked chat with an answer and a confirm card for approving a plan (dark theme)">
 </section>
 
 <section class="bh-feature" markdown>
@@ -139,7 +153,8 @@ A chat on every page that knows the page, with stored threads. An action such as
 The texts the factory writes are editable templates, with a live preview. Settings are grouped by scope in the [UI](ui.md).
 
 </div>
-<img class="bh-shot" src="screenshots/screenshot-templates.png" alt="Template editor with the text on the left and a live preview on the right">
+<img class="bh-shot bh-light" src="screenshots/screenshot-templates.png" alt="Template editor with the text on the left and a live preview on the right">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-templates-dark.png" alt="Template editor with the text on the left and a live preview on the right (dark theme)">
 </section>
 
 <section class="bh-feature bh-feature--flip" markdown>
@@ -150,7 +165,8 @@ The texts the factory writes are editable templates, with a live preview. Settin
 An Agent team page to pick a role and see its profile, skills and model, and which sessions are working on what and which are idle. See [Session mode](session-mode.md).
 
 </div>
-<img class="bh-shot" src="screenshots/screenshot-team.png" alt="Agent team page: the roster with the Reviewer selected, one session working on a Ticket and one idle">
+<img class="bh-shot bh-light" src="screenshots/screenshot-team.png" alt="Agent team page: the roster with the Reviewer selected, one session working on a Ticket and one idle">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-team-dark.png" alt="Agent team page: the roster with the Reviewer selected, one session working on a Ticket and one idle (dark theme)">
 </section>
 
 <section class="bh-section" id="install" markdown>

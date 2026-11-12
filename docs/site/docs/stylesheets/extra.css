@@ -50,6 +50,8 @@
 .bh-feature--flip > div { order: 2; }
 .bh-shot { width: 100%; height: auto; border: 1px solid var(--md-default-fg-color--lightest); border-radius: .5rem; box-shadow: 0 8px 28px rgb(0 0 0 / .12); }
 .bh-shot--hero { margin-top: 2rem; }
+.bh-dark, [data-md-color-scheme="slate"] .bh-light { display: none; }
+[data-md-color-scheme="slate"] .bh-dark { display: block; }
 @media (max-width: 52rem) {
   .bh-feature, .bh-feature--flip { grid-template-columns: 1fr; gap: 1rem; }
   .bh-feature--flip > div { order: 0; }
