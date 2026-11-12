@@ -104,9 +104,10 @@ Where your own contracted prices go: a file in `/gateway/catalogs/` **without** 
 
 ## Where it listens
 
-- Port 4000 is published on **loopback only** (`127.0.0.1:4000`): sessions on the same machine reach it, nothing else does.
-- An instance installed with the `bauherr` CLI does not publish port 4000 (its compose file has no fixed host ports); session cost through the gateway currently needs the repository's `compose.yaml` or your own port mapping for the `gateway` service.
-- Sessions on another machine need a TLS proxy in front of port 4000 (your own Caddy, nginx or Traefik). Then set `GATEWAY_PUBLIC_URL=https://gateway.example.com` so the setup blocks show that address. Keys travel in headers: never expose port 4000 without TLS.
+- The gateway is published on **loopback only** (`127.0.0.1:${GATEWAY_PORT:-4000}`): sessions on the same machine reach it, nothing else does. The default host port is 4000; set `GATEWAY_PORT` in the env file next to `compose.yaml` to change it.
+- `bauherr init` asks for the gateway port (`--gateway-port <n>`, default 4000), refuses a port that is already in use, and writes `GATEWAY_PORT` to the env file; run a second install with another port. Re-running `init` (the upgrade path) keeps the stored value, and an install that predates the variable gets 4000.
+- The app reads `GATEWAY_PORT` too: the setup blocks (Session setup, harness snippets) show `http://127.0.0.1:<GATEWAY_PORT>` unless `GATEWAY_PUBLIC_URL` is set.
+- Sessions on another machine need a TLS proxy in front of the gateway port (your own Caddy, nginx or Traefik). Then set `GATEWAY_PUBLIC_URL=https://gateway.example.com` so the setup blocks show that address. Keys travel in headers: never expose the gateway port without TLS.
 - Port 15000 (the gateway's admin API and UI) has **no sign-in** and is not published by default: only Bauherr reaches it inside the compose network. The opt-in `gateway-ui` profile forwards it on loopback only (see below).
 
 ### The gateway UI

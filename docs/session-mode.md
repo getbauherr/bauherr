@@ -43,7 +43,7 @@ pnpm --filter server session:activate     # merges env into ~/.claude/settings.j
 pnpm --filter server session:deactivate   # restores the backup
 ```
 
-Activate sets `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, `ANTHROPIC_CUSTOM_HEADERS="x-agw-key: <session key>"` (no session name: it is fixed for every session of the machine, so the cost shows as "Unnamed gateway session"; prefer the generated block, which names each session) and maps the model tiers to `sub/claude-{haiku,sonnet,opus}-5-5`. Restart Claude Code afterwards. Claude Code keeps sending your own `Authorization`; the gateway forwards it to Anthropic and strips `x-agw-key`.
+Activate sets `ANTHROPIC_BASE_URL` to the gateway address (default `http://127.0.0.1:4000`, see [Where it listens](gateway.md#where-it-listens)), `ANTHROPIC_CUSTOM_HEADERS="x-agw-key: <session key>"` (no session name: it is fixed for every session of the machine, so the cost shows as "Unnamed gateway session"; prefer the generated block, which names each session) and maps the model tiers to `sub/claude-{haiku,sonnet,opus}-5-5`. Restart Claude Code afterwards. Claude Code keeps sending your own `Authorization`; the gateway forwards it to Anthropic and strips `x-agw-key`.
 
 ## Connect as a role
 
