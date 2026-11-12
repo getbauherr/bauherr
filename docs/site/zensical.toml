@@ -5,13 +5,24 @@ site_url = "https://getbauherr.dev/"
 extra_css = ["stylesheets/extra.css"]
 repo_name = "getbauherr/bauherr"
 repo_url = "https://github.com/getbauherr/bauherr"
-nav = [{ "Home" = "index.md" }]
+copyright = "Made with ❤️ in Cologne, Germany"
+exclude_docs = """
+screenshots/banner*.svg
+"""
+nav = [
+  { "Home" = "index.md" },
+  { "Get started" = ["features.md", "session-mode.md"] },
+  { "Using the factory" = ["ui.md", "chat.md", "intake-embed.md", "media.md"] },
+  { "Operating it" = ["auth.md", "cost.md", "gateway.md", "observability.md", "router.md", "releasing.md"] },
+  { "Reference" = ["spec/workflow.md", "spec/people.md"] },
+  { "Legal" = ["legal.md"] },
+]
 
 [project.theme]
 language = "en"
 logo = "assets/bauherr-mark.svg"
 favicon = "assets/bauherr-mark.svg"
-features = ["content.code.copy", "navigation.top"]
+features = ["content.code.copy", "navigation.top", "navigation.tabs", "navigation.sections", "navigation.footer", "search.highlight"]
 
 [project.theme.font]
 text = "Archivo"
@@ -32,5 +43,7 @@ icon = "fontawesome/brands/github"
 link = "https://github.com/getbauherr/bauherr"
 
 [project.markdown_extensions.attr_list]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
 [project.markdown_extensions.pymdownx.highlight]
 [project.markdown_extensions.pymdownx.superfences]

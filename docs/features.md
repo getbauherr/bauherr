@@ -13,7 +13,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Workflow graph | The stages as a graph with open Tickets, who waits on whom, medians and the human checkpoints; the home page | `/` | Live |
 | Graph and Epics views | The Ticket dependency graph, and parent Tickets with their sub-tickets | `/?view=graph`, `/?view=epics` | Live |
 | Stage table and ranking | Tickets per stage; drag, Alt+arrows or the row menu rank them | `/` | Live |
-| Stages from the factory file | Stage kinds (triage, plan, build, review, release, container, done, agent, human), roles, outcomes and WIP in one file; [`pack/factory.yaml`](../pack/factory.yaml) is the default | `/workflow/edit`; "Edit workflow" on `/` (Admin) | Live |
+| Stages from the factory file | Stage kinds (triage, plan, build, review, release, container, done, agent, human), roles, outcomes and WIP in one file; [`pack/factory.yaml`](https://github.com/getbauherr/bauherr/blob/main/pack/factory.yaml) is the default | `/workflow/edit`; "Edit workflow" on `/` (Admin) | Live |
 | WIP limits | A cap on open Tickets per stage | Workflow editor, "at most N tickets at a time" on a step (`/workflow/edit`, Admin) | Live |
 | Overlap hold | A Build waits while another Ticket touches the same paths; paths that never hold, with suggestions | Settings › Factory › Workflow (Admin) | Live |
 | Fast lane (expedite lane) | An urgent bug skips Triage and plan approval and, per Product, staging approval; see [Urgent work](#urgent-work) | Request card "Urgent"; Ticket page "Put on the fast lane"; switch in the workflow editor | Live |
@@ -125,7 +125,7 @@ An urgent bug does not wait in the queue. On the request card the type Bug offer
 | Write-backs | Agents propose changes to the repository as merge requests | `/knowledge` (Admin) | Live |
 | Knowledge repo setting | The Connection and repository of the Knowledge repo | Settings › Workspace › Knowledge (`/settings/knowledge`) | Live |
 | Knowledge editor | Edit a document in the UI | "Edit" on a document of `/knowledge` (Admin), `/knowledge/edit` | Live |
-| Pack | Skills, rules, hooks and templates added to every Run, never committed | [`pack/`](../pack/README.md) | Live |
+| Pack | Skills, rules, hooks and templates added to every Run, never committed | [`pack/`](https://github.com/getbauherr/bauherr/blob/main/pack/README.md) | Live |
 | Editable text templates | The comment and request texts, with a live preview | `/settings/templates` | Live |
 
 ## Models and cost
@@ -158,12 +158,12 @@ An urgent bug does not wait in the queue. On the request card the type Bug offer
 
 | Feature | What it does | Where | Status |
 |---|---|---|---|
-| `bauherr` CLI | `init`, `up`, `down`, `status`, `seed`, `eval`, `apply`, `export`, `pack lint` | CLI only: `npx bauherr`; [`packages/cli`](../packages/cli) | No UI |
+| `bauherr` CLI | `init`, `up`, `down`, `status`, `seed`, `eval`, `apply`, `export`, `pack lint` | CLI only: `npx bauherr`; [`packages/cli`](https://github.com/getbauherr/bauherr/tree/main/packages/cli) | No UI |
 | Pack lint | Checks the pack: size caps, cited paths, glossary terms, tiers vs the spec, no stack names in core, hook citations; red in CI on a finding | CI job `cli`; `bauherr pack lint` | No UI |
 | Skill eval | Replays a skill against cases and scores it | CLI only: `bauherr eval` | No UI |
 | MCP server | Frontier, claim, finish, worklog, evidence, knowledge; human gates refused for agent keys | MCP only: `/mcp` | No UI |
 | REST API | Payload's API; chat and intake endpoints | API only: `/api`, [chat.md](chat.md), [intake-embed.md](intake-embed.md) | No UI |
-| Runner | Runs one stage with the Claude Agent SDK in a fresh clone | job: [`packages/runner`](../packages/runner) | No UI |
+| Runner | Runs one stage with the Claude Agent SDK in a fresh clone | job: [`packages/runner`](https://github.com/getbauherr/bauherr/tree/main/packages/runner) | No UI |
 | Environment flags | `BAUHERR_DEFAULT_MODE`, `BAUHERR_ENABLE_ADMIN`, `OIDC_*`, `MEDIA_*`, `GATEWAY_URL`, `GATEWAY_PUBLIC_URL`, `GATEWAY_UI_URL`, `BAUHERR_PRICES_REFRESH`, `BAUHERR_PRICES_URL`, retention | env only: Environment | No UI |
 
 ## Known gaps
