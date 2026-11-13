@@ -9,9 +9,10 @@ import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere } from './epics'
 import { wipCounts } from '../../../lib/wip'
 import { fastLaneHolder } from '../../../lib/expedite'
+import { fastLaneText, overlapText } from '../../../lib/hold-text'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
 import { workflowFor } from '../../../lib/factory'
-import { byKind, is, wipStages, type Workflow } from '../../../lib/workflow'
+import { byKind, is, title, wipStages, type Workflow } from '../../../lib/workflow'
 import { statusLine, type Track } from './status'
 
 export type RunRow = {
@@ -176,7 +177,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       needsYou: need,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ wf, ticket: t, need: null, run: null, waiting: waitingText(wf, t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: overlap ? Number(overlap) || null : null,
-      queuedWhy: overlap ? `waits for #${overlap}, which changes the same files` : fastLanes.get(t.id) ? `Waiting for the fast lane: #${fastLanes.get(t.id)}` : t.waitingFor === 'checks' ? null : hold,
+      queuedWhy: overlap ? overlapText(title(wf, buildStage!), Number(overlap)) : fastLanes.get(t.id) ? fastLaneText(fastLanes.get(t.id)!) : t.waitingFor === 'checks' ? null : hold,
       forge: forges.get(t.product) ?? null,
       track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, releaseError: t.releaseError },
       children: containerIds.includes(t.id) ? { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length } : null,

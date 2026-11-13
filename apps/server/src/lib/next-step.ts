@@ -1,3 +1,4 @@
+import { overlapText } from './hold-text'
 import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
 import { is, liveStages, roleOf, title, type Workflow } from './workflow'
 
@@ -32,8 +33,8 @@ export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [
   if (wait === 'checks') return { label: 'Waiting for checks', enabled: false, reason: 'Waiting for the MR checks to finish. Review starts by itself.', links: [] }
   if (wait && waiting) {
     const overlap = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
-    const why = overlap ? `waits for #${overlap}, which changes the same files` : waiting.replace(/^Waiting: /, '')
-    return { label: 'Queued', enabled: false, reason: `Queued for ${cap(title(wf, wait))}: ${why}. Starts by itself.`, links: overlap ? holders.filter((h) => h.number === Number(overlap)).map((h) => ({ text: `#${h.number}`, href: `/tickets/${h.id}` })) : [] }
+    const reason = overlap ? overlapText(cap(title(wf, wait)), Number(overlap)) : `Queued for ${cap(title(wf, wait))}: ${waiting.replace(/^Waiting: /, '')}.`
+    return { label: 'Queued', enabled: false, reason: `${reason} Starts by itself.`, links: overlap ? holders.filter((h) => h.number === Number(overlap)).map((h) => ({ text: `#${h.number}`, href: `/tickets/${h.id}` })) : [] }
   }
   if (ticket.state === 'closed' || !!ticket.stage && is(wf, ticket.stage, 'done')) return { label: 'Done', enabled: false, reason: 'Closed.', links: [] }
   if (ticket.stage && is(wf, ticket.stage, 'release')) {
