@@ -705,6 +705,9 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const { proof, ...stored } = ran.artifacts
       const r = { ...ran, artifacts: stored }
       await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
+      // Ended while it ran (sendBack, cancel): its result is dropped, the Run keeps the status it was given.
+      const now = (await payload.findByID({ collection: 'runs', id: run.id, ...opts })).status as string
+      if (now !== 'running') return { output: { status: now } }
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review, { round: reviewRoundOf(ticket), demote: true }) : null
       let agent: { outcome: string; comment?: string } | null = null
       let agentError: string | undefined
