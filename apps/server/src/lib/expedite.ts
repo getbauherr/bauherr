@@ -33,6 +33,13 @@ const parked = async (payload: Payload, t: Doc): Promise<boolean> =>
 /** Whether another expedite Ticket of the Workspace is in flight. */
 const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> => (await inFlight(payload, t, {})).totalDocs > 0
 
+/** The number of the Ticket holding the fast-lane slot that a queued expedite Ticket (not yet in flight) waits for; null otherwise. */
+export const fastLaneHolder = async (payload: Payload, t: Doc): Promise<number | null> => {
+  if (!t.expedite || t.expediteYieldedTo || t.state === 'closed' || inFlightStages(workflowFor(t.workspace)).includes(t.stage)) return null
+  const [holder] = (await payload.find({ collection: 'tickets', where: holding(t, {}), sort: 'id', limit: 1, ...o })).docs as Doc[]
+  return holder?.number ?? null
+}
+
 /**
  * Whether the lane serves `t` now: flagged, the lane on, and it holds the Workspace's one expedite slot. A Ticket already in flight holds it unless an older flagged Ticket (lower id) is in flight too,
  * so a second Ticket flagged while another is in flight gets no bypass; one outside the lane enters only when the slot is free. A Ticket that yielded its place (`expediteYieldedTo`) is outside the lane until it takes it back.
@@ -99,10 +106,9 @@ export const startExpedites = async (payload: Payload): Promise<number> => {
     try {
       const wf = workflowFor(t.workspace)
       if (t.mergeSha || t.waitingFor || (t.labels as string[] | undefined)?.includes(NEEDS_REFINEMENT)) continue
-      // A Triage Run being worked on finishes first (its outcome then meets the flag); one nobody has claimed is cancelled: the lane skips the Triage queue.
+      // A Triage Run being worked on finishes first (its outcome then meets the flag). An unclaimed one is cancelled only when the Ticket enters the lane: a queued Ticket keeps it.
       const triage = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'triage' } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, pagination: false, ...o })).docs as Doc[]
       if (triage.some((r) => r.status === 'running')) continue
-      for (const r of triage) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'expedite: the lane skips Triage', finishedAt: new Date().toISOString() }, ...o })
       const { tickets: ts } = await forgeOf(payload, id(t.product))
       if (!(await laneOn(payload, id(t.workspace)))) {
         await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })
@@ -113,6 +119,7 @@ export const startExpedites = async (payload: Payload): Promise<number> => {
         await commentOnce(payload, ts, t.number, QUEUED, 'Bauherr: another expedite Ticket is in flight. This one is next and enters the lane when it is released.')
         continue
       }
+      for (const r of triage) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'expedite: the lane skips Triage', finishedAt: new Date().toISOString() }, ...o })
       const stage = HAS_PLAN.test((await ts.get(String(t.number))).body ?? '') ? nameOf(wf, 'build') : nameOf(wf, 'plan')
       const entered = await enterStage(payload, t, stage, async () => {
         await moveStage(payload, ts, t, stage, 'expedite')

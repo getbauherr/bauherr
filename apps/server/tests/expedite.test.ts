@@ -164,6 +164,27 @@ describe('one at a time', () => {
     expect(await runs(b.id, 'plan')).toHaveLength(1)
   })
 
+  it('a queued expedite Ticket keeps its Triage Run and names the fast-lane holder', async () => {
+    const { fastLaneHolder } = await import('../src/lib/expedite')
+    const holder = await inBuild('holder', ['src/a.ts'], { expedite: true })
+    fake.actingAs = 'maria'
+    await fake.tickets(repo).addLabels(String(holder.n), [EXPEDITE_LABEL])
+    fake.actingAs = 'factory'
+    const second = await issue('second', '', [])
+    await poll()
+    fake.actingAs = 'maria'
+    await fake.tickets(repo).addLabels(String(second.number), [EXPEDITE_LABEL])
+    fake.actingAs = 'factory'
+    await poll()
+    const b = await byNumber(second.number)
+    expect(b.stage ?? null).toBeNull()
+    expect((await runs(b.id, 'triage')).map((r) => r.status)).toEqual(['queued'])
+    expect(await fastLaneHolder(payload, b)).toBe(holder.n)
+    expect(await fastLaneHolder(payload, await reload(holder.id))).toBeNull()
+    const { loadOverviewRows } = await import('../src/app/(app)/lib/overview')
+    expect((await loadOverviewRows(ws, false)).tickets.find((t) => t.number === second.number)?.queuedWhy).toBe(`Waiting for the fast lane: #${holder.n}`)
+  })
+
   it('Settings > Factory > Workflow off: the label is ignored with a Comment and Triage runs', async () => {
     await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: false }, ...o })
     const i = await issue('prod down')
