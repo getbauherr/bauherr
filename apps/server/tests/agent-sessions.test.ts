@@ -459,7 +459,7 @@ describe('loadTeam', () => {
     await db().execute(sql`UPDATE "runs" SET "mode" = 'autonomous', "executor" = 'runner', "started_at" = now() WHERE "id" = ${auto.run!.id}`)
 
     const team = await sessions.loadTeam(payload, ws)
-    expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
+    expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs'])
     const eng = team.roles.find((r) => r.id === 'engineer')!
     expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['Implementation', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'Plan', kind: 'plan' }, { name: 'build', title: 'Build', kind: 'build' }] })
     expect(eng.profile).toContain('Mission:')

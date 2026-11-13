@@ -17,6 +17,7 @@ skills:
   - {path: skills/manager, purpose: Manager thread over a queue of similar items (Review in v0.1)}
   - {path: skills/decision-sheet, purpose: Human-interaction protocol}
   - {path: skills/security-scan, purpose: Read-only security scan Run - procedure, root-cause grouping, severity rubric, findings.json}
+  - {path: skills/docs-check, purpose: Read-only docs check Run - stale claims and missing features since the last check, docs-findings.json}
   - {path: skills/mr-security-review, purpose: Security review of a factory MR between Build and Review - checklist, pass or findings (a conditional step of the Standard and Careful setup presets)}
   - {path: skills/ux-review, purpose: UX review of a factory MR that changes something people see - the Product's own UI rules first, states, copy, accessibility, pass or findings (a conditional step of the Careful preset)}
   - {path: skills/test-review, purpose: Test review of a bug-fix MR - a test that fails without the fix, the cases the request names, pass or findings (a conditional step of the Careful preset)}

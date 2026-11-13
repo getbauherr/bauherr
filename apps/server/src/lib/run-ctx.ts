@@ -18,6 +18,7 @@ import { storePlanTldr } from './decision'
 import { SKILL_TEMPLATES, forAgent, headingOf, template } from './templates'
 import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
+import { docsContext } from './docs-check'
 import { workflowFor } from './factory'
 import { byKind, is, nameOf, roleOf, stage as stageOf } from './workflow'
 
@@ -98,7 +99,7 @@ export const buildRunCtx = async (
   if (!gatewayUrl) throw new Error('GATEWAY_URL is not set')
   const ws = await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, ...opts })
   const modelByTier = await tierModels(payload, ws)
-  const mr = kind === 'plan' || kind === 'triage' || kind === 'scan' ? null : await prOf(payload, ticket)
+  const mr = kind === 'plan' || kind === 'triage' || kind === 'scan' || kind === 'docs' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
   // A Build Run pushes to this MR: a queued entry must be taken out first, a push would invalidate it.
   if (kind === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
@@ -111,7 +112,7 @@ export const buildRunCtx = async (
   const role = roleOf(wf, run.stage)
   const def = stageOf(wf, run.stage)
   const roleModel = !escalated && role?.provider && role.model ? `ws-${ws.slug}/${role.provider}/${role.model}` : undefined
-  const tier = escalated ? 'strong' : role?.tier ?? (kind === 'review' || kind === 'scan' ? 'standard' : 'cheap')
+  const tier = escalated ? 'strong' : role?.tier ?? (kind === 'review' || kind === 'scan' || kind === 'docs' ? 'standard' : 'cheap')
   const fixBase = kind === 'review' ? await fixBaseOf(payload, ticket) : null
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
@@ -129,6 +130,7 @@ export const buildRunCtx = async (
     ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
     product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
+      ...(kind === 'docs' && { docs: await docsContext(payload, productDoc) }),
       ...(kind === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
     connection: {
       gatewayUrl,

@@ -1,6 +1,6 @@
 import { kindOf, stage, wipStages, type Workflow } from './workflow'
 
-const SYSTEM_RUN_STAGES = ['scan', 'distill']
+const SYSTEM_RUN_STAGES = ['scan', 'docs', 'distill']
 
 const NAME = /^[a-z][a-z0-9-]*$/
 

@@ -29,7 +29,7 @@ export type RunCtx = {
     id: string;
     /** The Run's stage name in the workflow (display, gateway header); behaviour follows `kind`. */
     stage: string;
-    kind: 'triage' | 'plan' | 'build' | 'review' | 'scan' | 'agent';
+    kind: 'triage' | 'plan' | 'build' | 'review' | 'scan' | 'docs' | 'agent';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
@@ -40,7 +40,7 @@ export type RunCtx = {
   /** Agent Run: the workflow stage, its skill, the role profile and the outcome keys the agent may report. */
   agent?: { stage: string; title: string; skill: string; roleProfile: string; outcomes: string[] };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
-  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string };
+  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string; /** Docs Run: the Product's docs path globs and the Tickets merged since the last check. */ docs?: { paths: string[]; merged: { number: number; title: string; mergeSha: string }[] } };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
   /** Review Run: the review round (1 = first), and from round 2 the head the previous review covered; review only the diff from it to the new head (the fix). */
@@ -84,7 +84,7 @@ export type RunResult = {
   reason?: string;
   /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;
-  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; agentOutcome?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean; /** Build Run: the proof the Product's artifact rules asked for, with file bytes; the server stores it and drops the field from the Run. */ proof?: ProofItem[] };
+  artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; docs?: unknown; agentOutcome?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean; /** Build Run: the proof the Product's artifact rules asked for, with file bytes; the server stores it and drops the field from the Run. */ proof?: ProofItem[] };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
 };
 

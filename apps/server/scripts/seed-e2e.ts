@@ -80,6 +80,13 @@ for (const [name, slug] of [['Rc Web', 'rc-web'], ['Rc Api', 'rc-api']] as const
   await ensure('ticket_sources', { repo: `acme/${slug}` }, { repo: `acme/${slug}`, product: id, connection: rcGithub, cursor: '2026-10-30T09:00:00Z', workspace: rcWs })
 }
 await ensure('bauherren', { email: 'rc-owner@example.com' }, { email: 'rc-owner@example.com', password, role: 'product-owner', assignments: [{ workspace: rcWs, scope: 'products', products: [rcProducts[0]] }] })
+// docs-check.spec.ts: a Workspace of its own (`bauherr-ws=docsco`) with one Product (Docs Web) and a Bauherr; the spec starts a docs check there, so no other spec may read it.
+const docsWs = (await ensure('workspaces', { slug: 'docsco' }, { name: 'Docs Lab', slug: 'docsco', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
+await ensure('bauherren', { email: 'docs-bauherr@example.com' }, { email: 'docs-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: docsWs }] })
+const docsGithub = (await ensure('connections', { name: 'GitHub Docs' }, { name: 'GitHub Docs', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: docsWs })).id
+const docsProduct = (await ensure('products', { slug: 'docs-web' }, { name: 'Docs Web', slug: 'docs-web', workspace: docsWs })).id
+await ensure('repositories', { fullName: 'acme/docsweb' }, { fullName: 'acme/docsweb', product: docsProduct, workspace: docsWs })
+await ensure('ticket_sources', { repo: 'acme/docsweb' }, { repo: 'acme/docsweb', product: docsProduct, connection: docsGithub, cursor: '2026-10-30T09:00:00Z', workspace: docsWs })
 // conversation.spec.ts: a Workspace of its own (`bauherr-ws=conv`), an Admin and a Product owner only that spec signs in as, and three Tickets held by Triage (#1 the Docs Agent with four open points, #2 and #3 untouched by the first test), each with a succeeded Triage Run of a session. Twin in `src/lib/fake-forge.ts` (acme/conv).
 const convWs = (await ensure('workspaces', { slug: 'conv' }, { name: 'Conversation Lab', slug: 'conv', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'conv-admin@example.com' }, { email: 'conv-admin@example.com', password, role: 'admin', githubLogin: 'e2e-conv-admin' })

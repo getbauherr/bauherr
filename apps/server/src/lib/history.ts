@@ -35,7 +35,7 @@ type Opts = { cause: string; outcome?: string; run?: number | string; actor?: st
  */
 export const record = async (payload: Payload, ticketId: number | string, opts: Opts, loaded?: { ticket: Doc; run: Doc | null }): Promise<void> => {
   try {
-    if (opts.stage && !loaded && ['scan', 'distill'].includes(opts.stage)) return
+    if (opts.stage && !loaded && ['scan', 'docs', 'distill'].includes(opts.stage)) return
     const ticket = loaded?.ticket ?? ((await payload.findByID({ collection: 'tickets', id: ticketId, ...o })) as Doc)
     const wf = workflowFor(ticket.workspace)
     if (opts.stage && !stageDef(wf, opts.stage)) return

@@ -14,7 +14,7 @@ team:
         Never: reviews an MR it did not read in full, works outside the plan, or merges its own MR.
 workflow:
   stages:
-    - {name: triage, kind: triage, role: engineer, skill: triage, exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan], outcomes: {plan: plan, refine: triage, skip: backlog}}
+    - {name: triage, kind: triage, role: engineer, skill: triage, exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan, bauherr:docs-check], outcomes: {plan: plan, refine: triage, skip: backlog}}
     - {name: plan, kind: plan, role: engineer, skill: run-contract, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
     - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
     - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: review, stuck: escalate, replan: plan}}

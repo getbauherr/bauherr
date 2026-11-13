@@ -292,7 +292,7 @@ test('Product tabs: ?tab= addresses a tab, the setup checklist and the old #anch
   await expect(page).toHaveURL(/\/settings\/products\/\d+$/)
   const id = /\/settings\/products\/(\d+)/.exec(page.url())![1]!
   const tabs = page.getByRole('navigation', { name: 'Product' })
-  await expect(tabs.getByRole('link')).toHaveText(['Repository', 'Deploy', 'Approvals', 'Checks & merging', 'Releases', 'Security scan', 'Widget', 'Danger zone'])
+  await expect(tabs.getByRole('link')).toHaveText(['Repository', 'Deploy', 'Approvals', 'Checks & merging', 'Releases', 'Security scan', 'Docs', 'Widget', 'Danger zone'])
   await expect(tabs.getByRole('link', { name: 'Repository' })).toHaveAttribute('aria-current', 'page')
   await expect(page.locator('#repository')).toBeVisible()
 
@@ -327,7 +327,7 @@ test('screenshots of every Product tab', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' })
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Acme Web' }).click()
-  for (const [key, label] of [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const) {
+  for (const [key, label] of [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['docs', 'Docs'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const) {
     await tab(page, label)
     await expect(page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: label, exact: true })).toHaveAttribute('aria-current', 'page')
     await page.screenshot({ path: `${shots}/product-tab-${key}-light.png`, fullPage: true })

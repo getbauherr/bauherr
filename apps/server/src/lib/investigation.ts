@@ -23,8 +23,8 @@ export type InvestigationInput = { cause: string; decision: Decision; fix?: { ti
 /** Owner addition (2026-11-05): investigation Plan Runs get 60 turns and $2; the fresh Build Run after one gets double its normal caps. All run on the `strong` tier. */
 export const escalatedCaps = (kind: string | undefined, base: { maxTurns: number; maxBudgetUsd: number }) => (kind === 'plan' ? { maxTurns: 60, maxBudgetUsd: 2 } : { maxTurns: base.maxTurns * 2, maxBudgetUsd: base.maxBudgetUsd * 2 })
 
-/** Normal caps of a Run of stage kind `kind` (or `scan`), before `escalatedCaps` doubles them. */
-export const baseCaps = (kind: string | undefined) => (kind === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : kind === 'scan' ? { maxTurns: 30, maxBudgetUsd: 2 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
+/** Normal caps of a Run of stage kind `kind` (or `scan`, `docs`), before `escalatedCaps` doubles them. */
+export const baseCaps = (kind: string | undefined) => (kind === 'build' ? { maxTurns: 200, maxBudgetUsd: 5 } : kind === 'scan' ? { maxTurns: 30, maxBudgetUsd: 2 } : kind === 'docs' ? { maxTurns: 60, maxBudgetUsd: 2 } : { maxTurns: 20, maxBudgetUsd: 0.5 })
 
 /** Hard ceiling of one scan Run's USD budget, whatever the Product asks for. */
 export const SCAN_MAX_BUDGET_USD = 10
