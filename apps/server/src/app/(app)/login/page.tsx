@@ -11,7 +11,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   if (person) redirect(homeOf(person))
   const { error } = await searchParams
   const sso = oidcEnabled()
-  const passwordError = !!error && error !== 'oidc' && error !== 'oidc-link'
+  const passwordError = !!error && error !== 'oidc' && error !== 'oidc-link' && error !== 'oidc-role'
   const form = (
     <form action={login} className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
@@ -36,6 +36,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         <h1 className="display">Bauherr</h1>
       </div>
       {error === 'oidc-link' && <p role="alert" className="small text-destructive">This email already has a Bauherr account. Ask an Admin to link it to your SSO identity.</p>}
+      {error === 'oidc-role' && <p role="alert" className="small text-destructive">Your SSO account has no access to this Bauherr. Ask an Admin.</p>}
       {error === 'oidc' && <p role="alert" className="small text-destructive">Single sign-on failed. Try again or use your password.</p>}
       {sso && (
         <Button asChild>

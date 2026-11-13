@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { claimAt, emailOk, mergeClaims, resolveAccount, roleFrom, syncFrom, workspaceSlugsFrom } from '../src/lib/oidc'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { claimAt, emailOk, mergeClaims, resolveAccount, roleFrom, roleRequired, syncFrom, workspaceSlugsFrom } from '../src/lib/oidc'
 import { createTestDb, type TestDb } from './helpers/test-db'
 import { isLocked, oidcStrategy, SESSION_COOKIE, signSession, SESSION_TTL_S, verifySession } from '../src/lib/oidc-session'
 
@@ -21,6 +21,36 @@ describe('claim mapping', () => {
   it('strips the leading slash and ignores non-strings', () => {
     expect(workspaceSlugsFrom(claims, 'groups')).toEqual(['acme', 'beta'])
     expect(workspaceSlugsFrom({}, 'groups')).toEqual([])
+  })
+})
+
+describe('OIDC_BAUHERR_ROLE', () => {
+  const po = 'po'
+  it('grants bauherr only for that value when set', () => {
+    expect(roleFrom({ r: ['x'] }, 'r', 'adm', undefined, 'bh')).toBeUndefined()
+    expect(roleFrom({ r: ['bh'] }, 'r', 'adm', undefined, 'bh')).toBe('bauherr')
+  })
+  it('keeps admin and product owner winning', () => {
+    expect(roleFrom({ r: ['bh', 'adm'] }, 'r', 'adm', po, 'bh')).toBe('admin')
+    expect(roleFrom({ r: ['bh', po] }, 'r', 'adm', po, 'bh')).toBe('product-owner')
+    expect(roleFrom({ r: [po] }, 'r', 'adm', po, 'bh')).toBe('product-owner')
+  })
+  it('refuses a missing claim when set, keeps today when unset', () => {
+    expect(roleFrom({}, 'r', 'adm', undefined, 'bh')).toBeUndefined()
+    expect(roleFrom({}, 'r', 'adm', undefined, undefined)).toBe('bauherr')
+  })
+  it('syncFrom yields no role for unmapped or absent claims when set', () => {
+    vi.stubEnv('OIDC_BAUHERR_ROLE', 'bh')
+    try {
+      expect(roleRequired()).toBe(true)
+      expect(syncFrom({}).role).toBeUndefined()
+      expect(syncFrom({ realm_access: { roles: ['offline_access'] } }).role).toBeUndefined()
+      expect(syncFrom({ realm_access: { roles: ['bh'] } }).role).toBe('bauherr')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(roleRequired()).toBe(false)
+    expect(syncFrom({})).toEqual({})
   })
 })
 

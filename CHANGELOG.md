@@ -7,6 +7,12 @@ All notable changes to this project are documented in this file. Format: [Keep a
 ### Changed
 - The plan approval gate is on by default: every plan waits for the owner's approval before Build starts. It was off silently. An installation that wants plans to pass without it removes `gate: human` from the `plan` stage of its factory file (Settings > Workflow, or `bauherr apply`).
 
+## 0.3.0
+
+### Features
+- `OIDC_BAUHERR_ROLE`: when set, SSO sign-in is refused (`/login?error=oidc-role`) unless the role claim maps to admin, product-owner or this value; an existing SSO account that no longer maps is refused and its sessions end. Unset keeps today's behaviour. ([#542](https://github.com/getbauherr/bauherr/issues/542))
+- `OIDC_PRODUCT_OWNER_ROLE`: maps a role claim value to `product-owner` (not in 0.2.x).
+
 ## 0.2.0 - 2026-11-09
 
 ### Features

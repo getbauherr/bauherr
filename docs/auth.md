@@ -16,6 +16,7 @@ Authorization code flow with PKCE, `state` and `nonce`; endpoints come from disc
 | `OIDC_ROLE_CLAIM` | `realm_access.roles` | Dot path into the ID token or userinfo |
 | `OIDC_ADMIN_ROLE` | `bauherr-admin` | Value in the role claim that grants role `admin`; anyone else is `bauherr` (or `product-owner` with `OIDC_PRODUCT_OWNER_ROLE`) |
 | `OIDC_PRODUCT_OWNER_ROLE` | unset | Value in the role claim that grants role `product-owner` (no part of the factory but their own profile, see `docs/spec/people.md`). The admin role wins; unset maps nobody. |
+| `OIDC_BAUHERR_ROLE` | unset | Value in the role claim that grants role `bauherr`. When set, a sign-in whose claim carries none of the admin, product-owner or this value (or has no role claim) is refused. Unset: every realm user gets `bauherr`. |
 | `OIDC_WORKSPACE_CLAIM` | `groups` | Claim whose values are Workspace slugs (a leading `/` is stripped) |
 | `OIDC_DISPLAY_NAME` | issuer host | Label on the button |
 
@@ -31,14 +32,16 @@ Sign-in rules:
 - Session: cookie `bauherr-session`, an HS256 token signed with `PAYLOAD_SECRET` (claims `id`, `v`, `typ=bauherr-session`, `aud=bauherr`, 14 days, HttpOnly, `Secure` when `PUBLIC_URL` is https), accepted by the UI, `/admin` (only when `BAUHERR_ENABLE_ADMIN=1`) and the REST API through the Payload auth strategy `oidc`.
 - Lifetime: sessions last 14 days (`SESSION_TTL_S`) for SSO and password sign-in (the Bauherren `auth.tokenExpiration` uses the same constant); logout ends them at once.
 - Revocation: the token carries the Bauherr's `sessionVersion`. It is rejected when the version differs, the account is locked, or the Bauherr no longer exists. Signing out of the UI increments `sessionVersion`, which ends every SSO session of that Bauherr. Logging out of `/admin` (when enabled) does not bump it. A locked account's session stops working until the lock ends or an Admin unlocks it (Settings, People).
-- Errors: `/login?error=oidc` (any failure) and `/login?error=oidc-link` (link required). Server logs carry `oidc_login_failed` or `oidc_callback_failed` plus the error name and message only; tokens, claims and emails are never logged.
+- Role required: with `OIDC_BAUHERR_ROLE` set, a user with no mapped role is refused before anything is created or written (`/login?error=oidc-role`, generic message). An existing SSO account (matched by `oidcSubject`) that no longer maps is refused the same way and its `sessionVersion` is incremented, ending every open session. Password login is unaffected, so an Admin who forgets to grant themselves the role is not locked out entirely.
+- Errors: `/login?error=oidc` (any failure), `/login?error=oidc-link` (link required) and `/login?error=oidc-role` (no mapped role). Server logs carry `oidc_login_failed`, `oidc_callback_failed` or `oidc_login_refused` plus the error name and message only; tokens, claims and emails are never logged.
 
 ## Keycloak example
 
 1. Client: type OpenID Connect, client authentication on (confidential), standard flow on, valid redirect URI `https://bauherr.example.com/auth/oidc/callback`.
 2. Realm roles: create `bauherr-admin` and assign it to admins. The default `roles` client scope maps realm roles to `realm_access.roles`; make sure "Add to ID token" is on for that mapper (or "Add to userinfo").
 3. Groups: create a group per Workspace named by its slug (`acme` or `/acme`). Add a "Group Membership" mapper to the client scope with token claim name `groups`, full group path on or off, added to ID token or userinfo.
-4. Compose, in `.env` next to `compose.yaml`:
+4. Optional, to restrict who may sign in: create client roles `admin`, `bauherr` and `product-owner` on the client, assign them to users, and add a "User Client Role" mapper (client `bauherr`, multivalued, token claim name `resource_access.bauherr.roles`, added to ID token). Then set `OIDC_ROLE_CLAIM=resource_access.bauherr.roles`, `OIDC_ADMIN_ROLE=admin`, `OIDC_PRODUCT_OWNER_ROLE=product-owner`, `OIDC_BAUHERR_ROLE=bauherr`. Give yourself `admin` first.
+5. Compose, in `.env` next to `compose.yaml`:
 
 ```bash
 OIDC_ISSUER=https://sso.example.com/realms/acme

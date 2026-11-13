@@ -2,7 +2,7 @@ import config from '@payload-config'
 import { randomBytes } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getPayload, type Where } from 'payload'
-import { emailOk, finishLogin, OIDC_COOKIE, oidcEnabled, publicUrl, resolveAccount, syncFrom, warnIfMisconfigured, type OidcTransaction } from '../../../../../lib/oidc'
+import { emailOk, finishLogin, OIDC_COOKIE, oidcEnabled, publicUrl, resolveAccount, roleRequired, syncFrom, warnIfMisconfigured, type OidcTransaction } from '../../../../../lib/oidc'
 import { homeOf, resyncRole } from '../../../../../lib/people'
 import { SESSION_COOKIE, SESSION_TTL_S, signSession } from '../../../../../lib/oidc-session'
 
@@ -34,6 +34,11 @@ export const GET = async (req: NextRequest) => {
     if (action === 'refuse') return fail('oidc-link')
 
     const sync = syncFrom(claims)
+    if (roleRequired() && !sync.role) {
+      if (bySubject) await payload.update({ collection: 'bauherren', id: bySubject.id, data: { sessionVersion: (bySubject.sessionVersion ?? 0) + 1 }, ...o })
+      payload.logger.warn('oidc_login_refused')
+      return fail('oidc-role')
+    }
     const tenants = sync.slugs
       ? sync.slugs.length
         ? (await payload.find({ collection: 'workspaces', where: { slug: { in: sync.slugs } }, pagination: false, ...o })).docs.map((w) => ({ tenant: w.id }))

@@ -54,18 +54,20 @@ export const claimAt = (claims: Claims, path: string): unknown => path.split('.'
 
 const strings = (v: unknown): string[] => (typeof v === 'string' ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
-/** The admin claim wins, then `OIDC_PRODUCT_OWNER_ROLE` (unset: nobody is mapped to a Product owner), else `bauherr`. */
-export const roleFrom = (claims: Claims, roleClaim = process.env.OIDC_ROLE_CLAIM || 'realm_access.roles', adminRole = process.env.OIDC_ADMIN_ROLE || 'bauherr-admin', productOwnerRole = process.env.OIDC_PRODUCT_OWNER_ROLE): Role => {
+/** The admin claim wins, then `OIDC_PRODUCT_OWNER_ROLE` (unset: nobody is mapped to a Product owner), else `bauherr`. With `OIDC_BAUHERR_ROLE` set, `bauherr` needs that value and anyone else gets `undefined` (refused). */
+export const roleFrom = (claims: Claims, roleClaim = process.env.OIDC_ROLE_CLAIM || 'realm_access.roles', adminRole = process.env.OIDC_ADMIN_ROLE || 'bauherr-admin', productOwnerRole = process.env.OIDC_PRODUCT_OWNER_ROLE, bauherrRole = process.env.OIDC_BAUHERR_ROLE): Role | undefined => {
   const roles = strings(claimAt(claims, roleClaim))
-  return roles.includes(adminRole) ? 'admin' : productOwnerRole && roles.includes(productOwnerRole) ? 'product-owner' : 'bauherr'
+  return roles.includes(adminRole) ? 'admin' : productOwnerRole && roles.includes(productOwnerRole) ? 'product-owner' : !bauherrRole || roles.includes(bauherrRole) ? 'bauherr' : undefined
 }
+
+export const roleRequired = (): boolean => !!process.env.OIDC_BAUHERR_ROLE
 
 const roleClaim = () => process.env.OIDC_ROLE_CLAIM || 'realm_access.roles'
 const workspaceClaim = () => process.env.OIDC_WORKSPACE_CLAIM || 'groups'
 
 /** Only the claims that are present: an absent claim keeps the stored value. */
 export const syncFrom = (claims: Claims): { role?: Role; slugs?: string[] } => ({
-  ...(Array.isArray(claimAt(claims, roleClaim())) && { role: roleFrom(claims) }),
+  ...((roleRequired() || Array.isArray(claimAt(claims, roleClaim()))) && { role: roleFrom(claims) }),
   ...(Array.isArray(claimAt(claims, workspaceClaim())) && { slugs: workspaceSlugsFrom(claims) }),
 })
 
