@@ -19,6 +19,8 @@ import { startSecurityScan } from '../../../../lib/security-scan'
 import { DEFAULT_DOCS_PATHS, startDocsCheck } from '../../../../lib/docs-check'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
 import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
+import { monitoringRows, SERVICES, testMonitoring, TITLES, type Service } from '../../../../lib/monitoring'
+import { decrypt } from '../../../../lib/secrets'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
@@ -354,6 +356,45 @@ export const saveConnection = act({}, async (c, fd) => {
     if (kind !== 'llm-provider' && s(fd, 'secret')) data.capabilities = { ...(await connectionInput(c.payload, id(fd))).capabilities, verifiedAt: undefined, lastError: undefined }
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
+})
+
+/** Monitoring Connections are instance-wide (one per service): the target is looked up by id and kind, not by Workspace. Admin only here and in the collection's hooks. */
+const monitoringRow = async (c: Awaited<ReturnType<typeof ctx>>, rowId: number) => {
+  const row = (await monitoringRows(c.payload)).find((r) => Number(r.id) === rowId)
+  if (!row) throw new Error('Not found.')
+  return row
+}
+
+/** Settings > Connections > Monitoring: saves Traces (OTLP) or Grafana. An empty secret keeps the stored one; `clearSecret` removes it. Any save clears the last test. */
+export const saveMonitoring = act({}, async (c, fd) => {
+  only(c.user)
+  const service = s(fd, 'service') as Service
+  if (!SERVICES.includes(service)) throw new Error('Unknown service.')
+  const config = service === 'grafana' ? { url: s(fd, 'url') } : { host: s(fd, 'host'), protocol: s(fd, 'protocol'), headerName: s(fd, 'headerName'), uiUrl: s(fd, 'uiUrl') }
+  const data = { kind: 'monitoring', service, name: TITLES[service], config, capabilities: {}, ...(fd.get('clearSecret') === 'on' ? { secret: null } : s(fd, 'secret') ? { secret: s(fd, 'secret') } : {}) }
+  if (id(fd)) {
+    const row = await monitoringRow(c, id(fd))
+    if (row.service !== service) throw new Error('Not found.')
+    await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
+  } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
+})
+
+/** Deletes the Connection; removing Traces puts the bundled tracing back (the collection's afterDelete hook). */
+export const removeMonitoring = act({}, async (c, fd) => {
+  only(c.user)
+  await monitoringRow(c, id(fd))
+  await c.payload.delete({ collection: 'connections', id: id(fd), ...c.w } as never)
+})
+
+/** Tests the saved Connection (5 s) and stores `verifiedAt` or `lastError`; the plain-word result is the notice or the error. */
+export const testMonitoringAction = act({}, async (c, fd) => {
+  only(c.user)
+  const row = await monitoringRow(c, id(fd))
+  const result = await testMonitoring(row.service, row.config, row.secret ? decrypt(row.secret) : null)
+  await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { verifiedAt: result.ok ? new Date().toISOString() : null, lastError: result.ok ? null : result.message } }, overrideAccess: true } as never)
+  revalidatePath('/settings/connections') // a failure throws, which `act` does not revalidate
+  if (!result.ok) throw new Error(result.message)
+  return result.message
 })
 
 /** LLM providers: re-saves unchanged, the afterChange hook verifies the provider again. Forges: asks the forge who the token belongs to and stores the outcome in `capabilities`. */
