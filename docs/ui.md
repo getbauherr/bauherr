@@ -203,6 +203,7 @@ Sections that moved keep working from old links: `/settings/workspace#tiers`, `#
 | Checks & merging | `pre-review`, `merging`, `overlap`, `path-sets` | pre-review rules, "Re-run a failed check once", detected merge mode with the preflight problems, Merge mode, Re-detect (Admin, own forms) |
 | Releases | `release` | who makes the release, "Remind me after (days)" (manual), "Publish releases as pre-release (rc)" (Bauherr makes the release; `releasePrerelease`) |
 | Security scan | `security` | last scan with links to its Run and the finding Tickets (`bauherr:security`), schedule toggle (the hourly `security-scan-tick` runs due schedules), cron, budget, turns, Scan now |
+| Docs | `docs` | last check with links to its Run and the docs Tickets (`bauherr:docs`), docs paths (Admin), Check docs now (Admin) |
 | Widget | `widget` | tokens with name, sites, "Sessions per hour" (`embed_tokens.maxSessionsPerHour`, empty = 20) and Revoke, Add widget, revoked tokens under Advanced |
 | Danger zone | `danger` | Delete Product |
 

@@ -212,7 +212,7 @@ it('answers count only for the sheet they were posted after', () => {
 })
 
 it('exclusions fail closed: a pack without exclude_labels falls back to the D2 list', () => {
-  const d2 = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
+  const d2 = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan', 'bauherr:docs-check']
   expect(jobs.excludedLabels(DEFAULT(), [])).toEqual(d2)
   expect(jobs.excludedLabels(DEFAULT(), [{ name: 'triage', kind: 'triage' }])).toEqual(d2)
   expect(jobs.excludedLabels(DEFAULT(), [{ name: 'triage', kind: 'triage', exclude_labels: [] }])).toEqual(d2)

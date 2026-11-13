@@ -37,6 +37,7 @@ import { watchKnowledgePrs } from '../lib/knowledge-edit'
 import { decrypt } from '../lib/secrets'
 import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
+import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
 import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
@@ -47,7 +48,7 @@ export const SESSION_TIMEOUT_MS = 30 * 60_000
 export { stageOf }
 
 /** Decision D2. Fallback only: pack/factory.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
-const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan']
+const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan', DOCS_CHECK_LABEL]
 export const excludedLabels = (wf: Workflow, stages: { name?: string; kind?: string; exclude_labels?: string[] }[] = packed(wf)): string[] => {
   const list = stages.find((s) => s.kind === 'triage')?.exclude_labels
   return list?.length ? list : D2_EXCLUDED
@@ -198,7 +199,7 @@ export const abandonRun = async (
   const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
   // The successor is the strong retry (ladder step 2); an investigation Run stays one.
-  const escalation = run.escalation ?? (run.investigation || ['triage', 'scan'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
+  const escalation = run.escalation ?? (run.investigation || ['triage', 'scan', 'docs'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
@@ -314,7 +315,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     try {
       const wf = workflowFor(run.workspace)
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
-      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before })) handled++
+      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan', 'docs'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
@@ -752,6 +753,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await record(payload, ticket.id, { run: run.id, outcome: agentError ? 'failed' : r.status, cause: 'run:finished' })
       await queueReconcile(payload, run.id)
       if (run.stage === 'scan' && (r.status === 'succeeded' || r.status === 'budget_exhausted') && r.artifacts.scan) await fileFindings(payload, { ...run, artifacts: r.artifacts })
+      if (run.stage === 'docs' && r.status === 'succeeded' && r.artifacts.docs) await fileDocsTicket(payload, { ...run, artifacts: r.artifacts })
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
       if (agent) await finishAgentRun(payload, run, ticket, agent.outcome, agent.comment)

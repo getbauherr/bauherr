@@ -11,13 +11,13 @@ import { Tab, Tabs } from '../../../../components/ui/tabs'
 import { RadioCards, SettingsSection, SetupChecklist, ToggleRow } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
-import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveMergeMode, saveOverlapIgnore, savePathSets, saveSecurityScan, startScan, suggestOverlapPaths } from '../../actions'
+import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveDocsCheck, saveMergeMode, saveOverlapIgnore, savePathSets, saveSecurityScan, startDocsCheckAction, startScan, suggestOverlapPaths } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
-const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
+const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['docs', 'Docs'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
 /** Section anchor -> tab, for the setup checklist and for links that name a section (`#production`). */
-const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', 'path-sets': 'checks', release: 'releases', security: 'security', widget: 'widget', danger: 'danger' }
+const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', 'path-sets': 'checks', release: 'releases', security: 'security', docs: 'docs', widget: 'widget', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 
@@ -33,7 +33,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const data = await loadProduct(workspace.id, Number((await params).id), isAdmin(user))
   if (!data) notFound()
-  const { product: p, connections, scan } = data
+  const { product: p, connections, scan, docsInfo } = data
   const admin = isAdmin(user)
   const d = p.deploy
   const base = `/settings/products/${p.id}`
@@ -236,6 +236,27 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 <Field name="maxTurns" label="Turns per scan" hint="Empty: 30." type="number" defaultValue={p.securityScan.maxTurns} />
               </SettingsForm>
               <SettingsForm action={startScan} submit="Scan now" inline>
+                <input type="hidden" name="id" value={p.id} />
+              </SettingsForm>
+            </>
+          )}
+        </SettingsSection>
+      )}
+
+      {tab === 'docs' && (
+        <SettingsSection id="docs" title="Docs" purpose="A read-only Run that compares the docs with the Tickets merged since its last check. With findings it files one docs Ticket in Plan; the change then goes through plan, build and review like any other.">
+          <p className="small text-muted-foreground" data-testid="last-docs-check">
+            Last check <span className="mono">{p.docsCheck.lastCheckAt ? when(p.docsCheck.lastCheckAt) : 'never'}</span>
+            {docsInfo.run && <> · <Link href={`/runs/${docsInfo.run.id}`}>Run #{docsInfo.run.id}</Link> ({docsInfo.run.status})</>}
+            {docsInfo.tickets.length > 0 && <> · Docs Tickets: {docsInfo.tickets.map((t, i) => <span key={t.id}>{i > 0 && ', '}<Link href={`/tickets/${t.id}`}>#{t.number}</Link></span>)}</>}
+          </p>
+          {admin && (
+            <>
+              <SettingsForm action={saveDocsCheck} submit="Save docs paths">
+                <input type="hidden" name="id" value={p.id} />
+                <Field name="paths" label="Docs paths" hint="One path glob per line, without spaces. A path may use * and **." rows={4} defaultValue={p.docsCheck.paths} example="docs/**/*.md" />
+              </SettingsForm>
+              <SettingsForm action={startDocsCheckAction} submit="Check docs now" inline>
                 <input type="hidden" name="id" value={p.id} />
               </SettingsForm>
             </>

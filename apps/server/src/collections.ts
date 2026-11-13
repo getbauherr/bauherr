@@ -626,6 +626,22 @@ export const collections: CollectionConfig[] = [
         date('lastScanAt'),
       ],
     },
+    {
+      name: 'docsCheck',
+      type: 'group',
+      admin: { description: 'Read-only docs check Runs (stage docs). Start one by hand from the Product page; a check with findings files one docs Ticket.' },
+      fields: [
+        {
+          name: 'paths',
+          type: 'json',
+          defaultValue: ['README.md', 'docs/**/*.md'],
+          validate: (v: unknown) => v == null || (Array.isArray(v) && v.every((g) => typeof g === 'string' && g.trim() !== '' && !/\s/.test(g))) || 'must be a list of path globs without spaces',
+          admin: { description: 'Path globs of the Product\'s documentation, e.g. ["README.md","docs/**/*.md"].' },
+        },
+        { name: 'lastCheckAt', type: 'date', admin: { readOnly: true, description: 'Start of the last finished check; the next one counts merged Tickets from here.' } },
+        { name: 'lastCheckRun', type: 'number', admin: { readOnly: true } },
+      ],
+    },
     { name: 'reviewChecks', type: 'json', admin: { description: 'Path-based checks a Build must pass before it requests review: {tests: [{src: [globs], tests: [globs]}], schema: [{schema: [globs], migration: [globs]}], evidence: true}. Empty: all off.' } },
     {
       name: 'overlapIgnore',

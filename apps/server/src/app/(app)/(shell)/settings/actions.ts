@@ -16,6 +16,7 @@ import { gatewayEnabled, rotateKey, rotateSessionKey } from '../../../../lib/gat
 import { refreshPrices } from '../../../../lib/prices'
 import { SCAN_MAX_BUDGET_USD } from '../../../../lib/investigation'
 import { startSecurityScan } from '../../../../lib/security-scan'
+import { DEFAULT_DOCS_PATHS, startDocsCheck } from '../../../../lib/docs-check'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
 import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
 import { PRESET_FIELDS } from '../../../../lib/providers'
@@ -228,6 +229,22 @@ export const startScan = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
   await startSecurityScan(c.payload, id(fd))
+})
+
+/** Settings > Product > Docs (Admin only): the docs path globs, one per line; at least one. */
+export const saveDocsCheck = act({ paths: 'paths' }, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  const paths = [...new Set(s(fd, 'paths').split('\n').map((l) => l.trim()).filter(Boolean))]
+  if (!paths.length || paths.some((l) => /\s/.test(l))) throw fieldError('paths', 'One path glob per line, without spaces; at least one.')
+  const current = ((await c.payload.findByID({ collection: 'products', id: id(fd), select: { docsCheck: true }, depth: 0, overrideAccess: true })) as { docsCheck?: object }).docsCheck
+  await c.payload.update({ collection: 'products', id: id(fd), data: { docsCheck: { ...current, paths } }, ...c.w } as never)
+})
+
+export const startDocsCheckAction = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await startDocsCheck(c.payload, id(fd))
 })
 
 export const redetectMerge = act({}, async (c, fd) => {

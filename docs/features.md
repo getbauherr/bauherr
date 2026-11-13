@@ -98,6 +98,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | Pre-review checks | Commands that must pass before a review | Product page, tab Checks & merging | Live |
 | Flaky-check tracking | Retries a failing check once and records flakes | Product page; Settings › Admin › Health | Live |
 | Security scan | An hourly tick starts a scan Run per Product that has one enabled; the last scan links its Run and the finding Tickets | Product page, tab Security scan | Live |
+| Docs check | An Admin starts a read-only Run that compares the docs with the Tickets merged since the last check; findings become one docs Ticket in Plan, updated in place while it is open | Product page, tab Docs | Live |
 | Evidence | Commands, exit codes and test results attached to a Run and its merge request | `/runs/[id]`, merge request | Live |
 | Review artifacts | Proof a person can judge (screenshots with before/after, recordings, preview links, terminal sessions, samples, reports) per acceptance criterion; a Product's rules require it before review, a waiver line is shown as "No proof" | Product page, tab Checks & merging (Proof for review); proof table on the Ticket page, Inbox cards and chat cards for accept and approve | Live |
 | Skill proposals | The factory proposes a skill from a solved Ticket; an Admin approves or rejects it; skipped and rejected ones show their reason and results | Inbox card (Admin); `/knowledge` (Admin, needs a Knowledge repo) | Live |
@@ -148,7 +149,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 
 | Feature | What it does | Where | Status |
 |---|---|---|---|
-| Products and repositories | Repository, Ticket source, staging, approvals, production, merging, releases, scan, widget, in tabs | `/settings/products` (`?tab=`) | Live |
+| Products and repositories | Repository, Ticket source, staging, approvals, production, merging, releases, scan, docs, widget, in tabs | `/settings/products` (`?tab=`) | Live |
 | Setup wizard | Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new) | `/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist" | Live |
 | Settings by scope | Account, Factory, Workspace and Admin groups; Product page in tabs; a place in the UI for every feature | `/settings/*` | Live |
 | Background jobs | 19 jobs: polling, Runs, merging, releases, scans, pruning | Counts on Health | No UI |
@@ -171,4 +172,4 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 
 - No UI, by design: `return_to_build` (agent repair), the connection slug, job-level status; see "Not in the UI" in [ui.md](ui.md).
 - Written but never shown: `oidcSynced`, `productionApprovedSha`.
-- Security scan findings have no page of their own: the last scan links its Run and the finding Tickets.
+- Security scan findings have no page of their own: the last scan links its Run and the finding Tickets. The same holds for the docs check.

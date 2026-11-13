@@ -12,7 +12,7 @@ export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 's
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
 
 export const KINDS: Kind[] = ['triage', 'plan', 'container', 'build', 'review', 'release', 'done', 'agent', 'human']
-export const RESERVED = ['checks', 'scan', 'distill', 'escalate', 'backlog']
+export const RESERVED = ['checks', 'scan', 'docs', 'distill', 'escalate', 'backlog']
 export const OUTCOMES: Partial<Record<Kind, { all: string[]; optional?: string[] }>> = {
   triage: { all: ['plan', 'refine', 'skip'] },
   plan: { all: ['done', 'decisions'], optional: ['split'] },

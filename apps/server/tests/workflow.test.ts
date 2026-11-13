@@ -33,7 +33,7 @@ describe('derived lists reproduce the constants they replace', () => {
     expect(w.liveStages(wf)).toEqual(['plan', 'build', 'review'])
     expect(w.inFlight(wf)).toEqual(['plan', 'build', 'review', 'release'])
     expect(w.repairable(wf)).toEqual(['triage', 'plan', 'build', 'review', 'release'])
-    expect(w.excludeLabels(wf)).toEqual(['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan'])
+    expect(w.excludeLabels(wf)).toEqual(['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan', 'bauherr:docs-check'])
   })
   it('lookups', () => {
     expect(w.title(wf, 'release')).toBe('Staging')
@@ -89,7 +89,7 @@ describe('lint', () => {
   })
   it('the default team has the specialists, unused by any stage, and one exceptions role', () => {
     const c = w.compile(defaultDoc())
-    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
+    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs'])
     expect(c.roles.filter((r) => r.exceptions).map((r) => r.id)).toEqual(['orchestrator'])
     expect(w.stagesOfRole(c, 'security')).toEqual([])
     expect(c.roles.every((r) => r.profile_file && r.profile_file.startsWith('roles/'))).toBe(true)

@@ -5,7 +5,7 @@ import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId
 import { makeProof } from './artifacts.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, DOCS_FINDINGS_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, matchingArtifactRules, planStepCount, preReviewChecks, type ProofItem } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
@@ -33,6 +33,7 @@ const INVESTIGATION_GOAL = [`\`${INVESTIGATION_FILE}\` exists with the cause and
 
 /** Agent-verifiable Goal of a Triage Run. */
 const SCAN_GOAL = [`\`${FINDINGS_FILE}\` exists with the findings of the scan, one per root cause`];
+const DOCS_GOAL = [`\`${DOCS_FINDINGS_FILE}\` exists with the stale claims and missing features of the docs, each with its file and commit`];
 const TRIAGE_GOAL = [`\`${TRIAGE_FILE}\` exists with an outcome (plan, refine or skip) and a reason`];
 
 /** Agent-verifiable Goal of an Agent Run. */
@@ -104,7 +105,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       artifacts.mergeConflict = true;
     }
-    const fixedGoal = ctx.run.kind === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.kind === 'triage' ? TRIAGE_GOAL : ctx.run.kind === 'review' ? REVIEW_GOAL : ctx.run.kind === 'scan' ? SCAN_GOAL : ctx.run.kind === 'agent' ? AGENT_GOAL : null;
+    const fixedGoal = ctx.run.kind === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.kind === 'triage' ? TRIAGE_GOAL : ctx.run.kind === 'review' ? REVIEW_GOAL : ctx.run.kind === 'scan' ? SCAN_GOAL : ctx.run.kind === 'docs' ? DOCS_GOAL : ctx.run.kind === 'agent' ? AGENT_GOAL : null;
     const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.kind === 'review') {
@@ -159,6 +160,16 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
         artifacts.scan = JSON.parse(readFileSync(file, 'utf8'));
       } catch {
         return finish('failed', `${FINDINGS_FILE} is not valid JSON`);
+      }
+      return finish('succeeded');
+    }
+    if (ctx.run.kind === 'docs') {
+      const file = join(clone.dir, DOCS_FINDINGS_FILE);
+      if (!existsSync(file)) return finish('failed', `docs run wrote no ${DOCS_FINDINGS_FILE}`);
+      try {
+        artifacts.docs = JSON.parse(readFileSync(file, 'utf8'));
+      } catch {
+        return finish('failed', `${DOCS_FINDINGS_FILE} is not valid JSON`);
       }
       return finish('succeeded');
     }
