@@ -32,12 +32,12 @@ export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | n
     if (connected > 0 || working > 0) return { line: `${title} · ${[working && `${working} working`, idle && `${idle} idle`].filter(Boolean).join(' · ') || `${connected} connected`}`, action: null, cannotRun: false }
     return { line: `${title} · none connected${f.waiting ? `, ${f.waiting} ${f.waiting === 1 ? 'Run' : 'Runs'} waiting` : ''}`, action: { label: `Connect a ${title}`, href: `/team?role=${encodeURIComponent(f.role.id)}` }, cannotRun: true }
   }
-  if (stage.gate === 'human' && !stage.role) return { line: 'You', action: null, cannotRun: false }
   if (stage.kind === 'release') {
     const d = f.deploy
     if (!d.configured) return { line: `${d.ci} · no deploy check configured`, action: { label: 'Configure deploy checks', href: d.href }, cannotRun: true }
     return { line: `${d.ci} · ${d.lastAt ? `last deploy ${minutes(f.now - Date.parse(d.lastAt))}` : 'no deploy reported yet'}`, action: null, cannotRun: false }
   }
+  if (stage.gate === 'human' && !stage.role) return { line: 'You', action: null, cannotRun: false }
   return { line: 'No one assigned', action: { label: 'Edit workflow', href: '/workflow/edit' }, cannotRun: true }
 }
 
@@ -45,10 +45,11 @@ export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | n
 export const executorsOf = async (payload: Payload, workspace: number | string, stages: ExecutorStage[], roles: TeamRole[], now = Date.now()): Promise<Map<string, Executor>> => {
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const products = (await payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, ...o })).docs as Doc[]
-  const kind = ((await payload.find({ collection: 'connections', where: { workspace: { equals: workspace } }, limit: 1, ...o })).docs[0] as Doc | undefined)?.kind
+  const kind = ((await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: workspace } }, { kind: { in: ['github', 'gitlab'] } }] }, limit: 1, ...o })).docs[0] as Doc | undefined)?.kind
   const last = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { releasedAt: { exists: true } }] }, sort: '-releasedAt', limit: 1, ...o })).docs[0] as Doc | undefined
   const waiting = (await payload.find({ collection: 'runs', where: { and: [{ workspace: { equals: workspace } }, { status: { equals: 'awaiting_session' } }] }, select: { stage: true }, ...o })).docs as Doc[]
-  const configured = (p: Doc) => !!String(p.deployChecks ?? '').trim() || !!p.deployWebhookUrl
+  /** Observing CI with no names watches every check of the commit, so only a webhook Product without a URL has nothing configured. */
+  const configured = (p: Doc) => !!String(p.deployChecks ?? '').trim() || !!p.deployWebhookUrl || p.deployMode !== 'webhook'
   const target = products.find((p) => !configured(p)) ?? products[0]
   const deploy = { configured: products.length > 0 && products.every(configured), lastAt: (last?.releasedAt as string | undefined) ?? null, ci: kind === 'gitlab' ? 'GitLab CI' : kind === 'github' ? 'GitHub Actions' : 'Product CI', href: target ? `/settings/products/${target.id}` : '/settings' }
   const out = new Map<string, Executor>()

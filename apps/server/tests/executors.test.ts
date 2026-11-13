@@ -19,6 +19,9 @@ describe('executorOf', () => {
     expect(executorOf({ name: 'release', kind: 'release' }, facts({ deploy: { ...deploy, lastAt: null } }))?.line).toBe('GitHub Actions · no deploy reported yet')
     expect(executorOf({ name: 'release', kind: 'release' }, facts({ deploy: { ...deploy, configured: false } }))).toEqual({ line: 'GitHub Actions · no deploy check configured', action: { label: 'Configure deploy checks', href: '/settings/products/1' }, cannotRun: true })
   })
+  it('a release stage with a Product owner gate still shows the Product CI', () => {
+    expect(executorOf({ name: 'release', kind: 'release', gate: 'human' }, facts())?.line).toBe('GitHub Actions · last deploy 17 min ago')
+  })
   it('a human gate without a role is "You"', () => {
     expect(executorOf({ name: 'approve', kind: 'agent', gate: 'human' }, facts())).toEqual({ line: 'You', action: null, cannotRun: false })
   })
