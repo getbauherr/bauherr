@@ -1,3 +1,4 @@
+import { pausingFor } from '../../../../../lib/preempt'
 import { PageTitle } from '../../../components/PageTitle'
 import { ProductOwnerTicket } from './ProductOwnerTicket'
 import { isProductOwner } from '../../../../../lib/people'
@@ -105,7 +106,8 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const holderNumbers = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
   const q = { depth: 0, overrideAccess: true } as const
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
-  const live0 = (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null
+  const live0 = (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null; preemptedFor?: number | null; pausing?: number | null } | undefined) ?? null
+  if (live0?.status === 'awaiting_session' && ticket.expedite) live0.pausing = await pausingFor(payload, live0.id)
   const roleId = live0?.status === 'awaiting_session' ? roleOf(wf, live0.stage)?.id : undefined
   const connected = roleId ? (await connectedOfRole(payload, P.ws.id, roleId)) > 0 : true
   const idle = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })

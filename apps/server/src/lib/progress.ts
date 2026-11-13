@@ -88,6 +88,7 @@ export const progressOf = (wf: Workflow, t: Doc, facts: ProgressFacts, tpl: Tpl)
   const kind = wf.stages.find((s) => s.name === stage)?.kind
   const open = t.state !== 'closed'
   const status = ticketStatus(wf, { open, stage, needsYou: facts.needsYou, blockedBy: facts.blockedBy ?? [], queuedWhy: null, run: facts.run, owner: null, forge: null, gate: null, children: facts.children ?? null, track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState } })
+  if (facts.run?.status === 'awaiting_session' && facts.run.preemptedFor && open) return { key: 'waiting', headline: status.label, detail: 'A hotfix took its working session. This continues first when the hotfix is done.', step: stepOf(wf, stage) }
   const vars: Record<string, string | undefined> = { stage_title: stageTitle(wf, stage), staging_url: facts.stagingUrl ?? undefined }
   let key: ProgressKey = kindKey[kind as Kind] ?? 'received'
   let step: number | null = stepOf(wf, stage)
@@ -133,7 +134,7 @@ export const loadProgress = async (payload: Payload, tickets: Doc[]): Promise<Ma
     for (const r of rows) if (!m.has(by(r))) m.set(by(r), r)
     return m
   }
-  const runs = first((await payload.find({ collection: 'runs', where: { ticket: { in: ids } }, sort: '-createdAt', select: { ticket: true, stage: true, kind: true, status: true, reasonKind: true, error: true, mode: true, startedAt: true, createdAt: true }, pagination: false, ...o })).docs as Doc[], (r) => id(r.ticket) as number)
+  const runs = first((await payload.find({ collection: 'runs', where: { ticket: { in: ids } }, sort: '-createdAt', select: { ticket: true, stage: true, kind: true, status: true, reasonKind: true, error: true, mode: true, startedAt: true, createdAt: true, preemptedFor: true }, pagination: false, ...o })).docs as Doc[], (r) => id(r.ticket) as number)
   const events = first((await payload.find({ collection: 'ticket_events', where: { ticket: { in: ids } }, sort: '-at', select: { ticket: true, at: true }, pagination: false, ...o })).docs as Doc[], (r) => id(r.ticket) as number)
   const blockerIds = [...new Set(tickets.flatMap((t) => ((t.blockedBy ?? []) as unknown[]).map(id) as number[]))]
   const blockers = blockerIds.length ? (await payload.find({ collection: 'tickets', where: { and: [{ id: { in: blockerIds } }, { state: { equals: 'open' } }] }, select: { number: true }, pagination: false, ...o })).docs as Doc[] : []

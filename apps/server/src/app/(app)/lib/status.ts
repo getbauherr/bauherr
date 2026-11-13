@@ -25,6 +25,8 @@ export type StatusRun = {
   createdAt: string
   investigation?: unknown
   escalation?: { step: number; reason: string } | null
+  /** Number of the hotfix Ticket this Run was paused for (`runs.preemptedFor`). */
+  preemptedFor?: number | null
 }
 /** Ticket fields that say what the factory waits for between Runs. */
 export type Track = { waitingFor?: string | null; reviewState?: string | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; releaseError?: string | null }
@@ -89,6 +91,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const extra = run.investigation ? ' · investigating' : run.escalation ? ` · escalated to the strong model (step ${run.escalation.step} of 4)` : ''
     return { phase: 'working', label: 'In progress', detail: `${VERB[kind] ?? 'running a step'}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
   }
+  if (run?.status === 'awaiting_session' && run.preemptedFor) return { phase: 'queued', label: `Paused for hotfix #${run.preemptedFor}`, detail: 'continues first when the hotfix is done', who: null, tone: 'muted' }
   if (run?.status === 'awaiting_session') return { phase: 'queued', label: 'Queued', detail: 'waiting for a session', who: null, tone: 'muted' }
   if (run?.status === 'queued') return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
   if (r.needsYou) {
