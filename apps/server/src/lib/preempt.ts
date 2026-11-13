@@ -39,6 +39,7 @@ export const markPreempt = async (payload: Payload, hot: Doc, ticket: Doc): Prom
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, hashtext('preempt'))`)
     const on = (await tx.execute(sql`SELECT "preempt_for_hotfix" AS on FROM "workspaces" WHERE "id" = ${ws}`)).rows[0] as { on: boolean | null } | undefined
     if (on?.on === false) return null
+    if ((await tx.execute(sql`SELECT "status" FROM "runs" WHERE "id" = ${hot.id}`)).rows[0]?.status !== 'awaiting_session') return null
     if ((await tx.execute(sql`SELECT 1 FROM "runs" WHERE "preempted_by" = ${hot.id} LIMIT 1`)).rows.length) return null
     const victim = await pickVictim(tx, ws, role.id, role.agents)
     if (victim == null) return null

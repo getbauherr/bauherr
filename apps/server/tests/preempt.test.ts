@@ -1,13 +1,21 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextStep } from '../src/lib/next-step'
 import { DEFAULT } from '../src/lib/workflow'
 import { ticketStatus } from '../src/app/(app)/lib/status'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 type Doc = Record<string, any>
+let actingUser: Doc
+vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
+vi.mock('../src/app/(app)/lib/session', async (orig) => ({
+  ...(await orig<typeof import('../src/app/(app)/lib/session')>()),
+  currentWorkspace: async () => ({ user: actingUser, workspace: { id: wsId } }),
+  payloadClient: async () => payload,
+}))
+let wsId = 0
 let payload: Payload
 let fake: FakeBackend
 let ws: number
@@ -43,6 +51,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
   call = (name, input = {}) => callTool({ payload, user, actor: { kind: 'human' } }, name, input)
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
+  wsId = ws
 })
 
 afterAll(async () => {
@@ -149,6 +158,79 @@ describe('AC2: the sweep forces after 2 minutes', () => {
     expect(await next(true)).toBe('abandoned')
     expect(await next(false)).toBe('abandoned')
     expect(await next(false)).toBe('needs_human')
+  })
+})
+
+describe('review fixes', () => {
+  it('F1: a hotfix claimed by a free session before the grace ends leaves the victim untouched and unmarked', async () => {
+    const { wb } = await busy()
+    const hot = await hotfix()
+    await preempt.preemptSweep(payload)
+    const sc = await session('sc')
+    expect((await work(sc)).run.id).toBe(hot.run)
+    expect(await jobs.expireStaleSessions(payload, Date.now() + preempt.PREEMPT_GRACE_MS + 5_000)).toBe(0)
+    expect(await runRow(wb.run.id)).toMatchObject({ status: 'running', preempt_at: null, preempted_by: null, preempted_for: null })
+  })
+
+  it('F1: a hotfix Ticket that is no longer expediting also clears the mark', async () => {
+    const { wb } = await busy()
+    const hot = await hotfix()
+    await preempt.preemptSweep(payload)
+    await db().execute(sql`UPDATE "tickets" SET "expedite" = false WHERE "id" = ${hot.id}`)
+    await jobs.expireStaleSessions(payload, Date.now() + preempt.PREEMPT_GRACE_MS + 5_000)
+    expect(await runRow(wb.run.id)).toMatchObject({ status: 'running', preempt_at: null })
+  })
+
+  it('F2: markPreempt does nothing for a hotfix Run that is no longer awaiting_session', async () => {
+    await busy()
+    const hot = await hotfix()
+    await db().execute(sql`UPDATE "runs" SET "status" = 'running' WHERE "id" = ${hot.run}`)
+    const run = (await payload.findByID({ collection: 'runs', id: hot.run, ...o })) as Doc
+    const t = (await payload.findByID({ collection: 'tickets', id: hot.id, ...o })) as Doc
+    expect(await preempt.markPreempt(payload, { ...run, status: 'awaiting_session' }, t)).toBeNull()
+  })
+
+  it('F3: a marked victim whose heartbeat went stale is preempted, never needs_human', async () => {
+    const { wb } = await busy()
+    const prev = await payload.create({ collection: 'runs', data: { ticket: wb.ticket.id, stage: 'build', status: 'abandoned', mode: 'session', workspace: ws, error: 'x' }, ...o })
+    await db().execute(sql`UPDATE "runs" SET "previous_run_id" = ${prev.id} WHERE "id" = ${wb.run.id}`)
+    await hotfix()
+    await preempt.preemptSweep(payload)
+    await db().execute(sql`UPDATE "runs" SET "heartbeat_at" = now() - interval '1 hour' WHERE "id" = ${wb.run.id}`)
+    await jobs.expireStaleSessions(payload)
+    expect(await runRow(wb.run.id)).toMatchObject({ status: 'abandoned', reason_kind: 'preempted' })
+  })
+
+  it('F5: a released marked Run loses reason_kind and the mark at its next claim', async () => {
+    const { sb, wb } = await busy()
+    const hot = await hotfix()
+    await preempt.preemptSweep(payload)
+    await call('release_run', { sessionId: sb, runId: wb.run.id, leaseToken: wb.leaseToken })
+    expect(await runRow(wb.run.id)).toMatchObject({ reason_kind: 'preempted', preempted_for: String(hot.number) })
+    await db().execute(sql`UPDATE "runs" SET "status" = 'succeeded' WHERE "id" = ${hot.run}`)
+    expect((await work(sb)).run.id).toBe(wb.run.id)
+    expect(await runRow(wb.run.id)).toMatchObject({ status: 'running', reason_kind: null, preempt_at: null, preempted_for: null })
+  })
+
+  it('F6: two concurrent markPreempt calls mark one victim', async () => {
+    await busy()
+    const hot = await hotfix()
+    const run = (await payload.findByID({ collection: 'runs', id: hot.run, ...o })) as Doc
+    const t = (await payload.findByID({ collection: 'tickets', id: hot.id, ...o })) as Doc
+    const r = await Promise.all([preempt.markPreempt(payload, run, t), preempt.markPreempt(payload, run, t)])
+    expect(r.filter((x) => x != null)).toHaveLength(1)
+    expect(await rows(sql`SELECT 1 FROM "runs" WHERE "preempted_by" = ${hot.run}`)).toHaveLength(1)
+  })
+
+  it('F6: a non-Admin cannot change the switch, by action or by the field over the local API', async () => {
+    const actions = await import('../src/app/(app)/(shell)/workflow/edit/actions')
+    actingUser = { ...user, role: 'bauherr' }
+    expect(await actions.setPreemptForHotfix(false)).toEqual({ error: 'Only an Admin can change this.' })
+    await payload.update({ collection: 'workspaces', id: ws, data: { preemptForHotfix: false }, user: actingUser, overrideAccess: false } as never).catch(() => {})
+    expect(((await payload.findByID({ collection: 'workspaces', id: ws, ...o })) as Doc).preemptForHotfix).toBe(true)
+    actingUser = { ...user, role: 'admin' }
+    expect(await actions.setPreemptForHotfix(false)).toEqual({})
+    expect(((await payload.findByID({ collection: 'workspaces', id: ws, ...o })) as Doc).preemptForHotfix).toBe(false)
   })
 })
 

@@ -21,7 +21,7 @@ import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
-import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
+import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
 import { syncGates } from '../lib/gates'
 import { syncProgress } from '../lib/progress'
@@ -318,7 +318,7 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     try {
       const wf = workflowFor(run.workspace)
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
-      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan', 'docs'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before })) handled++
+      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan', 'docs'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before, preempted: !!run.preemptAt })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
@@ -326,12 +326,21 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   return handled + (await forcePreempted(payload, now))
 }
 
-/** Marked Runs that did not release within PREEMPT_GRACE_MS are ended as `preempted` (abandoned, successor, never escalated). Returns how many it ended. */
+/**
+ * Marked Runs that did not release within PREEMPT_GRACE_MS are ended as `preempted` (abandoned, successor, never escalated), but only while the hotfix still waits for a session and its Ticket is still expediting;
+ * otherwise the mark is cleared and the victim keeps working. Returns how many it ended.
+ */
 const forcePreempted = async (payload: Payload, now: number): Promise<number> => {
   const due = await payload.find({ collection: 'runs', where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { preemptAt: { less_than_equal: new Date(now - PREEMPT_GRACE_MS).toISOString() } }] }, pagination: false, depth: 0, overrideAccess: true })
   let ended = 0
   for (const run of due.docs) {
     try {
+      const hot = run.preemptedBy ? ((await payload.findByID({ collection: 'runs', id: run.preemptedBy, depth: 0, overrideAccess: true }).catch(() => null)) as Record<string, any> | null) : null
+      const ticket = hot ? ((await payload.findByID({ collection: 'tickets', id: id(hot.ticket), depth: 0, overrideAccess: true })) as Record<string, any>) : null
+      if (!hot || hot.status !== 'awaiting_session' || !ticket || ticket.state !== 'open' || !(await isExpediting(payload, ticket))) {
+        await payload.db.drizzle.execute(sql`UPDATE "runs" SET "preempt_at" = NULL, "preempted_by" = NULL, "preempted_for" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "status" = 'running'`)
+        continue
+      }
       if (await abandonRun(payload, run, { reason: `preempted by hotfix #${run.preemptedFor}: no release within 2 minutes`, escalate: false, preempted: true })) ended++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'forcing a preempted Run failed')
