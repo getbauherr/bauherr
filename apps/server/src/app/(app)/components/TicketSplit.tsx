@@ -101,7 +101,7 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
             aria-controls={`split-${id}`}
             data-testid={`split-tab-${id}`}
             onClick={() => setTab(id)}
-            className="-mb-px h-11 border-b-2 border-transparent text-muted-foreground aria-selected:border-primary aria-selected:text-foreground"
+            className="-mb-px h-11 border-b-2 border-transparent bg-transparent text-muted-foreground aria-selected:border-primary aria-selected:text-foreground"
           >
             {label}
           </button>
@@ -132,10 +132,10 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
             className="sticky top-[var(--space-4)] h-[calc(100dvh-8rem)] min-h-[24rem] w-1.5 cursor-col-resize rounded-full bg-border outline-none hover:bg-primary/40 focus-visible:bg-primary"
           />
         </div>
-        <aside id="split-status" role="tabpanel" aria-labelledby="split-tab-status" aria-label="Now" data-testid="now-pane" className={`flex min-w-0 flex-col gap-4 ${saved.collapsed ? 'group-data-[wide=true]/split:hidden' : ''} ${tab === 'status' ? '' : 'group-data-[wide=false]/split:gap-0'}`}>
+        <div id="split-status" role="tabpanel" aria-labelledby="split-tab-status" aria-label="Now" data-testid="now-pane" className={`flex min-w-0 flex-col gap-4 ${saved.collapsed ? 'group-data-[wide=true]/split:hidden' : ''} ${tab === 'status' ? '' : 'group-data-[wide=false]/split:gap-0'}`}>
           {bar}
           <div className={`flex min-w-0 flex-col gap-4 ${narrowHidden(tab === 'status')}`}>{now}</div>
-        </aside>
+        </div>
       </div>
       {saved.collapsed && (
         <Button type="button" variant="outline" size="sm" className="mt-3 hidden group-data-[wide=true]/split:inline-flex" data-testid="split-expand" onClick={() => update({ ...saved, collapsed: false })}>Show the Now pane</Button>
@@ -170,14 +170,14 @@ export function PaneTabs({ tabs }: { tabs: { id: string; label: string; body: Re
             data-testid={`pane-tab-${t.id}`}
             onClick={() => setCurrent(t.id)}
             onKeyDown={(e) => move(e, i)}
-            className="-mb-px h-11 border-b-2 border-transparent text-muted-foreground aria-selected:border-primary aria-selected:text-foreground"
+            className="-mb-px h-11 border-b-2 border-transparent bg-transparent text-muted-foreground aria-selected:border-primary aria-selected:text-foreground"
           >
             {t.label}
           </button>
         ))}
       </div>
       {tabs.map((t) => (
-        <div key={t.id} role="tabpanel" id={`pane-${t.id}`} aria-labelledby={`pane-tab-${t.id}`} hidden={current !== t.id} className="flex min-w-0 flex-col gap-4">{t.body}</div>
+        <div key={t.id} role="tabpanel" id={`pane-${t.id}`} aria-labelledby={`pane-tab-${t.id}`} hidden={current !== t.id} className={`min-w-0 flex-col gap-4 ${current === t.id ? 'flex' : 'hidden'}`}>{t.body}</div>
       ))}
     </div>
   )

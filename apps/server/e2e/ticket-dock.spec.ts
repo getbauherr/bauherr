@@ -51,6 +51,7 @@ test('the Inbox card opens the conversation; the recommended answer resolves the
   const panel = page.getByTestId('refine-panel')
   await expect(panel).toContainText('Which file name', { timeout: 30_000 })
   await panel.getByRole('button', { name: /export\.csv/ }).click()
+  await page.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
   const send = page.getByTestId('send-to-planning')
   await expect(send).toBeEnabled({ timeout: 30_000 })
   await send.click()

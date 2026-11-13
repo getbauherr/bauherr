@@ -16,14 +16,15 @@ import { shortModel } from '../../lib/format'
  * Who the conversation is with: the role as persona (avatar, name), and one line under it that says who really talks: the session that asked, the Factory assistant that replies,
  * the model. The chevron opens the agent card (role profile, session, client, model, Run link). `menu` is the page's "more" menu.
  */
-export const ParticipantHeader: FC<{ participant: Participant; model: string; subtitle: string; /** What the one line under the name says the Factory assistant does. */ line?: string; menu?: ReactNode }> = ({ participant: p, model, subtitle, line = 'Factory assistant replies', menu }) => {
+export const ParticipantHeader: FC<{ participant: Participant; model: string; subtitle: string; /** What the one line under the name says the Factory assistant does. */ line?: string; menu?: ReactNode; /** The heading level of the name: 2 when the page already has its own title. */ level?: 1 | 2 }> = ({ participant: p, model, subtitle, line = 'Factory assistant replies', menu, level = 1 }) => {
+  const H = `h${level}` as const
   const s = p.session
   const short = shortModel(model)
   return (
     <header data-testid="participant" className="flex items-start gap-3">
       <RoleAvatar avatar={p.avatar} size="md" animate={!!s?.live} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <h1 className="m-0 flex flex-wrap items-baseline gap-x-2 text-[17px] leading-6 font-semibold">{p.role}{subtitle && <span className="text-[13px] font-normal text-muted-foreground">{subtitle}</span>}</h1>
+        <H className="m-0 flex flex-wrap items-baseline gap-x-2 text-[17px] leading-6 font-semibold">{p.role}{subtitle && <span className="text-[13px] font-normal text-muted-foreground">{subtitle}</span>}</H>
         <Popover>
           <PopoverTrigger asChild>
             <button type="button" data-testid="participant-line" className="flex w-fit max-w-full cursor-pointer items-center gap-1.5 text-left text-[13px] text-muted-foreground hover:text-foreground">

@@ -95,10 +95,11 @@ test('answer the critical decision, then approve the plan', async ({ page }, tes
   const chat = page.getByTestId('refine-panel')
   await expect(chat).toContainText('Follow the system setting')
   await chat.getByTestId('current-point').getByRole('button', { name: /yes, until the user picks/ }).click()
-  await expect(chat.getByTestId('points-count')).toHaveText('1 of 2 open')
-  await page.getByTestId('more').click()
-  await page.getByRole('menuitem', { name: /Ticket page/ }).click()
-  await expect(approve).toBeVisible()
+  await page.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
+  await expect(page.getByTestId('artifact-sheet').getByTestId('points-count')).toHaveText('1 of 2 open')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('artifact-sheet')).toHaveCount(0)
+  await expect(approve).toBeVisible() // the conversation and the Now pane's bar share the page: no trip to the Ticket page
   await page.getByTestId('pane-tab-history').click()
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
@@ -106,6 +107,7 @@ test('answer the critical decision, then approve the plan', async ({ page }, tes
   const actions: string[] = []
   page.on('request', (r) => { if (r.method() === 'POST' && r.headers()['next-action']) actions.push(r.url()) })
   await approve.dblclick()
+  await page.getByTestId('pane-tab-now').click()
   await expect(page.getByText('Plan approved', { exact: true })).toBeVisible()
   expect(actions).toHaveLength(1)
   await expect(approve).toHaveCount(0)
@@ -225,6 +227,7 @@ test('the path highlights the stages a Ticket visited and the steps name who ran
   await expect(build.getByTestId('step-detail')).toContainText('anthropic')
   await expect(build.getByRole('link', { name: /^Run #\d+$/ })).toHaveAttribute('href', /\/runs\/\d+$/)
   await expect(steps.locator('[data-testid=visit][data-stage=plan]').getByTestId('step-decision')).toHaveText(/approve plan by .+@example\.com/)
+  await page.getByTestId('pane-tab-now').click()
   await page.getByText('About', { exact: true }).click()
   await expect(page.getByTestId('total-lead-time')).not.toHaveText('0 s')
 })

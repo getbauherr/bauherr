@@ -135,6 +135,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
               participant={view.participant}
               model={model}
               subtitle={`refining #${view.ticket.number} with you`}
+              level={embedded ? 2 : 1}
               menu={embedded ? undefined : <DropdownMenuItem asChild><Link href={`/tickets/${ticket}?view=ticket`}>Ticket page: path, steps, proof</Link></DropdownMenuItem>}
             />
           }
