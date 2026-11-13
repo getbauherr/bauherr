@@ -74,7 +74,7 @@ const REASONS: CloseReason[] = ['completed', 'not_planned', 'duplicate'];
 const CLOSED_TYPES = ['closed', 'archive', 'trash'];
 const MAX_EVENTS = 200;
 
-interface Board { lists: any[]; cards: any[]; labels: any[]; cardLabels: any[]; cardMemberships: any[]; users: any[] }
+interface Board { counter: any | null; lists: any[]; cards: any[]; labels: any[]; cardLabels: any[]; cardMemberships: any[]; users: any[] }
 interface Meta { number: number | null; events: LabelEvent[] }
 interface Parsed { body: string; meta: Meta; relations: Relations }
 
@@ -102,6 +102,9 @@ function renderDesc(p: Parsed): string {
   ];
   return renderRelations(`${p.body}\n\n<!-- bauherr:planka -->\n${lines.join('\n')}\n<!-- /bauherr:planka -->`, p.relations);
 }
+
+const COUNTER = /<!-- bauherr:planka-next=(\d+) -->/;
+const nextOf = (c: any): number => Number(COUNTER.exec(c?.description ?? '')?.[1] ?? 0);
 
 const numberOf = (c: any): number | null => parseDesc(c.description).meta.number;
 const listOf = (b: Board, c: any) => b.lists.find((l) => l.id === c.listId);
@@ -138,14 +141,24 @@ export class PlankaTicketSource implements TicketSource {
 
   private async board(): Promise<Board> {
     const { included: i } = await this.h.json('GET', `/boards/${this.o.boardId}`);
+    const all: any[] = i.cards ?? [];
     return {
-      lists: i.lists ?? [], cards: i.cards ?? [], labels: i.labels ?? [],
+      counter: all.find((c) => COUNTER.test(c.description ?? '')) ?? null,
+      lists: i.lists ?? [], cards: all.filter((c) => !COUNTER.test(c.description ?? '')), labels: i.labels ?? [],
       cardLabels: i.cardLabels ?? [], cardMemberships: i.cardMemberships ?? [], users: i.users ?? [],
     };
   }
 
-  private nextNumber(b: Board): number {
-    return Math.max(0, ...b.cards.map((c) => numberOf(c) ?? 0)) + 1;
+  /**
+   * The next unused number. The high-water mark lives in a hidden counter card on the board and is written before the number is used,
+   * so deleting the highest card, or restarting the process, never frees a number. Call inside `serial`.
+   */
+  private async nextNumber(b: Board): Promise<number> {
+    const n = Math.max(nextOf(b.counter), ...b.cards.map((c) => (numberOf(c) ?? 0) + 1), 1);
+    const description = `<!-- bauherr:planka-next=${n + 1} -->`;
+    if (b.counter) Object.assign(b.counter, (await this.h.json('PATCH', `/cards/${b.counter.id}`, { description })).item);
+    else b.counter = (await this.h.json('POST', `/lists/${this.firstList(b).id}/cards`, { name: 'bauherr:counter', type: 'project', description, position: 65535 })).item;
+    return n;
   }
 
   /** Gives every card without a number the next one (oldest first). Call inside `serial` on a fresh board. */
@@ -153,7 +166,7 @@ export class PlankaTicketSource implements TicketSource {
     const missing = b.cards.filter((c) => numberOf(c) === null).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)) || x.id.localeCompare(y.id));
     for (const c of missing) {
       const p = parseDesc(c.description);
-      p.meta.number = this.nextNumber(b);
+      p.meta.number = await this.nextNumber(b);
       Object.assign(c, (await this.h.json('PATCH', `/cards/${c.id}`, { description: renderDesc(p) })).item);
     }
     return b;
@@ -251,7 +264,7 @@ export class PlankaTicketSource implements TicketSource {
   async create(t: NewTicket) {
     const n = await this.serial(async () => {
       const b = await this.fresh();
-      const number = this.nextNumber(b);
+      const number = await this.nextNumber(b);
       const list = this.stageList(b, t.labels ?? []) ?? this.firstList(b);
       const body = renderDesc({ body: t.body ?? '', meta: { number, events: [] }, relations: { parent: null, blockedBy: [], links: [] } });
       await this.h.json('POST', `/lists/${list.id}/cards`, { name: t.title, type: 'project', description: body, position: 65535 });

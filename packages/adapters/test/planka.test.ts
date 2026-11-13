@@ -72,7 +72,7 @@ function setup(o: Partial<PlankaOptions> = {}, hook?: (method: string, path: str
     }
     return new Response('not found', { status: 404 });
   };
-  const src = new PlankaTicketSource({
+  const opts: PlankaOptions = {
     baseUrl: 'https://planka.test/', token: 'tok-secret', boardId: B, sleep: async () => {},
     fetch: async (u, init) => {
       const path = String(u).slice('https://planka.test/api'.length);
@@ -83,8 +83,9 @@ function setup(o: Partial<PlankaOptions> = {}, hook?: (method: string, path: str
       return r instanceof Response ? r : json(r);
     },
     ...o,
-  });
-  return { src, calls, state, inc, writes: () => calls.filter((c) => c.method !== 'GET') };
+  };
+  const src = new PlankaTicketSource(opts);
+  return { src, restart: () => new PlankaTicketSource(opts), calls, state, inc, writes: () => calls.filter((c) => c.method !== 'GET') };
 }
 
 describe('planka tickets', () => {
@@ -110,15 +111,35 @@ describe('planka tickets', () => {
     const l = await src.list({ state: 'all' });
     assert.deepEqual(l.map((t) => [t.id, t.title, t.body]), [['1', 'Dark theme', 'Body text'], ['2', 'Export to CSV', 'Written by hand in Planka']]);
     assert.match(inc.cards[1].description, /Number: 2/);
-    assert.equal(writes().length, 1);
+    assert.equal(writes().length, 2);
     await src.list();
-    assert.equal(writes().length, 1);
+    assert.equal(writes().length, 2);
   });
 
   it('list filters by state and labels', async () => {
     const { src } = setup();
     assert.deepEqual((await src.list({ labels: ['feature'] })).map((t) => t.id), ['2']);
     assert.deepEqual((await src.list({ state: 'closed' })).map((t) => t.id), []);
+  });
+
+  it('a deleted card does not free its number for the next card', async () => {
+    const { src, inc } = setup();
+    const a = await src.create({ title: 'a' });
+    const b = await src.create({ title: 'b' });
+    assert.ok(b.number > a.number);
+    inc.cards = inc.cards.filter((c: any) => c.name !== 'b');
+    const c = await src.create({ title: 'c' });
+    assert.notEqual(c.number, b.number);
+  });
+
+  it('a restarted source does not reuse a deleted number', async () => {
+    const first = setup();
+    const b = await first.src.create({ title: 'b' });
+    first.inc.cards = first.inc.cards.filter((c: any) => c.name !== 'b');
+    const again = first.restart();
+    const c = await again.create({ title: 'c' });
+    assert.ok(c.number > b.number);
+    assert.deepEqual((await again.list({ state: 'all' })).map((t) => t.title), ['Dark theme', 'Export to CSV', 'c']);
   });
 
   it('concurrent creates get distinct numbers', async () => {
