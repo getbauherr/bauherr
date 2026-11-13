@@ -2,6 +2,7 @@ import { planStepCount, preReviewChecks, type ReviewChecks } from '@bauherr/runn
 import type { Payload } from 'payload'
 import { PLAN_MARKER, latestWith } from '../app/(app)/lib/plan'
 import { recordWaivers, ruleNamesWithProof } from './artifacts'
+import { DEFAULT_DOCS_PATHS, DOCS_LABEL, outsideDocsPaths } from './docs-check'
 import { forgeOf, id, isFactoryPr } from './release'
 
 type Doc = Record<string, any>
@@ -10,11 +11,15 @@ type Doc = Record<string, any>
 export const preReviewFailures = async (payload: Payload, t: Doc, evidence: string, record?: { run?: number | string }): Promise<string[]> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
   const config = product.reviewChecks as ReviewChecks | null
-  if (!config) return []
+  const docs = ((t.labels ?? []) as string[]).includes(DOCS_LABEL)
+  if (!config && !docs) return []
   const { backend, repo, tickets } = await forgeOf(payload, id(t.product))
   const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t.number))
   if (!pr) return ['no open factory MR to check']
   const files = (await backend.forge.listPullRequestFiles(repo, pr.number)).map((f) => f.filename)
+  const outside = docs ? outsideDocsPaths(files, (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS) : []
+  if (outside.length) return [`docs Ticket: ${outside.join(', ')} outside the Product's docs paths`]
+  if (!config) return []
   const listing = await backend.forge.listFiles(repo, pr.head)
   const tree = new Set(listing.paths)
   const plan = latestWith(await tickets.listComments(String(t.number)), PLAN_MARKER)?.body ?? ''
