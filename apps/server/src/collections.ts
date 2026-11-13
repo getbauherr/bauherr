@@ -512,6 +512,7 @@ const tickets = col('tickets', [
   date('expediteAt'),
   text('gateNoticeClaim'),
   { name: 'expedite', type: 'checkbox', defaultValue: false, admin: { description: 'Carries the bauherr:expedite label while the Workspace has the Expedite lane on: skips Triage, bypasses WIP and the overlap hold, no plan gate.' } },
+  { name: 'expediteYieldedTo', type: 'number', admin: { hidden: true, description: 'Ticket id the fast-lane place was yielded to while this Ticket waited for the owner; it keeps the flag, counts for no slot, and takes the place back when unparked and the place is free.' } },
   text('waitingReason', { admin: { description: 'Why it waits when not a full column, e.g. "overlaps #12" (a Build held for shared paths).' } }),
   text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
   rel('parent', 'tickets'),

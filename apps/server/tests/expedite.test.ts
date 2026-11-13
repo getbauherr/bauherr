@@ -190,6 +190,63 @@ describe('one at a time', () => {
   })
 })
 
+describe('a parked holder yields the slot', () => {
+  const YIELDED = 'gave its fast-lane place to'
+  const start = async () => (await import('../src/lib/expedite')).startExpedites(payload)
+  /** A flagged Ticket without a stage, as the poller leaves it while the slot is taken. */
+  const waitingTicket = async (title: string) => {
+    const i = await fake.tickets(repo).create({ title, labels: [EXPEDITE_LABEL] })
+    const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(i.number), number: i.number, url: i.url, state: 'open', labels: [EXPEDITE_LABEL], expedite: true, product, workspace: ws, rank: title }, ...o })
+    return { id: t.id as number, n: i.number }
+  }
+  const run = (ticket: number, status: string) => payload.create({ collection: 'runs', data: { ticket, stage: 'build', status, mode: 'autonomous', workspace: ws }, ...o })
+
+  it('a waiting Ticket takes the slot of a parked holder, which keeps the flag and gets one Comment', async () => {
+    const holder = await inBuild('holder', ['src/a.ts'], { expedite: true, needsYou: 'Approve plan' })
+    const hot = await waitingTicket('hot')
+    await start()
+    await start()
+    expect(await reload(hot.id)).toMatchObject({ stage: 'plan', expedite: true })
+    expect(await reload(holder.id)).toMatchObject({ expedite: true, expediteYieldedTo: hot.id })
+    expect((await comments(holder.n)).filter((c) => c.includes(YIELDED) && c.includes(`#${hot.n}`))).toHaveLength(1)
+  })
+
+  it('a parked holder alone is unchanged', async () => {
+    const holder = await inBuild('holder', ['src/a.ts'], { expedite: true, needsYou: 'Approve plan' })
+    await start()
+    expect((await reload(holder.id)).expediteYieldedTo ?? null).toBeNull()
+    expect((await comments(holder.n)).some((c) => c.includes(YIELDED))).toBe(false)
+  })
+
+  it('a running holder keeps the slot: the waiting Ticket queues', async () => {
+    const holder = await inBuild('holder', ['src/a.ts'], { expedite: true, needsYou: 'Run needs you' })
+    await run(holder.id, 'running')
+    const hot = await waitingTicket('hot')
+    await start()
+    expect((await reload(hot.id)).stage ?? null).toBeNull()
+    expect((await reload(holder.id)).expediteYieldedTo ?? null).toBeNull()
+    expect((await comments(hot.n)).some((c) => c.includes('another expedite Ticket is in flight'))).toBe(true)
+  })
+
+  it('an unparked yielded holder takes the place back when it is free', async () => {
+    const { isExpediting } = await import('../src/lib/expedite')
+    const hot = await inBuild('hot', ['src/b.ts'], { expedite: true })
+    const holder = await inBuild('holder', ['src/a.ts'], { expedite: true, expediteYieldedTo: hot.id })
+    expect(await isExpediting(payload, await reload(holder.id))).toBe(false)
+    await payload.update({ collection: 'tickets', id: hot.id, data: { state: 'closed' }, ...o })
+    await start()
+    expect((await reload(holder.id)).expediteYieldedTo ?? null).toBeNull()
+    expect(await isExpediting(payload, await reload(holder.id))).toBe(true)
+  })
+
+  it('an unparked yielded holder stays yielded while the new holder is in flight', async () => {
+    const hot = await inBuild('hot', ['src/b.ts'], { expedite: true })
+    const holder = await inBuild('holder', ['src/a.ts'], { expedite: true, expediteYieldedTo: hot.id })
+    await start()
+    expect((await reload(holder.id)).expediteYieldedTo).toBe(hot.id)
+  })
+})
+
 describe('Triage proposal', () => {
   it('is normalised, shown as the needs-you "Expedite?" and never applied by itself; the action applies it', async () => {
     const i = await fake.tickets(repo).create({ title: 'bug', labels: [] })
