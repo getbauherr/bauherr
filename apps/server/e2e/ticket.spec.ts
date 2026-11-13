@@ -180,7 +180,7 @@ test('an approved plan held by an overlap shows a disabled button with the overl
   await expect(bar).not.toContainText('Nothing to do')
   await expect(page.getByRole('region', { name: 'Answer questions' })).toHaveCount(0)
   await page.getByText('About', { exact: true }).click()
-  await expect(page.getByTestId('ticket-about')).toContainText('0 answered')
+  await expect(page.getByTestId('ticket-about')).toContainText('D1 Where to store the choice: default taken (at approval)')
 })
 
 test('a plan waiting for approval shows an enabled Approve plan button', async ({ page }) => {
