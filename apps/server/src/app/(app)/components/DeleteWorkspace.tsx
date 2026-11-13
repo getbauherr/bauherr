@@ -20,13 +20,14 @@ export function DeleteWorkspace({ name, impact, until }: { name: string; impact:
     const fd = new FormData()
     fd.set('confirm', typed)
     const res = await deleteWorkspace({}, fd).catch(() => ({ error: 'Could not delete the Workspace. Please try again.' }))
-    if (res.error) setError(res.error)
     setBusy(false)
+    if (res.error) setError(res.error)
+    else setOpen(false)
   }
   const rows: [number, string][] = [[impact.products, 'Products'], [impact.tickets, 'Tickets'], [impact.runs, 'active Runs'], [impact.sessions, 'agent sessions'], [impact.keys, 'agent keys (Workspace keys and embed tokens)'], [impact.connections, 'Connections']]
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setTyped(''); setError('') } }}>
-      <DialogTrigger asChild><Button type="button" variant="destructive">Delete workspace</Button></DialogTrigger>
+      <DialogTrigger asChild><Button type="button" variant="outline" className="text-destructive">Delete workspace</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete {name}?</DialogTitle>
@@ -43,7 +44,7 @@ export function DeleteWorkspace({ name, impact, until }: { name: string; impact:
         {error && <p className="text-destructive" role="alert">{error}</p>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>Keep workspace</Button>
-          <Button type="button" variant="destructive" disabled={busy || typed !== name} onClick={() => void submit()}>Delete workspace</Button>
+          <Button type="button" variant="outline" className="text-destructive" disabled={busy || typed !== name} onClick={() => void submit()}>Delete workspace</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -483,7 +483,6 @@ export const deleteWorkspace = act({}, async ({ user, workspace, payload }, fd) 
   const id = inWorkspace({ workspace })
   if (s(fd, 'confirm') !== workspace?.name) throw new Error('Type the Workspace name to confirm.')
   await archiveWorkspace(payload, user, id)
-  redirect('/settings/workspace')
 })
 
 /** Admin: brings an archived Workspace back before its purge date. */
