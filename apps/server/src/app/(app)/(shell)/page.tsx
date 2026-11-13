@@ -17,6 +17,7 @@ import { currentWorkspace, payloadClient, rememberEpic, requireBauherr } from '.
 import { releaseReminders } from '../../../lib/ship-release'
 import { workflowFor } from '../../../lib/factory'
 import { board, byKind, graph as workflowGraph } from '../../../lib/workflow'
+import { executorsOf } from '../../../lib/executors'
 import { checkpointOf, nodeStats, stageAgents, stageMedians } from '../lib/workflow-view'
 import { BAR_LEGEND } from '../components/workflow/legend'
 
@@ -56,7 +57,8 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const payload = await payloadClient()
   const modes = onWorkflow ? ((await payload.findByID({ collection: 'workspaces', id: workspace!.id, select: { defaultMode: true, modeByStage: true }, depth: 0, overrideAccess: true })) as { defaultMode?: string | null; modeByStage?: Record<string, unknown> | null }) : {}
   const [medians, team] = onWorkflow ? await Promise.all([stageMedians(payload, workspace!.id, product), loadTeam(payload, workspace!.id)]) : [{}, null]
-  const stats = onWorkflow ? { ...nodeStats(wf, shown, data.wip, medians), agents: stageAgents(wf, team!.roles, (st) => resolveMode(wf, modes, st)) } : null
+  const executors = onWorkflow ? await executorsOf(payload, workspace!.id, wf.stages, team!.roles) : null
+  const stats = onWorkflow ? { ...nodeStats(wf, shown, data.wip, medians), agents: stageAgents(wf, team!.roles, (st) => resolveMode(wf, modes, st)), executors: executors! } : null
   const pickedStage = picked?.split(':')[0]
   const groups: Group[] = board(wf)
     .filter((s) => !pickedStage || s === pickedStage)
@@ -85,7 +87,12 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               {BAR_LEGEND.map((l) => <span key={l.label} className="flex items-center gap-1"><i className={`inline-block size-2 rounded-[1px] ${l.cls}`} />{l.label}</span>)}
               <span>Dashed lines go back to an earlier stage; dashed pills wait for you.</span>
             </p>
-            {picked && <p className="small" data-testid="stage-filter">{stats?.agents?.get(picked)?.missing && <><Link className="text-warn" href="/team" data-testid="no-agent-link">No agent connected for this stage: open Agent team</Link> · </>}Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link>{picked.includes(':') && !!stats?.checkpoints.get(picked) && <> · <Link className="text-primary" href={`/inbox?checkpoint=${encodeURIComponent(nodes.find((n) => n.id === picked)?.title ?? '')}`} data-testid="decide-in-inbox">Decide in Inbox ({stats.checkpoints.get(picked)})</Link></>}</p>}
+            {[...(executors ?? [])].some(([, e]) => e.action) && (
+              <ul className="small m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0" data-testid="executor-actions">
+                {[...(executors ?? [])].flatMap(([stage, e]) => (e.action ? [<li key={stage}><span className="capitalize">{stage}</span>: {e.line}. <Link className="text-warn underline" href={e.action.href}>{e.action.label}</Link></li>] : []))}
+              </ul>
+            )}
+            {picked && <p className="small" data-testid="stage-filter">{stats?.agents?.get(picked)?.missing && <><Link className="text-warn underline" href="/team" data-testid="no-agent-link">No agent connected for this stage: open Agent team</Link> · </>}Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link>{picked.includes(':') && !!stats?.checkpoints.get(picked) && <> · <Link className="text-primary" href={`/inbox?checkpoint=${encodeURIComponent(nodes.find((n) => n.id === picked)?.title ?? '')}`} data-testid="decide-in-inbox">Decide in Inbox ({stats.checkpoints.get(picked)})</Link></>}</p>}
             {groups.length ? <TicketList wf={wf} groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
           </div>
         )
