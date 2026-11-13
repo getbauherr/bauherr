@@ -55,6 +55,11 @@ describe('normalizeRefine', () => {
   ])('refuses %s', (_, raw) => {
     expect(() => normalizeRefine(raw, ps, { body })).toThrow('invalid refine result')
   })
+  it('a free-text message after a partial answer is valid: the repeat of the answered point is dropped, the rest applies', () => {
+    const out = normalizeRefine(ok({ settled: [{ id: 'D1', answer: 'XLSX' }, { id: 'D2', answer: 'everyone' }], dropped: [{ id: 'D3', reason: 'moot' }] }), points({ D1: 'XLSX' }), { body })
+    expect(out.settled).toEqual([{ id: 'D2', answer: 'everyone' }])
+    expect(out.dropped).toEqual([{ id: 'D3', reason: 'moot' }])
+  })
   it('drops a repeat of an answered point from settled, keeping the other ids', () => {
     const out = normalizeRefine(ok({ settled: [{ id: 'D2', answer: 'x' }, { id: 'D1', answer: 'XLSX' }] }), points({ D2: 'a' }), { body })
     expect(out.settled).toEqual([{ id: 'D1', answer: 'XLSX' }])

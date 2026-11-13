@@ -36,6 +36,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [restore, setRestore] = useState('')
+  const [failed, setFailed] = useState<{ text: string; images?: number[] } | null>(null)
   const [recorded, setRecorded] = useState<string | null>(null)
   const [diff, setDiff] = useState(false)
   useEffect(() => {
@@ -105,9 +106,9 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
       if (!text) return
       const images = (m.attachments ?? []).flatMap((a) => a.content ?? []).flatMap((p) => (p.type === 'image' ? [mediaId(p.image)] : [])).filter((i): i is number => i !== null)
       const r = await run({ text, ...(images.length && { images }) }, text)
-      if (r.ok) return
+      if (r.ok) return setFailed(null)
       setRestore(text)
-      if (!r.aborted) setError(r.error)
+      if (!r.aborted) (setError(r.error), setFailed({ text, ...(images.length && { images }) }))
     },
   })
 
@@ -147,7 +148,12 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
               onChange={(id) => void act(() => refineChange(ticket, id))}
               tail={!locked && current && <QuestionCard id={current.id} eyebrow={`Question ${view.points.indexOf(current) + 1} of ${view.points.length}`} title={current.title} why={current.why} options={current.options.map((label) => ({ label, recommended: label === current.default }))} busy={busy} onPick={async (i) => { if (!(await act(() => refinePick(ticket, current.id, i)))) throw new Error('not recorded'); setRecorded(`${current.title}: ${current.options[i]}`); if (open.length > 1) void run({ recheck: { point: current.id } }, null) }} onWhy={() => void act(() => refineExplain(ticket, current.id))} extra={open.length > 1 && <Button type="button" size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => void act(() => refineRest(ticket))}>Use recommended for the rest</Button>} />}
             >
-              {error && <p role="alert" data-testid="refine-error" className="m-0 text-[13px] text-destructive">{error}</p>}
+              {error && (
+                <p role="alert" data-testid="refine-error" className="m-0 flex items-center gap-2 text-[13px] text-destructive">
+                  {error}
+                  {failed && <Button type="button" variant="outline" size="sm" data-testid="refine-retry" disabled={busy || !!turn} onClick={() => void run(failed, failed.text).then((r) => (r.ok ? (setFailed(null), setRestore('')) : r.aborted || setError(r.error)))}>Try again</Button>}
+                </p>
+              )}
               {recorded && <p role="status" data-testid="recorded" className="m-0 flex items-center gap-1.5 text-[13px] text-ok"><Check />Recorded. {recorded}</p>}
               {turn && !turn.user && <p role="status" data-testid="rechecking" className="m-0 animate-pulse text-[13px] text-muted-foreground">Checking the remaining points...</p>}
               {locked && <AgentHandoff data-testid="handoff" from={view.participant.role} to={view.planner} reason={view.next.replace(/^Then: /, 'Next: ')} carried={view.points.filter((p) => p.status === 'answered').map((p) => `${p.title}: ${p.answer}`)} settled />}
