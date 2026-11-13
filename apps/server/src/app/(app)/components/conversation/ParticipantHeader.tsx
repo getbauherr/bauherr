@@ -16,7 +16,7 @@ import { shortModel } from '../../lib/format'
  * Who the conversation is with: the role as persona (avatar, name), and one line under it that says who really talks: the session that asked, the Factory assistant that replies,
  * the model. The chevron opens the agent card (role profile, session, client, model, Run link). `menu` is the page's "more" menu.
  */
-export const ParticipantHeader: FC<{ participant: Participant; model: string; subtitle: string; /** What the one line under the name says the Factory assistant does. */ line?: string; menu: ReactNode }> = ({ participant: p, model, subtitle, line = 'Factory assistant replies', menu }) => {
+export const ParticipantHeader: FC<{ participant: Participant; model: string; subtitle: string; /** What the one line under the name says the Factory assistant does. */ line?: string; menu?: ReactNode }> = ({ participant: p, model, subtitle, line = 'Factory assistant replies', menu }) => {
   const s = p.session
   const short = shortModel(model)
   return (
@@ -50,10 +50,12 @@ export const ParticipantHeader: FC<{ participant: Participant; model: string; su
           </PopoverContent>
         </Popover>
       </div>
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="More" data-testid="more" className="size-8"><Ellipsis /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">{menu}</DropdownMenuContent>
-      </DropdownMenu>
+      {menu && (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="More" data-testid="more" className="size-8"><Ellipsis /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">{menu}</DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </header>
   )
 }

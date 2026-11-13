@@ -30,7 +30,7 @@ const attachments = makeAttachments()
  * chips, and the refined Ticket as the living artifact with the one "Send to planning" at its foot. Every action answers the whole state; the page never merges.
  * `info` is the server-rendered Ticket meta (the artifact header's info popover), `where` says where the Ticket is after sending.
  */
-export const RefineConversation: FC<{ ticket: number; kind: string | null; where: string; info: ReactNode }> = ({ ticket, kind, where, info }) => {
+export const RefineConversation: FC<{ ticket: number; kind: string | null; where: string; info?: ReactNode; /** In the Ticket page's split: no side panel, no "more" menu. */ embedded?: boolean }> = ({ ticket, kind, where, info, embedded = false }) => {
   const router = useRouter()
   const [view, setView] = useState<View | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
@@ -111,6 +111,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
     },
   })
 
+  if (view === null) return <p data-testid="no-conversation" className="m-0 rounded-md border border-border bg-card p-4 text-[13px] text-muted-foreground">Nothing was asked on this Ticket. Comments you post to the issue are read at the agent's next Run.</p>
   if (!view || model === null) return error ? <p role="alert" className="m-0 text-destructive">{error}</p> : <p role="status" className="m-0 animate-pulse text-muted-foreground">Loading the conversation...</p>
   const open = openOf(view.points)
   const current = open[0]
@@ -128,12 +129,13 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
       <Restore text={restore} done={() => setRestore('')} />
       <div data-testid="refine-panel" data-state={locked ? 'sent' : open.length ? 'open' : 'summary'} className="contents">
         <ConversationShell
+          embedded={embedded}
           header={
             <ParticipantHeader
               participant={view.participant}
               model={model}
               subtitle={`refining #${view.ticket.number} with you`}
-              menu={<DropdownMenuItem asChild><Link href={`/tickets/${ticket}?view=ticket`}>Ticket page: path, steps, proof</Link></DropdownMenuItem>}
+              menu={embedded ? undefined : <DropdownMenuItem asChild><Link href={`/tickets/${ticket}?view=ticket`}>Ticket page: path, steps, proof</Link></DropdownMenuItem>}
             />
           }
           stream={
@@ -163,10 +165,12 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
             actions: (
               <>
                 <Button type="button" variant="ghost" size="sm" data-testid="changes" aria-pressed={diff} className={`h-8 gap-1.5 ${diff ? 'bg-secondary' : ''}`} onClick={() => setDiff((d) => !d)}>Changes <span data-testid="changes-count">{a.changes}</span></Button>
+                {info && (
                 <Popover>
                   <PopoverTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="Ticket details" data-testid="ticket-info" className="size-8"><Info className="size-4" /></Button></PopoverTrigger>
                   <PopoverContent align="end" data-testid="ticket-info-content" className="flex max-h-[70dvh] w-96 flex-col gap-4 overflow-y-auto">{info}</PopoverContent>
                 </Popover>
+                )}
               </>
             ),
             body: <TicketArtifact view={view} number={view.ticket.number} kind={kind} locked={locked} busy={busy} diff={diff} onChange={(id) => void act(() => refineChange(ticket, id))} />,
