@@ -61,9 +61,9 @@ export const workflowStages = (wf: Workflow): string[] => order(wf)
 
 type WorkspaceModes = { defaultMode?: string | null; modeByStage?: Record<string, unknown> | null }
 
-/** `modeFor` for an already loaded Workspace. A `scan` Run is always autonomous: only the Runner gives it read-only tools, the fence and the findings path. */
+/** `modeFor` for an already loaded Workspace. A `scan` or `docs` Run is always autonomous: only the Runner gives it read-only tools, the fence and the findings path. */
 export const resolveMode = (wf: Workflow, ws: WorkspaceModes, stage: string): Mode =>
-  stage === 'scan' ? 'autonomous' : [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed(wf).find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
+  stage === 'scan' || stage === 'docs' ? 'autonomous' : [ws.modeByStage?.[stage], ws.defaultMode, process.env.BAUHERR_DEFAULT_MODE, packed(wf).find((s) => s.name === stage)?.mode].find(isMode) ?? 'autonomous'
 
 /**
  * Mode a Run of `stage` starts in. Precedence: Workspace.modeByStage[stage], Workspace.defaultMode,

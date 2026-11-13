@@ -91,7 +91,7 @@ it('Standard is the pack default workflow plus the security review, with the app
   expect(await apply(ws, 'standard')).toMatchObject({ saved: true })
   expect(wf.order(factory.workflowFor(ws))).toEqual(['triage', 'plan', 'parent', 'build', 'security-review', 'review', 'release', 'done'])
   expect(wf.gates(factory.workflowFor(ws))).toEqual({ plan: true, staging: true, production: true })
-  expect(factory.workflowFor(ws).roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test'])
+  expect(factory.workflowFor(ws).roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs'])
 })
 
 it('Careful adds the three conditional specialist stages between Build and Review, staging acceptance, and the specialist roles', async () => {
@@ -107,7 +107,7 @@ it('Careful adds the three conditional specialist stages between Build and Revie
   expect(wf.target(w, 'test-review', 'pass')).toBe('review')
   expect(wf.target(w, 'test-review', 'findings')).toBe('build')
   expect(wf.gates(w)).toEqual({ plan: true, staging: true, production: true })
-  expect(w.roles.map((r) => r.id)).toEqual(expect.arrayContaining(['security', 'ux', 'test']))
+  expect(w.roles.map((r) => r.id)).toEqual(expect.arrayContaining(['security', 'ux', 'test', 'docs']))
   const row = (await payload.db.drizzle.execute(sql`SELECT "note", "applied_via" AS via, "applied_by" AS by FROM "workflow_versions" WHERE "workspace_id" = ${ws}`)).rows[0]
   expect(row).toMatchObject({ note: 'Setup: Careful team', via: 'ui', by: 'admin@x.io' })
 })

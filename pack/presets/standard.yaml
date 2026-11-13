@@ -16,6 +16,7 @@ team:
     security:     {title: Security specialist, skills: [Threat modelling, AuthZ, Secrets, Injection, Dependencies], tier: standard, profile_file: roles/security.md}
     ux:           {title: UX specialist, skills: [Flows, States, Copy, Accessibility], tier: standard, profile_file: roles/ux.md}
     test:         {title: Test specialist, skills: [Failure modes, Regression, Flake hunting], tier: standard, profile_file: roles/test.md}
+    docs:         {title: Technical writer, skills: [Doc freshness, Claim checking, Gap finding], tier: standard, profile_file: roles/docs.md}
 workflow:
   stages:
     # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
@@ -24,7 +25,7 @@ workflow:
       role: orchestrator
       skill: triage
       refine: {by: product-owner}
-      exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan]
+      exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan, bauherr:docs-check]
       outcomes: {plan: plan, refine: triage, skip: backlog}
     - {name: plan, kind: plan, role: engineer, skill: run-contract, gate: human, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
     - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}

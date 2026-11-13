@@ -178,7 +178,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const wf = workflowFor(run.workspace)
   const kind = kindOfRun(wf, run)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
-  if (run.mode !== 'session' || run.stage === 'scan') throw new Error(notClaimable)
+  if (run.mode !== 'session' || run.stage === 'scan' || run.stage === 'docs') throw new Error(notClaimable)
   // A session already holds it: the loser of a claim race gets the same message whether it read before or after the winner committed.
   if (run.status === 'running') throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
@@ -287,7 +287,7 @@ const skippedBefore = async (c: Ctx, claimed: Doc, label: string | null, stages:
     })
 }
 
-const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session' && r.stage !== 'scan'
+const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session' && r.stage !== 'scan' && r.stage !== 'docs'
 
 /** Runs `claim_next` could not claim (non-ClaimLost error), by id with the time: `claim_run` does not hold others back behind them for 5 minutes. In-memory, per server process. */
 const failedClaims = new Map<string, number>()

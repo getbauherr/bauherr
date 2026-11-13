@@ -182,6 +182,48 @@ describe('the pull rule', () => {
   })
 })
 
+describe('a refined Ticket queued for a full Plan', () => {
+  /** A Triage hold with its questions all answered, whose card the sweep wrote before the release. */
+  const held = async () => {
+    await limits({ plan: 1 })
+    const a = await ticket('a', 'plan')
+    const issue = await fake.tickets(repo).create({ title: 'h', labels: ['bauherr:needs-refinement'] })
+    const t = await payload.create({ collection: 'tickets', data: { title: 'h', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: null, labels: ['bauherr:needs-refinement'], product, workspace: ws, rank: 'h', needsYou: 'Answer questions', decision: { need: 'Answer questions' } }, ...o })
+    return { a, id: t.id as number, n: String(issue.number) }
+  }
+
+  it('asks nothing: the sweep clears the card, the Inbox drops it, the page says queued; a freed slot pulls it into Plan with a Plan Run', async () => {
+    const { a, id } = await held()
+    expect(await actions.finishRefinement(payload, user, { ticket: id })).toBe('waiting')
+    expect(await reload(id)).toMatchObject({ stage: null, waitingFor: 'plan' })
+    await (await import('../src/lib/gates')).syncGates(payload)
+    expect(await reload(id)).toMatchObject({ needsYou: null, decision: null })
+    const row = (await loadOverview(ws, false)).tickets.find((r) => r.id === id)!
+    expect(row.needsYou).toBeNull()
+    expect(row.waiting).toContain('Queued for Plan')
+
+    await fake.tickets(repo).removeLabels(a.n, ['bauherr:stage:plan'])
+    await fake.tickets(repo).addLabels(a.n, ['bauherr:stage:review'])
+    await payload.update({ collection: 'tickets', id: a.id, data: { stage: 'review' }, ...o })
+    await poll()
+    expect(await reload(id)).toMatchObject({ stage: 'plan', waitingFor: null })
+    expect(await runs(id, 'plan')).toHaveLength(1)
+  })
+
+  it('a Ticket queued before the fix loses its stale card on the next sweep', async () => {
+    const { id } = await held()
+    await payload.update({ collection: 'tickets', id, data: { waitingFor: 'plan' }, ...o })
+    await (await import('../src/lib/gates')).syncGates(payload)
+    expect(await reload(id)).toMatchObject({ needsYou: null, decision: null })
+  })
+
+  it('a Ticket with an open point keeps its card', async () => {
+    const { id } = await held()
+    await (await import('../src/lib/gates')).syncGates(payload)
+    expect(await reload(id)).toMatchObject({ needsYou: 'Answer questions' })
+  })
+})
+
 describe('counting and workspaces', () => {
   it('a Build Ticket waiting for a full Review still counts in Build, so no new Build Run starts', async () => {
     usePack('bare-pack')

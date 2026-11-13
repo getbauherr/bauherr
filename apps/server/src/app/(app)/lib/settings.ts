@@ -15,6 +15,7 @@ import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
 import { gateOwnersOf, logins } from '../../../lib/forge-channel'
+import { DEFAULT_DOCS_PATHS, DOCS_LABEL } from '../../../lib/docs-check'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -113,6 +114,7 @@ export async function loadProducts(workspace: number) {
           proofRules: ((p.reviewChecks?.artifacts ?? []) as { name: string; globs: string[]; kind: string; command: string; before?: boolean }[]).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before })),
           pathSets: { text: formatPathSets(p.pathSets), missing: missingSuggestions(p.pathSets ?? {}), never: neverRuns(workflowFor(workspace), p.pathSets ?? {}) },
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
+          docsCheck: { paths: ((p.docsCheck?.paths ?? DEFAULT_DOCS_PATHS) as string[]).join('\n'), lastCheckAt: (p.docsCheck?.lastCheckAt ?? null) as string | null },
           blocked: await blockedBy(payload, 'products', p.id),
           embedTokens: embedTokens
             .filter((e) => (e.product?.id ?? e.product) === p.id)
@@ -140,12 +142,15 @@ export async function loadProduct(workspace: number, id: number, viewerIsAdmin =
   // Admins are not tenant-scoped: only an Admin sees other Admins' emails; for everyone the callout still knows whether an Admin can be notified.
   const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
   const payload = await payloadClient()
-  const [lastRun, findings] = await Promise.all([
+  const [lastRun, findings, lastDocsRun, docsTickets] = await Promise.all([
     payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'scan' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
     payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security' } }] }, sort: '-number', limit: 5, select: { number: true }, ...o } as never),
+    payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'docs' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
+    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: DOCS_LABEL } }] }, sort: '-number', limit: 3, select: { number: true }, ...o } as never),
   ])
   const scan = { run: ((lastRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (findings.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
-  return { product, scan, connections, members, hasApprover: all.length > 0, workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
+  const docsInfo = { run: ((lastDocsRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (docsTickets.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
+  return { product, scan, docsInfo, connections, members, hasApprover: all.length > 0, workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
