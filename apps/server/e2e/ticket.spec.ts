@@ -40,10 +40,6 @@ test('the action bar is the same single, visible bar in every state', async ({ p
     for (const [slug, title, verb] of STATES) {
       await page.goto('/')
       await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
-      if (slug === 'answer-questions') { // a Ticket that waits for answers opens as the conversation: its action bar is on the normal page
-        await expect(page.getByTestId('conversation-shell')).toBeVisible()
-        await page.goto(`${new URL(page.url()).pathname}?view=ticket`)
-      }
       const bar = page.getByTestId('action-bar')
       await expect(bar).toBeVisible()
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
@@ -85,7 +81,7 @@ test('answer the critical decision, then approve the plan', async ({ page }, tes
   await row.getByRole('link', { name: title }).click()
 
   await expect(page.locator('#worklog')).toBeHidden()
-  await page.getByText('Details', { exact: true }).click()
+  await page.getByTestId('pane-tab-history').click()
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.locator('.sheet')).toHaveCount(0)
   const gaps = await page.locator('.max-w-\\[80ch\\] > p + *').evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).marginTop)))
@@ -103,7 +99,7 @@ test('answer the critical decision, then approve the plan', async ({ page }, tes
   await page.getByTestId('more').click()
   await page.getByRole('menuitem', { name: /Ticket page/ }).click()
   await expect(approve).toBeVisible()
-  if (!(await page.locator('#worklog').isVisible())) await page.getByText('Details', { exact: true }).click() // the router may bring the page back with its Details open
+  await page.getByTestId('pane-tab-history').click()
   await expect(page.locator('#worklog')).toBeVisible()
   await expect(page.getByText('D2 Follow the system setting: yes, until the user picks')).toBeVisible()
 
@@ -115,23 +111,27 @@ test('answer the critical decision, then approve the plan', async ({ page }, tes
   await expect(approve).toHaveCount(0)
 })
 
-test('an approval Ticket shows the bar, title, pipeline and the gate; the rest sits in a closed Details', async ({ page }) => {
+test('an approval Ticket shows the bar, title, pipeline and the gate; the rest sits in the closed About and the History tab', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
-  const details = page.locator('details', { has: page.locator('#details') })
-  await expect(details).not.toHaveAttribute('open', '')
+  const about = page.getByTestId('ticket-about')
+  await expect(about).not.toHaveAttribute('open', '')
   await expect(page.getByTestId('action-bar')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Tidy the settings copy')
-  await expect(page.getByTestId('ticket-path')).toBeVisible()
+  await expect(page.getByTestId('stage-strip')).toBeVisible()
   await expect(page.getByText('Recommended')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Approve plan' })).toHaveCount(0)
-  for (const name of ['Budget', 'Model', 'Worklog']) await expect(details.getByText(name, { exact: true })).toBeHidden()
+  for (const name of ['Budget', 'Model']) await expect(about.getByText(name, { exact: true })).toBeHidden()
+  await expect(page.locator('#pane-history').getByText('Worklog', { exact: true })).toBeHidden()
   await page.getByTestId('action-bar').getByRole('link', { name: 'Show details' }).click()
-  await expect(details).toHaveAttribute('open', '')
-  await expect(details.getByText('Budget', { exact: true })).toBeVisible()
-  await expect(details.getByText('Model', { exact: true })).toBeVisible()
-  await expect(details.getByRole('heading', { name: 'Runs' })).toBeVisible()
-  await expect(details.locator('table thead th')).toHaveText(['Run', 'Stage', 'Status', 'Duration', 'Evidence'])
+  await expect(about).toHaveAttribute('open', '')
+  await expect(about.getByText('Budget', { exact: true })).toBeVisible()
+  await expect(about.getByText('Model', { exact: true })).toBeVisible()
+  await page.getByTestId('pane-tab-history').click()
+  const history = page.locator('#pane-history')
+  await expect(history.getByTestId('ticket-path')).toBeVisible()
+  await expect(history.getByRole('heading', { name: 'Runs' })).toBeVisible()
+  await expect(history.locator('table thead th')).toHaveText(['Run', 'Stage', 'Status', 'Duration', 'Evidence'])
   if (shots) {
     for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: scheme })
@@ -148,11 +148,12 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.locator('[data-testid=workflow]')).toBeVisible()
     await page.locator('.card', { hasText: 'Tidy the settings copy' }).first().getByRole('link', { name: 'Tidy the settings copy' }).click()
-    await page.getByText('Details', { exact: true }).click()
-    const details = page.locator('details', { has: page.locator('#details') })
+    const details = page.getByTestId('ticket-about')
+    await page.getByText('About', { exact: true }).click()
     for (const name of ['Budget', 'Model']) await expect(details.getByText(name, { exact: true })).toHaveCount(admin ? 1 : 0)
     if (!admin) await expect(details).not.toContainText(/\$|tokens|\/ 30 days|claude|gpt|sonnet|opus|haiku|Merge commit|#\d+\s*$/i)
-    await expect(details.locator('table thead th')).toHaveText(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence'])
+    await page.getByTestId('pane-tab-history').click()
+    await expect(page.locator('#pane-history').locator('table thead th')).toHaveText(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence'])
     await page.context().clearCookies()
   }
 })
@@ -176,8 +177,8 @@ test('an approved plan held by an overlap shows a disabled button with the overl
   await expect(await reasonOf(page, step)).toHaveText(reason)
   await expect(bar).not.toContainText('Nothing to do')
   await expect(page.getByRole('region', { name: 'Answer questions' })).toHaveCount(0)
-  await page.getByText('Details', { exact: true }).click()
-  await expect(page.locator('details', { has: page.locator('#details') })).toContainText('0 answered')
+  await page.getByText('About', { exact: true }).click()
+  await expect(page.getByTestId('ticket-about')).toContainText('0 answered')
 })
 
 test('a plan waiting for approval shows an enabled Approve plan button', async ({ page }) => {
@@ -205,6 +206,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwA
 test('the path highlights the stages a Ticket visited and the steps name who ran them', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Export invoices as CSV' }).first().getByRole('link', { name: 'Export invoices as CSV' }).click()
+  await page.getByTestId('pane-tab-history').click()
   const path = page.getByTestId('ticket-path')
   const node = (stage: string) => path.getByTestId('path-node').filter({ hasText: new RegExp(`^${stage}`, 'i') })
   for (const stage of ['triage', 'plan', 'build']) await expect(node(stage)).toHaveAttribute('data-visited', 'true')
@@ -223,12 +225,14 @@ test('the path highlights the stages a Ticket visited and the steps name who ran
   await expect(build.getByTestId('step-detail')).toContainText('anthropic')
   await expect(build.getByRole('link', { name: /^Run #\d+$/ })).toHaveAttribute('href', /\/runs\/\d+$/)
   await expect(steps.locator('[data-testid=visit][data-stage=plan]').getByTestId('step-decision')).toHaveText(/approve plan by .+@example\.com/)
+  await page.getByText('About', { exact: true }).click()
   await expect(page.getByTestId('total-lead-time')).not.toHaveText('0 s')
 })
 
 test('a Ticket that looped shows its rounds', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Upgrade the payment SDK' }).first().getByRole('link', { name: 'Upgrade the payment SDK' }).click()
+  await page.getByTestId('pane-tab-history').click()
   await expect(page.getByTestId('path-rounds')).toContainText(['Build: 2 rounds', 'Review: 2 rounds'])
   await expect(page.locator('[data-testid=visit][data-stage=build]')).toHaveCount(2)
 })
@@ -248,7 +252,7 @@ const openTicket = async (page: Page, number: number, title: string) => {
   await page.getByPlaceholder(/find a Ticket/).fill(`#${number}`)
   await page.getByRole('option', { name: new RegExp(title) }).click()
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^#${number} `) })).toBeVisible()
-  await page.getByText('Details', { exact: true }).first().click()
+  await page.getByText('About', { exact: true }).first().click()
 }
 
 test('Repair shows the counters next to Reset counters; Details say when a Ticket was released and whose plan approval it inherited', async ({ page }) => {
@@ -266,6 +270,7 @@ test('Repair shows the counters next to Reset counters; Details say when a Ticke
 test('a conditional step the Ticket passed is listed as skipped with the reason: no Run, no visit', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Check the CSV header' }).first().getByRole('link', { name: 'Check the CSV header' }).click()
+  await page.getByTestId('pane-tab-history').click()
   const steps = page.getByTestId('ticket-steps')
   const skipped = steps.getByTestId('skipped')
   await expect(skipped).toHaveCount(1)

@@ -36,6 +36,36 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
   const [tab, setTab] = useState(defaultTab)
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => setSaved(read()), [])
+  // Container width without `container-type`, which would contain the fixed ActionBar to this box.
+  const [wide, setWide] = useState(false)
+  useEffect(() => {
+    const el = root.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setWide(e!.contentRect.width >= 960))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // A link to #details shows the Now tab of the Now pane with About open.
+  useEffect(() => {
+    const show = () => {
+      setTab('status')
+      setSaved((s) => ({ ...s, collapsed: false }))
+      setTimeout(() => {
+        document.getElementById('pane-tab-now')?.click()
+        document.querySelector<HTMLDetailsElement>('[data-testid=ticket-about]')?.setAttribute('open', '')
+        document.getElementById('details')?.scrollIntoView()
+      }, 0)
+    }
+    const click = (e: MouseEvent) => {
+      if ((e.target as Element).closest('a[href="#details"]')) {
+        e.preventDefault()
+        show()
+      }
+    }
+    document.addEventListener('click', click)
+    if (location.hash === '#details') show()
+    return () => document.removeEventListener('click', click)
+  }, [])
   const update = useCallback((s: Saved) => {
     setSaved(s)
     write(s)
@@ -57,10 +87,10 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
     e.preventDefault()
   }
 
-  const narrowHidden = (show: boolean) => (show ? '' : '@max-[959px]:hidden')
+  const narrowHidden = (show: boolean) => (show ? '' : 'group-data-[wide=false]/split:hidden')
   return (
-    <div ref={root} className="@container" data-testid="ticket-split" data-collapsed={saved.collapsed}>
-      <div role="tablist" aria-label="Ticket page" className="mb-3 flex gap-4 border-b border-border @[960px]:hidden">
+    <div ref={root} className="group/split" data-testid="ticket-split" data-wide={wide} data-collapsed={saved.collapsed}>
+      <div role="tablist" aria-label="Ticket page" className="mb-3 flex gap-4 border-b border-border group-data-[wide=true]/split:hidden">
         {([['conversation', 'Conversation'], ['status', 'Status']] as const).map(([id, label]) => (
           <button
             key={id}
@@ -78,13 +108,13 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
         ))}
       </div>
       <div
-        className={`grid items-start gap-0 ${saved.collapsed ? '@[960px]:grid-cols-[minmax(0,1fr)_1.25rem]' : '@[960px]:grid-cols-[minmax(0,1fr)_1.25rem_var(--now-w)]'}`}
+        className={`grid items-start gap-0 ${saved.collapsed ? 'group-data-[wide=true]/split:grid-cols-[minmax(0,1fr)_1.25rem]' : 'group-data-[wide=true]/split:grid-cols-[minmax(0,1fr)_1.25rem_var(--now-w)]'}`}
         style={{ '--now-w': `${saved.width}px` } as CSSProperties}
       >
-        <section id="split-conversation" role="tabpanel" aria-labelledby="split-tab-conversation" aria-label="Conversation" data-testid="split-conversation" className={`@[960px]:sticky @[960px]:top-[var(--space-4)] min-w-0 ${narrowHidden(tab === 'conversation')}`}>
+        <section id="split-conversation" role="tabpanel" aria-labelledby="split-tab-conversation" aria-label="Conversation" data-testid="split-conversation" className={`group-data-[wide=true]/split:sticky group-data-[wide=true]/split:top-[var(--space-4)] min-w-0 ${narrowHidden(tab === 'conversation')}`}>
           {conversation}
         </section>
-        <div className="hidden h-full min-h-[12rem] items-start justify-center @[960px]:flex">
+        <div className="hidden h-full min-h-[12rem] items-start justify-center group-data-[wide=true]/split:flex">
           <div
             role="separator"
             aria-orientation="vertical"
@@ -102,13 +132,13 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
             className="sticky top-[var(--space-4)] h-[calc(100dvh-8rem)] min-h-[24rem] w-1.5 cursor-col-resize rounded-full bg-border outline-none hover:bg-primary/40 focus-visible:bg-primary"
           />
         </div>
-        <aside id="split-status" role="tabpanel" aria-labelledby="split-tab-status" aria-label="Now" data-testid="now-pane" className={`flex min-w-0 flex-col gap-4 ${saved.collapsed ? '@[960px]:hidden' : ''} ${tab === 'status' ? '' : '@max-[959px]:gap-0'}`}>
+        <aside id="split-status" role="tabpanel" aria-labelledby="split-tab-status" aria-label="Now" data-testid="now-pane" className={`flex min-w-0 flex-col gap-4 ${saved.collapsed ? 'group-data-[wide=true]/split:hidden' : ''} ${tab === 'status' ? '' : 'group-data-[wide=false]/split:gap-0'}`}>
           {bar}
           <div className={`flex min-w-0 flex-col gap-4 ${narrowHidden(tab === 'status')}`}>{now}</div>
         </aside>
       </div>
       {saved.collapsed && (
-        <Button type="button" variant="outline" size="sm" className="mt-3 hidden @[960px]:inline-flex" data-testid="split-expand" onClick={() => update({ ...saved, collapsed: false })}>Show the Now pane</Button>
+        <Button type="button" variant="outline" size="sm" className="mt-3 hidden group-data-[wide=true]/split:inline-flex" data-testid="split-expand" onClick={() => update({ ...saved, collapsed: false })}>Show the Now pane</Button>
       )}
     </div>
   )
