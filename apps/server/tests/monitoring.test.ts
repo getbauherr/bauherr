@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { createServer as tcp } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -120,6 +120,17 @@ it('saving Traces writes frontendPolicies.tracing (header in a 0600 file), savin
   await payload.delete({ collection: 'connections', id: again.id, ...o })
   expect(cfg().frontendPolicies.tracing).toEqual({ host: 'jaeger:4317', randomSampling: true })
   delete process.env.OTEL_ENABLED
+})
+
+it('concurrent rewrites of config.yaml all land (queued, unique tmp names)', async () => {
+  const { syncManagedConfig } = await import('../src/lib/gateway')
+  writeFileSync(cfgPath, 'llm:\n  models: []\n')
+  writeFileSync(join(dir, 'catalogs', 'a.json'), '{}')
+  const results = await Promise.all([syncManagedConfig({ host: 'z.example:1', randomSampling: true }), syncManagedConfig(), syncManagedConfig(), syncManagedConfig({ host: 'z.example:1', randomSampling: true })])
+  expect(results.filter(Boolean).length).toBeGreaterThanOrEqual(1)
+  expect(cfg().frontendPolicies.tracing).toEqual({ host: 'z.example:1', randomSampling: true })
+  expect(cfg().config.modelCatalog).toEqual([{ file: join(dir, 'catalogs', 'a.json') }])
+  expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([])
 })
 
 it('boot leaves a hand-edited tracing block alone without a saved Connection', async () => {
