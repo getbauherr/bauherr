@@ -124,3 +124,15 @@ it('review-rounds splits merged Tickets at the cutoff', () => {
   })
   expect(reviewRoundStats([], '2026-11-05').before).toEqual({ tickets: 0, rounds: 0, mean: null, median: null })
 })
+
+it('a docs Ticket whose MR changes a path outside the docs paths is refused, naming them', async () => {
+  await payload.update({ collection: 'products', id: product, data: { reviewChecks: null, docsCheck: { paths: ['README.md', 'docs/**/*.md'] } }, ...o })
+  const { ticket, a, pr } = await seed({ 'docs/a.md': 'x', 'src/b.ts': 'y' })
+  await payload.update({ collection: 'tickets', id: ticket.id, data: { labels: ['bauherr:docs'] }, ...o })
+  await expect(call(member, 'request_review', a)).rejects.toThrow("docs Ticket: src/b.ts outside the Product's docs paths")
+  expect(await stage(ticket.id as number)).toBe('build')
+  await fake.forge.closePullRequest(repo, pr.number)
+  const ok = await seed({ 'docs/a.md': 'x', 'README.md': 'y' })
+  await payload.update({ collection: 'tickets', id: ok.ticket.id, data: { labels: ['bauherr:docs'] }, ...o })
+  expect((await call(member, 'run_checks', ok.a)).failures).toEqual([])
+})

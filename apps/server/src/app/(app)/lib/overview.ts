@@ -8,6 +8,7 @@ import { payloadClient } from './session'
 import { type Stage, needsOf, stageOf } from './needs-you'
 import { type Epic, epicWhere } from './epics'
 import { wipCounts } from '../../../lib/wip'
+import { fastLaneHolder } from '../../../lib/expedite'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
 import { workflowFor } from '../../../lib/factory'
 import { byKind, is, wipStages, type Workflow } from '../../../lib/workflow'
@@ -132,7 +133,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
   const tickets = (ids: number[]) => (ids.length ? docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: ids } }] } }) : [])
   const ids = ticketDocs.map((t) => t.id as number)
   const containerIds = ticketDocs.filter((t) => is(wf, stageOf(wf, t), 'container')).map((t) => t.id as number)
-  const [blockerDocs, parentDocs, [latest, owners], forges, entered, kids] = await Promise.all([
+  const [blockerDocs, parentDocs, [latest, owners], forges, entered, kids, fastLanes] = await Promise.all([
     tickets(blockerIds),
     tickets(parentIds),
     (async () => {
@@ -143,6 +144,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
     forgeKinds(payload, workspace),
     stageEntries(payload, ids),
     containerIds.length ? docsOf(payload, 'tickets', { where: { and: [ws, { parent: { in: containerIds } }] }, select: { parent: true, state: true } }) : [],
+    Promise.all(ticketDocs.filter((t) => t.state !== 'closed' && t.expedite).map(async (t) => [t.id as number, await fastLaneHolder(payload, t)] as const)).then((rows) => new Map(rows)),
   ])
   const blockers = new Map(blockerDocs.map((b) => [b.id as number, { id: b.id as number, number: b.number as number, open: b.state !== 'closed' }]))
   const parents = new Map(parentDocs.map((p) => [p.id as number, { id: p.id as number, number: p.number as number, title: p.title as string }]))
@@ -173,7 +175,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       needsYou: need,
       waiting: isOpen && t.waitingFor && !blockedBy.length ? nextStep({ wf, ticket: t, need: null, run: null, waiting: waitingText(wf, t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason), blockers: [], admin: false }).reason : null,
       overlaps: overlap ? Number(overlap) || null : null,
-      queuedWhy: overlap ? `waits for #${overlap}, which changes the same files` : t.waitingFor === 'checks' ? null : hold,
+      queuedWhy: overlap ? `waits for #${overlap}, which changes the same files` : fastLanes.get(t.id) ? `Waiting for the fast lane: #${fastLanes.get(t.id)}` : t.waitingFor === 'checks' ? null : hold,
       forge: forges.get(t.product) ?? null,
       track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, releaseError: t.releaseError },
       children: containerIds.includes(t.id) ? { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length } : null,

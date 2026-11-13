@@ -1,0 +1,40 @@
+{
+  "item": { "id": "1700000000000000001", "name": "Requirements" },
+  "included": {
+    "lists": [
+      { "id": "1700000000000000011", "name": "Backlog", "type": "active", "position": 65536, "boardId": "1700000000000000001" },
+      { "id": "1700000000000000012", "name": "Planning", "type": "active", "position": 131072, "boardId": "1700000000000000001" },
+      { "id": "1700000000000000013", "name": "Building", "type": "active", "position": 196608, "boardId": "1700000000000000001" },
+      { "id": "1700000000000000014", "name": "Done", "type": "closed", "position": 262144, "boardId": "1700000000000000001" }
+    ],
+    "cards": [
+      {
+        "id": "1700000000000000101", "name": "Dark theme", "listId": "1700000000000000013", "creatorUserId": "1700000000000000201",
+        "createdAt": "2026-10-30T08:00:00.000Z", "updatedAt": "2026-10-30T10:00:00.250Z",
+        "description": "Body text\n\n<!-- bauherr:planka -->\nNumber: 1\nLabel: labeled bauherr%3Astage%3Abuild carol 2026-10-30T09:00:00Z\n<!-- /bauherr:planka -->\n\n<!-- bauherr:relations -->\nBlocked by: #3\nLink: https://example.com/a\n<!-- /bauherr:relations -->"
+      },
+      {
+        "id": "1700000000000000102", "name": "Export to CSV", "description": "Written by hand in Planka", "listId": "1700000000000000011",
+        "creatorUserId": "1700000000000000202", "createdAt": "2026-10-30T09:00:00.000Z", "updatedAt": null
+      }
+    ],
+    "labels": [
+      { "id": "1700000000000000301", "name": "bauherr:stage:build", "color": "berry-purple" },
+      { "id": "1700000000000000302", "name": "feature", "color": "lagoon-blue" },
+      { "id": "1700000000000000303", "name": null, "color": "red" }
+    ],
+    "cardLabels": [
+      { "id": "1700000000000000401", "cardId": "1700000000000000101", "labelId": "1700000000000000301" },
+      { "id": "1700000000000000402", "cardId": "1700000000000000101", "labelId": "1700000000000000303" },
+      { "id": "1700000000000000403", "cardId": "1700000000000000102", "labelId": "1700000000000000302" }
+    ],
+    "cardMemberships": [
+      { "id": "1700000000000000501", "cardId": "1700000000000000101", "userId": "1700000000000000201" },
+      { "id": "1700000000000000502", "cardId": "1700000000000000101", "userId": "1700000000000000202" }
+    ],
+    "users": [
+      { "id": "1700000000000000201", "username": "bauherr-bot", "name": "Bauherr" },
+      { "id": "1700000000000000202", "username": "carol", "name": "Carol" }
+    ]
+  }
+}

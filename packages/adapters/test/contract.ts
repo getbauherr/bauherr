@@ -8,6 +8,8 @@ export interface ContractEnv {
   backend: Backend;
   repo: string;
   user: string;
+  /** Runs only the TicketSource part (a ticket source without a forge, e.g. Planka). */
+  ticketsOnly?: boolean;
   /** Writes a file on a branch (needed so a PR has a diff). */
   commitFile(branch: string, path: string, content: string): Promise<void>;
   /** Switches the repo's native merge queue on (fakes only); the enqueue cases run only when given. */
@@ -178,6 +180,8 @@ export function contractSuite(name: string, env: ContractEnv): void {
       });
     });
   });
+
+  if (env.ticketsOnly) return;
 
   describe(`${name}: Forge`, () => {
     it('reads repositories', async () => {
