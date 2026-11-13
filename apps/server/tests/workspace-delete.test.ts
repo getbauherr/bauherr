@@ -130,6 +130,20 @@ it('an archived Workspace is hidden from workspacesOf, MCP connect, the poller a
   expect(await runsOf(live.id)).toBe(1)
 })
 
+it('an archived Workspace takes no gate decision and its Tickets are left to the release watchers', async () => {
+  const productB = (await payload.find({ collection: 'products', where: { workspace: { equals: wsB } }, limit: 1, ...o })).docs[0].id as number
+  const t = await ticketIn(wsB, productB, 2001)
+  const { loadGate } = await import('../src/lib/actions')
+  await expect(loadGate(payload, admin, { ticket: t.id as number }, 'plan')).rejects.toThrow()
+  expect(await del.isArchived(payload, wsB)).toBe(true)
+  expect(await del.isArchived(payload, wsA)).toBe(false)
+  const { publishReleases, watchReleaseChecks } = await import('../src/lib/release')
+  await payload.update({ collection: 'tickets', id: t.id, data: { releaseChecksState: 'waiting' }, ...o })
+  expect(await watchReleaseChecks(payload)).toBe(0)
+  expect(await publishReleases(payload)).toBe(0)
+  expect(((await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc).releaseChecksState).toBe('waiting')
+})
+
 it('restore works before purgeAt, clears both fields and writes workspace:restore; keys are not restored', async () => {
   await expect(del.restoreWorkspace(payload, member, wsB)).rejects.toThrow('Only an Admin')
   await expect(del.restoreWorkspace(payload, admin, wsA)).rejects.toThrow('cannot be restored')

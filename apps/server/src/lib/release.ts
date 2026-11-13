@@ -1,3 +1,4 @@
+import { inLiveWorkspace, live } from './workspace-delete'
 import { type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest, Where } from 'payload'
@@ -246,7 +247,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
   const out = { released: 0, confirmed: 0, timedOut: 0 }
   const tips = new Map<string, Promise<Tip>>()
   const stages = new Map(
-    (await payload.find({ collection: 'workspaces', select: {}, pagination: false, ...o })).docs.flatMap((w) => {
+    (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, ...o })).docs.flatMap((w) => {
       const wf = workflowFor(w.id)
       const review = byKind(wf, 'review')?.name
       const release = byKind(wf, 'release')?.name
@@ -548,7 +549,7 @@ export const RELEASE_CHECKS_TIMEOUT_MS = 60 * 60_000
  * Reads the Product's `releaseChecks` (for example `image, npm`) on the tagged sha for Tickets in `waiting` or `failed`, counting only runs that started at or after the window start (`releaseChecksSince`: the publish time, or the creation time of a reused older release so its own runs count; never the commit date GitHub reports for a new release) minus the clock-skew margin, and timing out 60 minutes after `releasePublishedAt`. All `success`: "Released in" and `passed` (also after a re-run of a failed workflow); a finished red check, or nothing after 60 minutes: `failed` with the run link (needs-you "Release failed", one Comment on the transition).
  */
 export const watchReleaseChecks = async (payload: Payload, now = Date.now()): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { releaseChecksState: { in: ['waiting', 'failed'] } }, limit: 200, pagination: false, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ releaseChecksState: { in: ['waiting', 'failed'] } }, await inLiveWorkspace(payload)] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   let changed = 0
   for (const t of tickets) {
     try {
@@ -596,7 +597,7 @@ const recordFailure = async (payload: Payload, productId: number | string, e: un
 /** One `publishRelease` per Product with unreleased approved Tickets that are due for a try; one failing Product does not stop the others. */
 export const publishReleases = async (payload: Payload, now = Date.now()): Promise<number> => {
   const due = { or: [{ releaseRetryAt: { exists: false } }, { releaseRetryAt: { less_than_equal: new Date(now).toISOString() } }] }
-  const tickets = (await payload.find({ collection: 'tickets', where: unreleased([due]), limit: 1000, pagination: false, select: { product: true }, ...o })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: unreleased([due, await inLiveWorkspace(payload)]), limit: 1000, pagination: false, select: { product: true }, ...o })).docs as Doc[]
   let published = 0
   for (const product of new Set(tickets.map((t) => id(t.product)))) {
     try {

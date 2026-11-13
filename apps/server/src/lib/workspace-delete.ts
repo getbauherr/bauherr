@@ -18,6 +18,10 @@ export const inLiveWorkspace = async (payload: Payload): Promise<Where> => {
   return gone.length ? { workspace: { not_in: gone } } : {}
 }
 
+/** Whether the Workspace is archived (its Tickets take no more decisions). */
+export const isArchived = async (payload: Payload, workspace: number | string): Promise<boolean> =>
+  (await payload.count({ collection: 'workspaces', where: { and: [{ id: { equals: workspace } }, { archivedAt: { exists: true } }] }, overrideAccess: true })).totalDocs > 0
+
 /** Archived Workspaces that can still be restored, newest deletion first. */
 export const archivedWorkspaces = async (payload: Payload): Promise<{ id: number; name: string; slug: string; archivedAt: string; purgeAt: string }[]> =>
   (await payload.find({ collection: 'workspaces', where: { archivedAt: { exists: true } }, sort: '-archivedAt', select: { name: true, slug: true, archivedAt: true, purgeAt: true }, pagination: false, depth: 0, overrideAccess: true })).docs as never

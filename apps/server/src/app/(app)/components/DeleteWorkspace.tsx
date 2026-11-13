@@ -35,7 +35,7 @@ export function DeleteWorkspace({ name, impact, until }: { name: string; impact:
         <ul className="small flex flex-col gap-1">
           {rows.map(([n, label]) => <li key={label}>{n} {label}</li>)}
         </ul>
-        <p className="small text-muted-foreground">Issues and merge requests on the forge and the Knowledge repo stay untouched. Personal agent keys stay.</p>
+        <p className="small text-muted-foreground">Issues and merge requests on the forge and the Knowledge repo stay untouched. Personal agent keys stay, and so do Connection secrets (LLM provider keys, forge tokens): rotate them where they came from if needed.</p>
         <div className="flex flex-col gap-1">
           <Label htmlFor="delete-workspace-name" className="small">Type <span className="mono">{name}</span> to confirm</Label>
           <Input id="delete-workspace-name" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />

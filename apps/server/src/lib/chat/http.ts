@@ -1,3 +1,4 @@
+import { live } from '../workspace-delete'
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import { tenantsOf } from '../actions'
@@ -27,7 +28,7 @@ export const chatWho = async (req: Request, opts: { owner?: boolean } = {}): Pro
   if (!isBauherr(user) && !(opts.owner && isProductOwner(user))) return fail('forbidden', 403)
   const u = user as Doc
   const slug = cookie(req, WS_COOKIE)
-  const { docs } = await payload.find({ collection: 'workspaces', where: u.role === 'admin' ? {} : { id: { in: tenantsOf(u) } }, sort: 'name', pagination: false, depth: 0, overrideAccess: true })
+  const { docs } = await payload.find({ collection: 'workspaces', where: { and: [u.role === 'admin' ? {} : { id: { in: tenantsOf(u) } }, live] }, sort: 'name', pagination: false, depth: 0, overrideAccess: true })
   const mine = (docs as Doc[]).filter((d) => !isProductOwner(u) || assignmentOf(u, d.id))
   const w = mine.find((d) => d.slug === slug) ?? mine[0]
   return w ? { payload, user: u, workspace: w.id } : fail('no workspace', 404)
