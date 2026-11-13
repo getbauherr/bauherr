@@ -10,9 +10,18 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSW
 /** WCAG 2.2 AA plus axe best practices. `scripts/a11y-coverage.ts` fails CI when a `page.tsx` route is missing from `routes` below or from `scripts/a11y-exceptions.ts`. */
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']
 
+/** Contrast results axe reports as "needs review" because it cannot compute a background (not because the contrast is low): checked by eye in both themes, each with the reason. Add an entry only with a reason; a target not listed fails the scan. */
+const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
+  [/\.leading-none\.(px-1\.)?bg-background/, 'Workflow graph edge labels: a chip with its own background drawn over the SVG edge line (obscured by the line)'],
+  [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
+  [/^#(step|cp)-|^select\[aria-label="Asked: |^\.gap-1\.small\.text-muted-foreground$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
+  [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
+]
+
 const scan = async (page: Page) => {
-  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude('nextjs-portal').analyze()
-  return violations.map((v) => `${v.id} (${v.impact}): ${v.help}. ${v.helpUrl}\n${v.nodes.map((n) => `  ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ')}`).join('\n')}`)
+  const { violations, incomplete } = await new AxeBuilder({ page }).withTags(TAGS).exclude('nextjs-portal').analyze()
+  const review = incomplete.filter((v) => v.id === 'color-contrast' && v.nodes.some((n) => !CONTRAST_REVIEWED.some(([re]) => re.test(n.target.join(' '))))) // "needs review": axe could not decide (overlap, image, gradient), which must not pass silently
+  return [...violations, ...review].map((v) => `${v.id} (${v.impact}): ${v.help}. ${v.helpUrl}\n${v.nodes.map((n) => `  ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ')}`).join('\n')}`)
 }
 
 const setTheme = (page: Page, id: 'light' | 'dark') => page.evaluate((t) => { localStorage.setItem('bauherr-theme', t); document.documentElement.dataset.theme = t; return Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime)).map((a) => a.finished.catch(() => {}))) }, id) // axe must not read colours mid-transition
@@ -33,6 +42,14 @@ const linkOn = (from: string, re: RegExp) => async (page: Page) => {
   expect(href, `a link matching ${re} on ${from}`).toBeTruthy()
   return href!
 }
+
+/** Pages scanned without a session. */
+const signedOut: Record<string, string> = {
+  '/login': '/login',
+}
+
+/** Routes that redirect by design: the pattern they land on. Every other route must land on its own URL. */
+const redirects: Record<string, RegExp> = { '/requests/new': /^\/requests\/\d+$/, '/settings': /^\/settings\/profile$/, '/settings/workflow': /^\/workflow\/edit$/ }
 
 /** Route pattern (as in the app directory, without route groups) to the URL scanned; a function finds the URL of a detail page. */
 const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
@@ -69,7 +86,7 @@ const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/setup': '/setup',
   '/team': '/team',
   '/tickets/[id]': linkOn('/', /^\/tickets\/\d+$/),
-  '/tickets/n/[number]': '/tickets/n/2',
+  '/tickets/n/[number]': '/tickets/n/1', // a number two Products share: the chooser, not the redirect to one Ticket
   '/workflow/edit': '/workflow/edit',
 }
 
@@ -94,19 +111,26 @@ test.describe('keyboard', () => {
     await expect(page.locator('main#main')).toBeFocused()
 
     await page.goto('/settings/profile')
-    await page.locator('body').click({ position: { x: 0, y: 0 } })
-    for (let i = 0; i < 25; i++) {
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    const stops: string[] = []
+    for (let i = 0; ; i++) {
+      expect(i, 'focus never wrapped: more than 200 Tab stops').toBeLessThan(200)
       await page.keyboard.press('Tab')
-      const ring = await page.evaluate(() => {
-        const el = document.activeElement
+      const stop = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null
         if (!el || el === document.body) return null
+        if (el.dataset.a11ySeen) return 'seen'
+        el.dataset.a11ySeen = '1'
         const s = getComputedStyle(el)
         const r = el.getBoundingClientRect()
-        const visible = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow !== 'none' && s.boxShadow !== '')
-        return { visible, hidden: r.width === 0 || r.height === 0, name: `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''} ${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40)}` }
+        const ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow !== 'none' && s.boxShadow !== '')
+        return { ring, hidden: r.width === 0 || r.height === 0, name: `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''} ${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40)}` }
       })
-      if (ring && !ring.hidden) expect(ring.visible, `focus indicator on ${ring.name}`).toBe(true)
+      if (stop === null || stop === 'seen') break // back at the document or the first stop: one full lap
+      if (!stop.hidden) expect(stop.ring, `focus indicator on ${stop.name}`).toBe(true)
+      stops.push(stop.name)
     }
+    expect(stops.length, 'a lap has Tab stops').toBeGreaterThan(5)
   })
 })
 
@@ -119,15 +143,17 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
     await context.close()
   })
 
-  test('/login (signed out)', async ({ browser }) => {
-    const anon = await (await browser.newContext()).newPage()
-    await anon.goto('/login')
-    for (const t of ['light', 'dark'] as const) {
-      await setTheme(anon, t)
-      expect(await scan(anon), t).toEqual([])
-    }
-    await anon.close()
-  })
+  for (const [route, url] of Object.entries(signedOut)) {
+    test(`${route} (signed out)`, async ({ browser }) => {
+      const anon = await (await browser.newContext()).newPage()
+      await anon.goto(url)
+      for (const t of ['light', 'dark'] as const) {
+        await setTheme(anon, t)
+        expect(await scan(anon), t).toEqual([])
+      }
+      await anon.close()
+    })
+  }
 
   for (const [route, target] of Object.entries(routes)) {
     test(route, async ({ browser }) => {
@@ -136,6 +162,10 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
       const url = typeof target === 'string' ? target : await target(page)
       await page.goto(url)
       await expect(page.getByRole('banner')).toBeVisible()
+      const landed = new URL(page.url()).pathname
+      const want = redirects[route]
+      if (want) expect(landed, `${url} must redirect`).toMatch(want)
+      else expect(landed, `${url} redirected: a scan must cover the page it names`).toBe(url.split('?')[0])
       await page.locator('h1').first().waitFor({ timeout: 10_000 }).catch(() => {}) // client-rendered pages: axe reports a missing h1 itself
       for (const t of ['light', 'dark'] as const) {
         await setTheme(page, t)

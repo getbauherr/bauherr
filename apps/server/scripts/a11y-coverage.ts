@@ -12,7 +12,6 @@ const route = (file: string) => `/${relative(app, file).split(sep).slice(0, -1).
 
 const spec = readFileSync(join(root, 'e2e', 'a11y.spec.ts'), 'utf8')
 const covered = new Set([...spec.matchAll(/^\s+'(\/[^']*)':/gm)].map((m) => m[1]!))
-covered.add('/login') // scanned signed out by its own test
 
 const all = pages(app).map(route)
 const missing = all.filter((r) => !covered.has(r) && !(r in exceptions))
