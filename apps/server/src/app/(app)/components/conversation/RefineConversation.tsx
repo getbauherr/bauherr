@@ -119,7 +119,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
   const send = async () => {
     if (await act(() => refineFinish(ticket), false)) router.replace(`/tickets/${ticket}?view=conversation`)
   }
-  const status = locked ? 'Sent to planning.' : open.length ? `Answer ${open.length} more, or take the recommended answers.` : 'All points are settled. Check the Ticket, then send it on.'
+  const status = locked ? (view.queued ?? 'Sent to planning.') : open.length ? `Answer ${open.length} more, or take the recommended answers.` : 'All points are settled. Check the Ticket, then send it on.'
   const count = open.length ? `${open.length} of ${view.points.length} open` : 'All settled'
   const version = a.version.at ? `v${a.version.n} · edited ${when(a.version.at)}` : `v${a.version.n}`
 
@@ -153,7 +153,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
               {locked && <AgentHandoff data-testid="handoff" from={view.participant.role} to={view.planner} reason={view.next.replace(/^Then: /, 'Next: ')} carried={view.points.filter((p) => p.status === 'answered').map((p) => `${p.title}: ${p.answer}`)} settled />}
             </Stream>
           }
-          composer={locked ? <p data-testid="read-only" className="m-0 rounded-md border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">Sent to planning. This conversation is read-only history.</p> : <Composer models={view.models} tier={view.tier} cost={view.viewer === 'bauherr' ? view.cost : null} placeholder={open.length ? 'Answer in your own words' : 'Reply, or ask for a change to the Ticket'} streaming={!!turn?.user} onStop={stop} onModel={(t: Tier) => void act(() => refineTier(ticket, t), false)} />}
+          composer={locked ? <p data-testid="read-only" className="m-0 rounded-md border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">{view.queued ?? 'Sent to planning.'} This conversation is read-only history.</p> : <Composer models={view.models} tier={view.tier} cost={view.viewer === 'bauherr' ? view.cost : null} placeholder={open.length ? 'Answer in your own words' : 'Reply, or ask for a change to the Ticket'} streaming={!!turn?.user} onStop={stop} onModel={(t: Tier) => void act(() => refineTier(ticket, t), false)} />}
           bar={<><span data-testid="bar-count">{count}</span><span className="font-medium text-primary">View outcome</span></>}
           artifact={{
             title: 'Refined ticket',

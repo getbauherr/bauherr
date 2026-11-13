@@ -188,6 +188,13 @@ describe('on a Triage hold', () => {
     expect(again.messages.length).toBeGreaterThan(2)
   })
 
+  it('the reply says "Sent to planning." when the Ticket moved and that it is queued when Plan is full', async () => {
+    expect(await refine.sentText(payload, hold, 'moved')).toBe('Sent to planning.')
+    await payload.update({ collection: 'tickets', id: hold, data: { waitingFor: 'plan', waitingReason: null }, ...o })
+    expect(await refine.sentText(payload, hold, 'waiting')).toMatch(/^Queued for planning: Plan is full \(\d+ of \d+\)\. It starts when a slot is free\.$/)
+    await payload.update({ collection: 'tickets', id: hold, data: { waitingFor: null }, ...o })
+  })
+
   it('sending with a point still open is refused', async () => {
     await expect(refine.refineSend(payload, user, w())).rejects.toThrow('still open')
   })
