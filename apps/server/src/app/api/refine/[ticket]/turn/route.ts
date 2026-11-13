@@ -10,7 +10,7 @@ export type TurnEvent = { type: 'reply'; text: string } | { type: 'done'; view: 
 
 /**
  * Body `{ text, images? }` (a typed message, `images`: ids from `api/chat/media`) or `{ recheck: { point } }` (the short turn after an option click); streams NDJSON `TurnEvent`s. Bauherr/Admin, and a Product owner for the rows addressed to them on their Products (`loadGate`).
- * A client abort aborts the model call; nothing is stored then, nor when the result is invalid.
+ * A client abort aborts the model call; nothing is stored then, nor when the result is invalid (logged, the chat gets a short sentence).
  */
 export const POST = async (req: Request, { params }: { params: Promise<{ ticket: string }> }): Promise<Response> => {
   const w = await chatWho(req, { owner: true })
@@ -39,7 +39,9 @@ export const POST = async (req: Request, { params }: { params: Promise<{ ticket:
         try {
           send({ type: 'done', view: await (text !== null ? refineTurn(w.payload, w.user, { ...run, text, images, onReply: (t) => send({ type: 'reply', text: t }) }) : refineRecheck(w.payload, w.user, { ...run, point: point! })) })
         } catch (e) {
-          send({ type: 'error', message: e instanceof Error ? e.message : 'The turn failed.' })
+          const message = e instanceof Error ? e.message : 'The turn failed.'
+          if (message.startsWith('invalid refine result')) w.payload.logger.error({ err: e, ticket }, 'refine turn rejected')
+          send({ type: 'error', message: message.startsWith('invalid refine result') ? 'I could not apply that, try again' : message })
         }
         if (!abort.signal.aborted) c.close()
       },

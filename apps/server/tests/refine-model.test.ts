@@ -55,8 +55,14 @@ describe('normalizeRefine', () => {
   ])('refuses %s', (_, raw) => {
     expect(() => normalizeRefine(raw, ps, { body })).toThrow('invalid refine result')
   })
-  it('refuses a point that is already answered', () => {
-    expect(() => normalizeRefine(ok({ settled: [{ id: 'D2', answer: 'x' }] }), points({ D2: 'a' }), { body })).toThrow('unknown or repeated')
+  it('drops a repeat of an answered point from settled, keeping the other ids', () => {
+    const out = normalizeRefine(ok({ settled: [{ id: 'D2', answer: 'x' }, { id: 'D1', answer: 'XLSX' }] }), points({ D2: 'a' }), { body })
+    expect(out.settled).toEqual([{ id: 'D1', answer: 'XLSX' }])
+  })
+  it('still refuses an unknown id and an id named twice, answered or not', () => {
+    expect(() => normalizeRefine(ok({ settled: [{ id: 'D9', answer: 'x' }] }), points({ D2: 'a' }), { body })).toThrow('unknown or repeated')
+    expect(() => normalizeRefine(ok({ settled: [{ id: 'D2', answer: 'x' }, { id: 'D2', answer: 'y' }] }), points({ D2: 'a' }), { body })).toThrow('unknown or repeated')
+    expect(() => normalizeRefine(ok({ settled: [{ id: 'D1', answer: 'x' }], dropped: [{ id: 'D1', reason: 'y' }] }), ps, { body })).toThrow('unknown or repeated')
   })
   it('keeps ticket edits that keep the markers', () => {
     expect(normalizeRefine(ok({ ticket: { title: ' New  title ', body: '## Problem\nnew\n<!-- bauherr:intake session=1 -->' } }), ps, { body }).ticket).toEqual({ title: 'New title', body: '## Problem\nnew\n<!-- bauherr:intake session=1 -->' })
