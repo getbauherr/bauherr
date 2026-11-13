@@ -385,6 +385,18 @@ export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; outpu
   },
 }
 
+/** Every 30 seconds: stores the checks of each open factory MR on its Ticket (`lib/ci-summary.ts`). */
+export const storeCiSummaryTask: TaskConfig<{ input: Record<string, never>; output: { stored: number } }> = {
+  slug: 'store-ci-summary',
+  schedule: scheduled('*/30 * * * * *'),
+  retries: 0,
+  concurrency: () => 'store-ci-summary',
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { stored: await (await import('../lib/ci-summary')).storeCiSummaries(req.payload) } }
+  },
+}
+
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
   schedule: scheduled('0 * * * * *'),
@@ -935,4 +947,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, storeCiSummaryTask, securityScanTick]
