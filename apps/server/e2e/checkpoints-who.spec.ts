@@ -100,7 +100,8 @@ test('a mixed decision sheet: the Product owner sees and answers their rows, the
   await expect(card(boss, 'Beta: settle the header copy').getByTestId('asked')).toHaveCount(0) // no Product owner on Beta: it asks the Bauherr
   await asked.getByRole('link', { name: 'Answer questions' }).click()
   await expect(boss.getByTestId('refine-thread')).toContainText('Triage asked 3 questions')
-  const all = boss.getByTestId('artifact-panel')
+  await boss.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
+  const all = boss.getByTestId('artifact-sheet')
   await expect(all.getByTestId('points-count')).toHaveText('2 of 3 open')
   for (const d of ['D1', 'D2', 'D3']) await expect(all.locator(`[data-point=${d}]`)).toBeVisible()
   await expect(all.locator('[data-point=D2]')).toHaveAttribute('data-status', 'done')

@@ -22,12 +22,12 @@ import { record } from './history'
 import { inKindStage, stagesOfKind } from './stage-scope'
 import { moveStage, stageOf } from './stage-move'
 import { kindOfRun } from './stage-text'
-import { byKind, checkpointBy, is, liveStages, nameOf, repairable, stage as stageDef, type CheckpointOf } from './workflow'
+import { byKind, checkpointBy, is, liveStages, nameOf, order, repairable, stage as stageDef, title as stageTitle, type CheckpointOf, type Workflow } from './workflow'
 import { canSeeProduct, decidingAs, isBauherr, mayDecide } from './people'
 import type { Addressee } from './workflow-rules'
 import { preReviewFailures } from './pre-review'
 import { advance } from './advance'
-import { enterStage, wipCount } from './wip'
+import { enterStage, startAfterPull, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, evenRanks, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
@@ -832,15 +832,25 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
   if (!is(wf, t.stage, 'release') && !(is(wf, t.stage, 'build') && !active)) throw new Error('the Ticket is not in release')
   const src = await sourceOf(payload, t)
   const note = rawNote.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')
-  const log = await worklogComment(src)
-  if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
-  else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(await worklogTemplate(payload, t), note)}`)
-  const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
-  await moveStage(payload, src.ts, t, nameOf(wf, 'build'), 'request_changes')
-  await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
-  await clearApprovalLabel(payload, src.ts, src.n)
-  await touch(payload, user, t, 'request-changes:staging', checkpointBy(wf, 'staging'))
-  return { stage: nameOf(wf, 'build'), run: run.id as TicketId }
+  let runId: TicketId | undefined
+  const toBuild = async () => {
+    const log = await worklogComment(src)
+    if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${setInstructions(log.body.slice(WORKLOG_MARKER.length).trimStart(), note)}`)
+    else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${setInstructions(await worklogTemplate(payload, t), note)}`)
+    const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
+    runId = run.id
+    await moveStage(payload, src.ts, t, nameOf(wf, 'build'), 'request_changes')
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
+    await clearApprovalLabel(payload, src.ts, src.n)
+    return true
+  }
+  const touched = { kind: 'request-changes:staging', addressee: checkpointBy(wf, 'staging') }
+  if (is(wf, t.stage, 'release')) await sendBack(payload, user, { ticket: a.ticket, to: nameOf(wf, 'build'), note: rawNote, workspaceId: a.workspaceId }, { move: toBuild, touch: touched })
+  else {
+    await toBuild()
+    await touch(payload, user, t, touched.kind, touched.addressee)
+  }
+  return { stage: nameOf(wf, 'build'), run: runId as TicketId }
 }
 
 export const REVIEW_MARKER = '<!-- bauherr:review -->'
@@ -1153,20 +1163,23 @@ export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: Tick
   const wf = workflowFor(t.workspace)
   if (t.state === 'closed' || !is(wf, t.stage, 'review') || t.reviewState !== 'needs_human') throw new Error('the Ticket is not waiting on you in review')
   const note = a.note?.trim()
-  const outcome = await sendBackToBuild(payload, t, `Sent back to Build by ${user.email}${note ? `: ${note}` : '.'}`)
-  if (outcome === 'build') await touch(payload, user, t, 'back-to-build')
+  let outcome: ReviewOutcome = 'noop'
+  await sendBack(payload, user, { ticket: a.ticket, to: nameOf(wf, 'build'), workspaceId: a.workspaceId }, {
+    move: async () => (outcome = await sendBackToBuild(payload, t, `Sent back to Build by ${user.email}${note ? `: ${note}` : '.'}`)) === 'build',
+    touch: { kind: 'back-to-build' },
+  })
   return { outcome }
 }
 
 /** The untriaged state: no stage label, no stage; the next sweep offers Triage. `note` is posted as the Ticket Comment. */
-export const sendToBacklog = async (payload: Payload, t: Doc, a: { executor: 'human' | 'factory'; actor: string; note?: string }): Promise<void> => {
+export const sendToBacklog = async (payload: Payload, t: Doc, a: { executor: 'human' | 'factory'; actor: string; note?: string; cause?: string }): Promise<void> => {
   const wf = workflowFor(t.workspace)
   const { ts, n } = await sourceOf(payload, t)
   const stale = (await ts.get(n)).labels.filter((l) => stageOf(wf, [l]) !== null)
   if (stale.length) await ts.removeLabels(n, stale)
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${t.id}`)
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: null, reviewState: null, triagedAt: null, triageAttempts: 0, labels: ((t.labels ?? []) as string[]).filter((l) => stageOf(wf, [l]) === null) }, overrideAccess: true })
-  await record(payload, t.id, { cause: 'backToBacklog', executor: a.executor, actor: a.actor })
+  await record(payload, t.id, { cause: a.cause ?? 'backToBacklog', executor: a.executor, actor: a.actor })
   if (a.note) await ts.comment(n, a.note)
 }
 
@@ -1177,9 +1190,81 @@ export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   if (t.state === 'closed' || !liveStages(wf).includes(t.stage)) throw new Error('the Ticket is not in a factory stage')
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
   if (latest?.status !== 'cancelled' || latest.stage !== t.stage) throw new Error('the Ticket is not cancelled')
-  await sendToBacklog(payload, t, { executor: 'human', actor: personOf(user), note: `Sent back to the backlog by ${user.email}.` })
-  await touch(payload, user, t, 'back-to-backlog')
+  await sendBack(payload, user, { ticket: a.ticket, to: BACKLOG, workspaceId: a.workspaceId }, { touch: { kind: 'back-to-backlog' } })
   return { stage: nameOf(wf, 'triage') }
+}
+
+/** The untriaged target of a send back, beside the workflow's own backward stages. */
+export const BACKLOG = 'backlog'
+
+/** Stages a Ticket can be sent back from: the live stages and staging (the Product owner's "Request changes"). */
+const sendableFrom = (wf: Workflow, stage: string | null | undefined): boolean => !!stage && (liveStages(wf).includes(stageDef(wf, stage)?.name ?? '') || is(wf, stage, 'release'))
+
+/** Where a Ticket in `stage` can be sent back: the stages its workflow outcomes lead back to (earlier in the workflow's order), then the backlog; none for a stage it cannot be sent back from. */
+export const sendBackTargets = (wf: Workflow, stage: string): string[] => {
+  const from = stageDef(wf, stage)
+  if (!from || !sendableFrom(wf, from.name)) return []
+  const at = order(wf)
+  const back = Object.values(from.outcomes).flatMap((to) => (at.includes(to) && at.indexOf(to) < at.indexOf(from.name) ? [to] : []))
+  return [...new Set([...back, BACKLOG])]
+}
+
+type SendBackHow = {
+  /** Replaces the default move for a caller with its own (resolves false when it moved nothing); the caller owns its comments and its idempotence. */
+  move?: (t: Doc) => Promise<boolean>
+  /** The human touch to record once the Ticket moved. */
+  touch?: { kind: string; addressee?: Addressee }
+}
+
+/**
+ * Sends an open Ticket back to an earlier stage `to` of `sendBackTargets` (or the backlog) with an optional note.
+ * Admin and Bauherr of the Workspace; a Product owner only at staging, on their Product. Every check runs before the first write; WIP limits do not apply.
+ * One conditional UPDATE of the Ticket's stage claims the move, so a double submit moves once and the second call throws. The live Runs of the Ticket then end `cancelled` (lease and owner cleared: a late heartbeat gets `lease lost`; no failure, no escalation, no successor),
+ * the transition is recorded as `sendBack`, the stage moves through `moveStage` (`factoryStage`, label), the note is posted as a Comment and the target stage's Run starts as for any entry. A plan target drops the plan approval.
+ */
+export const sendBack = async (payload: Payload, user: Doc, a: { ticket: TicketId; to: string; note?: string; workspaceId?: TicketId }, how: SendBackHow = {}): Promise<{ stage: string | null; moved: boolean }> => {
+  const t = isBauherr(user) ? await loadIn(payload, user, a.ticket, a.workspaceId) : await loadGate(payload, user, a, 'staging')
+  const wf = workflowFor(t.workspace)
+  if (t.state === 'closed') throw new Error('the Ticket is closed')
+  if (!sendableFrom(wf, t.stage)) throw new Error('the Ticket is not in a stage it can be sent back from')
+  if (!isBauherr(user) && !is(wf, t.stage, 'release')) throw new NotAddressed()
+  const to = a.to === BACKLOG ? BACKLOG : stageDef(wf, a.to)?.name
+  if (!to || !sendBackTargets(wf, t.stage).includes(to)) throw new Error(`the Ticket cannot be sent back to "${a.to}" from ${t.stage}`)
+  if (!isBauherr(user) && !is(wf, to, 'build')) throw new NotAddressed()
+  const actor = personOf(user)
+  const note = a.note?.trim()
+  const toBacklog = to === BACKLOG
+  if (how.move) {
+    if (!(await how.move(t))) return { stage: t.stage, moved: false }
+  } else {
+    const claimed = await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "stage" = ${toBacklog ? null : to}, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${t.stage} AND "state" = 'open' RETURNING "id"`)
+    if (!claimed.rows.length) throw new Error('the Ticket was moved already')
+    const ended = await payload.db.drizzle.execute(
+      sql`UPDATE "runs" SET "status" = 'cancelled', "error" = ${`sent back by ${user.email}`}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "ticket_id" = ${t.id} AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)}) RETURNING "id"`,
+    )
+    for (const r of ended.rows as { id: number }[]) await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${r.id} AND "finished_at" IS NULL`)
+    const { ts, n } = await sourceOf(payload, t)
+    const text = `Sent back to ${toBacklog ? 'the backlog' : stageTitle(wf, to)} by ${user.email}${note ? `: ${note}` : '.'}`
+    if (toBacklog) await sendToBacklog(payload, t, { executor: 'human', actor, note: text, cause: 'sendBack' })
+    else {
+      await record(payload, t.id, { stage: to, phase: 'queued', cause: 'sendBack', executor: 'human', actor })
+      await ts.comment(n, text)
+      if (is(wf, to, 'build')) await handBackToBuild(payload, t, { ts, n }, text)
+      else {
+        await moveStage(payload, ts, t, to, 'sendBack')
+        const replan = is(wf, to, 'plan')
+        await payload.update({ collection: 'tickets', id: t.id, data: { stage: to, reviewState: null, waitingFor: null, waitingReason: null, ...(replan && { labels: ((t.labels ?? []) as string[]).filter((l) => l !== APPROVED_PLAN) }) }, overrideAccess: true })
+        if (replan) await ts.removeLabels(n, [APPROVED_PLAN])
+        await startAfterPull(payload, t, to)
+      }
+    }
+    if (is(wf, t.stage, 'release')) {
+      await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
+      await clearApprovalLabel(payload, ts, n)
+    }
+  }
+  await touch(payload, user, t, how.touch?.kind ?? `send-back:${to}`, how.touch?.addressee)
+  return { stage: toBacklog ? null : to, moved: true }
 }
 
 /**

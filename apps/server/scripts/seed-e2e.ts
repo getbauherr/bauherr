@@ -325,6 +325,9 @@ await ensure('session_spans', { session: working.id, run: teamRun.id }, { sessio
 // ticket.spec.ts: #130, a Build whose session Run waits for an agent (the only engineer session above is disconnected).
 const waitTicket = await ticket(130, 'Wait for an engineer agent', 'build', product)
 await ensure('runs', { ticket: waitTicket, stage: 'build', status: 'awaiting_session' }, { ticket: waitTicket, stage: 'build', status: 'awaiting_session', mode: 'session', workspace })
+// preempt.spec.ts: #606, a Build whose Run a hotfix (#7) paused; it waits for a session again.
+const pausedTicket = await ticket(606, 'Paused for a hotfix: export totals', 'build', product)
+await ensure('runs', { ticket: pausedTicket, stage: 'build', status: 'awaiting_session' }, { ticket: pausedTicket, stage: 'build', status: 'awaiting_session', mode: 'session', workspace, reasonKind: null, preemptedBy: 9999, preemptedFor: 7 })
 // insights.spec.ts, team.spec.ts: usage for "Cost & tokens". A done Ticket with a reviewer Run priced by the gateway (Opus), a session Build Run that reported usage (Sonnet; the session's own cost is $0.40) and one more session-reported row that the gateway-priced Run must drop.
 const costTicket = await ticket(129, 'Cost: usage seeded', 'done', product, { state: 'closed', labels: [] })
 await ensure('ticket_events', { ticket: costTicket, cause: 'e2e:cost' }, { ticket: costTicket, workspace, at: minutesAgo(30), stage: 'done', stageKind: 'done', phase: 'closed', cause: 'e2e:cost' })
