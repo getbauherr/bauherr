@@ -51,6 +51,7 @@ test('the Inbox card opens the conversation; the recommended answer resolves the
   const panel = page.getByTestId('refine-panel')
   await expect(panel).toContainText('Which file name', { timeout: 30_000 })
   await panel.getByRole('button', { name: /export\.csv/ }).click()
+  await page.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
   const send = page.getByTestId('send-to-planning')
   await expect(send).toBeEnabled({ timeout: 30_000 })
   await send.click()
@@ -60,23 +61,28 @@ test('the Inbox card opens the conversation; the recommended answer resolves the
   await expect.poll(() => badge(page)).toBeLessThan(before) // other specs of this Workspace decide Tickets at the same time: the count only has to drop
 })
 
-test('a Ticket page at 1440 px has the facts in a right column and one Steps row per Run; narrow, the column stacks below', async ({ page }) => {
+test('a Ticket page at 1440 px has the Now pane right of the conversation and one Steps row per Run in History; narrow, two tabs show one pane', async ({ page }) => {
   await login(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await open(page, 'Export invoices as CSV')
-  const facts = page.getByTestId('ticket-facts')
-  const steps = page.getByTestId('ticket-steps')
+  const [c, n] = [(await page.getByTestId('split-conversation').boundingBox())!, (await page.getByTestId('now-pane').boundingBox())!]
+  expect(n.x).toBeGreaterThanOrEqual(c.x + c.width)
   await expect(page.getByTestId('ticket-status')).toContainText(/In progress|Queued|Waiting/)
-  const [f, s] = [(await facts.boundingBox())!, (await steps.boundingBox())!]
-  expect(f.x).toBeGreaterThanOrEqual(s.x + s.width)
-  const runs = Number(await facts.locator('dt', { hasText: /^Runs$/ }).locator('xpath=following-sibling::dd').textContent())
+  await page.getByText('About', { exact: true }).click()
+  const runs = Number(await page.getByTestId('ticket-facts').locator('dt', { hasText: /^Runs$/ }).locator('xpath=following-sibling::dd').textContent())
   expect(runs).toBeGreaterThan(0)
+  await page.getByTestId('pane-tab-history').click()
+  const steps = page.getByTestId('ticket-steps')
   await expect(steps.getByTestId('step-run')).toHaveCount(runs)
-  await expect(page.locator('details', { has: page.locator('#details') })).toHaveCount(1)
-  expect(s.height).toBeLessThan(900)
+  await expect(page.getByTestId('ticket-about')).toHaveCount(1)
+  expect((await steps.boundingBox())!.height).toBeLessThan(900)
   await page.setViewportSize({ width: 390, height: 844 })
-  const [f2, s2] = [(await facts.boundingBox())!, (await steps.boundingBox())!]
-  expect(f2.y).toBeGreaterThanOrEqual(s2.y + s2.height)
+  await expect(page.getByTestId('split-tab-conversation')).toBeVisible()
+  await page.getByTestId('split-tab-conversation').click()
+  await expect(page.getByTestId('split-conversation')).toBeVisible()
+  await expect(page.getByTestId('ticket-steps')).toBeHidden()
+  await page.getByTestId('split-tab-status').click()
+  await expect(page.getByTestId('split-conversation')).toBeHidden()
   await shoot(page, 'ticket-3runs', [{ width: 1440, height: 900 }, { width: 390, height: 844 }])
 })
 

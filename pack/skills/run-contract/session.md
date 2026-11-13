@@ -7,7 +7,7 @@ You work in your own checkout with your own credentials; the factory keeps the r
 - Connected as a role (`connect`, then `next_work`): pass your `sessionId` on every call; `next_work` is the claim. Read `roleReminder` and the role profile from `connect` and stay in that role.
 - Pass a stable `session` name to `claim_next`, `claim_run` and `list_frontier`; a session that works only some stages also passes `stages`.
 - Claim with `claim_next` only. Write the `skipped` reasons of the claim result into the worklog Decisions, one sentence. Pick from `list_frontier` only Tickets with `claimable: true`; never touch the branch or worktree of a Ticket with `leasedBy`.
-- Expedite: when the `heartbeat` answer carries `expedite: {ticket, run}`, write the handoff into the worklog, push the branch, `release_run`, then `claim_next`. Never release an expedite Run for another one.
+- Preempt: when any answer carries `preempt: {ticket, run, reason}`, a hotfix needs your session: write the handoff into the worklog, push the branch, `release_run` within 2 minutes (the server then ends the Run for you), then `claim_next`; it returns the hotfix. `heartbeat` also names an unclaimed hotfix as `expedite: {ticket, run}`; never release an expedite Run for another one.
 - Lock file: at claim, write `.bauherr/lock` in the worktree as `<runId> <first 8 chars of sha256(token)>`. If a lock with another run id or prefix exists, stop: another session owns the worktree.
 - A call that fails with `lease lost` or `leased by another session` means you no longer hold the Run: stop at once, no push, no `finish_run`, tell the human.
 - To stop on purpose: write the handoff into the worklog, push the branch, then `release_run`.

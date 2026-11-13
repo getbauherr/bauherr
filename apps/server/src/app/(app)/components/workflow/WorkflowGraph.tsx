@@ -1,3 +1,4 @@
+import type { Executor } from '../../../../lib/executors'
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
@@ -7,7 +8,7 @@ import type { NodeStats, StageAgents } from '../../lib/workflow-view'
 import { RoleAvatar } from '../team/RoleAvatar'
 import { layoutFlow, type Edge, type Layout, type Variant } from './layout'
 
-export type FlowStats = { stages: Map<string, NodeStats>; checkpoints: Map<string, number>; agents?: Map<string, StageAgents> }
+export type FlowStats = { stages: Map<string, NodeStats>; checkpoints: Map<string, number>; agents?: Map<string, StageAgents>; executors?: Map<string, Executor> }
 /** What one Ticket did: visits per stage, the current stage, and how often each transition `from>to` was taken. */
 export type TicketPath = { visits: Map<string, number>; current: string; taken: Map<string, number> }
 
@@ -39,13 +40,13 @@ function Executors({ execs }: { execs: NodeStats['execs'] }) {
   )
 }
 
-function StageCard({ id, name, stats, agent, href, selected, terminals }: { id: string; name: string; stats: NodeStats; agent?: StageAgents; href: string; selected: boolean; terminals: { outcome: string; to: string }[] }) {
+function StageCard({ id, name, stats, agent, executor, href, selected, terminals }: { id: string; name: string; stats: NodeStats; agent?: StageAgents; executor?: Executor; href: string; selected: boolean; terminals: { outcome: string; to: string }[] }) {
   const { bar } = stats
   const total = Math.max(1, bar.working + bar.human + bar.ci + bar.queued)
   const full = stats.limit != null && stats.count >= stats.limit
   const median = stats.medianSec != null ? `median ${duration(stats.medianSec)} in stage` : 'no data'
   // The compact card drops the median and the executors from view; the tooltip keeps them.
-  const tip = [name, median, agent?.text && `${agent.role.title}: ${agent.text}`, ...stats.execs.map((e) => e.tip)].filter(Boolean).join('\n')
+  const tip = [name, median, executor?.line, agent?.text && `${agent.role.title}: ${agent.text}`, ...stats.execs.map((e) => e.tip)].filter(Boolean).join('\n')
   return (
     <Link href={href} scroll={false} title={tip} aria-current={selected ? 'true' : undefined} data-testid="stage-node" data-stage={id} data-state={stats.state} className={cn('flex h-full flex-col gap-1.5 overflow-hidden rounded-md border border-border border-t-4 bg-card p-1.5 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring @min-[900px]:p-2 aria-[current]:bg-accent aria-[current]:ring-2 aria-[current]:ring-primary [&>*]:shrink-0', TOP[stats.state])}>
       <span className="truncate text-[11px] leading-4 font-semibold capitalize @min-[900px]:text-[13px]">{name}</span>
@@ -62,6 +63,7 @@ function StageCard({ id, name, stats, agent, href, selected, terminals }: { id: 
       <span className="hidden flex-col gap-1.5 @min-[900px]:flex">
         <span className="text-[10px] leading-4 tracking-tight whitespace-nowrap text-muted-foreground" data-testid="stage-median">{stats.medianSec != null ? `median ${duration(stats.medianSec)}` : 'no data'}</span>
         <Executors execs={stats.execs} />
+        {executor && !agent && <span className={cn('block max-w-full truncate text-[10px] leading-3', executor.cannotRun ? 'font-semibold text-warn' : 'text-muted-foreground')} data-testid="stage-executor" data-cannot-run={executor.cannotRun || undefined} title={executor.line}>{executor.line}</span>}
         {agent && (
           <span className="flex flex-col items-start gap-1" data-testid="stage-agent" data-missing={agent.missing || undefined}>
             <RoleAvatar avatar={agent.role.avatar} size="sm" animate={agent.working + agent.runner + agent.ci > 0} />
@@ -165,7 +167,7 @@ export function WorkflowGraph({ wf, variant, hrefOf, selected, stats, path }: { 
               ) : n.checkpoint ? (
                 <CheckpointCard id={n.id} name={n.title} count={n.id.includes(':') ? (stats?.checkpoints.get(n.id) ?? 0) : (stats?.stages.get(n.id)?.count ?? 0)} href={hrefOf!(n.id)} selected={selected === n.id} />
               ) : (
-                <StageCard id={n.id} name={n.title} stats={stats!.stages.get(stage)!} agent={stats!.agents?.get(stage)} href={hrefOf!(n.id)} selected={selected === n.id} terminals={L.terminals.get(n.id)?.map((t) => ({ outcome: t.outcome, to: t.to })) ?? []} />
+                <StageCard id={n.id} name={n.title} stats={stats!.stages.get(stage)!} agent={stats!.agents?.get(stage)} executor={stats!.executors?.get(stage)} href={hrefOf!(n.id)} selected={selected === n.id} terminals={L.terminals.get(n.id)?.map((t) => ({ outcome: t.outcome, to: t.to })) ?? []} />
               )}
               {out.length > 0 && (
                 <ul className="small m-0 mt-1 flex list-none flex-col gap-0.5 p-0 text-muted-foreground @min-[560px]:hidden" aria-label={`Transitions of ${n.title}`}>

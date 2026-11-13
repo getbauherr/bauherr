@@ -33,6 +33,18 @@ const shoot = async (page: Page, name: string, scheme: 'light' | 'dark' = 'light
   await page.emulateMedia({ colorScheme: 'light' })
 }
 
+// Embedded in the Ticket page's split, the refined Ticket opens as a sheet (the bar in the stream): open it to read or act on it, close it to use the conversation.
+const openPanel = async (page: Page) => {
+  if (await page.getByTestId('artifact-sheet').count()) return
+  await page.getByTestId('artifact-bar').click()
+  await expect(page.getByTestId('artifact-sheet')).toBeVisible()
+}
+const closePanel = async (page: Page) => {
+  if (!(await page.getByTestId('artifact-sheet').count())) return
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('artifact-sheet')).toHaveCount(0)
+}
+
 /** The Inbox card of a Ticket, "Answer questions" opens the conversation (a navigation, no in-card expansion). */
 const open = async (page: Page, title: string) => {
   await page.goto('/inbox')
@@ -63,9 +75,10 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await open(page, 'Docs Agent')
   await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
 
-  // The page IS the conversation: the app sidebar is an icon rail, the Ticket page's action bar and blurbs are gone.
-  await expect(page.locator('[data-slot=sidebar][data-state=collapsed]')).toBeVisible()
-  await expect(page.getByTestId('action-bar')).toHaveCount(0)
+  // The conversation sits left of the Now pane with its one action bar; the app sidebar keeps its state.
+  await expect(page.getByTestId('ticket-split')).toBeVisible()
+  await expect(page.getByTestId('now-pane')).toBeVisible()
+  await expect(page.getByTestId('action-bar')).toHaveCount(1)
   await expect(page.getByTestId('chat-dock')).toBeHidden()
 
   // Who is talking: the role as persona, the session that asked, the Factory assistant that replies, the model.
@@ -91,7 +104,8 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(card).toContainText('Why this matters')
   await expect(card).toContainText('Recommended')
   await expect(card).toContainText('Or answer in your own words below')
-  const panel = page.getByTestId('artifact-panel')
+  const panel = page.getByTestId('artifact-sheet')
+  await openPanel(page)
   await expect(panel).toContainText('Refined ticket')
   await expect(page.getByTestId('artifact-version')).toHaveText('v1')
   await expect(panel.getByTestId('artifact-title')).toHaveText('#1 Docs Agent')
@@ -104,7 +118,9 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(panel.getByTestId('foot-next')).toContainText('Then: the Orchestrator finishes Triage')
 
   // An option click records at once: checklist, chip and artifact follow without a reload.
+  await closePanel(page)
   await card.getByRole('button', { name: /A recurring Docs Agent/ }).click()
+  await openPanel(page)
   await expect(panel.getByTestId('points-count')).toHaveText('3 of 4 open')
   await expect(panel.locator('[data-point=D1]')).toHaveAttribute('data-status', 'done')
   await expect(panel.locator('[data-point=D1] [data-testid=point-answer]')).toHaveText('A recurring Docs Agent')
@@ -113,9 +129,11 @@ test('the owner refines a Ticket in the conversation shell: question card, check
 
   // A typed answer that edits the Ticket: the changed sections are highlighted, the version goes up, and the diff lists them.
   await expect(page.getByTestId('rechecking')).toHaveCount(0) // the re-check after the click has ended: the composer sends again
+  await closePanel(page)
   const typed = page.getByRole('textbox', { name: 'Your answer' })
   await typed.fill(TYPED)
   await typed.press('Enter')
+  await openPanel(page)
   await expect(panel.locator('[data-point=D2]')).toHaveAttribute('data-status', 'done')
   await expect(panel.locator('[data-section=trigger]')).toHaveAttribute('data-changed', 'true')
   await expect(panel.locator('[data-section=trigger]')).toContainText('After every merged MR.')
@@ -139,7 +157,9 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await panel.locator('[data-point=D1]').getByRole('button', { name: 'Change' }).click()
   await expect(panel.locator('[data-point=D1]')).toHaveAttribute('data-status', 'active')
   await expect(panel.getByTestId('points-count')).toHaveText('3 of 4 open')
+  await closePanel(page)
   await page.getByTestId('current-point').getByRole('button', { name: /A recurring Docs Agent/ }).click()
+  await openPanel(page)
   await expect(panel.getByTestId('points-count')).toHaveText('2 of 4 open')
 
   // Send to planning waits until nothing is open; "Use recommended" settles the rest.
@@ -152,6 +172,7 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await shoot(page, 'B-2-submit')
   await panel.getByTestId('send-to-planning').click()
   await expect(page.getByTestId('refine-panel')).toHaveAttribute('data-state', 'sent')
+  await openPanel(page)
   await expect(page).toHaveURL(/view=conversation/)
   await expect(page.getByTestId('read-only')).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Your answer' })).toHaveCount(0)
@@ -160,12 +181,12 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(panel.getByTestId('send-to-planning')).toHaveCount(0)
   await expect(panel.locator('[data-section=trigger]')).toContainText('After every merged MR.')
 
-  // The Ticket no longer waits: the normal Ticket page shows, with a "Conversation" entry that opens the history in the same shell.
+  // The Ticket no longer waits: the same page shows the conversation as read-only history beside the Now pane.
   await page.goto(hrefs['Docs Agent']!)
-  await expect(page.getByTestId('conversation-shell')).toHaveCount(0)
+  await expect(page.getByTestId('conversation-shell')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Docs Agent')
-  await page.getByTestId('open-conversation').click()
   await expect(page.getByTestId('read-only')).toBeVisible()
+  await expect(page.getByTestId('now-pane')).toBeVisible()
 })
 
 test('the Inbox card stays short and opens the shell; the info popover holds the Ticket meta, the agent card the session; the phone gets a sticky bar and a bottom sheet', async ({ page }) => {
@@ -178,15 +199,16 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await expect(card.getByRole('button', { name: 'Answer questions' })).toHaveCount(0)
   await open(page, 'Export the invoices')
 
-  await page.getByTestId('ticket-info').click()
-  const info = page.getByTestId('ticket-info-content')
+  // The Ticket meta is the Now pane's About and its action bar (no info popover in the split).
+  await page.getByText('About', { exact: true }).click()
+  const info = page.getByTestId('ticket-about')
   await expect(info).toContainText('Conv App')
   await expect(info).toContainText('Runs')
   await expect(info).toContainText('Lead time')
-  await expect(info.getByRole('button', { name: 'Put on the fast lane' })).toBeVisible()
-  await expect(info.getByRole('button', { name: 'Comment' })).toBeVisible()
+  const bar0 = page.getByTestId('action-bar')
+  await expect(bar0.getByRole('button', { name: 'Put on the fast lane' })).toBeVisible()
+  await expect(bar0.getByRole('button', { name: 'Comment' })).toBeVisible()
   await shoot(page, 'info-popover')
-  await page.keyboard.press('Escape')
 
   await page.getByTestId('participant-line').click()
   const agent = page.getByTestId('agent-card')
@@ -198,9 +220,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await shoot(page, 'agent-card')
   await page.keyboard.press('Escape')
 
-  await page.getByTestId('more').click()
-  await expect(page.getByRole('menuitem', { name: /Ticket page/ })).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('more')).toHaveCount(0) // the split is the Ticket page: no link back to it
 
   await page.setViewportSize({ width: 390, height: 844 })
   const bar = page.getByTestId('artifact-bar')

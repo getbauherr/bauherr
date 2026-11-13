@@ -20,10 +20,11 @@ const usePhone = (): boolean =>
   )
 
 /** The app sidebar is an icon rail while a conversation is open; the person can expand it, and it comes back as it was on leaving. */
-const useRail = (): void => {
+const useRail = (on: boolean): void => {
   const { open, setOpen, isMobile } = useSidebar()
   const was = useRef(open)
   useEffect(() => {
+    if (!on) return
     const before = was.current
     if (!isMobile) setOpen(false)
     return () => setOpen(before)
@@ -50,9 +51,11 @@ export type ShellArtifact = {
  * shaping on the right with its foot (the submit bar). The panel collapses to a card in the stream; on a phone it is a bottom sheet opened from a sticky bar (`bar`).
  * It knows nothing of what is talked about: every part is a slot.
  */
-export const ConversationShell: FC<{ header: ReactNode; stream: ReactNode; composer: ReactNode; artifact: ShellArtifact; bar: ReactNode }> = ({ header, stream, composer, artifact, bar }) => {
-  useRail()
-  const phone = usePhone()
+export const ConversationShell: FC<{ header: ReactNode; stream: ReactNode; composer: ReactNode; artifact: ShellArtifact; bar: ReactNode; embedded?: boolean }> = ({ header, stream, composer, artifact, bar, embedded = false }) => {
+  useRail(!embedded)
+  const narrow = usePhone()
+  // Embedded in the Ticket page's split, the artifact is never a side panel: it opens as a sheet from the card in the stream.
+  const phone = narrow || embedded
   const [open, setOpen] = useState(true)
   const [sheet, setSheet] = useState(false)
   const panel = (
@@ -66,7 +69,7 @@ export const ConversationShell: FC<{ header: ReactNode; stream: ReactNode; compo
     </CanvasSplitDocument>
   )
   return (
-    <div data-testid="conversation-shell" className={`aui-root -m-8 grid h-[calc(100dvh-3.5rem)] min-h-[32rem] min-w-0 bg-background max-sm:-m-4 max-sm:h-[calc(100dvh-3.5rem)] ${open && !phone ? 'grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)]' : 'grid-cols-1'}`}>
+    <div data-testid="conversation-shell" className={`aui-root grid min-w-0 bg-background ${embedded ? 'h-[calc(100dvh-10rem)] min-h-[28rem] grid-cols-1 rounded-md border border-border' : `-m-8 h-[calc(100dvh-3.5rem)] min-h-[32rem] max-sm:-m-4 max-sm:h-[calc(100dvh-3.5rem)] ${open && !phone ? 'grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)]' : 'grid-cols-1'}`}`}>
       <section aria-label="Conversation" className="@container flex min-h-0 min-w-0 flex-col">
         <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col px-6 max-sm:px-3">
           <div className="shrink-0 pt-3 pb-2">{header}</div>

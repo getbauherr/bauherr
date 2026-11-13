@@ -69,7 +69,7 @@ test('a continued Run links to the Run it continues and back, with its goal and 
   await page.getByPlaceholder(/find a Ticket/).fill('#305')
   await page.getByRole('option', { name: /Chain: continue the build/ }).click()
   await expect(page.getByRole('heading', { level: 1, name: /^#305 / })).toBeVisible()
-  await page.getByText('Details', { exact: true }).first().click()
+  await page.getByTestId('pane-tab-history').click()
   await page.getByRole('table').last().locator('tbody tr').first().getByRole('link').click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   const chain = page.getByRole('list', { name: 'Run chain' })

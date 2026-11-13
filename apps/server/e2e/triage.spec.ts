@@ -19,12 +19,13 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await expect(card.getByText('Answer questions')).toBeVisible()
   await card.getByRole('link', { name: 'Settle the export format' }).click()
 
-  // The Ticket waits for answers: its page is the conversation.
-  const panel = page.getByTestId('refine-panel')
+  // The Ticket waits for answers: the conversation is the left pane, the action bar sits in the Now pane.
+  const panel = page.getByTestId('split-conversation').getByTestId('refine-panel')
   await expect(panel).toContainText('Which export format')
-  await expect(page.getByTestId('action-bar')).toHaveCount(0)
+  await expect(page.getByTestId('now-pane').getByTestId('action-bar')).toHaveCount(1)
   await expect(page.getByTestId('chat-dock')).toBeHidden()
   await panel.getByRole('button', { name: /XLSX/ }).click()
+  await page.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
   const send = page.getByTestId('send-to-planning')
   await expect(send).toBeEnabled({ timeout: 30_000 })
   await send.click()

@@ -106,6 +106,18 @@ it('a non-triage Run still posts its Comment', async () => {
   expect(await comments(u.n)).toEqual(['Bauherr needs a human: unmet Goal'])
 })
 
+it('a Run ended while the Runner works (sendBack) keeps its status and its result is dropped', async () => {
+  const t = await create('sent back', ['bauherr:stage:plan'])
+  const run = (await runs(t.id, 'plan')).at(-1)!
+  exec.mockImplementation(async () => {
+    await payload.update({ collection: 'runs', id: run.id, data: { status: 'cancelled' }, ...o })
+    return { status: 'needs_human', reason: 'unmet Goal', artifacts: {}, usage }
+  })
+  await runLatest(t.id, 'plan')
+  expect((await payload.findByID({ collection: 'runs', id: run.id, depth: 0, ...o })).status).toBe('cancelled')
+  expect(await comments(t.n)).toEqual([])
+})
+
 /** Runs the latest triage Run while observing the Run's status each time the Ticket is untriaged; `fail` makes the untriage throw. */
 const untriageObserved = async (ticket: number, fail = false) => {
   const orig = payload.update.bind(payload) as (a: any) => Promise<unknown>
