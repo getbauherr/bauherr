@@ -753,7 +753,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       await record(payload, ticket.id, { run: run.id, outcome: agentError ? 'failed' : r.status, cause: 'run:finished' })
       await queueReconcile(payload, run.id)
       if (run.stage === 'scan' && (r.status === 'succeeded' || r.status === 'budget_exhausted') && r.artifacts.scan) await fileFindings(payload, { ...run, artifacts: r.artifacts })
-      if (run.stage === 'docs' && r.status === 'succeeded' && r.artifacts.docs) await fileDocsTicket(payload, { ...run, artifacts: r.artifacts })
+      if (run.stage === 'docs' && r.artifacts.docs) await fileDocsTicket(payload, { ...run, status: r.status, artifacts: r.artifacts })
       if (review) await concludeReview(payload, ticket.id, review, r.artifacts.reviewedSha ?? null)
       if (triage) await submitTriage(payload, ticket.id, triage)
       if (agent) await finishAgentRun(payload, run, ticket, agent.outcome, agent.comment)

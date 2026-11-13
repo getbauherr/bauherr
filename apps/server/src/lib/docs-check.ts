@@ -20,16 +20,21 @@ const FIRST_CHECK_DAYS = 30
 const ITEM_CAP = 30
 const DOCS_LOCK = 465
 const marker = (runId: number | string) => `<!-- bauherr:docs-check:run:${runId} -->`
+const markerRun = (body?: string) => Number(body?.match(/<!-- bauherr:docs-check:run:(\d+) -->/)?.[1] ?? 0)
 
 /** The Product's docs anchor Ticket, created on first use (forge issue and local row). */
 const anchorTicket = async (payload: Payload, product: Doc, req?: Partial<PayloadRequest>): Promise<Doc & { id: number | string }> => {
   const existing = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product.id } }, { labels: { equals: DOCS_CHECK_LABEL } }] }, limit: 1, ...o, req })).docs[0]
   if (existing) return existing as Doc & { id: number | string }
-  const issue = await (await forgeOf(payload, product.id, req)).tickets.create({
-    title: `Docs checks: ${product.name}`,
-    body: 'Anchor Ticket of the docs check Runs for this Product. Bauherr keeps it open; each check with findings files one docs Ticket.',
-    labels: [DOCS_CHECK_LABEL],
-  })
+  const { tickets } = await forgeOf(payload, product.id, req)
+  // The forge issue outlives a rolled-back transaction: look for one by label before creating, so a retry never makes a second anchor.
+  const issue =
+    (await tickets.list({ labels: [DOCS_CHECK_LABEL], state: 'open' }))[0] ??
+    (await tickets.create({
+      title: `Docs checks: ${product.name}`,
+      body: 'Anchor Ticket of the docs check Runs for this Product. Bauherr keeps it open; each check with findings files one docs Ticket.',
+      labels: [DOCS_CHECK_LABEL],
+    }))
   return upsertTicket(payload, { workspace: id(product.workspace), product: product.id, externalId: issue.id, number: issue.number, url: issue.url, title: issue.title, state: 'open', labels: issue.labels }, null, req)
 }
 
@@ -75,6 +80,14 @@ export const mergedSince = async (payload: Payload, product: Doc, now = new Date
   })
 }
 
+/** Throws unless every ticket and commit of the findings is one of the merged Tickets given to the Run. */
+export const checkAgainstMerged = (f: DocsFindings, merged: MergedTicket[]): void => {
+  const numbers = new Set(merged.map((m) => m.number))
+  const shas = new Set(merged.map((m) => m.mergeSha.toLowerCase()))
+  for (const m of f.missing) if (!numbers.has(m.ticket)) throw new Error(`missing entry names #${m.ticket}, which was not merged since the last check`)
+  for (const c of [...f.stale, ...f.missing].map((x) => x.commit)) if (!shas.has(c.toLowerCase())) throw new Error(`commit ${c} is not a merge commit of the Tickets given to the Run`)
+}
+
 /** The docs part of a docs Run's context. */
 export const docsContext = async (payload: Payload, product: Doc) => ({ paths: (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS, merged: await mergedSince(payload, product) })
 
@@ -117,20 +130,22 @@ export const docsTicketBody = (run: Doc, paths: string[], f: DocsFindings): stri
 }
 
 /**
- * Files the findings of a succeeded docs Run as one docs Ticket in Plan, or updates the open docs Ticket in place; zero findings files nothing.
+ * Files the findings of a succeeded docs Run (any other status files nothing and records nothing) as one docs Ticket in Plan, or updates the open docs Ticket in place when it carries an older Run's marker or none; zero findings files nothing.
  * A bad findings file fails the Run and records nothing. Idempotent per Run: a body that already carries the Run's marker is left alone.
  * The check is recorded (`docsCheck.lastCheckAt`/`lastCheckRun`) once filing is done.
  */
 export const fileDocsTicket = async (payload: Payload, run: Doc): Promise<{ filed: 'created' | 'updated' | 'none' }> => {
+  if (run.status !== 'succeeded') return { filed: 'none' }
+  const ticket = (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc
+  const product = (await payload.findByID({ collection: 'products', id: id(ticket.product), ...o })) as Doc
   let findings: DocsFindings
   try {
     findings = parseDocsFindings(run.artifacts?.docs)
+    checkAgainstMerged(findings, await mergedSince(payload, product))
   } catch (e) {
     await payload.update({ collection: 'runs', id: run.id, data: { status: 'failed', error: `docs findings: ${(e as Error).message}` }, ...o })
     return { filed: 'none' }
   }
-  const ticket = (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc
-  const product = (await payload.findByID({ collection: 'products', id: id(ticket.product), ...o })) as Doc
   const paths = (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS
   let filed: 'created' | 'updated' | 'none' = 'none'
   if (findings.stale.length + findings.missing.length) {
@@ -138,7 +153,7 @@ export const fileDocsTicket = async (payload: Payload, run: Doc): Promise<{ file
     const body = docsTicketBody(run, paths, findings)
     const open = (await tickets.list({ labels: [DOCS_LABEL], state: 'open' }))[0]
     if (open) {
-      if (!open.body?.includes(marker(run.id))) {
+      if (markerRun(open.body) < Number(run.id)) {
         await tickets.update(String(open.number), { body })
         filed = 'updated'
       }
@@ -150,6 +165,6 @@ export const fileDocsTicket = async (payload: Payload, run: Doc): Promise<{ file
       filed = 'created'
     }
   }
-  await payload.update({ collection: 'products', id: product.id, data: { docsCheck: { ...product.docsCheck, lastCheckAt: run.createdAt ?? new Date().toISOString(), lastCheckRun: Number(run.id) } }, ...o })
+  if (Number(product.docsCheck?.lastCheckRun ?? 0) < Number(run.id)) await payload.update({ collection: 'products', id: product.id, data: { docsCheck: { ...product.docsCheck, lastCheckAt: run.createdAt ?? new Date().toISOString(), lastCheckRun: Number(run.id) } }, ...o })
   return { filed }
 }

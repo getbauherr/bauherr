@@ -116,6 +116,8 @@ it('mergedSince counts from the last finished check, else the last release, else
 
 it('findings file exactly one docs Ticket in Plan; the next check updates it in place; a Run is filed once', async () => {
   const { fileDocsTicket } = await import('../src/lib/docs-check')
+  await merged(1, 1)
+  await merged(2, 1)
   const first = await docsRun(finding)
   expect(await fileDocsTicket(payload, first)).toEqual({ filed: 'created' })
   const [issue, ...rest] = await docsTickets()
@@ -129,12 +131,65 @@ it('findings file exactly one docs Ticket in Plan; the next check updates it in 
   expect(((await prod()).docsCheck as Record<string, unknown>).lastCheckRun).toBe(first.id)
 
   expect(await fileDocsTicket(payload, first)).toEqual({ filed: 'none' })
-  const second = await docsRun({ stale: [], missing: [finding.missing[0]] })
+  await merged(3, 0)
+  const second = await docsRun({ stale: [], missing: [{ ...finding.missing[0], ticket: 3, commit: sha(3) }] })
   expect(await fileDocsTicket(payload, second)).toEqual({ filed: 'updated' })
   const after = await docsTickets()
   expect(after).toHaveLength(1)
   expect(after[0]!.body).toContain(`docs check Run #${second.id}`)
   expect(after[0]!.body).not.toContain('is stale')
+})
+
+it('a retried older Run never replaces the body of a newer Run, nor moves the recorded check back', async () => {
+  const { fileDocsTicket } = await import('../src/lib/docs-check')
+  await merged(5, 0)
+  const older = await docsRun(null)
+  const newer = await docsRun(null)
+  const missing = (n: number) => ({ stale: [], missing: [{ ticket: n, commit: sha(n), feature: `feature ${n}`, file: 'docs/a.md' }] })
+  expect(await fileDocsTicket(payload, { ...newer, artifacts: { docs: missing(5) } })).toMatchObject({ filed: expect.stringMatching(/created|updated/) })
+  await payload.update({ collection: 'products', id: product, data: { docsCheck: { ...(await prod()).docsCheck, lastCheckAt: ago(30) } }, ...o })
+  expect(await fileDocsTicket(payload, { ...older, artifacts: { docs: missing(3) } })).toEqual({ filed: 'none' })
+  const [issue] = await docsTickets()
+  expect(issue!.body).toContain(`Run #${newer.id}`)
+  expect(issue!.body).not.toContain('feature 3')
+  expect(((await prod()).docsCheck as Record<string, unknown>).lastCheckRun).toBe(newer.id)
+})
+
+it('findings that name a Ticket or commit outside the merged list fail the Run and file nothing', async () => {
+  const { fileDocsTicket, checkAgainstMerged } = await import('../src/lib/docs-check')
+  const merged1 = [{ number: 1, title: 't', mergeSha: sha(1) }]
+  expect(() => checkAgainstMerged({ stale: [{ ...finding.stale[0]!, commit: sha(1).toUpperCase() }], missing: [{ ...finding.missing[0]!, ticket: 1, commit: sha(1) }] }, merged1)).not.toThrow()
+  expect(() => checkAgainstMerged({ stale: [], missing: [{ ...finding.missing[0]!, ticket: 9, commit: sha(1) }] }, merged1)).toThrow(/#9/)
+  expect(() => checkAgainstMerged({ stale: [{ ...finding.stale[0]!, commit: 'deadbeef' }], missing: [] }, merged1)).toThrow(/deadbeef/)
+  await payload.update({ collection: 'products', id: product, data: { docsCheck: { ...(await prod()).docsCheck, lastCheckAt: ago(30) } }, ...o })
+  const before = (await docsTickets()).length
+  const run = await docsRun({ stale: [], missing: [{ ticket: 777, commit: sha(1), feature: 'x', file: 'a.md' }] })
+  expect(await fileDocsTicket(payload, run)).toEqual({ filed: 'none' })
+  expect(await docsTickets()).toHaveLength(before)
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('failed')
+})
+
+it('a budget_exhausted Run files nothing and leaves the recorded check alone', async () => {
+  const { fileDocsTicket } = await import('../src/lib/docs-check')
+  const before = ((await prod()).docsCheck as Record<string, unknown>).lastCheckAt
+  const run = { ...(await docsRun({ stale: [], missing: [{ ticket: 5, commit: sha(5), feature: 'f', file: 'a.md' }] })), status: 'budget_exhausted' }
+  const tickets = (await docsTickets()).map((t) => t.body)
+  expect(await fileDocsTicket(payload, run)).toEqual({ filed: 'none' })
+  expect((await docsTickets()).map((t) => t.body)).toEqual(tickets)
+  expect(((await prod()).docsCheck as Record<string, unknown>).lastCheckAt).toEqual(before)
+})
+
+it('a retried anchor creation reuses the forge issue instead of making a second anchor', async () => {
+  const { startDocsCheck, DOCS_CHECK_LABEL } = await import('../src/lib/docs-check')
+  const p2 = (await payload.create({ collection: 'products', data: { name: 'api', slug: 'api', workspace: ws }, ...o })).id as number
+  const connection = (await payload.create({ collection: 'connections', data: { name: 'gh2', kind: 'github', workspace: ws }, ...o })).id as number
+  await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/api', product: p2, connection, workspace: ws }, ...o })
+  const orphan = await fake.tickets('acme/api').create({ title: 'orphan anchor', labels: [DOCS_CHECK_LABEL] })
+  const { run } = await startDocsCheck(payload, p2)
+  const anchors = (await payload.find({ collection: 'tickets', where: { product: { equals: p2 } }, ...o })).docs
+  expect(anchors.map((t) => t.externalId)).toEqual([orphan.id])
+  expect((run.ticket as { id: number }).id).toBe(anchors[0]!.id)
+  expect(await fake.tickets('acme/api').list({ labels: [DOCS_CHECK_LABEL], state: 'open' })).toHaveLength(1)
 })
 
 it('findings beyond 30 are listed as overflow, not as criteria', async () => {

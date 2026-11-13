@@ -236,7 +236,7 @@ export const saveDocsCheck = act({ paths: 'paths' }, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
   const paths = [...new Set(s(fd, 'paths').split('\n').map((l) => l.trim()).filter(Boolean))]
-  if (!paths.length || paths.some((l) => /\s/.test(l))) throw fieldError('paths', 'One path glob per line, without spaces; at least one.')
+  if (!paths.length || paths.some((l) => /[\s`]/.test(l) || l.startsWith('/') || l.split('/').includes('..'))) throw fieldError('paths', 'One path glob per line, relative to the repository: no spaces, backticks, leading / or .. segments; at least one.')
   const current = ((await c.payload.findByID({ collection: 'products', id: id(fd), select: { docsCheck: true }, depth: 0, overrideAccess: true })) as { docsCheck?: object }).docsCheck
   await c.payload.update({ collection: 'products', id: id(fd), data: { docsCheck: { ...current, paths } }, ...c.w } as never)
 })
