@@ -25,7 +25,7 @@ export default async function ConnectionSettings() {
       {!connections.length && <EmptyState text={`${workspace.name} has no Connections yet.`} />}
       {connections.length > 0 && (
         <Table>
-            <thead><tr className="label"><th>Name</th><th>Kind</th><th>Preset</th><th>Status</th><th /></tr></thead>
+            <thead><tr className="label"><th>Name</th><th>Kind</th><th>Preset</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {connections.map((c) => (
                 <tr key={c.id}>

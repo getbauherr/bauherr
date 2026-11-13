@@ -26,7 +26,8 @@ export const ParticipantHeader: FC<{ participant: Participant; model: string; su
         <h1 className="m-0 flex flex-wrap items-baseline gap-x-2 text-[17px] leading-6 font-semibold">{p.role}{subtitle && <span className="text-[13px] font-normal text-muted-foreground">{subtitle}</span>}</h1>
         <Popover>
           <PopoverTrigger asChild>
-            <button type="button" data-testid="participant-line" aria-label="Who is talking" className="flex w-fit max-w-full cursor-pointer items-center gap-1.5 text-left text-[13px] text-muted-foreground hover:text-foreground">
+            <button type="button" data-testid="participant-line" className="flex w-fit max-w-full cursor-pointer items-center gap-1.5 text-left text-[13px] text-muted-foreground hover:text-foreground">
+              <span className="sr-only">Who is talking: </span>
               {s && <span role="img" aria-label={s.live ? 'connected' : 'not connected'} className={cn('size-2 shrink-0 rounded-full', s.live ? 'bg-ok' : 'bg-muted-foreground/50')} />}
               <span className="min-w-0 truncate">{s && <span className="max-sm:hidden">{s.label} asked · </span>}{line}{model && <span className="max-sm:hidden"> · <span data-testid="header-model" title={model} className="font-mono text-[12px]">{short}</span></span>}</span>
               <ChevronDown className="size-3.5 shrink-0" />

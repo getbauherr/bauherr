@@ -4,7 +4,8 @@ import { Check, ChevronsUpDown, Plus, Settings } from './icons'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { SidebarMenuButton, useSidebar } from './ui/sidebar'
 
-const mark = (name: string) => <span className="grid size-8 shrink-0 place-items-center rounded-md bg-secondary text-xs/4 font-medium group-data-[collapsible=icon]:size-7" aria-hidden>{name.slice(0, 2).toUpperCase()}</span>
+/** The initials are CSS generated content: real text would be visible text that the button's accessible name has to contain (WCAG 2.5.3). */
+const mark = (name: string) => <span data-mark={name.slice(0, 2).toUpperCase()} className="grid size-8 shrink-0 place-items-center rounded-md bg-secondary text-xs/4 font-medium after:content-[attr(data-mark)] group-data-[collapsible=icon]:size-7" aria-hidden />
 
 /** Workspace of the Bauherr: a menu that switches (server action, then back to the Workflow page) and, for an Admin, opens the Workspace settings or the New Workspace form. A member with one Workspace sees its name only. */
 export function WorkspaceSwitcher({ workspaces, current, admin, selectWorkspace }: { workspaces: { slug: string; name: string }[]; current?: string; admin: boolean; selectWorkspace: (slug: string) => Promise<void> }) {
@@ -21,7 +22,7 @@ export function WorkspaceSwitcher({ workspaces, current, admin, selectWorkspace 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <SidebarMenuButton size="lg" tooltip={name} aria-label="Workspace" data-testid="workspace-switcher">
+        <SidebarMenuButton size="lg" tooltip={name} aria-label={`Workspace ${name}`} data-testid="workspace-switcher">
           {mark(name)}
           <span className="min-w-0 flex-1 truncate">{name}</span>
           <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />

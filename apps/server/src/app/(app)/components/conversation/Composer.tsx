@@ -39,7 +39,8 @@ const CostChip: FC<{ cost: View['cost'] }> = ({ cost }) => {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" data-testid="cost-chip" aria-label="Cost and tokens of this conversation" className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 font-mono whitespace-nowrap text-[12px] text-muted-foreground hover:bg-secondary hover:text-foreground">
+        <button type="button" data-testid="cost-chip" className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 font-mono whitespace-nowrap text-[12px] text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <span className="sr-only">Cost and tokens of this conversation: </span>
           <span>{label}</span>
           <span aria-hidden className="max-sm:hidden">·</span>
           <span className="max-sm:hidden">{formatTokenCount(cost.tokens)} tokens</span>

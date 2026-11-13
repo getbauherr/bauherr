@@ -76,11 +76,11 @@ export function Sidebar({ className, children, ...props }: ComponentProps<'div'>
   return (
     <div className="group peer hidden text-sidebar-foreground md:block" data-state={state} data-collapsible={state === 'collapsed' ? 'icon' : ''} data-slot="sidebar">
       <div data-slot="sidebar-gap" className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-(--duration-panel) ease-(--ease-out) group-data-[collapsible=icon]:w-(--sidebar-width-icon)" />
-      <div data-slot="sidebar-container" className={cn('fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) border-r border-sidebar-border transition-[width] duration-(--duration-panel) ease-(--ease-out) group-data-[collapsible=icon]:w-(--sidebar-width-icon)', className)} {...props}>
+      <aside aria-label="Sidebar" data-slot="sidebar-container" className={cn('fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) border-r border-sidebar-border transition-[width] duration-(--duration-panel) ease-(--ease-out) group-data-[collapsible=icon]:w-(--sidebar-width-icon)', className)} {...props}>
         <div data-sidebar="sidebar" data-slot="sidebar-inner" className="flex h-full w-full flex-col overflow-hidden bg-sidebar">
           {children}
         </div>
-      </div>
+      </aside>
     </div>
   )
 }

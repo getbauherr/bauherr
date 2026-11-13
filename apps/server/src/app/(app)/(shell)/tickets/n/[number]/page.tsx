@@ -14,7 +14,7 @@ export default async function TicketByNumber({ params }: { params: Promise<{ num
   if (docs.length === 1) redirect(`/tickets/${docs[0]!.id}`)
   return (
     <>
-      <h2 className="heading">#{number} exists in {docs.length} Products</h2>
+      <h1 className="heading">#{number} exists in {docs.length} Products</h1>
       <ul className="flex flex-col gap-2" data-testid="ticket-chooser">
         {docs.map((t) => (
           <li key={t.id}>

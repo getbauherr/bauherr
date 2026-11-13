@@ -60,10 +60,10 @@ export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavIt
         if (!o) setQ('')
       }}
       trigger={
-        <Button variant="outline" aria-label="Command palette" aria-keyshortcuts="Control+K Meta+K" className="gap-2 text-muted-foreground max-sm:size-9 max-sm:px-0">
+        <Button variant="outline" aria-label="Search ⌘K, command palette" aria-keyshortcuts="Control+K Meta+K" className="gap-2 text-muted-foreground max-sm:size-9 max-sm:px-0">
           <Search />
           <span className="max-sm:hidden">Search</span>
-          <kbd className="mono rounded-sm border border-border px-1 max-sm:hidden">⌘K</kbd>
+          <kbd aria-hidden className="mono rounded-sm border border-border px-1 max-sm:hidden">⌘K</kbd>
         </Button>
       }
     >

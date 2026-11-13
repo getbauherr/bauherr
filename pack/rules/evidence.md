@@ -15,7 +15,8 @@ Every MR carries a `## Evidence` section. The Runner appends it from recorded St
 5. **Proof for review**: for each artifact rule of the Product that matches a changed path, an artifact attached on the pushed head, or a line `No artifact: <rule>: <reason>`. Without a rule nothing is required; with one, `request_review` is refused until it is met.
 6. **Plan steps**: one row per numbered step under the plan's `## Steps`, `done` or `deferred` with the evidence or the reason.
 7. **Self-review**: one line `Self-review: <n> findings, <m> fixed`, or `skipped, <30 lines` (a diff of 30 or more changed lines gets one; see `run-contract`).
-8. **Not verified**: what was not checked and why. Empty means everything was.
+8. **Accessibility**: when a changed path is a user interface and the Product has an accessibility check (WCAG 2.2 AA), the command and its exit code, or `No a11y check: <reason>`.
+9. **Not verified**: what was not checked and why. Empty means everything was.
 
 ## Format
 ```markdown
