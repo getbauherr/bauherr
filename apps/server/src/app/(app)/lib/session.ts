@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
 import { loadWorkflows } from '../../../lib/factory'
+import { live } from '../../../lib/workspace-delete'
 import { assignmentOf, isBauherr, isProductOwner, type Role } from '../../../lib/people'
 
 export type Workspace = { id: number; name: string; slug: string; knowledgeRepo?: string | null; knowledgeConnection?: unknown }
@@ -50,7 +51,7 @@ export const workspacesOf = cache(async (user: Person): Promise<Workspace[]> => 
   if (user.role !== 'admin' && !ids.length) return []
   const { docs } = await payload.find({
     collection: 'workspaces',
-    where: user.role === 'admin' ? {} : { id: { in: ids } },
+    where: user.role === 'admin' ? live : { and: [live, { id: { in: ids } }] },
     sort: 'name',
     pagination: false,
     depth: 0,

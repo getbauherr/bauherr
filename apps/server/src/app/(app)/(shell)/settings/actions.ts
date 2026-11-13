@@ -30,6 +30,7 @@ import { isWebUrl } from '../../lib/url'
 import { modeStages } from '../../../../lib/workflow'
 import { workflowFor } from '../../../../lib/factory'
 import { assignmentRows } from '../../../../lib/people'
+import { archiveWorkspace, restoreWorkspace } from '../../../../lib/workspace-delete'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
@@ -474,6 +475,21 @@ export const createWorkspace = act({}, async (c, fd) => {
   const me = await c.payload.findByID({ collection: 'bauherren', id: c.user.id as number, depth: 0, overrideAccess: true })
   const have = ((me.tenants ?? []) as { tenant: number | { id: number } }[]).map((t) => ({ tenant: typeof t.tenant === 'object' ? t.tenant.id : t.tenant }))
   await withLoginLock(me.email, () => c.payload.update({ collection: 'bauherren', id: me.id, data: { tenants: [...have, { tenant: ws.id as number }] }, overrideAccess: true } as never))
+})
+
+/** Admin: archives the current Workspace (stops its work, revokes its keys, restorable for 14 days); the typed name must match. */
+export const deleteWorkspace = act({}, async ({ user, workspace, payload }, fd) => {
+  only(user)
+  const id = inWorkspace({ workspace })
+  if (s(fd, 'confirm') !== workspace?.name) throw new Error('Type the Workspace name to confirm.')
+  await archiveWorkspace(payload, user, id)
+  redirect('/settings/workspace')
+})
+
+/** Admin: brings an archived Workspace back before its purge date. */
+export const restoreWorkspaceAction = act({}, async ({ user, payload }, fd) => {
+  only(user)
+  await restoreWorkspace(payload, user, id(fd))
 })
 
 const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`

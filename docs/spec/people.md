@@ -1,6 +1,6 @@
 # People: roles and assignments
 
-One auth collection, `bauherren`, holds every account. `role` is `admin`, `bauherr` or `product-owner`. Rank: Admin > Bauherr > Product owner (`lib/people.ts`: `rank`, `isBauherr` = Admin or Bauherr, `isProductOwner`). Only an Admin sets or changes a role. The first account becomes Admin; the last Admin cannot be demoted or removed; nobody changes their own role.
+One auth collection, `bauherren`, holds every account. `role` is `admin`, `bauherr` or `product-owner`. Rank: Admin > Bauherr > Product owner (`lib/people.ts`: `rank`, `isBauherr` = Admin or Bauherr, `isProductOwner`). Only an Admin sets or changes a role. The first account becomes Admin; the last Admin cannot be demoted or removed; nobody changes their own role. Only an Admin deletes (archives) or restores a Workspace (`archiveWorkspace`, `restoreWorkspace` in `lib/workspace-delete.ts`; any Admin may restore, 14 days); the last live Workspace cannot be deleted.
 
 ## Assignment
 
