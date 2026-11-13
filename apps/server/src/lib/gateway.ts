@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { chown, mkdir, readdir, rename, rm, stat, writeFile, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
@@ -286,10 +286,15 @@ export const SESSION_LOG_FIELDS = {
 
 /**
  * Brings the parts of an existing config.yaml that the template owns up to date and lists every catalog file: the session log fields,
- * the `claude-*` login passthrough (a copy of `sub/*` without the model rename) and `config.modelCatalog`. Returns whether anything changed.
+ * the `claude-*` login passthrough (a copy of `sub/*` without the model rename) and `config.modelCatalog`. `tracing` (docs/observability.md) sets `frontendPolicies.tracing`, null removes it, undefined leaves it. Returns whether anything changed.
  */
-export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[]): boolean => {
+export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[], tracing?: Record<string, unknown> | null): boolean => {
   const before = JSON.stringify(cfg)
+  if (tracing !== undefined) {
+    cfg.frontendPolicies ??= {}
+    if (tracing) cfg.frontendPolicies.tracing = tracing
+    else delete cfg.frontendPolicies.tracing
+  }
   const log = ((((cfg.frontendPolicies ??= {}).accessLog ??= {}).database ??= {}).add ??= {}) as Record<string, string>
   for (const [k, v] of Object.entries(SESSION_LOG_FIELDS)) log[k] ??= v
   const models = (cfg.llm?.models ?? []) as { name: string; transformation?: unknown; requestHeaders?: { remove?: string[] } }[]
@@ -307,21 +312,30 @@ export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[]):
 
 const catalogFiles = async (): Promise<string[]> => (await readdir(join(dir(), 'catalogs')).catch(() => [] as string[])).filter((f) => f.endsWith('.json')).sort()
 
+let configQueue: Promise<unknown> = Promise.resolve()
+
+/** Runs every read-modify-write of config.yaml one after the other in this process, so no update is lost. */
+export const withConfig = <T>(fn: () => Promise<T>): Promise<T> => {
+  const run = configQueue.then(fn, fn)
+  configQueue = run.catch(() => undefined)
+  return run
+}
+
 const writeConfig = async (path: string, cfg: unknown): Promise<void> => {
-  const tmp = `${path}.${process.pid}.tmp`
-  await rm(tmp, { force: true })
+  const tmp = `${path}.${randomUUID()}.tmp`
   await writeSecretFile(tmp, stringify(cfg))
   await rename(tmp, path)
 }
 
 /** Applies `ensureManaged` to the config on disk (no-op without one, or when nothing changes); the gateway hot-reloads it. */
-export const syncManagedConfig = async (): Promise<boolean> => {
-  const path = join(dir(), 'config.yaml')
-  const cfg = parse(await readFile(path, 'utf8').catch(() => ''))
-  if (!cfg || typeof cfg !== 'object' || !ensureManaged(cfg, await catalogFiles())) return false
-  await writeConfig(path, cfg)
-  return true
-}
+export const syncManagedConfig = (tracing?: Record<string, unknown> | null): Promise<boolean> =>
+  withConfig(async () => {
+    const path = join(dir(), 'config.yaml')
+    const cfg = parse(await readFile(path, 'utf8').catch(() => ''))
+    if (!cfg || typeof cfg !== 'object' || !ensureManaged(cfg, await catalogFiles(), tracing)) return false
+    await writeConfig(path, cfg)
+    return true
+  })
 
 /** Rewrites (0600, inline secrets live here) the managed `ws-<slug>/<connection>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
@@ -354,12 +368,14 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
     })
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((m) => m.entry)
-  const path = join(dir(), 'config.yaml')
-  const cfg = parse(await readFile(path, 'utf8'))
-  const kept = ((cfg.llm?.models ?? []) as { name: string }[]).filter((m) => !m.name.startsWith('ws-'))
-  cfg.llm = { ...cfg.llm, models: [...kept, ...models] }
-  ensureManaged(cfg, await catalogFiles())
-  await writeConfig(path, cfg)
+  await withConfig(async () => {
+    const path = join(dir(), 'config.yaml')
+    const cfg = parse(await readFile(path, 'utf8'))
+    const kept = ((cfg.llm?.models ?? []) as { name: string }[]).filter((m) => !m.name.startsWith('ws-'))
+    cfg.llm = { ...cfg.llm, models: [...kept, ...models] }
+    ensureManaged(cfg, await catalogFiles())
+    await writeConfig(path, cfg)
+  })
   await renderRouter(req)
 }
 

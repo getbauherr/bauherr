@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
 import { addDataAndFileToRequest, APIError, generatePayloadCookie, headersWithCors, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, ensureRouterKey, gatewayEnabled, newKey, removeProvider, revokeRouterKey, syncRouterKey, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
+import { monitoringErrors, renderTracing, SERVICES, type Service } from './lib/monitoring'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
@@ -26,12 +27,13 @@ const wfOfDoc = (data?: Doc, sibling?: Doc) => {
 
 const AMBIENT_LOCK = 143
 const ACCOUNT_LOCK = 144
+const MONITORING_LOCK = 145
 
-/** Serialises the ambient-identity single-tenant check against the write it guards; released when the request transaction ends. */
-const lockAmbient = async (req: PayloadRequest): Promise<void> => {
+/** Serialises the ambient-identity single-tenant check (or, with `key`, another instance-wide check) against the write it guards; released when the request transaction ends. */
+const lockAmbient = async (req: PayloadRequest, key = AMBIENT_LOCK): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
   const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
-  await tx.execute(sql`select pg_advisory_xact_lock(${AMBIENT_LOCK})`)
+  await tx.execute(sql`select pg_advisory_xact_lock(${key})`)
 }
 
 /** Serialises writers of one account; released when the request transaction ends. */
@@ -325,11 +327,37 @@ const workspaces = col(
 const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
   text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
 
+/** Monitoring Connections are instance-wide and Admin only: a Bauherr reads, changes and deletes every Connection but those. */
+const exceptMonitoring = ({ req }: { req: { user?: object | null } }) => (isAdmin({ req }) ? true : bauherrOnly({ req }) ? { kind: { not_equals: 'monitoring' } } : false)
+
+/** One `monitoring` Connection per service on the instance: validated per service, serialised by an advisory lock on the request transaction. */
+const validateMonitoring = async ({ data, originalDoc, req }: { data?: Doc; originalDoc?: Doc; req: PayloadRequest }): Promise<Doc | undefined> => {
+  const fail = (path: string, message: string): never => {
+    throw new ValidationError({ collection: 'connections', errors: [{ path, message }] })
+  }
+  if (req.user && !isAdmin({ req })) throw new APIError('Only an Admin can change monitoring', 403)
+  const service = (data?.service ?? originalDoc?.service) as Service | undefined
+  if (originalDoc?.service && service !== originalDoc.service) fail('service', 'cannot change after create')
+  const keys = service === 'grafana' ? ['url'] : ['host', 'protocol', 'headerName', 'uiUrl']
+  const merged = { ...originalDoc?.config, ...data?.config } as Record<string, unknown>
+  const config = Object.fromEntries(keys.flatMap((k) => (typeof merged[k] === 'string' && merged[k].trim() ? [[k, (merged[k] as string).trim()]] : [])))
+  if (service === 'otlp') config.protocol ??= 'grpc'
+  const written = typeof data?.secret === 'string' && data.secret && !isEncrypted(data.secret) ? data.secret : undefined
+  const kept = data?.secret === undefined && originalDoc?.id ? (await req.payload.count({ collection: 'connections', where: { and: [{ id: { equals: originalDoc.id } }, { secret: { exists: true } }] }, overrideAccess: true, req })).totalDocs > 0 : false
+  const errors = monitoringErrors(service, config, written, !!data?.secret || kept)
+  if (errors.length) throw new ValidationError({ collection: 'connections', errors })
+  await lockAmbient(req, MONITORING_LOCK)
+  const others = await req.payload.count({ collection: 'connections', where: { and: [{ kind: { equals: 'monitoring' } }, { service: { equals: service } }, ...(originalDoc?.id ? [{ id: { not_equals: originalDoc.id } }] : [])] }, overrideAccess: true, req })
+  if (others.totalDocs) fail('service', 'this service is already connected on this instance')
+  return { ...data, kind: 'monitoring', service, config, ...(config.headerName || service === 'grafana' ? {} : { secret: null }) }
+}
+
 const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
+    select('kind', ['github', 'gitlab', 'llm-provider', 'monitoring'], { required: true }),
+    select('service', [...SERVICES], { admin: { description: 'monitoring Connections only: which service (one per service on the instance). prometheus is refused until the scrape endpoint ships.' } }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
@@ -357,6 +385,7 @@ const connections = col(
     json('capabilities'),
   ],
   {
+    access: { read: exceptMonitoring, update: exceptMonitoring, delete: exceptMonitoring },
     indexes: [{ fields: ['workspace', 'slug'], unique: true }],
     hooks: {
       beforeDelete: [
@@ -371,6 +400,8 @@ const connections = col(
       ],
       beforeValidate: [
         async ({ data, originalDoc, req }) => {
+          if (originalDoc?.kind === 'monitoring' && data?.kind && data.kind !== 'monitoring') throw new ValidationError({ collection: 'connections', errors: [{ path: 'kind', message: 'cannot change after create' }] })
+          if ((data?.kind ?? originalDoc?.kind) === 'monitoring') return validateMonitoring({ data, originalDoc, req })
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
           // The top-level field wins only when this request changed it; otherwise an explicit `config` value stands (API, seed).
@@ -419,6 +450,7 @@ const connections = col(
       ],
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
+          if (doc.kind === 'monitoring') return void (doc.service === 'otlp' && gatewayEnabled() && (await renderTracing(req.payload, req)))
           if (doc.kind !== 'llm-provider' || req.context.skipVerify) return
           const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
             secret?: string
@@ -474,6 +506,7 @@ const connections = col(
       ],
       afterDelete: [
         async ({ doc, req }) => {
+          if (doc.kind === 'monitoring') return void (doc.service === 'otlp' && gatewayEnabled() && (await renderTracing(req.payload, req)))
           if (doc.kind !== 'llm-provider') return
           const wsId = typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace
           const ws = await req.payload.findByID({ collection: 'workspaces', id: wsId, depth: 0, overrideAccess: true, req })

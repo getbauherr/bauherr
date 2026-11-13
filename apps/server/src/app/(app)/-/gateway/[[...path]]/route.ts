@@ -9,6 +9,7 @@ const handle = async (req: Request, { params }: { params: Promise<{ path?: strin
     {
       name: 'Gateway',
       url: process.env.GATEWAY_ADMIN_URL,
+      redact: true,
       writes: process.env.GATEWAY_ADMIN_PROXY_WRITE === '1',
       hint: 'The gateway admin port is not published. On the host run <code>docker compose port gateway 15000</code> to find the local port, or set GATEWAY_ADMIN_URL.',
     },

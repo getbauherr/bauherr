@@ -47,6 +47,7 @@ await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
 await ensure('bauherren', { email: 'guard-bauherr@example.com' }, { email: 'guard-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the signed-in control of product-owner.spec: only that spec signs in as this user
+await ensure('bauherren', { email: 'monitoring-bauherr@example.com' }, { email: 'monitoring-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the non-Admin control of monitoring.spec: only that spec signs in as this user
 await ensure('bauherren', { email: 'owner@example.com' }, { email: 'owner@example.com', password, role: 'product-owner', assignments: [{ workspace, scope: 'products', products: [product] }] }) // the Product owner of Acme Web; people.spec and product-owner.spec sign in as this user
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
 // settings.spec.ts and templates.spec.ts own this Workspace (signed in with the `bauherr-ws=settingsco` cookie): they save its budget, models, Knowledge and templates and add a Connection, which no spec reading `acme` may see.
