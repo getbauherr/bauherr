@@ -83,6 +83,9 @@ export const mergedSince = async (payload: Payload, product: Doc, now = new Date
 
 const inDocsPaths = (file: string, paths: string[]) => !isAbsolute(file) && !file.split(/[\\/]/).includes('..') && paths.some((g) => matchesGlob(file, g))
 
+/** The files of `files` that are not under the docs `paths`. */
+export const outsideDocsPaths = (files: string[], paths: string[]): string[] => files.filter((f) => !inDocsPaths(f, paths))
+
 /** Throws unless every ticket and commit of the findings is one of the merged Tickets given to the Run and every file matches the docs paths. */
 export const checkAgainstMerged = (f: DocsFindings, merged: MergedTicket[], paths: string[]): void => {
   const numbers = new Set(merged.map((m) => m.number))

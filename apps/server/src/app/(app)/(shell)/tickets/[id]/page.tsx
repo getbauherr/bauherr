@@ -51,6 +51,7 @@ import { isWebUrl } from '../../../lib/url'
 import { KindChip } from '../../../components/RequestParts'
 import { KIND_LABEL } from '../../../../../lib/intake/kinds'
 import { waitingLabel } from '../../../../../lib/wip'
+import { fastLaneHolder } from '../../../../../lib/expedite'
 import { connectedOfRole } from '../../../../../lib/presence'
 
 export const dynamic = 'force-dynamic'
@@ -110,7 +111,9 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   if (live0?.status === 'awaiting_session' && ticket.expedite) live0.pausing = await pausingFor(payload, live0.id)
   const roleId = live0?.status === 'awaiting_session' ? roleOf(wf, live0.stage)?.id : undefined
   const connected = roleId ? (await connectedOfRole(payload, P.ws.id, roleId)) > 0 : true
-  const idle = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
+  const fastLane = await fastLaneHolder(payload, ticket)
+  const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
+  const idle = fastLane && !todo && (!live0 || live0.status === 'queued') && !blockers.some((b) => b.state !== 'closed') ? { ...next, label: 'Queued', enabled: false, reason: `Waiting for the fast lane: #${fastLane}.`, links: [] } : next
   const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
