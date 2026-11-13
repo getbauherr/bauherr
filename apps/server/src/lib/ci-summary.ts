@@ -40,7 +40,7 @@ export const storeCiSummaries = async (payload: Payload, now = new Date()): Prom
   const tickets = (await payload.find({ collection: 'tickets', where: live, pagination: false, ...o })).docs as Doc[]
   const ids = new Set(tickets.map((t) => t.id))
   const stale = (await payload.find({ collection: 'tickets', where: { ciSummary: { exists: true } }, select: {}, pagination: false, ...o })).docs.filter((t) => !ids.has(t.id))
-  for (const t of stale) await payload.update({ collection: 'tickets', id: t.id, data: { ciSummary: null }, ...o })
+  for (const t of stale) await payload.update({ collection: 'tickets', id: t.id, data: { ciSummary: null }, ...o }).catch((e) => payload.logger.warn({ err: e, ticket: t.id }, 'ci summary clear failed'))
   let stored = 0
   const forges = new Map<number | string, ReturnType<typeof forgeOf>>()
   const open = new Map<number | string, Promise<PullRequest[]>>()
