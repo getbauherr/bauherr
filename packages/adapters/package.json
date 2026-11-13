@@ -7,9 +7,10 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/timeout.test.js .test-dist/test/fake.test.js .test-dist/test/unit.test.js .test-dist/test/gitlab.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/timeout.test.js .test-dist/test/fake.test.js .test-dist/test/unit.test.js .test-dist/test/gitlab.test.js .test-dist/test/planka.test.js",
     "test:github": "tsc -p tsconfig.test.json && node --test .test-dist/test/github.test.js",
-    "test:gitlab": "tsc -p tsconfig.test.json && node --test .test-dist/test/gitlab.sandbox.test.js"
+    "test:gitlab": "tsc -p tsconfig.test.json && node --test .test-dist/test/gitlab.sandbox.test.js",
+    "test:planka": "tsc -p tsconfig.test.json && node --test .test-dist/test/planka.sandbox.test.js"
   },
   "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" },
   "engines": { "node": ">=24" }
