@@ -174,7 +174,7 @@ What a Ticket's time is spent on while in a stage: working (a Run runs), queued 
 _Avoid_: State
 
 **Status**:
-The one label the Bauherr reads for an open Ticket (`ticketStatus`): In progress, Queued, Waiting for you, Waiting on CI / merge queue / deploy, Blocked, Failed or Done, with a detail line and who is doing it. A Phase refined by blockers and failed Runs; "Working" is not a Status.
+The one label the Bauherr reads for an open Ticket (`ticketStatus`): In progress, Queued, Waiting for you, Waiting for CI / merge queue / deploy, Blocked, Failed or Done, with a detail line and who is doing it. A Phase refined by blockers and failed Runs; "Working" is not a Status.
 
 **Lead time**:
 From a Ticket's first event to its first closed event.
