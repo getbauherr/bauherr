@@ -92,7 +92,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const approved = labels.includes(APPROVED_PLAN)
-  const view = decisionView(decisions, answers, { stageKind: kindOf(wf, ticket.stage), approved })
+  const view = decisionView(decisions, answers, { stageKind: kindOf(wf, ticket.stage), approved, fastLane: !!ticket.expedite })
   const missing = view.answerable ? unansweredCritical(decisions, answers) : []
   const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
@@ -153,7 +153,7 @@ async function DecisionRow({ d }: { d: Promise<Derived> }) {
       <dt>Decisions</dt>
       <dd>
         {view.defaults.length ? (
-          <ul>{view.defaults.map((row) => <li key={row.id}>{`${row.id} ${row.title}: default taken (fast lane)`}</li>)}</ul>
+          <ul>{view.defaults.map((row) => <li key={row.id}>{`${row.id} ${row.title}: default taken (${view.takenBy})`}</li>)}</ul>
         ) : (
           `${view.answered} of ${x.decisions.length} answered${view.answerable ? ` · ${x.missing.length} critical open` : ''}`
         )}

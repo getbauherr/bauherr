@@ -163,5 +163,7 @@ describe('decisionView', () => {
 
   it('an approved plan is past Plan even in the Plan stage', () => {
     expect(decisionView(rows, {}, { stageKind: 'plan', approved: true })).toMatchObject({ answerable: 0, defaults: rows })
+    expect(decisionView(rows, {}, { stageKind: 'build', approved: true }).takenBy).toBe('at approval')
+    expect(decisionView(rows, {}, { stageKind: 'plan', approved: false, fastLane: true })).toMatchObject({ answerable: 0, defaults: rows, takenBy: 'fast lane' })
   })
 })
