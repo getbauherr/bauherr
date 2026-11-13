@@ -14,7 +14,7 @@ export type TicketPath = { visits: Map<string, number>; current: string; taken: 
 const BAR: Record<keyof NodeStats['bar'], { label: string; cls: string }> = {
   working: { label: 'in progress', cls: 'bg-primary' },
   human: { label: 'waiting for you', cls: 'bg-warn' },
-  ci: { label: 'waiting on CI', cls: 'bg-foreground/45' },
+  ci: { label: 'waiting for CI', cls: 'bg-foreground/45' },
   queued: { label: 'queued', cls: 'bg-muted-foreground/30' },
 }
 const TOP = { active: 'border-t-primary', attention: 'border-t-warn', idle: 'border-t-border' }

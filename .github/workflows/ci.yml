@@ -27,6 +27,8 @@ jobs:
         with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - name: DESIGN.md equals tokens.json and passes the design.md linter
+        run: pnpm --filter server design:check && pnpm exec design.md lint DESIGN.md
       - name: Every page route is scanned by e2e/a11y.spec.ts
         run: pnpm --filter server a11y:coverage
       - run: pnpm --filter server test --shard=1/3

@@ -14,7 +14,7 @@ const Row = ({ k, children, id }: { k: string; children: ReactNode; id?: string 
 
 /** The Ticket page's right column: who and what the Ticket is, where its time went, and where to go next. Database values only. */
 export function TicketFacts({ product, stage, totals, runs, models, executor, links }: { product: string; stage: string; totals: Steps['totals']; runs: number; models: string[]; executor: string | null; links: Link[] }) {
-  const time = [['Lead time', totals.lead], ['In progress', totals.working], ['Waiting for you', totals.human], ['Queued', totals.queued], ['Waiting on CI', totals.ci]] as const
+  const time = [['Lead time', totals.lead], ['In progress', totals.working], ['Waiting for you', totals.human], ['Queued', totals.queued], ['Waiting for CI', totals.ci]] as const
   return (
     <Card asChild className="gap-0 p-4">
       <section aria-label="Facts" data-testid="ticket-facts">

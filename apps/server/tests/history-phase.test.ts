@@ -16,7 +16,7 @@ it.each([
   ['a Run that needs a human', { stage: 'build' }, run('needs_human', { reasonKind: 'decision' }), 'human'],
   ['a review that needs a human', { stage: 'review', reviewState: 'needs_human' }, run('succeeded', { stage: 'review', kind: 'review' }), 'human'],
   ['production waiting for approval', { stage: 'release', releaseState: 'on_staging', productionState: 'awaiting_approval' }, null, 'human'],
-  ['a need beats waiting on CI', { stage: 'review', reviewState: 'needs_human', waitingFor: 'checks' }, null, 'human'],
+  ['a need beats waiting for CI', { stage: 'review', reviewState: 'needs_human', waitingFor: 'checks' }, null, 'human'],
   ['waiting for checks', { stage: 'build', waitingFor: 'checks' }, null, 'ci'],
   ['review waiting for checks', { stage: 'review', reviewState: 'waiting_checks' }, null, 'ci'],
   ['review in the merge queue', { stage: 'review', reviewState: 'queued' }, null, 'ci'],

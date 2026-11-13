@@ -61,18 +61,18 @@ export const runWho = (r: Pick<StatusRun, 'mode' | 'executor' | 'sessionLabel' |
 const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | null => {
   const at = (k: 'review' | 'release') => is(wf, r.stage, k)
   const t = r.track
-  if (t.waitingFor === 'checks') return { label: 'Waiting on CI', detail: 'checks of the merge request' }
-  if (at('review') && t.reviewState === 'waiting_checks') return { label: 'Waiting on CI', detail: 'checks of the merge request' }
+  if (t.waitingFor === 'checks') return { label: 'Waiting for CI', detail: 'checks of the merge request' }
+  if (at('review') && t.reviewState === 'waiting_checks') return { label: 'Waiting for CI', detail: 'checks of the merge request' }
   if (at('review') && t.reviewState === 'queued') return { label: 'Waiting on merge queue', detail: 'the merge request is in the merge queue' }
   if (at('release') && t.releaseState === 'waiting') return { label: 'Waiting on deploy', detail: 'the staging deploy' }
   if (at('release') && t.productionState === 'deploying') return { label: 'Waiting on deploy', detail: 'the production deploy' }
-  if (t.releaseChecksState === 'waiting') return { label: 'Waiting on CI', detail: 'the release checks' }
+  if (t.releaseChecksState === 'waiting') return { label: 'Waiting for CI', detail: 'the release checks' }
   return null
 }
 
 /**
  * The one status of a Ticket, shown identically on the Workflow view, the Ticket page, Epics and the chat. First match: Done; a Run of the Ticket's own stage
- * (running = In progress, queued or waiting for a session = Queued); Waiting for you; Waiting on CI / merge queue / deploy; Blocked; Failed; else Queued.
+ * (running = In progress, queued or waiting for a session = Queued); Waiting for you; Waiting for CI / merge queue / deploy; Blocked; Failed; else Queued.
  */
 export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): TicketStatus => {
   const run = r.run && r.run.stage === r.stage ? r.run : null
@@ -111,4 +111,4 @@ export const statusLine = (wf: Workflow, r: StatusRow): string => {
 
 /** The status label of a history phase (`ticket_events.phase`) in the stage of kind `stageKind`. */
 export const phaseLabel = (phase: string, stageKind?: string | null): string =>
-  ({ working: 'In progress', queued: 'Queued', human: WAITING_FOR_YOU, closed: 'Done', ci: stageKind === 'release' ? 'Waiting on deploy' : 'Waiting on CI' })[phase] ?? phase
+  ({ working: 'In progress', queued: 'Queued', human: WAITING_FOR_YOU, closed: 'Done', ci: stageKind === 'release' ? 'Waiting on deploy' : 'Waiting for CI' })[phase] ?? phase
