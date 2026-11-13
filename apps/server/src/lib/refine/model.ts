@@ -66,8 +66,7 @@ export const pointsOf = (sheet: Decision[], added: Decision[], answers: Record<s
 export const openOf = (points: Point[]): Point[] => points.filter((p) => p.status === 'open')
 
 /**
- * Validates the model's `refine` input against the open points and the Ticket. Throws on anything else than the schema's shape, an unknown or already settled id,
- * a point named twice, an empty reply or answer, or ticket text that lost a `<!-- bauherr:... -->` marker. Nothing is applied here.
+ * Validates the model's `refine` input against the open points and the Ticket. Throws on anything else than the schema's shape, an unknown id, a point named twice, an empty reply or answer, or ticket text that lost a `<!-- bauherr:... -->` marker. Nothing is applied here. A settled id that is already answered is dropped from the result: the first answer stays.
  */
 export const normalizeRefine = (raw: any, points: Point[], ticket: { body: string }): Refine => {
   const bad = (why: string): never => {
@@ -77,19 +76,22 @@ export const normalizeRefine = (raw: any, points: Point[], ticket: { body: strin
   const reply = line(raw.reply, 1500)
   if (!reply) bad('empty reply')
   const open = new Set(openOf(points).map((p) => p.id))
+  const answered = new Set(points.filter((p) => p.status === 'answered').map((p) => p.id))
   const seen = new Set<string>()
-  const take = (id: unknown): string => {
+  const take = (id: unknown, repeatable = false): string => {
     const k = String(id)
-    if (!open.has(k) || seen.has(k)) bad(`unknown or repeated point ${k}`)
+    if (!(open.has(k) || (repeatable && answered.has(k))) || seen.has(k)) bad(`unknown or repeated point ${k}`)
     seen.add(k)
     return k
   }
   const list = (v: unknown, max: number): any[] => (v === undefined ? [] : Array.isArray(v) && v.length <= max ? v : bad('bad list'))
-  const settled = list(raw.settled, MAX_OPEN).map((s) => {
-    const answer = line(s?.answer, MAX_ANSWER + 1)
-    if (!answer || answer.length > MAX_ANSWER) bad('empty or long answer')
-    return { id: take(s?.id), answer }
-  })
+  const settled = list(raw.settled, MAX_OPEN)
+    .map((s) => {
+      const answer = line(s?.answer, MAX_ANSWER + 1)
+      if (!answer || answer.length > MAX_ANSWER) bad('empty or long answer')
+      return { id: take(s?.id, true), answer }
+    })
+    .filter((s) => !answered.has(s.id))
   const dropped = list(raw.dropped, MAX_OPEN).map((d) => ({ id: take(d?.id), reason: line(d?.reason, 300) }))
   const added = list(raw.added, MAX_ADDED).map((a) => {
     const title = line(a?.question, 300)
