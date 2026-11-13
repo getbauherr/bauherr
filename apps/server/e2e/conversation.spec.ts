@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
@@ -269,4 +270,35 @@ test('a Product owner that Triage\'s questions are not addressed to still gets t
   const id = /\/tickets\/(\d+)/.exec(hrefs['Export the invoices']!)![1]
   const status = await page.evaluate(async (i) => (await fetch(`/api/refine/${i}/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello' }) })).status, id)
   expect(status).toBe(404) // they have no row to answer (this Workspace asks the Bauherr: gated-pack)
+})
+
+test('a rejected turn shows its error with "Try again", keeps the typed text, and a retry resends it and empties the composer', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await open(page, 'Export the invoices')
+  const sent: string[] = []
+  await page.route('**/api/refine/*/turn', async (route) => {
+    const body = route.request().postDataJSON() as { text?: string }
+    if (body.text === undefined) return route.continue() // the background re-check
+    sent.push(body.text)
+    return sent.length === 1 ? route.fulfill({ status: 502, json: { error: 'The model is unavailable.' } }) : route.continue()
+  })
+  const typed = page.getByRole('textbox', { name: 'Your answer' })
+  await typed.fill('Export them as CSV.')
+  await typed.press('Enter')
+  const error = page.getByTestId('refine-error')
+  await expect(error).toHaveText('The model is unavailable.')
+  const retry = page.getByTestId('refine-retry')
+  await expect(retry).toBeVisible()
+  await expect(error.getByRole('button')).toHaveCount(0) // the button sits next to the alert, not in it
+  await expect(typed).toHaveValue('Export them as CSV.')
+  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']).exclude('nextjs-portal').analyze()
+  expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([])
+
+  await retry.click()
+  await expect(error).toHaveCount(0)
+  await expect(page.getByTestId('points-count')).toHaveText('3 of 4 open')
+  expect(sent).toEqual(['Export them as CSV.', 'Export them as CSV.'])
+  await expect(typed).toHaveValue('') // a second send must not repeat the text
 })
