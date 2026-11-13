@@ -1,7 +1,14 @@
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { appVersion, changelog } from '../src/app/(app)/lib/version'
 
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.restoreAllMocks()
+  vi.resetModules()
+})
 
 describe('version helpers', () => {
   it('shows the release version the image was built with', () => {
@@ -46,5 +53,39 @@ describe('version helpers', () => {
 
   it('reads the repo changelog', () => {
     expect(changelog()).toContain('# Changelog')
+  })
+
+  describe('an image built without BAUHERR_BUILD_DATE', () => {
+    const imageAt = async (nodeEnv: string) => {
+      const dir = mkdtempSync(path.join(tmpdir(), 'bauherr-version-'))
+      mkdirSync(path.join(dir, '.next'))
+      const id = path.join(dir, '.next/BUILD_ID')
+      writeFileSync(id, 'x')
+      const t = new Date('2026-11-13T13:20:53Z')
+      utimesSync(id, t, t)
+      vi.spyOn(process, 'cwd').mockReturnValue(dir)
+      vi.stubEnv('NODE_ENV', nodeEnv)
+      vi.stubEnv('BAUHERR_VERSION', 'dev')
+      vi.stubEnv('BAUHERR_REVISION', '19ece9b1234')
+      vi.stubEnv('BAUHERR_BUILD_DATE', '')
+      return (await import('../src/app/(app)/lib/version')).appVersion()
+    }
+
+    it('shows the time next build ran, in UTC, with the short sha', async () => {
+      expect(await imageAt('production')).toBe('dev · 2026-11-13 13:20 UTC · 19ece9b')
+    })
+
+    it('shows no time outside production', async () => {
+      expect(await imageAt('test')).toBe('dev+19ece9b')
+    })
+
+    it('falls back to the sha when the build marker is missing', async () => {
+      vi.spyOn(process, 'cwd').mockReturnValue(mkdtempSync(path.join(tmpdir(), 'bauherr-version-')))
+      vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('BAUHERR_VERSION', 'dev')
+      vi.stubEnv('BAUHERR_REVISION', '19ece9b1234')
+      vi.stubEnv('BAUHERR_BUILD_DATE', '')
+      expect((await import('../src/app/(app)/lib/version')).appVersion()).toBe('dev+19ece9b')
+    })
   })
 })
