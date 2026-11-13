@@ -7,7 +7,7 @@ import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog'
 
 const src = (p: ProofData, i: ProofItem) => `/api/tickets/${p.ticket}/artifacts/${i.id}`
-const safeLink = 'text-primary underline-offset-2 hover:underline'
+const safeLink = 'min-h-6 py-[3px] text-primary underline-offset-2 hover:underline'
 
 /** Text of a transcript, sample or report: collapsed, always plain text (no HTML, no markdown). */
 const Text = ({ item }: { item: ProofItem }) => (

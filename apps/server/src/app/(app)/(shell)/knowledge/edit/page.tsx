@@ -15,7 +15,7 @@ export default async function EditKnowledge({ searchParams }: { searchParams: Pr
     const doc = await loadDocument(await payloadClient(), user, workspace.id, path)
     return (
       <>
-        <h2 className="heading">Edit {title(path, /^#\s+(.+)$/m.exec(doc.content)?.[1])}</h2>
+        <h1 className="heading">Edit {title(path, /^#\s+(.+)$/m.exec(doc.content)?.[1])}</h1>
         <KnowledgeEditor path={path} content={doc.content} sha={doc.sha} />
       </>
     )

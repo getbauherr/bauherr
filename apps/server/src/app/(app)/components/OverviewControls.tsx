@@ -84,12 +84,12 @@ export function TicketControls({ products, epics }: { products: { id: number; na
       {!list && <EpicSelect epics={epics} />}
       {list && (
         <ToggleGroup aria-label="Epics shown">
-          <ToggleGroupItem href={href({ done: done ? null : '1' })} aria-pressed={done}>Show done</ToggleGroupItem>
+          <ToggleGroupItem href={href({ done: done ? null : '1' })} aria-current={done ? 'true' : 'false'}>Show done</ToggleGroupItem>
         </ToggleGroup>
       )}
       {!graph && !list && (
         <ToggleGroup aria-label="Tickets shown">
-          <ToggleGroupItem href={href({ state: all ? null : 'all' })} aria-pressed={all}>Show done</ToggleGroupItem>
+          <ToggleGroupItem href={href({ state: all ? null : 'all' })} aria-current={all ? 'true' : 'false'}>Show done</ToggleGroupItem>
         </ToggleGroup>
       )}
     </Pending>

@@ -15,8 +15,8 @@ export function UserMenu({ email, logout, minimal }: { email: string; logout: ()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <SidebarMenuButton size="lg" tooltip={email} aria-label="User menu">
-          <Avatar className="size-8"><AvatarFallback>{initials(email)}</AvatarFallback></Avatar>
+        <SidebarMenuButton size="lg" tooltip={email} aria-label={`User menu, ${email}`}>
+          <Avatar className="size-8"><AvatarFallback data-mark={initials(email)} className="after:content-[attr(data-mark)]" /></Avatar>
           <span className="min-w-0 flex-1 truncate">{email}</span>
           <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>

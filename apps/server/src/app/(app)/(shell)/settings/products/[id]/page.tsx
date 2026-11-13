@@ -252,7 +252,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         )}>
           {active.length > 0 ? (
             <Table>
-              <thead><tr><th>Name</th><th>Sites</th><th>Sessions per hour</th><th>Created</th><th /></tr></thead>
+              <thead><tr><th>Name</th><th>Sites</th><th>Sessions per hour</th><th>Created</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {active.map((e) => (
                   <tr key={e.id}>

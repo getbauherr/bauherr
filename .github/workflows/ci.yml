@@ -27,6 +27,8 @@ jobs:
         with: {node-version: 24, cache: pnpm}
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - name: Every page route is scanned by e2e/a11y.spec.ts
+        run: pnpm --filter server a11y:coverage
       - run: pnpm --filter server test --shard=1/3
 
   # The server suite is CPU-bound (941 tests, one Payload per file): `check` runs shard 1, these run shards 2 and 3 (shard 3 also runs the package tests), each with its own Postgres.
