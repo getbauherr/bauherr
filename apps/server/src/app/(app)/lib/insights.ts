@@ -10,7 +10,7 @@ export type PhaseKey = Exclude<Phase, 'closed'>
 export const PHASES: { key: PhaseKey; label: string }[] = [
   { key: 'working', label: 'In progress' },
   { key: 'human', label: 'Waiting for you' },
-  { key: 'ci', label: 'Waiting on CI' },
+  { key: 'ci', label: 'Waiting for CI' },
   { key: 'queued', label: 'Queued' },
 ]
 

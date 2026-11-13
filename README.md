@@ -257,7 +257,7 @@ By default you answer the questions Triage cannot settle, approve every plan and
 <details>
 <summary><b>How do I stop a Run?</b></summary>
 
-Open the Run under Runs (Admin) and release its lock. A review that hits its round cap waits in the Inbox: give one more round, or stop. An exhausted budget also ends a Run.
+Open the Run under Runs (Admin) and use **Release lock**. A review that hits its round cap waits in the Inbox: give one more round, or stop. An exhausted budget also ends a Run.
 </details>
 
 ## 🤝 Contributing

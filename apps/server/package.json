@@ -24,6 +24,7 @@
     "test:mcp": "tsx --test --test-force-exit tests/mcp.e2e.ts",
     "gen:migrations": "tsx scripts/gen-migrations.ts",
     "tokens": "tsx scripts/tokens.ts",
+    "design:check": "tsx scripts/design-md.ts",
     "build:widget": "tsx scripts/build-widget.ts",
     "e2e": "playwright test",
     "a11y:coverage": "tsx scripts/a11y-coverage.ts"

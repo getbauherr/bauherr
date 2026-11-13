@@ -1,56 +1,9 @@
 # Bauherr design system
 
-Source of truth for the product's look: tokens, brand book, mark, component guidelines and previews. The browsable version (same files) lives in the owner's design-system artifact; agents build from this folder. Previews expect the compiled token variables (`--<token>`) and the type-style classes; see `tokens.json`.
+The design system is one file: [`DESIGN.md`](../../DESIGN.md) at the repository root (tokens, principles, components, Product patterns).
 
-Bauherr is the person who commissions a building and signs off on the work. The product is the factory that does the work; the interface exists so that person can decide quickly and trust what they see. Everything below serves that: few elements, one accent, square geometry, slow motion.
+This folder keeps what it does not hold:
 
-## Principles
-
-1. **Decide, don't browse.** Every screen has one job and one primary action. A page that asks for a decision shows the decision sheet first and the evidence beside it; nothing else competes.
-2. **One accent.** `accent` is the only brand hue. Status colors (`ok`, `warn`, `danger`) mean state and always come with a word or glyph. If something is blue, it can be clicked or it is selected.
-3. **Hairlines, not shadows.** Surfaces are separated by `hairline` on `surface-000` / `surface-100`. Shadows exist only on a drawer in motion.
-4. **Nearly square.** `radius-sm` by default, `radius-md` on buttons and cards, `radius-lg` only on drawers and the cover. Nothing is a pill.
-5. **Slow and unobtrusive.** Motion confirms a state change (`duration-state`) or places a panel (`duration-panel`), always `ease-out`, never more than 8px of travel, never a bounce or loop. Under `prefers-reduced-motion` every duration is 0.
-6. **Plain words.** Say what happens: "Approve plan", then "Plan approved". Name things as the Bauherr sees them (ticket, stage, run, gate), never as the system is built (job, label, webhook). Sentence case everywhere except `label`.
-
-## The name and the mark
-
-Write **Bauherr** with a capital B, in `display` or `title`, never in uppercase. The mark is the **cornerstone**: a square outline in `ink` with a solid square in `accent` at its bottom-left corner — the one stone the Bauherr lays. Use `assets/Logos/bauherr-mark.svg` at 16, 20, 24 or 32px (it is drawn on a 32 grid); the wordmark `assets/Logos/bauherr-wordmark.svg` only on the cover, the login page and documents. Keep clear space of one mark width around it. Never recolor the outline, never put the mark on `accent`, never rotate it.
-
-## Type
-
-One family, Archivo, from Google Fonts (`family=Archivo:wght@400;500;600`), with IBM Plex Mono (`family=IBM+Plex+Mono:wght@400`) for data. Set page titles in `title` (one per page), sections in `heading`, running text in `body` at ≤ 68 characters per line, metadata in `small` with `ink-muted`, uppercase labels in `label`. Identifiers, label names, commands, costs and anything a person might copy go in `mono` with tabular numerals. Headings get `text-wrap: balance`. No italics, no light weights.
-
-## Color
-
-Light theme first; dark theme is a full second palette, not an inversion. Text is `ink` on `surface-000`, `surface-100` and `surface-200`; secondary text is `ink-muted`. The accent is text-safe on every surface in both themes; on an accent fill use `on-accent`. Selected rows and active tabs use `accent-soft` with `ink` text. Status colors: `ok` for succeeded, approved and verified; `warn` for needs_human, blocked and budget near its limit; `danger` for failed, cancelled and destructive actions. Each status also shows its word or a glyph, so the colors never carry meaning alone.
-
-## Layout and spacing
-
-A 4px grid: `space-1` to `space-12`. Desktop pages pad `space-8`, phones `space-4`. Related controls sit `space-2` apart, sections `space-6`, major blocks `space-12`. Content measures: forms and decision sheets 640px wide, reading 68 characters, run views full width. Tables align numbers right in `mono`. Use flex and grid with `gap`; no per-element margins.
-
-## Patterns the product is built from
-
-- **Decision sheet**: a table of rows, each with a number, the decision, the recommended default and a `critical` mark. The Bauherr answers once; unanswered non-critical rows take their default. The Ticket page does not render it as a table: the owner answers the rows one at a time in the owner chat.
-- **Gate**: the two human gates (plan approval, merge) are the only places the product asks for a signature. A `Gate` shows only what is being approved (budget, model and evidence sit in the Ticket page's Details); the action is the ActionBar's one primary button.
-- **Action bar**: one sticky bar at the top of the Ticket page (docked to the bottom on phones) with a sentence and exactly one primary button; same place in every state.
-- **Status**: every ticket, run and step carries a `StatusChip` (queued, running, succeeded, failed, cancelled, needs human) using the status colors with its word.
-- **Run views**: graph, timeline and list share the same node: name, type, status chip, duration in `mono`. Nodes appear with `duration-panel`; status changes with `duration-state`.
-- **Chat**: every AI chat surface (owner decisions chat, intake request chat, the embed widget and any later one) is built from [assistant-ui](https://www.assistant-ui.com/elements/) (`@assistant-ui/react`), as much of it as fits: thread, message, composer, attachments, suggestions, tool UI. It is an approved dependency; no hand-built chat components. Style it with the tokens above.
-- **Empty states**: one sentence in `body`, one action. No illustrations.
-
-## Iconography
-
-Line icons at 1.5px stroke on a 20px grid, `currentColor`, from one set (Lucide). No filled icons, no emoji, no icon without a label except in a chip where the word is beside it.
-
-## Motion
-
-Use only `duration-state`, `duration-panel`, `duration-page` with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, infinite loops, parallax, skeleton shimmer. A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the running-Ticket indicator, the only looping motion in the product. The indicator marks a Ticket whose Run is `running`: a dashed accent border marching at 1.6s on Graph nodes, a stripe sliding along the edge of Board cards, always with the activity word (building, reviewing, planning, deploying). Under `prefers-reduced-motion` it is a solid accent border plus the word.
-
-## Writing
-
-Singular Bauherr, plural Bauherren, never "Bauherrs". People are added, not created: "Add Bauherr", "Add Product". Sentence case. Second person for the Bauherr ("You approve the plan"), third person for agents ("The agent opened a merge request"). Buttons are verbs ("Approve plan", "Re-run failed steps"). Errors say what happened and what to do next in one sentence each. No exclamation marks, no emoji, no praise.
-
-## Styling
-
-Pages use Tailwind v4 utilities with shadcn/ui components (Radix primitives, copied into `apps/server/src/app/(app)/components/ui`, no runtime UI package). `app.css` holds no component classes: only the font variables, the base `body` and focus rules and the navigation-progress styles. The app shell is a shadcn `Sidebar` (icon rail, Sheet on phones) | content | optional right dock, with a header (sidebar trigger, breadcrumb, New request, ⌘K command palette); see `docs/ui.md` > Shell. Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is not loaded; shadcn roots carry the `aui-root` class for the part they need. Chat UIs use assistant-ui's shadcn components.
+- `tokens.json`: source of the tokens; `pnpm --filter server tokens` compiles it to `tokens.css`, `pnpm --filter server design:check` checks that `DESIGN.md` equals it.
+- `components/{Button,Cover,Gate,StatusChip}`: component guidelines and previews. The previews expect the compiled token variables (`--<token>`) and the type-style classes.
+- `assets/`: logos and brand images.
