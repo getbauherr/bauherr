@@ -37,9 +37,9 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { board, is, nameOf, roleOf, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
+import { board, is, kindOf, nameOf, roleOf, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
 import { activeVersion, workflowFor } from '../../../../../lib/factory'
-import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
@@ -91,9 +91,10 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const sheet = sheetOf(comments)?.body
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
-  const missing = unansweredCritical(decisions, answers)
-  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
+  const view = decisionView(decisions, answers, { stageKind: kindOf(wf, ticket.stage), approved })
+  const missing = view.answerable ? unansweredCritical(decisions, answers) : []
+  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
@@ -101,7 +102,6 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const reason = (todo === 'Needs you' ? capFindings?.replace(/^Bauherr needs a human:\s*/, '').split('\n')[0] : ['Cancelled', 'Run failed', 'Run needs you'].includes(todo ?? '') ? runs[0]?.error : null)?.slice(0, 300) ?? null
   const stagingSummary = latestWith(comments, SUMMARY_MARKER)?.body
   const acceptedStaging = labels.includes('bauherr:approved:staging')
-  const answered = decisions.filter((d) => answers[d.id]).length
   const holderNumbers = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
   const q = { depth: 0, overrideAccess: true } as const
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
@@ -112,9 +112,8 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const fastLane = await fastLaneHolder(payload, ticket)
   const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
   const idle = fastLane && !todo && (!live0 || live0.status === 'queued') && !blockers.some((b) => b.state !== 'closed') ? fastLaneStep(next, fastLane) : next
-  const decisionsShown = decisions.length > 0 && !approved
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
-  return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
+  return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, view, idle, history }
 }
 type Derived = Awaited<ReturnType<typeof derive>>
 
@@ -123,7 +122,7 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} answerable={x.decisionsShown ? x.decisions.length - x.answered : 0} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} answerable={x.view.answerable} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -147,7 +146,20 @@ async function Proof({ P, d }: { P: Page; d: Promise<Derived> }) {
 
 async function DecisionRow({ d }: { d: Promise<Derived> }) {
   const x = await d
-  return x.decisions.length > 0 ? <><dt>Decisions</dt><dd>{x.approved ? `${x.answered} answered` : `${x.answered} of ${x.decisions.length} answered · ${x.missing.length} critical open`}</dd></> : null
+  if (!x.decisions.length) return null
+  const { view } = x
+  return (
+    <>
+      <dt>Decisions</dt>
+      <dd>
+        {view.defaults.length ? (
+          <ul>{view.defaults.map((row) => <li key={row.id}>{`${row.id} ${row.title}: default taken (fast lane)`}</li>)}</ul>
+        ) : (
+          `${view.answered} of ${x.decisions.length} answered${view.answerable ? ` · ${x.missing.length} critical open` : ''}`
+        )}
+      </dd>
+    </>
+  )
 }
 
 const Section = ({ id, title, children }: { id: string; title: string; children: ReactNode }) => (
