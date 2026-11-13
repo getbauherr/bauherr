@@ -56,6 +56,7 @@ const BAUHERR_ACTIONS = [
 ].map((n) => `lib/actions.ts#${n}`).concat([
   'lib/search.ts#searchTickets', '(shell)/team/actions.ts#saveRole',
   ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'createSessionKey', 'updatePricesNow', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'saveDocsCheck', 'startDocsCheckAction', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'saveMonitoring', 'removeMonitoring', 'testMonitoringAction', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate'].map((n) => `(shell)/settings/actions.ts#${n}`),
+  ...['reviewDraft', 'applyDraft', 'setExpediteLane'].map((n) => `(shell)/workflow/edit/actions.ts#${n}`),
   ...['applyPreset', 'skipSession', 'importIssue'].map((n) => `(shell)/setup/actions.ts#${n}`),
   ...['previewRelease', 'summariseRelease', 'shipReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
 ])
