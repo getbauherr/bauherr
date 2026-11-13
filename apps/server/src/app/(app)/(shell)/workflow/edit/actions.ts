@@ -36,3 +36,13 @@ export const setExpediteLane = async (on: boolean): Promise<{ error?: string }> 
   revalidatePath('/workflow/edit')
   return {}
 }
+
+/** Admin: "Pause running work for a hotfix", saved right away; off keeps a hotfix waiting for a free session. */
+export const setPreemptForHotfix = async (on: boolean): Promise<{ error?: string }> => {
+  const { user, workspace } = await currentWorkspace()
+  if (!isAdmin(user)) return { error: 'Only an Admin can change this.' }
+  if (!workspace) return { error: 'No Workspace selected.' }
+  await (await payloadClient()).update({ collection: 'workspaces', id: workspace.id, data: { preemptForHotfix: on }, user, overrideAccess: false } as never)
+  revalidatePath('/workflow/edit')
+  return {}
+}

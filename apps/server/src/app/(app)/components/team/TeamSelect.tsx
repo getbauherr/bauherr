@@ -18,6 +18,8 @@ import type { ModelOption, RoleSettings, SaveResult, TeamRole } from './types'
 const MAX_AGENTS = 10
 
 type Props = {
+  /** The role chosen on load; the first when it names none. */
+  initialRole?: string
   roles: TeamRole[]
   modelOptions: ModelOption[]
   canEdit: boolean
@@ -132,8 +134,8 @@ function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, '
   )
 }
 
-export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcpLine, gateway, preview }: Props) {
-  const [id, setId] = useState(roles[0]?.id)
+export function TeamSelect({ initialRole, roles, modelOptions, canEdit, onSave, docsHref, mcpLine, gateway, preview }: Props) {
+  const [id, setId] = useState(roles.find((r) => r.id === initialRole)?.id ?? roles[0]?.id)
   const [hot, setHot] = useState<string>()
   const group = useRef<HTMLDivElement>(null)
   const role = roles.find((r) => r.id === id)
