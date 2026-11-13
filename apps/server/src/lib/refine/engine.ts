@@ -14,6 +14,7 @@ import { workflowFor } from '../factory'
 import { NEEDS_REFINEMENT } from '../needs-you'
 import { sessionTimeoutS } from '../sessions'
 import { kindOfRun } from '../stage-text'
+import { waitingLabel } from '../wip'
 import { checkpointBy, gates, is, nameOf, roleOf } from '../workflow'
 import { buildArtifact, type Artifact } from './artifact'
 import { MAX_TEXT, MAX_USER_MESSAGES, REFINE_TOOL, TIERS, applyRefine, normalizeRefine, openOf, pointsOf, type Image, type Msg, type Point, type Refine, type Speaker, type Tier } from './model'
@@ -33,6 +34,8 @@ export type View = {
   viewer: 'bauherr' | 'product-owner'
   ticket: { id: number; number: number; title: string }
   sent: boolean
+  /** Why a sent Ticket has not entered planning yet, e.g. "Queued for planning: Plan is full (3 of 3). It starts when a slot is free."; null once it moved. */
+  queued: string | null
   points: Point[]
   messages: Msg[]
   earlier: { role: string; text: string }[]
@@ -156,6 +159,7 @@ const view = async (payload: Payload, user: User, c: Ctx, workspaceId: number | 
     viewer,
     ticket: { id: c.t.id, number: c.t.number, title: c.t.title },
     sent: c.s.status === 'submitted',
+    queued: c.s.status === 'submitted' && c.t.waitingFor ? await sentText(payload, c.t.id, 'waiting') : null,
     points: c.points,
     messages,
     earlier,
@@ -389,17 +393,23 @@ export const refineReopen = (payload: Payload, user: User, a: { ticket: number; 
     return commit(payload, user, a, c, { reopen: [p.id] }, { user: `Change ${p.id}`, reply: `${nextQuestion([{ ...p, status: 'open' }])}\nWhat should it be?`, model: null })
   })
 
+/** The last line of a sent conversation: "Sent to planning." only when the Ticket entered Plan, else what it waits for (`waitingLabel`). */
+export const sentText = async (payload: Payload, ticket: number | string, result?: 'moved' | 'waiting' | 'held'): Promise<string> => {
+  const label = result === 'moved' ? null : await waitingLabel(payload, (await payload.findByID({ collection: 'tickets', id: ticket, ...o })) as Doc)
+  return label ? `Queued for planning: ${label.replace(/^Waiting: /, '').replace(/\((\d+)\/(\d+)\)/, '($1 of $2)')}. It starts when a slot is free.` : 'Sent to planning.'
+}
+
 /** "Send to planning": the proposed Ticket text is applied, the hold is released the way the last decision row releases it, and the conversation is read-only history. */
 export const refineSend = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
     live(c)
     if (openOf(c.points).length) throw new Error('points are still open')
-    await finishRefinement(payload, user, { ticket: a.ticket, workspaceId: a.workspaceId, edits: c.edits ?? undefined })
+    const result = await finishRefinement(payload, user, { ticket: a.ticket, workspaceId: a.workspaceId, edits: c.edits ?? undefined })
     await payload.update({ collection: 'intake_sessions', id: c.s!.id, data: { status: 'submitted' }, overrideAccess: true })
     if (((await payload.findByID({ collection: 'tickets', id: a.ticket, ...o }).catch(() => null)) as Doc | null)?.needsYou === 'Answer questions') await settleDecision(payload, a.ticket)
     const fresh = await read(payload, user, a.ticket, a.workspaceId)
-    await say(payload, c.t, c.thread!, { id: randomUUID(), role: 'assistant', speaker: speakAs(c, null), text: 'Sent to planning.' }, null)
+    await say(payload, c.t, c.thread!, { id: randomUUID(), role: 'assistant', speaker: speakAs(c, null), text: await sentText(payload, a.ticket, result) }, null)
     return (await view(payload, user, fresh, a.workspaceId))!
   })
 

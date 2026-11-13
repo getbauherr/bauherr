@@ -90,7 +90,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
     const latest = mine[0] ?? null
     const cause = (await causeOf(payload, t, latest)) ?? (latest && latest.stage === t.stage && ['failed', 'abandoned', 'cancelled', 'needs_human'].includes(latest.status) ? 'unknown' : null)
     if (!cause) continue
-    const need = needsYou(workflowFor(t.workspace), { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
+    const need = needsYou(workflowFor(t.workspace), { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
     dead.push({ ticket: t, cause, run: latest, need })
   }
   return dead

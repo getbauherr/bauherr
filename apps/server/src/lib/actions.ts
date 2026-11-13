@@ -485,7 +485,7 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<string | nu
     if (!comments.some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the plan has critical decisions. Answer them to re-plan.`)
     await ts.addLabels(n, [NEEDS_REFINEMENT])
     await ts.removeLabels(n, [stageLabel(nameOf(wf, 'plan'))])
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'triage'), ...(await covered(ts, n)) }, ...ro })
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'triage'), waitingFor: null, waitingReason: null, ...(await covered(ts, n)) }, ...ro })
     await record(payload, t.id, { cause: 'advancePlan:refine' })
     return 'refine'
   }
@@ -694,16 +694,16 @@ export const finishRefinement = async (payload: Payload, user: Doc, a: { ticket:
       await src.ts.update(src.n, a.edits)
       if (a.edits.title) await payload.update({ collection: 'tickets', id: t.id, data: { title: a.edits.title }, overrideAccess: true })
     }
-    await releaseIfAnswered(payload, src, t)
+    return releaseIfAnswered(payload, src, t)
   })
 }
 
 /** A Ticket held by Triage (`needs-refinement`) whose critical questions are all answered leaves the hold and enters `plan`; the poller starts the Plan Run. */
-const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc) => {
+const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc): Promise<'moved' | 'waiting' | 'held' | undefined> => {
   const wf = workflowFor(t.workspace)
   const { labels } = await ts.get(n)
   if (!labels.includes(NEEDS_REFINEMENT) || openCritical(await decisionComments(payload, t, ts, { notify: true })).length) return
-  await enterStage(payload, t, nameOf(wf, 'plan'), async () => {
+  return enterStage(payload, t, nameOf(wf, 'plan'), async () => {
     await ts.removeLabels(n, [NEEDS_REFINEMENT])
     await moveStage(payload, ts, t, nameOf(wf, 'plan'), 'answered')
   })
