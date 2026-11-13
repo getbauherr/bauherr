@@ -1,3 +1,4 @@
+import { matchesGlob, isAbsolute } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import { createLocalReq, type Payload, type PayloadRequest } from 'payload'
 import { stageLabel } from '@bauherr/adapters'
@@ -80,10 +81,13 @@ export const mergedSince = async (payload: Payload, product: Doc, now = new Date
   })
 }
 
-/** Throws unless every ticket and commit of the findings is one of the merged Tickets given to the Run. */
-export const checkAgainstMerged = (f: DocsFindings, merged: MergedTicket[]): void => {
+const inDocsPaths = (file: string, paths: string[]) => !isAbsolute(file) && !file.split(/[\\/]/).includes('..') && paths.some((g) => matchesGlob(file, g))
+
+/** Throws unless every ticket and commit of the findings is one of the merged Tickets given to the Run and every file matches the docs paths. */
+export const checkAgainstMerged = (f: DocsFindings, merged: MergedTicket[], paths: string[]): void => {
   const numbers = new Set(merged.map((m) => m.number))
   const shas = new Set(merged.map((m) => m.mergeSha.toLowerCase()))
+  for (const x of [...f.stale, ...f.missing]) if (!inDocsPaths(x.file, paths)) throw new Error(`file ${x.file} is outside the docs paths`)
   for (const m of f.missing) if (!numbers.has(m.ticket)) throw new Error(`missing entry names #${m.ticket}, which was not merged since the last check`)
   for (const c of [...f.stale, ...f.missing].map((x) => x.commit)) if (!shas.has(c.toLowerCase())) throw new Error(`commit ${c} is not a merge commit of the Tickets given to the Run`)
 }
@@ -138,15 +142,15 @@ export const fileDocsTicket = async (payload: Payload, run: Doc): Promise<{ file
   if (run.status !== 'succeeded') return { filed: 'none' }
   const ticket = (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc
   const product = (await payload.findByID({ collection: 'products', id: id(ticket.product), ...o })) as Doc
+  const paths = (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS
   let findings: DocsFindings
   try {
     findings = parseDocsFindings(run.artifacts?.docs)
-    checkAgainstMerged(findings, await mergedSince(payload, product))
+    checkAgainstMerged(findings, await mergedSince(payload, product), paths)
   } catch (e) {
     await payload.update({ collection: 'runs', id: run.id, data: { status: 'failed', error: `docs findings: ${(e as Error).message}` }, ...o })
     return { filed: 'none' }
   }
-  const paths = (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS
   let filed: 'created' | 'updated' | 'none' = 'none'
   if (findings.stale.length + findings.missing.length) {
     const { tickets } = await forgeOf(payload, product.id)

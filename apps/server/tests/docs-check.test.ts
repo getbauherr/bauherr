@@ -156,14 +156,29 @@ it('a retried older Run never replaces the body of a newer Run, nor moves the re
 })
 
 it('findings that name a Ticket or commit outside the merged list fail the Run and file nothing', async () => {
-  const { fileDocsTicket, checkAgainstMerged } = await import('../src/lib/docs-check')
+  const { fileDocsTicket, checkAgainstMerged, DEFAULT_DOCS_PATHS } = await import('../src/lib/docs-check')
   const merged1 = [{ number: 1, title: 't', mergeSha: sha(1) }]
-  expect(() => checkAgainstMerged({ stale: [{ ...finding.stale[0]!, commit: sha(1).toUpperCase() }], missing: [{ ...finding.missing[0]!, ticket: 1, commit: sha(1) }] }, merged1)).not.toThrow()
-  expect(() => checkAgainstMerged({ stale: [], missing: [{ ...finding.missing[0]!, ticket: 9, commit: sha(1) }] }, merged1)).toThrow(/#9/)
-  expect(() => checkAgainstMerged({ stale: [{ ...finding.stale[0]!, commit: 'deadbeef' }], missing: [] }, merged1)).toThrow(/deadbeef/)
+  expect(() => checkAgainstMerged({ stale: [{ ...finding.stale[0]!, commit: sha(1).toUpperCase() }], missing: [{ ...finding.missing[0]!, ticket: 1, commit: sha(1) }] }, merged1, DEFAULT_DOCS_PATHS)).not.toThrow()
+  expect(() => checkAgainstMerged({ stale: [], missing: [{ ...finding.missing[0]!, ticket: 9, commit: sha(1) }] }, merged1, DEFAULT_DOCS_PATHS)).toThrow(/#9/)
+  expect(() => checkAgainstMerged({ stale: [{ ...finding.stale[0]!, commit: 'deadbeef' }], missing: [] }, merged1, DEFAULT_DOCS_PATHS)).toThrow(/deadbeef/)
   await payload.update({ collection: 'products', id: product, data: { docsCheck: { ...(await prod()).docsCheck, lastCheckAt: ago(30) } }, ...o })
   const before = (await docsTickets()).length
-  const run = await docsRun({ stale: [], missing: [{ ticket: 777, commit: sha(1), feature: 'x', file: 'a.md' }] })
+  const run = await docsRun({ stale: [], missing: [{ ticket: 777, commit: sha(1), feature: 'x', file: 'docs/a.md' }] })
+  expect(await fileDocsTicket(payload, run)).toEqual({ filed: 'none' })
+  expect(await docsTickets()).toHaveLength(before)
+  expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('failed')
+})
+
+it('findings whose file is outside the docs paths fail the Run and file nothing; a file under docs/ is accepted', async () => {
+  const { fileDocsTicket, checkAgainstMerged, DEFAULT_DOCS_PATHS } = await import('../src/lib/docs-check')
+  const merged1 = [{ number: 1, title: 't', mergeSha: sha(1) }]
+  const at = (file: string) => ({ stale: [{ ...finding.stale[0]!, file }], missing: [] })
+  for (const file of ['docs/guide/setup.md', 'README.md']) expect(() => checkAgainstMerged(at(file), merged1, DEFAULT_DOCS_PATHS)).not.toThrow()
+  for (const file of ['.github/workflows/ci.yml', '/docs/a.md', 'docs/../.github/ci.md', 'docs/a.txt']) expect(() => checkAgainstMerged(at(file), merged1, DEFAULT_DOCS_PATHS), file).toThrow(/docs paths/)
+  expect(() => checkAgainstMerged({ stale: [], missing: [{ ...finding.missing[0]!, ticket: 1, commit: sha(1), file: '.github/workflows/ci.yml' }] }, merged1, DEFAULT_DOCS_PATHS)).toThrow(/docs paths/)
+  await payload.update({ collection: 'products', id: product, data: { docsCheck: { ...(await prod()).docsCheck, lastCheckAt: ago(30) } }, ...o })
+  const before = (await docsTickets()).length
+  const run = await docsRun({ stale: [{ ...finding.stale[0]!, file: '.github/workflows/ci.yml', commit: sha(102) }], missing: [] })
   expect(await fileDocsTicket(payload, run)).toEqual({ filed: 'none' })
   expect(await docsTickets()).toHaveLength(before)
   expect((await payload.findByID({ collection: 'runs', id: run.id, ...o })).status).toBe('failed')
