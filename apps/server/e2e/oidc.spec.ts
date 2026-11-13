@@ -21,5 +21,5 @@ test('OIDC button when configured', async ({ page }) => {
 
 test('oidc-role refusal shows a generic message', async ({ page }) => {
   await page.goto('/login?error=oidc-role')
-  await expect(page.getByRole('alert')).toHaveText('Your SSO account has no access to this Bauherr. Ask an Admin.')
+  await expect(page.getByRole('alert').filter({ hasText: 'Your SSO account has no access to this Bauherr. Ask an Admin.' })).toBeVisible()
 })
