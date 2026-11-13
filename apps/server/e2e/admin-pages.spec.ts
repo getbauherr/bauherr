@@ -140,7 +140,7 @@ test('the Ticket page Runs table shows Run and Duration to an Admin only and nev
   for (const [who, visible] of [['member@example.com', false], [email, true]] as const) {
     await signIn(page, who)
     await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
-    await page.getByText('Details', { exact: true }).click()
+    await page.getByTestId('pane-tab-history').click()
     const runs = page.getByRole('region', { name: 'Runs' })
     await expect(runs.getByRole('columnheader', { name: 'Stage' })).toBeVisible()
     for (const name of ['Run', 'Duration']) await expect(runs.getByRole('columnheader', { name, exact: true })).toHaveCount(visible ? 1 : 0)
@@ -175,7 +175,7 @@ test('the Ticket page Repair disclosure is for an Admin only and resets counters
   for (const [who, visible] of [['member@example.com', false], [email, true]] as const) {
     await signIn(page, who)
     await page.getByRole('link', { name: /Export invoices as CSV/ }).first().click()
-    await page.getByText('Details', { exact: true }).click()
+    await page.getByText('About', { exact: true }).click()
     const repair = page.getByRole('region', { name: 'Repair' })
     await expect(repair).toHaveCount(visible ? 1 : 0)
     if (visible) {
