@@ -1,6 +1,8 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { fastLaneText, overlapText } from '../src/lib/hold-text'
+import { fastLaneStep, fastLaneText, overlapText } from '../src/lib/hold-text'
+import { nextStep } from '../src/lib/next-step'
+import { DEFAULT } from '../src/lib/workflow'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 type Doc = Record<string, any>
@@ -70,7 +72,7 @@ describe('holdsOf', () => {
     const waiting = await ticket({ stage: 'plan', waitingFor: 'build' })
     const blocker = await ticket({ stage: 'plan' })
     await ticket({ stage: 'plan', waitingFor: 'build', blockedBy: [blocker.id] })
-    expect(await holdsOf(payload, ws)).toEqual([{ kind: 'wip', text: 'Build is full (1 of 1)', stage: 'build', count: 1, limit: 1, waiting: [link(waiting)], href: '/?stage=build' }])
+    expect(await holdsOf(payload, ws)).toEqual([{ kind: 'wip', text: 'Build is full (1/1)', stage: 'build', count: 1, limit: 1, waiting: [link(waiting)], href: '/?stage=build' }])
   })
 
   it('lists an overlap hold naming the Ticket that changes the same files', async () => {
@@ -89,5 +91,29 @@ describe('holdsOf', () => {
 
     await payload.create({ collection: 'agent_sessions', data: { publicId: 'ses_h1', role: 'engineer', label: 'a', connectedAt: ago(10), lastSeenAt: ago(0), workspace: ws } as any, ...o })
     expect(await holdsOf(payload, ws)).toEqual([])
+  })
+
+  it('matches the fast-lane holder by Ticket, not by number, across Products', async () => {
+    const other = (await payload.create({ collection: 'products', data: { name: 'api', slug: 'api', workspace: ws }, ...o })).id as number
+    const number = 9000
+    const holder = await ticket({ number, externalId: 'a', stage: 'build', expedite: true })
+    const twin = await ticket({ number, externalId: 'b', product: other, stage: 'plan' })
+    const second = await ticket({ expedite: true })
+    const holds = await holdsOf(payload, ws)
+    expect(holds).toHaveLength(1)
+    expect(holds[0]).toMatchObject({ kind: 'fast-lane', holder: link(holder), waiting: [link(second)] })
+    expect(holds[0]).not.toMatchObject({ holder: link(twin) })
+  })
+
+  it('says the same sentence on the card and in the Ticket bar', async () => {
+    const holder = await ticket({ stage: 'build', expedite: true })
+    const second = await ticket({ expedite: true })
+    const waiting = await ticket({ stage: 'plan', waitingFor: 'build', waitingReason: 'overlaps #4242' })
+    const { loadOverviewRows } = await import('../src/app/(app)/lib/overview')
+    const rows = (await loadOverviewRows(ws, false)).tickets
+    expect(rows.find((t) => t.id === second.id)?.queuedWhy).toBe(`Waiting for the fast lane: #${holder.number} holds it.`)
+    expect(rows.find((t) => t.id === waiting.id)?.queuedWhy).toBe('Queued for Build: waits for #4242, which changes the same files.')
+    const idle = nextStep({ wf: DEFAULT(), ticket: {}, need: null, run: null, waiting: null, blockers: [], admin: false })
+    expect(fastLaneStep(idle, holder.number)).toMatchObject({ label: 'Queued', enabled: false, reason: `Waiting for the fast lane: #${holder.number} holds it.` })
   })
 })

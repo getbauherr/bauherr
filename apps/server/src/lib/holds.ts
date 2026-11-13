@@ -1,6 +1,6 @@
 import type { Payload, Where } from 'payload'
 import { workflowFor } from './factory'
-import { fastLaneHolder, laneOn } from './expedite'
+import { fastLaneHolderDoc, laneOn } from './expedite'
 import { fastLaneText, overlapText } from './hold-text'
 import { connectedOfRole } from './presence'
 import { id } from './release'
@@ -35,14 +35,13 @@ export const holdsOf = async (payload: Payload, workspace: number | string): Pro
 
   if (await laneOn(payload, workspace)) {
     const flagged = (await payload.find({ collection: 'tickets', where: { and: [...open, { expedite: { equals: true } }] }, sort: 'id', ...o })).docs as Doc[]
-    const byHolder = new Map<number, Doc[]>()
+    const byHolder = new Map<number, { holder: Doc; waiting: Doc[] }>()
     for (const t of flagged) {
-      const n = await fastLaneHolder(payload, t)
-      if (n != null) byHolder.set(n, [...(byHolder.get(n) ?? []), t])
+      const holder = await fastLaneHolderDoc(payload, t)
+      if (holder) byHolder.set(holder.id, { holder, waiting: [...(byHolder.get(holder.id)?.waiting ?? []), t] })
     }
-    for (const [n, waiting] of byHolder) {
-      const holder = flagged.find((t) => t.number === n)!
-      holds.push({ kind: 'fast-lane', text: fastLaneText(n), holder: ref(holder), waiting: waiting.map(ref), href: `/tickets/${holder.id}` })
+    for (const { holder, waiting } of byHolder.values()) {
+      holds.push({ kind: 'fast-lane', text: fastLaneText(holder.number), holder: ref(holder), waiting: waiting.map(ref), href: `/tickets/${holder.id}` })
     }
   }
 
@@ -55,7 +54,7 @@ export const holdsOf = async (payload: Payload, workspace: number | string): Pro
     const limit = wipLimit(ws, stage, wf)
     if (!waiting.length || limit == null) continue
     const count = await wipCount(payload, workspace, stage)
-    holds.push({ kind: 'wip', text: `${title(wf, stage)} is full (${count} of ${limit})`, stage, count, limit, waiting: waiting.map(ref), href: `/?stage=${encodeURIComponent(stage)}` })
+    holds.push({ kind: 'wip', text: `${title(wf, stage)} is full (${count}/${limit})`, stage, count, limit, waiting: waiting.map(ref), href: `/?stage=${encodeURIComponent(stage)}` })
   }
 
   const build = byKind(wf, 'build')?.name

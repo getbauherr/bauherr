@@ -106,7 +106,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
 /** `ticketStatus` against the current workflow, as one line: "In progress: building for 4 min". */
 export const statusLine = (wf: Workflow, r: StatusRow): string => {
   const s = ticketStatus(wf, r)
-  return s.detail ? `${s.label}: ${s.detail}` : s.label
+  return s.detail ? (s.detail.startsWith(s.label) ? s.detail : `${s.label}: ${s.detail}`) : s.label
 }
 
 /** The status label of a history phase (`ticket_events.phase`) in the stage of kind `stageKind`. */
