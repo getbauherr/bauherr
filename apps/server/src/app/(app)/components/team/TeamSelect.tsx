@@ -158,7 +158,7 @@ export function TeamSelect({ roles, modelOptions, canEdit, onSave, docsHref, mcp
       <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-1">
         {roles.map((r) => <Card key={r.id} role={r} chosen={r.id === id} hot={hot === r.id} onPick={() => setId(r.id)} onHot={(on) => setHot(on ? r.id : undefined)} />)}
       </div>
-      <section aria-labelledby="role-title" className={cn('flex flex-col gap-6 rounded-md border border-border bg-card p-6', !preview && 'min-h-[40rem]')}>
+      <section aria-label={`${role.title} settings`} className={cn('flex flex-col gap-6 rounded-md border border-border bg-card p-6', !preview && 'min-h-[40rem]')}>
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
           <RoleAvatar avatar={role.avatar} size="xl" animate />
           <div className="flex flex-col gap-2">

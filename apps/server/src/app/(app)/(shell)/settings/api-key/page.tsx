@@ -19,7 +19,7 @@ export default async function ApiKey() {
       </SettingsForm>
       {keys.length > 0 && (
         <Table>
-          <thead><tr className="label"><th>Label</th><th>Key</th><th>Last used</th><th /></tr></thead>
+          <thead><tr className="label"><th>Label</th><th>Key</th><th>Last used</th><th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {keys.map((k) => (
               <tr key={k.id}>

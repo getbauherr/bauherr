@@ -143,7 +143,7 @@ const shots: [string, string, (page: Page) => Promise<void>][] = [
     await page.getByRole('radiogroup', { name: 'Roles' }).locator('[data-role=reviewer]').click()
     await expect(page.locator('#ses_e2e_working')).toContainText('Working')
     await expect(page.locator('#ses_e2e_idle')).toContainText('Idle')
-    await page.addStyleTag({ content: '[data-testid=connect]{display:none!important}section[aria-labelledby=role-title]{min-height:0!important}section[aria-labelledby=sessions-engineer]{display:none!important}' }) // roster, role, a working and an idle session in one view
+    await page.addStyleTag({ content: '[data-testid=connect]{display:none!important}section[aria-label$=" settings"]{min-height:0!important}section[aria-labelledby=sessions-engineer]{display:none!important}' }) // roster, role, a working and an idle session in one view
     await page.setViewportSize({ width: 1440, height: 1100 })
   }],
 ]

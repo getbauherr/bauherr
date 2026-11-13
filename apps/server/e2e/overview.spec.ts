@@ -63,10 +63,10 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   await expect.poll(() => cards.count()).toBeLessThan(before)
 
   const done = page.getByRole('link', { name: 'Show done' })
-  await expect(done).toHaveAttribute('aria-pressed', 'false')
+  await expect(done).toHaveAttribute('aria-current', 'false')
   await done.click()
   await expect(page).toHaveURL(/state=all/)
-  await expect(page.getByRole('link', { name: 'Show done' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('link', { name: 'Show done' })).toHaveAttribute('aria-current', 'true')
   await page.getByRole('link', { name: 'Show done' }).click()
   await expect(page).not.toHaveURL(/state=all/)
 

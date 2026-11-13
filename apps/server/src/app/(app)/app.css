@@ -3,6 +3,8 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--surface-000);color:var(--ink);font:400 15px/22px var(--font-sans)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* WCAG 1.4.1: a link in running text is not told apart by colour alone */
+p a,a.text-primary{text-decoration:underline;text-underline-offset:2px}
 a:has(>[data-pending="true"]){animation:link-pulse 1s ease-in-out infinite}
 @keyframes link-pulse{50%{opacity:.5}}
 #nav-progress{position:fixed;inset:0 0 auto 0;z-index:50;height:2px;background:var(--accent);transform:scaleX(0);transform-origin:left;opacity:0;pointer-events:none;transition:opacity var(--duration-state) var(--ease-out)}

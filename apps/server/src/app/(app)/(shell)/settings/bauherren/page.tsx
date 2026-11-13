@@ -26,7 +26,7 @@ export default async function BauherrenSettings() {
       <h2 className="heading">People</h2>
       {!bauherren.length && <EmptyState text="No people yet." />}
       <Table>
-          <thead><tr className="label"><th>Email</th><th>Role</th><th>Access</th><th>Forge login</th><th>SSO</th>{admin && <th />}</tr></thead>
+          <thead><tr className="label"><th>Email</th><th>Role</th><th>Access</th><th>Forge login</th><th>SSO</th>{admin && <th><span className="sr-only">Actions</span></th>}</tr></thead>
           <tbody>
             {bauherren.map((b) => {
               const owner = b.role === 'product-owner'

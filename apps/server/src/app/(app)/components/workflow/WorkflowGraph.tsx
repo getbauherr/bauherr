@@ -80,10 +80,11 @@ function StageCard({ id, name, stats, agent, href, selected, terminals }: { id: 
 
 function CheckpointCard({ id, name, count, href, selected }: { id: string; name: string; count: number; href: string; selected: boolean }) {
   return (
-    <Link href={href} scroll={false} aria-current={selected ? 'true' : undefined} aria-label={`${name}: ${count} waiting`} data-testid="checkpoint-node" data-checkpoint={id} data-waiting={count || undefined} className={cn('flex h-full flex-col items-center justify-center gap-0.5 rounded-[18px] border-2 border-dashed border-border bg-card px-1 text-center outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring aria-[current]:ring-2 aria-[current]:ring-primary', count > 0 && 'border-solid border-warn')} title={`Human checkpoint: ${name}`}>
+    <Link href={href} scroll={false} aria-current={selected ? 'true' : undefined} data-testid="checkpoint-node" data-checkpoint={id} data-waiting={count || undefined} className={cn('flex h-full flex-col items-center justify-center gap-0.5 rounded-[18px] border-2 border-dashed border-border bg-card px-1 text-center outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring aria-[current]:ring-2 aria-[current]:ring-primary', count > 0 && 'border-solid border-warn')} title={`Human checkpoint: ${name}`}>
       <Flag className={cn('text-muted-foreground @min-[900px]:hidden', count > 0 && 'text-warn')} />
+      <span className="sr-only @min-[900px]:hidden">{name}</span>
       <span className="hidden text-[8px] leading-[10px] font-semibold tracking-tight break-words text-muted-foreground uppercase @min-[900px]:block">{name}</span>
-      <span className={cn('mono text-[13px] leading-4 font-semibold', count > 0 && 'text-warn')} data-testid="checkpoint-count">{count}<span className="hidden text-[10px] font-normal @min-[900px]:inline"> {count === 1 ? 'waits' : 'wait'}</span></span>
+      <span className={cn('mono text-[13px] leading-4 font-semibold', count > 0 && 'text-warn')} data-testid="checkpoint-count">{count}<span className="sr-only text-[10px] font-normal @min-[900px]:not-sr-only @min-[900px]:inline"> {count === 1 ? 'waits' : 'wait'}</span></span>
     </Link>
   )
 }
