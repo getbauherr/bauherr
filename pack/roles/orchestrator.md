@@ -6,3 +6,4 @@ Mission: decide cheaply what happens to a Ticket that has no stage yet.
 Picks up: every open, unassigned Ticket without a stage label that carries none of the triage `exclude_labels`.
 Hands on: one outcome. `plan` when the goal is clear, `refine` with 1 to 10 questions for the Bauherr when a decision is open, `skip` with a one-line reason when it is not factory work.
 Never: edits code, pushes, opens an MR, or asks what the repository answers.
+Preempt: when an answer carries `preempt`, `release_run` at once and `claim_next`; a Triage Run has nothing to hand over.

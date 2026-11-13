@@ -24,6 +24,7 @@ export type EditorData = {
   /** Path sets (`touches` of a conditional step) that Products of the Workspace declare with paths, by set name: the Products' names. */
   pathSets: Record<string, string[]>
   expediteLane: boolean
+  preemptForHotfix: boolean
 }
 
 const MAX_VERSIONS = 50
@@ -43,7 +44,7 @@ const skillsOfPack = (): string[] =>
 export async function loadEditor(workspace: { id: number; slug: string }): Promise<EditorData> {
   const payload = await payloadClient()
   const db = payload.db.drizzle
-  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace.id, select: { wipLimits: true, expediteLane: true }, depth: 0, overrideAccess: true })) as { wipLimits?: Record<string, number> | null; expediteLane?: boolean }
+  const ws = (await payload.findByID({ collection: 'workspaces', id: workspace.id, select: { wipLimits: true, expediteLane: true, preemptForHotfix: true }, depth: 0, overrideAccess: true })) as { wipLimits?: Record<string, number> | null; expediteLane?: boolean; preemptForHotfix?: boolean }
   const [active, source, versions, counts] = await Promise.all([
     activeVersion(payload, workspace.id),
     exportFactory(payload, workspace.id),
@@ -62,5 +63,6 @@ export async function loadEditor(workspace: { id: number; slug: string }): Promi
     skills: skillsOfPack(),
     pathSets: declaredSets((await payload.find({ collection: 'products', where: { workspace: { equals: workspace.id } }, select: { name: true, pathSets: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { name: string; pathSets?: Record<string, string[]> | null }[]),
     expediteLane: ws.expediteLane !== false,
+    preemptForHotfix: ws.preemptForHotfix !== false,
   }
 }
