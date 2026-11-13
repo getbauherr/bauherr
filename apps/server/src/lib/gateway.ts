@@ -286,10 +286,15 @@ export const SESSION_LOG_FIELDS = {
 
 /**
  * Brings the parts of an existing config.yaml that the template owns up to date and lists every catalog file: the session log fields,
- * the `claude-*` login passthrough (a copy of `sub/*` without the model rename) and `config.modelCatalog`. Returns whether anything changed.
+ * the `claude-*` login passthrough (a copy of `sub/*` without the model rename) and `config.modelCatalog`. `tracing` (docs/observability.md) sets `frontendPolicies.tracing`, null removes it, undefined leaves it. Returns whether anything changed.
  */
-export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[]): boolean => {
+export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[], tracing?: Record<string, unknown> | null): boolean => {
   const before = JSON.stringify(cfg)
+  if (tracing !== undefined) {
+    cfg.frontendPolicies ??= {}
+    if (tracing) cfg.frontendPolicies.tracing = tracing
+    else delete cfg.frontendPolicies.tracing
+  }
   const log = ((((cfg.frontendPolicies ??= {}).accessLog ??= {}).database ??= {}).add ??= {}) as Record<string, string>
   for (const [k, v] of Object.entries(SESSION_LOG_FIELDS)) log[k] ??= v
   const models = (cfg.llm?.models ?? []) as { name: string; transformation?: unknown; requestHeaders?: { remove?: string[] } }[]
@@ -315,10 +320,10 @@ const writeConfig = async (path: string, cfg: unknown): Promise<void> => {
 }
 
 /** Applies `ensureManaged` to the config on disk (no-op without one, or when nothing changes); the gateway hot-reloads it. */
-export const syncManagedConfig = async (): Promise<boolean> => {
+export const syncManagedConfig = async (tracing?: Record<string, unknown> | null): Promise<boolean> => {
   const path = join(dir(), 'config.yaml')
   const cfg = parse(await readFile(path, 'utf8').catch(() => ''))
-  if (!cfg || typeof cfg !== 'object' || !ensureManaged(cfg, await catalogFiles())) return false
+  if (!cfg || typeof cfg !== 'object' || !ensureManaged(cfg, await catalogFiles(), tracing)) return false
   await writeConfig(path, cfg)
   return true
 }

@@ -203,7 +203,7 @@ export async function loadConnections(workspace: number) {
   const payload = await payloadClient()
   const where = { workspace: { equals: workspace } }
   const [{ docs }, sources] = await Promise.all([
-    payload.find({ collection: 'connections', where, sort: 'id', select: { secret: false }, ...o, pagination: false } as never),
+    payload.find({ collection: 'connections', where: { and: [where, { kind: { not_equals: 'monitoring' } }] }, sort: 'id', select: { secret: false }, ...o, pagination: false } as never),
     payload.find({ collection: 'ticket_sources', where: { and: [where, { lastPolledAt: { exists: true } }, { lastError: { exists: false } }] }, select: { connection: true, lastError: true }, ...o, pagination: false } as never),
   ])
   const polled = new Set((sources.docs as unknown as Record<string, any>[]).filter((s) => !s.lastError).map((s) => s.connection?.id ?? s.connection))

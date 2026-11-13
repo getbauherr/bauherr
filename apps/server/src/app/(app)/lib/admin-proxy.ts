@@ -66,5 +66,5 @@ export async function tracesUp(base = process.env.JAEGER_URL ?? JAEGER_DEFAULT):
 
 export const JAEGER_DEFAULT = 'http://jaeger:16686'
 export const TRACES_PREFIX = '/-/traces'
-/** Jaeger's own loopback origin: its UI cannot run inside the sandboxed proxy (assets load cross-origin from `null`), so the link opens it there (#469). */
-export const tracesUrl = (): string => process.env.JAEGER_PUBLIC_URL || `http://127.0.0.1:16686${TRACES_PREFIX}/`
+/** The traces UI Settings > Connections saved (`saved`), else Jaeger's own loopback origin: its UI cannot run inside the sandboxed proxy (assets load cross-origin from `null`), so the link opens it there (#469). */
+export const tracesUrl = (saved?: string): string => saved || process.env.JAEGER_PUBLIC_URL || `http://127.0.0.1:16686${TRACES_PREFIX}/`
