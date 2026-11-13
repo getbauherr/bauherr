@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import type { Check, PullRequest } from '@bauherr/adapters'
 import type { Payload, Where } from 'payload'
 import { inKindStage } from './stage-scope'
@@ -31,6 +32,7 @@ export const ciSummaryOf = (t: Doc, now = Date.now()): { summary: CiSummary; age
 
 /**
  * Stores `ciSummary` on every open Ticket in a build or review stage whose factory MR is open, and clears it on any other Ticket that still has one.
+ * A summary equal to the stored one (ignoring `updatedAt`) is not written, so the Ticket row and `/api/changes` stay still; `updatedAt` is therefore the time of the last change, not of the last check.
  * A forge error leaves that Ticket's summary as it was. Returns the number of summaries written.
  */
 export const storeCiSummaries = async (payload: Payload, now = new Date()): Promise<number> => {
@@ -56,6 +58,9 @@ export const storeCiSummaries = async (payload: Payload, now = new Date()): Prom
         continue
       }
       const summary = summarize(await backend.forge.listChecks(repo, pr.headSha), pr.url, now)
+      const { updatedAt: _, ...fresh } = summary
+      const { updatedAt: __, ...kept } = (t.ciSummary ?? {}) as Partial<CiSummary>
+      if (isDeepStrictEqual(fresh, kept)) continue
       await payload.update({ collection: 'tickets', id: t.id, data: { ciSummary: summary }, ...o })
       stored++
     } catch (e) {

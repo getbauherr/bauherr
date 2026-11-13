@@ -61,6 +61,18 @@ it('stores the latest run per check, the counts, the failing names and the MR li
   expect((await reload(t.id as number)).ciSummary).toBeNull()
 })
 
+it('a second sweep with unchanged checks leaves the Ticket row (updated_at) alone', async () => {
+  const { storeCiSummaries } = await import('../src/lib/ci-summary')
+  const t = await ticket(3, 'build')
+  const pr = await openPr(3)
+  fake.setChecks(repo, pr.headSha, [{ id: 1, name: 'lint', status: 'completed', conclusion: 'success' }])
+  await storeCiSummaries(payload, new Date('2026-11-13T12:00:00Z'))
+  const first = (await reload(t.id as number)).updatedAt
+  await new Promise((r) => setTimeout(r, 20))
+  await storeCiSummaries(payload, new Date('2026-11-13T12:00:30Z'))
+  expect((await reload(t.id as number)).updatedAt).toBe(first)
+})
+
 it('a Ticket outside build and review gets no summary', async () => {
   const { storeCiSummaries } = await import('../src/lib/ci-summary')
   const t = await ticket(2, 'plan')
