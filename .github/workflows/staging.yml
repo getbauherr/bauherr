@@ -1,0 +1,88 @@
+name: staging
+# Every merge to main: build the image, start it once against a throw-away Postgres (migrates on start like compose.yaml), push ghcr.io/getbauherr/bauherr:staging and report the check `staging` on that sha.
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    # one run per sha: a shared group would drop all but the last of a burst of merges
+    concurrency:
+      group: staging-${{ github.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      checks: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    services:
+      db:
+        image: postgres:17
+        env: {POSTGRES_USER: bauherr, POSTGRES_PASSWORD: bauherr, POSTGRES_DB: bauherr}
+        options: >-
+          --health-cmd "pg_isready -U bauherr" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {fetch-depth: 0}
+      - name: Keep the scripts of main
+        run: cp -r .github/scripts "$RUNNER_TEMP/scripts"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build for the smoke run
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          cache-from: type=gha
+          load: true
+          tags: bauherr:smoke
+      - name: Start and check /api/health
+        run: |
+          payload_secret=$(openssl rand -hex 32)
+          encryption_key=$(openssl rand -hex 32)
+          echo "::add-mask::$payload_secret"
+          echo "::add-mask::$encryption_key"
+          docker run -d --name smoke --network host \
+            -e DATABASE_URL=postgres://bauherr:bauherr@127.0.0.1:5432/bauherr \
+            -e PAYLOAD_SECRET="$payload_secret" -e ENCRYPTION_KEY="$encryption_key" \
+            -e PUBLIC_URL=http://localhost:3000 bauherr:smoke
+          curl -fsS --retry 60 --retry-delay 2 --retry-all-errors http://127.0.0.1:3000/api/health | jq -e '.ok == true'
+      - name: Smoke logs
+        if: failure()
+        run: docker logs smoke 2>&1 | tail -n 50
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          cache-from: type=gha
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/getbauherr/bauherr:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/getbauherr/bauherr
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Move :staging only forward
+        # after the build, so parallel runs race only for the seconds between inspect and retag
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          cur=$(docker buildx imagetools inspect ghcr.io/getbauherr/bauherr:staging --format '{{json .Image}}' 2>/dev/null \
+            | jq -r '[.. | .config?.Labels?["org.opencontainers.image.revision"]? | select(.)] | first // empty' || true)
+          if [ -z "$cur" ] || { git cat-file -e "$cur^{commit}" 2>/dev/null && git merge-base --is-ancestor "$cur" "$SHA"; }; then
+            docker buildx imagetools create -t ghcr.io/getbauherr/bauherr:staging "ghcr.io/getbauherr/bauherr:sha-$SHA"
+          fi
+      - name: Report check staging
+        if: always()
+        env:
+          CHECK: staging
+          SHA: ${{ github.sha }}
+          STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          "$RUNNER_TEMP/scripts/report-check.sh"
