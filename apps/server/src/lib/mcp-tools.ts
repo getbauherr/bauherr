@@ -17,6 +17,7 @@ import { record } from './history'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
 import { AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
+import { preemptFor } from './preempt'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { kindOfRun } from './stage-text'
 import { advance } from './advance'
@@ -190,7 +191,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const leaseToken = randomBytes(32).toString('base64url')
   // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
-    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "executor" = 'session', "client_name" = ${who.name}, "client_version" = ${who.version}, "model" = COALESCE(${who.model}, "model"), "provider" = COALESCE(${who.provider}, "provider"), "session_id" = ${c.session?.id ?? null}, "role" = COALESCE(${c.session?.role ?? null}, "role"), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
+    sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "executor" = 'session', "client_name" = ${who.name}, "client_version" = ${who.version}, "model" = COALESCE(${who.model}, "model"), "provider" = COALESCE(${who.provider}, "provider"), "session_id" = ${c.session?.id ?? null}, "preempted_for" = NULL, "preempt_at" = NULL, "reason_kind" = NULL, "role" = COALESCE(${c.session?.role ?? null}, "role"), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   const won = await c.payload.findByID({ collection: 'runs', id: run.id, ...scoped(c) })
@@ -244,6 +245,10 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
   for (const r of runs.docs as Doc[]) {
     if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
     if (kindOfRun(workflowFor(r.workspace), r) === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
+  }
+  for (const t of unblocked) {
+    const r = latest.get(t.id)
+    t.resumed = r?.status === 'awaiting_session' && r.preemptedFor != null
   }
   const inStages = (t: Doc) => !stages || stages.includes((latest.get(t.id)?.stage ?? t.stage) as string)
   return { open: frontierOrder(unblocked.filter(inStages) as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all: all.filter(inStages), builders }
@@ -671,7 +676,9 @@ export const tools: Tool[] = [
       if (mine) assertLease(run, a)
       if (run.mode !== 'session' || !(run.status === 'awaiting_session' || mine)) throw new Error(`run ${run.id} is not releasable`)
       const auto = a.takeover === 'autonomous'
-      const reset = sql`"session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, ${auto ? sql`"mode" = 'autonomous', "status" = 'queued'` : sql`"status" = 'awaiting_session'`}, ${U}`
+      // A release while marked is recorded as preempted too: the Run keeps `preempted_by` (it resumes first) and never counts as a failure.
+      const marked = mine && run.preemptAt ? sql`"reason_kind" = 'preempted', "preempt_at" = NULL, ` : sql``
+      const reset = sql`"session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, ${marked}${auto ? sql`"mode" = 'autonomous', "status" = 'queued'` : sql`"status" = 'awaiting_session'`}, ${U}`
       if (mine) {
         await renewLease(c, run, a.leaseToken, reset, false)
         const ticket = await getTicket(c, id(run.ticket))
@@ -886,6 +893,18 @@ const RUN_ENDING = ['finish_run', 'submit_review', 'submit_triage', 'release_run
 export const digest = (input: unknown): string =>
   `${Object.keys((input as object) ?? {}).join(',')} sha256:${createHash('sha256').update(JSON.stringify(input ?? {})).digest('hex').slice(0, 16)}`
 
+/** The one place `preempt` joins an answer: every answer to a session whose Run a hotfix marked carries it, whatever the tool. */
+const withPreempt = async (c: Ctx, name: string, out: unknown): Promise<unknown> => {
+  if (!c.session || name === 'disconnect' || !out || typeof out !== 'object' || Array.isArray(out)) return out
+  try {
+    const preempt = await preemptFor(c.payload, c.session.id)
+    return preempt ? { ...out, preempt } : out
+  } catch (e) {
+    c.payload.logger.warn({ err: e, tool: name }, 'preempt lookup failed')
+    return out
+  }
+}
+
 /** Runs a tool and records the tool_calls row (skipped when no Workspace is known). */
 export const callTool = async (c: Ctx, name: string, input: unknown): Promise<unknown> => {
   const tool = tools.find((t) => t.name === name)
@@ -903,7 +922,7 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
     // A decision taken here (chat, MCP) closes the Ticket's Inbox card at once, as in the UI.
     const ticket = (input as { ticket?: number | string } | null)?.ticket
     if (DECIDES.has(name) && ticket !== undefined) await settleDecision(c.payload, ticket)
-    return out
+    return await withPreempt(c, name, out)
   } finally {
     if (c.session && name !== 'disconnect') {
       try {
