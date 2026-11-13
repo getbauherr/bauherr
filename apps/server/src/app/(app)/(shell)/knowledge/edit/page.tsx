@@ -20,7 +20,13 @@ export default async function EditKnowledge({ searchParams }: { searchParams: Pr
       </>
     )
   } catch (e) {
-    if (e instanceof EditRefused) return <EmptyState text={e.message} />
+    if (e instanceof EditRefused)
+      return (
+        <>
+          <h1 className="heading">Edit {title(path)}</h1>
+          <EmptyState text={e.message} />
+        </>
+      )
     throw e
   }
 }

@@ -14,13 +14,17 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-prac
 const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/\.leading-none\.(px-1\.)?bg-background/, 'Workflow graph edge labels: a chip with its own background drawn over the SVG edge line (obscured by the line)'],
   [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
-  [/^#(step|cp)-|^select\[aria-label="Asked: |^\.gap-1\.small\.text-muted-foreground$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
+  [/^#(step|cp)-|^select\[aria-label="Asked: |^(?=.*\.gap-1(\.|$))(?=.*\.small(\.|$))(?=.*\.text-muted-foreground(\.|$))(\.[\w-]+){3}$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
 ]
 
 const scan = async (page: Page) => {
   const { violations, incomplete } = await new AxeBuilder({ page }).withTags(TAGS).exclude('nextjs-portal').analyze()
-  const review = incomplete.filter((v) => v.id === 'color-contrast' && v.nodes.some((n) => !CONTRAST_REVIEWED.some(([re]) => re.test(n.target.join(' '))))) // "needs review": axe could not decide (overlap, image, gradient), which must not pass silently
+  // "needs review": axe could not decide (overlap, image, gradient), which must not pass silently; only nodes outside CONTRAST_REVIEWED are reported (class order differs between builds)
+  const review = incomplete
+    .filter((v) => v.id === 'color-contrast')
+    .map((v) => ({ ...v, nodes: v.nodes.filter((n) => !CONTRAST_REVIEWED.some(([re]) => re.test(n.target.join(' ')))) }))
+    .filter((v) => v.nodes.length)
   return [...violations, ...review].map((v) => `${v.id} (${v.impact}): ${v.help}. ${v.helpUrl}\n${v.nodes.map((n) => `  ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ')}`).join('\n')}`)
 }
 
