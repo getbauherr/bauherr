@@ -1,3 +1,4 @@
+import { isArchived } from './workspace-delete'
 import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError, stageLabel } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
@@ -79,6 +80,7 @@ export class NotAddressed extends Error {
 export const loadGate = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }, key: CheckpointOf, row?: Addressee): Promise<Doc> => {
   const t = isBauherr(user) ? await loadIn(payload, user, a.ticket, a.workspaceId) : ((await payload.findByID({ collection: 'tickets', id: a.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null)
   if (!t || (a.workspaceId !== undefined && String(id(t.workspace)) !== String(a.workspaceId)) || !canSeeProduct(user, { id: id(t.product), workspace: id(t.workspace) })) throw new NotInWorkspace()
+  if (await isArchived(payload, id(t.workspace))) throw new NotInWorkspace()
   if (!mayDecide(user, { ticket: t, addressee: row ?? checkpointBy(workflowFor(t.workspace), key, t.stage) })) throw new NotAddressed()
   return t
 }

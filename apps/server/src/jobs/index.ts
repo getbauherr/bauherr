@@ -39,6 +39,7 @@ import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
+import { inLiveWorkspace, live } from '../lib/workspace-delete'
 import { PREEMPT_GRACE_MS, preemptSweep } from '../lib/preempt'
 import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
@@ -134,7 +135,7 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
  */
 /** Returns how many Tickets it acted on (Runs started plus Tickets given up on). */
 export const triageSweep = async (payload: Payload): Promise<number> => {
-  const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
+  const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }, await inLiveWorkspace(payload)] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
     .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && !t.expedite && triageable(workflowFor(t.workspace), { state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
@@ -469,7 +470,7 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
     await loadWorkflows(req.payload)
     const { payload } = req
     let indexed = 0
-    for (const w of (await payload.find({ collection: 'workspaces', limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
+    for (const w of (await payload.find({ collection: 'workspaces', where: live, limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
       try {
         if (await resync(payload, w.id)) indexed++
       } catch (e) {
@@ -485,7 +486,7 @@ const MAX_GATE_ATTEMPTS = 30
 
 /** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
-  const or: Where[] = (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
+  const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
     const wf = workflowFor(w.id)
     const plan = byKind(wf, 'plan')?.name
     return plan ? [{ and: [{ workspace: { equals: w.id } }, { stage: { equals: plan } }, ...(gateOn(wf, 'plan') ? [{ expedite: { equals: true } }] : [])] as Where[] }] : []
@@ -500,7 +501,7 @@ const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { s
 
 /** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
-  const or: Where[] = (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.map((w) => {
+  const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.map((w) => {
     const wf = workflowFor(w.id)
     const plan = byKind(wf, 'plan')?.name ?? ''
     const build = byKind(wf, 'build')?.name ?? ''
@@ -554,7 +555,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     await loadWorkflows(req.payload)
     const { payload } = req
     let aliasFixes = 0
-    const sources = await payload.find({ collection: 'ticket_sources', limit: 1000, pagination: false, depth: 0, overrideAccess: true })
+    const sources = await payload.find({ collection: 'ticket_sources', where: await inLiveWorkspace(payload), limit: 1000, pagination: false, depth: 0, overrideAccess: true })
     for (const src of sources.docs) {
       try {
         const wf = workflowFor(src.workspace)
@@ -936,7 +937,7 @@ export const SCANS_PER_TICK = 5
 
 /** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning, and one whose start throws is logged and backed off (`lastScanAt` set). Returns the Runs created. */
 export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
-  const products = (await payload.find({ collection: 'products', where: { 'securityScan.enabled': { equals: true } }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
+  const products = (await payload.find({ collection: 'products', where: { and: [{ 'securityScan.enabled': { equals: true } }, await inLiveWorkspace(payload)] }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
   const since = (p: Record<string, any>) => new Date(p.securityScan?.lastScanAt ?? p.createdAt)
   const due = products
     .filter((p) => {

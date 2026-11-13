@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { chown, mkdir, readdir, rename, rm, stat, writeFile, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { sql } from '@payloadcms/db-postgres'
 import pg from 'pg'
 import type { Payload, PayloadRequest } from 'payload'
 import { parse, stringify } from 'yaml'
@@ -161,6 +162,13 @@ export const ensureRouterKey = async (req: PayloadRequest, id: number | string):
   else await call('PUT', KEYS, { resources: [{ value }] })
 }
 
+/** Archived Workspaces (their Connections leave the gateway). Empty before the migration that adds `archived_at`: older migrations render the gateway too, and a query on a missing column aborts their transaction. */
+const archivedIds = async (req: PayloadRequest): Promise<(number | string)[]> => {
+  const has = (await req.payload.db.drizzle.execute(sql`SELECT 1 FROM information_schema.columns WHERE table_name = 'workspaces' AND column_name = 'archived_at' AND table_schema = current_schema()`)).rows.length
+  if (!has) return []
+  return (await req.payload.find({ collection: 'workspaces', where: { archivedAt: { exists: true } }, select: {}, pagination: false, depth: 0, overrideAccess: true, req })).docs.map((w) => w.id)
+}
+
 /** Re-applies the router key (tier models, budget) while the Workspace has one. */
 export const syncRouterKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
   if ((await loadWs(req, id)).routerKey) await ensureRouterKey(req, id)
@@ -239,7 +247,8 @@ const ROUTER_DOMAINS = {
 export const renderRouter = async (req: PayloadRequest): Promise<void> => {
   const path = join(dir(), 'router', 'config.yaml')
   // Filtered here, not in SQL (see tierModels): older migrations render the gateway before the `router` enum value exists.
-  const conn = ((await req.payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs as Record<string, any>[]).find((c) => c.provider === 'router')
+  const gone = await archivedIds(req)
+  const conn = ((await req.payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs as Record<string, any>[]).find((c) => c.provider === 'router' && !gone.includes(typeof c.workspace === 'object' ? c.workspace.id : c.workspace))
   if (!conn) return void (await rm(path, { force: true }))
   const ws = await loadWs(req, typeof conn.workspace === 'object' ? (conn.workspace as { id: number }).id : (conn.workspace as number))
   if (!ws.routerKey) {
@@ -348,8 +357,9 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
     overrideAccess: true,
     req,
   })
+  const gone = await archivedIds(req)
   const slugs = new Map(
-    (await req.payload.find({ collection: 'workspaces', select: { slug: true }, depth: 0, pagination: false, overrideAccess: true, req })).docs.map((w) => [w.id, w.slug as string] as const),
+    (await req.payload.find({ collection: 'workspaces', select: { slug: true }, depth: 0, pagination: false, overrideAccess: true, req })).docs.filter((w) => !gone.includes(w.id)).map((w) => [w.id, w.slug as string] as const),
   )
   const models = conns.docs
     .flatMap((c) => {

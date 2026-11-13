@@ -261,6 +261,8 @@ const workspaces = col(
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
     rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
+    { name: 'archivedAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Set by Delete workspace (lib/workspace-delete.ts): the Workspace is hidden everywhere and does no work.' } },
+    { name: 'purgeAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Until then an Admin can restore an archived Workspace.' } },
     { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, Knowledge repo commit, `product:<id>` = Product repo `<repo>@<commit>`, failure back-offs).' } },
   ],
   {
@@ -821,6 +823,7 @@ export const collections: CollectionConfig[] = [
     text('headSha'),
     text('baseContent'),
     text('status'),
+    json('detail'),
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['kind', 'at'] }] }),
   col('skill_proposals', [
     rel('ticket', 'tickets', { required: true, unique: true }),

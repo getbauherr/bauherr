@@ -1,3 +1,4 @@
+import { live } from './workspace-delete'
 import { Conflict, MergePendingError, type Forge, type PullRequest } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { backendFor } from './adapters'
@@ -135,7 +136,7 @@ const recreate = async (payload: Payload, forge: Forge, repo: string, pr: PullRe
 /** Merges the open editor PRs the factory recorded (`saveDocument`, `recreate`) once their checks are green: same repo, still at the recorded head, exactly the one recorded `.md` file. Foreign `bauherr/edit-*` PRs are never touched. Red checks: one comment, no merge. A PR that cannot merge is re-applied once on the current head; if the same region changed there, or the recreated PR fails again, it is flagged `needs-you` with the diff. Returns the number of merged PRs. */
 export const watchKnowledgePrs = async (payload: Payload, now = Date.now()): Promise<number> => {
   let merged = 0
-  const workspaces = (await payload.find({ collection: 'workspaces', where: { knowledgeRepo: { exists: true } }, limit: 1000, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const workspaces = (await payload.find({ collection: 'workspaces', where: { and: [{ knowledgeRepo: { exists: true } }, live] }, limit: 1000, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   for (const ws of workspaces.filter((w) => w.knowledgeRepo && w.knowledgeConnection)) {
     const repo = ws.knowledgeRepo as string
     try {

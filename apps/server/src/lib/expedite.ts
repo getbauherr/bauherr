@@ -1,3 +1,4 @@
+import { live } from './workspace-delete'
 import type { TicketSource } from '@bauherr/adapters'
 import type { Payload, Where } from 'payload'
 import { workflowFor } from './factory'
@@ -96,7 +97,7 @@ const reenter = async (payload: Payload): Promise<void> => {
  */
 export const startExpedites = async (payload: Payload): Promise<number> => {
   // A Workspace that turned the lane off drops the flag of every open Ticket (not only the waiting ones): the flag must never outlive the setting.
-  const off = (await payload.find({ collection: 'workspaces', where: { expediteLane: { equals: false } }, select: {}, pagination: false, ...o })).docs.map((w) => w.id)
+  const off = (await payload.find({ collection: 'workspaces', where: { and: [{ expediteLane: { equals: false } }, live] }, select: {}, pagination: false, ...o })).docs.map((w) => w.id)
   if (off.length) {
     const flagged = await payload.find({ collection: 'tickets', where: { and: [{ workspace: { in: off } }, { expedite: { equals: true } }] }, select: {}, pagination: false, ...o })
     for (const t of flagged.docs) await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })
