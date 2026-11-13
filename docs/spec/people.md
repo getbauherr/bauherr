@@ -41,7 +41,7 @@ Outside what is listed under "What a Product owner sees", a Product owner reache
 - `requireBauherr` answers a Product owner with a 404 and `getBauherr` returns null, so every page, server action and route built on them is closed without a check at the call site. `getPerson` / `requirePerson` are for the few places open to both.
 - The intake `actor` (the widget API), `/mcp` (also behind an agent key) and `callTool` refuse a Product owner. `chatWho` refuses them too (the dock is closed to a Product owner).
 - Every collection has an explicit `access`: `col()` defaults every operation to `bauherrOnly` (Admin or Bauherr; the multi-tenant plugin still narrows to their Workspaces), a collection overrides single operations. Payload's own `payload-*` collections are closed the same way in `payload.config.ts` (`closeBuiltIns`), except `payload-preferences`, which Payload keys to the user. A Workspace member can no longer write any collection a Product owner could not; Bauherren and Admins lose nothing the app used.
-- OIDC: `OIDC_PRODUCT_OWNER_ROLE` maps a role claim value to `product-owner` (the admin claim wins; unset = nobody is mapped). A new SSO Product owner has no assignment and sees nothing. A re-sync never raises a Product owner to `bauherr` (`resyncRole`); assignments are never touched by SSO. See `docs/auth.md`.
+- OIDC: `OIDC_PRODUCT_OWNER_ROLE` maps a role claim value to `product-owner` (the admin claim wins; unset = nobody is mapped). A new SSO Product owner has no assignment and sees nothing. A re-sync never raises a Product owner to `bauherr` (`resyncRole`); assignments are never touched by SSO. `OIDC_BAUHERR_ROLE` makes a mapped role mandatory for sign-in. See `docs/auth.md`.
 
 ## The guard test and how to open something
 
