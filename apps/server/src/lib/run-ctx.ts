@@ -75,6 +75,9 @@ export const providerOf = async (payload: Payload, workspace: number | string, m
   return conn ? presetOf(conn.config) : null
 }
 
+/** The epic/slice fields of the RunCtx (branch, MR title, slice range, epic worklog). Inert until the Ticket carries `epic`/`slice`. */
+const epicFields = (_ticket: Doc): Pick<RunCtx, 'branch' | 'prTitle' | 'slice' | 'epic'> => ({})
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -126,6 +129,7 @@ export const buildRunCtx = async (
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
       ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
+    ...epicFields(ticket),
     ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
@@ -145,7 +149,7 @@ export const buildRunCtx = async (
         if (body.startsWith(PLAN_MARKER)) await storePlanTldr(payload, ticket.id, body, headingOf(await template(payload, workspace, 'plan'), 'tldr'))
       },
       upsertWorklog: async (number, body) => {
-        const existing = lastWith(WORKLOG_MARKER)
+        const existing = number === ticket.number ? lastWith(WORKLOG_MARKER) : (await tickets.listComments(String(number))).findLast((c) => c.body.startsWith(WORKLOG_MARKER))
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
       setStage: async (number, stage) => {

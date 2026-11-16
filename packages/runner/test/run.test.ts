@@ -237,3 +237,92 @@ test('runStage build: a rule whose command makes no proof ends needs_human namin
     await gw.close();
   }
 });
+
+/** A build whose scripted agent writes src/a.ts and, host side, `epicWorklog` into the clone's .bauherr/epic-worklog.md. */
+const epicBuild = async (epicWorklog: string) => {
+  const gw = await startStubGateway('done', 0, false, (_m, prompt, cwd) => {
+    if (!prompt.includes('Build Run')) return undefined;
+    writeFileSync(`${cwd}/.bauherr/epic-worklog.md`, epicWorklog);
+    return { name: 'Write', input: { file_path: `${cwd}/src/a.ts`, content: 'x\n' } };
+  });
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'build' });
+  ctx.run.goal.statements = [];
+  ctx.run.tier = 'standard';
+  ctx.connection.modelByTier = { cheap: 'cheap-m', standard: 'std-m' };
+  ctx.ticket.plan = '## Steps\n1. do it';
+  const upserts: { number: number; body: string }[] = [];
+  ctx.forge.upsertWorklog = async (number, body) => { upserts.push({ number, body }); };
+  return { gw, ctx, upserts };
+};
+
+test('runStage build: branch and prTitle override the defaults; the epic worklog is materialised and upserted to the parent', { timeout: 120_000 }, async () => {
+  const { gw, ctx, upserts } = await epicBuild('<!-- bauherr:worklog -->\nslice 1 says: use Foo\n');
+  ctx.branch = 'bauherr/5-epic';
+  ctx.prTitle = 'The epic title';
+  ctx.epic = { parent: 5, worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
+  ctx.slice = { prev: null, mergeMain: false };
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(ctx.prs.length, 1);
+    assert.equal(ctx.prs[0]!.head, 'bauherr/5-epic');
+    assert.ok(gw.seen.some((s) => s.body.includes('epic-worklog.md')), 'AGENTS.md points at the epic worklog');
+    assert.match(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/5-epic'], { cwd: bare(ctx) }).toString(), /src\/a\.ts/);
+    assert.deepEqual(upserts.filter((u) => u.number === 5).map((u) => u.body), ['<!-- bauherr:worklog -->\nslice 1 says: use Foo\n']);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: an unchanged epic worklog is not upserted', { timeout: 120_000 }, async () => {
+  const { gw, ctx, upserts } = await epicBuild('<!-- bauherr:worklog -->\nstart\n');
+  ctx.epic = { parent: 5, worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(upserts.filter((u) => u.number === 5).length, 0);
+    assert.equal(ctx.prs[0]!.head, 'bauherr/7-r1');
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build with slice.mergeMain: a clean merge is pushed first, then the agent runs; never a rebase', { timeout: 120_000 }, async () => {
+  const base = makeBareRepo();
+  const remote = base.replace('file://', '') + '/o/n.git';
+  const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString().trim();
+  const w = mkdtempSync(join(tmpdir(), 'sm-'));
+  sh(w, 'clone', '-q', remote, '.');
+  sh(w, 'switch', '-qc', 'bauherr/5-epic');
+  writeFileSync(join(w, 'one.txt'), 'slice 1\n');
+  sh(w, 'add', '-A');
+  sh(w, 'commit', '-qm', 'slice 1');
+  const prev = sh(w, 'rev-parse', 'HEAD');
+  sh(w, 'push', '-q', 'origin', 'bauherr/5-epic');
+  sh(w, 'switch', '-q', 'main');
+  writeFileSync(join(w, 'main.txt'), 'main\n');
+  sh(w, 'add', '-A');
+  sh(w, 'commit', '-qm', 'main moves');
+  sh(w, 'push', '-q', 'origin', 'main');
+  const gw = await startStubGateway('done', 0, false, (_m, prompt, cwd) => (prompt.includes('Build Run') ? { name: 'Write', input: { file_path: `${cwd}/src/two.ts`, content: 'x\n' } } : undefined));
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: base, stage: 'build' });
+  ctx.run.goal.statements = [];
+  ctx.run.tier = 'standard';
+  ctx.connection.modelByTier = { cheap: 'cheap-m', standard: 'std-m' };
+  ctx.ticket.plan = '## Steps\n1. do it';
+  ctx.existingPr = { number: 1, url: 'https://example.invalid/pr/1', branch: 'bauherr/5-epic', title: 't', body: 'b' };
+  ctx.slice = { prev, mergeMain: true };
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.ok(gw.seen.length > 0, 'the agent ran after the merge');
+    assert.equal(res.artifacts.mergeConflict, undefined);
+    assert.equal(sh(remote, 'ls-tree', '-r', '--name-only', 'bauherr/5-epic'), 'README.md\nmain.txt\none.txt\nsrc/two.ts');
+    const log = sh(remote, 'log', '--format=%P|%s', 'bauherr/5-epic').split('\n');
+    assert.equal(log.length, 5, 'agent commit, merge commit, slice 1, main, init: nothing rewritten');
+    assert.match(log[1]!, /^[0-9a-f]{40} [0-9a-f]{40}\|Merge remote-tracking branch/);
+    assert.equal(sh(remote, 'rev-parse', `${sh(remote, 'rev-list', '--merges', '-n', '1', 'bauherr/5-epic')}^1`), prev);
+  } finally {
+    await gw.close();
+  }
+});

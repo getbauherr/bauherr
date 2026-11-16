@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } from './agent.js';
-import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
+import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId, sliceBase, sliceDiff } from './clone.js';
 import { makeProof } from './artifacts.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, DOCS_FINDINGS_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, DOCS_FINDINGS_FILE, EPIC_WORKLOG_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, matchingArtifactRules, planStepCount, preReviewChecks, type ProofItem } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
@@ -65,6 +65,17 @@ function usageOf(state: AgentState): RunResult['usage'] {
   );
 }
 
+/** Upserts the epic worklog the agent edited to the parent Ticket. */
+async function syncEpicWorklog(ctx: RunCtx, dir: string): Promise<void> {
+  try {
+    const file = join(dir, EPIC_WORKLOG_FILE);
+    const body = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    if (body.trim() && body !== ctx.epic!.worklog) await ctx.forge.upsertWorklog(ctx.epic!.parent, body.startsWith(WORKLOG_MARKER) ? body : `${WORKLOG_MARKER}\n${body}`);
+  } catch (e) {
+    ctx.recorder.log(`epic worklog of run ${ctx.run.id} not saved: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Runs one Triage, Plan, Build or Review stage end to end. Never throws; infrastructure errors become `failed`. */
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
   const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
@@ -79,7 +90,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       defaultBranch: ctx.product.defaultBranch,
       token: ctx.connection.gitToken,
       ...(ctx.connection.gitUser ? { user: ctx.connection.gitUser } : {}),
-      branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
+      branch: ctx.branch ?? `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
       ...(ctx.existingPr && ctx.run.kind !== 'plan' ? { checkout: ctx.existingPr.branch } : {}),
     });
     if (ctx.run.kind === 'review') {
@@ -105,14 +116,24 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       artifacts.mergeConflict = true;
     }
+    let sliceConflict = false;
+    if (ctx.slice?.mergeMain && ctx.run.kind === 'build') {
+      const merged = await mergeBase(clone, clone.env, base);
+      if (merged === 'conflict') conflicted = sliceConflict = artifacts.mergeConflict = true;
+      else {
+        await commitAndPush(clone, clone.env, `bauherr: merge ${base} (run ${ctx.run.id})`);
+        clone.baseSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
+      }
+    }
     const fixedGoal = ctx.run.kind === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.kind === 'triage' ? TRIAGE_GOAL : ctx.run.kind === 'review' ? REVIEW_GOAL : ctx.run.kind === 'scan' ? SCAN_GOAL : ctx.run.kind === 'docs' ? DOCS_GOAL : ctx.run.kind === 'agent' ? AGENT_GOAL : null;
-    const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
+    const agentCtx: RunCtx = { ...ctx, ...(sliceConflict && { mergeBase: true }), ...(fixedGoal && { run: { ...ctx.run, goal: { statements: fixedGoal } } }) };
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.kind === 'review') {
       const remote = `origin/${base}`;
       artifacts.reviewedPatchId = await patchId(clone, clone.env, base).catch(() => '');
       const since = ctx.conflictBase ?? ctx.fixBase;
       if (since) await interdiff(clone, clone.env, base, since, join(clone.dir, DIFF_FILE));
+      else if (ctx.slice?.prev) await sliceDiff(clone, clone.env, await sliceBase(clone, clone.env, ctx.slice.prev), join(clone.dir, DIFF_FILE));
       else await git(clone.dir, clone.env, 'diff', `--output=${DIFF_FILE}`, `${remote}...HEAD`).catch(() => git(clone!.dir, clone!.env, 'diff', `--output=${DIFF_FILE}`, remote, 'HEAD'));
     }
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
@@ -276,7 +297,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     }
     const pr = await ctx.forge.openPullRequest({
       repo: ctx.product.repo, head: clone.branch, base: ctx.product.defaultBranch,
-      title: `${ctx.ticket.title} (#${ctx.ticket.number})`,
+      title: ctx.prTitle ?? `${ctx.ticket.title} (#${ctx.ticket.number})`,
       body: mrBody(ctx.ticket.url, artifacts.evidence),
     });
     artifacts.prUrl = pr.url;
@@ -289,6 +310,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     return finish('failed', e instanceof Error ? e.message : String(e));
   } finally {
     await proxy?.close();
+    if (clone && ctx.epic) await syncEpicWorklog(ctx, clone.dir);
     await clone?.cleanup();
   }
 }
