@@ -21,7 +21,7 @@ test('Ticket and Run page show Waiting for CI 1/2, both checks and the pull requ
   await expect(rows).toHaveCount(2)
   await expect(rows.filter({ hasText: 'test' })).toContainText('Running')
   await expect(rows.filter({ hasText: 'lint' })).toContainText('Failed')
-  await expect(page.getByTestId('ci-panel').locator('time')).toContainText(/^Updated /)
+  await expect(page.getByTestId('ci-panel').locator('time')).toContainText(/^Checked /)
   // the bar's one secondary slot is the fast lane here, so the forge link sits in the CI panel header
   await expect(page.getByTestId('action-bar').getByTestId('forge-link')).toHaveCount(0)
   const link = page.getByTestId('ci-panel').getByRole('link', { name: /^Open pull request #88 on GitHub/ })
