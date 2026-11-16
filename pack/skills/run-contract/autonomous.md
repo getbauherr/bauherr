@@ -20,3 +20,6 @@ The Runner refuses to end the turn while a Goal statement is unverified and unde
 
 ## Conflicts with main
 The factory merges the base into the MR itself and starts a Build Run only on real conflicts, so a Build Run for a conflicting MR means conflict markers, and the Runner has already started the merge before your turn. If the tree is mid-merge, resolve only the conflict markers keeping both sides, `git add`, `git commit`, and change nothing else; do not fetch or push.
+
+## Epic slice
+When the prompt names an epic slice: the Runner has checked out the epic branch and, from slice 2 on, merged `origin/main` into it (a conflict is left mid-merge for you to resolve, nothing else). Never rebase. Build only your slice, write the interfaces and decisions later slices need into `.bauherr/epic-worklog.md` (the Runner upserts it to the parent Ticket), and give a fix commit on an epic parent the trailer `Bauherr-Slice: #<n>`.

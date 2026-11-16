@@ -32,6 +32,11 @@ Each finding has a `class`; only one that counts (sends the Ticket back to Build
 - **Later rounds**: with `reviewRound` 2 or more and `fixReviewBase` (claim, `get_ticket`, prompt), review only the fix (autonomous: `diff.patch` is it; session: `git diff origin/main...<fixReviewBase>` vs `...HEAD`). Only security, correctness, wrong-results and data-loss findings count; the rest is `open`, reason `out-of-round-scope`.
 - Every finding needs a scenario ("when X, then Y instead of Z"). `open` never changes the verdict.
 
+## Epic
+Only when the claim, `get_ticket` or prompt has `epic`.
+- **Slice review** (a slice Ticket): review only that slice's commit range on the epic branch (`epic.prev` to HEAD; autonomous: `diff.patch` is it), not the whole branch.
+- **Epic review** (the parent, `slices` listed): review the whole epic against `origin/main`, slice by slice in order. Tag every finding with `slice`, the Ticket number of the slice that owns the defect (`slices[].number`); a `changes` verdict without `slice` on each finding is refused.
+
 ## Output
 Session Run: call `submit_review {runId, leaseToken, verdict, findings, open, checked, markdown}`.
 Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to verified; no shell: read `.bauherr/diff.patch`.
@@ -40,7 +45,7 @@ Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to ver
 
 ```json
 {"verdict": "clean | changes",
- "findings": [{"severity": "high|medium|low", "class": "<class from the table>", "file": "src/a.ts", "line": 12, "msg": "what is wrong", "scenario": "when ..., then ...", "test": {"command": "...", "failure": "...", "patch": "..."}}],
+ "findings": [{"severity": "high|medium|low", "class": "<class from the table>", "file": "src/a.ts", "line": 12, "slice": 41, "msg": "what is wrong", "scenario": "when ..., then ...", "test": {"command": "...", "failure": "...", "patch": "..."}}],
  "open": [{"text": "...", "reason": "no-failing-test|constructed-input|out-of-round-scope"}],
  "checked": [{"area": "correctness", "note": "traced X with Y; fine"}, ...one per area],
  "markdown": "..."}
