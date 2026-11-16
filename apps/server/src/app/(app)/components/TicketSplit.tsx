@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { Button } from './ui/button'
+import { SplitPane } from './SplitPane'
 
 export const SPLIT_MIN = 360
 export const SPLIT_MAX = 640
@@ -38,15 +39,6 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
   const [tab, setTab] = useState(defaultTab)
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => setSaved(read()), [])
-  // Container width without `container-type`, which would contain the fixed ActionBar to this box.
-  const [wide, setWide] = useState(false)
-  useEffect(() => {
-    const el = root.current
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setWide(e!.contentRect.width >= 960))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
   // A link to #details shows the Now tab of the Now pane with About open.
   useEffect(() => {
     const show = () => {
@@ -91,8 +83,14 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
 
   const narrowHidden = (show: boolean) => (show ? '' : 'group-data-[wide=false]/split:hidden')
   return (
-    <div ref={root} className="group/split" data-testid="ticket-split" data-wide={wide} data-collapsed={saved.collapsed}>
-      <div role="tablist" aria-label="Ticket page" className="mb-3 flex gap-4 border-b border-border group-data-[wide=true]/split:hidden">
+    <SplitPane
+      rootRef={root}
+      testId="ticket-split"
+      collapsed={saved.collapsed}
+      cols={saved.collapsed ? 'group-data-[wide=true]/split:grid-cols-[minmax(0,1fr)_1.25rem]' : 'group-data-[wide=true]/split:grid-cols-[minmax(0,1fr)_1.25rem_var(--now-w)]'}
+      style={{ '--now-w': `${saved.width}px` } as CSSProperties}
+      before={
+        <div role="tablist" aria-label="Ticket page" className="mb-3 flex gap-4 border-b border-border group-data-[wide=true]/split:hidden">
         {SPLIT_TABS.map(([id, label]) => (
           <button
             key={id}
@@ -116,11 +114,14 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
             {label}
           </button>
         ))}
-      </div>
-      <div
-        className={`grid items-start gap-0 ${saved.collapsed ? 'group-data-[wide=true]/split:grid-cols-[minmax(0,1fr)_1.25rem]' : 'group-data-[wide=true]/split:grid-cols-[minmax(0,1fr)_1.25rem_var(--now-w)]'}`}
-        style={{ '--now-w': `${saved.width}px` } as CSSProperties}
-      >
+        </div>
+      }
+      after={
+        saved.collapsed && (
+          <Button type="button" variant="outline" size="sm" className="mt-3 hidden group-data-[wide=true]/split:inline-flex" data-testid="split-expand" onClick={() => update({ ...saved, collapsed: false })}>Show the Now pane</Button>
+        )
+      }
+    >
         <section id="split-conversation" role="tabpanel" aria-labelledby="split-tab-conversation" aria-label="Conversation" data-testid="split-conversation" className={`group-data-[wide=true]/split:sticky group-data-[wide=true]/split:top-[var(--space-4)] min-w-0 ${narrowHidden(tab === 'conversation')}`}>
           {conversation}
         </section>
@@ -146,11 +147,7 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
           {bar}
           <div className={`flex min-w-0 flex-col gap-4 ${narrowHidden(tab === 'status')}`}>{now}</div>
         </div>
-      </div>
-      {saved.collapsed && (
-        <Button type="button" variant="outline" size="sm" className="mt-3 hidden group-data-[wide=true]/split:inline-flex" data-testid="split-expand" onClick={() => update({ ...saved, collapsed: false })}>Show the Now pane</Button>
-      )}
-    </div>
+    </SplitPane>
   )
 }
 

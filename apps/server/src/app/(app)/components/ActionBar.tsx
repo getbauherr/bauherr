@@ -16,6 +16,8 @@ type Props = {
   /** The Ticket's Product, for the "Configure checks" link. */
   product: number
   need: Need | null
+  /** What the staging and production gates name as the change (`changeOf`). */
+  change?: string
   stage: string
   missing: string[]
   open: number
@@ -46,9 +48,9 @@ const Post = ({ ticket, action, children, variant = 'default', title }: { ticket
 export const FAST_LANE_HELP = 'Skips Triage and plan approval, jumps the queue. One at a time.'
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask }: Props) {
+export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask, change }: Props) {
   const gate = need ? GATES[need] : null
-  const ctx = { stage, missing, open, reason }
+  const ctx = { stage, missing, open, reason, title: change }
   const verb = gate?.verb(ctx) ?? ''
   const fid = `bar-${ticket}`
   const post = (action: (f: FormData) => Promise<void>): { primary: NextStepPrimary; form: ReactNode } => ({
