@@ -43,3 +43,13 @@ export const emptyCopy = ({ error, picked, owner, working }: { error?: boolean; 
   : picked ? { text: `Nothing waits for you at ${picked}.`, action: { href: '/inbox', label: 'Show all decisions' } }
   : owner ? { text: 'Nothing waits for you.', action: { href: '/requests', label: 'Open Requests' } }
   : { text: `Nothing needs you. The factory is working on ${working} ticket${working === 1 ? '' : 's'}.`, action: { href: '/', label: 'Open the Workflow' } }
+
+/** Rows of a group shown before "Show N more". */
+export const ROW_LIMIT = 25
+
+/** The rows of a group to render: the first 25, all when expanded or when the selected row lies beyond them. */
+export const visibleRows = <T extends { id: number }>(items: T[], selected: number | undefined, expanded: boolean): T[] =>
+  expanded || items.length <= ROW_LIMIT || items.findIndex((i) => i.id === selected) >= ROW_LIMIT ? items : items.slice(0, ROW_LIMIT)
+
+/** The relative waiting text of a row ("5 min") from `waited()`'s "Waiting for you · 5 min". */
+export const waitingText = (waiting: string): string => waiting.split(' · ').pop()!

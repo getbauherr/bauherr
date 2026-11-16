@@ -158,7 +158,7 @@ export interface NewPullRequest {
 }
 
 export interface Release {
-  /** True for a pre-release (GitHub flag); `latestRelease` never returns one. */
+  /** True for a pre-release (GitHub flag; GitLab: derived from a `-suffix` tag); `latestRelease` never returns one. */
   prerelease?: boolean;
   /** Forge id (GitHub numeric id, GitLab tag name), to be passed back to `updateRelease`. */
   id: string;
@@ -181,7 +181,13 @@ export interface Webhooks {
   verify(rawBody: string | Uint8Array, signature: string | undefined, secret: string): boolean;
 }
 
+/** Label of the link button to a PR of the forge `kind` ("github" or "gitlab"), in plain words; "Open merge request" for an unknown kind. Pure: needs no Connection secret. */
+export const linkLabel = (kind: string | null | undefined, number: number): string =>
+  kind === 'github' ? `Open pull request #${number} on GitHub` : kind === 'gitlab' ? `Open merge request !${number} on GitLab` : 'Open merge request';
+
 export interface Forge {
+  /** Label of the link button to a PR of this forge, in plain words: "Open pull request #88 on GitHub", "Open merge request !88 on GitLab". */
+  linkLabel(pr: { number: number }): string;
   listRepositories(): Promise<Repository[]>;
   getRepository(repo: RepoRef): Promise<Repository>;
   listBranches(repo: RepoRef): Promise<Branch[]>;
@@ -235,7 +241,7 @@ export interface Forge {
   putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }): Promise<{ sha: string }>;
   /** The first published (non-draft) release whose tag commit is `sha` or a descendant of it (the release that shipped it), or null. */
   findRelease(repo: RepoRef, o: { sha: string }): Promise<Release | null>;
-  /** Creates the tag on `sha` and publishes the release. */
+  /** Creates the tag on `sha` and publishes the release. A tag that already exists keeps its commit; GitHub publishes an existing draft of the tag instead of creating a second release. `prerelease` is a flag on GitHub; GitLab has none: its adapter reports any `X.Y.Z-<suffix>` tag as a pre-release. */
   createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }): Promise<Release>;
   /** Published (non-draft) releases, newest first (at most 30). */
   listReleases(repo: RepoRef): Promise<Release[]>;
@@ -245,6 +251,8 @@ export interface Forge {
   isAncestor(repo: RepoRef, base: string, head: string): Promise<boolean>;
   /** Names of all tags, with or without a release. */
   listTags(repo: RepoRef): Promise<string[]>;
+  /** Commit the tag points at (also for a tag without a release), or null when the tag does not exist. */
+  tagSha(repo: RepoRef, tag: string): Promise<string | null>;
   updateRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
   /** The newest published stable release (never a pre-release), or null. */
   latestRelease(repo: RepoRef): Promise<Release | null>;

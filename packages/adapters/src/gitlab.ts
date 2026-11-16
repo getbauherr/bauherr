@@ -2,7 +2,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
-import { Conflict, MergePendingError, NotQueueableError } from './contracts.js';
+import { Conflict, MergePendingError, NotQueueableError, linkLabel } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
 import { timedFetch } from './http.js';
@@ -267,6 +267,7 @@ const check = (j: any): Check => {
 };
 
 class GitlabForge implements Forge {
+  linkLabel = (pr: { number: number }) => linkLabel('gitlab', pr.number);
   private paths = new Map<number, string>();
   constructor(private h: GitlabHttp, private sleep: (ms: number) => Promise<void>) {}
   private repo = (r: any): Repository => ({ fullName: r.path_with_namespace, defaultBranch: r.default_branch, private: r.visibility === 'private', url: r.web_url });
@@ -372,7 +373,7 @@ class GitlabForge implements Forge {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
   }
   private release(r: any): Release {
-    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self, createdAt: r.created_at ?? r.released_at };
+    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self, createdAt: r.created_at ?? r.released_at, prerelease: /^v?\d+\.\d+\.\d+-/.test(r.tag_name) };
   }
   async findRelease(repo: RepoRef, o: { sha: string }) {
     const tags = new Set<string>((await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(o.sha)}/refs?type=tag&per_page=100`)).map((t: any) => t.name));
@@ -399,6 +400,14 @@ class GitlabForge implements Forge {
   }
   async listTags(repo: RepoRef) {
     return (await this.h.paginate(`/projects/${enc(repo)}/repository/tags?per_page=100`)).map((t) => t.name as string);
+  }
+  async tagSha(repo: RepoRef, tag: string) {
+    try {
+      return (await this.h.json('GET', `/projects/${enc(repo)}/repository/tags/${enc(tag)}`)).commit.id as string;
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return null;
+      throw e;
+    }
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     return this.release(await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }));

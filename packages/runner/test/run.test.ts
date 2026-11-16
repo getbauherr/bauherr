@@ -186,6 +186,23 @@ test('runStage build: a ui diff with the light and dark pair passes pre-review a
   }
 });
 
+test('runStage build: the MR body of a ui diff carries the before/after table, one row per view and theme', { timeout: 120_000 }, async () => {
+  const views = ['Settings', 'Tickets', 'Inbox'];
+  const { gw, ctx } = await buildRun(1, [], UI_CHECKS as object, (cwd) => {
+    pairFiles([])(cwd);
+    writeFileSync(join(cwd, '.bauherr/artifacts.json'), JSON.stringify(views.flatMap((v) => ['light', 'dark'].flatMap((t) => ['before', 'after'].map((pair) => ({ file: 's.png', kind: 'image', title: `${t}-desktop: ${v}`, rule: UI_PROOF_RULE, pair }))))));
+  });
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    const rows = ctx.prs[0]!.body.split('\n').filter((l) => /^\| (Settings|Tickets|Inbox) \|/.test(l));
+    assert.deepEqual(rows.map((r) => r.split(' | ').slice(0, 3).join('|').replace(/^\| /, '')), ['Settings|light|desktop', 'Settings|dark|desktop', 'Tickets|light|desktop', 'Tickets|dark|desktop', 'Inbox|light|desktop', 'Inbox|dark|desktop']);
+    assert.match(ctx.prs[0]!.body, /\| View \| Theme \| Size \| Before \| After \|/);
+  } finally {
+    await gw.close();
+  }
+});
+
 test('runStage build: a ui diff without the full pair is refused with the same message as the server', { timeout: 120_000 }, async () => {
   const { gw, ctx } = await buildRun(1, [], UI_CHECKS as object, pairFiles(['light-desktop']));
   try {
