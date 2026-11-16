@@ -6,7 +6,7 @@ import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import type { EpicField, SliceField } from './epic'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -600,10 +600,7 @@ export const tools: Tool[] = [
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
-      if (a.prUrl && ticket.slice) {
-        const parent = await getTicket(c, (ticket.slice as SliceField).epic)
-        if (parent.epic && !parent.epic.pr) await c.payload.update({ collection: 'tickets', id: parent.id, data: { epic: { ...parent.epic, pr: a.prUrl } }, overrideAccess: true })
-      }
+      if (a.prUrl) await setEpicPr(c.payload, ticket, a.prUrl)
       if (kind === 'build' && a.status === 'succeeded' && ticket.epic) await tagFixes(c.payload, ticket).catch((e) => c.payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       if ((kind === 'agent' && a.status === 'succeeded') || replan) {
