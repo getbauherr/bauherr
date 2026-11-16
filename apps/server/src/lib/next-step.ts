@@ -1,12 +1,13 @@
-import { waitingSentence, type CiCounts } from './ci-text'
+import { type CiCounts } from './ci-text'
 import { overlapText } from './hold-text'
 import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
+import { ciWait, ticketLive } from './ticket-live'
 import { is, liveStages, roleOf, title, type Workflow } from './workflow'
 
 /** The one button of the Ticket page: the owner's turn (`enabled`) or, disabled, who has the turn and why (`reason`, plain words). `links` has one entry per Ticket (`#N`) or Run (`Run N`) the reason names, `text` being the token as written. */
 export type NextStep = { label: string; enabled: boolean; reason: string; links: { text: string; href: string }[]; /** The button is a link (e.g. "Connect an agent") instead of a disabled button. */ href?: string }
 
-type StepTicket = { state?: string | null; stage?: string | null; labels?: string[] | null; reviewState?: string | null; productionState?: string | null; waitingFor?: string | null; waitingReason?: string | null; parked?: boolean | null }
+type StepTicket = { releaseChecksState?: string | null; state?: string | null; stage?: string | null; labels?: string[] | null; reviewState?: string | null; productionState?: string | null; waitingFor?: string | null; waitingReason?: string | null; parked?: boolean | null }
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
 
@@ -29,11 +30,11 @@ export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [
     return { label: 'Connect an agent', enabled: false, href: '/team', reason: connected ? `Waiting for ${role ? `a ${role}` : 'an'} agent to pick this up${ref}.` : `No ${role ? `${role} ` : ''}agent is connected${ref}.`, links: runLink }
   }
   if (run?.status === 'queued') return { label: 'Queued', enabled: false, reason: `Queued for the Runner${ref}.`, links: runLink }
-  if (run?.status === 'running' && ci && ticket.waitingFor === 'checks') return { label: 'Waiting for CI', enabled: false, reason: waitingSentence(ci), links: runLink }
+  const live = ticketLive({ ci: ciWait(wf, ticket.stage ?? '', ticket), run, counts: ci })
+  if (live?.chip.startsWith('Waiting for CI')) return { label: live.chip, enabled: false, reason: `${live.sentence.replace(/\.$/, '')}${run ? ref : ''}.`, links: runLink }
   if (run?.status === 'running') return { label: 'In progress', enabled: false, reason: `The factory is working on this${ref}.`, links: runLink }
   if (run && run.stage === ticket.stage && liveStages(wf).includes(run.stage) && ['failed', 'cancelled', 'needs_human'].includes(run.status)) return { label: 'Escalating', enabled: false, reason: 'The last Run stopped; the factory retries it on a stronger model by itself.', links: [] }
   const wait = ticket.waitingFor
-  if (wait === 'checks') return { label: 'Waiting for checks', enabled: false, reason: 'Waiting for the MR checks to finish. Review starts by itself.', links: [] }
   if (wait && waiting) {
     const overlap = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
     const reason = overlap ? overlapText(cap(title(wf, wait)), Number(overlap)) : `Queued for ${cap(title(wf, wait))}: ${waiting.replace(/^Waiting: /, '')}.`

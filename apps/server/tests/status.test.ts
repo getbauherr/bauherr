@@ -94,8 +94,8 @@ describe('waiting for CI from the stored check summary', () => {
   it('a running build Run with a pending check but no wait on checks stays In progress', () => {
     expect(at(row({ ci, run: run() }))).toMatchObject({ phase: 'working', label: 'In progress', detail: 'building for 5 min' })
   })
-  it('without counts the running Run keeps its sentence, and no pending check gives no counts', () => {
-    expect(at(row({ run: run(), track: checks })).label).toBe('In progress')
+  it('without counts the running Run still reads Waiting for CI (main wording), and no pending check gives no counts', () => {
+    expect(at(row({ run: run(), track: checks }))).toMatchObject({ label: 'Waiting for CI', detail: 'checks of the merge request' })
     expect(pendingCounts({ total: 2, passed: 2, pending: 0 })).toBeNull()
     expect(pendingCounts(null)).toBeNull()
   })

@@ -95,7 +95,9 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const c = r.children ?? { total: 0, done: 0 }
     return { phase: 'blocked', label: 'Split', detail: `into ${c.total} sub-ticket${c.total === 1 ? '' : 's'} (${c.done} done)`, who: null, tone: 'muted' }
   }
-  if (run?.status === 'running' && !r.needsYou && r.ci && r.track.waitingFor === 'checks') return { phase: 'ci', label: waitingChip(r.ci), detail: waitingSentence(r.ci), who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
+  const wait = ci(wf, r)
+  const ciStatus = (w: { label: string; detail: string }): TicketStatus => ({ phase: 'ci', label: w.label, detail: w.detail, who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' })
+  if (run?.status === 'running' && !r.needsYou && wait?.label.startsWith('Waiting for CI')) return ciStatus(wait)
   if (run?.status === 'running') {
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''
@@ -109,8 +111,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const why = RUN_PROBLEMS.includes(r.needsYou) ? first(r.run?.error) : null
     return { phase: 'human', label: WAITING_FOR_YOU, detail: why ? `${r.needsYou}: ${why}` : r.needsYou === 'Decision needed' ? stageTitle(wf, r.stage) : r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
   }
-  const wait = ci(wf, r)
-  if (wait) return { phase: 'ci', label: wait.label, detail: wait.detail, who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
+  if (wait) return ciStatus(wait)
   if (r.track.releaseError) return { phase: 'failed', label: 'Failed', detail: `Release not published: ${first(r.track.releaseError)}`, who: null, tone: 'destructive' }
   if (r.blockedBy.length) return { phase: 'blocked', label: 'Blocked', detail: `by ${r.blockedBy.map((b) => `#${b.number}`).join(', ')}`, who: null, tone: 'muted' }
   if (run && ['failed', 'budget_exhausted'].includes(run.status)) return { phase: 'failed', label: 'Failed', detail: first(run.error) ?? (run.status === 'budget_exhausted' ? 'budget exhausted' : 'the Run failed'), who: null, tone: 'destructive' }
