@@ -5,6 +5,7 @@ import { StatusChip } from '../StatusChip'
 import { Badge } from '../ui/badge'
 import { ago } from '../../lib/format'
 import { usd } from '../insights/CostSection'
+import { AgentLink } from './AgentNav'
 import { RoleAvatar } from './RoleAvatar'
 import type { ListRow } from './helpers'
 
@@ -36,7 +37,7 @@ export function SessionRow({ row, costs }: { row: Exclude<ListRow, { kind: 'need
   const gone = s.health === 'disconnected'
   return (
     <li id={s.publicId} className={cn('flex scroll-mt-20 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-3 target:bg-accent last:border-b-0', !working && 'text-muted-foreground')} data-testid="session-row" data-status={s.status} data-health={s.health}>
-      <Name avatar={role?.avatar} animate={working} name={s.label ?? s.publicId} role={role?.title ?? row.orphanRole} muted={!working} />
+      <Name avatar={role?.avatar} animate={working} name={s.label ?? s.publicId} role={role?.title ?? row.orphanRole} muted={!working} href={`/team/${s.publicId}`} />
       <span className="w-36 shrink-0">{working && s.health === 'working' ? <StatusChip status="running" label={cap(s.activity ?? '')} /> : s.health === 'stuck' ? <Badge variant="warn">Stuck</Badge> : s.health === 'not-responding' ? <Badge variant="warn">Not responding</Badge> : gone ? <Badge variant="muted">Disconnected</Badge> : <span className="small">Idle</span>}</span>
       {s.ticket ? <Ticket number={s.ticket.number} title={s.ticket.title} /> : <span className="small min-w-0 basis-64">No ticket</span>}
       <Since at={working ? s.runStartedAt ?? null : gone ? s.disconnectedAt : s.lastSeenAt} />
@@ -45,11 +46,12 @@ export function SessionRow({ row, costs }: { row: Exclude<ListRow, { kind: 'need
   )
 }
 
-function Name({ avatar, animate, name, role, muted }: { avatar?: string; animate: boolean; name: string; role?: string; muted?: boolean }) {
+/** `href`: the agent page of a session; the name is its link. */
+function Name({ avatar, animate, name, role, muted, href }: { avatar?: string; animate: boolean; name: string; role?: string; muted?: boolean; href?: string }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-3">
       {avatar ? <RoleAvatar avatar={avatar} size="sm" animate={animate} /> : <span className="size-8 shrink-0" aria-hidden />}
-      <span className={cn('truncate font-medium', !muted && 'text-foreground')}>{name}{role && <span className="small font-normal text-muted-foreground"> · {role}</span>}</span>
+      <span className={cn('truncate font-medium', !muted && 'text-foreground')}>{href ? <AgentLink className="hover:underline" href={href}>{name}</AgentLink> : name}{role && <span className="small font-normal text-muted-foreground"> · {role}</span>}</span>
     </span>
   )
 }
