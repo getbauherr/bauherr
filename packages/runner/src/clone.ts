@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -99,4 +99,20 @@ export async function commitAndPush(c: Clone, env: NodeJS.ProcessEnv, message: s
   if (!(await commitAll(c, env, message))) return false;
   await git(c.dir, env, 'push', 'origin', `HEAD:refs/heads/${c.branch}`);
   return true;
+}
+
+/** Diff base of a slice review: the merge commit of main into the slice (first parent `prev`) when there is one, else `prev`. Deepens the clone until `prev` is reachable. */
+export async function sliceBase(c: Clone, env: NodeJS.ProcessEnv, prev: string): Promise<string> {
+  if (!(await git(c.dir, env, 'cat-file', '-t', prev).catch(() => ''))) {
+    await git(c.dir, env, 'fetch', ...((await git(c.dir, env, 'rev-parse', '--is-shallow-repository')) === 'true' ? ['--unshallow'] : []), '--no-tags', 'origin');
+  }
+  const merges = (await git(c.dir, env, 'rev-list', '--merges', '--parents', '--ancestry-path', `${prev}..HEAD`)).split('\n').map((l) => l.split(' '));
+  return merges.findLast(([, first]) => first === prev)?.[0] ?? prev;
+}
+
+/** Writes the slice's own change (`b..HEAD`, without main) to `out`, followed by the remerge-diff of `b` when the merge of main into the slice was resolved by hand. */
+export async function sliceDiff(c: Clone, env: NodeJS.ProcessEnv, b: string, out: string): Promise<void> {
+  await git(c.dir, env, 'diff', `--output=${out}`, `${b}..HEAD`);
+  const merge = (await git(c.dir, env, 'rev-list', '--parents', '-n', '1', b)).split(' ').length > 2 ? await git(c.dir, env, 'show', '--remerge-diff', '--format=', b) : '';
+  if (merge) await appendFile(out, `\n# Resolution of the merge of main into the slice (remerge-diff of ${b})\n${merge}\n`);
 }
