@@ -43,7 +43,7 @@ Options:
 `## Files` lists every path the plan changes, one path glob per line (`- src/lib/*.ts`), and nothing else; the factory holds a Build while an earlier Ticket changes the same paths. For work too large for one MR, add a final `## Sub-tickets` section with one item per child, `- **Title** — one-line body` (acceptance criteria may continue on indented lines; an indented line `after: <exact title of another item>` makes it wait for that item); on approval each item becomes its own pre-approved Ticket and this Ticket only tracks them. Items added after approval are not pre-approved.
 
 ## Epic slice
-Only when the claim or `get_ticket` has `epic` (a `slice` like `2/4`, or a parent with `slices`); otherwise ignore this section.
+Only when the claim or `get_ticket` has `epic`.
 - You build one slice of an epic on the shared epic branch (`epic.branch`, one MR for the whole epic). Build only your slice; later slices are other Tickets.
 - Slice 2 and later (`mergeMainFirst`): merge `origin/main` into the epic branch before you change anything, resolve conflicts if any, never rebase, never force push. `epic.prev` is the head the previous slice ended on.
 - The epic worklog is the worklog of the parent Ticket (`epic.parent`, mirrored as `.bauherr/epic-worklog.md`). Record the interfaces, names and decisions later slices depend on there, before you end.
