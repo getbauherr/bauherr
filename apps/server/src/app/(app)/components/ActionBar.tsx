@@ -7,6 +7,7 @@ import { GATES } from '../lib/gates'
 import { actionFor, fallbackFor, type Action, type NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
+import { ExternalLink } from './icons'
 import { FormPending, LinkedReason, NextStepBar, type NextStepPrimary } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
@@ -87,10 +88,11 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   const sendBack = sendBackOptions(need, gate?.kind)
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : sendBack.length ? <SendBackDialog ticket={ticket} options={sendBack} /> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
-    <NextStepBar sentence={gate ? (ask ?? gate.sentence(ctx)) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need ? undefined : idle.href ? { label: idle.label, href: idle.href } : { label: idle.label, disabled: true, reason: idle.reason })}>
+    <NextStepBar live sentence={gate ? (ask ?? gate.sentence(ctx)) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need || idle.forge ? undefined : idle.href ? { label: idle.label, href: idle.href } : { label: idle.label, disabled: true, reason: idle.reason })}>
       {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
       {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
       {secondary}
+      {!need && idle.forge && <Button asChild variant="outline"><a href={idle.forge.href} target="_blank" rel="noopener noreferrer">{idle.forge.label}<span className="sr-only"> (opens in new tab)</span><ExternalLink className="size-4" aria-hidden /></a></Button>}
       {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</Post>}
       {step.form}
       {step.node}

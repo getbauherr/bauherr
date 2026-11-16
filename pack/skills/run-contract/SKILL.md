@@ -21,13 +21,15 @@ A statement is verified only by a recorded result, never by your assertion:
 
 Produce the artifacts your Product's rules ask for, and map each acceptance criterion to one artifact (`criterion`) or to a named check in the Evidence; a criterion without either shows as "No proof" to the person who accepts.
 
-Re-run the check after the last edit; evidence from before the last edit is stale. Format of the MR section: `rules/evidence.md`.
+Re-run the checks after the last edit; earlier evidence is stale. Format of the MR section: `rules/evidence.md`.
+
+UI change (`## Files` match the `ui` path set): load `pr-screenshots` before editing.
 
 ## Approval brief
 Every Build writes `## Approval brief` in the MR body: [approval-brief](approval-brief.md).
 
 ## Return from Review
-The worklog's Unfinished work lists the review findings. For each with a `Failing test:` line, your first step is to add that test (its code is in the review comment on the MR, command and failure are in the line), run it and see it fail, then fix until it passes. A test that already passes voids the finding: change nothing for it and write one line under Open. Items under Open are noted, not sent back: do not work on them.
+The worklog's Unfinished work lists the review findings. For each with a `Failing test:` line, your first step is to add that test (code in the MR review comment, command and failure in the line), run it and see it fail, then fix until it passes. A test that already passes voids the finding: change nothing for it and write one line under Open. Do not work on items under Open.
 
 ## Plan
 Your Goal in a Plan Run is only: a plan with the sections `## TL;DR`, `## Goal`, `## Steps` and `## Files`, covering every acceptance criterion. For a Ticket labelled `bauherr:expedite` write the short plan of [hotfix](../plan/hotfix.md) instead. A Plan Run on a Ticket whose Build failed twice (the `<!-- bauherr:investigation -->` Comment exists) is an investigation: follow [investigation](../plan/investigation.md) instead.

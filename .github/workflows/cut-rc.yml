@@ -1,5 +1,5 @@
 name: cut-rc
-# Tags the next release candidate on main HEAD and starts release.yml for it (image :X.Y.Z-rc.N, npm tag next), then keeps the draft GitHub Release of X.Y.Z up to date.
+# CLI fallback; the primary path is the Releases page of Bauherr (docs/releasing.md). Tags the next release candidate on main HEAD and starts release.yml for it (image :X.Y.Z-rc.N, npm tag next), then keeps the draft GitHub Release of X.Y.Z up to date.
 on:
   workflow_dispatch:
     inputs:

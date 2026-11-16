@@ -58,13 +58,13 @@ const BAUHERR_ACTIONS = [
   ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'createSessionKey', 'updatePricesNow', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'saveDocsCheck', 'startDocsCheckAction', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'saveMonitoring', 'rotateScrapeToken', 'removeMonitoring', 'testMonitoringAction', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate', 'deleteWorkspace', 'restoreWorkspaceAction'].map((n) => `(shell)/settings/actions.ts#${n}`),
   ...['reviewDraft', 'applyDraft', 'setExpediteLane', 'setPreemptForHotfix'].map((n) => `(shell)/workflow/edit/actions.ts#${n}`),
   ...['applyPreset', 'skipSession', 'importIssue'].map((n) => `(shell)/setup/actions.ts#${n}`),
-  ...['previewRelease', 'summariseRelease', 'shipReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
+  ...['previewRelease', 'summariseRelease', 'shipReleaseAction', 'promoteReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
 ])
 /** MCP tools a Product owner may call (none: `/mcp` refuses them behind any key). */
 const OPEN_TOOLS: Record<string, string> = {}
 /** Chat tools: none is open to a Product owner (the dock is closed to them: `chatWho` refuses every chat route). */
 const PO_CHAT_TOOLS: string[] = []
-const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'post_comment', 'approve_skill_proposal', 'reject_skill_proposal']
+const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'send_back', 'post_comment', 'approve_skill_proposal', 'reject_skill_proposal']
 /** Collections a Product owner may touch, and how. Every other collection is `BAUHERR_COLLECTIONS`: no operation at all, also over Payload REST. `artifacts` stay closed: proof reaches a Product owner through the Ticket page and its artifact route, never over REST. */
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },

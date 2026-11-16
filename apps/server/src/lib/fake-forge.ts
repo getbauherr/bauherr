@@ -205,6 +205,12 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Switch the dashboard to a light theme', labels: ['bauherr:stage:plan'] })
   void ts.comment('42', PLAN)
   void ts.comment('42', WORKLOG)
+  // #43 and #44 are the Ticket page cases of ticket.spec.ts and a11y: a fast lane Ticket in Build with a plan sheet, and a stuck review the spec sends back.
+  void ts.create({ title: 'Hotfix: fix the export header', labels: ['bauherr:stage:build'] })
+  void ts.comment('43', PLAN)
+  void ts.comment('43', WORKLOG)
+  void ts.create({ title: 'Stuck review: sort the export rows', labels: ['bauherr:stage:review'] })
+  void ts.comment('44', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))
@@ -224,6 +230,16 @@ const build = (): FakeBackend => {
     fake.setAncestors(repo, `${slug}-sha-${titles.length}`, titles.map((_, i) => `${slug}-sha-${i + 1}`))
   }
   fake.commit('acme/reship', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  // releases.spec.ts: Acme Rcline has v0.3.0, an open v0.4.0-rc.1 (Tickets #1, #2) and one Ticket (#3) waiting.
+  for (const [i, title] of ['Rcline export totals', 'Rcline invoice filter', 'Rcline CSV header'].entries()) {
+    void fake.tickets('acme/rcline').create({ title, labels: ['wayfinder:map'] })
+    void fake.tickets('acme/rcline').comment(String(i + 1), summary(i + 1))
+    fake.setCommitDate('acme/rcline', `acme-rcline-sha-${i + 1}`, `2026-11-0${i + 1}T10:00:00Z`)
+  }
+  fake.setAncestors('acme/rcline', 'acme-rcline-sha-2', ['acme-rcline-sha-1', 'acme-rcline-sha-0'])
+  fake.addRelease('acme/rcline', { tag: 'v0.3.0', sha: 'acme-rcline-sha-0', createdAt: '2026-10-01T10:00:00Z' })
+  fake.addRelease('acme/rcline', { tag: 'v0.4.0-rc.1', sha: 'acme-rcline-sha-2', prerelease: true, createdAt: '2026-11-02T10:00:00Z', body: 'Release candidate' })
+  fake.commit('acme/rcline', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
   // Knowledge repo of the seeded Workspace: two documents on main and one open write-back PR with red checks.
   const kb = 'acme/knowledge'
   fake.commit(kb, 'main', 'handbook/release-policy.md', '# Release policy\n\nEvery release waits for **staging acceptance**.\n\n## Rollback\n\nRoll back with the previous image tag.\n')
