@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunIfNeeded } from '../../../jobs'
@@ -194,6 +194,25 @@ export async function sendBackAction(form: FormData): Promise<{ error?: string }
   }
   revalidatePath(`/tickets/${ticket}`)
   revalidatePath('/inbox')
+  return {}
+}
+
+/** The epic buttons of the Ticket page: Park, Resume and Discard (each behind its own confirm dialog); the error is shown in the dialog. */
+export async function epicAction(form: FormData): Promise<{ error?: string }> {
+  const ticket = Number(form.get('ticket'))
+  const option = String(form.get('option'))
+  const { user, payload, workspaceId } = await acting()
+  try {
+    if (option === 'park') await inWorkspace(parkEpic(payload, user, { ticket, workspaceId }))
+    else if (option === 'resume') await inWorkspace(resumeEpic(payload, user, { ticket, workspaceId }))
+    else if (option === 'discard') await inWorkspace(discardEpic(payload, user, { ticket, workspaceId }))
+    else return { error: 'Unknown action.' }
+  } catch (e) {
+    if (String((e as { digest?: unknown }).digest ?? '').startsWith('NEXT_')) throw e
+    return { error: e instanceof Error ? e.message : 'That did not go through.' }
+  }
+  revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/')
   return {}
 }
 

@@ -87,7 +87,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
   const workspaces = workspace === undefined ? (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, ...o })).docs.map((w) => w.id) : [workspace]
   const byWorkspace: Where[] = workspaces.map((w) => ({ and: [{ workspace: { equals: w } }, { or: [{ stage: { in: liveStages(workflowFor(w)) } }, { stage: { exists: false } }] }] as Where[] }))
   const where: Where = { and: [{ state: { equals: 'open' } }, { or: byWorkspace }] }
-  const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.waitingFor && !(t.blockedBy?.length ?? 0))
+  const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.parked && !t.waitingFor && !(t.blockedBy?.length ?? 0))
   if (!tickets.length) return []
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]
   const dead: Dead[] = []

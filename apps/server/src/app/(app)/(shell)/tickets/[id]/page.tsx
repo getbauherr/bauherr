@@ -14,6 +14,7 @@ import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { AutoRefresh } from '../../../components/AutoRefresh'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
+import { EpicControls } from '../../../components/EpicControls'
 import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
@@ -247,6 +248,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     gate: null,
     children: epic ? epicCount(epic) : null,
     slicing: epic ? epicSlicing(epic) : null,
+    parked: !!ticket.parked,
     track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
   } satisfies StatusRow)
   const roleOf = (r: Doc) => wf.roles.find((x) => x.id === r.role)?.title
@@ -283,6 +285,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           <h2 className="heading" id="subtickets">Sub-tickets</h2>
           <EpicProgress wf={wf} epic={epic} />
           <EpicChildren wf={wf} epic={epic} />
+          {ticket.epic && ticket.state === 'open' && !is(wf, ticket.stage, 'release', 'done') && <EpicControls ticket={ticket.id} parked={!!ticket.parked} />}
         </section>
       ) : (
         <StageStrip stages={stages} steps={steps} />

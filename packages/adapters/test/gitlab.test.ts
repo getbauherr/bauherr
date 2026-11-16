@@ -436,6 +436,11 @@ describe('gitlab train branch', () => {
     await forge.resetBranch('g/p', 'bauherr/train', 's1');
     assert.deepEqual(calls.map((c) => [c.method, c.path]), [['DELETE', `${P}/repository/branches/bauherr%2Ftrain`], ['POST', `${P}/repository/branches?branch=bauherr%2Ftrain&ref=s1`]]);
   });
+  it('deleteBranch deletes the branch; a missing one is fine', async () => {
+    const { forge, calls } = setup((m) => (m === 'DELETE' ? new Response('', { status: 404 }) : {}));
+    await forge.deleteBranch('g/p', 'bauherr/9-epic');
+    assert.deepEqual(calls.map((c) => [c.method, c.path]), [['DELETE', `${P}/repository/branches/bauherr%2F9-epic`]]);
+  });
   it('mergeIntoBranch merges a temporary MR without squash and returns its merge sha', async () => {
     const { forge, calls } = setup((m, path) => {
       if (path.endsWith('/repository/branches/bauherr%2Ftrain') && m === 'GET') return { name: 'bauherr/train', commit: { id: 'tip' } };

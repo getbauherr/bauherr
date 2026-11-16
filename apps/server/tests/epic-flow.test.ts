@@ -16,6 +16,8 @@ let actions: typeof import('../src/lib/actions')
 let release: typeof import('../src/lib/release')
 let liveness: typeof import('../src/lib/liveness')
 let mergeMain: typeof import('../src/lib/merge-main')
+let owner: Doc
+let productOwner: Doc
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 const EVIDENCE = 'Refs it\n\n## Evidence\n| Goal | verified |\n'
@@ -71,6 +73,8 @@ beforeAll(async () => {
   product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
+  owner = await payload.create({ collection: 'bauherren', data: { email: 'o@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
+  productOwner = await payload.create({ collection: 'bauherren', data: { email: 'po@x.io', password: 'pw-123456', role: 'product-owner', assignments: [{ workspace: ws, scope: 'workspace' }] } as never, ...o })
 })
 
 afterAll(async () => {
@@ -399,4 +403,153 @@ it('a parent that enters review later through pullWaiting (Review was full) stil
   expect(await mergeJobs()).toBe(before + 1)
   await pullWaiting(payload)
   expect(await mergeJobs()).toBe(before + 1)
+})
+
+/** Latest Run of `ticket`, or a fresh one when the test needs a live Run to cancel. */
+const liveRun = (ticket: Doc, stage: string, status = 'running') => payload.create({ collection: 'runs', data: { ticket: ticket.id, stage, status, mode: 'session', workspace: ws, kind: stage === 'plan' || stage === 'build' || stage === 'review' ? stage : undefined }, ...o })
+const runStatus = async (id: number | string) => (await payload.findByID({ collection: 'runs', id, depth: 0, ...o })).status
+
+it('park cancels the live Run, parks the parent and its open slices, logs history and the epic worklog; a second park is a no-op', async () => {
+  await unlimited()
+  const parent = await split()
+  const [first] = await kids(parent.id)
+  await payload.update({ collection: 'tickets', id: first!.id, data: { stage: 'build' }, ...o })
+  const run = await liveRun(first!, 'build')
+  await actions.parkEpic(payload, owner, { ticket: parent.id })
+  expect(await runStatus(run.id)).toBe('cancelled')
+  expect(await reload(parent.id)).toMatchObject({ parked: true, state: 'open', stage: 'parent' })
+  expect(await reload(first!.id)).toMatchObject({ parked: true, state: 'open' })
+  expect(await worklogOf(parent.number)).toContain('Epic parked')
+  const events = (await payload.find({ collection: 'ticket_events', where: { and: [{ ticket: { equals: parent.id } }, { cause: { equals: 'epic:park' } }] }, ...o })).docs
+  expect(events).toHaveLength(1)
+  await expect(actions.parkEpic(payload, owner, { ticket: parent.id })).rejects.toThrow('parked already')
+  expect(await actions.parkEpicNow(payload, await reload(parent.id), { by: 'x', executor: 'human', why: 'again' })).toBe(false)
+  expect(await payload.count({ collection: 'ticket_events', where: { and: [{ ticket: { equals: parent.id } }, { cause: { equals: 'epic:park' } }] }, ...o }).then((r) => r.totalDocs)).toBe(1)
+})
+
+it('a parked epic is skipped by the poll sweep, the claim order and run starts; the parked slice holds no WIP', async () => {
+  const { wipCount } = await import('../src/lib/wip')
+  await unlimited()
+  const parent = await split()
+  const [first] = await kids(parent.id)
+  await payload.update({ collection: 'tickets', id: first!.id, data: { stage: 'build' }, ...o })
+  const { callTool } = await import('../src/lib/mcp-tools')
+  const frontier = async () => ((await callTool({ payload, user: owner, actor: { kind: 'human' } as never }, 'list_frontier', {})) as { number: number }[]).map((t) => t.number)
+  expect(await frontier()).toContain(first!.number)
+  const before = await wipCount(payload, ws, 'build')
+  await actions.parkEpic(payload, owner, { ticket: parent.id })
+  expect(await wipCount(payload, ws, 'build')).toBe(before - 1)
+  expect(await frontier()).not.toContain(first!.number)
+  // The slice passed while parked: the sweep does not create the next one.
+  await payload.update({ collection: 'tickets', id: first!.id, data: { stage: 'done', slice: { ...first!.slice, head: 'abc', passed: true } }, ...o })
+  expect(await actions.advanceEpics(payload)).toBe(0)
+  expect(await actions.advanceEpic(payload, await reload(parent.id))).toBe(false)
+  expect(await kids(parent.id)).toHaveLength(1)
+})
+
+it('resume continues where it stopped: the cancelled Build starts again, and a passed slice moves the epic on', async () => {
+  await unlimited()
+  const parent = await split()
+  const [first] = await kids(parent.id)
+  await payload.update({ collection: 'tickets', id: first!.id, data: { stage: 'build' }, ...o })
+  const run = await liveRun(first!, 'build')
+  await actions.parkEpic(payload, owner, { ticket: parent.id })
+  expect(await runStatus(run.id)).toBe('cancelled')
+  await actions.resumeEpic(payload, owner, { ticket: parent.id })
+  expect(await reload(parent.id)).toMatchObject({ parked: false })
+  expect(await reload(first!.id)).toMatchObject({ parked: false })
+  const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: first!.id } }, sort: 'createdAt', ...o })).docs
+  expect(runs.map((r) => r.status)).toEqual(['cancelled', 'awaiting_session'])
+  expect(await worklogOf(parent.number)).toContain('Epic resumed')
+  await expect(actions.resumeEpic(payload, owner, { ticket: parent.id })).rejects.toThrow('not parked')
+
+  // Parked while the slice passed: resuming creates the next slice.
+  const other = await split()
+  const [one] = await kids(other.id)
+  await actions.parkEpic(payload, owner, { ticket: other.id })
+  await payload.update({ collection: 'tickets', id: one!.id, data: { stage: 'done', slice: { ...one!.slice, head: 'abc', passed: true } }, ...o })
+  await actions.resumeEpic(payload, owner, { ticket: other.id })
+  expect((await kids(other.id)).map((k) => k.title)).toEqual(['One', 'Two'])
+})
+
+it('stop at the review round cap parks an epic slice and an epic parent, but still sends a normal ticket to triage', async () => {
+  await unlimited()
+  const parent = await split()
+  const [first] = await kids(parent.id)
+  await payload.update({ collection: 'tickets', id: first!.id, data: { stage: 'review', reviewState: 'needs_human', reviewRounds: 3 }, ...o })
+  await openEpicPr(parent)
+  await actions.stopReview(payload, owner, { ticket: first!.id, note: 'redesign' })
+  expect(await reload(first!.id)).toMatchObject({ parked: true, stage: 'review' })
+  expect(await reload(parent.id)).toMatchObject({ parked: true, stage: 'parent' })
+  expect((await commentsOf(first!.number)).join('\n')).toContain('The epic is parked')
+
+  // Epic review on the parent itself.
+  const p2 = await split(['Only'])
+  const pr = await openEpicPr(p2)
+  await payload.update({ collection: 'tickets', id: p2.id, data: { stage: 'review', reviewState: 'needs_human', reviewRounds: 3 }, ...o })
+  await actions.stopReview(payload, owner, { ticket: p2.id })
+  expect(await reload(p2.id)).toMatchObject({ parked: true, stage: 'review' })
+  expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('open')
+
+  // A ticket that is no epic keeps the old behaviour.
+  const issue = await fake.tickets(repo).create({ title: 'plain', labels: ['bauherr:stage:review'] })
+  const plain = await payload.create({ collection: 'tickets', data: { title: 'plain', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', labels: issue.labels, stage: 'review', reviewState: 'needs_human', reviewRounds: 3, product, workspace: ws }, ...o })
+  const branch = `bauherr/${issue.number}-x`
+  await fake.forge.createBranch(repo, branch)
+  fake.commit(repo, branch, 'p.ts', 'x')
+  const ppr = await fake.forge.openPullRequest(repo, { title: 'plain', body: EVIDENCE, head: branch, base: 'main' })
+  await payload.create({ collection: 'runs', data: { ticket: plain.id, stage: 'build', status: 'succeeded', mode: 'session', workspace: ws, artifacts: { prUrl: ppr.url } }, ...o })
+  await actions.stopReview(payload, owner, { ticket: plain.id })
+  expect(await reload(plain.id)).toMatchObject({ stage: 'triage', parked: false })
+})
+
+it('a parked epic is not merged: no review conclusion, no merge-main, no review restart', async () => {
+  const { startReviewIfReady } = await import('../src/jobs')
+  const parent = await split(['Only'])
+  const pr = await openEpicPr(parent)
+  await payload.update({ collection: 'tickets', id: parent.id, data: { stage: 'review', reviewState: 'waiting_checks' }, ...o })
+  await actions.parkEpic(payload, owner, { ticket: parent.id })
+  expect(await actions.watchReviews(payload)).toBe(0)
+  const t = await reload(parent.id)
+  expect(await actions.concludeReview(payload, parent.id, { verdict: 'clean', findings: [], markdown: 'm', open: [] } as never, pr.headSha)).toEqual({ outcome: 'noop' })
+  expect(await startReviewIfReady(payload, { ...t, reviewState: null })).toBeNull()
+  await mergeMain.mergeMainIntoMr(payload, parent.id, null)
+  expect(await reload(parent.id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks', conflictReturns: 0 })
+  expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('open')
+})
+
+it('discard closes the epic PR unmerged, deletes the epic branch and closes the parent and open slices as not planned', async () => {
+  await unlimited()
+  const parent = await split()
+  const pr = await openEpicPr(parent)
+  const [first] = await kids(parent.id)
+  const run = await liveRun(first!, 'build')
+  await actions.parkEpic(payload, owner, { ticket: parent.id })
+  await actions.discardEpic(payload, owner, { ticket: parent.id })
+  expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('closed')
+  expect(await fake.forge.getBranch(repo, parent.epic.branch)).toBeNull()
+  expect(await runStatus(run.id)).toBe('cancelled')
+  for (const t of [parent, first!]) {
+    expect(await reload(t.id)).toMatchObject({ state: 'closed' })
+    expect(await forgeIssue(t.number)).toMatchObject({ state: 'closed', closeReason: 'not_planned' })
+  }
+  expect(await worklogOf(parent.number)).toContain('Epic discarded')
+  await expect(actions.discardEpic(payload, owner, { ticket: parent.id })).rejects.toThrow('nothing to discard')
+})
+
+it('a parent closed as not planned closes its open slices as not planned, an accepted one as completed', async () => {
+  const parent = await split(['One'])
+  const [first] = await kids(parent.id)
+  await fake.tickets(repo).close(String(parent.number), 'not_planned')
+  await payload.update({ collection: 'tickets', id: parent.id, data: { state: 'closed' }, ...o })
+  await actions.advanceEpics(payload)
+  expect(await reload(first!.id)).toMatchObject({ state: 'closed' })
+  expect(await forgeIssue(first!.number)).toMatchObject({ state: 'closed', closeReason: 'not_planned' })
+})
+
+it('only a Bauherr or Admin can park, resume or discard; a Product owner is refused and nothing changes', async () => {
+  const parent = await split(['One'])
+  for (const act of [actions.parkEpic, actions.resumeEpic, actions.discardEpic]) await expect(act(payload, productOwner, { ticket: parent.id })).rejects.toThrow('Only a Bauherr or Admin')
+  expect(await reload(parent.id)).toMatchObject({ parked: false, state: 'open' })
+  await expect(actions.parkEpic(payload, owner, { ticket: (await kids(parent.id))[0]!.id })).rejects.toThrow('not an epic')
 })

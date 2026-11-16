@@ -481,6 +481,11 @@ class GitlabForge implements Forge {
     });
     await this.h.json('POST', `/projects/${enc(repo)}/repository/branches?branch=${enc(branch)}&ref=${enc(sha)}`);
   }
+  async deleteBranch(repo: RepoRef, branch: string) {
+    await this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(branch)}`).catch((e) => {
+      if (!(e instanceof GitlabError && e.status === 404)) throw e;
+    });
+  }
   async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
     const tip = (await this.getBranch(repo, branch))?.sha;
     if (!tip) throw new Error(`no branch ${branch}`);

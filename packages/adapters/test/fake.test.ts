@@ -153,6 +153,16 @@ describe('fake: train branch', () => {
   });
 });
 
+describe('fake: deleteBranch', () => {
+  it('removes the branch; deleting it again is fine', async () => {
+    const b = new FakeBackend();
+    await b.forge.createBranch('o/r', 'epic');
+    await b.forge.deleteBranch('o/r', 'epic');
+    assert.equal(await b.forge.getBranch('o/r', 'epic'), null);
+    await b.forge.deleteBranch('o/r', 'epic');
+  });
+});
+
 describe('fake: author', () => {
   it('is the credential user unless the test names one', async () => {
     const ts = new FakeBackend({ native: true, user: 'octo' }).tickets('o/r');
