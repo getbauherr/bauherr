@@ -17,7 +17,7 @@ import { AutoRefresh } from '../../../components/AutoRefresh'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ForgeLink } from '../../../components/ForgeLink'
-import { hasSecondary } from '../../../lib/bar'
+import { forgeLinkSpot } from '../../../lib/bar'
 import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
@@ -132,9 +132,9 @@ async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
 }
 
 /** The forge link in the CI panel header, only when the action bar's one secondary slot is taken. */
-async function PanelForge({ P, d }: { P: Page; d: Promise<Derived> }) {
+async function PanelForge({ P, d, at }: { P: Page; d: Promise<Derived>; at: 'panel' | 'links' }) {
   const x = await d
-  return P.forgeLink && hasSecondary({ need: x.todo, canExpedite: canExpediteOf(P) }) ? <div><ForgeLink {...P.forgeLink} /></div> : null
+  return P.forgeLink && forgeLinkSpot({ need: x.todo, canExpedite: canExpediteOf(P), ciPanel: at === 'panel' }) === at ? <div><ForgeLink {...P.forgeLink} /></div> : null
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -296,7 +296,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       ) : (
         <StageStrip stages={stages} steps={steps} />
       )}
-      {ci && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} forge={<Suspense fallback={null}><PanelForge P={P} d={d} /></Suspense>} />}
+      {ci && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} forge={<Suspense fallback={null}><PanelForge P={P} d={d} at="panel" /></Suspense>} />}
       <div className="flex min-w-0 flex-col gap-4" data-testid="current-block">
         {card && <DecisionCard compact item={{ ...card, product: undefined }} admin={admin} />}
         <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
@@ -308,6 +308,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           </ul>
         )}
         {dependencies}
+        {!(ci && ci.summary.rows.length > 0) && <Suspense fallback={null}><PanelForge P={P} d={d} at="links" /></Suspense>}
       </section>
       {admin && <CostPanel runs={runs} />}
       <details data-testid="ticket-about">

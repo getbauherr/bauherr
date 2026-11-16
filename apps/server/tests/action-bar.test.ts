@@ -14,3 +14,13 @@ describe('the bar holds one secondary: the forge link only fits when none shows'
     expect(hasSecondary({ ...base, canExpedite: true })).toBe(true)
   })
 })
+
+describe('forgeLinkSpot', () => {
+  it('the forge link always has a place: the free bar slot, else the CI panel, else Links', async () => {
+    const { forgeLinkSpot } = await import('../src/app/(app)/lib/bar')
+    expect(forgeLinkSpot({ need: null, ciPanel: false })).toBe('bar')
+    expect(forgeLinkSpot({ need: 'Accept on staging', ciPanel: true })).toBe('panel')
+    expect(forgeLinkSpot({ need: 'Accept on staging', ciPanel: false })).toBe('links')
+    expect(forgeLinkSpot({ need: null, canExpedite: true, ciPanel: false })).toBe('links')
+  })
+})
