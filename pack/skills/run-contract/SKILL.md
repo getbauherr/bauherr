@@ -23,6 +23,9 @@ Produce the artifacts your Product's rules ask for, and map each acceptance crit
 
 Re-run the check after the last edit; evidence from before the last edit is stale. Format of the MR section: `rules/evidence.md`.
 
+## UI change
+When the plan's `## Files` match the Product's `ui` path set, load the `pr-screenshots` skill before your first edit and shoot the "before" images then.
+
 ## Return from Review
 The worklog's Unfinished work lists the review findings. For each with a `Failing test:` line, your first step is to add that test (its code is in the review comment on the MR, command and failure are in the line), run it and see it fail, then fix until it passes. A test that already passes voids the finding: change nothing for it and write one line under Open. Items under Open are noted, not sent back: do not work on them.
 

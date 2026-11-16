@@ -49,10 +49,10 @@ const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop
 await ensure('bauherren', { email: 'guard-bauherr@example.com' }, { email: 'guard-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the signed-in control of product-owner.spec: only that spec signs in as this user
 await ensure('bauherren', { email: 'monitoring-bauherr@example.com' }, { email: 'monitoring-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the non-Admin control of monitoring.spec: only that spec signs in as this user
 await ensure('bauherren', { email: 'owner@example.com' }, { email: 'owner@example.com', password, role: 'product-owner', assignments: [{ workspace, scope: 'products', products: [product] }] }) // the Product owner of Acme Web; people.spec and product-owner.spec sign in as this user
-const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
+const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace })).id
 // settings.spec.ts and templates.spec.ts own this Workspace (signed in with the `bauherr-ws=settingsco` cookie): they save its budget, models, Knowledge and templates and add a Connection, which no spec reading `acme` may see.
 const settingsco = (await ensure('workspaces', { slug: 'settingsco' }, { name: 'Settingsco', slug: 'settingsco' })).id
-const settingsGithub = (await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: settingsco })).id
+const settingsGithub = (await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: settingsco })).id
 const settingsApp = (await ensure('products', { slug: 'settingsco-app' }, { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' })).id
 await ensure('repositories', { fullName: 'settingsco/app' }, { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco })
 await payload.update({ collection: 'workspaces', id: settingsco, data: { knowledgeConnection: settingsGithub, knowledgeRepo: 'acme/knowledge' }, ...o })
@@ -64,7 +64,7 @@ await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product
 // workflow-editor.spec.ts: a Workspace of its own (the spec applies factory files and flips Workspace settings), an Admin that only that spec signs in as (cookie `bauherr-ws=editor`), one Product with a ticket source and one Ticket. Twin in `src/lib/fake-forge.ts`.
 const editorWs = (await ensure('workspaces', { slug: 'editor' }, { name: 'Editor Lab', slug: 'editor', wipLimits: {} })).id
 await ensure('bauherren', { email: 'editor-admin@example.com' }, { email: 'editor-admin@example.com', password, role: 'admin', githubLogin: 'e2e-editor-admin' })
-const editorGithub = (await ensure('connections', { name: 'GitHub Editor' }, { name: 'GitHub Editor', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: editorWs })).id
+const editorGithub = (await ensure('connections', { name: 'GitHub Editor' }, { name: 'GitHub Editor', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: editorWs })).id
 const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 'Editor App', slug: 'editor-app', workspace: editorWs })).id
 await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
 await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
@@ -72,7 +72,7 @@ await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: bu
 // request-conversation.spec.ts: a Workspace of its own (`bauherr-ws=rc`) with two Products (Rc Web, Rc Api), models as `<connection>/<model>` (the short name is what is shown), a Bauherr and a Product owner (assigned to Rc Web only) that only that spec signs in as. Twins in `src/lib/fake-forge.ts` (acme/rc-web, acme/rc-api).
 const rcWs = (await ensure('workspaces', { slug: 'rc' }, { name: 'Request Lab', slug: 'rc', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'rc-bauherr@example.com' }, { email: 'rc-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: rcWs }] })
-const rcGithub = (await ensure('connections', { name: 'GitHub Rc' }, { name: 'GitHub Rc', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: rcWs })).id
+const rcGithub = (await ensure('connections', { name: 'GitHub Rc' }, { name: 'GitHub Rc', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: rcWs })).id
 const rcProducts: number[] = []
 for (const [name, slug] of [['Rc Web', 'rc-web'], ['Rc Api', 'rc-api']] as const) {
   const id = (await ensure('products', { slug }, { name, slug, workspace: rcWs })).id as number
@@ -84,14 +84,14 @@ await ensure('bauherren', { email: 'rc-owner@example.com' }, { email: 'rc-owner@
 // docs-check.spec.ts: a Workspace of its own (`bauherr-ws=docsco`) with one Product (Docs Web) and a Bauherr; the spec starts a docs check there, so no other spec may read it.
 const docsWs = (await ensure('workspaces', { slug: 'docsco' }, { name: 'Docs Lab', slug: 'docsco', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'docs-bauherr@example.com' }, { email: 'docs-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: docsWs }] })
-const docsGithub = (await ensure('connections', { name: 'GitHub Docs' }, { name: 'GitHub Docs', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: docsWs })).id
+const docsGithub = (await ensure('connections', { name: 'GitHub Docs' }, { name: 'GitHub Docs', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: docsWs })).id
 const docsProduct = (await ensure('products', { slug: 'docs-web' }, { name: 'Docs Web', slug: 'docs-web', workspace: docsWs })).id
 await ensure('repositories', { fullName: 'acme/docsweb' }, { fullName: 'acme/docsweb', product: docsProduct, workspace: docsWs })
 await ensure('ticket_sources', { repo: 'acme/docsweb' }, { repo: 'acme/docsweb', product: docsProduct, connection: docsGithub, cursor: '2026-10-30T09:00:00Z', workspace: docsWs })
 // conversation.spec.ts: a Workspace of its own (`bauherr-ws=conv`), an Admin and a Product owner only that spec signs in as, and three Tickets held by Triage (#1 the Docs Agent with four open points, #2 and #3 untouched by the first test), each with a succeeded Triage Run of a session. Twin in `src/lib/fake-forge.ts` (acme/conv).
 const convWs = (await ensure('workspaces', { slug: 'conv' }, { name: 'Conversation Lab', slug: 'conv', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'conv-admin@example.com' }, { email: 'conv-admin@example.com', password, role: 'admin', githubLogin: 'e2e-conv-admin' })
-const convGithub = (await ensure('connections', { name: 'GitHub Conv' }, { name: 'GitHub Conv', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: convWs })).id
+const convGithub = (await ensure('connections', { name: 'GitHub Conv' }, { name: 'GitHub Conv', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: convWs })).id
 const convProduct = (await ensure('products', { slug: 'conv-app' }, { name: 'Conv App', slug: 'conv-app', workspace: convWs })).id
 await ensure('bauherren', { email: 'conv-owner@example.com' }, { email: 'conv-owner@example.com', password, role: 'product-owner', assignments: [{ workspace: convWs, scope: 'products', products: [convProduct] }] })
 await ensure('repositories', { fullName: 'acme/conv' }, { fullName: 'acme/conv', product: convProduct, workspace: convWs })
@@ -364,7 +364,7 @@ const sentAt = (m: number) => new Date(now - m * 6e4).toISOString()
 for (const [at, stage, kind, phase, cause] of [[600, 'triage', 'triage', 'working', 'poll'], [580, 'plan', 'plan', 'queued', 'run:queued'], [560, 'plan', 'plan', 'queued', 'gate:approve:plan'], [500, 'review', 'review', 'working', 'run:claimed'], [400, 'release', 'release', 'ci', 'release:on_staging'], [380, 'release', 'release', 'queued', 'gate:accept:staging'], [300, 'done', 'done', 'closed', 'poll']] as const) await ensure('ticket_events', { ticket: released, cause, at: sentAt(at) }, { ticket: released, workspace, at: sentAt(at), stage, stageKind: kind, phase, cause })
 // product-owner-view.spec.ts: a Workspace of its own with two Products (Lab Alpha, Lab Beta), a Product owner assigned to Lab Alpha only and a Bauherr of the Workspace for comparison (nothing else signs in as them). Each Product has one Ticket (#1, in Build), one sent request and one review artifact; the Product owner also has a draft. Twins in `src/lib/fake-forge.ts` (acme/lab-alpha #1, acme/lab-beta #1).
 const lab = (await ensure('workspaces', { slug: 'po-lab' }, { name: 'PO Lab', slug: 'po-lab', wipLimits: {} })).id
-const labHub = (await ensure('connections', { name: 'GitHub Lab' }, { name: 'GitHub Lab', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: lab })).id
+const labHub = (await ensure('connections', { name: 'GitHub Lab' }, { name: 'GitHub Lab', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: lab })).id
 const labBauherr = (await ensure('bauherren', { email: 'po-view-bauherr@example.com' }, { email: 'po-view-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: lab }], githubLogin: 'e2e-po-view' })).id
 for (const [slug, name, repo] of [['lab-alpha', 'Lab Alpha', 'acme/lab-alpha'], ['lab-beta', 'Lab Beta', 'acme/lab-beta']] as const) {
   const labProduct = (await ensure('products', { slug }, { name, slug, workspace: lab, stagingUrl: `https://staging.example.com/${slug}` })).id
@@ -388,7 +388,7 @@ const who = (await ensure('workspaces', { slug: 'who-lab' }, { name: 'Who Lab', 
   const applied = await applyFactory(payload, who as number, stringify(doc), { by: 'seed', via: 'seed', note: 'who-lab: the shipped default' })
   if (!applied.ok) throw new Error(`who-lab factory file: ${applied.findings.join('; ')}`)
 }
-const whoHub = (await ensure('connections', { name: 'GitHub Who' }, { name: 'GitHub Who', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: who })).id
+const whoHub = (await ensure('connections', { name: 'GitHub Who' }, { name: 'GitHub Who', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: who })).id
 await ensure('bauherren', { email: 'who-bauherr@example.com' }, { email: 'who-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: who }], githubLogin: 'e2e-who-bauherr' })
 for (const [slug, name, repo] of [['who-alpha', 'Alpha', 'acme/who-alpha'], ['who-beta', 'Beta', 'acme/who-beta']] as const) {
   const whoProduct = (await ensure('products', { slug }, { name: `Who ${name}`, slug, workspace: who, stagingUrl: `https://staging.example.com/${slug}`, productOwnerTestsStaging: slug === 'who-alpha' })).id
