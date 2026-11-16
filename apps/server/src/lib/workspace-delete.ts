@@ -1,5 +1,5 @@
 import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import { createLocalReq, type Payload, type Where } from 'payload'
 import { deleteKey, gatewayEnabled, removeWorkspaceProviders, renderModels } from './gateway'
@@ -155,7 +155,7 @@ export const purgeWorkspace = async (payload: Payload, workspace: number, now = 
     throw e
   }
   const dir = (payload.collections.media.config.upload as { staticDir?: string }).staticDir ?? ''
-  for (const f of files) await rm(join(dir, f), { force: true }).catch((err) => payload.logger.error({ err, file: f, slug }, 'workspace purged; media file not deleted'))
+  for (const f of files) await rm(join(dir, basename(f)), { force: true }).catch((err) => payload.logger.error({ err, file: f, slug }, 'workspace purged; media file not deleted'))
   if (gatewayEnabled()) {
     await removeWorkspaceProviders(slug).catch((err) => payload.logger.error({ err, slug }, 'workspace purged; provider files not removed'))
     await renderModels(await createLocalReq({}, payload)).catch((err) => payload.logger.error({ err, slug }, 'workspace purged; gateway models not re-rendered'))
