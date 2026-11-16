@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
+import { type Executor, waitingWho } from '../../../../lib/executors'
 import { executionOrder } from '../../../../lib/frontier'
-import { is, title as stageTitle, type Workflow } from '../../../../lib/workflow'
+import { is, stage as stageOf, title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { epicHue, epicShortTitle } from '../../lib/epics'
 import { duration, heartbeatAge } from '../../lib/format'
 import type { TicketRow } from '../../lib/overview'
@@ -35,7 +36,7 @@ export type Group = { stage: string; rows: TicketRow[] }
 
 /** The Tickets of the Workflow view, one ranked table per stage in workflow order. */
 /** `collapsed`: the stage whose rows hide behind a "Show N done" link to `expandHref`; `sticky`: headings stay under the shell header while their group is on screen. */
-export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed, expandHref, sticky }: { wf: Workflow; groups: Group[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
+export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed, expandHref, sticky, executors }: { wf: Workflow; groups: Group[]; /** Who executes each stage (Workflow view): its `waits` text fills the Who cell of a Ticket stuck there. */ executors?: Map<string, Executor> | null; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
   return (
     <div className="@container flex flex-col gap-6" data-testid="ticket-list">
       {groups.map(({ stage, rows }, g) => {
@@ -76,7 +77,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
                       <TicketStatus s={s} who="narrow" title={t.needsYou ? gateTip(t) : undefined} href={s.phase === 'human' && t.open ? `/inbox#t${t.id}` : undefined} />
                       {t.releasedIn && <span className="label text-muted-foreground" data-released>Released in {t.releasedIn}</span>}
                     </span>,
-                    <span key="w" className="small text-muted-foreground" data-testid="row-who">{s.who ?? '—'}</span>,
+                    <span key="w" className="small text-muted-foreground" data-testid="row-who">{waitingWho(stageOf(wf, stage)?.kind, executors?.get(stage), t, s) ?? '—'}</span>,
                     <span key="a" className="small text-muted-foreground" title={t.enteredAt} data-testid="row-age">{t.open ? duration((now - +new Date(t.enteredAt)) / 1000) : '—'}</span>,
                   ],
                 }

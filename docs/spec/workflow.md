@@ -263,6 +263,8 @@ Built-in behaviour binds to a stage's kind, never to its name: names are free (`
 - the `release` kind (no role by design: the Product's CI deploys): "<GitHub Actions | GitLab CI | Product CI> · last deploy <ago>" or "no deploy reported yet"; with a Product that has no deploy check (webhook mode without a URL, and no check names) "… · no deploy check configured", action "Configure deploy checks", cannot run;
 - a human gate without a role: "You";
 - anything else: "No one assigned", action "Edit workflow", cannot run.
+
+A Ticket row's Who column says why it waits (`waitingWho`, same file): an open Ticket that is not being worked, in a stage that cannot run, shows "Waiting for a <role title> session" or "Waiting for the Product's deploy check". A Ticket in the `release` stage whose staging deploy never reported (`releaseState: timed_out`) shows the deploy-check text too, while its "Staging not confirmed" need still fires. A Ticket waiting for a person at a gate keeps its gate people. In every other case the column shows the status's own `who`. The article follows the title ("an Orchestrator").
 The Workflow view shows the line on the stage card and the cannot-run actions under the legend ([ui](../ui.md)).
 
 #### Outcomes and routing

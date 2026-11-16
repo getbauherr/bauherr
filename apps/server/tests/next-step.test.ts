@@ -45,12 +45,12 @@ describe('nextStep', () => {
   })
   it('a full column and waiting checks', () => {
     expect(nextStep({ ...base, ticket: { stage: 'plan', waitingFor: 'build' }, waiting: 'Waiting: Build is full (2/2)' }).reason).toBe('Queued for Build: Build is full (2/2). Starts by itself.')
-    expect(nextStep({ ...base, ticket: { stage: 'review', waitingFor: 'checks' }, waiting: 'Waiting for checks' }).reason).toBe('Waiting for the MR checks to finish. Review starts by itself.')
+    expect(nextStep({ ...base, ticket: { stage: 'review', waitingFor: 'checks' }, waiting: 'Waiting for CI' }).reason).toBe('Waiting for CI.')
   })
   it('release, review, closed and idle say who is next', () => {
     expect(nextStep({ ...base, ticket: { stage: 'release', labels: [] } }).reason).toBe('The factory is waiting for the staging deploy.')
     expect(nextStep({ ...base, ticket: { stage: 'release', labels: ['bauherr:approved:staging'] } }).reason).toBe('The factory is releasing this.')
-    expect(nextStep({ ...base, ticket: { stage: 'review', reviewState: 'waiting_checks' } }).reason).toBe('In review: review clean, waiting for checks to finish.')
+    expect(nextStep({ ...base, ticket: { stage: 'review', reviewState: 'waiting_checks' } }).reason).toBe('Waiting for CI.')
     expect(nextStep({ ...base, ticket: { state: 'closed', stage: 'done' } }).label).toBe('Done')
     expect(nextStep(base).reason).toBe('The factory picks this up next.')
   })
@@ -94,7 +94,7 @@ describe('every Ticket or Run the reason names is linked', () => {
     awaiting: { run: run('awaiting_session') },
     runner: { run: run('queued') },
     escalating: { run: run('failed') },
-    checks: { ticket: { stage: 'review', waitingFor: 'checks' }, waiting: 'Waiting for checks' },
+    checks: { ticket: { stage: 'review', waitingFor: 'checks' }, waiting: 'Waiting for CI' },
     full: { ticket: { stage: 'plan', waitingFor: 'build' }, waiting: 'Waiting: Build is full (2/2)' },
     queued: {},
     staging: { ticket: { stage: 'release', labels: [] } },
