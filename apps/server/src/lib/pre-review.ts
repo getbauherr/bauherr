@@ -14,7 +14,7 @@ export const preReviewFailures = async (payload: Payload, t: Doc, evidence: stri
   const docs = ((t.labels ?? []) as string[]).includes(DOCS_LABEL)
   if (!config && !docs) return []
   const { backend, repo, tickets } = await forgeOf(payload, id(t.product))
-  const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t.number))
+  const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t))
   if (!pr) return ['no open factory MR to check']
   const files = (await backend.forge.listPullRequestFiles(repo, pr.number)).map((f) => f.filename)
   const outside = docs ? outsideDocsPaths(files, (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS) : []

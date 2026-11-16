@@ -400,3 +400,56 @@ describe('staging on a descendant SHA', () => {
     expect(await summaries(n)).toHaveLength(0)
   })
 })
+
+describe('epic PR resolution', () => {
+  const epicBranch = 'bauherr/900-epic'
+  /** A parent Ticket carrying `epic` (optionally with its PR) and a sub carrying `slice`, both in `stage`. */
+  const epicPair = async (title: string, stage = 'review', withPr = true) => {
+    const ts = fake.tickets(repo)
+    const mk = async (name: string, extra: Record<string, unknown>) => {
+      const issue = await ts.create({ title: name, labels: [`bauherr:stage:${stage}`] })
+      return (await payload.create({ collection: 'tickets', data: { title: name, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, product, workspace: ws, ...extra }, ...o })) as Record<string, any>
+    }
+    const branch = `${epicBranch}-${title}`
+    await fake.forge.createBranch(repo, branch)
+    const pr = await fake.forge.openPullRequest(repo, { title, head: branch, base: 'main' })
+    const parent = await mk(`${title} parent`, { epic: { branch, ...(withPr ? { pr: pr.url } : {}), slices: [], current: 0, mergeFailures: 0 } })
+    const sub = await mk(`${title} sub`, { slice: { epic: parent.id, branch, index: 0, prev: null, main: null, head: null, passed: false, fixes: [] } })
+    return { parent, sub, pr, branch }
+  }
+
+  it('isFactoryPr accepts the epic or slice branch and the old prefix, never a fork or another branch', () => {
+    const pr = { head: 'bauherr/7-epic', baseRepo: repo, headRepo: repo } as never
+    expect(release.isFactoryPr(pr, repo, { number: 1, epic: { branch: 'bauherr/7-epic' } })).toBe(true)
+    expect(release.isFactoryPr(pr, repo, { number: 1, slice: { branch: 'bauherr/7-epic' } })).toBe(true)
+    expect(release.isFactoryPr(pr, repo, { number: 1 })).toBe(false)
+    expect(release.isFactoryPr({ head: 'bauherr/1-x', baseRepo: repo, headRepo: repo } as never, repo, { number: 1 })).toBe(true)
+    expect(release.isFactoryPr({ ...(pr as object), headRepo: 'evil/web' } as never, repo, { number: 1, epic: { branch: 'bauherr/7-epic' } })).toBe(false)
+  })
+
+  it('prOf resolves the epic PR for the parent and for a sub, with no build Run', async () => {
+    const { parent, sub, pr } = await epicPair('resolve')
+    expect((await release.prOf(payload, parent))?.pr.number).toBe(pr.number)
+    expect((await release.prOf(payload, sub))?.pr.number).toBe(pr.number)
+  })
+
+  it('a sub finds the open PR on the slice branch when the parent has no epic.pr yet', async () => {
+    const { sub, pr } = await epicPair('nopr', 'review', false)
+    expect((await release.prOf(payload, sub))?.pr.number).toBe(pr.number)
+    expect(await release.prOf(payload, sub, { fallback: false })).toBeNull()
+  })
+
+  it('watchRelease moves an epic parent to release when its epic PR merges', async () => {
+    const { parent, pr } = await epicPair('merged')
+    fake.merge(repo, pr.number)
+    await release.watchRelease(payload)
+    expect((await reload(parent.id)).stage).toBe('release')
+  })
+
+  it('assertOpenFactoryMr accepts the epic PR for the epic parent', async () => {
+    const { parent, pr } = await epicPair('assert')
+    await expect(release.assertOpenFactoryMr(payload, parent, pr.url)).resolves.toBeUndefined()
+    const other = await reviewTicket('plain', false)
+    await expect(release.assertOpenFactoryMr(payload, other.t, pr.url)).rejects.toThrow(/epic branch/)
+  })
+})

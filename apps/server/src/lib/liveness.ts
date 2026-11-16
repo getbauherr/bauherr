@@ -31,7 +31,7 @@ const REVIEW_STALLED_MS = 30 * 60_000
 /** The newest open factory MR of a Ticket (highest number), found by branch name when the linked MR is closed or missing. */
 const replacementMr = async (payload: Payload, t: Doc) => {
   const { backend, repo } = await forgeOf(payload, id(t.product))
-  return (await backend.forge.listPullRequests(repo, 'open')).filter((pr) => isFactoryPr(pr, repo, t.number) && pr.state === 'open').sort((a, b) => b.number - a.number)[0] ?? null
+  return (await backend.forge.listPullRequests(repo, 'open')).filter((pr) => isFactoryPr(pr, repo, t) && pr.state === 'open').sort((a, b) => b.number - a.number)[0] ?? null
 }
 
 const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Cause | null> => {

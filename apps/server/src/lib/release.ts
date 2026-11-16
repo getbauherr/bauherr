@@ -1,4 +1,5 @@
 import { inLiveWorkspace, live } from './workspace-delete'
+import type { EpicField, SliceField } from './epic'
 import { type Check, type Forge, type PullRequest, type Release, type TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest, Where } from 'payload'
@@ -41,17 +42,19 @@ export const prNumber = (url: unknown, repo: string, web: string): number | null
   return m ? Number(m[1]) : null
 }
 
-/** A PR the factory may review and merge: base and head in the Ticket's repo (no fork) and a head branch named `bauherr/<ticket number>-...`. */
-export const isFactoryPr = (pr: PullRequest, repo: string, ticketNumber: number): boolean =>
-  pr.baseRepo.toLowerCase() === repo.toLowerCase() && pr.headRepo.toLowerCase() === repo.toLowerCase() && pr.head.startsWith(`bauherr/${ticketNumber}-`)
+/** A PR the factory may review and merge: base and head in the Ticket's repo (no fork) and a head branch that is the Ticket's epic/slice branch or named `bauherr/<ticket number>-...`. */
+export const isFactoryPr = (pr: PullRequest, repo: string, t: Doc): boolean => {
+  const branch = (t.epic as EpicField | null | undefined)?.branch ?? (t.slice as SliceField | null | undefined)?.branch
+  return pr.baseRepo.toLowerCase() === repo.toLowerCase() && pr.headRepo.toLowerCase() === repo.toLowerCase() && (pr.head === branch || pr.head.startsWith(`bauherr/${t.number}-`))
+}
 
 /** Throws unless `prUrl` is an open factory MR of the Ticket (same repo, branch `bauherr/<number>-...`). */
 export const assertOpenFactoryMr = async (payload: Payload, ticket: Doc, prUrl: unknown): Promise<void> => {
   const { backend, repo, web } = await forgeOf(payload, id(ticket.product))
   const num = prNumber(prUrl, repo, web)
   const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
-  if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket.number)) {
-    throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from a branch named bauherr/${ticket.number}-...`)
+  if (!pr || pr.state !== 'open' || !isFactoryPr(pr, repo, ticket)) {
+    throw new Error(`prUrl must be an open pull request in ${repo} (not a fork) from the epic branch or a branch named bauherr/${ticket.number}-...`)
   }
 }
 
@@ -139,20 +142,21 @@ export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'gr
 }
 
 /**
- * The Ticket's factory MR: the newest build Run artifact `prUrl` in the ticket source repo, with its live state.
+ * The Ticket's factory MR: the epic PR (own or the parent's), else the newest build Run artifact `prUrl` in the ticket source repo, with its live state.
  * When that MR was closed unmerged (or is not a factory MR), or a Ticket in review/release has none linked, the newest open factory MR of the Ticket (head `bauherr/<number>-*`) stands in, so a replacement MR is reviewed and merged with no DB edit.
  * Null when there is none. `{ fallback: false }` answers only for the linked MR (the liveness watchdog uses it to find Tickets whose link went stale).
  */
 export const prOf = async (payload: Payload, t: Doc, o2: { fallback?: boolean } = {}) => {
   const { backend, repo, web, tickets } = await forgeOf(payload, id(t.product))
   const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
-  const num = runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).find((x) => x !== null)
+  const epicPr = t.epic?.pr ?? (t.slice ? ((await payload.findByID({ collection: 'tickets', id: t.slice.epic, ...o })) as Doc).epic?.pr : undefined)
+  const num = [epicPr, ...runs.map((r) => r.artifacts?.prUrl)].map((u) => prNumber(u, repo, web)).find((x) => x !== null)
   if (num != null) {
     const pr = await backend.forge.getPullRequest(repo, num)
-    if (isFactoryPr(pr, repo, t.number) && pr.state !== 'closed') return { backend, repo, tickets, pr }
+    if (isFactoryPr(pr, repo, t) && pr.state !== 'closed') return { backend, repo, tickets, pr }
   } else if (!is(workflowFor(t.workspace), t.stage, 'review', 'release')) return null
   if (o2.fallback === false) return null
-  const open = (await backend.forge.listPullRequests(repo, 'open')).filter((p) => p.state === 'open' && isFactoryPr(p, repo, t.number)).sort((a, b) => b.number - a.number)[0]
+  const open = (await backend.forge.listPullRequests(repo, 'open')).filter((p) => p.state === 'open' && isFactoryPr(p, repo, t)).sort((a, b) => b.number - a.number)[0]
   return open ? { backend, repo, tickets, pr: open } : null
 }
 
@@ -284,7 +288,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       if (t.stage === release && t.releaseState && t.releaseState !== 'waiting') continue
       if (t.stage === review) {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
-        const urls = runs.map((r) => r.artifacts?.prUrl).filter(Boolean)
+        const urls = [t.epic?.pr, ...runs.map((r) => r.artifacts?.prUrl)].filter(Boolean)
         const num = urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null)
         if (num == null) {
           if (urls.length) payload.logger.warn({ ticket: t.id, urls }, 'ignoring pull request URL outside the ticket source repo')
