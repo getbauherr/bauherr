@@ -65,6 +65,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         <PageTitle>{`#${ticket.number} Run ${run.id}`}</PageTitle>
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
         <p className="body"><StatusChip status={run.status} /> <span className="text-muted-foreground">{run.stage}</span></p>
+        {run.preemptedFor && (run.preemptAt || run.reasonKind === 'preempted') && <p className="body" role="status">Preempted by #{run.preemptedFor}</p>}
         {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-sm:grid-cols-[minmax(0,1fr)]">

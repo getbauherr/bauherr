@@ -14,7 +14,8 @@ export const dynamic = 'force-dynamic'
 
 const DOCS = 'https://github.com/getbauherr/bauherr/blob/main/docs/session-mode.md#connect-as-a-role'
 
-export default async function Team() {
+export default async function Team({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
+  const { role } = await searchParams
   const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const payload = await payloadClient()
@@ -27,7 +28,7 @@ export default async function Team() {
       <PageTitle>Agent team</PageTitle>
       <AutoRefresh />
       <h1 className="title">Agent team</h1>
-      <TeamView roles={team.roles} orphans={team.orphans} modelOptions={modelOptions} canEdit={admin} onSave={saveRole} docsHref={DOCS} mcpLine={mcpLine} gateway={gateway} cost={cost} />
+      <TeamView initialRole={role} roles={team.roles} orphans={team.orphans} modelOptions={modelOptions} canEdit={admin} onSave={saveRole} docsHref={DOCS} mcpLine={mcpLine} gateway={gateway} cost={cost} />
     </>
   )
 }

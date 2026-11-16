@@ -47,6 +47,7 @@ await ensure('bauherren', { email: 'setup-member@example.com' }, { email: 'setup
 const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
 const shop = (await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })).id
 await ensure('bauherren', { email: 'guard-bauherr@example.com' }, { email: 'guard-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the signed-in control of product-owner.spec: only that spec signs in as this user
+await ensure('bauherren', { email: 'monitoring-bauherr@example.com' }, { email: 'monitoring-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: workspace }] }) // the non-Admin control of monitoring.spec: only that spec signs in as this user
 await ensure('bauherren', { email: 'owner@example.com' }, { email: 'owner@example.com', password, role: 'product-owner', assignments: [{ workspace, scope: 'products', products: [product] }] }) // the Product owner of Acme Web; people.spec and product-owner.spec sign in as this user
 const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace })).id
 // settings.spec.ts and templates.spec.ts own this Workspace (signed in with the `bauherr-ws=settingsco` cookie): they save its budget, models, Knowledge and templates and add a Connection, which no spec reading `acme` may see.
@@ -324,6 +325,9 @@ await ensure('session_spans', { session: working.id, run: teamRun.id }, { sessio
 // ticket.spec.ts: #130, a Build whose session Run waits for an agent (the only engineer session above is disconnected).
 const waitTicket = await ticket(130, 'Wait for an engineer agent', 'build', product)
 await ensure('runs', { ticket: waitTicket, stage: 'build', status: 'awaiting_session' }, { ticket: waitTicket, stage: 'build', status: 'awaiting_session', mode: 'session', workspace })
+// preempt.spec.ts: #606, a Build whose Run a hotfix (#7) paused; it waits for a session again.
+const pausedTicket = await ticket(606, 'Paused for a hotfix: export totals', 'build', product)
+await ensure('runs', { ticket: pausedTicket, stage: 'build', status: 'awaiting_session' }, { ticket: pausedTicket, stage: 'build', status: 'awaiting_session', mode: 'session', workspace, reasonKind: null, preemptedBy: 9999, preemptedFor: 7 })
 // insights.spec.ts, team.spec.ts: usage for "Cost & tokens". A done Ticket with a reviewer Run priced by the gateway (Opus), a session Build Run that reported usage (Sonnet; the session's own cost is $0.40) and one more session-reported row that the gateway-priced Run must drop.
 const costTicket = await ticket(129, 'Cost: usage seeded', 'done', product, { state: 'closed', labels: [] })
 await ensure('ticket_events', { ticket: costTicket, cause: 'e2e:cost' }, { ticket: costTicket, workspace, at: minutesAgo(30), stage: 'done', stageKind: 'done', phase: 'closed', cause: 'e2e:cost' })

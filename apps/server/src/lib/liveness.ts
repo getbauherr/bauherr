@@ -1,3 +1,4 @@
+import { live } from './workspace-delete'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, Where } from 'payload'
 import { ACTIVE, startReviewIfReady, triageable } from '../jobs'
@@ -77,7 +78,7 @@ const runEnd = (latest: Doc): Cause | null => {
  * `need: null` means the owner sees nothing: the invariant is broken.
  */
 export const deadTickets = async (payload: Payload, workspace?: number | string): Promise<Dead[]> => {
-  const workspaces = workspace === undefined ? (await payload.find({ collection: 'workspaces', select: {}, pagination: false, ...o })).docs.map((w) => w.id) : [workspace]
+  const workspaces = workspace === undefined ? (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, ...o })).docs.map((w) => w.id) : [workspace]
   const byWorkspace: Where[] = workspaces.map((w) => ({ and: [{ workspace: { equals: w } }, { or: [{ stage: { in: liveStages(workflowFor(w)) } }, { stage: { exists: false } }] }] as Where[] }))
   const where: Where = { and: [{ state: { equals: 'open' } }, { or: byWorkspace }] }
   const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.waitingFor && !(t.blockedBy?.length ?? 0))

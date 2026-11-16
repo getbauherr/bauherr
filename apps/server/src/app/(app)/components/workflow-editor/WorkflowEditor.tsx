@@ -5,7 +5,7 @@ import { describeChanges } from '../../../../lib/workflow-describe'
 import { addStep, checkpointsOf, isCustom, moveStep, readDraft, removeStep, setAsked, setCheckpoint, setMigrate, setStageField, stagesOf, takesRole, type NewStep } from '../../../../lib/workflow-edit'
 import { CHECKPOINT, stageTitle } from '../../../../lib/workflow-labels'
 import { cn } from '@/lib/utils'
-import { setExpediteLane } from '../../(shell)/workflow/edit/actions'
+import { setExpediteLane, setPreemptForHotfix } from '../../(shell)/workflow/edit/actions'
 import type { EditorData, VersionRow } from '../../lib/workflow-editor'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -53,6 +53,8 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
   const [ready, setReady] = useState(false)
   const [lane, setLane] = useState(data.expediteLane)
   const [laneError, setLaneError] = useState<string | null>(null)
+  const [preempt, setPreempt] = useState(data.preemptForHotfix)
+  const [preemptError, setPreemptError] = useState<string | null>(null)
   const [saving, start] = useTransition()
   const [saved, setSaved] = useState(false)
   const key = storeKey(data.slug, data.baseVersion)
@@ -188,6 +190,17 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
     })
   }
 
+  const flipPreempt = (on: boolean) => {
+    setPreempt(on)
+    setPreemptError(null)
+    setSaved(false)
+    start(async () => {
+      const r = await setPreemptForHotfix(on)
+      if (r.error) (setPreempt(!on), setPreemptError(r.error))
+      else setSaved(true)
+    })
+  }
+
   const a = data.active
   const status = a ? `Version ${a.version}${a.shipped ? ' (the shipped default)' : ''}, applied ${a.at.slice(0, 10)}${a.via === 'boot' ? ' from the boot file' : a.via === 'seed' ? ' by the seed' : a.by ? ` by ${a.by}` : ''}` : 'Shipped default'
   const panelFor = pick && doc ? <StepPanel key={pick} yaml={yaml} doc={doc} findings={findings} name={pick} roles={roles} skills={data.skills} pathSets={data.pathSets} mutate={mutate} onBack={() => setSelected(null)} /> : null
@@ -294,17 +307,27 @@ export function WorkflowEditor({ data, initialTab }: { data: EditorData; initial
                   {panelFor ?? <TeamTray doc={doc} roles={roles} highlight={highlight} onHighlight={setHighlight} onPlace={setPlacing} onDrag={setDragRole} />}
                 </aside>
               </div>
-              <label className="flex items-start justify-between gap-4 rounded-md border border-border bg-card p-4">
-                <span className="flex min-w-0 flex-col gap-1">
-                  <span className="font-medium text-foreground">Fast lane for urgent tickets</span>
-                  <span className="small text-muted-foreground">A ticket labelled bauherr:expedite skips triage, ignores the limits and needs no plan approval; one at a time. Saved right away.</span>
-                  {laneError && <span role="alert" className="small text-destructive">{laneError}</span>}
-                </span>
-                <span className="flex flex-none items-center gap-3">
-                  <span role="status" className="small text-muted-foreground">{saving ? 'Saving…' : saved ? 'Saved' : ''}</span>
-                  <Switch checked={lane} onChange={(e) => flipLane(e.target.checked)} aria-label="Fast lane for urgent tickets" />
-                </span>
-              </label>
+              <div className="flex flex-col gap-4 rounded-md border border-border bg-card p-4">
+                <label className="flex items-start justify-between gap-4">
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="font-medium text-foreground">Fast lane for urgent tickets</span>
+                    <span className="small text-muted-foreground">A ticket labelled bauherr:expedite skips triage, ignores the limits and needs no plan approval; one at a time. Saved right away.</span>
+                    {laneError && <span role="alert" className="small text-destructive">{laneError}</span>}
+                  </span>
+                  <span className="flex flex-none items-center gap-3">
+                    <span role="status" className="small text-muted-foreground">{saving ? 'Saving…' : saved ? 'Saved' : ''}</span>
+                    <Switch checked={lane} onChange={(e) => flipLane(e.target.checked)} aria-label="Fast lane for urgent tickets" />
+                  </span>
+                </label>
+                <label className="flex items-start justify-between gap-4">
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="font-medium text-foreground">Pause running work for a hotfix</span>
+                    <span className="small text-muted-foreground">A hotfix pauses one running session of its role.</span>
+                    {preemptError && <span role="alert" className="small text-destructive">{preemptError}</span>}
+                  </span>
+                  <Switch checked={preempt} onChange={(e) => flipPreempt(e.target.checked)} aria-label="Pause running work for a hotfix" />
+                </label>
+              </div>
             </>
           )}
         </div>

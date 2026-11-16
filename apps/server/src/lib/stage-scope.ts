@@ -1,10 +1,11 @@
 import type { Payload, Where } from 'payload'
 import { workflowFor } from './factory'
+import { live } from './workspace-delete'
 import { byKind, type Kind } from './workflow'
 
 /** Every Workspace with the name its workflow gives the `kind` stage (a Workspace whose workflow lacks the kind is left out). */
 export const stagesOfKind = async (payload: Payload, kind: Kind): Promise<{ workspace: number | string; name: string }[]> =>
-  (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
+  (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
     const name = byKind(workflowFor(w.id), kind)?.name
     return name ? [{ workspace: w.id, name }] : []
   })

@@ -95,7 +95,9 @@ type Who = { name: string | null; version: string | null; model: string | null; 
  * Reviving a row releases the Runs it still holds: the new process has no lease token for them.
  */
 export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; session?: unknown; label?: unknown }, who: Who) => {
-  const workspaces = (await c.payload.find({ collection: 'workspaces', pagination: false, depth: 0, overrideAccess: false, user: c.user as never, select: { slug: true } })).docs as Doc[]
+  let workspaces = (await c.payload.find({ collection: 'workspaces', pagination: false, depth: 0, overrideAccess: false, user: c.user as never, select: { slug: true, archivedAt: true } })).docs as Doc[]
+  if (typeof a.workspace === 'string' && workspaces.some((w) => w.slug === a.workspace && w.archivedAt)) throw new Error('Workspace deleted')
+  workspaces = workspaces.filter((w) => !w.archivedAt)
   const ws = typeof a.workspace === 'string' ? workspaces.find((w) => w.slug === a.workspace) : workspaces.length === 1 ? workspaces[0] : undefined
   if (!ws) throw new Error(typeof a.workspace === 'string' ? `unknown workspace "${a.workspace}"; yours: ${workspaces.map((w) => w.slug).join(', ')}` : `pass workspace; yours: ${workspaces.map((w) => w.slug).join(', ')}`)
   const wf = workflowFor(ws.id)

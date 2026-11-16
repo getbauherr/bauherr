@@ -9,7 +9,7 @@ import { migrations } from './migrations'
 import { poolOptions } from './lib/db-pool'
 import { loginLimits } from './lib/login-lock'
 import { secret } from './lib/secrets'
-import { syncManagedConfig } from './lib/gateway'
+import { renderTracing } from './lib/monitoring'
 
 const tenantCollections = Object.fromEntries(
   collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys', 'instance_state'].includes(c.slug)).map((c) => [c.slug, {}]),
@@ -39,7 +39,7 @@ export default buildConfig({
   collections,
   onInit: async (payload) => {
     await syncJobEnums(payload)
-    if (process.env.GATEWAY_ADMIN_URL) await syncManagedConfig().catch((e) => payload.logger.warn({ err: e }, 'gateway config sync failed at boot'))
+    if (process.env.GATEWAY_ADMIN_URL) await renderTracing(payload, undefined, true).catch((e) => payload.logger.warn({ err: e }, 'gateway config sync failed at boot'))
     await bootFactory(payload)
   },
   plugins: [

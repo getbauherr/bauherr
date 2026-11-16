@@ -17,7 +17,22 @@ const isolate = (h: Headers): Headers => {
 const fallback = (name: string, hint: string): Response =>
   new Response(`<!doctype html><meta charset="utf-8"><title>${name} not reachable</title><h1>${name} is not reachable from the server</h1><p>${hint}</p>`, { status: 502, headers: isolate(new Headers({ 'content-type': 'text/html; charset=utf-8' })) })
 
-type Target = { name: string; url: string | undefined; hint: string; writes: boolean }
+type Target = { name: string; url: string | undefined; hint: string; writes: boolean; redact?: boolean }
+
+const SECRETISH = /key|secret|token|passw|authoriz|credential/i
+const MASK = '[hidden]'
+
+/** Hides what must not reach the browser: every value of a `requestHeaderModifier` set/add map (the saved OTLP auth header lives there) and every string whose key looks like a secret. */
+export const redactSecrets = (v: unknown, at: 'top' | 'modifier' | 'headers' = 'top'): unknown => {
+  if (Array.isArray(v)) return v.map((x) => redactSecrets(x, at))
+  if (!v || typeof v !== 'object') return v
+  return Object.fromEntries(
+    Object.entries(v).map(([k, x]) => {
+      if (typeof x === 'string' && (at === 'headers' || SECRETISH.test(k))) return [k, MASK]
+      return [k, redactSecrets(x, k === 'requestHeaderModifier' ? 'modifier' : at === 'modifier' && (k === 'set' || k === 'add') ? 'headers' : 'top')]
+    }),
+  )
+}
 
 /**
  * Admin-only reverse proxy to a native UI. Anyone but an Admin gets a plain 404 (the route's existence stays hidden).
@@ -46,6 +61,14 @@ export async function proxyAdmin(req: Request, target: Target, path: string[] = 
     const res = await fetch(url, { method: req.method, headers, body: write ? req.body : undefined, redirect: 'manual', signal: abort.signal, ...(write && { duplex: 'half' }) } as RequestInit)
     const out = new Headers(res.headers)
     for (const h of DROP_RESPONSE) out.delete(h)
+    if (target.redact && req.method !== 'HEAD') {
+      const body = await res.text()
+      try {
+        return new Response(JSON.stringify(redactSecrets(JSON.parse(body))), { status: res.status, headers: isolate(out) })
+      } catch {
+        return new Response('Only JSON answers are shown here: anything else could carry a secret.', { status: 502, headers: isolate(new Headers({ 'content-type': 'text/plain; charset=utf-8' })) })
+      }
+    }
     return new Response(req.method === 'HEAD' ? null : res.body, { status: res.status, headers: isolate(out) })
   } catch {
     return fallback(target.name, target.hint)
@@ -66,5 +89,5 @@ export async function tracesUp(base = process.env.JAEGER_URL ?? JAEGER_DEFAULT):
 
 export const JAEGER_DEFAULT = 'http://jaeger:16686'
 export const TRACES_PREFIX = '/-/traces'
-/** Jaeger's own loopback origin: its UI cannot run inside the sandboxed proxy (assets load cross-origin from `null`), so the link opens it there (#469). */
-export const tracesUrl = (): string => process.env.JAEGER_PUBLIC_URL || `http://127.0.0.1:16686${TRACES_PREFIX}/`
+/** The traces UI Settings > Connections saved (`saved`), else Jaeger's own loopback origin: its UI cannot run inside the sandboxed proxy (assets load cross-origin from `null`), so the link opens it there (#469). */
+export const tracesUrl = (saved?: string): string => saved || process.env.JAEGER_PUBLIC_URL || `http://127.0.0.1:16686${TRACES_PREFIX}/`

@@ -94,6 +94,7 @@ test('a Product owner works in Requests: home, own Product, no factory internals
 
   // The same Ticket for a Bauherr shows what the Product owner must not see (screenshot for comparison).
   await control.goto(`/tickets/${alphaTicket}`)
+  await control.getByTestId('pane-tab-history').click()
   await expect(control.getByRole('heading', { name: 'Steps', exact: true })).toBeVisible()
   await shot(control, 'bauherr-ticket')
 })

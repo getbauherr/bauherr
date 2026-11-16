@@ -11,6 +11,10 @@ export type RunDoc = {
   stage: string
   kind?: string | null
   status: string
+  reasonKind?: string | null
+  /** Number of the hotfix Ticket that paused the Run (and its successor), and when it marked the running Run. */
+  preemptedFor?: number | null
+  preemptAt?: string | null
   mode: string
   sessionOwner: number | null
   agentKey: number | null

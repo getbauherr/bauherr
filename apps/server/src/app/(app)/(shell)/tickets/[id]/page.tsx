@@ -1,3 +1,4 @@
+import { pausingFor } from '../../../../../lib/preempt'
 import { PageTitle } from '../../../components/PageTitle'
 import { ProductOwnerTicket } from './ProductOwnerTicket'
 import { isProductOwner } from '../../../../../lib/people'
@@ -8,16 +9,12 @@ import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { OPEN_WORDS, sourceOf, type OpenItem } from '../../../../../lib/actions'
 import { decisionComments } from '../../../../../lib/forge-channel'
-import { expediteAction } from '../../../lib/actions'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
-import { Button } from '../../../components/ui/button'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
-import { DockOpen } from '../../../components/chat/DockOpen'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
-import { SubmitButton } from '../../../components/SubmitButton'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
 import { ProofList } from '../../../components/ProofList'
@@ -27,7 +24,8 @@ import { WorkflowGraph } from '../../../components/workflow/WorkflowGraph'
 import { StatusChip } from '../../../components/StatusChip'
 import { TicketFacts } from '../../../components/TicketFacts'
 import { Badge } from '../../../components/ui/badge'
-import { TicketDetails } from '../../../components/TicketDetails'
+import { TicketSplit, PaneTabs } from '../../../components/TicketSplit'
+import { CostPanel, StageStrip } from '../../../components/TicketNow'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../../lib/summary'
@@ -39,9 +37,9 @@ import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
 import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
-import { is, nameOf, roleOf, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
+import { board, is, kindOf, nameOf, roleOf, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
 import { activeVersion, workflowFor } from '../../../../../lib/factory'
-import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
@@ -51,6 +49,7 @@ import { KindChip } from '../../../components/RequestParts'
 import { KIND_LABEL } from '../../../../../lib/intake/kinds'
 import { waitingLabel } from '../../../../../lib/wip'
 import { fastLaneHolder } from '../../../../../lib/expedite'
+import { fastLaneStep } from '../../../../../lib/hold-text'
 import { connectedOfRole } from '../../../../../lib/presence'
 
 export const dynamic = 'force-dynamic'
@@ -92,9 +91,10 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const sheet = sheetOf(comments)?.body
   const decisions = sheet ? parseDecisions(sheet) : []
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
-  const missing = unansweredCritical(decisions, answers)
-  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const approved = labels.includes(APPROVED_PLAN)
+  const view = decisionView(decisions, answers, { stageKind: kindOf(wf, ticket.stage), approved, fastLane: !!ticket.expedite })
+  const missing = view.answerable ? unansweredCritical(decisions, answers) : []
+  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null
@@ -102,19 +102,18 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const reason = (todo === 'Needs you' ? capFindings?.replace(/^Bauherr needs a human:\s*/, '').split('\n')[0] : ['Cancelled', 'Run failed', 'Run needs you'].includes(todo ?? '') ? runs[0]?.error : null)?.slice(0, 300) ?? null
   const stagingSummary = latestWith(comments, SUMMARY_MARKER)?.body
   const acceptedStaging = labels.includes('bauherr:approved:staging')
-  const answered = decisions.filter((d) => answers[d.id]).length
   const holderNumbers = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
   const q = { depth: 0, overrideAccess: true } as const
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
-  const live0 = (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | undefined) ?? null
+  const live0 = (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null; preemptedFor?: number | null; pausing?: number | null } | undefined) ?? null
+  if (live0?.status === 'awaiting_session' && ticket.expedite) live0.pausing = await pausingFor(payload, live0.id)
   const roleId = live0?.status === 'awaiting_session' ? roleOf(wf, live0.stage)?.id : undefined
   const connected = roleId ? (await connectedOfRole(payload, P.ws.id, roleId)) > 0 : true
   const fastLane = await fastLaneHolder(payload, ticket)
   const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
-  const idle = fastLane && !todo && (!live0 || live0.status === 'queued') && !blockers.some((b) => b.state !== 'closed') ? { ...next, label: 'Queued', enabled: false, reason: `Waiting for the fast lane: #${fastLane}.`, links: [] } : next
-  const decisionsShown = decisions.length > 0 && !approved
+  const idle = fastLane && !todo && (!live0 || live0.status === 'queued') && !blockers.some((b) => b.state !== 'closed') ? fastLaneStep(next, fastLane) : next
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
-  return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, answered, idle, decisionsShown, history }
+  return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, view, idle, history }
 }
 type Derived = Awaited<ReturnType<typeof derive>>
 
@@ -123,7 +122,7 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.decisions.length - x.answered} answerable={x.decisionsShown ? x.decisions.length - x.answered : 0} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} answerable={x.view.answerable} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -147,13 +146,20 @@ async function Proof({ P, d }: { P: Page; d: Promise<Derived> }) {
 
 async function DecisionRow({ d }: { d: Promise<Derived> }) {
   const x = await d
-  return x.decisions.length > 0 ? <><dt>Decisions</dt><dd>{x.approved ? `${x.answered} answered` : `${x.answered} of ${x.decisions.length} answered · ${x.missing.length} critical open`}</dd></> : null
-}
-
-/** The entry to the conversation (read-only once the Ticket was sent on) for a Ticket that ever had open points. */
-async function ConversationLink({ ticket, d }: { ticket: number; d: Promise<Derived> }) {
-  const x = await d
-  return x.decisions.length > 0 ? <p className="m-0"><Button asChild variant="outline" size="sm" data-testid="open-conversation"><Link href={`/tickets/${ticket}?view=conversation`}>Conversation</Link></Button></p> : null
+  if (!x.decisions.length) return null
+  const { view } = x
+  return (
+    <>
+      <dt>Decisions</dt>
+      <dd>
+        {view.defaults.length ? (
+          <ul>{view.defaults.map((row) => <li key={row.id}>{`${row.id} ${row.title}: default taken (${view.takenBy})`}</li>)}</ul>
+        ) : (
+          `${view.answered} of ${x.decisions.length} answered${view.answerable ? ` · ${x.missing.length} critical open` : ''}`
+        )}
+      </dd>
+    </>
+  )
 }
 
 const Section = ({ id, title, children }: { id: string; title: string; children: ReactNode }) => (
@@ -163,14 +169,18 @@ const Section = ({ id, title, children }: { id: string; title: string; children:
   </section>
 )
 
-async function Sections({ d }: { d: Promise<Derived> }) {
+/** The documents of the Plan tab (`plan`) and the History tab (`history`). */
+async function Sections({ d, of }: { d: Promise<Derived>; of: 'plan' | 'history' }) {
   const x = await d
-  return (
+  return of === 'plan' ? (
     <>
       {x.capFindings && x.gate?.kind === 'review-cap' && <Markdown html={renderMarkdown(x.capFindings)} />}
-      {x.plan && <Section id="plan" title="Plan"><Markdown html={renderMarkdown(withoutDecisions(strip(x.plan, PLAN_MARKER)))} /></Section>}
-      {x.escalations && <Section id="escalations" title="Escalations"><Markdown html={renderMarkdown(strip(x.escalations, ESCALATION_MARKER))} /></Section>}
+      {x.plan ? <Section id="plan" title="Plan"><Markdown html={renderMarkdown(withoutDecisions(strip(x.plan, PLAN_MARKER)))} /></Section> : <p className="text-muted-foreground">No plan yet.</p>}
       {x.investigation && <Section id="investigation" title="Investigation"><Markdown html={renderMarkdown(strip(x.investigation, INVESTIGATION_MARKER))} /></Section>}
+    </>
+  ) : (
+    <>
+      {x.escalations && <Section id="escalations" title="Escalations"><Markdown html={renderMarkdown(strip(x.escalations, ESCALATION_MARKER))} /></Section>}
       {x.worklog && <Section id="worklog" title="Worklog"><Markdown html={renderMarkdown(withoutWorklogHeading(strip(x.worklog, WORKLOG_MARKER)))} /></Section>}
     </>
   )
@@ -247,133 +257,135 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
 
   const x = await d
   const waiting = x.labels.includes(NEEDS_REFINEMENT) && x.decisions.length > 0 && !x.approved
-  if (view === 'conversation' || (waiting && view !== 'ticket')) {
-    return (
-      <>
-        <PageTitle>{`#${ticket.number}`}</PageTitle>
-        <RefineConversation
-          ticket={ticket.id}
-          kind={kindOfLabels(ticket.labels) ? KIND_LABEL[kindOfLabels(ticket.labels)!] : null}
-          where={[status.label, status.detail].filter(Boolean).join(' · ')}
-          info={
-            <>
-              <TicketFacts product={product.name} stage={stageTitle(wf, stageOf(wf, ticket))} totals={steps.totals} runs={runs.length} models={[...new Set(runs.map((r) => r.model as string | null).filter((m): m is string => !!m))]} executor={executor} links={links} />
-              {(blockers.length > 0 || blocks.length > 0) && (
-                <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
-                  {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link></li>)}
-                  {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
-                </ul>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {canExpediteOf(P) && <form action={expediteAction}><input type="hidden" name="ticket" value={ticket.id} /><SubmitButton variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</SubmitButton></form>}
-                <DockOpen ticket={ticket.id} variant="outline">Comment</DockOpen>
-              </div>
-            </>
-          }
-        />
-      </>
-    )
-  }
+  const stages = board(wf).map((n) => ({ name: n, title: stageTitle(wf, n) }))
+  const dependencies = (blockers.length > 0 || blocks.length > 0) && (
+    <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
+      {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
+      {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
+    </ul>
+  )
+  const now = (
+    <>
+      <section className="flex flex-col gap-1" aria-label="Status" data-testid="status-block">
+        <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
+          <Badge variant={status.tone}>{status.label}</Badge>
+          {status.detail && <span>{status.detail}</span>}
+        </p>
+        {(status.who ?? executor) && <p className="small m-0 text-muted-foreground">{status.who ?? `Last: ${executor}`}</p>}
+      </section>
+      {epic ? (
+        <section className="flex flex-col gap-4" aria-labelledby="subtickets">
+          <h2 className="heading" id="subtickets">Sub-tickets</h2>
+          <EpicProgress wf={wf} epic={epic} />
+          <EpicChildren wf={wf} epic={epic} />
+        </section>
+      ) : (
+        <StageStrip stages={stages} steps={steps} />
+      )}
+      <div className="flex min-w-0 flex-col gap-4" data-testid="current-block">
+        {card && <DecisionCard compact item={{ ...card, product: undefined }} admin={admin} />}
+        <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
+      </div>
+      <section className="flex flex-col gap-2" aria-label="Links" data-testid="ticket-links">
+        {links.length > 0 && (
+          <ul className="small m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
+            {links.map((l) => <li key={l.href}><a className="text-primary" href={l.href} {...(/^https?:/.test(l.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{l.label}</a></li>)}
+          </ul>
+        )}
+        {dependencies}
+      </section>
+      {admin && <CostPanel runs={runs} />}
+      <details data-testid="ticket-about">
+        <summary className="label w-fit cursor-pointer text-muted-foreground">About</summary>
+        <div className="mt-4 flex flex-col gap-4">
+          <TicketFacts product={product.name} stage={stageTitle(wf, stageOf(wf, ticket))} totals={steps.totals} runs={runs.length} models={[...new Set(runs.map((r) => r.model as string | null).filter((m): m is string => !!m))]} executor={executor} links={[]} />
+          <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
+            {admin && <><dt>Budget</dt><dd className="mono">{budget}</dd></>}
+            {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
+            {ticket.releasedAt && <><dt>Released</dt><dd>{ago(ticket.releasedAt)}</dd></>}
+            {inherited && <><dt>Plan</dt><dd>Approved with parent <Link className="text-primary" href={`/tickets/${inherited.id}`}>#{inherited.number}</Link></dd></>}
+            {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
+            <Suspense fallback={null}><DecisionRow d={d} /></Suspense>
+          </dl>
+          {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} counters={(['reviewRounds', 'gatePendingAttempts', 'triageAttempts', 'mergeFailures', 'trainFailures', 'conflictReturns', 'mainMergeNoops', 'releaseAttempts'] as const).map((c) => [c, Number(ticket[c] ?? 0)] as [string, number])} />}
+        </div>
+      </details>
+    </>
+  )
+  const history = (
+    <>
+      {!epic && (
+        <>
+          <section className="flex flex-col gap-2" aria-labelledby="path">
+            <h2 className="heading flex flex-wrap items-baseline gap-x-3" id="path">Path{steps.rounds.map((r) => <span key={r.stage} className="small font-normal text-muted-foreground" data-testid="path-rounds">{r.title}: {r.n} rounds</span>)}</h2>
+            <WorkflowGraph wf={wf} variant="path" path={steps.path} />
+          </section>
+          <Section id="steps" title="Steps"><TicketSteps steps={steps} decision={card ? { ticket: ticket.id, ask: card.decision.ask } : null} /></Section>
+        </>
+      )}
+      <Suspense fallback={<Pulse h="h-24" />}><Sections d={d} of="history" /></Suspense>
+      {shots.length > 0 && (
+        <section className="flex flex-col gap-4" aria-labelledby="attachments">
+          <h2 className="heading" id="attachments">Attachments</h2>
+          <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+            {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
+          </ul>
+        </section>
+      )}
+      <section className="flex flex-col gap-4" aria-labelledby="runs">
+        <h2 className="heading" id="runs">Runs</h2>
+        {runs.length ? (
+          <Table>
+            <thead>
+              <tr className="label">{(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence']).map((h) => <th key={h}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  {admin ? (
+                    <>
+                      <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
+                      <td>{r.stage}</td>
+                    </>
+                  ) : (
+                    <td><Link className="text-primary" href={`/runs/${r.id}`}>{r.stage}</Link></td>
+                  )}
+                  <td><StatusChip status={r.status} /></td>
+                  {admin ? <td className="mono">{duration(r)}</td> : <td className="text-muted-foreground">{ago(r.createdAt)}</td>}
+                  <td className="small max-w-[32ch] truncate text-muted-foreground" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <p className="text-muted-foreground">No Runs yet.</p>
+        )}
+      </section>
+    </>
+  )
 
   return (
     <div className="flex flex-col gap-4">
-      <Suspense fallback={<Pulse h="h-12" />}><Top P={P} d={d} /></Suspense>
       <PageTitle>{`#${ticket.number}`}</PageTitle>
-      <div className="@container">
-        <div className="grid items-start gap-6 @3xl:grid-cols-[minmax(0,1fr)_19rem]">
-          <div className="flex min-w-0 flex-col gap-6">
-            <header className="flex flex-col gap-2">
-              <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
-              {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
-              <Suspense fallback={null}><ConversationLink ticket={ticket.id} d={d} /></Suspense>
-              <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
-                <Badge variant={status.tone}>{status.label}</Badge>
-                {status.detail && <span>{status.detail}</span>}
-                {(status.who ?? executor) && <span className="small text-muted-foreground">{status.who ?? `Last: ${executor}`}</span>}
-              </p>
-            </header>
-            {card && <div className="max-w-[640px]"><DecisionCard compact item={{ ...card, product: undefined }} admin={admin} /></div>}
-            <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
-            <Suspense fallback={null}><Proof P={P} d={d} /></Suspense>
-            {epic ? (
-              <section className="flex flex-col gap-4" aria-labelledby="subtickets">
-                <h2 className="heading" id="subtickets">Sub-tickets</h2>
-                <EpicProgress wf={wf} epic={epic} />
-                <EpicChildren wf={wf} epic={epic} />
-              </section>
-            ) : (
-              <>
-                <section className="flex flex-col gap-2" aria-labelledby="path">
-                  <h2 className="heading flex flex-wrap items-baseline gap-x-3" id="path">Path{steps.rounds.map((r) => <span key={r.stage} className="small font-normal text-muted-foreground" data-testid="path-rounds">{r.title}: {r.n} rounds</span>)}</h2>
-                  <WorkflowGraph wf={wf} variant="path" path={steps.path} />
-                </section>
-                <Section id="steps" title="Steps"><TicketSteps steps={steps} decision={card ? { ticket: ticket.id, ask: card.decision.ask } : null} /></Section>
-              </>
-            )}
-
-            <TicketDetails key={ticket.id}>
-              <dl className="body m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:text-muted-foreground">
-                {admin && <><dt>Budget</dt><dd className="mono">{budget}</dd></>}
-                {admin && <><dt>Model</dt><dd className="mono">{tiers.map(([tier, m]) => `${tier}: ${m}`).join(' · ') || '—'}</dd></>}
-                {ticket.releasedAt && <><dt>Released</dt><dd>{ago(ticket.releasedAt)}</dd></>}
-                {inherited && <><dt>Plan</dt><dd>Approved with parent <Link className="text-primary" href={`/tickets/${inherited.id}`}>#{inherited.number}</Link></dd></>}
-                {admin && ticket.mergeSha && <><dt>Merge commit</dt><dd className="mono">{ticket.mergeSha}</dd></>}
-                <Suspense fallback={null}><DecisionRow d={d} /></Suspense>
-              </dl>
-              <Suspense fallback={<Pulse h="h-24" />}><Sections d={d} /></Suspense>
-              <Noted items={noted ?? []} />
-              {shots.length > 0 && (
-                <section className="flex flex-col gap-4" aria-labelledby="attachments">
-                  <h2 className="heading" id="attachments">Attachments</h2>
-                  <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
-                    {shots.map((m) => <li key={m.id}><a href={`/intake/api/media/${m.id}`} target="_blank" rel="noreferrer"><img className="block h-24 w-auto max-w-[200px] rounded-sm border border-border object-cover" src={`/intake/api/media/${m.id}`} alt={m.name} loading="lazy" /></a></li>)}
-                  </ul>
-                </section>
-              )}
-              <section className="flex flex-col gap-4" aria-labelledby="runs">
-                <h2 className="heading" id="runs">Runs</h2>
-                {runs.length ? (
-                  <Table>
-                    <thead>
-                      <tr className="label">{(admin ? ['Run', 'Stage', 'Status', 'Duration', 'Evidence'] : ['Stage', 'Status', 'When', 'Evidence']).map((h) => <th key={h}>{h}</th>)}</tr>
-                    </thead>
-                    <tbody>
-                      {runs.map((r) => (
-                        <tr key={r.id}>
-                          {admin ? (
-                            <>
-                              <td className="mono"><Link className="text-primary" href={`/runs/${r.id}`}>#{r.id}</Link></td>
-                              <td>{r.stage}</td>
-                            </>
-                          ) : (
-                            <td><Link className="text-primary" href={`/runs/${r.id}`}>{r.stage}</Link></td>
-                          )}
-                          <td><StatusChip status={r.status} /></td>
-                          {admin ? <td className="mono">{duration(r)}</td> : <td className="text-muted-foreground">{ago(r.createdAt)}</td>}
-                          <td className="small max-w-[32ch] truncate text-muted-foreground" title={excerpt(r.evidence)}>{excerpt(r.evidence) || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                ) : (
-                  <p className="text-muted-foreground">No Runs yet.</p>
-                )}
-              </section>
-            </TicketDetails>
-          </div>
-
-          <aside className="flex min-w-0 flex-col gap-6 @3xl:sticky @3xl:top-[calc(var(--next-step-h,0px)+var(--space-4))]" aria-label="About this Ticket">
-            <TicketFacts product={product.name} stage={stageTitle(wf, stageOf(wf, ticket))} totals={steps.totals} runs={runs.length} models={[...new Set(runs.map((r) => r.model as string | null).filter((m): m is string => !!m))]} executor={executor} links={links} />
-            {(blockers.length > 0 || blocks.length > 0) && (
-              <ul className="small m-0 flex list-none flex-col gap-1 p-0" aria-label="Dependencies">
-                {blockers.map((b) => <li key={b.id}>Blocked by <Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number} {b.title}</Link> <span className="text-muted-foreground">({b.state === 'closed' ? 'closed' : 'open'})</span></li>)}
-                {blocks.length > 0 && <li>Blocks {blocks.map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link className="text-primary" href={`/tickets/${b.id}`}>#{b.number}</Link></span>)}</li>}
-              </ul>
-            )}
-            {admin && <FixState wf={wf} ticket={ticket.id} stage={ticket.stage ?? nameOf(wf, 'triage')} counters={(['reviewRounds', 'gatePendingAttempts', 'triageAttempts', 'mergeFailures', 'trainFailures', 'conflictReturns', 'mainMergeNoops', 'releaseAttempts'] as const).map((c) => [c, Number(ticket[c] ?? 0)] as [string, number])} />}
-          </aside>
-        </div>
-      </div>
+      <header className="flex flex-col gap-2">
+        <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
+        {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
+      </header>
+      <TicketSplit
+        defaultTab={waiting ? 'conversation' : 'status'}
+        conversation={<RefineConversation embedded ticket={ticket.id} kind={kindOfLabels(ticket.labels) ? KIND_LABEL[kindOfLabels(ticket.labels)!] : null} where={[status.label, status.detail].filter(Boolean).join(' · ')} />}
+        bar={<Suspense fallback={<Pulse h="h-12" />}><Top P={P} d={d} /></Suspense>}
+        now={
+          <PaneTabs
+            tabs={[
+              { id: 'now', label: 'Now', body: now },
+              { id: 'plan', label: 'Plan', body: <Suspense fallback={<Pulse h="h-24" />}><Sections d={d} of="plan" /></Suspense> },
+              { id: 'proof', label: 'Proof', body: <><Suspense fallback={null}><Proof P={P} d={d} /></Suspense><Noted items={noted ?? []} /></> },
+              { id: 'history', label: 'History', body: history },
+            ]}
+          />
+        }
+      />
     </div>
   )
 }

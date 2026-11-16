@@ -34,7 +34,7 @@ export const evenRanks = (n: number): string[] => {
   })
 }
 
-export type FrontierTicket = { id: number | string; number: number; workspace?: number | string | { id: number | string } | null; stage?: string | null; rank?: string | null; blocked?: boolean; expediting?: boolean; reviewRounds?: number | null }
+export type FrontierTicket = { id: number | string; number: number; workspace?: number | string | { id: number | string } | null; stage?: string | null; rank?: string | null; blocked?: boolean; expediting?: boolean; /** Its Run was paused for a hotfix: first in its stage once no expedite Run goes before it. */ resumed?: boolean; reviewRounds?: number | null }
 export type FrontierRun = { stage: string; status: string; mode?: string; previousRun?: unknown }
 
 /** Expedite first, then right to left (release, review, build, plan, triage), then the owner's rank, then number; blocked and leased Tickets last. Pure; `latest` maps Ticket id to its latest Run. */
@@ -53,5 +53,5 @@ export const stageGroup = (wf: Workflow, stage?: string | null): number => {
   return i < 0 ? rank.length : i
 }
 
-/** Comparator for the order work is done in: Tickets served by the expedite lane first, then stage group, the owner's rank, number. */
-export const executionOrder = (a: FrontierTicket, b: FrontierTicket, wf: Workflow = workflowFor(a.workspace)): number => Number(!!b.expediting) - Number(!!a.expediting) || stageGroup(wf, a.stage) - stageGroup(wf, b.stage) || cmp(a.rank, b.rank) || a.number - b.number
+/** Comparator for the order work is done in: Tickets served by the expedite lane first, then stage group, Tickets resumed after a hotfix, the owner's rank, number. */
+export const executionOrder = (a: FrontierTicket, b: FrontierTicket, wf: Workflow = workflowFor(a.workspace)): number => Number(!!b.expediting) - Number(!!a.expediting) || stageGroup(wf, a.stage) - stageGroup(wf, b.stage) || Number(!!b.resumed) - Number(!!a.resumed) || cmp(a.rank, b.rank) || a.number - b.number

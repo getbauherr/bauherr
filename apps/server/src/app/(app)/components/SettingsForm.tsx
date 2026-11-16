@@ -22,7 +22,10 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
   const [round, setRound] = useState(0)
   useEffect(() => {
     setRound((n) => n + 1)
-    if (state.saved) setDirty(false)
+    if (state.saved) {
+      setDirty(false)
+      ref.current?.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => { i.value = '' }) // write-only secrets are not kept in the page after a save
+    }
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
   useEffect(() => {

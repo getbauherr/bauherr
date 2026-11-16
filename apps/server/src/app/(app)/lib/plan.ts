@@ -1,3 +1,5 @@
+import type { Kind } from '../../../lib/workflow-rules'
+
 export const PLAN_MARKER = '<!-- bauherr:plan -->'
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 export const TRIAGE_MARKER = '<!-- bauherr:triage -->'
@@ -120,6 +122,13 @@ export const formatDecision = (d: Decision): string => {
 export const addedOf = (comments: Commentish[]): Decision[] => {
   const c = answersOf(comments)
   return c ? parseDecisions(c.body) : []
+}
+
+/** What the decision sheet shows: while the Ticket is in Triage or Plan and the plan is not approved, unanswered rows are answerable; past that, they are the defaults taken. */
+export const decisionView = (decisions: Decision[], answers: Record<string, string>, { stageKind, approved, fastLane = false }: { stageKind: Kind | undefined; approved: boolean; fastLane?: boolean }): { open: number; answered: number; answerable: number; defaults: Decision[]; takenBy: 'fast lane' | 'at approval' } => {
+  const unanswered = decisions.filter((d) => !answers[d.id])
+  const sheetOpen = !approved && !fastLane && (stageKind === 'triage' || stageKind === 'plan')
+  return { open: unanswered.length, answered: decisions.length - unanswered.length, answerable: sheetOpen ? unanswered.length : 0, defaults: sheetOpen ? [] : unanswered, takenBy: fastLane ? 'fast lane' : 'at approval' }
 }
 
 export const unansweredCritical = (decisions: Decision[], answers: Record<string, string>): Decision[] =>

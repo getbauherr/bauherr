@@ -21,7 +21,7 @@ import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
 import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
-import { laneOn, noteIgnored, startExpedites } from '../lib/expedite'
+import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
 import { syncGates } from '../lib/gates'
 import { syncProgress } from '../lib/progress'
@@ -39,6 +39,8 @@ import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
+import { inLiveWorkspace, live } from '../lib/workspace-delete'
+import { PREEMPT_GRACE_MS, preemptSweep } from '../lib/preempt'
 import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
 
@@ -133,7 +135,7 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
  */
 /** Returns how many Tickets it acted on (Runs started plus Tickets given up on). */
 export const triageSweep = async (payload: Payload): Promise<number> => {
-  const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
+  const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }, await inLiveWorkspace(payload)] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
   const candidates = (open.docs as Record<string, any>[])
     .filter((t) => !(t.triagedAt && t.sourceUpdatedAt && new Date(t.triagedAt).getTime() >= new Date(t.sourceUpdatedAt).getTime()) && !t.mergeSha && !t.expedite && triageable(workflowFor(t.workspace), { state: t.state, labels: t.labels ?? [], assignee: t.assignee }))
@@ -193,30 +195,31 @@ export const RELEASED_BY = 'released by '
 export const abandonRun = async (
   payload: Payload,
   run: Record<string, any>,
-  o: { reason: string; escalate: boolean; staleBefore?: string },
+  o: { reason: string; escalate: boolean; staleBefore?: string; /** A hotfix took the session: never `needs_human`, no strong retry, the successor resumes first. */ preempted?: boolean },
 ): Promise<'abandoned' | 'needs_human' | null> => {
-  const prev = o.escalate && run.previousRun ? await payload.findByID({ collection: 'runs', id: id(run.previousRun), depth: 0, overrideAccess: true }) : null
-  const status = prev?.status === 'abandoned' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
+  const prev = o.escalate && !o.preempted && run.previousRun ? await payload.findByID({ collection: 'runs', id: id(run.previousRun), depth: 0, overrideAccess: true }) : null
+  const status = prev?.status === 'abandoned' && prev.reasonKind !== 'preempted' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
-  // The successor is the strong retry (ladder step 2); an investigation Run stays one.
-  const escalation = run.escalation ?? (run.investigation || ['triage', 'scan', 'docs'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
+  // The successor is the strong retry (ladder step 2); an investigation Run stays one. A preempted Run's successor keeps the tier it had.
+  const escalation = run.escalation ?? (o.preempted || run.investigation || ['triage', 'scan', 'docs'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
+  const reasonKind = status === 'needs_human' ? 'stuck' : o.preempted ? 'preempted' : null
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
-      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "reason_kind" = ${status === 'needs_human' ? 'stuck' : null}::"enum_runs_reason_kind", "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
+      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
     )
     if (!done.rows.length) return false
     // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
       await tx.execute(
-        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb)`,
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation", "preempted_by", "preempted_for") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb, ${o.preempted ? run.preemptedBy ?? null : null}, ${o.preempted ? run.preemptedFor ?? null : null})`,
       )
     }
     return true
   })
   if (!ended) return null
   await record(payload, id(run.ticket), { run: run.id, outcome: status, cause: 'run:abandoned' })
-  if (status === 'abandoned' && escalation?.step === 2) {
+  if (status === 'abandoned' && !o.preempted && escalation?.step === 2) {
     try {
       const { noteRetry } = await import('../lib/escalation')
       const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
@@ -302,6 +305,7 @@ const renewOnPushes = async (payload: Payload, now: number): Promise<number> => 
 /** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). A Build Run that pushed to its branch is renewed before it expires (`renewOnPushes`). Returns how many were abandoned. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   await renewOnPushes(payload, now)
+  await preemptSweep(payload)
   const before = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   const stale = await payload.find({
     collection: 'runs',
@@ -315,12 +319,35 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
     try {
       const wf = workflowFor(run.workspace)
       const reason = `session lease expired (last sign of life ${new Date(run.heartbeatAt).toISOString()}, last call ${run.lastLeaseCall ?? 'none'})`
-      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan', 'docs'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before })) handled++
+      if (await abandonRun(payload, run, { reason, escalate: !['triage', 'scan', 'docs'].includes(kindOfRun(wf, run) ?? ''), staleBefore: before, preempted: !!run.preemptAt })) handled++
     } catch (e) {
       payload.logger.error({ err: e, run: run.id }, 'abandonRun failed')
     }
   }
-  return handled
+  return handled + (await forcePreempted(payload, now))
+}
+
+/**
+ * Marked Runs that did not release within PREEMPT_GRACE_MS are ended as `preempted` (abandoned, successor, never escalated), but only while the hotfix still waits for a session and its Ticket is still expediting;
+ * otherwise the mark is cleared and the victim keeps working. Returns how many it ended.
+ */
+const forcePreempted = async (payload: Payload, now: number): Promise<number> => {
+  const due = await payload.find({ collection: 'runs', where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { preemptAt: { less_than_equal: new Date(now - PREEMPT_GRACE_MS).toISOString() } }] }, pagination: false, depth: 0, overrideAccess: true })
+  let ended = 0
+  for (const run of due.docs) {
+    try {
+      const hot = run.preemptedBy ? ((await payload.findByID({ collection: 'runs', id: run.preemptedBy, depth: 0, overrideAccess: true }).catch(() => null)) as Record<string, any> | null) : null
+      const ticket = hot ? ((await payload.findByID({ collection: 'tickets', id: id(hot.ticket), depth: 0, overrideAccess: true })) as Record<string, any>) : null
+      if (!hot || hot.status !== 'awaiting_session' || !ticket || ticket.state !== 'open' || !(await isExpediting(payload, ticket))) {
+        await payload.db.drizzle.execute(sql`UPDATE "runs" SET "preempt_at" = NULL, "preempted_by" = NULL, "preempted_for" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "status" = 'running'`)
+        continue
+      }
+      if (await abandonRun(payload, run, { reason: `preempted by hotfix #${run.preemptedFor}: no release within 2 minutes`, escalate: false, preempted: true })) ended++
+    } catch (e) {
+      payload.logger.error({ err: e, run: run.id }, 'forcing a preempted Run failed')
+    }
+  }
+  return ended
 }
 
 /** Second reclaimer: `expire-sessions` and this task reclaim each other, so a poller kill mid-run of either cannot leave a row `processing` forever. */
@@ -385,6 +412,18 @@ export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; outpu
   },
 }
 
+/** Every 30 seconds: stores the checks of each open factory MR on its Ticket (`lib/ci-summary.ts`). */
+export const storeCiSummaryTask: TaskConfig<{ input: Record<string, never>; output: { stored: number } }> = {
+  slug: 'store-ci-summary',
+  schedule: scheduled('*/30 * * * * *'),
+  retries: 0,
+  concurrency: () => 'store-ci-summary',
+  handler: async ({ req }) => {
+    await loadWorkflows(req.payload)
+    return { output: { stored: await (await import('../lib/ci-summary')).storeCiSummaries(req.payload) } }
+  },
+}
+
 export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; output: { published: number } }> = {
   slug: 'publish-release',
   schedule: scheduled('0 * * * * *'),
@@ -431,7 +470,7 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
     await loadWorkflows(req.payload)
     const { payload } = req
     let indexed = 0
-    for (const w of (await payload.find({ collection: 'workspaces', limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
+    for (const w of (await payload.find({ collection: 'workspaces', where: live, limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
       try {
         if (await resync(payload, w.id)) indexed++
       } catch (e) {
@@ -447,7 +486,7 @@ const MAX_GATE_ATTEMPTS = 30
 
 /** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
-  const or: Where[] = (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
+  const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
     const wf = workflowFor(w.id)
     const plan = byKind(wf, 'plan')?.name
     return plan ? [{ and: [{ workspace: { equals: w.id } }, { stage: { equals: plan } }, ...(gateOn(wf, 'plan') ? [{ expedite: { equals: true } }] : [])] as Where[] }] : []
@@ -462,7 +501,7 @@ const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { s
 
 /** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
-  const or: Where[] = (await payload.find({ collection: 'workspaces', select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.map((w) => {
+  const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.map((w) => {
     const wf = workflowFor(w.id)
     const plan = byKind(wf, 'plan')?.name ?? ''
     const build = byKind(wf, 'build')?.name ?? ''
@@ -516,7 +555,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     await loadWorkflows(req.payload)
     const { payload } = req
     let aliasFixes = 0
-    const sources = await payload.find({ collection: 'ticket_sources', limit: 1000, pagination: false, depth: 0, overrideAccess: true })
+    const sources = await payload.find({ collection: 'ticket_sources', where: await inLiveWorkspace(payload), limit: 1000, pagination: false, depth: 0, overrideAccess: true })
     for (const src of sources.docs) {
       try {
         const wf = workflowFor(src.workspace)
@@ -665,6 +704,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     await pullWaiting(payload)
     await startExpedites(payload)
     await startMissingRuns(payload)
+    await preemptSweep(payload)
     await advancePlans(payload)
     await triageSweep(payload)
     return { output: { polled: sources.docs.length } }
@@ -897,7 +937,7 @@ export const SCANS_PER_TICK = 5
 
 /** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning, and one whose start throws is logged and backed off (`lastScanAt` set). Returns the Runs created. */
 export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
-  const products = (await payload.find({ collection: 'products', where: { 'securityScan.enabled': { equals: true } }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
+  const products = (await payload.find({ collection: 'products', where: { and: [{ 'securityScan.enabled': { equals: true } }, await inLiveWorkspace(payload)] }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
   const since = (p: Record<string, any>) => new Date(p.securityScan?.lastScanAt ?? p.createdAt)
   const due = products
     .filter((p) => {
@@ -938,4 +978,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, storeCiSummaryTask, securityScanTick]

@@ -1,3 +1,4 @@
+import { live } from '../../../../../lib/workspace-delete'
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import { resolveAgentKey } from '../../../../../lib/api-key'
@@ -19,7 +20,7 @@ const admin = async (req: Request, slug: string) => {
   const user = (await payload.auth({ headers, req: { headers } as never })).user as { collection?: string; role?: string; email?: string } | null
   if (user?.collection !== 'bauherren') return err(401, 'unauthorized')
   if (user.role !== 'admin') return err(403, 'only an Admin can change the workflow')
-  const ws = (await payload.find({ collection: 'workspaces', where: { slug: { equals: slug } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  const ws = (await payload.find({ collection: 'workspaces', where: { and: [{ slug: { equals: slug } }, live] }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
   return ws ? { payload, user: user as { email: string }, workspace: ws.id as number } : err(404, `no Workspace "${slug}"`)
 }
 

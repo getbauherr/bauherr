@@ -182,7 +182,7 @@ describe('one at a time', () => {
     expect(await fastLaneHolder(payload, b)).toBe(holder.n)
     expect(await fastLaneHolder(payload, await reload(holder.id))).toBeNull()
     const { loadOverviewRows } = await import('../src/app/(app)/lib/overview')
-    expect((await loadOverviewRows(ws, false)).tickets.find((t) => t.number === second.number)?.queuedWhy).toBe(`Waiting for the fast lane: #${holder.n}`)
+    expect((await loadOverviewRows(ws, false)).tickets.find((t) => t.number === second.number)?.queuedWhy).toBe(`Waiting for the fast lane: #${holder.n} holds it.`)
   })
 
   it('Settings > Factory > Workflow off: the label is ignored with a Comment and Triage runs', async () => {

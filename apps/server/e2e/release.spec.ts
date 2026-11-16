@@ -32,7 +32,7 @@ test('accept on staging moves the Ticket to done', async ({ page }) => {
   await page.getByRole('button', { name: 'Accept' }).click()
   await expect(page.getByText('Accepted on staging')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Accept' })).toHaveCount(0)
-  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText(/done/i)
+  await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText(/done/i)
 })
 
 test('a production-gated Ticket waits for an explicit production approval', async ({ page }) => {
@@ -40,7 +40,7 @@ test('a production-gated Ticket waits for an explicit production approval', asyn
   await expect(page.getByRole('button', { name: 'Approve production' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Accept' }).click()
   await expect(page.getByTestId('action-bar')).toContainText('Approve the production deploy.')
-  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText('Staging')
+  await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText('Staging')
   await page.getByRole('button', { name: 'Approve production' }).click()
   await expect(page.getByText('Accepted on staging · Approved for production')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Approve production' })).toHaveCount(0)
@@ -51,13 +51,13 @@ test('request changes sends the Ticket back to build', async ({ page }) => {
   await page.getByTestId('action-bar').getByRole('link', { name: 'Request changes' }).click()
   await page.getByLabel('What needs to change').fill('The filter ignores the date range')
   await page.getByRole('button', { name: 'Request changes' }).click()
-  await expect(page.getByTestId('ticket-path').locator('[data-current]')).toContainText(/build/i)
+  await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText(/build/i)
   await expect(page.getByRole('button', { name: 'Accept on staging' })).toHaveCount(0)
 })
 
 test('Details shows the merge commit to an Admin only', async ({ page }) => {
   await open(page, 'Ship the export header')
-  await page.getByText('Details', { exact: true }).click()
+  await page.getByText('About', { exact: true }).click()
   await expect(page.getByText('abc1234def')).toBeVisible()
   await page.context().clearCookies()
   await page.goto('/login')
@@ -66,9 +66,9 @@ test('Details shows the merge commit to an Admin only', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('[data-testid=workflow]')).toBeVisible()
   await open(page, 'Ship the export header')
-  await page.getByText('Details', { exact: true }).click()
+  await page.getByTestId('pane-tab-history').click()
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible()
-  await expect(page.locator('details', { has: page.locator('#details') })).not.toContainText(/abc1234|Merge commit/)
+  await expect(page.getByTestId('now-pane')).not.toContainText(/abc1234|Merge commit/)
 })
 
 test('dependencies are visible on cards and the Ticket page', async ({ page }) => {
@@ -76,10 +76,8 @@ test('dependencies are visible on cards and the Ticket page', async ({ page }) =
   await expect(row.locator('[data-status=blocked]')).toHaveText('Blocked')
   await expect(row.getByTestId('status-detail')).toHaveText('by #8')
   await row.getByRole('link', { name: 'Blocked: add the invoice filter' }).click()
-  await page.getByText('Details', { exact: true }).click()
   await expect(page.getByText('Blocked by #8 Blocker: migrate the invoice table')).toBeVisible()
   await page.getByRole('link', { name: '#8 Blocker: migrate the invoice table' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('#8')
-  await page.getByText('Details', { exact: true }).click()
   await expect(page.getByText('Blocks #9')).toBeVisible()
 })

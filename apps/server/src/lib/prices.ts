@@ -1,3 +1,4 @@
+import { live } from './workspace-delete'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
@@ -158,7 +159,7 @@ const rateOf = (c: Catalog | undefined, model: string): Rates | undefined => {
 /** Tier and role models of every Workspace, as bare model names. */
 export const modelsInUse = async (payload: Payload): Promise<string[]> => {
   const out = new Set<string>()
-  const workspaces = (await payload.find({ collection: 'workspaces', pagination: false, depth: 0, overrideAccess: true, select: { slug: true, modelByTier: true } })).docs as unknown as { id: number; slug: string; modelByTier?: Record<string, string> | null }[]
+  const workspaces = (await payload.find({ collection: 'workspaces', where: live, pagination: false, depth: 0, overrideAccess: true, select: { slug: true, modelByTier: true } })).docs as unknown as { id: number; slug: string; modelByTier?: Record<string, string> | null }[]
   for (const ws of workspaces) {
     try {
       for (const m of Object.values(await tierModels(payload, ws as never))) out.add(modelName(m))

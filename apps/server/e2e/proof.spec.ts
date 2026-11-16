@@ -28,6 +28,7 @@ test('the Ticket page lists what was asked with its proof, the missing proof and
   await signIn(page)
   await page.goto('/')
   await page.locator('.card', { hasText: 'Ship the proof export' }).first().getByRole('link', { name: /Ship the proof export/ }).click()
+  await page.getByTestId('pane-tab-proof').click()
   const proof = page.getByTestId('proof-list')
   await expect(proof).toBeVisible()
   const rows = proof.getByTestId('proof-row')
@@ -66,6 +67,7 @@ test('the proof file is served to signed-in members only, with safe headers', as
   await signIn(page)
   await page.goto('/')
   await page.locator('.card', { hasText: 'Ship the proof export' }).first().getByRole('link', { name: /Ship the proof export/ }).click()
+  await page.getByTestId('pane-tab-proof').click()
   const src = await page.getByTestId('proof-pair').getByRole('img').first().getAttribute('src')
   // Fetched from the page like the <img> does: a request without browser headers (Sec-Fetch-Site / Origin) is not a signed-in one for Payload's cookie check.
   const signedIn = await page.evaluate(async (u) => {

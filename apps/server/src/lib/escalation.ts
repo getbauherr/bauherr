@@ -66,7 +66,7 @@ export const budgetOut = async (payload: Payload, workspace: number | string): P
 const previousStopped = async (payload: Payload, run: Doc): Promise<Doc | null> => {
   if (!run.previousRun) return null
   const prev = (await payload.findByID({ collection: 'runs', id: id(run.previousRun), ...o }).catch(() => null)) as Doc | null
-  return prev && prev.stage === run.stage && ['failed', 'abandoned', 'needs_human'].includes(prev.status) ? prev : null
+  return prev && prev.stage === run.stage && prev.reasonKind !== 'preempted' && ['failed', 'abandoned', 'needs_human'].includes(prev.status) ? prev : null
 }
 
 /** The ladder ended: the Run's `reasonKind` makes it a need for the owner; the Comment line names the history and the reason. Returns false. */
@@ -107,10 +107,11 @@ export const resumeEscalationNotes = async (payload: Payload): Promise<number> =
 
 /**
  * One rung up the ladder for a stopped Run (failed, abandoned or `needs_human` + `stuck`): a strong retry with doubled caps, an investigation (Build, after a strong Run failed) or the owner.
- * Returns what it started, or false when the ladder ended at the owner (budget out, no rung left, or a human-only reason).
+ * Returns what it started, or false when the ladder ended at the owner (budget out, no rung left, or a human-only reason). A `preempted` Run (a hotfix took its session) never climbs it, and does not count as a failed predecessor.
  * Retry-safe: the Comment line is keyed by the stopped Run and written before the Run, which `startRunIfNeeded` creates atomically with its `escalation`.
  */
 export const escalate = async (payload: Payload, t: Doc, run: Doc, reason: string): Promise<string | false> => {
+  if (run.reasonKind === 'preempted') return false
   const prev = await previousStopped(payload, run)
   const step = nextStep(run, !!prev)
   if (step === 'owner') return toOwner(payload, t, run, run.reasonKind ?? 'no rung left')

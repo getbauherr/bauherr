@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
 import { addDataAndFileToRequest, APIError, generatePayloadCookie, headersWithCors, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, ensureRouterKey, gatewayEnabled, newKey, removeProvider, revokeRouterKey, syncRouterKey, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
+import { monitoringErrors, renderTracing, SERVICES, type Service } from './lib/monitoring'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
@@ -26,12 +27,13 @@ const wfOfDoc = (data?: Doc, sibling?: Doc) => {
 
 const AMBIENT_LOCK = 143
 const ACCOUNT_LOCK = 144
+const MONITORING_LOCK = 145
 
-/** Serialises the ambient-identity single-tenant check against the write it guards; released when the request transaction ends. */
-const lockAmbient = async (req: PayloadRequest): Promise<void> => {
+/** Serialises the ambient-identity single-tenant check (or, with `key`, another instance-wide check) against the write it guards; released when the request transaction ends. */
+const lockAmbient = async (req: PayloadRequest, key = AMBIENT_LOCK): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
   const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
-  await tx.execute(sql`select pg_advisory_xact_lock(${AMBIENT_LOCK})`)
+  await tx.execute(sql`select pg_advisory_xact_lock(${key})`)
 }
 
 /** Serialises writers of one account; released when the request transaction ends. */
@@ -248,6 +250,7 @@ const workspaces = col(
     },
     rel('workflowVersion', 'workflow_versions', { admin: { description: 'The active factory file version; empty = the pack default. Set by applyFactory.' } }),
     { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Factory > Workflow: off ignores the bauherr:expedite label.' } },
+    { name: 'preemptForHotfix', type: 'checkbox', defaultValue: true, access: { update: isAdmin }, admin: { description: 'Settings > Factory > Workflow: a hotfix pauses one running session of its role when none is free; off keeps the hotfix waiting.' } },
     { name: 'progressComments', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > General: keep one plain-word progress Comment on each issue and mention its author at the moments that matter.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
@@ -258,6 +261,8 @@ const workspaces = col(
     { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
     rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
+    { name: 'archivedAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Set by Delete workspace (lib/workspace-delete.ts): the Workspace is hidden everywhere and does no work.' } },
+    { name: 'purgeAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Until then an Admin can restore an archived Workspace.' } },
     { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, Knowledge repo commit, `product:<id>` = Product repo `<repo>@<commit>`, failure back-offs).' } },
   ],
   {
@@ -324,11 +329,37 @@ const workspaces = col(
 const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
   text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
 
+/** Monitoring Connections are instance-wide and Admin only: a Bauherr reads, changes and deletes every Connection but those. */
+const exceptMonitoring = ({ req }: { req: { user?: object | null } }) => (isAdmin({ req }) ? true : bauherrOnly({ req }) ? { kind: { not_equals: 'monitoring' } } : false)
+
+/** One `monitoring` Connection per service on the instance: validated per service, serialised by an advisory lock on the request transaction. */
+const validateMonitoring = async ({ data, originalDoc, req }: { data?: Doc; originalDoc?: Doc; req: PayloadRequest }): Promise<Doc | undefined> => {
+  const fail = (path: string, message: string): never => {
+    throw new ValidationError({ collection: 'connections', errors: [{ path, message }] })
+  }
+  if (req.user && !isAdmin({ req })) throw new APIError('Only an Admin can change monitoring', 403)
+  const service = (data?.service ?? originalDoc?.service) as Service | undefined
+  if (originalDoc?.service && service !== originalDoc.service) fail('service', 'cannot change after create')
+  const keys = service === 'grafana' ? ['url'] : ['host', 'protocol', 'headerName', 'uiUrl']
+  const merged = { ...originalDoc?.config, ...data?.config } as Record<string, unknown>
+  const config = Object.fromEntries(keys.flatMap((k) => (typeof merged[k] === 'string' && merged[k].trim() ? [[k, (merged[k] as string).trim()]] : [])))
+  if (service === 'otlp') config.protocol ??= 'grpc'
+  const written = typeof data?.secret === 'string' && data.secret && !isEncrypted(data.secret) ? data.secret : undefined
+  const kept = data?.secret === undefined && originalDoc?.id ? (await req.payload.count({ collection: 'connections', where: { and: [{ id: { equals: originalDoc.id } }, { secret: { exists: true } }] }, overrideAccess: true, req })).totalDocs > 0 : false
+  const errors = monitoringErrors(service, config, written, !!data?.secret || kept)
+  if (errors.length) throw new ValidationError({ collection: 'connections', errors })
+  await lockAmbient(req, MONITORING_LOCK)
+  const others = await req.payload.count({ collection: 'connections', where: { and: [{ kind: { equals: 'monitoring' } }, { service: { equals: service } }, ...(originalDoc?.id ? [{ id: { not_equals: originalDoc.id } }] : [])] }, overrideAccess: true, req })
+  if (others.totalDocs) fail('service', 'this service is already connected on this instance')
+  return { ...data, kind: 'monitoring', service, config, ...(config.headerName || service === 'grafana' ? {} : { secret: null }) }
+}
+
 const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
+    select('kind', ['github', 'gitlab', 'llm-provider', 'monitoring'], { required: true }),
+    select('service', [...SERVICES], { admin: { description: 'monitoring Connections only: which service (one per service on the instance). prometheus is refused until the scrape endpoint ships.' } }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
@@ -356,6 +387,7 @@ const connections = col(
     json('capabilities'),
   ],
   {
+    access: { read: exceptMonitoring, update: exceptMonitoring, delete: exceptMonitoring },
     indexes: [{ fields: ['workspace', 'slug'], unique: true }],
     hooks: {
       beforeDelete: [
@@ -370,6 +402,8 @@ const connections = col(
       ],
       beforeValidate: [
         async ({ data, originalDoc, req }) => {
+          if (originalDoc?.kind === 'monitoring' && data?.kind && data.kind !== 'monitoring') throw new ValidationError({ collection: 'connections', errors: [{ path: 'kind', message: 'cannot change after create' }] })
+          if ((data?.kind ?? originalDoc?.kind) === 'monitoring') return validateMonitoring({ data, originalDoc, req })
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
           // The top-level field wins only when this request changed it; otherwise an explicit `config` value stands (API, seed).
@@ -418,6 +452,7 @@ const connections = col(
       ],
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
+          if (doc.kind === 'monitoring') return void (doc.service === 'otlp' && gatewayEnabled() && (await renderTracing(req.payload, req)))
           if (doc.kind !== 'llm-provider' || req.context.skipVerify) return
           const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
             secret?: string
@@ -473,6 +508,7 @@ const connections = col(
       ],
       afterDelete: [
         async ({ doc, req }) => {
+          if (doc.kind === 'monitoring') return void (doc.service === 'otlp' && gatewayEnabled() && (await renderTracing(req.payload, req)))
           if (doc.kind !== 'llm-provider') return
           const wsId = typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace
           const ws = await req.payload.findByID({ collection: 'workspaces', id: wsId, depth: 0, overrideAccess: true, req })
@@ -555,6 +591,7 @@ const tickets = col('tickets', [
   { name: 'mainMergeNoops', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'No-op merges of the base on `mainMergeSha`; the 3rd needs a human. Reset by a merge that pushes.' } },
   { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
   { name: 'openCriticalDecisions', type: 'number', admin: { readOnly: true, description: 'Unanswered critical decisions of the plan or triage sheet, as last read from the forge comments (plan submit, answers, the gate sweep). Pages read this instead of the forge; null = never read.' } },
+  { name: 'ciSummary', type: 'json', admin: { readOnly: true, description: 'Checks of the open MR head, written by `store-ci-summary`: {total, passed, pending, failed[], url, updatedAt, rows[]}. null = no open MR in build or review.' } },
   { name: 'liveness', type: 'json', admin: { readOnly: true, description: 'Last `watch-liveness` finding for a Ticket with no live Run: {cause, need, at}. null = not dead at the last sweep.' } },
   { name: 'decision', type: 'json', admin: { readOnly: true, description: 'The open human checkpoint, prepared for the Inbox and the Ticket page (`buildDecision`): {need, checkpoint, title, ask, recommendation, why, options, next, evidence, details, preparedBy, preparedAt, openSince}. Written by the gate sweep together with `needsYou`; null = nothing is waiting.' } },
   { name: 'planTldr', type: 'json', admin: { readOnly: true, description: 'Parsed `## TL;DR` of the latest plan: {decision, recommendation, why, risk, options}. Stored when the plan is posted, so no page or sweep reads the forge for it.' } },
@@ -701,7 +738,10 @@ export const collections: CollectionConfig[] = [
     rel('previousRun', 'runs'),
     { name: 'investigation', type: 'json', admin: { description: 'Set only on an investigation Plan Run: { failedRuns: number[], stage }. The Run runs on the strong tier.' } },
     { name: 'escalation', type: 'json', admin: { description: 'Set only on an escalated Run: { step: 2 | 3, reason, previousRuns: number[] }. Written with the create; the Run runs on the strong tier with doubled caps.' } },
-    select('reasonKind', ['decision', 'access', 'stuck'], { admin: { description: 'Why a Run stopped: decision (product question) and access (credential, setting) reach the owner, stuck escalates. On failed Runs it is set when the escalation ladder ended at the owner.' } }),
+    select('reasonKind', ['decision', 'access', 'stuck', 'preempted'], { admin: { description: 'Why a Run stopped: decision (product question) and access (credential, setting) reach the owner, stuck escalates, preempted (a hotfix took the session) never escalates. On failed Runs it is set when the escalation ladder ended at the owner.' } }),
+    { name: 'preemptedBy', type: 'number', admin: { description: 'Id of the expedite Run this Run was paused for (also set on its successor and on a released Run, so it resumes first).' } },
+    { name: 'preemptedFor', type: 'number', admin: { description: 'Number of the hotfix Ticket behind `preemptedBy`, while the Run waits to resume (or ended preempted); cleared when a session claims it again, so it never reads as paused later.' } },
+    { name: 'preemptAt', type: 'date', admin: { description: 'When a hotfix marked this running Run for preemption; the lease sweep ends it 2 minutes later. Cleared when it is released.' } },
     text('evidence'),
     json('goal'),
     select('verdict', ['clean', 'changes']),
@@ -783,6 +823,7 @@ export const collections: CollectionConfig[] = [
     text('headSha'),
     text('baseContent'),
     text('status'),
+    json('detail'),
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['kind', 'at'] }] }),
   col('skill_proposals', [
     rel('ticket', 'tickets', { required: true, unique: true }),

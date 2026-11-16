@@ -12,6 +12,7 @@ import { GatewayStatus } from '../../../components/gateway/GatewayStatus'
 import { HarnessSetup } from '../../../components/gateway/HarnessSetup'
 import { loadGatewaySetup } from '../../../lib/gateway-setup'
 import { payloadClient } from '../../../lib/session'
+import { savedGrafanaUrl, savedTracesUrl } from '../../../../../lib/monitoring'
 import { workflowFor } from '../../../../../lib/factory'
 
 export const dynamic = 'force-dynamic'
@@ -58,8 +59,14 @@ async function SpentBudget({ bars, slug }: { bars: Bar[]; slug: string }) {
 }
 
 async function Traces({ admin }: { admin: boolean }) {
-  const up = admin && (await tracesUp())
-  return up ? <Button asChild variant="outline"><a href={tracesUrl()} target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1.">Open traces</Button>
+  const saved = admin ? await savedTracesUrl(await payloadClient()) : undefined
+  const up = admin && (saved ? true : await tracesUp())
+  return up ? <Button asChild variant="outline"><a href={tracesUrl(saved)} target="_blank" rel="noreferrer">Open traces</a></Button> : <Button variant="outline" disabled title="Traces are off: start the stack with --profile observability and OTEL_ENABLED=1, or connect your own under Settings > Connections.">Open traces</Button>
+}
+
+async function Dashboards() {
+  const url = await savedGrafanaUrl(await payloadClient())
+  return url ? <Button asChild variant="outline"><a href={url} target="_blank" rel="noreferrer">Open dashboards</a></Button> : null
 }
 
 export default async function UsageSettings() {
@@ -108,6 +115,7 @@ export default async function UsageSettings() {
         <div className="flex gap-3">
           <Button asChild variant="outline"><a href="/-/gateway/config_dump" target="_blank" rel="noreferrer">Open gateway config</a></Button>
           <Suspense fallback={<Button variant="outline" disabled>Open traces</Button>}><Traces admin={admin} /></Suspense>
+          <Suspense fallback={null}><Dashboards /></Suspense>
         </div>
       )}
     </>

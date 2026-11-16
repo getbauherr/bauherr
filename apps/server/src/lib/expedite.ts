@@ -1,3 +1,4 @@
+import { live } from './workspace-delete'
 import type { TicketSource } from '@bauherr/adapters'
 import type { Payload, Where } from 'payload'
 import { workflowFor } from './factory'
@@ -33,12 +34,14 @@ const parked = async (payload: Payload, t: Doc): Promise<boolean> =>
 /** Whether another expedite Ticket of the Workspace is in flight. */
 const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> => (await inFlight(payload, t, {})).totalDocs > 0
 
-/** The number of the Ticket holding the fast-lane slot that a queued expedite Ticket (not yet in flight) waits for; null otherwise. */
-export const fastLaneHolder = async (payload: Payload, t: Doc): Promise<number | null> => {
+/** The Ticket holding the fast-lane slot that a queued expedite Ticket (not yet in flight) waits for; null otherwise. */
+export const fastLaneHolderDoc = async (payload: Payload, t: Doc): Promise<Doc | null> => {
   if (!t.expedite || t.expediteYieldedTo || t.state === 'closed' || inFlightStages(workflowFor(t.workspace)).includes(t.stage)) return null
-  const [holder] = (await payload.find({ collection: 'tickets', where: holding(t, {}), sort: 'id', limit: 1, ...o })).docs as Doc[]
-  return holder?.number ?? null
+  return ((await payload.find({ collection: 'tickets', where: holding(t, {}), sort: 'id', limit: 1, ...o })).docs[0] as Doc | undefined) ?? null
 }
+
+/** The number of `fastLaneHolderDoc`; null when none. */
+export const fastLaneHolder = async (payload: Payload, t: Doc): Promise<number | null> => (await fastLaneHolderDoc(payload, t))?.number ?? null
 
 /**
  * Whether the lane serves `t` now: flagged, the lane on, and it holds the Workspace's one expedite slot. A Ticket already in flight holds it unless an older flagged Ticket (lower id) is in flight too,
@@ -94,7 +97,7 @@ const reenter = async (payload: Payload): Promise<void> => {
  */
 export const startExpedites = async (payload: Payload): Promise<number> => {
   // A Workspace that turned the lane off drops the flag of every open Ticket (not only the waiting ones): the flag must never outlive the setting.
-  const off = (await payload.find({ collection: 'workspaces', where: { expediteLane: { equals: false } }, select: {}, pagination: false, ...o })).docs.map((w) => w.id)
+  const off = (await payload.find({ collection: 'workspaces', where: { and: [{ expediteLane: { equals: false } }, live] }, select: {}, pagination: false, ...o })).docs.map((w) => w.id)
   if (off.length) {
     const flagged = await payload.find({ collection: 'tickets', where: { and: [{ workspace: { in: off } }, { expedite: { equals: true } }] }, select: {}, pagination: false, ...o })
     for (const t of flagged.docs) await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })

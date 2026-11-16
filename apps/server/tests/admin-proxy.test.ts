@@ -11,7 +11,7 @@ const o = { overrideAccess: true } as const
 let proxy: typeof import('../src/app/(app)/lib/admin-proxy')
 let testDb: TestDb
 const fetchMock = vi.fn()
-const target = (over: Partial<{ url: string | undefined; writes: boolean }> = {}) => ({ name: 'Gateway', url: 'http://gw.test:15000', hint: 'run <code>docker compose port gateway 15000</code>', writes: false, ...over })
+const target = (over: Partial<{ url: string | undefined; writes: boolean; redact: boolean }> = {}) => ({ name: 'Gateway', url: 'http://gw.test:15000', hint: 'run <code>docker compose port gateway 15000</code>', writes: false, ...over })
 const request = (method = 'GET', init: RequestInit = {}) => new Request('http://bauherr.test/-/gateway/config_dump?a=1', { method, ...init })
 const touches = async () => (await payload.find({ collection: 'human_touches', where: { kind: { like: 'gateway:' } }, ...o })).docs as unknown as { kind: string; path: string; actor: string }[]
 
@@ -96,6 +96,19 @@ describe('proxyAdmin', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]![1].method).toBe('HEAD')
     expect(String(fetchMock.mock.calls[0]![0])).toBe('http://jaeger.test:16686/-/traces/')
+  })
+
+  it('a redacting target hides header values and secret-looking strings in JSON and refuses anything else', async () => {
+    const dump = { frontendPolicies: { tracing: { host: 'c:4317', policies: { requestHeaderModifier: { set: { authorization: 'Bearer SECRET-MARK' }, add: { 'x-any': 'SECRET-MARK' } } } } }, llm: { models: [{ name: 'm', apiKey: 'SECRET-MARK' }] } }
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(dump), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const res = await proxy.proxyAdmin(request(), target({ redact: true }), ['config_dump'])
+    const text = await res.text()
+    expect(text).not.toContain('SECRET-MARK')
+    expect(JSON.parse(text).frontendPolicies.tracing.host).toBe('c:4317')
+    fetchMock.mockResolvedValueOnce(new Response('authorization: SECRET-MARK', { status: 200 }))
+    const plain = await proxy.proxyAdmin(request(), target({ redact: true }), ['config_dump'])
+    expect(plain.status).toBe(502)
+    expect(await plain.text()).not.toContain('SECRET-MARK')
   })
 
   it('shows the fallback page when the target is unreachable or unset', async () => {

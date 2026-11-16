@@ -159,7 +159,7 @@ it('the migration fills missing tiers for a Workspace with exactly one Connectio
   expect((await reload(w)).modelByTier).toEqual({ cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' })
 })
 
-it('a render failure inside the migration rolls back to the savepoint: schema committed, config untouched, error logged', async () => {
+it('the migration never renders the gateway config (a failed Payload query would kill its transaction): schema committed, config untouched', async () => {
   const w = await ws('mig-rollback')
   await conn(w, 'anthropic')
   const q = (s: ReturnType<typeof sql>) => (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<{ rows: Record<string, unknown>[] }> } }).drizzle.execute(s)
@@ -186,6 +186,6 @@ it('a render failure inside the migration rolls back to the savepoint: schema co
   expect(col.rows).toHaveLength(1)
   expect((await q(sql`SELECT slug FROM connections WHERE workspace_id = ${w}`)).rows).toEqual([{ slug: 'anthropic' }])
   expect(readFileSync(cfgPath).equals(before)).toBe(true)
-  expect(error).toHaveBeenCalledWith(expect.stringContaining('connection_slugs: gateway config not rendered'))
+  expect(error).not.toHaveBeenCalledWith(expect.stringContaining('gateway config not rendered'))
   error.mockRestore()
 })

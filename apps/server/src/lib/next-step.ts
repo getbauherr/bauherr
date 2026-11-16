@@ -1,3 +1,4 @@
+import { overlapText } from './hold-text'
 import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
 import { is, liveStages, roleOf, title, type Workflow } from './workflow'
 
@@ -13,10 +14,12 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
  * agent-side owner, first match: open blocker, live Run, waiting state (overlap, full column, checks), release/review wait, idle.
  * `waiting` is `waitingText` of a waiting Ticket; `admin` gates the Run number and link (Runs are an Admin view).
  */
-export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin, connected = true }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean; /** Whether an agent of the Run's stage role is connected (matters for `awaiting_session` only). */ connected?: boolean }): NextStep => {
+export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin, connected = true }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null; /** Hotfix Ticket number this Run was paused for. */ preemptedFor?: number | null; /** Number of the Ticket whose session this expedite Run is pausing, while that session has not released yet. */ pausing?: number | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean; /** Whether an agent of the Run's stage role is connected (matters for `awaiting_session` only). */ connected?: boolean }): NextStep => {
   const runLink = run && admin ? [{ text: `Run ${run.id}`, href: `/runs/${run.id}` }] : []
   if (need) return { label: need, enabled: true, reason: '', links: [] }
   if (blockers.length) return { label: 'Blocked', enabled: false, reason: `Blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}.`, links: blockers.map((b) => ({ text: `#${b.number}`, href: `/tickets/${b.id}` })) }
+  if (run?.status === 'awaiting_session' && run.preemptedFor) return { label: 'Paused', enabled: false, reason: `Paused for hotfix #${run.preemptedFor}. It continues first when the hotfix is done.`, links: [] }
+  if (run?.status === 'awaiting_session' && run.pausing) return { label: 'Connect an agent', enabled: false, href: '/team', reason: `Starting: ${roleOf(wf, run.stage)?.title ?? 'agent'} session pausing #${run.pausing}, up to 2 min.`, links: [] }
   if (run && ['running', 'awaiting_session'].includes(run.status) && run.escalation) return { label: 'Escalated', enabled: false, reason: `Escalated to the strong model (step ${run.escalation.step} of 4): ${run.escalation.reason}${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
   const ref = admin ? ` (Run ${run?.id})` : ''
   if (run?.status === 'awaiting_session') {
@@ -30,8 +33,8 @@ export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [
   if (wait === 'checks') return { label: 'Waiting for checks', enabled: false, reason: 'Waiting for the MR checks to finish. Review starts by itself.', links: [] }
   if (wait && waiting) {
     const overlap = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
-    const why = overlap ? `waits for #${overlap}, which changes the same files` : waiting.replace(/^Waiting: /, '')
-    return { label: 'Queued', enabled: false, reason: `Queued for ${cap(title(wf, wait))}: ${why}. Starts by itself.`, links: overlap ? holders.filter((h) => h.number === Number(overlap)).map((h) => ({ text: `#${h.number}`, href: `/tickets/${h.id}` })) : [] }
+    const reason = overlap ? overlapText(cap(title(wf, wait)), Number(overlap)) : `Queued for ${cap(title(wf, wait))}: ${waiting.replace(/^Waiting: /, '')}.`
+    return { label: 'Queued', enabled: false, reason: `${reason} Starts by itself.`, links: overlap ? holders.filter((h) => h.number === Number(overlap)).map((h) => ({ text: `#${h.number}`, href: `/tickets/${h.id}` })) : [] }
   }
   if (ticket.state === 'closed' || !!ticket.stage && is(wf, ticket.stage, 'done')) return { label: 'Done', enabled: false, reason: 'Closed.', links: [] }
   if (ticket.stage && is(wf, ticket.stage, 'release')) {

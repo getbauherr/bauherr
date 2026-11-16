@@ -6,6 +6,7 @@ import { GATES } from '../src/app/(app)/lib/gates'
 import { byKind, DEFAULT, graph } from '../src/lib/workflow'
 import { NEED_NODE } from '../src/lib/checkpoints'
 import { parseTldr, tldrError } from '../src/lib/tldr'
+import { decisionView, type Decision } from '../src/app/(app)/lib/plan'
 
 const ACTIONS: DecisionAction[] = ['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open']
 const facts = {
@@ -136,5 +137,33 @@ describe('checkpoint names', () => {
       if (title) expect(title, need).toBe(buildDecision(need, facts).checkpoint)
     }
     expect(compared).toBeGreaterThanOrEqual(5)
+  })
+})
+
+describe('decisionView', () => {
+  const rows: Decision[] = [
+    { id: 'D1', title: 'Keep the cache?', critical: true, default: 'yes', options: ['yes', 'no'] },
+    { id: 'D2', title: 'Show the banner?', critical: false, default: 'no', options: ['no', 'yes'] },
+    { id: 'D3', title: 'Log the retries?', critical: false, default: 'yes', options: ['yes'] },
+  ]
+
+  it('keeps every unanswered row answerable while the Ticket is in Triage or Plan', () => {
+    expect(decisionView(rows, {}, { stageKind: 'plan', approved: false })).toMatchObject({ open: 3, answerable: 3, defaults: [] })
+    expect(decisionView(rows, {}, { stageKind: 'triage', approved: false })).toMatchObject({ open: 3, answerable: 3, defaults: [] })
+  })
+
+  it('past Plan no row is answerable and the unanswered rows are listed as defaults taken', () => {
+    const view = decisionView(rows, { D2: 'yes' }, { stageKind: 'build', approved: false })
+    expect(view).toMatchObject({ open: 2, answered: 1, answerable: 0 })
+    expect(view.defaults.map((d) => [d.id, d.title, d.default])).toEqual([
+      ['D1', 'Keep the cache?', 'yes'],
+      ['D3', 'Log the retries?', 'yes'],
+    ])
+  })
+
+  it('an approved plan is past Plan even in the Plan stage', () => {
+    expect(decisionView(rows, {}, { stageKind: 'plan', approved: true })).toMatchObject({ answerable: 0, defaults: rows })
+    expect(decisionView(rows, {}, { stageKind: 'build', approved: true }).takenBy).toBe('at approval')
+    expect(decisionView(rows, {}, { stageKind: 'plan', approved: false, fastLane: true })).toMatchObject({ answerable: 0, defaults: rows, takenBy: 'fast lane' })
   })
 })

@@ -2,12 +2,12 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { decrypt } from '../lib/secrets'
-import { gatewayEnabled, renderModels, writeProvider } from '../lib/gateway'
+import { gatewayEnabled, writeProvider } from '../lib/gateway'
 import { PRESETS, presetOf } from '../lib/providers'
 
 const TIER_DEFAULTS = `'cheap', s.slug || '/claude-haiku-5-5', 'standard', s.slug || '/claude-sonnet-5-5', 'strong', s.slug || '/claude-opus-5-5'`
 
-export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
+export async function up({ db, payload }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    ALTER TABLE "connections" ADD COLUMN IF NOT EXISTS "slug" varchar;
   UPDATE "connections" c SET "slug" = r.slug FROM (
@@ -37,15 +37,9 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   } catch (e) {
     payload.logger.error(`connection_slugs: provider files not rewritten (${(e as Error).message}); save any llm-provider Connection to rewrite them`)
   }
-  // renderModels runs today's app code, which may read later columns: a savepoint keeps its failure from aborting the schema change above.
-  await db.execute(sql`SAVEPOINT connection_slugs_render`)
-  try {
-    await renderModels(req)
-    await db.execute(sql`RELEASE SAVEPOINT connection_slugs_render`)
-  } catch (e) {
-    await db.execute(sql`ROLLBACK TO SAVEPOINT connection_slugs_render`)
-    payload.logger.error(`connection_slugs: gateway config not rendered (${(e as Error).message}); save any llm-provider Connection to render it`)
-  }
+  // No renderModels here: it runs today's app code, which reads later columns, and a failed Payload query rolls back the migration's
+  // transaction (`killTransaction`); with its own request it would wait on this migration's table locks. Every install past v0.2.0 ran this
+  // already and a fresh one has no Connection to render; saving an llm-provider Connection renders the gateway config.
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {
