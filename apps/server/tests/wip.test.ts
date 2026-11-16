@@ -473,18 +473,18 @@ describe('parked Tickets and approved plans (#577)', () => {
     expect((await runs(p.id, 'build')).filter((r) => r.status === 'queued')).toHaveLength(1)
   })
 
-  it('a Run start for a parked Ticket first rejoins: with Build full it starts no Run, with room it does', async () => {
+  it('the owner\'s Retry of a parked Ticket first rejoins: with Build full it starts no Run, with room it does', async () => {
     usePack('bare-pack')
     await limits({ build: 1 })
     const p = await ticket('p', 'build', { needsYou: 'Run failed', parkedNeed: 'Run failed' })
     const w = await ticket('w', 'build')
     await run(w, 'build', 'running')
-    expect((await jobs.startRunIfNeeded(payload, (await reload(p.id)) as never, 'build')).created).toBe(false)
+    expect(await jobs.startRunOrRejoin(payload, (await reload(p.id)) as never, 'build')).toBeNull()
     expect(await runs(p.id, 'build')).toHaveLength(0)
     expect(await reload(p.id)).toMatchObject({ waitingFor: 'build', parkedNeed: null })
     await limits({ build: 2 })
     const q = await ticket('q', 'build', { needsYou: 'Run failed', parkedNeed: 'Run failed' })
-    expect((await jobs.startRunIfNeeded(payload, (await reload(q.id)) as never, 'build')).created).toBe(true)
+    expect((await jobs.startRunOrRejoin(payload, (await reload(q.id)) as never, 'build'))?.created).toBe(true)
     expect((await reload(q.id)).parkedNeed ?? null).toBeNull()
   })
 

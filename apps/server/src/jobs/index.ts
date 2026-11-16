@@ -74,15 +74,22 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
     })
   ).docs[0]
 
+/**
+ * `startRunIfNeeded` for a Ticket that may be parked in `stage` (the owner's Retry of its stopped Run): it takes its slot back first (`rejoin`). With the column full it waits for it,
+ * no Run starts and the result is null; `pullWaiting` starts the Run when a slot frees.
+ */
+export const startRunOrRejoin = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string) => {
+  const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true })) as Record<string, any>
+  if (t.parkedNeed && t.stage === stage && (await rejoin(payload, t)) === 'waiting') return null
+  return startRunIfNeeded(payload, ticket, stage)
+}
+
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
 export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}, req?: Partial<PayloadRequest>) => {
   const findActive = async () =>
     (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
   const existing = await findActive()
   if (existing) return { run: existing, created: false }
-  // A parked Ticket takes a slot again first; with its column full it waits and starts no Run (`pullWaiting` starts it).
-  const parked = (await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true, req })) as Record<string, any>
-  if (parked.parkedNeed && parked.stage === stage && (await rejoin(payload, parked)) === 'waiting') return { run: undefined as never, created: false } // the callers that read `run` start Runs of a Ticket that is not parked
   const workspace = id(ticket.workspace)
   const mode = await modeFor(payload, workspace, stage, req)
   let run
