@@ -17,7 +17,7 @@ it('exposes no session-run tool: of the agent MCP tools only the five read tools
   const exposed = chatTools({ role: 'admin' }).map((t) => t.name)
   const agent = tools.filter((t) => t.access === 'agent').map((t) => t.name)
   expect(exposed.filter((n) => agent.includes(n)).sort()).toEqual([...READS].sort())
-  for (const run of ['claim_run', 'claim_next', 'heartbeat', 'report_step', 'attach_evidence', 'submit_plan', 'submit_investigation', 'submit_review', 'submit_triage', 'request_review', 'run_checks', 'finish_run', 'relink_mr', 'release_run', 'post_staging_summary', 'return_to_build', 'update_worklog', 'load_skill']) expect(exposed).not.toContain(run)
+  for (const run of ['claim_run', 'claim_next', 'heartbeat', 'report_step', 'attach_evidence', 'submit_plan', 'submit_investigation', 'submit_review', 'submit_triage', 'request_review', 'run_checks', 'finish_run', 'relink_mr', 'release_run', 'post_staging_summary', 'return_to_build', 'release_fast_lane', 'update_worklog', 'load_skill']) expect(exposed).not.toContain(run)
 })
 
 it('every human MCP tool that is exposed needs a confirmation, every agent read tool is a read, and each tool has a schema', () => {

@@ -6,7 +6,7 @@ import { workflowFor } from './factory'
 import { moveStage } from './stage-move'
 import { enterStage, startAfterPull } from './wip'
 import { APPROVED_PLAN } from './needs-you'
-import { handBackToBuild, sendToBacklog, sourceOf, startReviewNow } from './actions'
+import { handBackToBuild, replanEpic, sendToBacklog, sourceOf, startReviewNow } from './actions'
 import { routeEntry } from './route'
 import { skipEvent } from './history'
 import { is, isForward, nameOf, stage as stageDef, target } from './workflow'
@@ -24,6 +24,8 @@ export type AdvanceOpts = { by: string; run?: Doc; why?: string; note?: string }
  * An outcome the stage does not map ends the `run` as `needs_human` (decision) and leaves the Ticket where it is.
  */
 export const advance = async (payload: Payload, ts: TicketSource | null, ticket: Doc, outcome: string, opts: AdvanceOpts): Promise<Advanced> => {
+  // A slice of an epic never goes back to plan itself: the epic's parent re-plans the unbuilt slices.
+  if (outcome === 'replan' && ticket.slice) return replanEpic(payload, ticket, opts.note ?? 'the slice asked for a re-plan')
   const wf = workflowFor(ticket.workspace)
   const from = ticket.stage ?? nameOf(wf, 'triage')
   const first = target(wf, from, outcome)

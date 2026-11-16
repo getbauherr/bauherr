@@ -82,6 +82,7 @@ test('the accept card in the Inbox carries the same proof', async ({ page }) => 
   test.skip(!process.env.E2E_GATED_PACK, 'the staging checkpoint exists with the gated pack')
   await signIn(page)
   await page.goto('/inbox')
+  await page.getByTestId('inbox-row').filter({ hasText: 'Ship the proof export' }).click()
   const card = page.locator('article[data-decision]').filter({ hasText: 'Ship the proof export' })
   await expect(card.getByRole('button', { name: 'Accept on staging' })).toBeVisible()
   await expect(card.getByTestId('proof-row')).toHaveCount(3)

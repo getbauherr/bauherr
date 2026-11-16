@@ -288,13 +288,15 @@ test('runStage build: branch and prTitle override the defaults; the epic worklog
   const { gw, ctx, upserts } = await epicBuild('<!-- bauherr:worklog -->\nslice 1 says: use Foo\n');
   ctx.branch = 'bauherr/5-epic';
   ctx.prTitle = 'The epic title';
-  ctx.epic = { parent: 5, worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
+  ctx.epic = { parent: 5, parentUrl: 'https://example.invalid/issues/5', worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
   ctx.slice = { prev: null, mergeMain: false };
   try {
     const res = await runStage(ctx);
     assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
     assert.equal(ctx.prs.length, 1);
     assert.equal(ctx.prs[0]!.head, 'bauherr/5-epic');
+    assert.match(ctx.prs[0]!.body, /^Refs https:\/\/example\.invalid\/issues\/5\n/, 'the epic PR refs the parent, not the slice');
+    assert.ok(!ctx.prs[0]!.body.includes(ctx.ticket.url));
     assert.ok(gw.seen.some((s) => s.body.includes('epic-worklog.md')), 'AGENTS.md points at the epic worklog');
     assert.match(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/5-epic'], { cwd: bare(ctx) }).toString(), /src\/a\.ts/);
     assert.deepEqual(upserts.filter((u) => u.number === 5).map((u) => u.body), ['<!-- bauherr:worklog -->\nslice 1 says: use Foo\n']);
@@ -305,7 +307,7 @@ test('runStage build: branch and prTitle override the defaults; the epic worklog
 
 test('runStage build: an unchanged epic worklog is not upserted', { timeout: 120_000 }, async () => {
   const { gw, ctx, upserts } = await epicBuild('<!-- bauherr:worklog -->\nstart\n');
-  ctx.epic = { parent: 5, worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
+  ctx.epic = { parent: 5, parentUrl: 'https://example.invalid/issues/5', worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
   try {
     const res = await runStage(ctx);
     assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));

@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, Where } from 'payload'
 import { startReviewIfReady, startRunIfNeeded } from '../jobs'
+import { queueEpicMergeMain } from './actions'
 import { workflowFor } from './factory'
 import { executionOrder } from './frontier'
 import { logins } from './forge-channel'
@@ -85,6 +86,7 @@ export const pullWaiting = async (payload: Payload): Promise<number> => {
           const entered = await enterStage(payload, t, stage, () => completeMove(payload, t, stage))
           if (entered === 'waiting') break
           if (entered === 'held') continue
+          if (t.epic && is(wf, stage, 'review')) await queueEpicMergeMain(payload, t)
           await startAfterPull(payload, t, stage)
           pulled++
         } catch (e) {
