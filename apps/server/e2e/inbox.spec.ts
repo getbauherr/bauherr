@@ -14,6 +14,7 @@ const login = async (page: Page, as = email) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 const card = (page: Page, title: string) => page.locator('article[data-decision]').filter({ hasText: title })
+const pick = async (page: Page, title: string) => { await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
 const badge = async (page: Page) => Number((await page.getByRole('navigation', { name: 'Main' }).getByLabel(/need you/).textContent()) ?? 0)
 
 test('every decision that is the owner\'s is a card with the ask, the recommendation, the facts and the real options', async ({ page }) => {
@@ -23,6 +24,7 @@ test('every decision that is the owner\'s is a card with the ask, the recommenda
   // The plan and staging gates are off in the default workflow: their cards exist only with the gated pack (the fake-forge job).
   const gated = !!process.env.E2E_GATED_PACK
   if (gated) {
+    await pick(page, 'Rename the sign-in button')
     const plan = card(page, 'Rename the sign-in button')
     await expect(plan.getByRole('heading', { name: 'Approve the plan for "Rename the sign-in button"' })).toBeVisible()
     await expect(plan).toContainText('Recommended')
@@ -30,16 +32,18 @@ test('every decision that is the owner\'s is a card with the ask, the recommenda
     await expect(plan.getByRole('button', { name: 'Approve plan' })).toBeVisible()
     await expect(plan.getByRole('link', { name: 'Read the plan' })).toBeVisible()
   }
+  await pick(page, 'Stop the export retry loop')
   const cap = card(page, 'Stop the export retry loop')
   await expect(cap.getByRole('button', { name: 'Give one more round' })).toBeVisible()
   await expect(cap.getByRole('button', { name: 'Stop' })).toBeVisible()
   await expect(cap).toContainText('1 open finding')
   if (gated) {
+    await pick(page, 'Check the new header on staging')
     const staging = card(page, 'Check the new header on staging')
     await expect(staging.getByRole('button', { name: 'Accept on staging' })).toBeVisible()
     await expect(staging.getByRole('link', { name: 'Staging', exact: true })).toBeVisible()
     // The groups follow the workflow: Approve plan before Review before Accept on staging.
-    const heads = await page.locator('section[aria-label] > h2').allTextContents()
+    const heads = await page.locator('nav[aria-label=Decisions] section[aria-label] > h2').allTextContents()
     const at = (c: string) => heads.findIndex((h) => h.startsWith(c))
     expect(at('Approve plan')).toBeLessThan(at('Review'))
     expect(at('Review')).toBeLessThan(at('Accept on staging'))
@@ -49,6 +53,7 @@ test('every decision that is the owner\'s is a card with the ask, the recommenda
 test('a destructive option asks in a dialog first and changes nothing when cancelled', async ({ page }) => {
   await login(page)
   await page.goto('/inbox')
+  await pick(page, 'Stop the export retry loop')
   const cap = card(page, 'Stop the export retry loop')
   await cap.getByRole('button', { name: 'Stop' }).click()
   const dialog = page.getByRole('dialog')
@@ -63,6 +68,7 @@ test('approving the plan on its card moves the ticket on, the card goes and the 
   await login(page)
   await page.goto('/inbox')
   const before = await badge(page)
+  await pick(page, 'Rename the sign-in button')
   const plan = card(page, 'Rename the sign-in button')
   await plan.getByRole('button', { name: 'Approve plan' }).click()
   await expect(plan).toBeHidden()
@@ -77,6 +83,7 @@ test('a pending skill proposal is a card with approve and reject; rejecting it c
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (the proposal PR lives in acme/knowledge)')
   await login(page)
   await page.goto('/inbox')
+  await pick(page, 'retry-limits')
   const skill = card(page, 'retry-limits')
   await expect(skill.getByRole('heading', { name: /Merge the skill "retry-limits" learned from #303/ })).toBeVisible()
   await expect(skill.getByText('Skill proposal', { exact: true })).toBeVisible()
@@ -97,6 +104,19 @@ test('a pending skill proposal is a card with approve and reject; rejecting it c
   await expect(page.getByTestId('closed-proposals')).toContainText('too narrow')
 })
 
+test('the selection is in the URL: a row opens its card, an old #t link redirects, a decided t says so', async ({ page }) => {
+  await login(page)
+  await page.goto('/inbox')
+  await pick(page, 'Stop the export retry loop')
+  await expect(page).toHaveURL(/\/inbox\?t=\d+/)
+  const id = new URL(page.url()).searchParams.get('t')!
+  await page.goto(`/inbox#t${id}`)
+  await expect(page).toHaveURL(new RegExp(`/inbox\\?t=${id}$`))
+  await expect(page.getByTestId('inbox-pane')).toContainText('Stop the export retry loop')
+  await page.goto('/inbox?t=999999')
+  await expect(page.getByTestId('stale-selection')).toHaveText('This decision is already taken.')
+})
+
 test('an Inbox with nothing in it says so in one line', async ({ page }) => {
   await login(page, 'solo@example.com')
   await page.goto('/inbox')
@@ -108,6 +128,7 @@ test('approving a plan in the chat closes its Inbox card', async ({ page }) => {
   test.skip(!process.env.E2E_FAKE_FORGE || !process.env.CHAT_FAKE, 'needs E2E_FAKE_FORGE=1 and CHAT_FAKE=1')
   await login(page)
   await page.goto('/inbox')
+  await pick(page, 'Hand over the export notes')
   const plan = card(page, 'Hand over the export notes')
   await expect(plan).toBeVisible()
   await page.getByTestId('chat-open').click()
@@ -131,11 +152,11 @@ test('the Workflow view and the Inbox link to each other by checkpoint', async (
   await link.click()
   await expect(page).toHaveURL(/\/inbox\?checkpoint=Approve(\+|%20)plan/)
   await expect(page.getByTestId('checkpoint-filter')).toContainText('Approve plan')
-  await expect(page.locator('section[aria-label] > h2')).toHaveCount(1)
+  await expect(page.locator('nav[aria-label=Decisions] section[aria-label]:not([hidden]) > h2')).toHaveCount(1)
   await page.getByRole('link', { name: 'Show in workflow' }).click()
   await expect(page.getByTestId('stage-filter')).toContainText('Approve plan')
   await page.locator('[data-testid=ticket-status] [data-testid=status-detail]').first().click()
-  await expect(page).toHaveURL(/\/inbox#t\d+/)
-  await expect(page.locator('article[data-decision]:focus')).toBeVisible()
+  await expect(page).toHaveURL(/\/inbox\?t=\d+/)
+  await expect(page.getByTestId('inbox-pane').locator('article[data-decision]')).toBeVisible()
   await page.getByRole('link', { name: /Remove the filter/ }).count()
 })

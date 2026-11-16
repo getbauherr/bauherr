@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { runStage } from '../src/index.js';
+import { UI_PROOF_RULE, runStage, withProofDefaults } from '../src/index.js';
 import { makeBareRepo, makeCtx, startStubGateway, type StubTool } from './helpers.js';
 
 // Drives the real bundled Claude Code binary against a stub gateway (no LLM). The stub never edits
@@ -76,12 +76,12 @@ test('runStage build with mergeBase: a clean merge of main is pushed with no age
 const bare = (ctx: { connection: { gitBaseUrl?: string } }) => `${ctx.connection.gitBaseUrl!.replace('file://', '')}/o/n.git`;
 
 /** A build whose scripted agent writes `lines` lines to src/a.ts; the self-review pass reports `findings`; a fix pass writes src/fixed.ts. */
-const buildRun = async (lines: number, findings: object[], reviewChecks?: object, onBuild?: () => void) => {
+const buildRun = async (lines: number, findings: object[], reviewChecks?: object, onBuild?: (cwd: string) => void) => {
   const writes = (path: string, content: string): StubTool => ({ name: 'Write', input: { file_path: path, content } });
   const gw = await startStubGateway('done', 0, false, (model, prompt, cwd) =>
     model === 'cheap-m' ? (prompt.includes('Self-review of your own') ? writes(`${cwd}/.bauherr/self-review.json`, JSON.stringify({ findings })) : undefined)
     : prompt.includes('Fix pass') ? writes(`${cwd}/src/fixed.ts`, 'export const fixed = 1;\n')
-    : prompt.includes('Build Run') ? (onBuild?.(), writes(`${cwd}/src/a.ts`, 'x\n'.repeat(lines)))
+    : prompt.includes('Build Run') ? (onBuild?.(cwd), writes(`${cwd}/src/a.ts`, 'x\n'.repeat(lines)))
     : undefined);
   const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'build' });
   ctx.run.goal.statements = [];
@@ -100,6 +100,35 @@ test('runStage build: 29 changed lines skip the self-review', { timeout: 120_000
     assert.ok(gw.seen.every((s) => JSON.parse(s.body).model === 'std-m'));
     assert.doesNotMatch(res.artifacts.evidence ?? '', /Self-review/);
     assert.match(res.artifacts.evidence ?? '', /\| 1 \| done \|/);
+    assert.equal(ctx.prs.length, 1);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: shouldStop stops the agent at the next tool boundary, the branch is pushed and kept, no self-review and no MR', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(40, [{ severity: 'high', file: 'src/a.ts', line: 1, msg: 'bad', scenario: 's' }]);
+  let polls = 0;
+  ctx.shouldStop = async () => ++polls > 0;
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'preempted', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(polls, 1);
+    assert.ok(res.artifacts.pushedSha);
+    assert.equal(execFileSync('git', ['rev-parse', 'refs/heads/bauherr/7-r1'], { cwd: bare(ctx) }).toString().trim(), res.artifacts.pushedSha);
+    assert.equal(ctx.prs.length, 0);
+    assert.ok(gw.seen.every((s) => !s.body.includes('Self-review of your own')));
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: shouldStop false leaves the Run untouched', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(2, []);
+  ctx.shouldStop = async () => false;
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
     assert.equal(ctx.prs.length, 1);
   } finally {
     await gw.close();
@@ -132,6 +161,38 @@ test('runStage build: checks still failing after the fix pass push the branch an
     assert.equal(gw.seen.filter((s) => s.body.includes('Fix pass for Ticket')).length >= 1, true);
     assert.equal(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare(ctx), encoding: 'utf8' }).includes('src/a.ts'), true);
     assert.match(res.artifacts.pushedSha ?? '', /^[0-9a-f]{40}$/);
+  } finally {
+    await gw.close();
+  }
+});
+
+const UI_CHECKS = withProofDefaults(null, { ui: ['src/ui/**'] });
+const pairFiles = (variants: string[]) => (cwd: string) => {
+  mkdirSync(join(cwd, 'src/ui'), { recursive: true });
+  mkdirSync(join(cwd, '.bauherr/artifacts'), { recursive: true });
+  writeFileSync(join(cwd, 'src/ui/a.tsx'), 'export const a = 1;\n');
+  writeFileSync(join(cwd, '.bauherr/artifacts/s.png'), 'png');
+  writeFileSync(join(cwd, '.bauherr/artifacts.json'), JSON.stringify(variants.flatMap((v) => ['before', 'after'].map((pair) => ({ file: 's.png', kind: 'image', title: `${v}: Settings`, rule: UI_PROOF_RULE, pair })))));
+};
+
+test('runStage build: a ui diff with the light and dark pair passes pre-review and hands the pair on', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(1, [], UI_CHECKS as object, pairFiles(['light-desktop', 'dark-desktop']));
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(ctx.prs.length, 1);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: a ui diff without the full pair is refused with the same message as the server', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(1, [], UI_CHECKS as object, pairFiles(['light-desktop']));
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
+    assert.match(res.reason ?? '', /- No before\/after pair "UI change: before\/after" on the pushed head, missing: dark-desktop before, dark-desktop after\. Attach each \(attach_artifact, kind image, rule "UI change: before\/after", pair before\|after, title starting with the variant, e\.g\. "light-desktop: <view>"\), or add the Evidence line "No artifact: UI change: before\/after: <reason>"/);
+    assert.equal(ctx.prs.length, 0);
   } finally {
     await gw.close();
   }
@@ -233,6 +294,97 @@ test('runStage build: a rule whose command makes no proof ends needs_human namin
     assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
     assert.match(res.reason ?? '', /No proof "UI shots" \(image\)/);
     assert.equal(res.artifacts.proof, undefined);
+  } finally {
+    await gw.close();
+  }
+});
+
+/** A build whose scripted agent writes src/a.ts and, host side, `epicWorklog` into the clone's .bauherr/epic-worklog.md. */
+const epicBuild = async (epicWorklog: string) => {
+  const gw = await startStubGateway('done', 0, false, (_m, prompt, cwd) => {
+    if (!prompt.includes('Build Run')) return undefined;
+    writeFileSync(`${cwd}/.bauherr/epic-worklog.md`, epicWorklog);
+    return { name: 'Write', input: { file_path: `${cwd}/src/a.ts`, content: 'x\n' } };
+  });
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'build' });
+  ctx.run.goal.statements = [];
+  ctx.run.tier = 'standard';
+  ctx.connection.modelByTier = { cheap: 'cheap-m', standard: 'std-m' };
+  ctx.ticket.plan = '## Steps\n1. do it';
+  const upserts: { number: number; body: string }[] = [];
+  ctx.forge.upsertWorklog = async (number, body) => { upserts.push({ number, body }); };
+  return { gw, ctx, upserts };
+};
+
+test('runStage build: branch and prTitle override the defaults; the epic worklog is materialised and upserted to the parent', { timeout: 120_000 }, async () => {
+  const { gw, ctx, upserts } = await epicBuild('<!-- bauherr:worklog -->\nslice 1 says: use Foo\n');
+  ctx.branch = 'bauherr/5-epic';
+  ctx.prTitle = 'The epic title';
+  ctx.epic = { parent: 5, parentUrl: 'https://example.invalid/issues/5', worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
+  ctx.slice = { prev: null, mergeMain: false };
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(ctx.prs.length, 1);
+    assert.equal(ctx.prs[0]!.head, 'bauherr/5-epic');
+    assert.match(ctx.prs[0]!.body, /^Refs https:\/\/example\.invalid\/issues\/5\n/, 'the epic PR refs the parent, not the slice');
+    assert.ok(!ctx.prs[0]!.body.includes(ctx.ticket.url));
+    assert.ok(gw.seen.some((s) => s.body.includes('epic-worklog.md')), 'AGENTS.md points at the epic worklog');
+    assert.match(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/5-epic'], { cwd: bare(ctx) }).toString(), /src\/a\.ts/);
+    assert.deepEqual(upserts.filter((u) => u.number === 5).map((u) => u.body), ['<!-- bauherr:worklog -->\nslice 1 says: use Foo\n']);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: an unchanged epic worklog is not upserted', { timeout: 120_000 }, async () => {
+  const { gw, ctx, upserts } = await epicBuild('<!-- bauherr:worklog -->\nstart\n');
+  ctx.epic = { parent: 5, parentUrl: 'https://example.invalid/issues/5', worklog: '<!-- bauherr:worklog -->\nstart\n', slices: [] };
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(upserts.filter((u) => u.number === 5).length, 0);
+    assert.equal(ctx.prs[0]!.head, 'bauherr/7-r1');
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build with slice.mergeMain: a clean merge is pushed first, then the agent runs; never a rebase', { timeout: 120_000 }, async () => {
+  const base = makeBareRepo();
+  const remote = base.replace('file://', '') + '/o/n.git';
+  const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString().trim();
+  const w = mkdtempSync(join(tmpdir(), 'sm-'));
+  sh(w, 'clone', '-q', remote, '.');
+  sh(w, 'switch', '-qc', 'bauherr/5-epic');
+  writeFileSync(join(w, 'one.txt'), 'slice 1\n');
+  sh(w, 'add', '-A');
+  sh(w, 'commit', '-qm', 'slice 1');
+  const prev = sh(w, 'rev-parse', 'HEAD');
+  sh(w, 'push', '-q', 'origin', 'bauherr/5-epic');
+  sh(w, 'switch', '-q', 'main');
+  writeFileSync(join(w, 'main.txt'), 'main\n');
+  sh(w, 'add', '-A');
+  sh(w, 'commit', '-qm', 'main moves');
+  sh(w, 'push', '-q', 'origin', 'main');
+  const gw = await startStubGateway('done', 0, false, (_m, prompt, cwd) => (prompt.includes('Build Run') ? { name: 'Write', input: { file_path: `${cwd}/src/two.ts`, content: 'x\n' } } : undefined));
+  const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: base, stage: 'build' });
+  ctx.run.goal.statements = [];
+  ctx.run.tier = 'standard';
+  ctx.connection.modelByTier = { cheap: 'cheap-m', standard: 'std-m' };
+  ctx.ticket.plan = '## Steps\n1. do it';
+  ctx.existingPr = { number: 1, url: 'https://example.invalid/pr/1', branch: 'bauherr/5-epic', title: 't', body: 'b' };
+  ctx.slice = { prev, mergeMain: true };
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.ok(gw.seen.length > 0, 'the agent ran after the merge');
+    assert.equal(res.artifacts.mergeConflict, undefined);
+    assert.equal(sh(remote, 'ls-tree', '-r', '--name-only', 'bauherr/5-epic'), 'README.md\nmain.txt\none.txt\nsrc/two.ts');
+    const log = sh(remote, 'log', '--format=%P|%s', 'bauherr/5-epic').split('\n');
+    assert.equal(log.length, 5, 'agent commit, merge commit, slice 1, main, init: nothing rewritten');
+    assert.match(log[1]!, /^[0-9a-f]{40} [0-9a-f]{40}\|Merge remote-tracking branch/);
+    assert.equal(sh(remote, 'rev-parse', `${sh(remote, 'rev-list', '--merges', '-n', '1', 'bauherr/5-epic')}^1`), prev);
   } finally {
     await gw.close();
   }

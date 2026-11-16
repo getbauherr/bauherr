@@ -39,7 +39,7 @@ docker compose run --rm --no-deps -T \
   -e BAUHERR_ADMIN_EMAIL -e GITHUB_TOKEN app sh -c 'cd /repo/apps/server && pnpm seed'
 gh issue create -R getbauherr/bauherr --title "Add CHANGELOG.md" --label bauherr:stage:plan --body "<body>"
 gh api -X POST repos/getbauherr/bauherr/issues/70/labels --raw-field 'labels[]=bauherr:approved:plan'
-BAUHERR_VERSION=edge docker compose pull app && docker compose up -d   # follow the production image (ghcr.io/getbauherr/bauherr:edge)
+BAUHERR_VERSION=<version> docker compose pull app && docker compose up -d   # pin a release or RC image (ghcr.io/getbauherr/bauherr:<version>, see docs/releasing.md)
 ```
 
 ## Agent key

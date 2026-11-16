@@ -17,3 +17,7 @@ export const runKind = (wf: Workflow, v: string): string | undefined => (SYSTEM_
 
 /** The kind of a Run: its recorded kind, or the stage's kind for Runs created before `kind` existed. */
 export const kindOfRun = (wf: Workflow, run: Record<string, any>): string | undefined => (run.kind as string | null | undefined) ?? runKind(wf, String(run.stage))
+
+/** The verb of a Run in a stage of this kind ("building"). */
+export const ACTIVITY: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying', agent: 'working' }
+export const activityOf = (kind: string | undefined): string => (kind && ACTIVITY[kind]) || 'running a step'

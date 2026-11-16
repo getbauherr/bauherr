@@ -1,12 +1,13 @@
+import { sendBackOptions } from '../../../lib/send-back-options'
+import { SendBackDialog } from './SendBackDialog'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
+import { acceptStagingAction, approvePlanAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
 import { actionFor, fallbackFor, type Action, type NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
 import { ExternalLink } from './icons'
-import { DockOpen } from './chat/DockOpen'
 import { FormPending, LinkedReason, NextStepBar, type NextStepPrimary } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
@@ -16,6 +17,8 @@ type Props = {
   /** The Ticket's Product, for the "Configure checks" link. */
   product: number
   need: Need | null
+  /** What the staging and production gates name as the change (`changeOf`). */
+  change?: string
   stage: string
   missing: string[]
   open: number
@@ -33,8 +36,6 @@ type Props = {
   canExpedite?: boolean
   /** The prepared Decision's ask: the bar's sentence, so the Inbox and this page say the same. */
   ask?: string | null
-  /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary opens the conversation. */
-  answerable?: number
 }
 
 const Post = ({ ticket, action, children, variant = 'default', title }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; variant?: 'default' | 'outline'; title?: string }) => (
@@ -48,9 +49,9 @@ const Post = ({ ticket, action, children, variant = 'default', title }: { ticket
 export const FAST_LANE_HELP = 'Skips Triage and plan approval, jumps the queue. One at a time.'
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask, answerable = 0 }: Props) {
+export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask, change }: Props) {
   const gate = need ? GATES[need] : null
-  const ctx = { stage, missing, open, reason }
+  const ctx = { stage, missing, open, reason, title: change }
   const verb = gate?.verb(ctx) ?? ''
   const fid = `bar-${ticket}`
   const post = (action: (f: FormData) => Promise<void>): { primary: NextStepPrimary; form: ReactNode } => ({
@@ -84,7 +85,8 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       }
     }
   })()
-  const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
+  const sendBack = sendBackOptions(need, gate?.kind)
+  const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : sendBack.length ? <SendBackDialog ticket={ticket} options={sendBack} /> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
     <NextStepBar sentence={gate ? (ask ?? gate.sentence(ctx)) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need || idle.forge ? undefined : idle.href ? { label: idle.label, href: idle.href } : { label: idle.label, disabled: true, reason: idle.reason })}>
       {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
@@ -92,8 +94,6 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       {secondary}
       {!need && idle.forge && <Button asChild variant="outline"><a href={idle.forge.href} target="_blank" rel="noopener noreferrer">{idle.forge.label}<span className="sr-only"> (opens in new tab)</span><ExternalLink className="size-4" aria-hidden /></a></Button>}
       {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</Post>}
-      {answerable > 0 && !step.node && <Button asChild variant="outline" data-testid="answer-questions"><Link href={`/tickets/${ticket}?view=conversation`}>Answer {answerable} question{answerable === 1 ? '' : 's'}</Link></Button>}
-      <DockOpen ticket={ticket} variant="outline">Comment</DockOpen>
       {step.form}
       {step.node}
     </NextStepBar>

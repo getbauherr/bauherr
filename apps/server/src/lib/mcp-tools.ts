@@ -4,8 +4,9 @@ import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { settleDecision } from './decision'
+import type { EpicField, SliceField } from './epic'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -15,7 +16,8 @@ import { logins } from './forge-channel'
 import { ownsGate } from './gates'
 import { record } from './history'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
-import { AGENT_REPAIRED, deadTickets } from './liveness'
+import { releaseFastLane } from './expedite'
+import { AGENT_RELEASED, AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
 import { preemptFor } from './preempt'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
@@ -173,6 +175,28 @@ const agentBrief = (wf: Workflow, run: Doc) => {
 /** The GitHub login a session Run assigns on the Ticket. */
 const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
 
+/** The `slices` of an epic parent: one row per planned slice (`number` null until its Ticket exists). */
+const slicesOf = async (c: Ctx, parent: Doc) => {
+  const planned = (parent.epic as EpicField).slices
+  const ids = planned.flatMap((s) => (s.ticket ? [s.ticket] : []))
+  const subs = ids.length ? ((await c.payload.find({ collection: 'tickets', where: { id: { in: ids } }, pagination: false, ...scoped(c) })).docs as Doc[]) : []
+  return planned.map((s) => {
+    const sub = subs.find((t) => t.id === s.ticket)
+    const slice = sub?.slice as SliceField | undefined
+    return { number: (sub?.number as number | undefined) ?? null, title: s.title, prev: slice?.prev ?? null, head: slice?.head ?? null, fixes: slice?.fixes ?? [] }
+  })
+}
+
+/** Epic context of a slice sub-ticket (its parent's branch, position and worklog) or of an epic parent (branch and slices); null for every other Ticket. */
+const epicContext = async (c: Ctx, t: Doc) => {
+  if (t.slice) {
+    const slice = t.slice as SliceField
+    const parent = await getTicket(c, slice.epic)
+    return { parent: { id: parent.id, number: parent.number }, branch: slice.branch, slice: `${slice.index + 1}/${(parent.epic as EpicField).slices.length}`, prev: slice.prev, mergeMainFirst: slice.index > 0, worklog: await readWorklog(c.payload, c.user, { ticket: parent.id }) }
+  }
+  return t.epic ? { branch: (t.epic as EpicField).branch, slices: await slicesOf(c, t) } : null
+}
+
 /** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string, label: string | null = null, stages: string[] | null = null, who: ReturnType<typeof clientOf> = clientOf({}, c)) => {
   const run = await getRun(c, runId)
@@ -185,6 +209,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
   if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
+  if (ticket.parked) throw new ClaimLost(`ticket #${ticket.number} is parked`)
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
@@ -210,9 +235,10 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label, stages)
   const fixBase = kind === 'review' ? await fixBaseOf(c.payload, ticket) : null
+  const epic = await epicContext(c, ticket)
   const escalated = await isEscalated(c.payload, won)
   if (escalated && kind === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
-  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }) }, goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }), ...(epic && { epic }) }, ...(kind === 'review' && epic && 'slices' in epic && { slices: epic.slices }), goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
@@ -230,7 +256,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
     depth: 1,
   })
-  const all = tickets.docs.filter((t: Doc) => !is(workflowFor(t.workspace), t.stage, 'container'))
+  const all = tickets.docs.filter((t: Doc) => !t.parked && !is(workflowFor(t.workspace), t.stage, 'container'))
   for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
@@ -338,7 +364,8 @@ export const tools: Tool[] = [
       const live = await ts.get(n)
       const mr = await prOf(c.payload, t)
       const pr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head } : null
-      return { ...t, body: live.body, goal: await goalFor(c.payload, t, live.body, is(workflowFor(t.workspace), t.stage, 'build') ? 'build' : 'plan'), pr }
+      const epic = await epicContext(c, t)
+      return { ...t, ...(epic && { epic }), body: live.body, goal: await goalFor(c.payload, t, live.body, is(workflowFor(t.workspace), t.stage, 'build') ? 'build' : 'plan'), pr }
     },
   },
   {
@@ -410,7 +437,7 @@ export const tools: Tool[] = [
   {
     name: 'read_worklog',
     access: 'agent',
-    description: 'Markdown of the Ticket\'s factory worklog comment (empty if none).',
+    description: 'Markdown of the Ticket\'s factory worklog comment (empty if none). An epic slice shares the worklog of its parent Ticket (`epic.parent` in get_ticket and claim_run): record interfaces and decisions there.',
     inputSchema: obj(ticketId, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)
@@ -420,7 +447,7 @@ export const tools: Tool[] = [
   {
     name: 'update_worklog',
     access: 'agent',
-    description: 'Create or replace the Ticket\'s worklog comment (one per Ticket, marked <!-- bauherr:worklog -->). While a session Run holds the Ticket\'s lease, its leaseToken is required.',
+    description: 'Create or replace the Ticket\'s worklog comment (one per Ticket, marked <!-- bauherr:worklog -->). While a session Run holds the Ticket\'s lease, its leaseToken is required. For an epic slice, write the epic worklog on the parent Ticket (`epic.parent`); the parent holds no lease then, so no leaseToken is needed.',
     inputSchema: obj({ ...ticketId, ...leaseToken, markdown: str('Full worklog, see the worklog skill template') }, ['ticket', 'markdown']),
     async run(a, c) {
       const t = await getTicket(c, a.ticket)
@@ -575,6 +602,8 @@ export const tools: Tool[] = [
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
+      if (a.prUrl) await setEpicPr(c.payload, ticket, a.prUrl)
+      if (kind === 'build' && a.status === 'succeeded' && ticket.epic) await tagFixes(c.payload, ticket).catch((e) => c.payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       if ((kind === 'agent' && a.status === 'succeeded') || replan) {
         if (replan) await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET "outcome" = 'replan' WHERE "id" = ${run.id}`)
@@ -610,7 +639,7 @@ export const tools: Tool[] = [
         findings: {
           type: 'array',
           maxItems: 50,
-          items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, class: { enum: ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low'] }, test: { type: 'object', properties: { command: { type: 'string', maxLength: 1000 }, failure: { type: 'string', maxLength: 1000 }, patch: { type: 'string', maxLength: 4000 } }, required: ['command', 'failure'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'class', 'file', 'line', 'msg', 'scenario'] },
+          items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, class: { enum: ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low'] }, test: { type: 'object', properties: { command: { type: 'string', maxLength: 1000 }, failure: { type: 'string', maxLength: 1000 }, patch: { type: 'string', maxLength: 4000 } }, required: ['command', 'failure'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, slice: { type: 'integer', minimum: 1, description: 'Epic review: the Ticket number of the slice the finding belongs to; required on every finding of a changes verdict for an epic' }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'class', 'file', 'line', 'msg', 'scenario'] },
         },
         open: { type: 'array', maxItems: 50, description: 'Noted, not sent back: scenarios without a failing test, findings that need an input no real path produces, findings outside the round.', items: { type: 'object', properties: { text: { type: 'string', maxLength: 1000 }, reason: { enum: ['no-failing-test', 'constructed-input', 'out-of-round-scope'] } }, required: ['text', 'reason'] } },
         checked: { type: 'array', description: 'One entry per area: correctness, over-engineering, spec-vs-plan, evidence. A review without all four goes to a human.', items: { type: 'object', properties: { area: { enum: ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'] }, note: { type: 'string', maxLength: 1000, description: 'One-line justification' } }, required: ['area', 'note'] } },
@@ -625,6 +654,11 @@ export const tools: Tool[] = [
       if (kindOfRun(workflowFor(run.workspace), run) !== 'review') throw new Error(`run ${run.id} is a ${run.stage} Run, not a review Run`)
       const ticket = await getTicket(c, id(run.ticket))
       const review = normalizeReview(a, { round: reviewRoundOf(ticket) })
+      if (ticket.epic && review.verdict === 'changes') {
+        const numbers = (await slicesOf(c, ticket)).flatMap((s) => (s.number ? [s.number] : []))
+        const bad = review.findings.findIndex((f) => f.slice === undefined || !numbers.includes(f.slice))
+        if (bad >= 0) throw new Error(`finding ${bad} needs slice: the Ticket number of the slice it belongs to (${numbers.map((n) => `#${n}`).join(', ')})`)
+      }
       const reviewedSha = (await prOf(c.payload, ticket))?.pr.headSha ?? null
       await ownerWrite(
         c,
@@ -781,6 +815,18 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'release_fast_lane',
+    access: 'agent',
+    description: 'Repair a stuck fast-lane hold: a Ticket that holds the fast lane while it waits for a human, with another expedite Ticket waiting, gives up its place (the expedite label goes, one Comment says why). Allowed only for that cause; refused for every other Ticket.',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      const t = await getTicket(c, a.ticket)
+      const dead = (await deadTickets(c.payload, id(t.workspace))).find((d) => d.ticket.id === t.id)
+      if (!dead || !AGENT_RELEASED.includes(dead.cause)) throw new Error(`ticket ${t.number} does not hold the fast lane while waiting for a human; nothing to release`)
+      return { outcome: await releaseFastLane(c.payload, t) }
+    },
+  },
+  {
     name: 'grant_review_round',
     access: 'human',
     description: 'Human only: at the review round cap (once the factory grant is used), grant exactly one more round (back to Build on the same MR, records a human touch). Refused for agent keys.',
@@ -793,7 +839,7 @@ export const tools: Tool[] = [
   {
     name: 'stop_review',
     access: 'human',
-    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused for agent keys.',
+    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment; an epic (parent or slice) is parked instead. Refused for agent keys.',
     inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)
@@ -877,7 +923,7 @@ export const tools: Tool[] = [
 ]
 
 /** Tools of a human decision on one Ticket. */
-const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'grant_review_round', 'stop_review', 'request_changes'])
+const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'release_fast_lane', 'grant_review_round', 'stop_review', 'request_changes'])
 
 const SESSION_ID_ARG = { type: 'string', description: 'Your sessionId from connect: keeps your session present and attributes the Run to it.' }
 // Every agent tool but connect takes an optional sessionId; wrapping the schema keeps the tools above untouched.

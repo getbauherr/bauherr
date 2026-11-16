@@ -9,29 +9,35 @@ import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { kindOfRun } from './stage-text'
 import { workflowFor } from './factory'
 import { is, liveStages, nameOf } from './workflow'
+import { laneWaiter } from './expedite'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
 /** Why an open Ticket in a factory stage has no live Run. */
-export const CAUSES = ['triage-expired', 'mr-missing', 'checks-red', 'run-failed', 'run-cancelled', 'run-abandoned', 'run-stuck', 'review-escalated', 'review-invalid', 'review-stalled', 'unknown'] as const
+export const CAUSES = ['triage-expired', 'mr-missing', 'checks-red', 'run-failed', 'run-cancelled', 'run-abandoned', 'run-stuck', 'review-escalated', 'review-invalid', 'review-stalled', 'fast-lane-held', 'unknown'] as const
 export type Cause = (typeof CAUSES)[number]
 /** Causes the factory repairs itself; the others are shown to the owner as a need (`Cancelled`, `Needs you`). */
 export const REPAIRED: readonly Cause[] = ['triage-expired', 'mr-missing', 'checks-red', 'run-failed', 'run-abandoned', 'run-stuck', 'review-escalated', 'review-invalid']
 /** Causes an agent may repair with `return_to_build`. */
 export const AGENT_REPAIRED: readonly Cause[] = ['mr-missing', 'checks-red']
 
-export type Dead = { ticket: Doc; cause: Cause; run: Doc | null; need: Need | null }
+/** Causes an agent may repair with `release_fast_lane`. */
+export const AGENT_RELEASED: readonly Cause[] = ['fast-lane-held']
+
+export type Dead = { ticket: Doc; cause: Cause; run: Doc | null; need: Need | null; since?: string }
 
 /** A clean review waiting this long for a human merge, without a human touch, is stalled. */
 const REVIEW_STALLED_MS = 30 * 60_000
+/** A held fast lane the Orchestrator did not clear within this long becomes an Inbox decision. */
+const LANE_HELD_MS = 30 * 60_000
 
 
 /** The newest open factory MR of a Ticket (highest number), found by branch name when the linked MR is closed or missing. */
 const replacementMr = async (payload: Payload, t: Doc) => {
   const { backend, repo } = await forgeOf(payload, id(t.product))
-  return (await backend.forge.listPullRequests(repo, 'open')).filter((pr) => isFactoryPr(pr, repo, t.number) && pr.state === 'open').sort((a, b) => b.number - a.number)[0] ?? null
+  return (await backend.forge.listPullRequests(repo, 'open')).filter((pr) => isFactoryPr(pr, repo, t) && pr.state === 'open').sort((a, b) => b.number - a.number)[0] ?? null
 }
 
 const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Cause | null> => {
@@ -81,7 +87,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
   const workspaces = workspace === undefined ? (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, ...o })).docs.map((w) => w.id) : [workspace]
   const byWorkspace: Where[] = workspaces.map((w) => ({ and: [{ workspace: { equals: w } }, { or: [{ stage: { in: liveStages(workflowFor(w)) } }, { stage: { exists: false } }] }] as Where[] }))
   const where: Where = { and: [{ state: { equals: 'open' } }, { or: byWorkspace }] }
-  const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.waitingFor && !(t.blockedBy?.length ?? 0))
+  const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.parked && !t.waitingFor && !(t.blockedBy?.length ?? 0))
   if (!tickets.length) return []
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]
   const dead: Dead[] = []
@@ -89,10 +95,15 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
     const mine = runs.filter((r) => id(r.ticket) === t.id)
     if (mine.some((r) => ACTIVE.includes(r.status))) continue
     const latest = mine[0] ?? null
-    const cause = (await causeOf(payload, t, latest)) ?? (latest && latest.stage === t.stage && ['failed', 'abandoned', 'cancelled', 'needs_human'].includes(latest.status) ? 'unknown' : null)
+    let cause = (await causeOf(payload, t, latest)) ?? (latest && latest.stage === t.stage && ['failed', 'abandoned', 'cancelled', 'needs_human'].includes(latest.status) ? 'unknown' : null)
     if (!cause) continue
-    const need = needsYou(workflowFor(t.workspace), { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
-    dead.push({ ticket: t, cause, run: latest, need })
+    // A holder that waits for a human merge (the poller yields the slot of a `needsYou` holder itself) while an expedite Ticket waits for the lane.
+    const held = cause === 'review-stalled' && (await laneWaiter(payload, t))
+    if (held) cause = 'fast-lane-held'
+    const since = held ? (t.liveness?.cause === cause && t.liveness.since) || new Date().toISOString() : undefined
+    const laneHeld = !!since && Date.now() - Date.parse(since) > LANE_HELD_MS
+    const need = needsYou(workflowFor(t.workspace), { stage: t.stage, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor, laneHeld }, latest && { stage: latest.stage, status: latest.status, reasonKind: latest.reasonKind })
+    dead.push({ ticket: t, cause, run: latest, need, since })
   }
   return dead
 }
@@ -163,7 +174,7 @@ export const FINDING_FRESH_MS = 15 * 60_000
 /** Stores what the sweep found for the pages (`liveness` = {cause, need, at}) and clears the finding of every other Ticket; one statement each, no `updated_at` bump. */
 const storeFindings = async (payload: Payload, dead: Dead[]): Promise<void> => {
   const at = new Date().toISOString()
-  for (const d of dead) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "liveness" = ${JSON.stringify({ cause: d.cause, need: d.need, at })}::jsonb WHERE "id" = ${d.ticket.id}`)
+  for (const d of dead) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "liveness" = ${JSON.stringify({ cause: d.cause, need: d.need, at, since: d.since })}::jsonb WHERE "id" = ${d.ticket.id}`)
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "liveness" = NULL WHERE "liveness" IS NOT NULL${dead.length ? sql` AND "id" NOT IN (${sql.join(dead.map((d) => sql`${d.ticket.id}`), sql`, `)})` : sql``}`)
 }
 

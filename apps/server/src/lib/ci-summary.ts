@@ -52,7 +52,7 @@ export const storeCiSummaries = async (payload: Payload, now = new Date()): Prom
       if (!forges.has(pid)) forges.set(pid, forgeOf(payload, pid))
       const { backend, repo } = await forges.get(pid)!
       if (!open.has(pid)) open.set(pid, backend.forge.listPullRequests(repo, 'open'))
-      const pr = (await open.get(pid)!).filter((p) => p.state === 'open' && isFactoryPr(p, repo, t.number)).sort((a, b) => b.number - a.number)[0]
+      const pr = (await open.get(pid)!).filter((p) => p.state === 'open' && isFactoryPr(p, repo, t)).sort((a, b) => b.number - a.number)[0]
       if (!pr) {
         if (t.ciSummary) await payload.update({ collection: 'tickets', id: t.id, data: { ciSummary: null }, ...o })
         continue

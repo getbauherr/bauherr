@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
@@ -48,6 +49,7 @@ const closePanel = async (page: Page) => {
 /** The Inbox card of a Ticket, "Answer questions" opens the conversation (a navigation, no in-card expansion). */
 const open = async (page: Page, title: string) => {
   await page.goto('/inbox')
+  await page.getByTestId('inbox-row').filter({ hasText: title }).click()
   const card = page.locator('article[data-decision]').filter({ hasText: title })
   await expect(card).toHaveCount(1)
   hrefs[title] = (await card.getByRole('link', { name: new RegExp(title) }).getAttribute('href'))!
@@ -71,7 +73,10 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page, admin)
   await page.goto('/inbox')
-  for (const t of ['Export the invoices', 'Name the export file']) hrefs[t] = (await page.locator('article[data-decision]').filter({ hasText: t }).getByRole('link', { name: new RegExp(t) }).getAttribute('href'))!
+  for (const t of ['Export the invoices', 'Name the export file']) {
+    await page.getByTestId('inbox-row').filter({ hasText: t }).click()
+    hrefs[t] = (await page.locator('article[data-decision]').filter({ hasText: t }).getByRole('link', { name: new RegExp(t) }).getAttribute('href'))!
+  }
   await open(page, 'Docs Agent')
   await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
 
@@ -194,6 +199,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page, admin)
   await page.goto('/inbox')
+  await page.getByTestId('inbox-row').filter({ hasText: 'Export the invoices' }).click()
   const card = page.locator('article[data-decision]').filter({ hasText: 'Export the invoices' })
   await expect(card.getByTestId('refine-panel')).toHaveCount(0)
   await expect(card.getByRole('button', { name: 'Answer questions' })).toHaveCount(0)
@@ -207,7 +213,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await expect(info).toContainText('Lead time')
   const bar0 = page.getByTestId('action-bar')
   await expect(bar0.getByRole('button', { name: 'Put on the fast lane' })).toBeVisible()
-  await expect(bar0.getByRole('button', { name: 'Comment' })).toBeVisible()
+  await expect(bar0.getByRole('button', { name: 'Comment' })).toHaveCount(0) // comments go through the conversation's composer
   await shoot(page, 'info-popover')
 
   await page.getByTestId('participant-line').click()
@@ -289,4 +295,35 @@ test('a Product owner that Triage\'s questions are not addressed to still gets t
   const id = /\/tickets\/(\d+)/.exec(hrefs['Export the invoices']!)![1]
   const status = await page.evaluate(async (i) => (await fetch(`/api/refine/${i}/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello' }) })).status, id)
   expect(status).toBe(404) // they have no row to answer (this Workspace asks the Bauherr: gated-pack)
+})
+
+test('a rejected turn shows its error with "Try again", keeps the typed text, and a retry resends it and empties the composer', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await open(page, 'Export the invoices')
+  const sent: string[] = []
+  await page.route('**/api/refine/*/turn', async (route) => {
+    const body = route.request().postDataJSON() as { text?: string }
+    if (body.text === undefined) return route.continue() // the background re-check
+    sent.push(body.text)
+    return sent.length === 1 ? route.fulfill({ status: 502, json: { error: 'The model is unavailable.' } }) : route.continue()
+  })
+  const typed = page.getByRole('textbox', { name: 'Your answer' })
+  await typed.fill('Export them as CSV.')
+  await typed.press('Enter')
+  const error = page.getByTestId('refine-error')
+  await expect(error).toHaveText('The model is unavailable.')
+  const retry = page.getByTestId('refine-retry')
+  await expect(retry).toBeVisible()
+  await expect(error.getByRole('button')).toHaveCount(0) // the button sits next to the alert, not in it
+  await expect(typed).toHaveValue('Export them as CSV.')
+  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']).exclude('nextjs-portal').analyze()
+  expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([])
+
+  await retry.click()
+  await expect(error).toHaveCount(0)
+  await expect(page.getByTestId('artifact-bar')).toContainText('3 of 4 open') // the bar of the embedded conversation: the sheet with the points is closed
+  expect(sent).toEqual(['Export them as CSV.', 'Export them as CSV.'])
+  await expect(typed).toHaveValue('') // a second send must not repeat the text
 })

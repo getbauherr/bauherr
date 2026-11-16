@@ -16,15 +16,19 @@ export const PREEMPT_GRACE_MS = 2 * 60_000
 export type Preempt = { ticket: number; run: number; reason: string }
 
 /**
- * The victim for an expedite Run of role `roleId`: the running session Run of that role with the latest start that is not marked and whose Ticket is not expedite.
+ * The victim for an expedite Run of role `roleId`: the running session Run of that role with the latest start that is not marked and whose Ticket is not expedite;
+ * when no session Run qualifies, the same for an autonomous (Runner) Run of the role.
  * Null while a connected session of the role is free (no running Run, and the role's `agents` cap not reached). Runs on `tx`, under the caller's lock.
  */
 export const pickVictim = async (tx: any, workspace: number, roleId: string, cap: number | null | undefined): Promise<number | null> => {
   const running = (await tx.execute(sql`SELECT count(*)::int AS n FROM "runs" WHERE "workspace_id" = ${workspace} AND "role" = ${roleId} AND "mode" = 'session' AND "status" = 'running'`)).rows[0] as { n: number }
   const free = (await tx.execute(sql`SELECT 1 FROM "agent_sessions" s WHERE s."workspace_id" = ${workspace} AND s."role" = ${roleId} AND s."disconnected_at" IS NULL AND s."last_seen_at" > now() - make_interval(secs => ${sessionTimeoutS()}) AND NOT EXISTS (SELECT 1 FROM "runs" r WHERE r."session_id" = s."id" AND r."status" = 'running') LIMIT 1`)).rows.length > 0
   if (free && !(cap && running.n >= cap)) return null
-  const row = (await tx.execute(sql`SELECT r."id" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."workspace_id" = ${workspace} AND r."role" = ${roleId} AND r."mode" = 'session' AND r."status" = 'running' AND r."preempt_at" IS NULL AND t."expedite" IS NOT TRUE ORDER BY r."started_at" DESC, r."id" DESC LIMIT 1`)).rows[0] as { id: number } | undefined
-  return row?.id ?? null
+  for (const mode of ['session', 'autonomous']) {
+    const row = (await tx.execute(sql`SELECT r."id" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."workspace_id" = ${workspace} AND r."role" = ${roleId} AND r."mode" = ${mode} AND r."status" = 'running' AND r."preempt_at" IS NULL AND t."expedite" IS NOT TRUE ORDER BY r."started_at" DESC, r."id" DESC LIMIT 1`)).rows[0] as { id: number } | undefined
+    if (row) return row.id
+  }
+  return null
 }
 
 /**
@@ -74,3 +78,7 @@ export const pausingFor = async (payload: Payload, hot: number | string): Promis
   const row = (await payload.db.drizzle.execute(sql`SELECT t."number" AS number FROM "runs" v JOIN "tickets" t ON t."id" = v."ticket_id" WHERE v."preempted_by" = ${hot} AND v."status" = 'running' AND v."preempt_at" IS NOT NULL LIMIT 1`)).rows[0] as { number: number } | undefined
   return row ? Number(row.number) : null
 }
+
+/** Whether the running Run `runId` is marked for a hotfix that still waits for a session: the Runner polls it at its tool boundaries. */
+export const preemptedRun = async (payload: Payload, runId: number | string): Promise<boolean> =>
+  (await payload.db.drizzle.execute(sql`SELECT 1 FROM "runs" v JOIN "runs" e ON e."id" = v."preempted_by" WHERE v."id" = ${runId} AND v."status" = 'running' AND v."preempt_at" IS NOT NULL AND e."status" = 'awaiting_session' LIMIT 1`)).rows.length > 0

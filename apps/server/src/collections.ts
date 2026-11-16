@@ -340,7 +340,7 @@ const validateMonitoring = async ({ data, originalDoc, req }: { data?: Doc; orig
   if (req.user && !isAdmin({ req })) throw new APIError('Only an Admin can change monitoring', 403)
   const service = (data?.service ?? originalDoc?.service) as Service | undefined
   if (originalDoc?.service && service !== originalDoc.service) fail('service', 'cannot change after create')
-  const keys = service === 'grafana' ? ['url'] : ['host', 'protocol', 'headerName', 'uiUrl']
+  const keys = service === 'grafana' ? ['url'] : service === 'prometheus' ? ['url', 'tokenHash'] : ['host', 'protocol', 'headerName', 'uiUrl']
   const merged = { ...originalDoc?.config, ...data?.config } as Record<string, unknown>
   const config = Object.fromEntries(keys.flatMap((k) => (typeof merged[k] === 'string' && merged[k].trim() ? [[k, (merged[k] as string).trim()]] : [])))
   if (service === 'otlp') config.protocol ??= 'grpc'
@@ -351,7 +351,7 @@ const validateMonitoring = async ({ data, originalDoc, req }: { data?: Doc; orig
   await lockAmbient(req, MONITORING_LOCK)
   const others = await req.payload.count({ collection: 'connections', where: { and: [{ kind: { equals: 'monitoring' } }, { service: { equals: service } }, ...(originalDoc?.id ? [{ id: { not_equals: originalDoc.id } }] : [])] }, overrideAccess: true, req })
   if (others.totalDocs) fail('service', 'this service is already connected on this instance')
-  return { ...data, kind: 'monitoring', service, config, ...(config.headerName || service === 'grafana' ? {} : { secret: null }) }
+  return { ...data, kind: 'monitoring', service, config, ...(service === 'otlp' && !config.headerName ? { secret: null } : {}) }
 }
 
 const connections = col(
@@ -359,7 +359,7 @@ const connections = col(
   [
     text('name', { required: true }),
     select('kind', ['github', 'gitlab', 'llm-provider', 'monitoring'], { required: true }),
-    select('service', [...SERVICES], { admin: { description: 'monitoring Connections only: which service (one per service on the instance). prometheus is refused until the scrape endpoint ships.' } }),
+    select('service', [...SERVICES], { admin: { description: 'monitoring Connections only: which service (one per service on the instance).' } }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
@@ -580,6 +580,9 @@ const tickets = col('tickets', [
   date('reviewWaitingSince'),
   { name: 'queuedAt', type: 'date', admin: { readOnly: true, description: 'When the MR entered the forge merge queue (`reviewState` queued).' } },
   { name: 'trainFailures', type: 'number', defaultValue: 0, admin: { description: 'Times the merge queue or train dropped the MR (its checks failed there); the 3rd needs a human.' } },
+  json('epic'),
+  json('slice'),
+  { name: 'parked', type: 'checkbox', defaultValue: false, admin: { description: 'The Ticket (epic) is stopped: nothing merges and it holds no WIP.' } },
   { name: 'mergeFailures', type: 'number', defaultValue: 0, admin: { description: 'Consecutive failed merge attempts; the 3rd needs a human.' } },
   text('gateNotified'),
   date('gateNotifiedAt'),

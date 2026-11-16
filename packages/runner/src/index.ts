@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } from './agent.js';
-import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId } from './clone.js';
-import { makeProof } from './artifacts.js';
+import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId, sliceBase, sliceDiff } from './clone.js';
+import { makeProof, readManifest } from './artifacts.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, DOCS_FINDINGS_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { DIFF_FILE, DOCS_FINDINGS_FILE, EPIC_WORKLOG_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, matchingArtifactRules, planStepCount, preReviewChecks, type ProofItem } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
@@ -17,7 +17,7 @@ export { materialise, readRules, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
 export { ARTIFACTS_DIR, ARTIFACTS_MANIFEST, makeProof, readManifest, type ProofItem } from './artifacts.js';
-export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, artifactRules, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ArtifactKind, type ArtifactRule, type ReviewChecks } from './pre-review.js';
+export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, UI_PROOF_PAIRS, UI_PROOF_RULE, artifactRules, storableProofRules, titleNamesVariant, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, proofRules, withProofDefaults, type ArtifactKind, type ArtifactRule, type ReviewChecks } from './pre-review.js';
 export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
@@ -65,6 +65,17 @@ function usageOf(state: AgentState): RunResult['usage'] {
   );
 }
 
+/** Upserts the epic worklog the agent edited to the parent Ticket. */
+async function syncEpicWorklog(ctx: RunCtx, dir: string): Promise<void> {
+  try {
+    const file = join(dir, EPIC_WORKLOG_FILE);
+    const body = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    if (body.trim() && body !== ctx.epic!.worklog) await ctx.forge.upsertWorklog(ctx.epic!.parent, body.startsWith(WORKLOG_MARKER) ? body : `${WORKLOG_MARKER}\n${body}`);
+  } catch (e) {
+    ctx.recorder.log(`epic worklog of run ${ctx.run.id} not saved: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Runs one Triage, Plan, Build or Review stage end to end. Never throws; infrastructure errors become `failed`. */
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
   const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
@@ -79,7 +90,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       defaultBranch: ctx.product.defaultBranch,
       token: ctx.connection.gitToken,
       ...(ctx.connection.gitUser ? { user: ctx.connection.gitUser } : {}),
-      branch: `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
+      branch: ctx.branch ?? `bauherr/${ctx.ticket.number}-${ctx.run.id}`,
       ...(ctx.existingPr && ctx.run.kind !== 'plan' ? { checkout: ctx.existingPr.branch } : {}),
     });
     if (ctx.run.kind === 'review') {
@@ -105,14 +116,24 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
       artifacts.mergeConflict = true;
     }
+    let sliceConflict = false;
+    if (ctx.slice?.mergeMain && ctx.run.kind === 'build') {
+      const merged = await mergeBase(clone, clone.env, base);
+      if (merged === 'conflict') conflicted = sliceConflict = artifacts.mergeConflict = true;
+      else {
+        await commitAndPush(clone, clone.env, `bauherr: merge ${base} (run ${ctx.run.id})`);
+        clone.baseSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
+      }
+    }
     const fixedGoal = ctx.run.kind === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.kind === 'triage' ? TRIAGE_GOAL : ctx.run.kind === 'review' ? REVIEW_GOAL : ctx.run.kind === 'scan' ? SCAN_GOAL : ctx.run.kind === 'docs' ? DOCS_GOAL : ctx.run.kind === 'agent' ? AGENT_GOAL : null;
-    const agentCtx: RunCtx = fixedGoal ? { ...ctx, run: { ...ctx.run, goal: { statements: fixedGoal } } } : ctx;
+    const agentCtx: RunCtx = { ...ctx, ...(sliceConflict && { mergeBase: true }), ...(fixedGoal && { run: { ...ctx.run, goal: { statements: fixedGoal } } }) };
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.kind === 'review') {
       const remote = `origin/${base}`;
       artifacts.reviewedPatchId = await patchId(clone, clone.env, base).catch(() => '');
       const since = ctx.conflictBase ?? ctx.fixBase;
       if (since) await interdiff(clone, clone.env, base, since, join(clone.dir, DIFF_FILE));
+      else if (ctx.slice?.prev) await sliceDiff(clone, clone.env, await sliceBase(clone, clone.env, ctx.slice.prev), join(clone.dir, DIFF_FILE));
       else await git(clone.dir, clone.env, 'diff', `--output=${DIFF_FILE}`, `${remote}...HEAD`).catch(() => git(clone!.dir, clone!.env, 'diff', `--output=${DIFF_FILE}`, remote, 'HEAD'));
     }
     proxy = await startProxy({ gatewayUrl: ctx.connection.gatewayUrl, gatewayKey: ctx.connection.gatewayKey, runId: ctx.run.id, stage: ctx.run.stage,
@@ -122,6 +143,11 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     mkdirSync(join(clone.home, 'agent'), { recursive: true });
     await runAgent(agentCtx, buildOptions(agentCtx, { cwd: clone.dir, home: join(clone.home, 'agent'), proxyUrl: proxy.url, agentsMd }, state), state);
 
+    if (state.preempted) {
+      const pushed = ctx.run.kind === 'build' && (await commitAndPush(clone, clone.env, `bauherr: ticket #${ctx.ticket.number} (run ${ctx.run.id}, stopped for a hotfix)`));
+      if (pushed) artifacts.pushedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
+      return finish('preempted', `stopped at a tool boundary for a hotfix${pushed ? `; branch ${clone.branch} pushed` : ''}`);
+    }
     if (state.budgetExhausted) {
       // A partial scan still hands over the findings written so far.
       if (ctx.run.kind === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
@@ -248,8 +274,10 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const failures = async () => {
       const files = (await diff('--name-only')).split('\n').filter(Boolean);
       const rules = matchingArtifactRules(ctx.product.reviewChecks, files);
-      if (rules.length) proof = await makeProof({ dir, env, base, rules, gatewayHost: new URL(proxy!.url).host, log: (m) => ctx.recorder.log(m) });
-      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
+      const made = rules.filter((r) => r.command);
+      const named = new Set(rules.filter((r) => !r.command && r.pairs?.length).map((r) => r.name));
+      if (made.length || named.size) proof = [...(made.length ? await makeProof({ dir, env, base, rules: made, gatewayHost: new URL(proxy!.url).host, log: (m) => ctx.recorder.log(m) }) : []), ...readManifest(dir).filter((i) => i.rule && named.has(i.rule))];
+      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), images: proof.filter((i) => i.kind === 'image' && i.pair), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
     };
     let failed = await failures();
     if (failed.length) {
@@ -276,8 +304,8 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     }
     const pr = await ctx.forge.openPullRequest({
       repo: ctx.product.repo, head: clone.branch, base: ctx.product.defaultBranch,
-      title: `${ctx.ticket.title} (#${ctx.ticket.number})`,
-      body: mrBody(ctx.ticket.url, artifacts.evidence),
+      title: ctx.prTitle ?? `${ctx.ticket.title} (#${ctx.ticket.number})`,
+      body: mrBody(ctx.epic?.parentUrl ?? ctx.ticket.url, artifacts.evidence),
     });
     artifacts.prUrl = pr.url;
     await ctx.forge.comment(ctx.ticket.number, `Link: ${pr.url}`);
@@ -289,6 +317,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     return finish('failed', e instanceof Error ? e.message : String(e));
   } finally {
     await proxy?.close();
+    if (clone && ctx.epic) await syncEpicWorklog(ctx, clone.dir);
     await clone?.cleanup();
   }
 }

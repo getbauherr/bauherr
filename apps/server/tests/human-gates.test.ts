@@ -131,13 +131,13 @@ describe('plan gate off (bare-pack: no optional gates; the default pack has the 
     expect(await touches()).toBe(0)
   })
 
-  it('sends the Sub-tickets of an auto plan straight to Build, without the approval label', async () => {
+  it('sends the first slice of an auto plan straight to Build, without the approval label', async () => {
     usePack('bare-pack')
     const { id, n } = await planTicket('parent', SUBS)
     await poll()
     expect(await reload(id)).toMatchObject({ stage: 'parent' })
     const kids = await fake.tickets(repo).listSubTickets(n)
-    expect(kids.map((k) => k.title)).toEqual(['Part A', 'Part B'])
+    expect(kids.map((k) => k.title)).toEqual(['Part A'])
     for (const k of kids) expect(k.labels).toEqual(['bauherr:stage:build'])
     expect(await touches()).toBe(0)
   })

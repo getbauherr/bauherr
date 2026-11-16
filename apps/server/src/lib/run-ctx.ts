@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import type { Payload } from 'payload'
-import type { RunCtx } from '@bauherr/runner'
+import { withProofDefaults, type RunCtx } from '@bauherr/runner'
 import { sql } from '@payloadcms/db-postgres'
 import { presetOf } from './providers'
 import { moveStage } from './stage-move'
@@ -20,6 +20,7 @@ import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
 import { docsContext } from './docs-check'
 import { workflowFor } from './factory'
+import type { EpicField, SliceField } from './epic'
 import { byKind, is, nameOf, roleOf, stage as stageOf } from './workflow'
 
 export { tierModels }
@@ -75,6 +76,27 @@ export const providerOf = async (payload: Payload, workspace: number | string, m
   return conn ? presetOf(conn.config) : null
 }
 
+/** The epic/slice fields of the RunCtx (branch, MR title, slice range, epic worklog): a slice gets its epic's branch and range, an epic parent the branch and slices; empty for every other Ticket. */
+const epicFields = async (payload: Payload, ticket: Doc, tickets: { listComments: (n: string) => Promise<{ body: string }[]> }): Promise<Pick<RunCtx, 'branch' | 'prTitle' | 'slice' | 'epic'>> => {
+  const slice = ticket.slice as SliceField | null | undefined
+  const parent = slice ? ((await payload.findByID({ collection: 'tickets', id: slice.epic, depth: 0, overrideAccess: true })) as Doc) : ticket.epic ? ticket : null
+  if (!parent) return {}
+  const epic = parent.epic as EpicField
+  const ids = epic.slices.flatMap((s) => (s.ticket ? [s.ticket] : []))
+  const subs = ids.length ? ((await payload.find({ collection: 'tickets', where: { id: { in: ids } }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) : []
+  const ctx: NonNullable<RunCtx['epic']> = {
+    parent: parent.number,
+    parentUrl: parent.url,
+    worklog: (await tickets.listComments(String(parent.number))).findLast((c) => c.body.startsWith(WORKLOG_MARKER))?.body ?? '',
+    slices: epic.slices.flatMap((s) => {
+      const sub = subs.find((t) => t.id === s.ticket)
+      const sl = sub?.slice as SliceField | undefined
+      return sub && sl ? [{ number: sub.number as number, title: s.title, prev: sl.prev, head: sl.head, fixes: sl.fixes }] : []
+    }),
+  }
+  return slice ? { branch: slice.branch, prTitle: parent.title, slice: { prev: slice.prev, mergeMain: slice.prev != null }, epic: ctx } : { branch: epic.branch, epic: ctx }
+}
+
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
@@ -126,10 +148,11 @@ export const buildRunCtx = async (
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
       ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
+    ...(await epicFields(payload, ticket, tickets)),
     ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
-    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
+    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: withProofDefaults(productDoc.reviewChecks, productDoc.pathSets),
       ...(kind === 'docs' && { docs: await docsContext(payload, productDoc) }),
       ...(kind === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
     connection: {
@@ -145,7 +168,7 @@ export const buildRunCtx = async (
         if (body.startsWith(PLAN_MARKER)) await storePlanTldr(payload, ticket.id, body, headingOf(await template(payload, workspace, 'plan'), 'tldr'))
       },
       upsertWorklog: async (number, body) => {
-        const existing = lastWith(WORKLOG_MARKER)
+        const existing = number === ticket.number ? lastWith(WORKLOG_MARKER) : (await tickets.listComments(String(number))).findLast((c) => c.body.startsWith(WORKLOG_MARKER))
         await (existing ? tickets.updateComment(String(number), existing.id, body) : tickets.comment(String(number), body))
       },
       setStage: async (number, stage) => {

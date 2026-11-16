@@ -39,7 +39,7 @@ test('a production-gated Ticket waits for an explicit production approval', asyn
   await open(page, 'Ship the gated export')
   await expect(page.getByRole('button', { name: 'Approve production' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Accept' }).click()
-  await expect(page.getByTestId('action-bar')).toContainText('Approve the production deploy.')
+  await expect(page.getByTestId('action-bar')).toContainText('Approve the production deploy of')
   await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText('Staging')
   await page.getByRole('button', { name: 'Approve production' }).click()
   await expect(page.getByText('Accepted on staging · Approved for production')).toBeVisible()
@@ -48,9 +48,9 @@ test('a production-gated Ticket waits for an explicit production approval', asyn
 
 test('request changes sends the Ticket back to build', async ({ page }) => {
   await open(page, 'Ship the invoice filter')
-  await page.getByTestId('action-bar').getByRole('link', { name: 'Request changes' }).click()
+  await page.getByTestId('action-bar').getByRole('button', { name: 'Send back…' }).click()
   await page.getByLabel('What needs to change').fill('The filter ignores the date range')
-  await page.getByRole('button', { name: 'Request changes' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Send back', exact: true }).click()
   await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText(/build/i)
   await expect(page.getByRole('button', { name: 'Accept on staging' })).toHaveCount(0)
 })

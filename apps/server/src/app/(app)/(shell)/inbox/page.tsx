@@ -1,27 +1,41 @@
 import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
-import { InboxList } from '../../components/InboxList'
+import { InboxView } from '../../components/InboxView'
 import { Badge } from '../../components/ui/badge'
 import { CHECKPOINTS } from '../../../../lib/decision'
 import { workflowFor } from '../../../../lib/factory'
 import { byKind, graph } from '../../../../lib/workflow'
 import { loadInbox } from '../../lib/inbox'
+import { emptyCopy, inboxHref, resolveSelection } from '../../lib/inbox-view'
 import { currentPersonWorkspace } from '../../lib/session'
 import { isProductOwner } from '../../../../lib/people'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ product?: string; checkpoint?: string }> }) {
+export default async function Inbox({ searchParams }: { searchParams: Promise<{ product?: string; checkpoint?: string; t?: string }> }) {
   const { user, workspace } = await currentPersonWorkspace()
-  const { product, checkpoint } = await searchParams
+  const { product, checkpoint, t } = await searchParams
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
-  const { groups, products, working } = await loadInbox(workspace.id, user, { product: /^\d+$/.test(product ?? '') ? Number(product) : undefined, checkpoint: CHECKPOINTS.find((c) => c === checkpoint) })
   const picked = CHECKPOINTS.find((c) => c === checkpoint)
-  const query = (p?: string, c?: string) => { const q = new URLSearchParams(); if (p) q.set('product', p); if (c) q.set('checkpoint', c); return q.size ? `/inbox?${q}` : '/inbox' }
+  const filters = { product: /^\d+$/.test(product ?? '') ? Number(product) : undefined, checkpoint: picked }
+  const owner = isProductOwner(user)
+  const query = (p?: string, c?: string) => inboxHref({ product: Number(p) || undefined, checkpoint: c })
+  let inbox
+  try {
+    inbox = await loadInbox(workspace.id, user, filters)
+  } catch {
+    return (
+      <>
+        <h1 className="title">Inbox</h1>
+        <EmptyState {...emptyCopy({ error: true, owner, working: 0 })} />
+      </>
+    )
+  }
+  const { groups, products, working } = inbox
+  const { selected, detail, stale } = resolveSelection(groups, /^\d+$/.test(t ?? '') ? Number(t) : undefined)
   const wf = workflowFor(workspace.id)
   const nodes = graph(wf).nodes
   const workflowHref = Object.fromEntries(CHECKPOINTS.flatMap((c) => { const id = nodes.find((n) => n.checkpoint && n.id.includes(':') && n.title === c)?.id ?? (c === 'Review' ? byKind(wf, 'review')?.name : undefined); return id ? [[c, `/?stage=${encodeURIComponent(id)}`]] : [] }))
-  const owner = isProductOwner(user)
   const count = groups.reduce((n, g) => n + g.items.length, 0)
   return (
     <>
@@ -47,10 +61,11 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       {count ? (
         <>
           <p className="small text-muted-foreground">{count} decision{count === 1 ? '' : 's'} wait for you.</p>
-          <div className="max-w-[760px]"><InboxList groups={groups} admin={user.role === 'admin'} workflowHref={owner ? {} : workflowHref} /></div>
+          {stale && <p role="status" className="small m-0 text-muted-foreground" data-testid="stale-selection">This decision is already taken.</p>}
+          <InboxView groups={groups} selected={selected?.id ?? null} detail={detail} admin={user.role === 'admin'} filters={filters} workflowHref={owner ? {} : workflowHref} />
         </>
       ) : (
-        <EmptyState text={picked ? `Nothing waits for you at ${picked}.` : owner ? 'Nothing waits for you.' : `Nothing needs you. The factory is working on ${working} ticket${working === 1 ? '' : 's'}.`} action={picked ? { href: '/inbox', label: 'Show all decisions' } : owner ? { href: '/requests', label: 'Open Requests' } : { href: '/', label: 'Open the Workflow' }} />
+        <EmptyState {...emptyCopy({ picked, owner, working })} />
       )}
     </>
   )

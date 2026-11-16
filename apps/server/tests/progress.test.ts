@@ -53,6 +53,7 @@ describe('progressOf: one plain state per key, by stage kind', () => {
 
   it('split and blocked', () => {
     expect(of({ stage: 'parent' }, { children: { total: 3, done: 1 } })).toMatchObject({ key: 'split', headline: 'Split into smaller requests.', detail: 'into 3 sub-tickets (1 done)' })
+    expect(of({ stage: 'parent' }, { children: { total: 3, done: 1 }, slicing: { index: 2, total: 3, stage: 'build' } })).toMatchObject({ key: 'split', detail: 'Slice 2/3: Build' })
     expect(of({ stage: 'plan' }, { blockedBy: [{ number: 12 }] })).toMatchObject({ key: 'blocked', headline: 'Waiting for #12 to finish first.' })
   })
 

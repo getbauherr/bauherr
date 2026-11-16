@@ -59,7 +59,7 @@ const CostChip: FC<{ cost: View['cost'] }> = ({ cost }) => {
 }
 
 /** The composer: attach (images, also pasted or dropped), the model of this conversation (a choice with `onModel`, a read-only label without), the cost chip (`cost` null: none), send or stop. */
-export const Composer: FC<{ models: View['models']; tier: Tier; cost: View['cost'] | null; placeholder: string; streaming: boolean; onStop(): void; onModel?(tier: Tier): void }> = ({ models, tier, cost, placeholder, streaming, onStop, onModel }) => {
+export const Composer: FC<{ models: View['models']; tier: Tier; cost: View['cost'] | null; placeholder: string; streaming: boolean; onStop(): void; onModel?(tier: Tier): void; /** The input's accessible name. */ label?: string }> = ({ models, tier, cost, placeholder, streaming, onStop, onModel, label = 'Your answer' }) => {
   const current = models.find((m) => m.tier === tier)?.model ?? '' // no models (a Product owner in the refinement): no label, no choice
   return (
     <ComposerPrimitive.Root className="rounded-lg border border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring">
@@ -67,7 +67,7 @@ export const Composer: FC<{ models: View['models']; tier: Tier; cost: View['cost
         <div className="flex flex-wrap gap-2 px-1 empty:hidden">
           <ComposerPrimitive.Attachments>{() => <Thumb />}</ComposerPrimitive.Attachments>
         </div>
-        <ComposerPrimitive.Input rows={1} maxRows={6} style={{ outline: 'none' }} aria-label="Your answer" placeholder={placeholder} className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-[15px]" />
+        <ComposerPrimitive.Input rows={1} maxRows={6} style={{ outline: 'none' }} aria-label={label} placeholder={placeholder} className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-[15px]" />
         <div className="flex items-center gap-1">
           <ComposerPrimitive.AddAttachment asChild>
             <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-muted-foreground"><Paperclip size={16} />Attach</Button>

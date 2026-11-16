@@ -1,12 +1,10 @@
-import { requestChangesAction } from '../lib/actions'
 import { Markdown } from './Markdown'
-import { SubmitButton } from './SubmitButton'
 import { Card } from './ui/card'
 
 type ReleaseGateProps = { ticket: number; timedOut: boolean; summaryHtml: string | null }
 
-/** The staging summary, and the Request-changes form, which the bar's `#changes` link reveals through `:target`. */
-export function ReleaseGate({ ticket, timedOut, summaryHtml }: ReleaseGateProps) {
+/** The staging summary; Request changes is the Send back dialog of the action bar. */
+export function ReleaseGate({ timedOut, summaryHtml }: ReleaseGateProps) {
   return (
     <>
       {(timedOut || summaryHtml) && (
@@ -17,16 +15,6 @@ export function ReleaseGate({ ticket, timedOut, summaryHtml }: ReleaseGateProps)
           </section>
         </Card>
       )}
-      <Card asChild className="hidden max-w-[640px] scroll-mt-[calc(72px+var(--space-4))] items-start gap-4 p-6 target:flex">
-        <form action={requestChangesAction} id="changes">
-          <input type="hidden" name="ticket" value={ticket} />
-          <label className="flex flex-col gap-1 self-stretch">
-            <span className="label text-muted-foreground">What needs to change</span>
-            <textarea className="rounded-md border border-border bg-secondary px-3 py-2 text-[15px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" name="note" required rows={3} />
-          </label>
-          <SubmitButton>Request changes</SubmitButton>
-        </form>
-      </Card>
     </>
   )
 }

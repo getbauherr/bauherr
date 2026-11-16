@@ -6,7 +6,7 @@ import { GATES } from '../src/app/(app)/lib/gates'
 import { byKind, DEFAULT, graph } from '../src/lib/workflow'
 import { NEED_NODE } from '../src/lib/checkpoints'
 import { parseTldr, tldrError } from '../src/lib/tldr'
-import { decisionView, type Decision } from '../src/app/(app)/lib/plan'
+import { PLAN_MARKER, decisionView, decisionsOpen, fastLaneOf, openDecisionCount, type Decision } from '../src/app/(app)/lib/plan'
 
 const ACTIONS: DecisionAction[] = ['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open']
 const facts = {
@@ -19,7 +19,7 @@ const facts = {
   productionGate: true,
   now: '2026-11-10T10:00:00.000Z',
 }
-const REAL = new Set<DecisionAction>(['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open'])
+const REAL = new Set<DecisionAction>(['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'releaseLane', 'open'])
 const JARGON = /\b(Run|MR|WIP|sha|lease|stage label)\b/
 
 describe('buildDecision', () => {
@@ -165,5 +165,42 @@ describe('decisionView', () => {
     expect(decisionView(rows, {}, { stageKind: 'plan', approved: true })).toMatchObject({ answerable: 0, defaults: rows })
     expect(decisionView(rows, {}, { stageKind: 'build', approved: true }).takenBy).toBe('at approval')
     expect(decisionView(rows, {}, { stageKind: 'plan', approved: false, fastLane: true })).toMatchObject({ answerable: 0, defaults: rows, takenBy: 'fast lane' })
+  })
+})
+
+describe('decisionsOpen', () => {
+  const sheet = { body: `${PLAN_MARKER}\n## Decisions\n| # | Question | Options | Default | Why | Critical |\n|---|---|---|---|---|---|\n| D1 | Keep the cache? | yes / no | yes | speed | yes |\n| D2 | Show the banner? | no / yes | no | clutter | no |\n| D3 | Log the retries? | yes / no | yes | debugging | yes |\n` }
+
+  it('is true for open rows in the Plan stage', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false })).toBe(true)
+    expect(openDecisionCount([sheet], { stageKind: 'plan', approved: false })).toBe(2)
+  })
+
+  it('is false for a fast-lane Ticket, in Plan and in Build', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false, fastLane: true })).toBe(false)
+    expect(decisionsOpen([sheet], { stageKind: 'build', approved: false, fastLane: true })).toBe(false)
+  })
+
+  it('is false once the plan is approved', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: true })).toBe(false)
+  })
+
+  it('fastLaneOf covers expedite and inherited approval', () => {
+    expect(fastLaneOf({ expedite: true })).toBe(true)
+    expect(fastLaneOf({ inheritedApprovalFrom: 12 })).toBe(true)
+    expect(fastLaneOf({ expedite: false, inheritedApprovalFrom: null })).toBe(false)
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false, fastLane: fastLaneOf({ inheritedApprovalFrom: 12 }) })).toBe(false)
+  })
+})
+
+describe('the staging and production gates name the change', () => {
+  it('use the brief\'s first bullet, else the Ticket title', async () => {
+    const { changeOf } = await import('../src/lib/decision')
+    expect(changeOf(facts.stagingTldr, facts.ticket.title)).toBe('The login redirects back')
+    expect(changeOf(null, 'Add export')).toBe('Add export')
+    expect(buildDecision('Accept on staging', facts).ask).toContain('The login redirects back')
+    expect(buildDecision('Approve production', facts).ask).toContain('The login redirects back')
+    expect(GATES['Accept on staging'].sentence({ stage: 'release', missing: [], open: 0, title: 'Add export' })).toBe('Check "Add export" on staging and accept it.')
+    expect(GATES['Approve production'].sentence({ stage: 'release', missing: [], open: 0, title: 'Add export' })).toBe('Approve the production deploy of "Add export".')
   })
 })
