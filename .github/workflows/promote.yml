@@ -1,0 +1,34 @@
+name: promote
+# Tags vX.Y.Z on the commit of the newest RC and starts release.yml for it (rebuild as X.Y.Z, :latest, npm latest, then the draft GitHub Release is published).
+on:
+  workflow_dispatch:
+    inputs:
+      rc:
+        description: RC tag to promote, e.g. v0.4.0-rc.2 (default the newest RC)
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: release-cut
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # pushes the tag
+      actions: write # starts release.yml (tags pushed with GITHUB_TOKEN trigger nothing)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RC: ${{ inputs.rc }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {fetch-depth: 0}
+      - name: Tag and publish
+        run: |
+          read -r rc final < <(.github/scripts/rc-tags.sh promote "$RC")
+          git tag "$final" "$rc^{commit}"
+          git push origin "refs/tags/$final"
+          gh workflow run release.yml --ref "$final"
+          echo "Promoted $rc to $final at $(git rev-parse --short "$final^{commit}"); release.yml builds and publishes it." | tee -a "$GITHUB_STEP_SUMMARY"

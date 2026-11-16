@@ -1,7 +1,11 @@
 name: release
+# Builds and publishes one version from its tag: image, then npm, then (final versions) the GitHub Release.
+# Runs on a pushed tag, or via workflow_dispatch with the tag as --ref (cut-rc.yml and promote.yml do that, because tags pushed with GITHUB_TOKEN trigger nothing).
+# npm trusted publishing is bound to this file name, so the publishing jobs stay here.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -27,6 +31,7 @@ jobs:
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::tag $GITHUB_REF_NAME is not on main"; exit 1; }
       - id: v
         run: |
+          [ "$GITHUB_REF_TYPE" = tag ] || { echo "::error::run this workflow on a tag (--ref vX.Y.Z)"; exit 1; }
           version="${GITHUB_REF_NAME#v}"
           echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "::error::$GITHUB_REF_NAME is not vX.Y.Z[-pre]"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -84,3 +89,22 @@ jobs:
           npm version "$VERSION" --no-git-tag-version
           pnpm build
           npm stage publish . --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"
+
+  release:
+    # a final version publishes its draft GitHub Release (created by Cut RC); manual tags without a draft get none
+    if: needs.image.outputs.prerelease == 'false'
+    needs: [image, npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: |
+          # drafts are not found by tag, only in the list
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F draft=false -f make_latest=true > /dev/null
+          else
+            echo "::notice::no draft GitHub Release for $GITHUB_REF_NAME to publish"
+          fi

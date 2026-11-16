@@ -160,6 +160,9 @@ export const planFiles = (plan: string): string[] => [
   ...new Set(section(plan, /Files\b/).split('\n').map((l) => l.trim().replace(/^[-*]\s+/, '').replace(/`/g, '').trim()).filter((l) => l && !l.startsWith('#'))),
 ]
 
+/** The plan's `## Goal` section with whitespace collapsed (the epic re-plan compares it). */
+export const goalOf = (plan: string): string => section(plan, /Goal\b/).trim().replace(/\s+/g, ' ')
+
 export type SubTicket = { title: string; body: string; after?: string }
 
 /** Items of the plan's `## Sub-tickets` section: `- **Title** — one-line body`; the body may continue on indented lines; an `after: <sibling title>` line orders it behind that sibling. */

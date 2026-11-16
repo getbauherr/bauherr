@@ -1,6 +1,9 @@
 import { fileURLToPath } from 'node:url'
 import { GATES } from '../src/app/(app)/lib/gates'
-import { describe, expect, it } from 'vitest'
+import type { FakeBackend } from '@bauherr/adapters'
+import type { Payload } from 'payload'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from './helpers/test-db'
 import { heartbeatAge } from '../src/app/(app)/lib/format'
 import { NEEDS, needsYou, releaseWord, stageOf } from '../src/app/(app)/lib/needs-you'
 import { DEFAULT } from '../src/lib/workflow'
@@ -109,3 +112,59 @@ describe('parent stage', () => {
   })
 })
 
+
+describe('epic rows', () => {
+  const o = { overrideAccess: true } as const
+  const repo = 'acme/web'
+  let payload: Payload
+  let fake: FakeBackend
+  let testDb: TestDb
+  let ws: number
+  let product: number
+  beforeAll(async () => {
+    testDb = await createTestDb('overview_epics')
+    process.env.DATABASE_URL = testDb.url
+    process.env.PAYLOAD_SECRET ??= 'test-secret'
+    process.env.ENCRYPTION_KEY ??= 'test-key'
+    process.env.BAUHERR_E2E_FAKE_FORGE = '1'
+    delete process.env.GATEWAY_ADMIN_URL
+    const { getPayload } = await import('payload')
+    payload = await getPayload({ config: (await import('../src/payload.config')).default })
+    fake = (await import('../src/lib/fake-forge')).fakeForge()
+    ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme' }, ...o })).id as number
+    product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
+    const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
+    await payload.create({ collection: 'ticket_sources', data: { repo, product, connection, workspace: ws }, ...o })
+  })
+  afterAll(async () => {
+    await payload?.destroy()
+    await testDb?.drop(payload)
+  })
+  const seed = async (title: string, data: Record<string, unknown>) => {
+    const issue = await fake.tickets(repo).create({ title, labels: [] })
+    return (await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', product, workspace: ws, ...data }, ...o })) as Record<string, any>
+  }
+
+  it('one card per epic in the current slice\'s column; progress from the plan; slices marked; old parent unchanged', async () => {
+    const plan = (n: number) => Array.from({ length: n }, (_, i) => ({ title: `slice ${i + 1}`, body: 'b' }))
+    const split = await seed('split epic', { stage: 'parent', epic: { branch: 'b/1-epic', slices: plan(3), current: 1, mergeFailures: 0 } })
+    const first = await seed('slice 1', { stage: 'done', parent: split.id, slice: { epic: split.id, branch: 'b/1-epic', index: 0, prev: null, main: null, head: 'abc', passed: true, fixes: [] } })
+    const second = await seed('slice 2', { stage: 'build', parent: split.id, slice: { epic: split.id, branch: 'b/1-epic', index: 1, prev: 'abc', main: null, head: null, passed: false, fixes: [] } })
+    await payload.update({ collection: 'tickets', id: split.id, data: { epic: { branch: 'b/1-epic', slices: [{ ...plan(3)[0]!, ticket: first.id }, { ...plan(3)[1]!, ticket: second.id }, plan(3)[2]!], current: 1, mergeFailures: 0 } }, ...o })
+    const reviewing = await seed('reviewing epic', { stage: 'review', epic: { branch: 'b/2-epic', slices: plan(2), current: 1, mergeFailures: 0 } })
+    const old = await seed('old parent', { stage: 'parent' })
+    const oldKid = await seed('old kid', { stage: 'build', parent: old.id })
+
+    const { loadOverviewRows } = await import('../src/app/(app)/lib/overview')
+    const { tickets, epics } = await loadOverviewRows(ws, false)
+    const row = (id: number) => tickets.find((t) => t.id === id)!
+    expect(row(split.id)).toMatchObject({ stage: 'parent', epic: { total: 3, passed: 1 }, slicing: { index: 2, total: 3, stage: 'build' }, children: { total: 3, done: 1 }, slice: null })
+    expect(row(second.id).slice).toEqual({ index: 2, total: 3 })
+    expect(row(first.id).slice).toEqual({ index: 1, total: 3 })
+    expect(row(reviewing.id)).toMatchObject({ stage: 'review', epic: { total: 2, passed: 0 }, slicing: null })
+    expect(row(old.id)).toMatchObject({ epic: null, slicing: null, children: { total: 1, done: 0 } })
+    expect(row(oldKid.id).slice).toBeNull()
+    expect(epics.find((e) => e.id === split.id)).toMatchObject({ current: 1, slices: [{ passed: true, child: { id: first.id } }, { passed: false, child: { id: second.id } }, { passed: false, child: null }] })
+    expect(epics.find((e) => e.id === old.id)!.slices).toBeUndefined()
+  })
+})

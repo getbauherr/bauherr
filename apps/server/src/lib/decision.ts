@@ -59,6 +59,8 @@ const clip = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0
 const one = (s: string): string => s.replace(/\s+/g, ' ').trim()
 const s = (n: number): string => (n === 1 ? '' : 's')
 /** `prefix "title" suffix`, the title shortened so the sentence stays within 120 characters. */
+/** What a gate names as the change: the staging brief's first bullet, else the Ticket title. */
+export const changeOf = (stg: { whatYouGet: string } | null | undefined, title: string): string => (stg ? bullets(stg.whatYouGet)[0] : undefined)?.trim() || title
 const sentence = (prefix: string, title: string, suffix = ''): string => `${prefix} "${clip(one(title), Math.max(10, 118 - prefix.length - suffix.length - 3))}"${suffix}`.slice(0, 120)
 const SEVERITY = ['high', 'medium', 'low']
 
@@ -120,7 +122,7 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
         const got = stg ? bullets(stg.whatYouGet).slice(0, 2).map((b) => clip(one(b), 160)) : []
         const found = stg ? bullets(stg.found).filter((b) => !/^nothing recorded\.?$/i.test(b))[0] : undefined
         return {
-          ask: sentence(unconfirmed ? 'Check on staging yourself:' : 'Check on staging and accept', t.title),
+          ask: sentence(unconfirmed ? 'Check on staging yourself:' : 'Check on staging and accept', changeOf(stg, t.title)),
           recommendation: unconfirmed ? 'Open staging and check that the new version runs, then accept; the factory did not see the deploy.' : 'Accept after a quick look: the change passed review and its checks before it was merged.',
           why: [...(unconfirmed ? ['The deploy was not seen within 60 minutes'] : []), ...got, ...(found ? [`Found on the way: ${clip(one(found), 140)}`] : [])].slice(0, 3),
           options: accept(unconfirmed ? 'Accept anyway' : 'Accept on staging'),
@@ -138,7 +140,7 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
         }
       case 'Approve production':
         return {
-          ask: sentence('Approve the production deploy of', t.title),
+          ask: sentence('Approve the production deploy of', changeOf(stg, t.title)),
           recommendation: 'Approve: the change was accepted on staging.',
           why: ['Accepted on staging', "The product's own pipeline does the deploy"],
           options: [{ label: 'Approve production', action: 'approveProduction', primary: true, effect: 'The deploy starts; the factory watches it.' }],

@@ -303,7 +303,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const pr = await ctx.forge.openPullRequest({
       repo: ctx.product.repo, head: clone.branch, base: ctx.product.defaultBranch,
       title: ctx.prTitle ?? `${ctx.ticket.title} (#${ctx.ticket.number})`,
-      body: mrBody(ctx.ticket.url, artifacts.evidence),
+      body: mrBody(ctx.epic?.parentUrl ?? ctx.ticket.url, artifacts.evidence),
     });
     artifacts.prUrl = pr.url;
     await ctx.forge.comment(ctx.ticket.number, `Link: ${pr.url}`);
