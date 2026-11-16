@@ -85,7 +85,7 @@ it('approval makes the plan an epic: only the first slice exists, with inherited
   expect(rows[0]!.slice).toEqual({ epic: ticket, branch: 'bauherr/1-epic', index: 0, prev: null, main: null, head: null, passed: false, fixes: [] })
   const parent = await payload.findByID({ collection: 'tickets', id: ticket, ...o })
   expect(parent.stage).toBe('parent')
-  expect(parent.epic).toEqual({ branch: 'bauherr/1-epic', slices: [{ title: 'Invoice PDF', body: 'Render invoices as PDF.', ticket: rows[0]!.id }, { title: 'Invoice numbering', body: 'Sequential numbers.' }], current: 0, mergeFailures: 0 })
+  expect(parent.epic).toEqual({ branch: 'bauherr/1-epic', slices: [{ title: 'Invoice PDF', body: 'Render invoices as PDF.', ticket: rows[0]!.id }, { title: 'Invoice numbering', body: 'Sequential numbers.' }], current: 0, mergeFailures: 0, goal: '- Overhaul invoicing' })
   expect((await (await forge()).listComments(String(kids[0]!.number))).at(-1)!.body).toContain('Approval inherited from #1')
 })
 

@@ -19,7 +19,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { refreshPrices } from '../lib/prices'
 import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
-import { advanceEpics, advancePlan, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advanceEpics, advancePlan, noteMergeFailure, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
@@ -492,7 +492,7 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
     const wf = workflowFor(w.id)
     const plan = byKind(wf, 'plan')?.name
-    return plan ? [{ and: [{ workspace: { equals: w.id } }, { stage: { equals: plan } }, ...(gateOn(wf, 'plan') ? [{ expedite: { equals: true } }] : [])] as Where[] }] : []
+    return plan ? [{ and: [{ workspace: { equals: w.id } }, { stage: { equals: plan } }, ...(gateOn(wf, 'plan') ? [{ or: [{ expedite: { equals: true } }, { epic: { exists: true } }] }] : [])] as Where[] }] : []
   })
   if (!or.length) return
   const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
@@ -667,7 +667,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
           if (at(stage, 'plan') && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(payload, { ...(prev ?? base), stage }, backendFor(conn).tickets(src.repo)))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
-            if (await spawnSubTickets(payload, prev)) stage = nameOf(wf, 'container')
+            if (await spawnSubTickets(payload, prev)) stage = ((await payload.findByID({ collection: 'tickets', id: prev.id, depth: 0, overrideAccess: true })) as Record<string, any>).stage
             else {
               const moved = await advance(payload, backendFor(conn).tickets(src.repo), { ...prev, product: src.product }, 'done', { by: 'factory', why: 'plan_approved' })
               if (moved.entered === 'moved') stage = moved.stage!
@@ -818,6 +818,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       }
       if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
       if (r.status === 'succeeded' && r.artifacts.prUrl) await setEpicPr(payload, ticket, r.artifacts.prUrl)
+      if (kind === 'build' && r.status !== 'succeeded' && r.artifacts.mergeConflict && ticket.slice?.prev && !ticket.slice.head) await noteMergeFailure(payload, ticket).catch((e) => payload.logger.error({ err: e, ticket: ticket.id }, 'counting the merge failure failed'))
       if (kind === 'build' && r.status === 'succeeded' && ticket.epic) await tagFixes(payload, ticket, r.artifacts.pushedSha).catch((e) => payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
