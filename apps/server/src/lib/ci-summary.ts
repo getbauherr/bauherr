@@ -31,6 +31,17 @@ export const ciSummaryOf = (t: Doc, now = Date.now()): { summary: CiSummary; age
 }
 
 /**
+ * The forge link button of a Ticket or Run: the MR url and the label the Product's forge adapter gives it ("Open pull request #88 on GitHub").
+ * Builds the adapter from stored Connection data only (no forge call); an adapter that cannot be built or an url without a number gives "Open merge request".
+ */
+export const forgeLinkOf = async (payload: Payload, product: number | string, url: string | null | undefined): Promise<{ href: string; label: string } | null> => {
+  if (!url || !/^https?:\/\//.test(url)) return null
+  const n = /(\d+)\/?$/.exec(new URL(url).pathname)?.[1]
+  const backend = n ? await forgeOf(payload, product).then((f) => f.backend, () => null) : null
+  return { href: url, label: backend ? backend.forge.linkLabel({ number: Number(n) }) : 'Open merge request' }
+}
+
+/**
  * Stores `ciSummary` on every open Ticket in a build or review stage whose factory MR is open, and clears it on any other Ticket that still has one.
  * A summary equal to the stored one (ignoring `updatedAt`) is not written, so the Ticket row and `/api/changes` stay still; `updatedAt` is therefore the time of the last change, not of the last check.
  * A forge error leaves that Ticket's summary as it was. Returns the number of summaries written.

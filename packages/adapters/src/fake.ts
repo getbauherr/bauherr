@@ -212,6 +212,7 @@ export class FakeBackend implements Backend {
       fullName: name, defaultBranch: this.repo(repo).defaultBranch, private: true, url: `https://fake/${name}`,
     });
     return {
+      linkLabel: (pr) => `Open pull request #${pr.number} on GitHub`,
       listRepositories: async () => [...this.repos.keys()].map((n) => view(n, n)),
       getRepository: async (repo) => view(repo, repo),
       listBranches: async (repo) => [...this.repo(repo).branches].map(([name, b]): Branch => ({ name, sha: b.sha })),

@@ -267,6 +267,7 @@ const check = (j: any): Check => {
 };
 
 class GitlabForge implements Forge {
+  linkLabel = (pr: { number: number }) => `Open merge request !${pr.number} on GitLab`;
   private paths = new Map<number, string>();
   constructor(private h: GitlabHttp, private sleep: (ms: number) => Promise<void>) {}
   private repo = (r: any): Repository => ({ fullName: r.path_with_namespace, defaultBranch: r.default_branch, private: r.visibility === 'private', url: r.web_url });

@@ -182,6 +182,8 @@ export interface Webhooks {
 }
 
 export interface Forge {
+  /** Label of the link button to a PR of this forge, in plain words: "Open pull request #88 on GitHub", "Open merge request !88 on GitLab". */
+  linkLabel(pr: { number: number }): string;
   listRepositories(): Promise<Repository[]>;
   getRepository(repo: RepoRef): Promise<Repository>;
   listBranches(repo: RepoRef): Promise<Branch[]>;

@@ -45,7 +45,7 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
       await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
       await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
-      await expect(bar.locator('[data-slot=button]:not([data-testid=dock-comment])')).not.toHaveCount(3)
+      await expect(bar.locator('[data-slot=button]:not([data-testid=dock-comment]):not([data-testid=forge-link])')).not.toHaveCount(3) // the forge link is an extra secondary on any Ticket with a merge request
       await expect(bar.getByTestId('dock-comment')).toHaveText('Comment')
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!

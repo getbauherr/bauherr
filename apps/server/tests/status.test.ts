@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ticketStatus, type StatusRow, type StatusRun } from '../src/app/(app)/lib/status'
+import { statusLine, ticketStatus, type StatusRow, type StatusRun } from '../src/app/(app)/lib/status'
+import { pendingCounts } from '../src/lib/ci-text'
 import { DEFAULT } from '../src/lib/workflow'
 
 const wf = DEFAULT()
@@ -65,5 +66,24 @@ describe('terminal and split stages', () => {
     expect(at(row({ stage: 'parent', children: { total: 3, done: 1 } }))).toMatchObject({ label: 'Split', detail: 'into 3 sub-tickets (1 done)' })
     expect(at(row({ stage: 'parent', children: { total: 1, done: 0 } })).detail).toBe('into 1 sub-ticket (0 done)')
     expect(at(row({ stage: 'parent' })).detail).toBe('into 0 sub-tickets (0 done)')
+  })
+})
+
+describe('waiting for CI from the stored check summary', () => {
+  const ci = pendingCounts({ total: 2, passed: 0, pending: 1 })!
+  const sentence = 'Waiting for CI: 0 of 2 checks passed, 1 running. The agent resumes when they finish.'
+  it('a running Run with pending checks is Waiting for CI n/m, never building or working', () => {
+    const s = at(row({ ci, run: run() }))
+    expect(s).toMatchObject({ phase: 'ci', label: 'Waiting for CI 0/2', detail: sentence, who: 'GitHub Actions', tone: 'neutral' })
+    expect(JSON.stringify(s)).not.toMatch(/building|working|Working/)
+    expect(statusLine(wf, row({ ci, run: run() }))).toBe(sentence)
+  })
+  it('without counts the running Run keeps its sentence, and no pending check gives no counts', () => {
+    expect(at(row({ run: run() })).label).toBe('In progress')
+    expect(pendingCounts({ total: 2, passed: 2, pending: 0 })).toBeNull()
+    expect(pendingCounts(null)).toBeNull()
+  })
+  it('the CI wait between Runs carries the counts too', () => {
+    expect(at(row({ ci, track: { waitingFor: 'checks' } }))).toMatchObject({ label: 'Waiting for CI 0/2', detail: sentence })
   })
 })

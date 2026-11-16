@@ -313,6 +313,7 @@ class GithubForge implements Forge {
   constructor(private h: Http, private auth: GithubAuth) {
     this.webhooks = githubWebhooks(h);
   }
+  linkLabel = (pr: { number: number }) => `Open pull request #${pr.number} on GitHub`;
   private repo = (r: any): Repository => ({ fullName: r.full_name, defaultBranch: r.default_branch, private: r.private, url: r.html_url });
 
   async listRepositories() {
