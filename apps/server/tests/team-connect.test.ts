@@ -79,3 +79,9 @@ describe('Connect panel', () => {
     expect(html({ presence: { key: true, anySession: true }, initialRole: 'ux' })).toContain('Connect to the factory as ux ')
   })
 })
+
+it('an autonomous Run in a stage the role does not list still renders', async () => {
+  const { SessionRow } = await import('../src/app/(app)/components/team/SessionRow')
+  const row = { kind: 'autonomous', role: roles[0], run: { executor: 'runner', startedAt: null, ticket: { number: 7, title: 'x', stage: 'not-a-stage' } } } as never
+  expect(renderToStaticMarkup(createElement(SessionRow, { row }))).toContain('Working')
+})

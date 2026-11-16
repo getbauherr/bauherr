@@ -8,7 +8,7 @@ import { usd } from '../insights/CostSection'
 import { RoleAvatar } from './RoleAvatar'
 import type { ListRow } from './helpers'
 
-const cap = (word: string) => (word === 'running a step' ? 'Working' : `${word[0]!.toUpperCase()}${word.slice(1)}`)
+const cap = (word: string) => (!word || word === 'running a step' ? 'Working' : `${word[0]!.toUpperCase()}${word.slice(1)}`)
 
 const Ticket = ({ number, title }: { number: number; title: string }) => (
   <span className="small min-w-0 basis-64 truncate"><Link className="text-primary" href={`/tickets/n/${number}`}>#{number} {title}</Link></span>

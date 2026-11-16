@@ -35,6 +35,7 @@ export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHr
   const start = defaultRole(roles)
   const [choice, setChoice] = useState<{ id?: string; hint: string }>(fromLink ? { id: fromLink, hint: 'Chosen by the link' } : (start ?? { hint: '' }))
   const [setup, setSetup] = useState(!presence.key || !presence.anySession)
+  const [roll] = useState(gateway?.roll ?? '') // one session name per visit, not per 5 s refresh
   const select = useRef<HTMLSelectElement>(null)
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHr
 
   const role = roles.find((r) => r.id === choice.id)
   if (!role) return null
-  const prompt = connectPrompt(role, gateway ? sessionName(role.id, gateway.roll) : undefined)
+  const prompt = connectPrompt(role, gateway ? sessionName(role.id, roll) : undefined)
   const remember = () => {
     try {
       localStorage.setItem(storageKey(workspaceId), role.id)
@@ -91,7 +92,7 @@ export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHr
           {gateway ? (
             <div className="flex flex-col gap-2" data-testid="connect-gateway">
               <span className="small text-muted-foreground">One setup does both: it adds the factory and sends every model call of the session through the gateway, so its cost is measured under the session name in the prompt.</span>
-              <HarnessSetup setup={gateway} role={role.id} />
+              <HarnessSetup setup={{ ...gateway, roll }} role={role.id} />
             </div>
           ) : (
             <div className="flex flex-col gap-2">

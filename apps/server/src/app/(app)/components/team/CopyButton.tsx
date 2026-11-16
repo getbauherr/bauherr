@@ -10,8 +10,12 @@ export function CopyButton({ text, label = 'Copy', primary, onCopy, ...props }: 
       type="button"
       variant={primary ? 'default' : 'outline'}
       size={primary ? 'default' : 'sm'}
-      onClick={() => {
-        void navigator.clipboard?.writeText(text)
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          return
+        }
         onCopy?.()
         setCopied(true)
         setTimeout(() => setCopied(false), 1500)
