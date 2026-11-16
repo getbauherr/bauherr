@@ -4,7 +4,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest, Where } from 'payload'
 import type { Decision } from '../app/(app)/lib/plan'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, addedOf, answersOf, formatDecision, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets } from '../app/(app)/lib/plan'
-import { canPutOnFastLane, laneOn } from './expedite'
+import { canPutOnFastLane, laneOn, releaseFastLane } from './expedite'
 import { workflowFor } from './factory'
 import { storePlanTldr } from './decision'
 import { headingOf, packTemplate, renderTemplate, template, type Tpl } from './templates'
@@ -423,6 +423,13 @@ export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketI
   await ts.addLabels(n, [EXPEDITE_LABEL])
   if (((t.labels ?? []) as string[]).includes(EXPEDITE_PROPOSED)) await ts.removeLabels(n, [EXPEDITE_PROPOSED])
   return { labelled: EXPEDITE_LABEL }
+}
+
+/** The Inbox decision "Fast lane held": releases the fast-lane place of a Ticket that holds it. */
+export const releaseLane = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (!t.expedite) throw new Error('the Ticket does not hold the fast lane')
+  return { outcome: await releaseFastLane(payload, t) }
 }
 
 /** The label of an urgent request filed by an Admin: the Ticket row is made now (the poller would only see it later) so the `expedite` touch that vouches for the label has a Ticket to belong to; the poller then verifies the label like a button press and `startExpedites` takes over. */

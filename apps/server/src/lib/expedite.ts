@@ -2,7 +2,7 @@ import { live } from './workspace-delete'
 import type { TicketSource } from '@bauherr/adapters'
 import type { Payload, Where } from 'payload'
 import { workflowFor } from './factory'
-import { NEEDS_REFINEMENT } from './needs-you'
+import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from './needs-you'
 import { forgeOf, id } from './release'
 import { inKindStage } from './stage-scope'
 import { moveStage } from './stage-move'
@@ -30,6 +30,19 @@ const inFlight = (payload: Payload, t: Doc, extra: Where) => payload.count({ col
 /** Parked: it waits for the owner (`needsYou`) and no Run of it is queued, awaiting a session or running. */
 const parked = async (payload: Payload, t: Doc): Promise<boolean> =>
   !!t.needsYou && (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, overrideAccess: true })).totalDocs === 0
+
+/** Whether another expedite Ticket waits (flagged, not in flight) for the lane that `t` holds. */
+export const laneWaiter = async (payload: Payload, t: Doc): Promise<boolean> =>
+  !!t.expedite && !t.expediteYieldedTo && (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: id(t.workspace) } }, { expedite: { equals: true } }, { state: { equals: 'open' } }, { id: { not_equals: t.id } }, { expediteYieldedTo: { exists: false } }, { or: [{ stage: { exists: false } }, { stage: { not_in: inFlightStages(workflowFor(t.workspace)) } }] }] }, overrideAccess: true })).totalDocs > 0
+
+/** Gives up `t`'s place on the fast lane: the label and the flag go, one Comment says why; the next waiting expedite Ticket enters in the next poll. */
+export const releaseFastLane = async (payload: Payload, t: Doc): Promise<'released'> => {
+  const { tickets: ts } = await forgeOf(payload, id(t.product))
+  await ts.removeLabels(String(t.number), [EXPEDITE_LABEL])
+  await payload.update({ collection: 'tickets', id: t.id, data: { expedite: false }, ...o })
+  await ts.comment(String(t.number), 'Bauherr: this Ticket waits for a person while another expedite Ticket waits for the fast lane, so it gave up its place and lost the `bauherr:expedite` label. Add the label again to put it back on the lane.')
+  return 'released'
+}
 
 /** Whether another expedite Ticket of the Workspace is in flight. */
 const slotTaken = async (payload: Payload, t: Doc): Promise<boolean> => (await inFlight(payload, t, {})).totalDocs > 0

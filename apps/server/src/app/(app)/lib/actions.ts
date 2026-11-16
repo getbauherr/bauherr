@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunIfNeeded } from '../../../jobs'
@@ -348,6 +348,7 @@ export async function decideAction(ticket: number, need: string, action: Decisio
     else if (action === 'backToBuild') await backToBuild(payload, user, { ...a, note })
     else if (action === 'backToBacklog') await backToBacklog(payload, user, a)
     else if (action === 'expedite') await expedite(payload, user, a)
+    else if (action === 'releaseLane') await releaseLane(payload, user, a)
     else if (action === 'decide') await decide(payload, user, { ...a, outcome, note })
     else if (action === 'rerun') {
       const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: ticket } }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0]
