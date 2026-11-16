@@ -1,5 +1,5 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
-import { kindOfRun } from '../../../lib/stage-text'
+import { activityOf, kindOfRun } from '../../../lib/stage-text'
 import { is, title as stageTitle, type Workflow } from '../../../lib/workflow'
 import { waitingChip, waitingSentence, type CiCounts } from '../../../lib/ci-text'
 import { duration } from './format'
@@ -50,9 +50,10 @@ export type StatusRow = {
   ci?: CiCounts | null
   /** The slice an epic parent is building: its number, the epic's size and the stage of its sub-ticket. */
   slicing?: { index: number; total: number; stage: string | null } | null
+  /** A parked epic (or one of its open slices): stopped, holds no WIP. */
+  parked?: boolean
 }
 
-const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying', agent: 'working' }
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
 const RUN_PROBLEMS = ['Cancelled', 'Run failed', 'Run needs you']
 
@@ -88,6 +89,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   if (!r.open) return { phase: 'done', label: 'Done', detail: null, who: null, tone: 'ok' }
   // Still open on the forge in the done stage: awaiting close or archive.
   if (is(wf, r.stage, 'done')) return { phase: 'done', label: 'Done', detail: 'closing', who: null, tone: 'ok' }
+  if (r.parked) return { phase: 'blocked', label: 'Parked', detail: 'stopped; resume or discard it', who: null, tone: 'muted' }
   if (is(wf, r.stage, 'container') && r.slicing) return { phase: 'blocked', label: `Slice ${r.slicing.index}/${r.slicing.total}`, detail: r.slicing.stage ? stageTitle(wf, r.slicing.stage) : 'starting', who: null, tone: 'muted' }
   if (is(wf, r.stage, 'container')) {
     const c = r.children ?? { total: 0, done: 0 }
@@ -98,7 +100,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''
     const extra = run.investigation ? ' · investigating' : run.escalation ? ` · escalated to the strong model (step ${run.escalation.step} of 4)` : ''
-    return { phase: 'working', label: 'In progress', detail: `${VERB[kind] ?? 'running a step'}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
+    return { phase: 'working', label: 'In progress', detail: `${activityOf(kind)}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
   }
   if (run?.status === 'awaiting_session' && run.preemptedFor) return { phase: 'queued', label: `Paused for hotfix #${run.preemptedFor}`, detail: 'continues first when the hotfix is done', who: null, tone: 'muted' }
   if (run?.status === 'awaiting_session' && !r.needsYou) return { phase: 'queued', label: 'Queued', detail: 'waiting for a session', who: null, tone: 'muted' }

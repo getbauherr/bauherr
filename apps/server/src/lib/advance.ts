@@ -6,7 +6,7 @@ import { workflowFor } from './factory'
 import { moveStage } from './stage-move'
 import { enterStage, startAfterPull } from './wip'
 import { APPROVED_PLAN } from './needs-you'
-import { handBackToBuild, replanEpic, sendToBacklog, sourceOf, startReviewNow } from './actions'
+import { handBackToBuild, parkEpicNow, replanEpic, sendToBacklog, sourceOf, startReviewNow } from './actions'
 import { routeEntry } from './route'
 import { skipEvent } from './history'
 import { is, isForward, nameOf, stage as stageDef, target } from './workflow'
@@ -14,7 +14,7 @@ import { is, isForward, nameOf, stage as stageDef, target } from './workflow'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-export type Advanced = { stage: string | null; entered: 'moved' | 'waiting' | 'held' | 'backlog' | 'escalated' | 'unrouted' }
+export type Advanced = { stage: string | null; entered: 'moved' | 'waiting' | 'held' | 'backlog' | 'escalated' | 'unrouted' | 'parked' }
 export type AdvanceOpts = { by: string; run?: Doc; why?: string; note?: string }
 
 /**
@@ -26,6 +26,11 @@ export type AdvanceOpts = { by: string; run?: Doc; why?: string; note?: string }
 export const advance = async (payload: Payload, ts: TicketSource | null, ticket: Doc, outcome: string, opts: AdvanceOpts): Promise<Advanced> => {
   // A slice of an epic never goes back to plan itself: the epic's parent re-plans the unbuilt slices.
   if (outcome === 'replan' && ticket.slice) return replanEpic(payload, ticket, opts.note ?? 'the slice asked for a re-plan')
+  // A stop on an epic (parent or slice) parks the whole epic instead of leaving it on a Ticket that would be re-triaged alone.
+  if (outcome === 'stop' && (ticket.epic || ticket.slice)) {
+    await parkEpicNow(payload, ticket, { by: opts.by, executor: opts.by === 'factory' ? 'factory' : 'human', why: opts.note ?? 'a review stopped it' })
+    return { stage: ticket.stage, entered: 'parked' }
+  }
   const wf = workflowFor(ticket.workspace)
   const from = ticket.stage ?? nameOf(wf, 'triage')
   const first = target(wf, from, outcome)

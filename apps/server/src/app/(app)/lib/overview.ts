@@ -100,6 +100,8 @@ export type TicketRow = {
   slicing: { index: number; total: number; stage: Stage | null } | null
   /** A slice sub-ticket of an epic: hidden on the Workflow view outside its epic. */
   slice: { index: number; total: number } | null
+  /** A parked epic or one of its open slices: stopped, not counted in its column. */
+  parked: boolean
 }
 
 const LIVE = ['running', 'awaiting_session']
@@ -197,6 +199,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, releaseError: t.releaseError },
       epic: t.epic ? { total: (t.epic as EpicField).slices.length, passed: passedOf(t) } : null,
       slicing: slicingOf(t),
+      parked: isOpen && !!t.parked,
       slice: t.slice && epicTotals.has(t.parent) ? { index: (t.slice as SliceField).index + 1, total: epicTotals.get(t.parent)! } : null,
       children: !containerIds.includes(t.id) ? null : t.epic ? { total: (t.epic as EpicField).slices.length, done: passedOf(t) } : { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length },
       enteredAt: entered.get(t.id) ?? t.updatedAt,
@@ -212,7 +215,7 @@ const epicOf = (wf: Workflow, e: Doc, subs: Doc[], byRow: Map<number, TicketRow>
   const children = subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(wf, c), open: c.state !== 'closed', status: r ? statusLine(wf, r) : 'Done' } })
   const plan = e.epic as EpicField | null
   return {
-    id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null, children,
+    id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', parked: e.state !== 'closed' && !!e.parked, rank: e.rank ?? null, product: e.product ?? null, children,
     ...(plan && {
       slices: plan.slices.map((s) => ({ title: s.title, child: children.find((c) => c.id === s.ticket) ?? null, passed: !!subs.find((c) => c.id === s.ticket)?.slice?.passed })),
       current: is(wf, stageOf(wf, e), 'container') ? plan.current : null,

@@ -50,7 +50,7 @@ export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, {
   }
   for (const s of wf.stages) of(s.name)
   for (const t of rows) {
-    if (!t.open) continue
+    if (!t.open || t.parked) continue
     const n = of(t.stage)
     const s = ticketStatus(wf, t, now)
     n.count++

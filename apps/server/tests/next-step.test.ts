@@ -10,6 +10,10 @@ describe('nextStep', () => {
     expect(nextStep({ ...base, need: 'Approve plan' })).toMatchObject({ label: 'Approve plan', enabled: true })
     expect(nextStep({ ...base, need: 'Accept on staging', blockers: [{ id: 1, number: 9 }] }).enabled).toBe(true)
   })
+  it('a parked epic says it is parked, not that the factory picks it up', () => {
+    expect(nextStep({ ...base, ticket: { ...base.ticket, parked: true } })).toMatchObject({ label: 'Parked', enabled: false })
+    expect(nextStep({ ...base, ticket: { ...base.ticket, parked: true }, need: 'Approve plan' }).label).toBe('Approve plan')
+  })
   it('an open blocker beats a live Run and links the blocker', () => {
     const s = nextStep({ ...base, blockers: [{ id: 5, number: 339 }], run: { id: 7, stage: 'build', status: 'running' } })
     expect(s).toMatchObject({ enabled: false, reason: 'Blocked by #339.', links: [{ text: '#339', href: '/tickets/5' }] })

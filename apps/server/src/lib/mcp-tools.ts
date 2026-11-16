@@ -6,7 +6,7 @@ import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import type { EpicField, SliceField } from './epic'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, sendBack, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -209,6 +209,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
   if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
+  if (ticket.parked) throw new ClaimLost(`ticket #${ticket.number} is parked`)
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
@@ -255,7 +256,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
     depth: 1,
   })
-  const all = tickets.docs.filter((t: Doc) => !is(workflowFor(t.workspace), t.stage, 'container'))
+  const all = tickets.docs.filter((t: Doc) => !t.parked && !is(workflowFor(t.workspace), t.stage, 'container'))
   for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
@@ -838,7 +839,7 @@ export const tools: Tool[] = [
   {
     name: 'stop_review',
     access: 'human',
-    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused for agent keys.',
+    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment; an epic (parent or slice) is parked instead. Refused for agent keys.',
     inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)
@@ -853,6 +854,16 @@ export const tools: Tool[] = [
     async run(a, c) {
       await getTicket(c, a.ticket)
       return requestChanges(c.payload, c.user, a)
+    },
+  },
+  {
+    name: 'send_back',
+    access: 'human',
+    description: "Human only: send an open Ticket back to an earlier stage of its workflow (e.g. plan, build) or to the backlog, with an optional note. Refused when `to` is not an earlier stage of the Ticket's current one. Refused for agent keys.",
+    inputSchema: obj({ ...ticketId, to: str('Earlier stage name (e.g. plan, build) or backlog'), note: str('Why it is sent back') }, ['ticket', 'to']),
+    async run(a, c) {
+      await getTicket(c, a.ticket)
+      return sendBack(c.payload, c.user, { ticket: a.ticket, to: a.to, note: a.note, workspaceId: c.workspace })
     },
   },
   {
@@ -922,7 +933,7 @@ export const tools: Tool[] = [
 ]
 
 /** Tools of a human decision on one Ticket. */
-const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'release_fast_lane', 'grant_review_round', 'stop_review', 'request_changes'])
+const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'release_fast_lane', 'grant_review_round', 'stop_review', 'request_changes', 'send_back'])
 
 const SESSION_ID_ARG = { type: 'string', description: 'Your sessionId from connect: keeps your session present and attributes the Run to it.' }
 // Every agent tool but connect takes an optional sessionId; wrapping the schema keeps the tools above untouched.

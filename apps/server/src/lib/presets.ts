@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { parseDocument, stringify } from 'yaml'
 import { inlineProfiles } from './factory'
 import { profileOf, type TeamRole } from './sessions'
+import { activityOf } from './stage-text'
 import { checkpointBy, compile, corePack, gates, packDir, type Workflow } from './workflow'
 
 export const PRESETS = ['solo', 'standard', 'careful'] as const
@@ -53,7 +54,8 @@ export const rosterOf = (wf: Workflow): TeamRole[] =>
     ...(r.model && { model: r.model }),
     ...(r.agents && { agents: r.agents }),
     exceptions: !!r.exceptions,
-    stages: wf.stages.filter((s) => s.role === r.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind })),
+    stages: wf.stages.filter((s) => s.role === r.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, activity: activityOf(s.kind) })),
+    waiting: 0,
     sessions: [],
     autonomous: [],
   }))

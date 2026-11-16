@@ -229,6 +229,8 @@ export interface Forge {
   isQueued(repo: RepoRef, number: number): Promise<boolean>;
   /** Creates `branch` at `sha` or force-sets it there (the factory train branch; never a branch a human works on). */
   resetBranch(repo: RepoRef, branch: string, sha: string): Promise<void>;
+  /** Deletes `branch`; idempotent (a branch that does not exist is left alone). */
+  deleteBranch(repo: RepoRef, branch: string): Promise<void>;
   /** Merges commit `headSha` into `branch` with a merge commit; `{ conflict: true }` (branch untouched) when it does not merge cleanly. A head already contained in the branch returns the branch's sha. */
   mergeIntoBranch(repo: RepoRef, branch: string, headSha: string): Promise<{ sha: string } | { conflict: true }>;
   /** Blob paths of `ref` (default branch when omitted) and the commit sha they belong to. */

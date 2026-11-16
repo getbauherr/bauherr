@@ -11,6 +11,7 @@ import { connectionInput } from '../lib/connection'
 import { buildRunCtx, providerOf } from '../lib/run-ctx'
 import { REVIEW_CAP_REASON, submitInvestigation, type InvestigationInput } from '../lib/investigation'
 import { mergeMainIntoMr } from '../lib/merge-main'
+import { NOT_PARKED } from '../lib/epic'
 import { distillSkill } from '../lib/skill-distill'
 import { gateOn, modeFor, packed } from '../lib/mode'
 import { pruneCommentMedia } from '../lib/intake/media'
@@ -166,7 +167,7 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
 /** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
 export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
   const wf = workflowFor(t.workspace)
-  if (!is(wf, t.stage, 'review') || t.state !== 'open' || t.reviewState || t.waitingFor) return null
+  if (!is(wf, t.stage, 'review') || t.state !== 'open' || t.parked || t.reviewState || t.waitingFor) return null
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open') return null
   // Review only green heads, whichever path moved the Ticket here (session, autonomous Runner, poller, pull from a full column). A review already under way is left alone.
@@ -495,7 +496,7 @@ const advancePlans = async (payload: Payload): Promise<void> => {
     return plan ? [{ and: [{ workspace: { equals: w.id } }, { stage: { equals: plan } }, ...(gateOn(wf, 'plan') ? [{ or: [{ expedite: { equals: true } }, { epic: { exists: true } }] }] : [])] as Where[] }] : []
   })
   if (!or.length) return
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }] }, pagination: false, depth: 0, overrideAccess: true })
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }, NOT_PARKED] }, pagination: false, depth: 0, overrideAccess: true })
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
@@ -511,7 +512,7 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
     return { and: [{ workspace: { equals: w.id } }, { stage: { in: [plan, build] } }] as Where[] }
   })
   if (!or.length) return
-  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }] }, limit: 200, depth: 1, overrideAccess: true })
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }, NOT_PARKED] }, limit: 200, depth: 1, overrideAccess: true })
   for (const t of tickets.docs) {
     try {
       const wf = workflowFor(t.workspace)
@@ -690,7 +691,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
           if (clearFactoryStage && prev?.factoryStage) await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${prev.id} AND "factory_stage" = ${prev.factoryStage}`)
           const entered = stage && stage !== (prev?.stage ?? null)
           const current = entered ? await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 1, overrideAccess: true }) : null
-          if (entered && at(stage, 'plan', 'build') && t.state === 'open' && !current?.waitingFor && !hasOpenBlocker(current ?? {}) && t.assignees.every((a) => logins(current?.gateAssignees).includes(a)) && !(at(stage, 'build') && current && (await holdOverlap(payload, current)))) {
+          if (entered && at(stage, 'plan', 'build') && t.state === 'open' && !current?.parked && !current?.waitingFor && !hasOpenBlocker(current ?? {}) && t.assignees.every((a) => logins(current?.gateAssignees).includes(a)) && !(at(stage, 'build') && current && (await holdOverlap(payload, current)))) {
             await startRunIfNeeded(payload, ticket, stage!)
           }
           if (entered && at(stage, 'review')) await startReviewIfReady(payload, ticket)

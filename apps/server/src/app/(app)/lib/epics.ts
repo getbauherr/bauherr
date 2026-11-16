@@ -6,7 +6,7 @@ export type EpicChild = { id: number; number: number; title: string; stage: Stag
 /** One planned slice of an epic: `child` is its sub-ticket once built (lazy creation), `passed` once its slice review passed. */
 export type EpicSlice = { title: string; child: EpicChild | null; passed: boolean }
 /** `slices`: the plan in order (absent on an old parent); `current`: index of the slice being built while the parent is in the container stage, else null. */
-export type Epic = { id: number; number: number; title: string; open: boolean; rank: string | null; product: number | null; children: EpicChild[]; slices?: EpicSlice[]; current?: number | null }
+export type Epic = { id: number; number: number; title: string; open: boolean; parked?: boolean; rank: string | null; product: number | null; children: EpicChild[]; slices?: EpicSlice[]; current?: number | null }
 
 /** Stable hue (golden-angle spread) per epic id; CSS turns it into a light/dark-safe colour. */
 export const epicHue = (id: number): number => Math.round(id * 137.508) % 360
@@ -21,8 +21,8 @@ export const epicCount = (e: Pick<Epic, 'children' | 'slices'>): { done: number;
   e.slices ? { done: e.slices.filter((s) => s.passed).length, total: e.slices.length } : { done: e.children.filter((c) => !c.open).length, total: e.children.length }
 
 /** `done`/`total`: `epicCount`; `stages`: open sub-tickets still in flight per Board column, in column order. */
-export const epicProgress = (wf: Workflow, e: Pick<Epic, 'children' | 'slices'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => {
-  const live = e.slices ? e.slices.flatMap((s) => (s.child && !s.passed && s.child.open ? [s.child] : [])) : e.children.filter((c) => c.open)
+export const epicProgress = (wf: Workflow, e: Pick<Epic, 'children' | 'slices' | 'parked'>): { done: number; total: number; stages: { stage: Stage; count: number }[] } => {
+  const live = e.parked ? [] : e.slices ? e.slices.flatMap((s) => (s.child && !s.passed && s.child.open ? [s.child] : [])) : e.children.filter((c) => c.open)
   return { ...epicCount(e), stages: board(wf).map((stage) => ({ stage, count: live.filter((c) => c.stage === stage).length })).filter((s) => s.count) }
 }
 

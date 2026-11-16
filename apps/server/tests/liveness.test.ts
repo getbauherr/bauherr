@@ -91,6 +91,15 @@ it('mr-missing: the MR was closed and a replacement is open: it is relinked and 
   expect(await runs(id, 'review')).toHaveLength(1)
 })
 
+it('a parked Ticket is never reported dead, not even with a cancelled Run', async () => {
+  const a = await seed('build', { runs: [{ stage: 'build', status: 'cancelled' }] })
+  expect(await causeOf(a.id)).toBe('run-cancelled')
+  await payload.update({ collection: 'tickets', id: a.id, data: { parked: true }, ...o })
+  expect(await causeOf(a.id)).toBeUndefined()
+  expect(await liveness.sweepLiveness(payload)).toBe(0)
+  expect((await reload(a.id)).liveness).toBeNull()
+})
+
 it('mr-missing with no replacement goes back to Build with the note to open a new MR', async () => {
   const { id, n } = await seed('review', { reviewState: 'needs_human', mr: 'closed' })
   await liveness.sweepLiveness(payload)

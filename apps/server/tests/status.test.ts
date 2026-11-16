@@ -72,6 +72,8 @@ describe('terminal and split stages', () => {
   it('an epic parent reads the slice being built and its stage', () => {
     expect(at(row({ stage: 'parent', children: { total: 4, done: 1 }, slicing: { index: 2, total: 4, stage: 'build' } }))).toMatchObject({ label: 'Slice 2/4', detail: 'Build' })
     expect(statusLine(wf, row({ stage: 'parent', slicing: { index: 1, total: 2, stage: null } }))).toBe('Slice 1/2: starting')
+    expect(at(row({ stage: 'parent', parked: true, slicing: { index: 2, total: 4, stage: 'build' } }))).toMatchObject({ label: 'Parked' })
+    expect(at(row({ stage: 'done', parked: true }))).toMatchObject({ label: 'Done' })
   })
 })
 

@@ -15,6 +15,7 @@ const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/\.leading-none\.(px-1\.)?bg-background/, 'Workflow graph edge labels: a chip with its own background drawn over the SVG edge line (obscured by the line)'],
   [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
   [/^#(step|cp)-|^select\[aria-label="Asked: |^(?=.*\.gap-1(\.|$))(?=.*\.small(\.|$))(?=.*\.text-muted-foreground(\.|$))(\.[\w-]+){3}$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
+  [/^\.flex-\\\[1_1_20ch\\\]$/, 'Ticket page ActionBar sentence at 390 px on the Conversation tab: the fixed bar (opaque bg-card, painted above in the browser) covers the conversation composer\'s sticky artifact bar, which axe sorts above it; the text sits on the plain card background (same token pair as the states that pass)'],
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
 ]
 
@@ -194,5 +195,78 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
       }
     }
     await page.context().close()
+  })
+})
+
+test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {
+  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser']] as const
+  let session: Awaited<ReturnType<BrowserContext['storageState']>>
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext()
+    await signIn(await context.newPage())
+    session = await context.storageState()
+    await context.close()
+  })
+  const open = async (browser: import('@playwright/test').Browser, title: string, width: number) => {
+    const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
+    await page.goto('/')
+    await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
+    await expect(page.getByTestId('action-bar')).toBeVisible()
+    return page
+  }
+
+  for (const [state, title] of states) {
+    test(`${state}`, async ({ browser }) => {
+      test.setTimeout(120_000)
+      for (const width of [1280, 390]) {
+        const page = await open(browser, title, width)
+        await expect(page.getByTestId('action-bar').locator('p[role=status]')).toHaveCount(1)
+        for (const t of ['light', 'dark'] as const) {
+          await setTheme(page, t)
+          expect(await scan(page), `${state} ${width}px (${t})`).toEqual([])
+        }
+        await page.context().close()
+      }
+    })
+  }
+
+  test('the split handle and the tabs work with the keyboard', async ({ browser }) => {
+    const page = await open(browser, 'Ship the export header', 1280)
+    const handle = page.getByTestId('split-handle')
+    await expect(handle).toHaveAttribute('role', 'separator')
+    await handle.focus()
+    await page.keyboard.press('Home')
+    await expect(handle).toHaveAttribute('aria-valuenow', '360')
+    await page.keyboard.press('ArrowLeft')
+    await expect(handle).toHaveAttribute('aria-valuenow', '376')
+    await page.keyboard.press('ArrowRight')
+    await expect(handle).toHaveAttribute('aria-valuenow', '360')
+    await page.keyboard.press('End')
+    await expect(handle).toHaveAttribute('aria-valuenow', '640')
+    await page.keyboard.press('Enter')
+    await expect(handle).toHaveAttribute('aria-valuenow', '0')
+    await page.keyboard.press('Enter')
+    await expect(handle).toHaveAttribute('aria-valuenow', '640')
+
+    await page.getByTestId('pane-tab-now').focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByTestId('pane-tab-plan')).toBeFocused()
+    await expect(page.getByTestId('pane-tab-plan')).toHaveAttribute('aria-selected', 'true')
+    await page.keyboard.press('End')
+    await expect(page.getByTestId('pane-tab-history')).toBeFocused()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByTestId('pane-tab-now')).toBeFocused()
+    await page.context().close()
+
+    const phone = await open(browser, 'Ship the export header', 390)
+    await expect(phone.getByTestId('split-tab-status')).toHaveAttribute('aria-selected', 'true')
+    await phone.getByTestId('split-tab-status').focus()
+    await phone.keyboard.press('ArrowLeft')
+    await expect(phone.getByTestId('split-tab-conversation')).toBeFocused()
+    await expect(phone.getByTestId('split-tab-conversation')).toHaveAttribute('aria-selected', 'true')
+    await expect(phone.getByTestId('split-conversation')).toBeVisible()
+    await phone.keyboard.press('ArrowRight')
+    await expect(phone.getByTestId('split-tab-status')).toBeFocused()
+    await phone.context().close()
   })
 })

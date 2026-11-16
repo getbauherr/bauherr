@@ -11,7 +11,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
-import { OPEN_WORDS, sourceOf, type OpenItem } from '../../../../../lib/actions'
+import { BACKLOG, OPEN_WORDS, sendBackTargets, sourceOf, type OpenItem } from '../../../../../lib/actions'
 import { decisionComments } from '../../../../../lib/forge-channel'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { AutoRefresh } from '../../../components/AutoRefresh'
@@ -19,6 +19,7 @@ import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ForgeLink } from '../../../components/ForgeLink'
 import { forgeLinkSpot } from '../../../lib/bar'
+import { EpicControls } from '../../../components/EpicControls'
 import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
@@ -39,7 +40,7 @@ import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../
 import { cardOf } from '../../../lib/inbox'
 import { epicCount, epicSlicing } from '../../../lib/epics'
 import { forgeKinds, kindOfLabels, loadEpic, within } from '../../../lib/overview'
-import { buildSteps } from '../../../lib/steps'
+import { buildSteps, sentBackText } from '../../../lib/steps'
 import { skips, timeline } from '../../../../../lib/history'
 import { renderMarkdown } from '../../../lib/markdown'
 import { GATES } from '../../../lib/gates'
@@ -51,6 +52,9 @@ import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, d
 import { ago } from '../../../lib/format'
 import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
+import { isBauherr } from '../../../../../lib/people'
+import { sendBackOptions, type SendBackTarget } from '../../../../../lib/send-back-options'
+import { SendBackDialog } from '../../../components/SendBackDialog'
 import { currentWorkspace, payloadClient, requirePerson } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import { KindChip } from '../../../components/RequestParts'
@@ -78,7 +82,7 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 const Pulse = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-sm bg-secondary`} aria-hidden />
 
 /** DB data of the page, passed to the streamed parts. */
-type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; forgeLink: { href: string; label: string } | null }
+type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; sendBack: SendBackTarget[]; sentBack: string | null; forgeLink: { href: string; label: string } | null }
 
 /** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
@@ -130,7 +134,7 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar change={changeOf(ticket.stagingTldr, ticket.title)} ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
+  return <ActionBar change={changeOf(ticket.stagingTldr, ticket.title)} ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={P.sentBack && !x.todo ? { ...x.idle, reason: `${P.sentBack} ${x.idle.reason}` } : x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
 }
 
 /** The forge link in the CI panel header, only when the action bar's one secondary slot is taken. */
@@ -237,10 +241,13 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   ])
   const noted = ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true }, ...q })).docs[0] as Doc | undefined)?.artifacts?.review?.open as OpenItem[] | undefined
   const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true, epic: true }, ...q }).catch(() => null)) as { id: number; number: number; epic?: { slices: unknown[] } | null } | null) : null
+  const stage = stageOf(wf, ticket)
+  const sendBack = isBauherr(user) && ticket.state === 'open' ? sendBackTargets(wf, stage).map((to): SendBackTarget => (to === BACKLOG ? { to, title: 'Backlog' } : { to, title: stageTitle(wf, to), kind: kindOf(wf, to) })) : []
+  const last = spans.at(-1)
   const ci = ciSummaryOf(ticket)
   const prUrl = ci?.summary.url ?? (runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined)
   const forgeLink = forgeLinkOf(forges.get(ticket.product), prUrl)
-  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin, forgeLink }
+  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin, sendBack, sentBack: last ? sentBackText(wf, last) : null, forgeLink }
   const forge = forges.get(ticket.product)
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
   const sessions = new Map<number, string>(sessionIds.length ? ((await payload.find({ collection: 'agent_sessions', where: { id: { in: sessionIds } }, select: { publicId: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; publicId: string }[]).map((x) => [x.id, x.publicId]) : [])
@@ -262,6 +269,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     ci: pendingCounts(ci?.summary),
     children: epic ? epicCount(epic) : null,
     slicing: epic ? epicSlicing(epic) : null,
+    parked: !!ticket.parked,
     track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
   } satisfies StatusRow)
   const roleOf = (r: Doc) => wf.roles.find((x) => x.id === r.role)?.title
@@ -296,6 +304,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           <h2 className="heading" id="subtickets">Sub-tickets</h2>
           <EpicProgress wf={wf} epic={epic} />
           <EpicChildren wf={wf} epic={epic} />
+          {ticket.epic && ticket.state === 'open' && !is(wf, ticket.stage, 'release', 'done') && <EpicControls ticket={ticket.id} parked={!!ticket.parked} />}
         </section>
       ) : (
         <StageStrip stages={stages} steps={steps} />
@@ -313,6 +322,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
         )}
         {dependencies}
         {!(ci && ci.summary.rows.length > 0) && <Suspense fallback={null}><PanelForge P={P} d={d} at="links" /></Suspense>}
+        {sendBack.length > 0 && <div data-testid="ticket-send-back"><SendBackDialog ticket={ticket.id} options={sendBackOptions(null, null, sendBack)} /></div>}
       </section>
       {admin && <CostPanel runs={runs} />}
       <details data-testid="ticket-about">

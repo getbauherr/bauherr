@@ -161,6 +161,9 @@ await ticket(23, 'Settle the export format', 'triage', product, { stage: null, l
 const t24 = await ticket(24, 'Add a light theme to the dashboard', 'plan', product, openCritical)
 // #42: the twin of #24 that its test uses on a retry (the first attempt answered and approved #24); twin in `src/lib/fake-forge.ts`.
 const t42 = await ticket(42, 'Switch the dashboard to a light theme', 'plan', product, openCritical)
+// #43 (a fast lane Ticket in Build whose plan sheet kept its defaults) and #44 (a review that needs the owner, sent back to Build by ticket.spec.ts); twins in `src/lib/fake-forge.ts`.
+await ticket(43, 'Hotfix: fix the export header', 'build', product, { expedite: true, expediteAt: '2026-11-05T08:00:00Z', rank: '9999995' })
+await ticket(44, 'Stuck review: sort the export rows', 'review', product, { reviewState: 'needs_human' })
 // Own Tickets of the next-step button cases in ticket.spec.ts (#385): #25 an approved plan held by an overlap, #26 a plan awaiting approval, #27 a Build with a live Run. Twins in `src/lib/fake-forge.ts` carry these numbers.
 await ticket(25, 'Hold the approved export tweak', 'plan', product, { labels: ['bauherr:stage:plan', 'bauherr:approved:plan'], waitingFor: 'build', waitingReason: 'overlaps #356' })
 const t26 = await ticket(26, 'Approve the retry policy', 'plan', product)
@@ -291,8 +294,8 @@ for (const [slug, name, repo, titles, releaseAt] of [
 // team.spec.ts: an orchestrator session working on #128 (in Triage, where no other spec reads the executors), an idle reviewer session and a disconnected engineer. A fresh clock each seed; `BAUHERR_SESSION_TIMEOUT_S` keeps them present for the spec.
 const teamTicket = await ticket(128, 'Team: triage in a session', 'triage', product)
 const now = Date.now()
-// proof.spec.ts: a Product of its own with an artifact rule (an image rule on `src/ui/**`) and one Ticket on staging with a before/after pair, a terminal session and a preview link; the request lists three acceptance criteria, the third has no proof. Twin in `src/lib/fake-forge.ts` (acme/proof #1).
-const proofProduct = (await ensure('products', { slug: 'acme-proof' }, { name: 'Acme Proof', slug: 'acme-proof', workspace, stagingUrl: 'https://staging.example.com/proof', reviewChecks: { artifacts: [{ name: 'UI screenshots', globs: ['src/ui/**'], kind: 'image', command: 'pnpm screenshots', before: true }] } })).id
+// proof.spec.ts: a Product of its own with a `ui` path set (so it gets the default rule "UI change: before/after") and an artifact rule (an image rule on `src/ui/**`) and one Ticket on staging with a before/after pair, a terminal session and a preview link; the request lists three acceptance criteria, the third has no proof. Twin in `src/lib/fake-forge.ts` (acme/proof #1).
+const proofProduct = (await ensure('products', { slug: 'acme-proof' }, { name: 'Acme Proof', slug: 'acme-proof', workspace, stagingUrl: 'https://staging.example.com/proof', pathSets: { ui: ['src/ui/**'] }, reviewChecks: { artifacts: [{ name: 'UI screenshots', globs: ['src/ui/**'], kind: 'image', command: 'pnpm screenshots', before: true }] } })).id
 await ensure('ticket_sources', { repo: 'acme/proof' }, { repo: 'acme/proof', product: proofProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 const proofTicket = (await ensure('tickets', { externalId: 'e2e-proof-1' }, { title: 'Ship the proof export', externalId: 'e2e-proof-1', number: 1, url: 'https://github.com/acme/proof/issues/1', state: 'open', labels: ['bauherr:stage:release'], ...rel, stagingTldr: { whatYouGet: '- The export page has a Download button', found: '- Nothing recorded.' }, product: proofProduct, workspace, rank: '000330' })).id
 await ensure('intake_sessions', { 'draft.problem': 'Download the proof export' }, { product: proofProduct, workspace, status: 'submitted', persona: 'product-user', messages: [], ticketNumber: 1, draft: { problem: 'Download the proof export', context: '', acceptance_criteria: ['The export page shows a Download button', 'Clicking it saves a CSV file', 'Existing exports keep working'], type: 'feature', links: [] } })

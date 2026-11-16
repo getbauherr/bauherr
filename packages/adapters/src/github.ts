@@ -441,6 +441,11 @@ class GithubForge implements Forge {
       await this.h.json('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
     }
   }
+  async deleteBranch(repo: RepoRef, branch: string) {
+    await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${branch.split('/').map(enc).join('/')}`).catch((e) => {
+      if (!(e instanceof GithubError && [404, 422].includes(e.status))) throw e;
+    });
+  }
   async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
     try {
       const m = await this.h.json('POST', `/repos/${repo}/merges`, { base: branch, head: headSha, commit_message: `bauherr train: merge ${headSha.slice(0, 7)}` });

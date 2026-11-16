@@ -331,6 +331,9 @@ export class FakeBackend implements Backend {
         if (!files) throw new Error(`no commit ${at}`);
         r.branches.set(branch, { sha: at, files: new Map(files) });
       },
+      deleteBranch: async (repo, branch) => {
+        this.repo(repo).branches.delete(branch);
+      },
       mergeIntoBranch: async (repo, branch, headSha) => {
         const r = this.repo(repo);
         const target = r.branches.get(branch);

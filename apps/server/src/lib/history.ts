@@ -26,7 +26,7 @@ export const phaseOf = (wf: Workflow, t: Doc, run: RunRow, gates?: Parameters<ty
   return 'queued'
 }
 
-type Opts = { cause: string; outcome?: string; run?: number | string; actor?: string; executor?: Executor; stage?: string; phase?: Phase }
+type Opts = { cause: string; outcome?: string; note?: string; run?: number | string; actor?: string; executor?: Executor; stage?: string; phase?: Phase }
 
 /**
  * Appends a `ticket_events` row when the Ticket's `stage|phase` changed; never throws (history must not break the workflow).
@@ -62,6 +62,7 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
         phase,
         fromStage: String(ticket.historyKey ?? '').split('|')[0] || null,
         outcome: opts.outcome ?? null,
+        note: opts.note || null,
         run: opts.run ?? (live ? run.id : null),
         executor: opts.executor ?? (phase === 'working' ? (run?.mode === 'session' ? 'session' : 'runner') : phase === 'human' ? 'human' : phase === 'ci' ? 'ci' : 'factory'),
         actor: opts.actor ?? (live ? run.sessionLabel ?? null : null),
@@ -103,7 +104,7 @@ export const skips = async (payload: Payload, ticketId: number | string): Promis
     .filter((e) => String(e.cause).startsWith(SKIP_CAUSE))
     .map((e) => ({ stage: e.stage, at: e.at, reason: e.note ?? '' }))
 
-export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; backfilled: boolean; workflowVersion: number | null }
+export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; note: string | null; backfilled: boolean; workflowVersion: number | null }
 
 /** The Ticket's events in order; `until` is the next event's `at` (now for the newest, which is its own `at` once closed). */
 export const timeline = async (payload: Payload, ticketId: number | string): Promise<Span[]> => {
@@ -113,7 +114,7 @@ export const timeline = async (payload: Payload, ticketId: number | string): Pro
     return {
       id: e.id, at: e.at, until, seconds: (new Date(until).getTime() - new Date(e.at).getTime()) / 1000,
       stage: e.stage, stageKind: e.stageKind, phase: e.phase, fromStage: e.fromStage, outcome: e.outcome, run: e.run ? (typeof e.run === 'object' ? e.run.id : e.run) : null,
-      executor: e.executor, actor: e.actor, cause: e.cause, backfilled: !!e.backfilled, workflowVersion: e.workflowVersion ?? null,
+      executor: e.executor, actor: e.actor, cause: e.cause, note: e.note ?? null, backfilled: !!e.backfilled, workflowVersion: e.workflowVersion ?? null,
     }
   })
 }
