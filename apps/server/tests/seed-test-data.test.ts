@@ -11,5 +11,5 @@ test('the screenshot seed holds only @example.com addresses', () => {
 })
 
 test('the screenshot seed holds no token-shaped strings', () => {
-  expect(seed.match(/\b(?:ghp|gho|ghs|github_pat|glpat|sk|bhm|xox[bpa])[_-][\w-]{4,}|\b[0-9a-f]{32,}\b|\beyJ[\w-]{10,}\.[\w-]{10,}/g) ?? []).toEqual([])
+  expect(seed.match(/\b(?:ghp|gho|ghs|github_pat|glpat|sk|bhm|xox[bpa])[_-][\w-]{4,}|\b[0-9a-f]{32,}\b|\beyJ[\w-]{10,}\.[\w-]{10,}|\bAKIA[0-9A-Z]{16}\b|\bAIza[\w-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY/g) ?? []).toEqual([])
 })
