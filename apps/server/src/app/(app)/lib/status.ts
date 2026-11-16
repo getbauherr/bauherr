@@ -1,5 +1,5 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
-import { kindOfRun } from '../../../lib/stage-text'
+import { activityOf, kindOfRun } from '../../../lib/stage-text'
 import { is, title as stageTitle, type Workflow } from '../../../lib/workflow'
 import { duration } from './format'
 
@@ -49,7 +49,6 @@ export type StatusRow = {
   slicing?: { index: number; total: number; stage: string | null } | null
 }
 
-const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying', agent: 'working' }
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
 const RUN_PROBLEMS = ['Cancelled', 'Run failed', 'Run needs you']
 
@@ -92,7 +91,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''
     const extra = run.investigation ? ' · investigating' : run.escalation ? ` · escalated to the strong model (step ${run.escalation.step} of 4)` : ''
-    return { phase: 'working', label: 'In progress', detail: `${VERB[kind] ?? 'running a step'}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
+    return { phase: 'working', label: 'In progress', detail: `${activityOf(kind)}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
   }
   if (run?.status === 'awaiting_session' && run.preemptedFor) return { phase: 'queued', label: `Paused for hotfix #${run.preemptedFor}`, detail: 'continues first when the hotfix is done', who: null, tone: 'muted' }
   if (run?.status === 'awaiting_session' && !r.needsYou) return { phase: 'queued', label: 'Queued', detail: 'waiting for a session', who: null, tone: 'muted' }

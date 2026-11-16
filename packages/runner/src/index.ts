@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } from './agent.js';
 import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId, sliceBase, sliceDiff } from './clone.js';
-import { makeProof } from './artifacts.js';
+import { makeProof, readManifest } from './artifacts.js';
 import { buildEvidence } from './evidence.js';
 import { readGoal } from './goal.js';
 import { DIFF_FILE, DOCS_FINDINGS_FILE, EPIC_WORKLOG_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
@@ -17,7 +17,7 @@ export { materialise, readRules, untrustedBlock } from './materialise.js';
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
 export { ARTIFACTS_DIR, ARTIFACTS_MANIFEST, makeProof, readManifest, type ProofItem } from './artifacts.js';
-export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, artifactRules, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ArtifactKind, type ArtifactRule, type ReviewChecks } from './pre-review.js';
+export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, UI_PROOF_PAIRS, UI_PROOF_RULE, artifactRules, storableProofRules, titleNamesVariant, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, proofRules, withProofDefaults, type ArtifactKind, type ArtifactRule, type ReviewChecks } from './pre-review.js';
 export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
@@ -274,8 +274,10 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const failures = async () => {
       const files = (await diff('--name-only')).split('\n').filter(Boolean);
       const rules = matchingArtifactRules(ctx.product.reviewChecks, files);
-      if (rules.length) proof = await makeProof({ dir, env, base, rules, gatewayHost: new URL(proxy!.url).host, log: (m) => ctx.recorder.log(m) });
-      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
+      const made = rules.filter((r) => r.command);
+      const named = new Set(rules.filter((r) => !r.command && r.pairs?.length).map((r) => r.name));
+      if (made.length || named.size) proof = [...(made.length ? await makeProof({ dir, env, base, rules: made, gatewayHost: new URL(proxy!.url).host, log: (m) => ctx.recorder.log(m) }) : []), ...readManifest(dir).filter((i) => i.rule && named.has(i.rule))];
+      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), images: proof.filter((i) => i.kind === 'image' && i.pair), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
     };
     let failed = await failures();
     if (failed.length) {

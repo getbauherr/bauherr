@@ -43,6 +43,25 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
+describe('the built-in UI proof rule', () => {
+  const BUILTIN = { name: 'UI change: before/after', kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop', globs: '', command: '', before: false }
+  const mine = { name: 'Mine', kind: 'image', globs: 'src/**', command: 'pnpm shots', before: false, pathSet: '', pairs: '' }
+  const save = (rules: object[]) => actions.saveDeploy({}, form({ id: product, reviewChecks: '', proofRules: JSON.stringify(rules) }))
+
+  it('is never stored while unmodified', async () => {
+    expect(await save([mine, BUILTIN])).toMatchObject({ saved: true })
+    expect((await productDoc()).reviewChecks.artifacts.map((r: { name: string }) => r.name)).toEqual(['Mine'])
+  })
+
+  it('a save that changes its kind, path set or pairs is refused and stores nothing', async () => {
+    await save([mine])
+    for (const change of [{ pathSet: 'docs' }, { pairs: 'light-desktop' }, { kind: 'report', pairs: '', command: 'c' }]) {
+      expect(await save([mine, { ...BUILTIN, ...change }])).toMatchObject({ fields: { proofRules: expect.stringContaining('the built-in rule') } })
+    }
+    expect((await productDoc()).reviewChecks.artifacts.map((r: { name: string }) => r.name)).toEqual(['Mine'])
+  })
+})
+
 describe('Product tabs save only their own fields', () => {
   it('the Releases tab writes the pre-release switch and leaves the Deploy fields alone', async () => {
     expect(await actions.saveDeploy({}, form({ id: product, section: 'releases', releaseMode: 'factory', releaseReminderDays: 7, releasePrerelease: 'on' }))).toMatchObject({ saved: true })
@@ -161,7 +180,7 @@ describe('pure parts', () => {
   })
 
   it('a step shows the workflow version only when it differs from the active one', () => {
-    const span = (id: number, workflowVersion: number | null): Span => ({ id, at: '2026-01-01T00:00:00Z', until: '2026-01-01T00:01:00Z', seconds: 60, stage: 'plan', stageKind: 'plan', phase: 'working', fromStage: null, outcome: null, run: null, executor: 'runner', actor: null, cause: null, backfilled: false, workflowVersion })
+    const span = (id: number, workflowVersion: number | null): Span => ({ id, at: '2026-01-01T00:00:00Z', until: '2026-01-01T00:01:00Z', seconds: 60, stage: 'plan', stageKind: 'plan', phase: 'working', fromStage: null, outcome: null, run: null, executor: 'runner', actor: null, cause: null, note: null, backfilled: false, workflowVersion })
     const steps = buildSteps(wf, [span(1, 2), span(2, 3), span(3, null)], [], [], { current: 'plan', provider: null, admin: false, workflowVersion: 3 })
     expect(steps.visits[0]!.steps.map((s) => s.workflowVersion)).toEqual([2, null, null])
   })

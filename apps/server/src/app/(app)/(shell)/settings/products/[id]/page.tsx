@@ -119,7 +119,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 <CheckRetriesField value={d.checkRetries} />
               </SettingsSection>
               <SettingsSection id="proof" title="Proof for review" purpose="What the person who accepts a result sees: screenshots, recordings, sessions or reports that show each requested change works. Needed when the changed paths match; empty: off.">
-                <ProofRules rows={p.proofRules} />
+                <ProofRules rows={p.proofRules} sets={p.pathSetNames} />
               </SettingsSection>
             </>
           ))}
