@@ -1,7 +1,8 @@
 'use server'
 import { randomBytes } from 'node:crypto'
-import { artifactRules, parseReviewChecks } from '@bauherr/runner'
+import { artifactRules, parseReviewChecks, storableProofRules } from '@bauherr/runner'
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
@@ -19,7 +20,7 @@ import { startSecurityScan } from '../../../../lib/security-scan'
 import { DEFAULT_DOCS_PATHS, startDocsCheck } from '../../../../lib/docs-check'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
 import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
-import { monitoringRows, SERVICES, testMonitoring, TITLES, type Service } from '../../../../lib/monitoring'
+import { mintScrapeToken, monitoringRows, scrapeOrigin, scrapeSnippet, SERVICES, testMonitoring, TITLES, type Service } from '../../../../lib/monitoring'
 import { decrypt } from '../../../../lib/secrets'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
@@ -187,7 +188,7 @@ export const saveDeploy = act({}, async (c, fd) => {
   if (fd.has('reviewChecks')) {
     try {
       const checks = parseReviewChecks(s(fd, 'reviewChecks')) ?? {}
-      const rules = fd.has('proofRules') ? artifactRules(JSON.parse(s(fd, 'proofRules') || '[]')) : []
+      const rules = fd.has('proofRules') ? storableProofRules(artifactRules(JSON.parse(s(fd, 'proofRules') || '[]'))) : []
       data.reviewChecks = rules.length ? { ...checks, artifacts: rules } : Object.keys(checks).length ? checks : null
     } catch (e) {
       errors.push({ path: fd.has('proofRules') && /^rule \d/.test((e as Error).message) ? 'proofRules' : 'reviewChecks', message: (e as Error).message })
@@ -370,13 +371,33 @@ export const saveMonitoring = act({}, async (c, fd) => {
   only(c.user)
   const service = s(fd, 'service') as Service
   if (!SERVICES.includes(service)) throw new Error('Unknown service.')
-  const config = service === 'grafana' ? { url: s(fd, 'url') } : { host: s(fd, 'host'), protocol: s(fd, 'protocol'), headerName: s(fd, 'headerName'), uiUrl: s(fd, 'uiUrl') }
+  const minted = service === 'prometheus' && !id(fd) ? mintScrapeToken() : undefined
+  const notice = minted && (await snippetFor(minted.token)) // built before anything is written: a failure leaves no token nobody saw
+  const config = service === 'grafana' ? { url: s(fd, 'url') } : service === 'prometheus' ? { url: s(fd, 'url'), ...(minted && { tokenHash: minted.hash }) } : { host: s(fd, 'host'), protocol: s(fd, 'protocol'), headerName: s(fd, 'headerName'), uiUrl: s(fd, 'uiUrl') }
   const data = { kind: 'monitoring', service, name: TITLES[service], config, capabilities: {}, ...(fd.get('clearSecret') === 'on' ? { secret: null } : s(fd, 'secret') ? { secret: s(fd, 'secret') } : {}) }
   if (id(fd)) {
     const row = await monitoringRow(c, id(fd))
     if (row.service !== service) throw new Error('Not found.')
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
+  return notice
+})
+
+/** The snippet names where Prometheus reaches this Bauherr: the address this request came in on. */
+const snippetFor = async (token: string): Promise<string> => {
+  const h = await headers()
+  return `Scrape token, shown once. Paste into Prometheus:\n${scrapeSnippet(scrapeOrigin({ forwardedHost: h.get('x-forwarded-host'), forwardedProto: h.get('x-forwarded-proto'), host: h.get('host') }), token)}`
+}
+
+/** Mints a new scrape token for the saved Prometheus Connection; the old one stops working at once. Shown once. */
+export const rotateScrapeToken = act({}, async (c, fd) => {
+  only(c.user)
+  const row = await monitoringRow(c, id(fd))
+  if (row.service !== 'prometheus') throw new Error('Not found.')
+  const minted = mintScrapeToken()
+  const notice = await snippetFor(minted.token)
+  await c.payload.update({ collection: 'connections', id: id(fd), data: { config: { ...row.config, tokenHash: minted.hash }, capabilities: {} }, ...c.w } as never)
+  return notice
 })
 
 /** Deletes the Connection; removing Traces puts the bundled tracing back (the collection's afterDelete hook). */

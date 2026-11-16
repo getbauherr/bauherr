@@ -46,6 +46,8 @@ export type View = {
   tier: Tier
   /** Tokens and list price of the turns so far (`usd` null: some turn's model has no price). */
   cost: { turns: TurnCost[]; tokens: number; usd: number | null }
+  /** Cost and usage are an Admin's: for anyone else `cost` is empty and no message carries `usage`. */
+  showCost: boolean
   /** The role that plans next and the line under "Send to planning". */
   planner: string
   next: string
@@ -149,7 +151,8 @@ const view = async (payload: Payload, user: User, c: Ctx, workspaceId: number | 
   const models = tierModels(w)
   const wf = workflowFor(c.t.workspace)
   // A Product owner sees no model, no usage and no session of the executor.
-  const hide = <T extends { speaker: Speaker; usage?: unknown }>(m: T): T => (viewer === 'bauherr' ? m : { ...m, usage: undefined, speaker: { ...m.speaker, model: null } })
+  const showCost = viewer === 'bauherr' && user.role === 'admin'
+  const hide = <T extends { speaker: Speaker; usage?: unknown }>(m: T): T => (viewer !== 'bauherr' ? { ...m, usage: undefined, speaker: { ...m.speaker, model: null } } : showCost ? m : { ...m, usage: undefined })
   const messages = stored_.map((m) => hide(m.speaker.kind === 'person' ? m : { ...m, speaker: { ...m.speaker, role: speaker.role, avatar: speaker.avatar } }))
   const planner = roleOf(wf, nameOf(wf, 'plan'))?.title ?? 'planner'
   const planBy = gates(wf).plan ? checkpointBy(wf, 'plan') : null
@@ -167,7 +170,8 @@ const view = async (payload: Payload, user: User, c: Ctx, workspaceId: number | 
     artifact: buildArtifact({ title: c.edits?.title ?? c.t.title, currentTitle: c.t.title, current: c.body, pending: c.edits?.body ?? c.body, points: c.points, version: c.version }),
     models: viewer === 'bauherr' ? TIERS.map((tier) => ({ tier, model: models[tier] })) : [],
     tier: c.tier,
-    cost: viewer === 'bauherr' ? costOf(messages) : { turns: [], tokens: 0, usd: null },
+    cost: showCost ? costOf(messages) : { turns: [], tokens: 0, usd: null },
+    showCost,
     planner,
     next,
     thread: c.thread.id,

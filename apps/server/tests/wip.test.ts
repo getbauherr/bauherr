@@ -239,6 +239,27 @@ describe('counting and workspaces', () => {
     expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
   })
 
+  it('a parked Ticket holds no slot, is not pulled, and starts no Run; unparked it counts and is pulled again', async () => {
+    usePack('bare-pack')
+    await limits({ build: 1 })
+    await ticket('held', 'build', { parked: true })
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(0)
+    const c = await ticket('c', 'plan')
+    await poll()
+    expect(await reload(c.id)).toMatchObject({ stage: 'build', waitingFor: null })
+    expect(await runs(c.id, 'build')).toHaveLength(1)
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
+    const waiting = await ticket('w', 'plan', { waitingFor: 'build', parked: true })
+    await limits({ build: 5 })
+    await wip.pullWaiting(payload)
+    await poll()
+    expect(await reload(waiting.id)).toMatchObject({ stage: 'plan', waitingFor: 'build' })
+    expect(await runs(waiting.id, 'build')).toHaveLength(0)
+    await payload.update({ collection: 'tickets', id: waiting.id, data: { parked: false }, ...o })
+    await wip.pullWaiting(payload)
+    expect(await reload(waiting.id)).toMatchObject({ stage: 'build', waitingFor: null })
+  })
+
   it('counts the Release column too (Settings > Factory > Workflow shows it)', async () => {
     await ticket('rel', 'release')
     expect(await wip.wipCount(payload, ws, 'release')).toBe(1)
@@ -265,22 +286,33 @@ describe('counting and workspaces', () => {
 })
 
 describe('sub-tickets and parents', () => {
-  it('children over the limit wait in Plan for Build without a Run and are not counted; parents are not counted', async () => {
+  it('an epic holds one slot: its first slice waits in Plan for Build without a Run when Build is full, later slices are not created yet; parents are not counted', async () => {
     usePack('bare-pack')
     await limits({ build: 1 })
+    await ticket('busy', 'build')
     const p = await ticket('p', 'plan', {}, SUBS)
     await poll()
     expect(await reload(p.id)).toMatchObject({ stage: 'parent' })
     const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: p.id } }, sort: 'number', ...o })).docs as { id: number; stage: string; waitingFor?: string | null }[]
-    expect(kids.map((k) => [k.stage, k.waitingFor ?? null])).toEqual([['build', null], ['plan', 'build']])
+    expect(kids.map((k) => [k.stage, k.waitingFor ?? null])).toEqual([['plan', 'build']])
     await poll()
-    expect(await runs(kids[0].id, 'build')).toHaveLength(1)
-    expect(await runs(kids[1].id, 'build')).toHaveLength(0)
+    expect(await runs(kids[0].id, 'build')).toHaveLength(0)
     expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
-    await payload.update({ collection: 'tickets', id: kids[0].id, data: { stage: 'review' }, ...o })
+  })
+
+  it('an epic counts once in Build: 1 slot per epic across slices, a passed slice (done) frees it for the next', async () => {
+    usePack('bare-pack')
+    await limits({ build: 1 })
+    const p = await ticket('p', 'plan', {}, SUBS)
     await poll()
-    expect(await runs(kids[1].id, 'build')).toHaveLength(1)
-    expect(await reload(kids[1].id)).toMatchObject({ stage: 'build', waitingFor: null })
+    const first = (await payload.find({ collection: 'tickets', where: { parent: { equals: p.id } }, ...o })).docs[0] as Record<string, any>
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
+    await payload.update({ collection: 'tickets', id: first.id, data: { stage: 'done', slice: { ...first.slice, head: 'h0', passed: true } }, ...o })
+    await actions.advanceEpic(payload, await reload(p.id))
+    const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: p.id } }, sort: 'number', ...o })).docs as Record<string, any>[]
+    expect(kids).toHaveLength(2)
+    expect(kids[1]).toMatchObject({ stage: 'build', slice: { index: 1, prev: 'h0' } })
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
   })
 })
 

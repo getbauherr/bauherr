@@ -26,10 +26,14 @@ export type StepRun = {
   /** Admin only: cost and tokens in one short phrase for the compact row. */
   usage: string | null
 }
-export type Step = { id: number; phase: string; label: string; at: string; seconds: number; /** The workflow version the step ran under, only when it is not the one active now. */ workflowVersion: number | null; run: StepRun | null; ci: { provider: string | null; url: string | null } | null; decision: { what: string; actor: string | null } | null }
+export type Step = { id: number; phase: string; label: string; at: string; seconds: number; /** The workflow version the step ran under, only when it is not the one active now. */ workflowVersion: number | null; run: StepRun | null; ci: { provider: string | null; url: string | null } | null; decision: { what: string; actor: string | null } | null; /** "Sent back to <stage> by <person>: <why>" on the step a send back started. */ sentBack: string | null }
 export type Visit = { stage: string; title: string; at: string; seconds: number; steps: Step[] }
 /** One Run of a visit with its phases in order; a phase without a Run (queued before the claim) joins the next Run's row. */
 export type Row = { stage: string; title: string; run: StepRun | null; steps: Step[]; seconds: number; at: string }
+
+/** The sentence for the event a send back recorded (its `note` is the why), else null. */
+export const sentBackText = (wf: Workflow, s: Pick<Span, 'cause' | 'stage' | 'actor' | 'note' | 'outcome'>): string | null =>
+  s.cause === 'sendBack' && s.stage ? `Sent back to ${s.outcome === 'backlog' ? 'the backlog' : title(wf, s.stage)} by ${s.actor ?? 'the owner'}${s.note ? `: ${s.note}` : '.'}` : null
 
 export const rowsOf = (v: Visit): Row[] => {
   const rows: Row[] = []
@@ -90,6 +94,7 @@ export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Do
       id: s.id, phase: s.phase, label: phaseLabel(s.phase, s.stageKind), at: s.at, seconds: s.seconds, workflowVersion: s.workflowVersion != null && s.workflowVersion !== (o.workflowVersion ?? null) ? s.workflowVersion : null,
       run: r ? { id: r.id, executor: r.executor === 'session' || r.mode === 'session' ? 'Session' : r.executor === 'ci' ? 'CI' : r.executor || r.mode ? 'Runner' : null, role: wf.roles.find((x) => x.id === r.role)?.title ?? null, sessionLabel: r.sessionLabel ?? null, sessionId: o.sessions?.get(typeof r.session === 'object' ? r.session?.id : r.session) ?? null, client: [r.clientName, r.clientVersion].filter(Boolean).join(' ') || null, model: r.model ?? null, provider: r.provider ?? null, mode: r.mode, status: r.status, outcome: r.outcome ?? s.outcome, verdict: r.verdict ?? null, reason: first(r.error), cost: o.admin ? cost(r) : null, usage: o.admin ? usage(r) : null } : null,
       ci: s.phase === 'ci' ? { provider: o.provider, url: prUrl } : null,
+      sentBack: sentBackText(wf, s),
       decision: gate ? { what: gate.replace(/:/g, ' '), actor: next?.actor ?? touch?.actor ?? null } : null,
     }
     const last = visits[visits.length - 1]

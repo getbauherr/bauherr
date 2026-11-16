@@ -14,7 +14,7 @@ import { nameOf } from './workflow'
 export const mergeMainIntoMr = async (payload: Payload, ticketId: number, reviewedSha: string | null): Promise<void> => {
   const o = { overrideAccess: true, depth: 0 } as const
   const t = await payload.findByID({ collection: 'tickets', id: ticketId, ...o })
-  if (t.stage !== nameOf(workflowFor(t.workspace), 'review') || t.state !== 'open' || t.reviewState !== 'waiting_checks') return
+  if (t.stage !== nameOf(workflowFor(t.workspace), 'review') || t.state !== 'open' || t.parked || t.reviewState !== 'waiting_checks') return
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open') return
   const base = mr.pr.base

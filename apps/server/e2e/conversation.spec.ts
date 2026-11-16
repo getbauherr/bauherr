@@ -49,6 +49,7 @@ const closePanel = async (page: Page) => {
 /** The Inbox card of a Ticket, "Answer questions" opens the conversation (a navigation, no in-card expansion). */
 const open = async (page: Page, title: string) => {
   await page.goto('/inbox')
+  await page.getByTestId('inbox-row').filter({ hasText: title }).click()
   const card = page.locator('article[data-decision]').filter({ hasText: title })
   await expect(card).toHaveCount(1)
   hrefs[title] = (await card.getByRole('link', { name: new RegExp(title) }).getAttribute('href'))!
@@ -72,7 +73,10 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page, admin)
   await page.goto('/inbox')
-  for (const t of ['Export the invoices', 'Name the export file']) hrefs[t] = (await page.locator('article[data-decision]').filter({ hasText: t }).getByRole('link', { name: new RegExp(t) }).getAttribute('href'))!
+  for (const t of ['Export the invoices', 'Name the export file']) {
+    await page.getByTestId('inbox-row').filter({ hasText: t }).click()
+    hrefs[t] = (await page.locator('article[data-decision]').filter({ hasText: t }).getByRole('link', { name: new RegExp(t) }).getAttribute('href'))!
+  }
   await open(page, 'Docs Agent')
   await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
 
@@ -195,6 +199,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page, admin)
   await page.goto('/inbox')
+  await page.getByTestId('inbox-row').filter({ hasText: 'Export the invoices' }).click()
   const card = page.locator('article[data-decision]').filter({ hasText: 'Export the invoices' })
   await expect(card.getByTestId('refine-panel')).toHaveCount(0)
   await expect(card.getByRole('button', { name: 'Answer questions' })).toHaveCount(0)
@@ -208,7 +213,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await expect(info).toContainText('Lead time')
   const bar0 = page.getByTestId('action-bar')
   await expect(bar0.getByRole('button', { name: 'Put on the fast lane' })).toBeVisible()
-  await expect(bar0.getByRole('button', { name: 'Comment' })).toBeVisible()
+  await expect(bar0.getByRole('button', { name: 'Comment' })).toHaveCount(0) // comments go through the conversation's composer
   await shoot(page, 'info-popover')
 
   await page.getByTestId('participant-line').click()

@@ -20,7 +20,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ r
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const payload = await payloadClient()
   const admin = isAdmin(user)
-  const [team, modelOptions, cost] = await Promise.all([loadTeam(payload, workspace.id), admin ? loadModelOptions(payload, workspace.id) : [], loadTeamCost(payload, workspace.id)])
+  const [team, modelOptions, cost] = await Promise.all([loadTeam(payload, workspace.id, { admin, userId: user.id }), admin ? loadModelOptions(payload, workspace.id) : [], loadTeamCost(payload, workspace.id)])
   const gateway = await loadGatewaySetup(payload, workspace, admin)
   const mcpLine = `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer <your agent key>"`
   return (

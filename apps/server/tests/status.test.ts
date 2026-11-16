@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ticketStatus, type StatusRow, type StatusRun } from '../src/app/(app)/lib/status'
+import { statusLine, ticketStatus, type StatusRow, type StatusRun } from '../src/app/(app)/lib/status'
 import { DEFAULT } from '../src/lib/workflow'
 
 const wf = DEFAULT()
@@ -38,6 +38,8 @@ describe('ticketStatus', () => {
     ['budget exhausted', row({ run: run({ status: 'budget_exhausted' }) }), { phase: 'failed', label: 'Failed', detail: 'budget exhausted', who: null }],
     ['waiting for a free slot', row({ queuedWhy: 'Build is full (2/2)' }), { phase: 'queued', label: 'Queued', detail: 'Build is full (2/2)', who: null }],
     ['idle', row(), { phase: 'queued', label: 'Queued', detail: 'next in line', who: null }],
+    ['a queued Run while the owner is asked is not Queued', row({ needsYou: 'Accept on staging', run: run({ status: 'queued' }) }), { phase: 'human', label: 'Waiting for you', detail: 'Accept on staging', who: null }],
+    ['a Run waiting for a session while the owner is asked is not Queued', row({ needsYou: 'Approve production', run: run({ status: 'awaiting_session', mode: 'session' }) }), { phase: 'human', label: 'Waiting for you', detail: 'Approve production', who: null }],
   ]
   it.each(table)('%s', (_name, r, want) => {
     expect(at(r)).toMatchObject(want)
@@ -65,5 +67,11 @@ describe('terminal and split stages', () => {
     expect(at(row({ stage: 'parent', children: { total: 3, done: 1 } }))).toMatchObject({ label: 'Split', detail: 'into 3 sub-tickets (1 done)' })
     expect(at(row({ stage: 'parent', children: { total: 1, done: 0 } })).detail).toBe('into 1 sub-ticket (0 done)')
     expect(at(row({ stage: 'parent' })).detail).toBe('into 0 sub-tickets (0 done)')
+  })
+  it('an epic parent reads the slice being built and its stage', () => {
+    expect(at(row({ stage: 'parent', children: { total: 4, done: 1 }, slicing: { index: 2, total: 4, stage: 'build' } }))).toMatchObject({ label: 'Slice 2/4', detail: 'Build' })
+    expect(statusLine(wf, row({ stage: 'parent', slicing: { index: 1, total: 2, stage: null } }))).toBe('Slice 1/2: starting')
+    expect(at(row({ stage: 'parent', parked: true, slicing: { index: 2, total: 4, stage: 'build' } }))).toMatchObject({ label: 'Parked' })
+    expect(at(row({ stage: 'done', parked: true }))).toMatchObject({ label: 'Done' })
   })
 })
