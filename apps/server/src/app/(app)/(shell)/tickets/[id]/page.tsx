@@ -12,6 +12,10 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { BACKLOG, OPEN_WORDS, sendBackTargets, sourceOf, type OpenItem } from '../../../../../lib/actions'
+import { releaseRunLock } from '../../../lib/actions'
+import { sessionHealth } from '../../../../../lib/sessions'
+import { stepOf, ticketLive } from '../../../../../lib/ticket-live'
+import { Button } from '../../../components/ui/button'
 import { decisionComments } from '../../../../../lib/forge-channel'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { AutoRefresh } from '../../../components/AutoRefresh'
@@ -272,6 +276,23 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     parked: !!ticket.parked,
     track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
   } satisfies StatusRow)
+  const running = latest?.status === 'running' ? latest : null
+  const sessionId = running && (typeof running.session === 'object' ? running.session?.id : running.session)
+  const [sessionRow, lastStep] = running
+    ? await Promise.all([
+        sessionId ? payload.findByID({ collection: 'agent_sessions', id: sessionId, select: { publicId: true, lastSeenAt: true, disconnectedAt: true, endReason: true }, depth: 0, overrideAccess: true }).then((r) => r as unknown as Doc).catch(() => null) : null,
+        payload.find({ collection: 'steps', where: { run: { equals: running.id } }, sort: '-startedAt', limit: 1, select: { summary: true, startedAt: true }, depth: 0, overrideAccess: true }).then((r) => r.docs[0] as Doc | undefined),
+      ])
+    : [null, undefined]
+  const live = ticketLive({
+    ci: false,
+    run: running as StatusRun | null,
+    session: sessionRow && { publicId: sessionRow.publicId, health: sessionHealth({ hasRun: true, lastSeenAt: sessionRow.lastSeenAt ?? null, disconnectedAt: sessionRow.disconnectedAt ?? null }), lastSeenAt: sessionRow.lastSeenAt, disconnectedAt: sessionRow.disconnectedAt, endReason: sessionRow.endReason },
+    review: running && running.stage !== stageOf(wf, ticket) && is(wf, stageOf(wf, ticket), 'review') ? (last?.at ?? null) : null,
+    step: stepOf(lastStep?.summary, lastStep?.startedAt),
+    admin,
+  })
+  const liveStatus = live && status.phase === 'working' ? live : null
   const roleOf = (r: Doc) => wf.roles.find((x) => x.id === r.role)?.title
   const executor = latest ? runWho(latest as StatusRun, null, roleOf(latest)) : null
   const links = [
@@ -294,8 +315,9 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       <section className="flex flex-col gap-1" aria-label="Status" data-testid="status-block">
         {ticket.slice && inherited?.epic && <p className="body m-0" data-testid="slice-line">Slice {ticket.slice.index + 1}/{inherited.epic.slices.length}: {stageTitle(wf, stageOf(wf, ticket))}</p>}
         <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
-          <Badge variant={status.tone}>{status.label}</Badge>
-          {status.detail && <span>{status.detail}</span>}
+          <Badge variant={liveStatus?.tone ?? status.tone}>{liveStatus?.chip ?? status.label}</Badge>
+          {liveStatus ? <span>{liveStatus.sentence}</span> : status.detail && <span>{status.detail}</span>}
+          {liveStatus?.release && running && <form action={releaseRunLock.bind(null, running.id)}><Button type="submit" variant="outline" size="sm">Release lock</Button></form>}
         </p>
         {(status.who ?? executor) && <p className="small m-0 text-muted-foreground">{status.who ?? `Last: ${executor}`}</p>}
       </section>
