@@ -5,6 +5,7 @@ import type { GoalStatement, RunCtx } from './types.js';
 export const GOAL_FILE = '.bauherr/goal.json';
 export const WORKLOG_FILE = '.bauherr/worklog.md';
 export const PLAN_FILE = '.bauherr/plan.md';
+export const BRIEF_FILE = '.bauherr/approval-brief.md';
 export const REVIEW_FILE = '.bauherr/review.json';
 export const SELF_REVIEW_FILE = '.bauherr/self-review.json';
 export const INVESTIGATION_FILE = '.bauherr/investigation.json';
