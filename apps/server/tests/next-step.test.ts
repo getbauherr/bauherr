@@ -18,6 +18,12 @@ describe('nextStep', () => {
     const s = nextStep({ ...base, blockers: [{ id: 5, number: 339 }], run: { id: 7, stage: 'build', status: 'running' } })
     expect(s).toMatchObject({ enabled: false, reason: 'Blocked by #339.', links: [{ text: '#339', href: '/tickets/5' }] })
   })
+  it('a live Run with pending checks waits for CI instead of working', () => {
+    const run = { id: 735, stage: 'build', status: 'running' }
+    const ci = { passed: 1, total: 2, pending: 1 }
+    expect(nextStep({ ...base, ticket: { ...base.ticket, waitingFor: 'checks' }, run, ci })).toMatchObject({ label: 'Waiting for CI 1/2', enabled: false, reason: 'Waiting for CI: 1 of 2 checks passed, 1 running. The agent resumes when they finish (Run 735).' })
+    expect(nextStep({ ...base, run, ci }).label).toBe('In progress')
+  })
   it('a live Run names the Run to an Admin only', () => {
     const run = { id: 735, stage: 'build', status: 'running' }
     expect(nextStep({ ...base, run })).toMatchObject({ reason: 'The factory is working on this (Run 735).', links: [{ text: 'Run 735', href: '/runs/735' }] })

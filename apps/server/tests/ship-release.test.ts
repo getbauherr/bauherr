@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual'], ['rcl', 'manual'], ['rcb', 'manual'], ['rcc', 'manual'], ['rct', 'manual'], ['rcf', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -54,9 +54,9 @@ const touches = async (slug: string, tag: string) => (await payload.find({ colle
 it('proposes the version from the Ticket mix; an rc line keeps counting', () => {
   const t = (...labels: string[]) => ({ labels })
   expect(ship.proposeVersion(null, [t()])).toBe('0.1.0')
-  expect(ship.proposeVersion('v1.2.3', [t('bug'), t()])).toBe('1.2.4')
-  expect(ship.proposeVersion('v1.2.3', [t('bug'), t('type:feature')])).toBe('1.3.0')
-  expect(ship.proposeVersion('v1.2.3', [t('type:feature'), t('breaking')])).toBe('2.0.0')
+  expect(ship.proposeVersion('v1.2.3', [t('bug'), t()])).toBe('1.2.4-rc.1')
+  expect(ship.proposeVersion('v1.2.3', [t('bug'), t('type:feature')])).toBe('1.3.0-rc.1')
+  expect(ship.proposeVersion('v1.2.3', [t('type:feature'), t('breaking')])).toBe('2.0.0-rc.1')
   expect(ship.proposeVersion('v1.3.0-rc.2', [t('breaking')])).toBe('1.3.0-rc.3')
 })
 
@@ -91,9 +91,16 @@ it('leaves Tickets merged before the Product lastReleaseAt out of the Board remi
 })
 
 it('offers the bumps of the last release as version choices', () => {
-  expect(ship.versionChoices(null)).toEqual(['0.1.0'])
-  expect(ship.versionChoices('v1.2.3')).toEqual(['1.2.4', '1.3.0', '2.0.0'])
-  expect(ship.versionChoices('v1.3.0-rc.2')).toEqual(['1.3.0-rc.3', '1.3.1', '1.4.0', '2.0.0'])
+  expect(ship.versionChoices(null)).toEqual(['0.1.0', '0.1.0-rc.1'])
+  expect(ship.versionChoices('v1.2.3')).toEqual(['1.2.4-rc.1', '1.3.0-rc.1', '2.0.0-rc.1', '1.2.4', '1.3.0', '2.0.0'])
+  expect(ship.versionChoices('v1.3.0-rc.2')).toEqual(['1.3.0-rc.3'])
+})
+
+it('finds the last final and the open rc line from the tags, also for tags without a release', () => {
+  expect(ship.releaseLine([])).toEqual({ final: null, rc: null })
+  expect(ship.releaseLine(['v0.3.0', 'v0.4.0-rc.1', 'v0.4.0-rc.10', 'v0.4.0-rc.2', 'latest'])).toEqual({ final: 'v0.3.0', rc: 'v0.4.0-rc.10' })
+  expect(ship.releaseLine(['v0.3.0', 'v0.4.0-rc.1', 'v0.4.0'])).toEqual({ final: 'v0.4.0', rc: null })
+  expect(ship.releaseLine(['v0.3.0', 'v0.2.0-rc.1'])).toEqual({ final: 'v0.3.0', rc: null })
 })
 
 it('ships: tag on the newest merge, release, comments, releasedIn, CHANGELOG MR and one ship:release touch', async () => {
@@ -218,7 +225,7 @@ it('shipSelected is admin only, stays in the Workspace and ships exactly the sel
   expect((await reload(c.id)).releasedIn).toBeFalsy()
   await expect(ship.shipSelected(payload, user, { ...args, version: '0.1.1' })).rejects.toThrow('no longer waiting')
   const draft = await ship.releaseDraft(payload, products.page!)
-  expect(draft).toMatchObject({ version: '0.1.1', past: [{ tag: 'v0.1.0' }] })
+  expect(draft).toMatchObject({ version: '0.1.1-rc.1', past: [{ tag: 'v0.1.0' }] })
   expect(draft.waiting.map((t) => t.id)).toEqual([c.id])
 })
 
@@ -309,4 +316,94 @@ it('shipRelease records the release on the Product so the Board needs no forge',
   await ship.shipRelease(payload, user, { product: products.board!, tickets: [a], version: '0.2.0', notes: 'n' })
   expect(await payload.findByID({ collection: 'products', id: products.board!, ...o })).toMatchObject({ lastReleaseTag: 'v0.2.0', lastReleaseSha: 'sha-b9' })
   expect((await payload.findByID({ collection: 'products', id: products.board!, ...o })).lastReleaseAt).toContain('2026-11-05')
+})
+
+const slugTag = (slug: string, tag: string) => fake.listReleases(`acme/${slug}`).find((r) => r.tag === tag)
+
+it('cuts rc.1 and rc.2, then promotes rc.2: same sha, notes of the whole line, Tickets moved to the final, CHANGELOG MR, idempotent', async () => {
+  const repo = 'acme/rcl'
+  fake.commit(repo, 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  fake.addRelease(repo, { tag: 'v0.3.0', sha: 'sha-0' })
+  const a = await done('rcl', 'Alpha feature', 'sha-l1', 1, ['type:feature'])
+  const b = await done('rcl', 'Beta fix', 'sha-l2', 2)
+  fake.setAncestors(repo, 'sha-l2', ['sha-l1', 'sha-0'])
+  const draft = await ship.releaseDraft(payload, products.rcl!)
+  expect(draft).toMatchObject({ version: '0.4.0-rc.1', rc: null })
+  expect(draft.versions).toEqual(['0.3.1-rc.1', '0.4.0-rc.1', '1.0.0-rc.1', '0.3.1', '0.4.0', '1.0.0'])
+  await ship.shipSelected(payload, user, { workspaceId: ws, product: products.rcl!, ids: [a.id, b.id], version: '0.4.0-rc.1', notes: await ship.renderNotes(fake.tickets(repo), [a, b]) })
+  expect(slugTag('rcl', 'v0.4.0-rc.1')).toMatchObject({ sha: 'sha-l2', prerelease: true })
+  expect(await fake.forge.listPullRequests(repo, 'all')).toEqual([])
+  expect(await reload(a.id)).toMatchObject({ releasedIn: 'v0.4.0-rc.1' })
+  const open = await ship.releaseDraft(payload, products.rcl!)
+  expect(open).toMatchObject({ rc: 'v0.4.0-rc.1', version: '0.4.0-rc.2', versions: ['0.4.0-rc.2'] })
+  expect(open.rcTickets.map((t) => t.number)).toEqual([a.number, b.number])
+
+  const c = await done('rcl', 'Gamma fix', 'sha-l3', 3)
+  fake.setAncestors(repo, 'sha-l3', ['sha-l2', 'sha-l1', 'sha-0'])
+  await ship.shipRelease(payload, user, { product: products.rcl!, tickets: [c], version: '0.4.0-rc.2', notes: await ship.renderNotes(fake.tickets(repo), [c]) })
+  expect(slugTag('rcl', 'v0.4.0-rc.2')).toMatchObject({ sha: 'sha-l3', prerelease: true })
+  expect(slugTag('rcl', 'v0.4.0-rc.2')!.body).toContain('Supersedes v0.4.0-rc.1.')
+  await expect(ship.promoteRelease(payload, user, { product: products.rcl!, rc: 'v0.4.0-rc.1' })).rejects.toThrow('not the newest release candidate of v0.4.0 (v0.4.0-rc.2)')
+  expect(slugTag('rcl', 'v0.4.0')).toBeUndefined()
+
+  const res = await ship.promoteRelease(payload, user, { product: products.rcl!, rc: 'v0.4.0-rc.2' })
+  expect(res.tag).toBe('v0.4.0')
+  expect(slugTag('rcl', 'v0.4.0')).toMatchObject({ sha: 'sha-l3', prerelease: false })
+  for (const t of ['Alpha feature', 'Beta fix', 'Gamma fix']) expect(slugTag('rcl', 'v0.4.0')!.body).toContain(t)
+  for (const t of [a, b, c]) {
+    expect(await reload(t.id)).toMatchObject({ releasedIn: 'v0.4.0' })
+    expect((await fake.tickets(repo).listComments(String(t.number))).at(-1)!.body).toContain('(tested as v0.4.0-rc.2)')
+  }
+  expect(await fake.forge.listPullRequests(repo, 'all')).toMatchObject([{ head: 'bauherr/release-v0.4.0' }])
+  expect(await payload.findByID({ collection: 'products', id: products.rcl!, depth: 0, ...o })).toMatchObject({ lastReleaseTag: 'v0.4.0', lastReleaseSha: 'sha-l3' })
+  expect(await touches('rcl', 'v0.4.0')).toHaveLength(1)
+  expect(await ship.releaseDraft(payload, products.rcl!)).toMatchObject({ rc: null, versions: expect.arrayContaining(['0.4.1-rc.1']) })
+
+  await ship.promoteRelease(payload, user, { product: products.rcl!, rc: 'v0.4.0-rc.2' })
+  expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.3.0', 'v0.4.0-rc.1', 'v0.4.0-rc.2', 'v0.4.0'])
+  expect(await fake.forge.listPullRequests(repo, 'all')).toHaveLength(1)
+  expect(await touches('rcl', 'v0.4.0')).toHaveLength(1)
+  await expect(ship.shipRelease(payload, user, { product: products.rcl!, tickets: [await done('rcl', 'Late', 'sha-l4', 4)], version: '0.4.0-rc.3', notes: 'n' })).rejects.toThrow('v0.4.0 already exists')
+})
+
+it('refuses an rc that does not contain the previous rc, a skipped rc number and a final cut over rcs; nothing is created', async () => {
+  const repo = 'acme/rcb'
+  const a = await done('rcb', 'First', 'sha-b1', 1)
+  const b = await done('rcb', 'Diverged', 'sha-b2', 2)
+  await ship.shipRelease(payload, user, { product: products.rcb!, tickets: [a], version: '0.1.0-rc.1', notes: 'n' })
+  await expect(ship.shipRelease(payload, user, { product: products.rcb!, tickets: [b], version: '0.1.0-rc.2', notes: 'n' })).rejects.toThrow('would not contain v0.1.0-rc.1 (sha-b1)')
+  await expect(ship.shipRelease(payload, user, { product: products.rcb!, tickets: [b], version: '0.1.0-rc.3', notes: 'n' })).rejects.toThrow('needs v0.1.0-rc.2 first')
+  await expect(ship.shipRelease(payload, user, { product: products.rcb!, tickets: [b], version: '0.1.0', notes: 'n' })).rejects.toThrow('promote the newest one')
+  expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.1.0-rc.1'])
+  expect(await reload(b.id)).toMatchObject({ releasedIn: null })
+})
+
+it('promote refuses a final on another commit and a non-admin; a tag-only rc (CLI fallback) promotes on its commit', async () => {
+  fake.addRelease('acme/rcc', { tag: 'v0.2.0-rc.1', sha: 'sha-c1', prerelease: true })
+  fake.addRelease('acme/rcc', { tag: 'v0.2.0', sha: 'sha-other' })
+  await expect(ship.promoteRelease(payload, user, { product: products.rcc!, rc: 'v0.2.0-rc.1' })).rejects.toThrow('already exists on another commit')
+  const guest = { ...user, role: 'member' }
+  await expect(ship.promoteSelected(payload, guest, { workspaceId: ws, product: products.rcc!, rc: 'v0.2.0-rc.1' })).rejects.toThrow()
+  await expect(ship.promoteRelease(payload, user, { product: products.rcc!, rc: 'v0.2.0' })).rejects.toThrow('not a release candidate')
+
+  fake.commit('acme/rct', 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  fake.addTag('acme/rct', 'v0.5.0-rc.1', 'sha-t1')
+  expect(await ship.releaseDraft(payload, products.rct!)).toMatchObject({ rc: 'v0.5.0-rc.1', versions: ['0.5.0-rc.2'] })
+  await ship.promoteSelected(payload, user, { workspaceId: ws, product: products.rct!, rc: 'v0.5.0-rc.1' })
+  expect(slugTag('rct', 'v0.5.0')).toMatchObject({ sha: 'sha-t1', prerelease: false })
+})
+
+it('a promote that fails after the release was created is offered again as "finish" and completes without a second release', async () => {
+  const repo = 'acme/rcf'
+  fake.commit(repo, 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  const a = await done('rcf', 'Half', 'sha-f1', 1)
+  await ship.shipRelease(payload, user, { product: products.rcf!, tickets: [a], version: '0.1.0-rc.1', notes: 'n' })
+  vi.spyOn(fake.tickets(repo), 'comment').mockRejectedValueOnce(new Error('forge down'))
+  await expect(ship.promoteRelease(payload, user, { product: products.rcf!, rc: 'v0.1.0-rc.1' })).rejects.toThrow('forge down')
+  expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.1.0-rc.1', 'v0.1.0'])
+  expect(await ship.releaseDraft(payload, products.rcf!)).toMatchObject({ rc: 'v0.1.0-rc.1', finishing: true })
+  await ship.promoteRelease(payload, user, { product: products.rcf!, rc: 'v0.1.0-rc.1' })
+  expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.1.0-rc.1', 'v0.1.0'])
+  expect(await reload(a.id)).toMatchObject({ releasedIn: 'v0.1.0' })
+  expect(await ship.releaseDraft(payload, products.rcf!)).toMatchObject({ rc: null, finishing: false })
 })

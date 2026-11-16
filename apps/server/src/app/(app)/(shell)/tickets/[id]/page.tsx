@@ -1,4 +1,8 @@
+import { ConfirmButton } from '../../../components/SettingsForm'
 import { changeOf } from '../../../../../lib/decision'
+import { ciSummaryOf } from '../../../../../lib/ci-summary'
+import { forgeLinkOf, pendingCounts } from '../../../../../lib/ci-text'
+import { CiPanel } from '../../../components/CiPanel'
 import { pausingFor } from '../../../../../lib/preempt'
 import { PageTitle } from '../../../components/PageTitle'
 import { ProductOwnerTicket } from './ProductOwnerTicket'
@@ -9,17 +13,24 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { BACKLOG, OPEN_WORDS, sendBackTargets, sourceOf, type OpenItem } from '../../../../../lib/actions'
+import { releaseRunLock } from '../../../lib/actions'
+import { sessionHealth } from '../../../../../lib/sessions'
+import { stepOf, ticketLive } from '../../../../../lib/ticket-live'
+import { Button } from '../../../components/ui/button'
 import { decisionComments } from '../../../../../lib/forge-channel'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { AutoRefresh } from '../../../components/AutoRefresh'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
+import { ForgeLink } from '../../../components/ForgeLink'
+import { forgeLinkSpot } from '../../../lib/bar'
 import { EpicControls } from '../../../components/EpicControls'
 import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
+import { ApprovalBrief } from '../../../components/ApprovalBrief'
 import { ProofList } from '../../../components/ProofList'
 import { loadProof } from '../../../lib/proof'
 import { TicketSteps } from '../../../components/workflow/TicketSteps'
@@ -77,7 +88,7 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 const Pulse = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-sm bg-secondary`} aria-hidden />
 
 /** DB data of the page, passed to the streamed parts. */
-type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; sendBack: SendBackTarget[]; sentBack: string | null; forge: 'github' | 'gitlab' | null }
+type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; sendBack: SendBackTarget[]; sentBack: string | null; forgeLink: { href: string; label: string } | null }
 
 /** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
@@ -117,8 +128,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const roleId = live0?.status === 'awaiting_session' ? roleOf(wf, live0.stage)?.id : undefined
   const connected = roleId ? (await connectedOfRole(payload, P.ws.id, roleId)) > 0 : true
   const fastLane = await fastLaneHolder(payload, ticket)
-  const runPr = runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined
-  const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin, forge: P.forge, prUrl: isWebUrl(runPr) ? runPr : null })
+  const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin, ci: pendingCounts(ticket.ciSummary) })
   const idle = fastLane && !todo && (!live0 || live0.status === 'queued') && !blockers.some((b) => b.state !== 'closed') ? fastLaneStep(next, fastLane) : next
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, view, idle, history }
@@ -130,7 +140,13 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar change={changeOf(ticket.stagingTldr, ticket.title)} ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={P.sentBack && !x.todo ? { ...x.idle, reason: `${P.sentBack} ${x.idle.reason}` } : x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
+  return <ActionBar change={changeOf(ticket.stagingTldr, ticket.title)} ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={P.sentBack && !x.todo ? { ...x.idle, reason: `${P.sentBack} ${x.idle.reason}` } : x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
+}
+
+/** The forge link in the CI panel header, only when the action bar's one secondary slot is taken. */
+async function PanelForge({ P, d, at }: { P: Page; d: Promise<Derived>; at: 'panel' | 'links' }) {
+  const x = await d
+  return P.forgeLink && forgeLinkSpot({ need: x.todo, canExpedite: canExpediteOf(P), ciPanel: at === 'panel' }) === at ? <div><ForgeLink {...P.forgeLink} /></div> : null
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -234,8 +250,11 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const stage = stageOf(wf, ticket)
   const sendBack = isBauherr(user) && ticket.state === 'open' ? sendBackTargets(wf, stage).map((to): SendBackTarget => (to === BACKLOG ? { to, title: 'Backlog' } : { to, title: stageTitle(wf, to), kind: kindOf(wf, to) })) : []
   const last = spans.at(-1)
+  const ci = ciSummaryOf(ticket)
+  const prUrl = ci?.summary.url ?? (runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined)
+  const forgeLink = forgeLinkOf(forges.get(ticket.product), prUrl)
+  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin, sendBack, sentBack: last ? sentBackText(wf, last) : null, forgeLink }
   const forge = forges.get(ticket.product)
-  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin, sendBack, sentBack: last ? sentBackText(wf, last) : null, forge: forge ?? null }
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
   const sessions = new Map<number, string>(sessionIds.length ? ((await payload.find({ collection: 'agent_sessions', where: { id: { in: sessionIds } }, select: { publicId: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; publicId: string }[]).map((x) => [x.id, x.publicId]) : [])
   const steps = buildSteps(wf, spans, runs, touches, { sessions, workflowVersion: (await activeVersion(payload, workspace.id))?.version ?? null, skips: skipped, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
@@ -253,17 +272,33 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     owner: null,
     forge: forge === 'gitlab' || forge === 'github' ? forge : null,
     gate: null,
+    ci: pendingCounts(ci?.summary),
     children: epic ? epicCount(epic) : null,
     slicing: epic ? epicSlicing(epic) : null,
     parked: !!ticket.parked,
     track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
   } satisfies StatusRow)
+  const running = latest?.status === 'running' ? latest : null
+  const sessionId = running && (typeof running.session === 'object' ? running.session?.id : running.session)
+  const [sessionRow, lastStep] = running
+    ? await Promise.all([
+        sessionId ? payload.findByID({ collection: 'agent_sessions', id: sessionId, select: { publicId: true, lastSeenAt: true, disconnectedAt: true, endReason: true }, depth: 0, overrideAccess: true }).then((r) => r as unknown as Doc).catch(() => null) : null,
+        payload.find({ collection: 'steps', where: { run: { equals: running.id } }, sort: '-startedAt', limit: 1, select: { summary: true, startedAt: true }, depth: 0, overrideAccess: true }).then((r) => r.docs[0] as Doc | undefined),
+      ])
+    : [null, undefined]
+  const live = ticketLive({
+    ci: false,
+    run: running as StatusRun | null,
+    session: sessionRow && { publicId: sessionRow.publicId, health: sessionHealth({ hasRun: true, lastSeenAt: sessionRow.lastSeenAt ?? null, disconnectedAt: sessionRow.disconnectedAt ?? null }), lastSeenAt: sessionRow.lastSeenAt, disconnectedAt: sessionRow.disconnectedAt, endReason: sessionRow.endReason },
+    review: running && running.stage !== stageOf(wf, ticket) && is(wf, stageOf(wf, ticket), 'review') ? (last?.at ?? null) : null,
+    step: stepOf(lastStep?.summary, lastStep?.startedAt),
+    admin,
+  })
+  const liveStatus = live && status.phase === 'working' ? live : null
   const roleOf = (r: Doc) => wf.roles.find((x) => x.id === r.role)?.title
   const executor = latest ? runWho(latest as StatusRun, null, roleOf(latest)) : null
-  const prUrl = runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined
   const links = [
     ...(isWebUrl(ticket.url) ? [{ label: 'Issue', href: ticket.url as string }] : []),
-    ...(isWebUrl(prUrl) ? [{ label: 'Merge request', href: prUrl! }] : []),
     ...(latest ? [{ label: `Run #${latest.id}`, href: `/runs/${latest.id}` }] : []),
   ]
   const budget = ws.budgetUnit === 'tokens' ? `${ws.budgetTokens30d?.toLocaleString('en')} tokens / 30 days` : '$' + ws.budgetUsd30d + ' / 30 days'
@@ -282,8 +317,9 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       <section className="flex flex-col gap-1" aria-label="Status" data-testid="status-block">
         {ticket.slice && inherited?.epic && <p className="body m-0" data-testid="slice-line">Slice {ticket.slice.index + 1}/{inherited.epic.slices.length}: {stageTitle(wf, stageOf(wf, ticket))}</p>}
         <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
-          <Badge variant={status.tone}>{status.label}</Badge>
-          {status.detail && <span>{status.detail}</span>}
+          <Badge variant={liveStatus?.tone ?? status.tone}>{liveStatus?.chip ?? status.label}</Badge>
+          {liveStatus ? <span>{liveStatus.sentence}</span> : status.detail && <span>{status.detail}</span>}
+          {liveStatus?.release && running && <form action={releaseRunLock.bind(null, running.id)} className="flex gap-2"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${running.id}`} /></form>}
         </p>
         {(status.who ?? executor) && <p className="small m-0 text-muted-foreground">{status.who ?? `Last: ${executor}`}</p>}
       </section>
@@ -297,8 +333,10 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       ) : (
         <StageStrip stages={stages} steps={steps} />
       )}
+      {ci && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} forge={<Suspense fallback={null}><PanelForge P={P} d={d} at="panel" /></Suspense>} />}
       <div className="flex min-w-0 flex-col gap-4" data-testid="current-block">
         {card && <DecisionCard compact item={{ ...card, product: undefined }} admin={admin} />}
+        {ticket.approvalBrief && ['Accept on staging', 'Approve production'].includes(ticket.needsYou) && <ApprovalBrief brief={ticket.approvalBrief} admin={admin} />}
         <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
       </div>
       <section className="flex flex-col gap-2" aria-label="Links" data-testid="ticket-links">
@@ -308,6 +346,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           </ul>
         )}
         {dependencies}
+        {!(ci && ci.summary.rows.length > 0) && <Suspense fallback={null}><PanelForge P={P} d={d} at="links" /></Suspense>}
         {sendBack.length > 0 && <div data-testid="ticket-send-back"><SendBackDialog ticket={ticket.id} options={sendBackOptions(null, null, sendBack)} /></div>}
       </section>
       {admin && <CostPanel runs={runs} />}

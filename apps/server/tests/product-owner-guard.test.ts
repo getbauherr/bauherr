@@ -58,7 +58,7 @@ const BAUHERR_ACTIONS = [
   ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'createSessionKey', 'updatePricesNow', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'saveDocsCheck', 'startDocsCheckAction', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'saveMonitoring', 'rotateScrapeToken', 'removeMonitoring', 'testMonitoringAction', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate', 'deleteWorkspace', 'restoreWorkspaceAction'].map((n) => `(shell)/settings/actions.ts#${n}`),
   ...['reviewDraft', 'applyDraft', 'setExpediteLane', 'setPreemptForHotfix'].map((n) => `(shell)/workflow/edit/actions.ts#${n}`),
   ...['applyPreset', 'skipSession', 'importIssue'].map((n) => `(shell)/setup/actions.ts#${n}`),
-  ...['previewRelease', 'summariseRelease', 'shipReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
+  ...['previewRelease', 'summariseRelease', 'shipReleaseAction', 'promoteReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
 ])
 /** MCP tools a Product owner may call (none: `/mcp` refuses them behind any key). */
 const OPEN_TOOLS: Record<string, string> = {}

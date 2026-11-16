@@ -11,9 +11,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from './ui/textarea'
 import { Markdown } from './Markdown'
 import { ProofList } from './ProofList'
+import { ApprovalBrief } from './ApprovalBrief'
+import type { ApprovalBrief as Brief } from '../lib/brief'
 import type { ProofData } from '../lib/proof'
 
-export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData; /** The card asks the Product owner; a Bauherr sees it too and may step in. */ asked?: 'product-owner' }
+export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData; /** The frozen approval brief of a change waiting for acceptance or production approval; replaces `proof` (it holds the same rows). */ brief?: Brief; /** The card asks the Product owner; a Bauherr sees it too and may step in. */ asked?: 'product-owner' }
 
 const external = (url: string) => /^https?:\/\//.test(url)
 
@@ -75,7 +77,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
             {d.why.map((w) => <li key={w}>{w}</li>)}
           </ul>
         )}
-        {item.proof && !compact && <ProofList data={item.proof} />}
+        {item.brief && !compact ? <ApprovalBrief brief={item.brief} admin={admin} /> : item.proof && !compact && <ProofList data={item.proof} />}
         {(evidence.length > 0) && (
           <div className="small flex flex-wrap items-center gap-x-4 gap-y-1">
             {evidence.map((e) => <a key={e.url} className="text-primary" href={e.url} {...(external(e.url) ? { target: '_blank', rel: 'noreferrer' } : {})}>{e.label}</a>)}

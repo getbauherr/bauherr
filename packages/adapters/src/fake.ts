@@ -4,7 +4,7 @@ import type {
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
 import { createHash } from 'node:crypto';
-import { Conflict, NotQueueableError } from './contracts.js';
+import { Conflict, NotQueueableError, linkLabel } from './contracts.js';
 import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
@@ -22,6 +22,8 @@ interface FakeRepo {
   commitDates: Map<string, string>;
   releases: Release[];
   tags: string[];
+  /** Commit of a tag made by `addTag`. */
+  tagShas: Map<string, string>;
   /** Commits a release tag contains besides its own (test helper `addRelease`). */
   contains: Map<string, string[]>;
   commits: { sha: string; message: string }[];
@@ -150,9 +152,11 @@ export class FakeBackend implements Backend {
     return rel;
   }
 
-  /** Test helper: a tag without a release. */
-  addTag(repo: RepoRef, tag: string): void {
-    this.repo(repo).tags.push(tag);
+  /** Test helper: a tag without a release (pointing at `sha`). */
+  addTag(repo: RepoRef, tag: string, sha?: string): void {
+    const r = this.repo(repo);
+    r.tags.push(tag);
+    if (sha) r.tagShas.set(tag, sha);
   }
 
   /** Test helper: releases of `repo`, oldest first. */
@@ -192,7 +196,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
       r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
@@ -212,6 +216,7 @@ export class FakeBackend implements Backend {
       fullName: name, defaultBranch: this.repo(repo).defaultBranch, private: true, url: `https://fake/${name}`,
     });
     return {
+      linkLabel: (pr) => linkLabel('github', pr.number),
       listRepositories: async () => [...this.repos.keys()].map((n) => view(n, n)),
       getRepository: async (repo) => view(repo, repo),
       listBranches: async (repo) => [...this.repo(repo).branches].map(([name, b]): Branch => ({ name, sha: b.sha })),
@@ -303,8 +308,11 @@ export class FakeBackend implements Backend {
       },
       findRelease: async (repo, o) => this.repo(repo).releases.find((r) => r.sha === o.sha || this.repo(repo).contains.get(r.tag)?.includes(o.sha)) ?? null,
       createRelease: async (repo, o) => {
-        if (this.repo(repo).releases.some((r) => r.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
-        return this.addRelease(repo, { ...o, createdAt: this.repo(repo).commitDates.get(o.sha) });
+        const r = this.repo(repo);
+        if (r.releases.some((x) => x.tag === o.tag)) throw new Error(`tag exists ${o.tag}`);
+        const sha = r.tagShas.get(o.tag) ?? o.sha;
+        r.tags = r.tags.filter((t) => t !== o.tag);
+        return this.addRelease(repo, { ...o, sha, createdAt: r.commitDates.get(sha) });
       },
       listReleases: async (repo) => [...this.repo(repo).releases].reverse(),
       releaseByTag: async (repo, tag) => this.repo(repo).releases.find((r) => r.tag === tag) ?? null,
@@ -316,6 +324,7 @@ export class FakeBackend implements Backend {
         return { ...rel };
       },
       latestRelease: async (repo) => this.repo(repo).releases.filter((r) => !r.prerelease).at(-1) ?? null,
+      tagSha: async (repo, tag) => this.repo(repo).releases.find((r) => r.tag === tag)?.sha ?? this.repo(repo).tagShas.get(tag) ?? null,
       listTags: async (repo) => [...this.repo(repo).releases.map((r) => r.tag), ...this.repo(repo).tags],
       listCommits: async (repo) => this.repo(repo).commits,
       getCommitDate: async (repo, sha) => this.repo(repo).commitDates.get(sha) ?? new Date(0).toISOString(),

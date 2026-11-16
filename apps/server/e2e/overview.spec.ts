@@ -43,8 +43,8 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   await expect(buildCards.first()).toHaveAttribute('data-lane', 'hotfix')
   await expect(buildCards.first().locator('[data-hotfix]')).toHaveText('Hotfix')
   await expect(buildCards.first()).toContainText('Hotfix: checkout crash')
-  // Two hotfix Tickets in the seed: #125 (this lane) and #43 (the fast-lane Ticket of ticket.spec.ts, ranked after it)
-  await expect(page.locator('.card [data-hotfix]')).toHaveCount(2)
+  // Only hotfix-lane cards carry the marker (the seed has more than one: #125 here, and the fast-lane Tickets other specs use)
+  await expect(page.locator('.card [data-hotfix]')).toHaveCount(await page.locator('.card[data-lane=hotfix]').count())
   const shots = process.env.SHOTS_DIR
   if (shots) {
     for (const [w, h] of [[1280, 800], [390, 844]] as const) {

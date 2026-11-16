@@ -8,6 +8,7 @@ layers:
 materialise: run-worktree   # at Run start; never committed to the Product repo
 skills:
   - {path: skills/run-contract, purpose: How a Run reads its Goal, what counts as evidence, exit rule, blockers}
+  - {path: skills/pr-screenshots, purpose: Before/after screenshots of a UI change - capture before the first edit, fixed matrix, test data only, artifacts not a branch}
   - {path: skills/triage, purpose: Triage Run on a Ticket without a stage - plan, refine (questions for the Bauherr) or skip}
   - {path: skills/intake, purpose: Intake session - one plain-language question per turn until the Ticket draft is complete}
   - {path: skills/assistant, purpose: Factory chat - the assistant docked on every page, answers about what the person sees, confirms writes on a card}
