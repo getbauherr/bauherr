@@ -1,11 +1,11 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { actionBar, announcement, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection } from '../src/app/(app)/lib/inbox-view'
+import { actionBar, announcement, emptyPane, removeRow, restoreRow, selectionChanged, settleRow, syncRows, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection } from '../src/app/(app)/lib/inbox-view'
 import { buildDecision } from '../src/lib/decision'
 import { NEEDS } from '../src/lib/needs-you'
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }), useSearchParams: () => new URLSearchParams() }))
 vi.mock('../src/app/(app)/lib/actions', () => ({ decideAction: async () => ({}) }))
 
 const item = (id: number, checkpoint = 'Approve plan') => ({ id, number: id + 100, product: { id: 1, name: 'web' }, decision: { need: 'Approve plan', checkpoint, title: `Ticket ${id}`, ask: `Ask ${id}`, recommendation: null, why: [], options: [], next: 'Then.', evidence: [], details: null, openSince: '2026-01-01T00:00:00Z' }, detailsHtml: null, waiting: '1 h' }) as never
@@ -115,5 +115,42 @@ describe('the pane action bar', () => {
     const approve = { label: 'Approve plan', action: 'approvePlan', primary: true, effect: '' } as const
     expect(announcement(approve, 471, 455)).toBe('Plan approved for #471. Next: #455.')
     expect(announcement(approve, 471)).toBe('Plan approved for #471.')
+  })
+})
+
+describe('pane transitions', () => {
+  const row = (i: number) => (groups as unknown as { items: never[] }[]).flatMap((g) => g.items)[i]!
+  it('removing a row selects the next one and keeps the decided id after the last row', () => {
+    const a = removeRow(emptyPane, groups, 2)
+    expect(a.state.gone).toEqual([2])
+    expect((a.next as { id: number }).id).toBe(3)
+    const last = removeRow(emptyPane, [{ checkpoint: 'Review', items: [item(3)] }] as never, 3)
+    expect(last.next).toBeUndefined()
+    expect(last.state.gone).toEqual([3])
+  })
+  it('restoring puts the row back with a snapshot and the error, and goes back only while the selection is where the removal moved it', () => {
+    const removed = removeRow(emptyPane, groups, 2)
+    const snapshot = row(1)
+    const here = restoreRow(removed.state, snapshot, 'This decision changed.', 3, 3)
+    expect(here.state.gone).toEqual([])
+    expect(here.state.failed).toMatchObject({ error: 'This decision changed.', at: 3 })
+    expect(here.goTo).toBe(2)
+    expect(restoreRow(removed.state, snapshot, 'x', 1, 3).goTo).toBeUndefined()
+  })
+  it('the stale case: the server no longer lists the row, the snapshot still carries the failure', () => {
+    const removed = removeRow(emptyPane, groups, 2)
+    const stale = [{ checkpoint: 'Review', items: [item(3, 'Review')] }]
+    const failed = restoreRow(removed.state, row(1), 'This decision changed.', 3, 3).state
+    expect(stale.flatMap((g) => g.items).some((i) => (i as { id: number }).id === 2)).toBe(false)
+    expect((failed.failed!.item as { id: number }).id).toBe(2)
+  })
+  it('a failure clears when the selection moves elsewhere, and the server list wins after a refresh', () => {
+    const failed = restoreRow(emptyPane, row(0), 'x', 3, 3).state
+    expect(selectionChanged(failed, 3).failed).not.toBeNull()
+    expect(selectionChanged(failed, 1).failed).not.toBeNull()
+    expect(selectionChanged(failed, 9).failed).toBeNull()
+    const done = settleRow(removeRow(emptyPane, groups, 1).state, 1)
+    expect(syncRows(done)).toEqual({ gone: [], settled: [], failed: null })
+    expect(syncRows(removeRow(emptyPane, groups, 1).state).gone).toEqual([1])
   })
 })

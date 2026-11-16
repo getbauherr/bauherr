@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
-import { InboxView } from '../../components/InboxView'
+import { InboxAnnouncer, InboxView } from '../../components/InboxView'
 import { Badge } from '../../components/ui/badge'
 import { CHECKPOINTS } from '../../../../lib/decision'
 import { workflowFor } from '../../../../lib/factory'
@@ -38,7 +38,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const workflowHref = Object.fromEntries(CHECKPOINTS.flatMap((c) => { const id = nodes.find((n) => n.checkpoint && n.id.includes(':') && n.title === c)?.id ?? (c === 'Review' ? byKind(wf, 'review')?.name : undefined); return id ? [[c, `/?stage=${encodeURIComponent(id)}`]] : [] }))
   const count = groups.reduce((n, g) => n + g.items.length, 0)
   return (
-    <>
+    <InboxAnnouncer>
       <h1 className="title">Inbox</h1>
       {products.length > 1 && (
         <nav aria-label="Product" className="flex flex-wrap gap-2">
@@ -67,6 +67,6 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       ) : (
         <EmptyState {...emptyCopy({ picked, owner, working })} />
       )}
-    </>
+    </InboxAnnouncer>
   )
 }

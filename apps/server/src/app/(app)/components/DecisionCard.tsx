@@ -22,26 +22,26 @@ const external = (url: string) => /^https?:\/\//.test(url)
  * One human checkpoint, prepared the same way everywhere: the ask first, one recommendation line, at most three facts, then the buttons.
  * `compact` (Ticket page) leaves the buttons to the next-step bar; the full card (Inbox) runs the option's existing action in place and leaves the list.
  */
-export function DecisionCard({ item, compact, admin = true, failure, onDecided, onFailed }: { item: DecisionView; compact?: boolean; admin?: boolean; /** The error of a decision that failed after the card had left, shown where it is back. */ failure?: string | null; onDecided?: (id: number, option: DecisionOption) => void; onFailed?: (id: number, error: string) => void }) {
+export function DecisionCard({ item, compact, admin = true, onDecided, onSucceeded, onFailed }: { item: DecisionView; compact?: boolean; admin?: boolean; onDecided?: (id: number, option: DecisionOption) => void; onSucceeded?: (id: number, option: DecisionOption) => void; onFailed?: (id: number, error: string) => void }) {
   const d = item.decision
   const router = useRouter()
   const [pending, start] = useTransition()
   const [asking, setAsking] = useState<DecisionOption | null>(null)
   const [note, setNote] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [gone, setGone] = useState(false)
   const run = (o: DecisionOption, text = '') => {
-    setError(null)
     setAsking(null)
     setGone(true)
     onDecided?.(item.id, o)
     start(async () => {
       const r = await decideAction(item.id, d.need, o.action, text, o.outcome)
       if (r.error) {
-        setError(r.error)
         setGone(false)
         onFailed?.(item.id, r.error)
-      } else router.refresh()
+      } else {
+        onSucceeded?.(item.id, o)
+        router.refresh()
+      }
     })
   }
   const click = (o: DecisionOption) => {
@@ -108,10 +108,9 @@ export function DecisionCard({ item, compact, admin = true, failure, onDecided, 
                 </Button>
               )}
               {bar.secondary.map((o) => optionButton(o, false))}
-              {pending && <span className="small text-muted-foreground" role="status">Working…</span>}
+              {pending && <span className="small text-muted-foreground">Working…</span>}
             </div>
             <p className="small m-0 text-muted-foreground">{bar.primary?.effect ?? d.next}</p>
-            {(error ?? failure) && <p role="alert" className="small m-0 text-destructive">{error ?? failure}</p>}
           </footer>
         )}
         <Dialog open={!!asking} onOpenChange={(open) => !open && setAsking(null)}>

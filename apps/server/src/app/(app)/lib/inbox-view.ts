@@ -62,3 +62,33 @@ export const actionBar = (options: DecisionOption[], open: number, ticket: numbe
   const primary = rest.find((o) => o.primary) ?? null
   return { primary, secondary: rest.filter((o) => o !== primary), answer }
 }
+
+/** What the Inbox keeps while decisions run: rows removed at once (`gone`), those the server has since confirmed (`settled`), and the last failure with a snapshot of its row. */
+export type PaneState = { gone: number[]; settled: number[]; failed: { item: InboxItem; error: string; at: number | null } | null }
+export const emptyPane: PaneState = { gone: [], settled: [], failed: null }
+
+const rowsLeft = (groups: InboxGroup[], gone: number[]): InboxGroup[] => groups.map((g) => ({ ...g, items: g.items.filter((i) => !gone.includes(i.id)) }))
+
+/** The option was clicked: the row leaves the list and the next row (if any) becomes the selection; after the last row the decided id stays selected until the refresh resolves. */
+export const removeRow = (s: PaneState, groups: InboxGroup[], id: number): { state: PaneState; next: InboxItem | undefined } => {
+  const nextId = nextRow(rowsLeft(groups, s.gone), id)
+  return { state: { ...s, gone: s.gone.includes(id) ? s.gone : [...s.gone, id], failed: null }, next: groups.flatMap((g) => g.items).find((i) => i.id === nextId) }
+}
+
+/** The action succeeded: the row stays gone until the server list has caught up. */
+export const settleRow = (s: PaneState, id: number): PaneState => ({ ...s, settled: [...s.settled, id] })
+
+/** A new server list arrived: it wins over the rows removed at once that the server has confirmed. */
+export const syncRows = (s: PaneState): PaneState => (s.settled.length ? { ...s, gone: s.gone.filter((id) => !s.settled.includes(id)), settled: [] } : s)
+
+/**
+ * The action failed: the row is back (with a snapshot, so the pane needs no server row) and carries the error. The selection returns to it only while it is still where
+ * the removal moved it (`advancedTo`); a person who has moved on keeps their place.
+ */
+export const restoreRow = (s: PaneState, item: InboxItem, error: string, selection: number | null, advancedTo: number | null): { state: PaneState; goTo: number | undefined } => ({
+  state: { ...s, gone: s.gone.filter((id) => id !== item.id), failed: { item, error, at: selection } },
+  goTo: selection === advancedTo ? item.id : undefined,
+})
+
+/** A failure is shown while the selection is where it happened or on the failed row; any other selection clears it. */
+export const selectionChanged = (s: PaneState, selection: number | null): PaneState => (s.failed && selection !== s.failed.at && selection !== s.failed.item.id ? { ...s, failed: null } : s)

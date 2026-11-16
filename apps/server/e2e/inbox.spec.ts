@@ -104,9 +104,9 @@ test('approving the plan on its pane removes the row, selects the next and annou
   expect(await badge(page)).toBeLessThan(before)
   // the second tab still shows the decision that is taken now
   await stale.locator('article[data-decision]').filter({ hasText: 'Rename the sign-in button' }).getByRole('button', { name: 'Approve plan' }).click()
-  await expect(stale.getByTestId('inbox-pane')).toContainText('This decision changed')
-  await expect(stale.getByTestId('inbox-pane').getByRole('alert')).toBeVisible()
-  await expect(stale.getByTestId('inbox-row').filter({ hasText: 'Rename the sign-in button' })).toHaveCount(1)
+  await expect(stale.getByTestId('decision-error')).toContainText('This decision changed')
+  await expect(stale.getByTestId('inbox-pane')).toContainText('Rename the sign-in button')
+  await expect(stale.locator('article[data-decision]').filter({ hasText: 'Rename the sign-in button' })).toBeVisible()
   await expect(stale.getByTestId('inbox-announce')).toHaveText('')
 })
 
