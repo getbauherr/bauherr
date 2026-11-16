@@ -1,6 +1,7 @@
 name: release
 # Builds and publishes one version from its tag: image, then npm, then (final versions) the GitHub Release.
-# Runs on a pushed tag, or via workflow_dispatch with the tag as --ref (cut-rc.yml and promote.yml do that, because tags pushed with GITHUB_TOKEN trigger nothing).
+# Primary path: the Releases page of Bauherr cuts and promotes the tag (a tag pushed with a GitHub App token triggers this workflow) and publishes the GitHub Release itself; this workflow only builds.
+# Fallback: cut-rc.yml and promote.yml start it via workflow_dispatch with the tag as --ref, because tags pushed with GITHUB_TOKEN trigger nothing.
 # npm trusted publishing is bound to this file name, so the publishing jobs stay here.
 on:
   push:
@@ -91,7 +92,7 @@ jobs:
           npm stage publish . --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"
 
   release:
-    # a final version publishes its draft GitHub Release (created by Cut RC); manual tags without a draft get none
+    # a final version publishes its draft GitHub Release when one exists (cut-rc.yml fallback); never creates one: with the Releases page the release is already published
     if: needs.image.outputs.prerelease == 'false'
     needs: [image, npm]
     runs-on: ubuntu-latest

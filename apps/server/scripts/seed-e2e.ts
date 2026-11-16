@@ -293,6 +293,13 @@ for (const [slug, name, repo, titles, releaseAt] of [
   if (slug === 'acme-relist') await ensure('tickets', { externalId: `e2e-${slug}-old` }, { title: 'Relist the earlier release', externalId: `e2e-${slug}-old`, number: 9, url: `https://github.com/${repo}/issues/9`, state: 'closed', labels: [], stage: 'done', mergeSha: `${slug}-sha-old`, releasePublishedAt: '2026-09-01T09:00:00Z', releaseAt: '2026-09-01T09:00:00Z', product: p, workspace, rank: '000199' })
   for (const [i, title] of titles.entries()) await ensure('tickets', { externalId: `e2e-${slug}-${i + 1}` }, { title, externalId: `e2e-${slug}-${i + 1}`, number: i + 1, url: `https://github.com/${repo}/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `${slug}-sha-${i + 1}`, releaseAt, product: p, workspace, rank: String(200 + i).padStart(6, '0') })
 }
+// releases.spec.ts: Acme Rcline has an open release candidate v0.4.0-rc.1 (Tickets #1 and #2 released in it) and Ticket #3 waiting. Twin in `src/lib/fake-forge.ts`.
+{
+  const p = (await ensure('products', { slug: 'acme-rcline' }, { name: 'Acme Rcline', slug: 'acme-rcline', workspace, releaseMode: 'manual', releaseReminderDays: 7 })).id
+  await ensure('repositories', { fullName: 'acme/rcline' }, { fullName: 'acme/rcline', product: p, workspace })
+  await ensure('ticket_sources', { repo: 'acme/rcline' }, { repo: 'acme/rcline', product: p, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+  for (const [i, title] of ['Rcline export totals', 'Rcline invoice filter', 'Rcline CSV header'].entries()) await ensure('tickets', { externalId: `e2e-acme-rcline-${i + 1}` }, { title, externalId: `e2e-acme-rcline-${i + 1}`, number: i + 1, url: `https://github.com/acme/rcline/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `acme-rcline-sha-${i + 1}`, releaseAt: `2026-11-0${i + 1}T10:00:00Z`, ...(i < 2 ? { releasedIn: 'v0.4.0-rc.1' } : {}), product: p, workspace, rank: String(300 + i).padStart(6, '0') })
+}
 // team.spec.ts: an orchestrator session working on #128 (in Triage, where no other spec reads the executors), an idle reviewer session and a disconnected engineer. A fresh clock each seed; `BAUHERR_SESSION_TIMEOUT_S` keeps them present for the spec.
 const teamTicket = await ticket(128, 'Team: triage in a session', 'triage', product)
 const now = Date.now()
