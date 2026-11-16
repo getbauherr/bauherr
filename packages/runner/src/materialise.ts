@@ -12,6 +12,10 @@ export const TRIAGE_FILE = '.bauherr/triage.json';
 export const FINDINGS_FILE = '.bauherr/findings.json';
 export const DOCS_FINDINGS_FILE = '.bauherr/docs-findings.json';
 export const OUTCOME_FILE = '.bauherr/outcome.json';
+/** The parent Ticket's worklog of an epic; the Runner upserts it back to the parent after the Run. */
+export const EPIC_WORKLOG_FILE = '.bauherr/epic-worklog.md';
+/** The slices of an epic (range, fixes) for the epic review. */
+export const SLICES_FILE = '.bauherr/slices.md';
 /** The MR diff, written by the Runner before a Review agent starts (the agent has no shell). */
 export const DIFF_FILE = '.bauherr/diff.patch';
 
@@ -61,12 +65,17 @@ export function materialise(cwd: string, ctx: RunCtx): string {
   writeFileSync(join(cwd, GOAL_FILE), JSON.stringify(goal, null, 2));
   const worklog = ctx.ticket.worklog ?? '';
   writeFileSync(join(cwd, WORKLOG_FILE), worklog);
+  if (ctx.epic) {
+    writeFileSync(join(cwd, EPIC_WORKLOG_FILE), ctx.epic.worklog);
+    if (ctx.run.kind === 'review' && !ctx.slice) writeFileSync(join(cwd, SLICES_FILE), ctx.epic.slices.map((s) => `## Slice #${s.number}: ${s.title}\nRange: ${s.prev ?? 'base'}..${s.head ?? 'HEAD'}\n${s.fixes.map((f) => `- fix ${f.sha}: ${f.finding}`).join('\n')}`.trimEnd()).join('\n\n') + '\n');
+  }
 
   const agents = [
     `# Run ${ctx.run.id} (${ctx.run.stage})`,
     `## Goal\nEach statement is checkable. Track status in \`${GOAL_FILE}\` (unverified | verified | blocked + reason).\n` +
       (ctx.run.kind === 'triage' ? untrustedBlock : (t: string) => t)(ctx.run.goal.statements.map((s) => `- ${s}`).join('\n')),
     `## Worklog (\`${WORKLOG_FILE}\`)\n${untrusted(ctx, worklog || '(empty)')}`,
+    ...(ctx.epic ? [`## Epic (parent #${ctx.epic.parent})\nShared worklog: \`${EPIC_WORKLOG_FILE}\` (record interfaces and decisions later slices need there).${ctx.run.kind === 'review' && !ctx.slice ? ` Epic review: the slices are in \`${SLICES_FILE}\`.` : ''}`] : []),
     ...(ctx.ticket.plan ? [`## Approved plan\n${untrusted(ctx, ctx.ticket.plan)}`] : []),
     ...(ctx.ticket.investigation ? [`## Investigation (both failed Runs)\n${ctx.ticket.investigation}`] : []),
     fenced(ctx)
