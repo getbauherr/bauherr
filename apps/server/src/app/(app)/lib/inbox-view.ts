@@ -45,6 +45,16 @@ export const emptyCopy = ({ error, picked, owner, working }: { error?: boolean; 
   : owner ? { text: 'Nothing waits for you.', action: { href: '/requests', label: 'Open Requests' } }
   : { text: `Nothing needs you. The factory is working on ${working} ticket${working === 1 ? '' : 's'}.`, action: { href: '/', label: 'Open the Workflow' } }
 
+/** Rows of a group shown before "Show N more". */
+export const ROW_LIMIT = 25
+
+/** The rows of a group to render: the first 25, all when expanded or when the selected row lies beyond them. */
+export const visibleRows = <T extends { id: number }>(items: T[], selected: number | undefined, expanded: boolean): T[] =>
+  expanded || items.length <= ROW_LIMIT || items.findIndex((i) => i.id === selected) >= ROW_LIMIT ? items : items.slice(0, ROW_LIMIT)
+
+/** The relative waiting text of a row ("5 min") from `waited()`'s "Waiting for you · 5 min". */
+export const waitingText = (waiting: string): string => waiting.split(' · ').pop()!
+
 const PAST: Partial<Record<DecisionOption['action'], string>> = { approvePlan: 'Plan approved', acceptStaging: 'Accepted on staging', approveProduction: 'Production approved', grantRound: 'One more round given', stopReview: 'Review stopped', backToBuild: 'Sent back to build', backToBacklog: 'Sent back to the backlog', requestChanges: 'Changes requested', expedite: 'Put on the fast lane', releaseLane: 'Fast lane released', rerun: 'Re-run started', approveSkill: 'Skill proposal approved', rejectSkill: 'Skill proposal rejected' }
 
 /** What the pane says once an option ran: "Plan approved for #471. Next: #455." */

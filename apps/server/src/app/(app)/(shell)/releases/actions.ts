@@ -1,20 +1,21 @@
 'use server'
 import { revalidatePath } from 'next/cache'
 import { notFound } from 'next/navigation'
-import { releaseDraft, releaseSummary, shipSelected } from '../../../../lib/ship-release'
+import { promoteSelected, releaseDraft, releaseSummary, shipSelected } from '../../../../lib/ship-release'
 import { isAdmin } from '../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 
 type Pick = { product: number; ids: number[] }
+type Last = { last: string | null }
 
 /** Version and notes for the Tickets ticked on the Releases page (no model call, no release list from the forge). */
-export async function previewRelease({ product, ids }: Pick): Promise<{ version: string; notes: string } | { error: string }> {
+export async function previewRelease({ product, ids, last }: Pick & Last): Promise<{ version: string; notes: string } | { error: string }> {
   const { workspace } = await currentWorkspace()
   if (!workspace) notFound()
   const payload = await payloadClient()
   try {
     if (!(await payload.find({ collection: 'products', where: { and: [{ id: { equals: product } }, { workspace: { equals: workspace.id } }] }, limit: 1, depth: 0, overrideAccess: true })).totalDocs) notFound()
-    const { version, notes } = await releaseDraft(payload, product, ids, false)
+    const { version, notes } = await releaseDraft(payload, product, ids, false, last)
     return { version, notes }
   } catch (e) {
     return { error: (e as Error).message }
@@ -40,6 +41,20 @@ export async function shipReleaseAction(a: Pick & { version: string; notes: stri
   if (!workspace) notFound()
   try {
     const res = await shipSelected(await payloadClient(), user, { workspaceId: workspace.id, ...a })
+    revalidatePath('/releases')
+    revalidatePath('/')
+    return res
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+/** Admin only (`promoteSelected` refuses anyone else): tags the final version on the commit of the open release candidate. */
+export async function promoteReleaseAction(a: { product: number; rc: string }): Promise<{ tag: string; url: string } | { error: string }> {
+  const { user, workspace } = await currentWorkspace()
+  if (!workspace) notFound()
+  try {
+    const res = await promoteSelected(await payloadClient(), user, { workspaceId: workspace.id, ...a })
     revalidatePath('/releases')
     revalidatePath('/')
     return res

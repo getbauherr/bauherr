@@ -26,7 +26,7 @@ export function InboxAnnouncer({ children }: { children: ReactNode }) {
  * Deciding a row removes it at once and moves the selection (the URL) to the next row; the result is announced when the action has succeeded,
  * a failure puts the row back with its error.
  */
-export function InboxView({ groups, selected, detail, admin, filters, workflowHref }: { groups: InboxGroup[]; selected: number | null; detail: boolean; admin: boolean; filters: InboxFilters; workflowHref: Record<string, string> }) {
+export function InboxView({ groups, selected, detail, admin, filters, workflowHref, products }: { groups: InboxGroup[]; selected: number | null; detail: boolean; admin: boolean; filters: InboxFilters; workflowHref: Record<string, string>; products: boolean }) {
   const router = useRouter()
   const say = useContext(Say)
   const t = Number(useSearchParams().get('t')) || null
@@ -75,7 +75,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
   return (
     <SplitPane testId="inbox-split" cols="group-data-[wide=true]/split:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)] group-data-[wide=true]/split:gap-6">
       <nav aria-label="Decisions" className={`min-w-0 ${detail || failedHere ? 'group-data-[wide=false]/split:hidden' : ''}`}>
-        <InboxList groups={groups} selected={selection ?? undefined} gone={pane.gone} filters={filters} workflowHref={workflowHref} />
+        <InboxList groups={groups} selected={selection ?? undefined} gone={pane.gone} filters={filters} workflowHref={workflowHref} products={products} />
       </nav>
       <div className={`min-w-0 ${detail || failedHere ? '' : 'group-data-[wide=false]/split:hidden'}`}>
         {pane.failed && <p role="alert" data-testid="decision-error" className="small mb-3 mt-0 text-destructive">Could not decide #{pane.failed.item.number}: {pane.failed.error}</p>}

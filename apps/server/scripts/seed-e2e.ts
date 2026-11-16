@@ -175,6 +175,8 @@ await ensure('bauherren', { email: 'chat-other@example.com' }, { email: 'chat-ot
 // Own Tickets of inbox.spec.ts: #37 a plan to approve, #38 a review at its round cap, #39 a change on staging. Twins in `src/lib/fake-forge.ts` carry these numbers.
 const t37 = await ticket(37, 'Rename the sign-in button', 'plan', product)
 const t38 = await ticket(38, 'Stop the export retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
+// #640: the widest row of inbox.spec.ts: a 120-character title, a 200-character ask (set after the needs sweep below), on the fast lane.
+await ticket(640, `Rework the export retry policy so a permanent error stops the loop ${'and says why '.repeat(4)}`.slice(0, 120), 'review', product, { reviewState: 'needs_human', reviewRounds: 3, expedite: true })
 await ticket(39, 'Check the new header on staging', 'release', product, { ...rel, stagingTldr: { whatYouGet: '- The header shows the new logo\n- The checks are green', found: '- Nothing recorded.' } })
 await run(t37, 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
 const t40 = await ticket(40, 'Hand over the export notes', 'plan', product)
@@ -290,6 +292,13 @@ for (const [slug, name, repo, titles, releaseAt] of [
   // Done before releases were shipped from the page (release recorded by the other path): never waiting.
   if (slug === 'acme-relist') await ensure('tickets', { externalId: `e2e-${slug}-old` }, { title: 'Relist the earlier release', externalId: `e2e-${slug}-old`, number: 9, url: `https://github.com/${repo}/issues/9`, state: 'closed', labels: [], stage: 'done', mergeSha: `${slug}-sha-old`, releasePublishedAt: '2026-09-01T09:00:00Z', releaseAt: '2026-09-01T09:00:00Z', product: p, workspace, rank: '000199' })
   for (const [i, title] of titles.entries()) await ensure('tickets', { externalId: `e2e-${slug}-${i + 1}` }, { title, externalId: `e2e-${slug}-${i + 1}`, number: i + 1, url: `https://github.com/${repo}/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `${slug}-sha-${i + 1}`, releaseAt, product: p, workspace, rank: String(200 + i).padStart(6, '0') })
+}
+// releases.spec.ts: Acme Rcline has an open release candidate v0.4.0-rc.1 (Tickets #1 and #2 released in it) and Ticket #3 waiting. Twin in `src/lib/fake-forge.ts`.
+{
+  const p = (await ensure('products', { slug: 'acme-rcline' }, { name: 'Acme Rcline', slug: 'acme-rcline', workspace, releaseMode: 'manual', releaseReminderDays: 7 })).id
+  await ensure('repositories', { fullName: 'acme/rcline' }, { fullName: 'acme/rcline', product: p, workspace })
+  await ensure('ticket_sources', { repo: 'acme/rcline' }, { repo: 'acme/rcline', product: p, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+  for (const [i, title] of ['Rcline export totals', 'Rcline invoice filter', 'Rcline CSV header'].entries()) await ensure('tickets', { externalId: `e2e-acme-rcline-${i + 1}` }, { title, externalId: `e2e-acme-rcline-${i + 1}`, number: i + 1, url: `https://github.com/acme/rcline/issues/${i + 1}`, state: 'closed', labels: i === 0 ? ['type:feature'] : [], stage: 'done', mergeSha: `acme-rcline-sha-${i + 1}`, releaseAt: `2026-11-0${i + 1}T10:00:00Z`, ...(i < 2 ? { releasedIn: 'v0.4.0-rc.1' } : {}), product: p, workspace, rank: String(300 + i).padStart(6, '0') })
 }
 // team.spec.ts: an orchestrator session working on #128 (in Triage, where no other spec reads the executors), an idle reviewer session and a disconnected engineer. A fresh clock each seed; `BAUHERR_SESSION_TIMEOUT_S` keeps them present for the spec.
 const teamTicket = await ticket(128, 'Team: triage in a session', 'triage', product)
@@ -419,5 +428,7 @@ for (const t of (await payload.find({ collection: 'tickets', pagination: false, 
   const decision = need ? await prepareDecision(payload, row, need, latest ?? null) : null
   await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need, needsBy, decision, planTldr: planTldr ?? null }, ...o })
 }
+const wide = (await payload.find({ collection: 'tickets', where: { number: { equals: 640 } }, limit: 1, depth: 0, ...o })).docs[0] as Record<string, any> | undefined
+if (wide?.decision) await payload.update({ collection: 'tickets', id: wide.id, data: { decision: { ...wide.decision, ask: 'Give the review one more round or stop it, and read the finding first. '.repeat(4).slice(0, 200) } }, ...o })
 console.log('seeded')
 process.exit(0)

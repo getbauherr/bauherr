@@ -1,5 +1,5 @@
 name: promote
-# Tags vX.Y.Z on the commit of the newest RC and starts release.yml for it (rebuild as X.Y.Z, :latest, npm latest, then the draft GitHub Release is published).
+# CLI fallback; the primary path is the Releases page of Bauherr (docs/releasing.md). Tags vX.Y.Z on the commit of the newest RC and starts release.yml for it (rebuild as X.Y.Z, :latest, npm latest, then the draft GitHub Release is published).
 on:
   workflow_dispatch:
     inputs:

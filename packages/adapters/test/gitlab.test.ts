@@ -109,6 +109,18 @@ describe('gitlab tickets', () => {
     assert.equal((await forge.latestRelease('g/p'))?.tag, 'v1.0.0');
   });
 
+  it('marks an X.Y.Z-rc.N release as pre-release (GitLab has no flag); tagSha reads the tag commit, null when the tag is gone', async () => {
+    const { forge, calls } = setup((_m, path) => {
+      if (path.endsWith('/tags/v1.1.0-rc.1')) return { name: 'v1.1.0-rc.1', commit: { id: 'c9' } };
+      if (path.includes('/tags/')) return new Response('{}', { status: 404 });
+      return [{ tag_name: 'v1.1.0-rc.1', _links: { self: 'u2' }, commit: { id: 'c9' } }, { tag_name: 'v1.0.0', _links: { self: 'u1' }, commit: { id: 'c1' } }];
+    });
+    assert.deepEqual((await forge.listReleases('g/p')).map((r) => [r.tag, r.prerelease]), [['v1.1.0-rc.1', true], ['v1.0.0', false]]);
+    assert.equal(await forge.tagSha('g/p', 'v1.1.0-rc.1'), 'c9');
+    assert.equal(await forge.tagSha('g/p', 'v9.9.9'), null);
+    assert.equal(calls.at(-2)!.path, `${P}/repository/tags/v1.1.0-rc.1`);
+  });
+
   it('listReleases maps every release; isAncestor holds when the merge base is the base commit', async () => {
     const { forge, calls } = setup((_m, path) => {
       if (path.includes('/releases')) return [{ tag_name: 'v1.0.0', _links: { self: 'u1' }, commit: { id: 'c1' } }];
