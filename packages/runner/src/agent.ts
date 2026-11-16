@@ -15,6 +15,8 @@ export type AgentState = {
   results: SDKResultMessage[];
   abort: AbortController;
   budgetExhausted?: boolean;
+  /** `ctx.shouldStop` answered true: the agent was aborted at a tool boundary. */
+  preempted?: boolean;
 };
 
 /** `build` is the Run's own agent turn; `self-review` and `fix` are the extra passes before the MR is pushed. */
@@ -80,6 +82,10 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
       hooks: [async (i) => {
         if (i.hook_event_name === 'PostToolUse') {
           await record({ toolUseId: i.tool_use_id, tool: i.tool_name, input: i.tool_input, ok: true, durationMs: i.duration_ms, ...(i.tool_name === 'Bash' ? { exitCode: 0 } : {}) });
+          if (!o.kind && ctx.shouldStop && (await ctx.shouldStop())) {
+            state.preempted = true;
+            state.abort.abort();
+          }
         }
         return {};
       }],
@@ -180,6 +186,6 @@ export async function runAgent(ctx: RunCtx, options: Options, state: AgentState,
       }
     }
   } catch (e) {
-    if (!state.budgetExhausted) throw e;
+    if (!state.budgetExhausted && !state.preempted) throw e;
   }
 }

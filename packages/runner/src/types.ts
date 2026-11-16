@@ -77,10 +77,12 @@ export type RunCtx = {
   templates?: Record<string, { title: string; body: string }[]>;
   /** Path to the core pack (`pack/`). */
   packDir: string;
+  /** Polled after each tool of the Run's own agent turn: true stops the agent there, pushes a Build Run's branch and ends the Run `preempted`. */
+  shouldStop?: () => Promise<boolean>;
 };
 
 export type RunResult = {
-  status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
+  status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted' | 'preempted';
   reason?: string;
   /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;

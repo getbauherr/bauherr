@@ -122,6 +122,11 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     mkdirSync(join(clone.home, 'agent'), { recursive: true });
     await runAgent(agentCtx, buildOptions(agentCtx, { cwd: clone.dir, home: join(clone.home, 'agent'), proxyUrl: proxy.url, agentsMd }, state), state);
 
+    if (state.preempted) {
+      const pushed = ctx.run.kind === 'build' && (await commitAndPush(clone, clone.env, `bauherr: ticket #${ctx.ticket.number} (run ${ctx.run.id}, stopped for a hotfix)`));
+      if (pushed) artifacts.pushedSha = await git(clone.dir, clone.env, 'rev-parse', 'HEAD');
+      return finish('preempted', `stopped at a tool boundary for a hotfix${pushed ? `; branch ${clone.branch} pushed` : ''}`);
+    }
     if (state.budgetExhausted) {
       // A partial scan still hands over the findings written so far.
       if (ctx.run.kind === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
