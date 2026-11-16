@@ -6,7 +6,7 @@ import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import type { EpicField, SliceField } from './epic'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, prOf } from './release'
 import { preReviewFailures } from './pre-review'
@@ -16,7 +16,8 @@ import { logins } from './forge-channel'
 import { ownsGate } from './gates'
 import { record } from './history'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, submitInvestigation, type InvestigationInput } from './investigation'
-import { AGENT_REPAIRED, deadTickets } from './liveness'
+import { releaseFastLane } from './expedite'
+import { AGENT_RELEASED, AGENT_REPAIRED, deadTickets } from './liveness'
 import { isExpediting } from './expedite'
 import { preemptFor } from './preempt'
 import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
@@ -208,6 +209,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
   if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
+  if (ticket.parked) throw new ClaimLost(`ticket #${ticket.number} is parked`)
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
@@ -254,7 +256,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
     depth: 1,
   })
-  const all = tickets.docs.filter((t: Doc) => !is(workflowFor(t.workspace), t.stage, 'container'))
+  const all = tickets.docs.filter((t: Doc) => !t.parked && !is(workflowFor(t.workspace), t.stage, 'container'))
   for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
@@ -600,10 +602,7 @@ export const tools: Tool[] = [
         sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
       )
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
-      if (a.prUrl && ticket.slice) {
-        const parent = await getTicket(c, (ticket.slice as SliceField).epic)
-        if (parent.epic && !parent.epic.pr) await c.payload.update({ collection: 'tickets', id: parent.id, data: { epic: { ...parent.epic, pr: a.prUrl } }, overrideAccess: true })
-      }
+      if (a.prUrl) await setEpicPr(c.payload, ticket, a.prUrl)
       if (kind === 'build' && a.status === 'succeeded' && ticket.epic) await tagFixes(c.payload, ticket).catch((e) => c.payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       if ((kind === 'agent' && a.status === 'succeeded') || replan) {
@@ -816,6 +815,18 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'release_fast_lane',
+    access: 'agent',
+    description: 'Repair a stuck fast-lane hold: a Ticket that holds the fast lane while it waits for a human, with another expedite Ticket waiting, gives up its place (the expedite label goes, one Comment says why). Allowed only for that cause; refused for every other Ticket.',
+    inputSchema: obj(ticketId, ['ticket']),
+    async run(a, c) {
+      const t = await getTicket(c, a.ticket)
+      const dead = (await deadTickets(c.payload, id(t.workspace))).find((d) => d.ticket.id === t.id)
+      if (!dead || !AGENT_RELEASED.includes(dead.cause)) throw new Error(`ticket ${t.number} does not hold the fast lane while waiting for a human; nothing to release`)
+      return { outcome: await releaseFastLane(c.payload, t) }
+    },
+  },
+  {
     name: 'grant_review_round',
     access: 'human',
     description: 'Human only: at the review round cap (once the factory grant is used), grant exactly one more round (back to Build on the same MR, records a human touch). Refused for agent keys.',
@@ -828,7 +839,7 @@ export const tools: Tool[] = [
   {
     name: 'stop_review',
     access: 'human',
-    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused for agent keys.',
+    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment; an epic (parent or slice) is parked instead. Refused for agent keys.',
     inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)
@@ -912,7 +923,7 @@ export const tools: Tool[] = [
 ]
 
 /** Tools of a human decision on one Ticket. */
-const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'grant_review_round', 'stop_review', 'request_changes'])
+const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'release_fast_lane', 'grant_review_round', 'stop_review', 'request_changes'])
 
 const SESSION_ID_ARG = { type: 'string', description: 'Your sessionId from connect: keeps your session present and attributes the Run to it.' }
 // Every agent tool but connect takes an optional sessionId; wrapping the schema keeps the tools above untouched.

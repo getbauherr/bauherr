@@ -8,7 +8,7 @@ export type Stage = string
 export const APPROVED_PLAN = 'bauherr:approved:plan'
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 /** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Decision needed', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Decision needed', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?', 'Fast lane held'] as const
 export type Need = (typeof NEEDS)[number]
 /** Names of the four human touch points, in flow order; Settings > Factory > Workflow, docs and README use them. */
 export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
@@ -35,7 +35,7 @@ export const stageOf = (wf: Workflow, t: { state?: string | null; stage?: string
  */
 export const needsYou = (
   wf: Workflow,
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null },
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; laneHeld?: boolean | null },
   run: { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null,
   unansweredCritical = 0,
   gates: readonly HumanGate[] = humanGates(wf),
@@ -65,6 +65,7 @@ export const needsYou = (
   if (run?.status === 'cancelled' && run.stage === stage && liveStages(wf).includes(stage)) return 'Cancelled'
   // A failed Run is the owner's only once the escalation ladder ended (`reasonKind` set by `escalate`); until then the factory retries it on a stronger model.
   if (run?.status === 'failed' && !runIs('triage') && run.reasonKind && run.reasonKind !== 'stuck') return 'Run failed'
+  if (ticket.laneHeld) return 'Fast lane held'
   if (ticket.labels.includes(EXPEDITE_PROPOSED) && !ticket.expedite && !ticket.labels.includes(EXPEDITE_LABEL) && !at('release')) return 'Expedite?'
   return null
 }
@@ -81,7 +82,7 @@ export const releaseWord = (wf: Workflow, t: { stage?: string | null; state?: st
 }
 
 /** Factory health text of liveness causes that are not self-explanatory. */
-export const CAUSE_LABEL: Record<string, string> = { 'review-stalled': 'Waiting for a human merge for over 30 min' }
+export const CAUSE_LABEL: Record<string, string> = { 'review-stalled': 'Waiting for a human merge for over 30 min', 'fast-lane-held': 'Holds the fast lane while waiting for a human' }
 
 /** Where a Ticket in `review` stands: the factory's review and merge gate. */
 export const reviewWord = (reviewState?: string | null): string =>
@@ -93,13 +94,13 @@ export const reviewWord = (reviewState?: string | null): string =>
     needs_human: 'Needs a human, see the latest Comment',
   })[reviewState ?? ''] ?? 'Factory reviewing'
 
-type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null }
+type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; parked?: boolean | null; liveness?: { cause?: string; need?: string | null } | null }
 
 /** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. `gates`: the Product's human gates when they differ from the workflow's (`humanGates(wf, stagingGateOn(...))`). Closed Tickets only while a release check failed. */
 export const needsOf = (wf: Workflow, t: Row, run: { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean, gates?: readonly HumanGate[]): Need | null => {
   const need =
-  t.state !== 'closed' || t.releaseChecksState === 'failed'
-    ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor }, run, 0, gates)
+  t.parked ? null : t.state !== 'closed' || t.releaseChecksState === 'failed'
+    ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor, laneHeld: t.liveness?.cause === 'fast-lane-held' && t.liveness.need === 'Fast lane held' }, run, 0, gates)
     : null
   // The stored count of unanswered critical decisions turns "Approve plan" into "Answer decisions" without a forge call.
   return need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need

@@ -14,6 +14,7 @@ import { waitingText, wipLimit } from '../../../lib/wip-limits'
 import { workflowFor } from '../../../lib/factory'
 import { byKind, is, title, wipStages, type Workflow } from '../../../lib/workflow'
 import { statusLine, type Track } from './status'
+import type { EpicField, SliceField } from '../../../lib/epic'
 
 export type RunRow = {
   id: number
@@ -93,6 +94,14 @@ export type TicketRow = {
   enteredAt: string
   /** Parent Ticket of a sub-ticket. */
   parent: { id: number; number: number; title: string } | null
+  /** An epic parent: slices passed of `total`. Null for every other Ticket. */
+  epic: { total: number; passed: number } | null
+  /** The slice an epic parent is building while it is split; its card sits in that slice's stage column. */
+  slicing: { index: number; total: number; stage: Stage | null } | null
+  /** A slice sub-ticket of an epic: hidden on the Workflow view outside its epic. */
+  slice: { index: number; total: number } | null
+  /** A parked epic or one of its open slices: stopped, not counted in its column. */
+  parked: boolean
 }
 
 const LIVE = ['running', 'awaiting_session']
@@ -134,7 +143,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
   const parentIds = [...new Set(ticketDocs.flatMap((t) => (t.parent ? [t.parent as number] : [])))]
   const tickets = (ids: number[]) => (ids.length ? docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: ids } }] } }) : [])
   const ids = ticketDocs.map((t) => t.id as number)
-  const containerIds = ticketDocs.filter((t) => is(wf, stageOf(wf, t), 'container')).map((t) => t.id as number)
+  const containerIds = ticketDocs.filter((t) => t.epic || is(wf, stageOf(wf, t), 'container')).map((t) => t.id as number)
   const [blockerDocs, parentDocs, [latest, owners], forges, entered, kids, fastLanes] = await Promise.all([
     tickets(blockerIds),
     tickets(parentIds),
@@ -145,11 +154,19 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
     })(),
     forgeKinds(payload, workspace),
     stageEntries(payload, ids),
-    containerIds.length ? docsOf(payload, 'tickets', { where: { and: [ws, { parent: { in: containerIds } }] }, select: { parent: true, state: true } }) : [],
+    containerIds.length ? docsOf(payload, 'tickets', { where: { and: [ws, { parent: { in: containerIds } }] }, select: { parent: true, state: true, stage: true, slice: true } }) : [],
     Promise.all(ticketDocs.filter((t) => t.state !== 'closed' && t.expedite).map(async (t) => [t.id as number, await fastLaneHolder(payload, t)] as const)).then((rows) => new Map(rows)),
   ])
   const blockers = new Map(blockerDocs.map((b) => [b.id as number, { id: b.id as number, number: b.number as number, open: b.state !== 'closed' }]))
   const parents = new Map(parentDocs.map((p) => [p.id as number, { id: p.id as number, number: p.number as number, title: p.title as string }]))
+  const epicTotals = new Map(parentDocs.filter((p) => p.epic).map((p) => [p.id as number, (p.epic as EpicField).slices.length]))
+  const slicingOf = (t: Doc): TicketRow['slicing'] => {
+    const e = t.epic as EpicField | null
+    if (!e || !is(wf, stageOf(wf, t), 'container')) return null
+    const sub = kids.find((k) => k.id === e.slices[e.current]?.ticket)
+    return { index: e.current + 1, total: e.slices.length, stage: sub ? stageOf(wf, sub) : null }
+  }
+  const passedOf = (t: Doc) => kids.filter((k) => k.parent === t.id && k.slice?.passed).length
   const byId = new Map(productRows.map((p) => [p.id, p]))
   const gatesFor = await productGates(payload, wf, workspace, productRows)
   return ticketDocs.map((t): TicketRow => {
@@ -180,7 +197,11 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       queuedWhy: overlap ? overlapText(title(wf, buildStage!), Number(overlap)) : fastLanes.get(t.id) ? fastLaneText(fastLanes.get(t.id)!) : t.waitingFor === 'checks' ? null : hold,
       forge: forges.get(t.product) ?? null,
       track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState, releaseError: t.releaseError },
-      children: containerIds.includes(t.id) ? { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length } : null,
+      epic: t.epic ? { total: (t.epic as EpicField).slices.length, passed: passedOf(t) } : null,
+      slicing: slicingOf(t),
+      parked: isOpen && !!t.parked,
+      slice: t.slice && epicTotals.has(t.parent) ? { index: (t.slice as SliceField).index + 1, total: epicTotals.get(t.parent)! } : null,
+      children: !containerIds.includes(t.id) ? null : t.epic ? { total: (t.epic as EpicField).slices.length, done: passedOf(t) } : { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length },
       enteredAt: entered.get(t.id) ?? t.updatedAt,
       parent: parents.get(t.parent) ?? null,
       gate: isOpen && t.gateNotifiedAt ? { people: String(t.gateAssignees ?? '').split(',').filter(Boolean), since: t.gateNotifiedAt } : null,
@@ -190,10 +211,17 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
   })
 }
 
-const epicOf = (wf: Workflow, e: Doc, subs: Doc[], byRow: Map<number, TicketRow>): Epic => ({
-  id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', rank: e.rank ?? null, product: e.product ?? null,
-  children: subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(wf, c), open: c.state !== 'closed', status: r ? statusLine(wf, r) : 'Done' } }),
-})
+const epicOf = (wf: Workflow, e: Doc, subs: Doc[], byRow: Map<number, TicketRow>): Epic => {
+  const children = subs.filter((c) => c.parent === e.id).map((c) => { const r = byRow.get(c.id); return { id: c.id, number: c.number, title: c.title, stage: stageOf(wf, c), open: c.state !== 'closed', status: r ? statusLine(wf, r) : 'Done' } })
+  const plan = e.epic as EpicField | null
+  return {
+    id: e.id, number: e.number, title: e.title, open: e.state !== 'closed', parked: e.state !== 'closed' && !!e.parked, rank: e.rank ?? null, product: e.product ?? null, children,
+    ...(plan && {
+      slices: plan.slices.map((s) => ({ title: s.title, child: children.find((c) => c.id === s.ticket) ?? null, passed: !!subs.find((c) => c.id === s.ticket)?.slice?.passed })),
+      current: is(wf, stageOf(wf, e), 'container') ? plan.current : null,
+    }),
+  }
+}
 
 /** Everything the Board, Runs and the top bar need, from the database only (no forge call). */
 export const loadOverviewRows = cache(async (workspace: number, all: boolean): Promise<Base> => {

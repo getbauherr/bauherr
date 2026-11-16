@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import { type Executor, waitingWho } from '../../../../lib/executors'
 import { executionOrder } from '../../../../lib/frontier'
-import { stage as stageOf, title as stageTitle, type Workflow } from '../../../../lib/workflow'
+import { is, stage as stageOf, title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { epicHue, epicShortTitle } from '../../lib/epics'
 import { duration, heartbeatAge } from '../../lib/format'
 import type { TicketRow } from '../../lib/overview'
@@ -21,6 +21,17 @@ const EpicTag = ({ t }: { t: TicketRow }) =>
     <Link className="epic-tag small inline-block max-w-full truncate rounded-sm border border-(--tint)/40 bg-[color-mix(in_oklch,var(--tint)_14%,var(--card))] px-2 text-[color-mix(in_oklch,var(--tint)_65%,var(--foreground))] hover:underline" style={{ '--tint': `oklch(60% .16 ${epicHue(t.parent.id)})` } as CSSProperties} href={`/tickets/${t.parent.id}`} title={`Epic #${t.parent.number} ${t.parent.title}`}>{epicShortTitle(t.parent.title)}</Link>
   ) : null
 
+/** One card per epic: the slices passed of the plan, and "Epic review" in the review stage (while a slice is built the status column says "Slice i/n"). */
+const EpicCard = ({ wf, t }: { wf: Workflow; t: TicketRow }) =>
+  t.epic ? (
+    <span className="epic-card flex flex-wrap items-center gap-2" data-testid="epic-card">
+      {t.parked && <span className="label rounded-sm border border-border px-2 text-warn" data-testid="parked-badge">Parked</span>}
+      {!t.slicing && <span className="label rounded-sm border border-border px-2 text-primary">{is(wf, t.stage, 'review') ? 'Epic review' : 'Epic'}</span>}
+      <progress className="h-1.5 w-20 accent-primary" value={t.epic.passed} max={Math.max(t.epic.total, 1)} aria-label={`${t.epic.passed} of ${t.epic.total} slices passed`} />
+      <span className="small text-muted-foreground">{t.epic.passed}/{t.epic.total} passed</span>
+    </span>
+  ) : null
+
 export type Group = { stage: string; rows: TicketRow[] }
 
 /** The Tickets of the Workflow view, one ranked table per stage in workflow order. */
@@ -33,7 +44,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
         const sorted = rows.map((t) => ({ ...t, expediting: t.expedite })).sort(executionOrder)
         const limit = wip[stage]?.limit
         const state = limit != null && wip[stage]!.count > limit ? 'over' : limit != null && wip[stage]!.count === limit ? 'full' : undefined
-        const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}</span> : <span className="text-muted-foreground">{rows.length}</span>
+        const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}</span> : <span className="text-muted-foreground">{rows.filter((t) => !t.parked).length}</span>
         return (
           <section key={stage} data-stage={stage} className="col flex flex-col gap-2" aria-label={stageTitle(wf, stage)}>
             <h2 className={cn('m-0 flex items-baseline gap-2 py-1 text-[13px] font-semibold capitalize', sticky && 'sticky top-0 z-10 bg-background')} data-testid="group-heading">{stageTitle(wf, stage)} {limit != null && admin ? <Link href="/workflow/edit" className="hover:underline">{count}</Link> : count}</h2>
@@ -57,6 +68,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
                         {t.expedite && <span className="label text-destructive" data-hotfix>Hotfix</span>}
                         <KindChip kind={t.kind} />
                         <EpicTag t={t} />
+                        <EpicCard wf={wf} t={t} />
                         {t.product && showProduct && <span className="small text-muted-foreground @min-[800px]:hidden">{t.product.name}</span>}
                       </span>
                     </span>,

@@ -54,8 +54,8 @@ export type RunCtx = {
   prTitle?: string;
   /** Slice of an epic: `prev` is the epic branch head the previous slice passed with (null for the first); `mergeMain` makes a Build Run merge the base branch into the branch before the agent. A Review Run reviews only the range after `prev`. */
   slice?: { prev: string | null; mergeMain: boolean };
-  /** Epic the Run belongs to: the parent Ticket's number, its worklog (materialised as `.bauherr/epic-worklog.md`, upserted back after the Run) and the slices so far (written to `.bauherr/slices.md` for the epic review). */
-  epic?: { parent: number; worklog: string; slices: { number: number; title: string; prev: string | null; head: string | null; fixes: { sha: string; finding: string }[] }[] };
+  /** Epic the Run belongs to: the parent Ticket's number and URL (the epic PR refs it), its worklog (materialised as `.bauherr/epic-worklog.md`, upserted back after the Run) and the slices so far (written to `.bauherr/slices.md` for the epic review). */
+  epic?: { parent: number; parentUrl: string; worklog: string; slices: { number: number; title: string; prev: string | null; head: string | null; fixes: { sha: string; finding: string }[] }[] };
   /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */
   existingPr?: { number: number; url: string; branch: string; title: string; body: string };
   connection: {

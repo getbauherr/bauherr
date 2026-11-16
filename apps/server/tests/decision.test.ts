@@ -19,7 +19,7 @@ const facts = {
   productionGate: true,
   now: '2026-11-10T10:00:00.000Z',
 }
-const REAL = new Set<DecisionAction>(['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open'])
+const REAL = new Set<DecisionAction>(['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'releaseLane', 'open'])
 const JARGON = /\b(Run|MR|WIP|sha|lease|stage label)\b/
 
 describe('buildDecision', () => {
@@ -190,5 +190,17 @@ describe('decisionsOpen', () => {
     expect(fastLaneOf({ inheritedApprovalFrom: 12 })).toBe(true)
     expect(fastLaneOf({ expedite: false, inheritedApprovalFrom: null })).toBe(false)
     expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false, fastLane: fastLaneOf({ inheritedApprovalFrom: 12 }) })).toBe(false)
+  })
+})
+
+describe('the staging and production gates name the change', () => {
+  it('use the brief\'s first bullet, else the Ticket title', async () => {
+    const { changeOf } = await import('../src/lib/decision')
+    expect(changeOf(facts.stagingTldr, facts.ticket.title)).toBe('The login redirects back')
+    expect(changeOf(null, 'Add export')).toBe('Add export')
+    expect(buildDecision('Accept on staging', facts).ask).toContain('The login redirects back')
+    expect(buildDecision('Approve production', facts).ask).toContain('The login redirects back')
+    expect(GATES['Accept on staging'].sentence({ stage: 'release', missing: [], open: 0, title: 'Add export' })).toBe('Check "Add export" on staging and accept it.')
+    expect(GATES['Approve production'].sentence({ stage: 'release', missing: [], open: 0, title: 'Add export' })).toBe('Approve the production deploy of "Add export".')
   })
 })
