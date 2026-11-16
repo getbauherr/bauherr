@@ -4,7 +4,7 @@ import type {
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
 import { createHash } from 'node:crypto';
-import { Conflict, NotQueueableError } from './contracts.js';
+import { Conflict, NotQueueableError, linkLabel } from './contracts.js';
 import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
@@ -212,7 +212,7 @@ export class FakeBackend implements Backend {
       fullName: name, defaultBranch: this.repo(repo).defaultBranch, private: true, url: `https://fake/${name}`,
     });
     return {
-      linkLabel: (pr) => `Open pull request #${pr.number} on GitHub`,
+      linkLabel: (pr) => linkLabel('github', pr.number),
       listRepositories: async () => [...this.repos.keys()].map((n) => view(n, n)),
       getRepository: async (repo) => view(repo, repo),
       listBranches: async (repo) => [...this.repo(repo).branches].map(([name, b]): Branch => ({ name, sha: b.sha })),

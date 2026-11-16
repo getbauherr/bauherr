@@ -2,7 +2,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
-import { Conflict, MergePendingError, NotQueueableError } from './contracts.js';
+import { Conflict, MergePendingError, NotQueueableError, linkLabel } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
 import { timedFetch } from './http.js';
@@ -267,7 +267,7 @@ const check = (j: any): Check => {
 };
 
 class GitlabForge implements Forge {
-  linkLabel = (pr: { number: number }) => `Open merge request !${pr.number} on GitLab`;
+  linkLabel = (pr: { number: number }) => linkLabel('gitlab', pr.number);
   private paths = new Map<number, string>();
   constructor(private h: GitlabHttp, private sleep: (ms: number) => Promise<void>) {}
   private repo = (r: any): Repository => ({ fullName: r.path_with_namespace, defaultBranch: r.default_branch, private: r.visibility === 'private', url: r.web_url });

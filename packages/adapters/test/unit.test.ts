@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, createVerify, generateKeyPairSync } from 'node:crypto';
 import { describe, it } from 'node:test';
 import {
-  appAuth, closeReasonLabel, Conflict, FakeBackend, GithubBackend, GitlabBackend, gitlabPat, githubWebhooks, NotQueueableError, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
+  appAuth, closeReasonLabel, linkLabel, Conflict, FakeBackend, GithubBackend, GitlabBackend, gitlabPat, githubWebhooks, NotQueueableError, setStage, Http, parseRelations, patAuth, renderRelations, stageLabel, stageOf,
 } from '../src/index.js';
 
 const ORDER = ['triage', 'plan', 'build', 'review', 'release', 'done'];
@@ -471,5 +471,8 @@ describe('forge link label', () => {
     assert.equal(new GithubBackend({ auth: patAuth('t') }).forge.linkLabel({ number: 88 }), 'Open pull request #88 on GitHub');
     assert.equal(new GitlabBackend({ auth: gitlabPat('t'), baseUrl: 'https://gitlab.test' }).forge.linkLabel({ number: 88 }), 'Open merge request !88 on GitLab');
     assert.equal(new FakeBackend().forge.linkLabel({ number: 88 }), 'Open pull request #88 on GitHub');
+    assert.equal(linkLabel('github', 88), 'Open pull request #88 on GitHub');
+    assert.equal(linkLabel('gitlab', 88), 'Open merge request !88 on GitLab');
+    assert.equal(linkLabel(null, 88), 'Open merge request');
   });
 });

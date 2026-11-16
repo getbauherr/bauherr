@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { CiRow, CiSummary } from '../../../lib/ci-summary'
 import { isWebUrl } from '../lib/url'
 import { ago } from '../lib/format'
@@ -14,7 +15,7 @@ const chipOf = (r: CiRow): { variant: 'ok' | 'destructive' | 'neutral'; text: st
  * The stored checks of the Ticket's open merge request, one row per check (database only, never a live forge call). `updatedAt` is the time of the last
  * change of the summary, so the age reads "Updated", not "Checked".
  */
-export function CiPanel({ summary }: { summary: CiSummary }) {
+export function CiPanel({ summary, forge }: { summary: CiSummary; /** The forge link, when the action bar has no room for it (it holds one secondary). */ forge?: ReactNode }) {
   return (
     <section className="flex flex-col gap-2" aria-labelledby="ci-checks" data-testid="ci-panel">
       <h2 className="heading flex flex-wrap items-baseline gap-x-3" id="ci-checks">
@@ -23,6 +24,7 @@ export function CiPanel({ summary }: { summary: CiSummary }) {
           <time dateTime={summary.updatedAt} title={summary.updatedAt.slice(0, 16).replace('T', ' ') + ' UTC'}>Updated {ago(summary.updatedAt)}</time>
         </span>
       </h2>
+      {forge}
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {summary.rows.map((r) => {
           const chip = chipOf(r)

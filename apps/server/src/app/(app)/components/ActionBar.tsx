@@ -3,6 +3,7 @@ import { SendBackDialog } from './SendBackDialog'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { acceptStagingAction, approvePlanAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
+import { hasSecondary } from '../lib/bar'
 import { GATES } from '../lib/gates'
 import { actionFor, fallbackFor, type Action, type NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
@@ -37,7 +38,7 @@ type Props = {
   ask?: string | null
   /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary opens the conversation. */
   answerable?: number
-  /** Link to the Ticket's merge request, labelled by the forge adapter; the first secondary button. */
+  /** Link to the Ticket's merge request; shown only when the bar has no other secondary (else the CI panel header carries it). */
   forge?: { href: string; label: string } | null
 }
 
@@ -92,7 +93,7 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
   const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : sendBack.length ? <SendBackDialog ticket={ticket} options={sendBack} /> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
     <NextStepBar sentence={gate ? (ask ?? gate.sentence(ctx)) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need ? undefined : idle.href ? { label: idle.label, href: idle.href } : { label: idle.label, disabled: true, reason: idle.reason })}>
-      {forge && <ForgeLink {...forge} />}
+      {forge && !hasSecondary({ need, canExpedite, answerable, run, open, product, releaseRunUrl }) && <ForgeLink {...forge} />}
       {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
       {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
       {secondary}

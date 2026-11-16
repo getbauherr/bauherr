@@ -16,7 +16,9 @@ describe('nextStep', () => {
   })
   it('a live Run with pending checks waits for CI instead of working', () => {
     const run = { id: 735, stage: 'build', status: 'running' }
-    expect(nextStep({ ...base, run, ci: { passed: 1, total: 2, pending: 1 } })).toMatchObject({ label: 'Waiting for CI', enabled: false, reason: 'Waiting for CI: 1 of 2 checks passed, 1 running. The agent resumes when they finish.' })
+    const ci = { passed: 1, total: 2, pending: 1 }
+    expect(nextStep({ ...base, ticket: { ...base.ticket, waitingFor: 'checks' }, run, ci })).toMatchObject({ label: 'Waiting for CI', enabled: false, reason: 'Waiting for CI: 1 of 2 checks passed, 1 running. The agent resumes when they finish.' })
+    expect(nextStep({ ...base, run, ci }).label).toBe('In progress')
   })
   it('a live Run names the Run to an Admin only', () => {
     const run = { id: 735, stage: 'build', status: 'running' }

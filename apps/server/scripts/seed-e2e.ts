@@ -407,6 +407,7 @@ const ciProduct = (await ensure('products', { slug: 'acme-ci' }, { name: 'Acme C
 await ensure('repositories', { fullName: 'acme/ci' }, { fullName: 'acme/ci', product: ciProduct, workspace })
 await ensure('ticket_sources', { repo: 'acme/ci' }, { repo: 'acme/ci', product: ciProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 const ciTicket = await ticket(581, 'Show CI on the ticket', 'build', ciProduct, {
+  waitingFor: 'checks',
   ciSummary: {
     total: 2, passed: 0, pending: 1, failed: ['lint'], url: 'https://github.com/acme/ci/pull/88', updatedAt: new Date().toISOString(),
     rows: [{ name: 'test', status: 'in_progress', conclusion: null, url: 'https://github.com/acme/ci/actions/runs/1' }, { name: 'lint', status: 'completed', conclusion: 'failure', url: 'https://github.com/acme/ci/actions/runs/2' }],

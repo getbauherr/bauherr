@@ -72,18 +72,22 @@ describe('terminal and split stages', () => {
 describe('waiting for CI from the stored check summary', () => {
   const ci = pendingCounts({ total: 2, passed: 0, pending: 1 })!
   const sentence = 'Waiting for CI: 0 of 2 checks passed, 1 running. The agent resumes when they finish.'
-  it('a running Run with pending checks is Waiting for CI n/m, never building or working', () => {
-    const s = at(row({ ci, run: run() }))
-    expect(s).toMatchObject({ phase: 'ci', label: 'Waiting for CI 0/2', detail: sentence, who: 'GitHub Actions', tone: 'neutral' })
+  const checks = { waitingFor: 'checks' }
+  it('a running Run whose Ticket waits on checks is Waiting for CI n/m (n = finished), never building or working', () => {
+    const s = at(row({ ci, run: run(), track: checks }))
+    expect(s).toMatchObject({ phase: 'ci', label: 'Waiting for CI 1/2', detail: sentence, who: 'GitHub Actions', tone: 'neutral' })
     expect(JSON.stringify(s)).not.toMatch(/building|working|Working/)
-    expect(statusLine(wf, row({ ci, run: run() }))).toBe(sentence)
+    expect(statusLine(wf, row({ ci, run: run(), track: checks }))).toBe(sentence)
+  })
+  it('a running build Run with a pending check but no wait on checks stays In progress', () => {
+    expect(at(row({ ci, run: run() }))).toMatchObject({ phase: 'working', label: 'In progress', detail: 'building for 5 min' })
   })
   it('without counts the running Run keeps its sentence, and no pending check gives no counts', () => {
-    expect(at(row({ run: run() })).label).toBe('In progress')
+    expect(at(row({ run: run(), track: checks })).label).toBe('In progress')
     expect(pendingCounts({ total: 2, passed: 2, pending: 0 })).toBeNull()
     expect(pendingCounts(null)).toBeNull()
   })
   it('the CI wait between Runs carries the counts too', () => {
-    expect(at(row({ ci, track: { waitingFor: 'checks' } }))).toMatchObject({ label: 'Waiting for CI 0/2', detail: sentence })
+    expect(at(row({ ci, track: checks }))).toMatchObject({ label: 'Waiting for CI 1/2', detail: sentence })
   })
 })

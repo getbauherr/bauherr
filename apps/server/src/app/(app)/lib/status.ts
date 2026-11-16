@@ -1,7 +1,7 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 import { kindOfRun } from '../../../lib/stage-text'
 import { is, title as stageTitle, type Workflow } from '../../../lib/workflow'
-import { waitingSentence, type CiCounts } from '../../../lib/ci-text'
+import { waitingChip, waitingSentence, type CiCounts } from '../../../lib/ci-text'
 import { duration } from './format'
 
 export type StatusPhase = 'working' | 'queued' | 'human' | 'ci' | 'blocked' | 'failed' | 'done'
@@ -65,7 +65,7 @@ export const runWho = (r: Pick<StatusRun, 'mode' | 'executor' | 'sessionLabel' |
 
 const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | null => {
   const counts = r.ci
-  const checks = (detail: string) => (counts ? { label: `Waiting for CI ${counts.passed}/${counts.total}`, detail: waitingSentence(counts) } : { label: 'Waiting for CI', detail })
+  const checks = (detail: string) => (counts ? { label: waitingChip(counts), detail: waitingSentence(counts) } : { label: 'Waiting for CI', detail })
   const at = (k: 'review' | 'release') => is(wf, r.stage, k)
   const t = r.track
   if (t.waitingFor === 'checks') return checks('checks of the merge request')
@@ -90,7 +90,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     const c = r.children ?? { total: 0, done: 0 }
     return { phase: 'blocked', label: 'Split', detail: `into ${c.total} sub-ticket${c.total === 1 ? '' : 's'} (${c.done} done)`, who: null, tone: 'muted' }
   }
-  if (run?.status === 'running' && r.ci) return { phase: 'ci', label: `Waiting for CI ${r.ci.passed}/${r.ci.total}`, detail: waitingSentence(r.ci), who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
+  if (run?.status === 'running' && r.ci && r.track.waitingFor === 'checks') return { phase: 'ci', label: waitingChip(r.ci), detail: waitingSentence(r.ci), who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' }
   if (run?.status === 'running') {
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''

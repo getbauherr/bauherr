@@ -1,5 +1,5 @@
-import { ciSummaryOf, forgeLinkOf } from '../../../../../lib/ci-summary'
-import { pendingCounts, waitingSentence } from '../../../../../lib/ci-text'
+import { ciSummaryOf } from '../../../../../lib/ci-summary'
+import { forgeLinkOf, pendingCounts, waitingChip, waitingSentence } from '../../../../../lib/ci-text'
 import { CiPanel } from '../../../components/CiPanel'
 import { ForgeLink } from '../../../components/ForgeLink'
 import { PageTitle } from '../../../components/PageTitle'
@@ -15,6 +15,7 @@ import { Card } from '../../../components/ui/card'
 import { Tab, Tabs } from '../../../components/ui/tabs'
 import { releaseRunLock, rerunStage } from '../../../lib/actions'
 import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
+import { forgeKinds } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { kindOfRun } from '../../../../../lib/stage-text'
@@ -33,8 +34,8 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const admin = user.role === 'admin'
   const { run, ticket, steps, stepsTotal, callsByStep, owner, agentKeyLabel, chain } = await loadRun(workspace.id, id, admin)
   const ci = ciSummaryOf(ticket)
-  const waiting = run.status === 'running' ? pendingCounts(ci?.summary) : null
-  const forgeLink = await forgeLinkOf(await payloadClient(), ticket.product, ci?.summary.url ?? run.artifacts?.prUrl)
+  const waiting = run.status === 'running' && ticket.waitingFor === 'checks' ? pendingCounts(ci?.summary) : null
+  const forgeLink = forgeLinkOf((await forgeKinds(await payloadClient(), workspace.id)).get(ticket.product), ci?.summary.url ?? run.artifacts?.prUrl)
   const leased = run.mode === 'session' && run.status === 'running'
   const rerun = RERUNNABLE.includes(run.status)
   const details: [string, React.ReactNode][] = [
@@ -69,7 +70,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       <header className="flex flex-col gap-4">
         <PageTitle>{`#${ticket.number} Run ${run.id}`}</PageTitle>
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
-        <p className="body">{waiting ? <Badge variant="neutral">Waiting for CI {waiting.passed}/{waiting.total}</Badge> : <StatusChip status={run.status} />} <span className="text-muted-foreground">{run.stage}</span></p>
+        <p className="body">{waiting ? <Badge variant="neutral">{waitingChip(waiting)}</Badge> : <StatusChip status={run.status} />} <span className="text-muted-foreground">{run.stage}</span></p>
         {run.preemptedFor && (run.preemptAt || run.reasonKind === 'preempted') && <p className="body" role="status">Preempted by #{run.preemptedFor}</p>}
         {waiting && <p className="body" role="status">{waitingSentence(waiting)}</p>}
         {forgeLink && <div><ForgeLink {...forgeLink} /></div>}

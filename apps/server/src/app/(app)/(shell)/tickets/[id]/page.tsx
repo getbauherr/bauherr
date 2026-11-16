@@ -1,5 +1,5 @@
-import { ciSummaryOf, forgeLinkOf } from '../../../../../lib/ci-summary'
-import { pendingCounts } from '../../../../../lib/ci-text'
+import { ciSummaryOf } from '../../../../../lib/ci-summary'
+import { forgeLinkOf, pendingCounts } from '../../../../../lib/ci-text'
 import { CiPanel } from '../../../components/CiPanel'
 import { pausingFor } from '../../../../../lib/preempt'
 import { PageTitle } from '../../../components/PageTitle'
@@ -15,6 +15,8 @@ import { decisionComments } from '../../../../../lib/forge-channel'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
+import { ForgeLink } from '../../../components/ForgeLink'
+import { hasSecondary } from '../../../lib/bar'
 import { ActionBar, FAST_LANE_HELP } from '../../../components/ActionBar'
 import { DecisionCard } from '../../../components/DecisionCard'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
@@ -128,6 +130,14 @@ async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} answerable={x.view.answerable} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
 }
 
+/** The forge link in the CI panel header, only when the action bar's one secondary slot is taken. */
+async function PanelForge({ P, d }: { P: Page; d: Promise<Derived> }) {
+  const x = await d
+  const { ticket, product, runs } = P
+  const taken = hasSecondary({ need: x.todo, canExpedite: canExpediteOf(P), answerable: x.view.answerable, run: runs[0]?.id ?? null, open: x.view.open, product: product.id as number, releaseRunUrl: ticket.releaseRunUrl })
+  return P.forgeLink && taken ? <div><ForgeLink {...P.forgeLink} /></div> : null
+}
+
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket } = P
   const x = await d
@@ -228,7 +238,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true }, ...q }).catch(() => null)) as { id: number; number: number } | null) : null
   const ci = ciSummaryOf(ticket)
   const prUrl = ci?.summary.url ?? (runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined)
-  const forgeLink = await forgeLinkOf(payload, ticket.product, prUrl)
+  const forgeLink = forgeLinkOf(forges.get(ticket.product), prUrl)
   const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin, forgeLink }
   const forge = forges.get(ticket.product)
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
@@ -287,7 +297,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       ) : (
         <StageStrip stages={stages} steps={steps} />
       )}
-      {ci && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} />}
+      {ci && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} forge={<Suspense fallback={null}><PanelForge P={P} d={d} /></Suspense>} />}
       <div className="flex min-w-0 flex-col gap-4" data-testid="current-block">
         {card && <DecisionCard compact item={{ ...card, product: undefined }} admin={admin} />}
         <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>

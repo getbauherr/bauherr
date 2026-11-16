@@ -181,6 +181,10 @@ export interface Webhooks {
   verify(rawBody: string | Uint8Array, signature: string | undefined, secret: string): boolean;
 }
 
+/** Label of the link button to a PR of the forge `kind` ("github" or "gitlab"), in plain words; "Open merge request" for an unknown kind. Pure: needs no Connection secret. */
+export const linkLabel = (kind: string | null | undefined, number: number): string =>
+  kind === 'github' ? `Open pull request #${number} on GitHub` : kind === 'gitlab' ? `Open merge request !${number} on GitLab` : 'Open merge request';
+
 export interface Forge {
   /** Label of the link button to a PR of this forge, in plain words: "Open pull request #88 on GitHub", "Open merge request !88 on GitLab". */
   linkLabel(pr: { number: number }): string;

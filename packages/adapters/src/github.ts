@@ -3,7 +3,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
-import { Conflict, NotQueueableError } from './contracts.js';
+import { Conflict, NotQueueableError, linkLabel } from './contracts.js';
 import { timedFetch } from './http.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 
@@ -313,7 +313,7 @@ class GithubForge implements Forge {
   constructor(private h: Http, private auth: GithubAuth) {
     this.webhooks = githubWebhooks(h);
   }
-  linkLabel = (pr: { number: number }) => `Open pull request #${pr.number} on GitHub`;
+  linkLabel = (pr: { number: number }) => linkLabel('github', pr.number);
   private repo = (r: any): Repository => ({ fullName: r.full_name, defaultBranch: r.default_branch, private: r.private, url: r.html_url });
 
   async listRepositories() {
