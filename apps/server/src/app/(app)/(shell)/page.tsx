@@ -94,7 +94,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               </ul>
             )}
             {picked && <p className="small" data-testid="stage-filter">{stats?.agents?.get(picked)?.missing && <><Link className="text-warn underline" href="/team" data-testid="no-agent-link">No agent connected for this stage: open Agent team</Link> · </>}Showing {picked.includes(':') ? `the Tickets waiting at ${nodes.find((n) => n.id === picked)?.title}` : `the ${nodes.find((n) => n.id === picked)?.title} stage`}. <Link className="text-primary" href={hrefOf(picked)}>Show all stages</Link>{picked.includes(':') && !!stats?.checkpoints.get(picked) && <> · <Link className="text-primary" href={`/inbox?checkpoint=${encodeURIComponent(nodes.find((n) => n.id === picked)?.title ?? '')}`} data-testid="decide-in-inbox">Decide in Inbox ({stats.checkpoints.get(picked)})</Link></>}</p>}
-            {groups.length ? <TicketList wf={wf} groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} /> : <EmptyState text="No Tickets here." />}
+            {groups.length ? <TicketList wf={wf} groups={groups} collapsed={!picked && sp.state !== 'all' ? byKind(wf, 'done')?.name : undefined} expandHref={hrefOf(byKind(wf, 'done')?.name ?? '')} sticky={!picked} showProduct={data.products.length > 1 && !product} admin={isAdmin(user)} wip={data.wip} now={Date.now()} executors={executors} /> : <EmptyState text="No Tickets here." />}
           </div>
         )
       ) : sp.epic ? (
