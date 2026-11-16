@@ -71,34 +71,37 @@ it('a plan without Sub-tickets approves as before: no children, stage stays plan
   expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('plan')
 })
 
-it('approval creates the listed children with inherited approval and moves the parent to stage parent', async () => {
+it('approval makes the plan an epic: only the first slice exists, with inherited approval, the parent moves to stage parent', async () => {
   await actions.submitPlan(payload, user, { ticket, markdown: PLAN })
   await actions.approvePlan(payload, user, { ticket })
   const kids = await children()
-  expect(kids.map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
-  for (const k of kids) expect(k.labels.sort()).toEqual(['bauherr:approved:plan', 'bauherr:stage:plan'])
+  expect(kids.map((k) => k.title)).toEqual(['Invoice PDF'])
+  expect(kids[0]!.labels.sort()).toEqual(['bauherr:approved:plan', 'bauherr:stage:plan'])
   expect((await (await forge()).get('1')).labels).toContain('bauherr:stage:parent')
   expect((await (await forge()).get('1')).labels).not.toContain('bauherr:stage:plan')
   expect((await (await forge()).get(String(kids[0]!.number))).body).toContain('Render invoices as PDF.\n\nParent: #1')
   const rows = (await payload.find({ collection: 'tickets', where: { parent: { equals: ticket } }, sort: 'number', depth: 0, ...o })).docs
-  expect(rows.map((r) => [r.title, r.inheritedApprovalFrom, r.stage])).toEqual([['Invoice PDF', ticket, 'plan'], ['Invoice numbering', ticket, 'plan']])
-  expect((await payload.findByID({ collection: 'tickets', id: ticket, ...o })).stage).toBe('parent')
+  expect(rows.map((r) => [r.title, r.inheritedApprovalFrom, r.stage])).toEqual([['Invoice PDF', ticket, 'plan']])
+  expect(rows[0]!.slice).toEqual({ epic: ticket, branch: 'bauherr/1-epic', index: 0, prev: null, main: null, head: null, passed: false, fixes: [] })
+  const parent = await payload.findByID({ collection: 'tickets', id: ticket, ...o })
+  expect(parent.stage).toBe('parent')
+  expect(parent.epic).toEqual({ branch: 'bauherr/1-epic', slices: [{ title: 'Invoice PDF', body: 'Render invoices as PDF.', ticket: rows[0]!.id }, { title: 'Invoice numbering', body: 'Sequential numbers.' }], current: 0, mergeFailures: 0 })
   expect((await (await forge()).listComments(String(kids[0]!.number))).at(-1)!.body).toContain('Approval inherited from #1')
 })
 
 it('children rank directly after the parent in section order and keep their rank on retry', async () => {
   const rank = async () => (await payload.find({ collection: 'tickets', where: { parent: { equals: ticket } }, sort: 'number', depth: 0, ...o })).docs.map((r) => r.rank as string)
-  const [a, b] = await rank()
-  expect(a! > 'm' && a! < b! && b! < 'n').toBe(true)
+  const [a] = await rank()
+  expect(a! > 'm' && a! < 'n').toBe(true)
   await actions.spawnSubTickets(payload, await actions.loadTicket(payload, user, ticket))
-  expect(await rank()).toEqual([a, b])
+  expect(await rank()).toEqual([a])
 })
 
 it('is idempotent and never inherits for an item added after approval', async () => {
   await actions.submitPlan(payload, user, { ticket, markdown: `${PLAN}- **Late addition** — Added after approval.\n` })
   await actions.approvePlan(payload, user, { ticket })
   expect(await actions.spawnSubTickets(payload, await actions.loadTicket(payload, user, ticket))).toBe(true)
-  expect((await children()).map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
+  expect((await children()).map((k) => k.title)).toEqual(['Invoice PDF'])
 })
 
 it('completes a partially created set by title without duplicating', async () => {
@@ -108,21 +111,31 @@ it('completes a partially created set by title without duplicating', async () =>
   await ts.addLabels('1', ['bauherr:stage:plan'])
   await actions.submitPlan(payload, user, { ticket, markdown: PLAN })
   await actions.spawnSubTickets(payload, t)
-  expect(await children()).toHaveLength(2)
+  expect(await children()).toHaveLength(1)
 })
 
-it('closes the parent with a Comment only when all children are closed', async () => {
+it('closeFinishedParents leaves an epic parent alone, even when its only slice is closed', async () => {
   const ts = await forge()
-  const [a, b] = await children()
+  const [a] = await children()
   await ts.close(String(a!.number), 'completed')
   expect(await actions.closeFinishedParents(payload)).toBe(0)
   expect((await ts.get('1')).state).toBe('open')
+  expect(await payload.findByID({ collection: 'tickets', id: ticket, ...o })).toMatchObject({ state: 'open', stage: 'parent' })
+})
+
+it('closes a parent without epic with a Comment only when all children are closed', async () => {
+  const { ts, f, row } = await approved('Old parent', 'o')
+  await actions.spawnSubTickets(payload, row)
+  const [a, b] = await ts.listSubTickets(String(f.number))
+  await ts.close(String(a!.number), 'completed')
+  expect(await actions.closeFinishedParents(payload)).toBe(0)
+  expect((await ts.get(String(f.number))).state).toBe('open')
   await ts.close(String(b!.number), 'completed')
   expect(await actions.closeFinishedParents(payload)).toBe(1)
-  expect((await ts.get('1')).state).toBe('closed')
-  expect((await ts.listComments('1')).at(-1)!.body).toMatch(/All sub-tickets are closed:\n- #\d+ Invoice PDF\n- #\d+ Invoice numbering/)
-  expect(await payload.findByID({ collection: 'tickets', id: ticket, ...o })).toMatchObject({ state: 'closed', stage: 'done' })
-  expect(await actions.closeFinishedParents(payload)).toBe(0)
+  expect((await ts.get(String(f.number))).state).toBe('closed')
+  expect((await ts.listComments(String(f.number))).at(-1)!.body).toMatch(/All sub-tickets are closed:\n- #\d+ Invoice PDF\n- #\d+ Invoice numbering/)
+  expect(await payload.findByID({ collection: 'tickets', id: row.id, ...o })).toMatchObject({ state: 'closed', stage: 'done' })
+  expect(await payload.findByID({ collection: 'tickets', id: row.id, ...o }).then((t) => t.epic ?? null)).toBeNull()
 })
 
 it('poll-tickets: a forge-side plan approval on an unseen Ticket fans out and parks it as parent', async () => {
@@ -134,12 +147,12 @@ it('poll-tickets: a forge-side plan approval on an unseen Ticket fans out and pa
   const row = (await payload.find({ collection: 'tickets', where: { number: { equals: p.number } }, depth: 0, ...o })).docs[0]!
   expect(row.stage).toBe('parent')
   const kids = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, sort: 'number', depth: 0, ...o })).docs
-  expect(kids).toHaveLength(2)
+  expect(kids).toHaveLength(1)
   expect(row.rank).toEqual(expect.any(String))
   expect([row.rank, ...kids.map((k) => k.rank)].map(String)).toEqual([...new Set([row.rank, ...kids.map((k) => k.rank)].map(String))].sort())
   expect(await payload.count({ collection: 'runs', where: { ticket: { equals: row.id } }, ...o })).toMatchObject({ totalDocs: 0 })
   await (pollTickets.handler as any)({ req: { payload } })
-  expect((await ts.listSubTickets(String(p.number))).map((k) => k.title)).toEqual(['Invoice PDF', 'Invoice numbering'])
+  expect((await ts.listSubTickets(String(p.number))).map((k) => k.title)).toEqual(['Invoice PDF'])
 })
 
 it('a manually approved child is not recorded as inherited', async () => {
@@ -153,11 +166,18 @@ it('a manually approved child is not recorded as inherited', async () => {
   expect(row.stage).toBe('build')
 })
 
+/** A sub-issue the parent already has: spawning then takes the old per-item path (a parent with children and no `epic`). */
+const legacyChild = async (ts: Awaited<ReturnType<typeof forge>>, parent: number, title: string) => {
+  const c = await ts.create({ title, body: `Parent: #${parent}`, labels: ['bauherr:stage:plan'] })
+  await ts.addSubTicket(String(parent), String(c.number))
+}
+
 const approved = async (title: string, rank?: string) => {
   const ts = await forge()
   const f = await ts.create({ title, labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
   await ts.comment(String(f.number), `<!-- bauherr:plan -->\n${PLAN}`)
   const row = await payload.create({ collection: 'tickets', data: { title, externalId: f.id, number: f.number, url: f.url, state: 'open', labels: f.labels, stage: 'plan', product, workspace, ...(rank && { rank }) }, ...o })
+  await legacyChild(ts, f.number, 'Invoice PDF')
   return { ts, f, row }
 }
 
@@ -217,7 +237,7 @@ it('the child record is stored before addSubTicket, so a crash there keeps it an
   const spy = vi.spyOn(ts, 'addSubTicket').mockRejectedValueOnce(new Error('forge down'))
   await expect(actions.spawnSubTickets(payload, row)).rejects.toThrow('forge down')
   spy.mockRestore()
-  const orphan = (await payload.find({ collection: 'tickets', where: { parent: { equals: row.id } }, depth: 0, ...o })).docs
+  const orphan = (await payload.find({ collection: 'tickets', where: { and: [{ parent: { equals: row.id } }, { title: { equals: 'Invoice numbering' } }] }, depth: 0, ...o })).docs
   expect(orphan).toHaveLength(1)
   expect(orphan[0]!.inheritedApprovalFrom).toBe(row.id)
   await expect(actions.spawnSubTickets(payload, row)).resolves.toBe(true)
@@ -279,6 +299,7 @@ it('after: blocks the child on its sibling in the forge and locally; unknown tit
   const f = await ts.create({ title: 'After parent', labels: ['bauherr:stage:plan', 'bauherr:approved:plan'] })
   await ts.comment(String(f.number), `<!-- bauherr:plan -->\n${AFTER_PLAN}`)
   const row = await payload.create({ collection: 'tickets', data: { title: 'After parent', externalId: f.id, number: f.number, url: f.url, state: 'open', labels: f.labels, stage: 'plan', product, workspace, rank: 't' }, ...o })
+  await legacyChild(ts, f.number, 'First step')
   const warn = vi.spyOn(payload.logger, 'warn')
   await actions.spawnSubTickets(payload, row)
   const kids = await ts.listSubTickets(String(f.number))
@@ -317,7 +338,7 @@ it('with the plan gate off, children are labelled and stored as build', async ()
   }
 })
 
-it('the poller starts Runs for unblocked children only, once, and never re-runs a failed stage', async () => {
+it('the poller starts the slice Run once and never re-runs a failed stage; later slices do not exist yet', async () => {
   process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
   try {
     const { pollTickets } = await import('../src/jobs')
@@ -325,26 +346,19 @@ it('the poller starts Runs for unblocked children only, once, and never re-runs 
     const ts = await forge()
     const f = await ts.create({ title: 'Sweep parent', labels: ['bauherr:stage:plan'] })
     const t = await payload.create({ collection: 'tickets', data: { title: 'Sweep parent', externalId: f.id, number: f.number, url: f.url, state: 'open', labels: f.labels, stage: 'plan', product, workspace, rank: 'u' }, ...o })
-    await actions.submitPlan(payload, user, { ticket: t.id as number, markdown: '## Goal\n- g\n\n## Sub-tickets\n- **Sweep one** — a.\n- **Sweep two** — b.\n- **Sweep three** — c.\n  after: Sweep one\n' })
+    await actions.submitPlan(payload, user, { ticket: t.id as number, markdown: '## Goal\n- g\n\n## Sub-tickets\n- **Sweep one** — a.\n- **Sweep two** — b.\n  after: Sweep one\n' })
     await actions.spawnSubTickets(payload, t)
-    const row = async (title: string): Promise<Record<string, any>> => (await payload.find({ collection: 'tickets', where: { title: { equals: title } }, depth: 0, ...o })).docs[0]!
-    const runs = async (title: string) => (await payload.find({ collection: 'runs', where: { ticket: { equals: (await row(title)).id } }, depth: 0, ...o })).docs
+    const row = async (title: string): Promise<Record<string, any> | undefined> => (await payload.find({ collection: 'tickets', where: { title: { equals: title } }, depth: 0, ...o })).docs[0]
+    const runs = async (title: string) => (await payload.find({ collection: 'runs', where: { ticket: { equals: (await row(title))!.id } }, depth: 0, ...o })).docs
+    expect(await row('Sweep two')).toBeUndefined()
     await poll()
     expect(await runs('Sweep one')).toHaveLength(1)
-    expect(await runs('Sweep two')).toHaveLength(1)
-    expect(await runs('Sweep three')).toHaveLength(0)
     await poll()
     expect(await runs('Sweep one')).toHaveLength(1)
-    expect(await runs('Sweep two')).toHaveLength(1)
-
-    await payload.update({ collection: 'tickets', id: (await row('Sweep one')).id, data: { state: 'closed' }, ...o })
+    const [one] = await runs('Sweep one')
+    await payload.update({ collection: 'runs', id: one!.id, data: { status: 'failed' }, ...o })
     await poll()
-    expect(await runs('Sweep three')).toHaveLength(1)
-
-    const [two] = await runs('Sweep two')
-    await payload.update({ collection: 'runs', id: two!.id, data: { status: 'failed' }, ...o })
-    await poll()
-    expect(await runs('Sweep two')).toHaveLength(1)
+    expect(await runs('Sweep one')).toHaveLength(1)
 
     const kid = await payload.create({ collection: 'tickets', data: { title: 'Sweep stranger', externalId: 'sweep-s', number: 950, url: 'https://x/950', state: 'open', labels: [], stage: 'build', product, workspace, rank: 'v', assignees: 'stranger', gateAssignees: 'owner' }, ...o })
     await poll()

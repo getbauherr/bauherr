@@ -19,7 +19,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { refreshPrices } from '../lib/prices'
 import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advanceEpics, advancePlan, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
@@ -39,7 +39,7 @@ import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
-import { inLiveWorkspace, live } from '../lib/workspace-delete'
+import { inLiveWorkspace, live, purgeDueWorkspaces } from '../lib/workspace-delete'
 import { PREEMPT_GRACE_MS, preemptSweep, preemptedRun } from '../lib/preempt'
 import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
@@ -704,6 +704,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
       }
     }
     await closeFinishedParents(payload)
+    await advanceEpics(payload)
     await pullWaiting(payload)
     await startExpedites(payload)
     await startMissingRuns(payload)
@@ -816,6 +817,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         await advance(payload, null, { ...ticket, stage: run.stage }, 'replan', { by: 'factory', run, note: note || undefined })
       }
       if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
+      if (r.status === 'succeeded' && r.artifacts.prUrl) await setEpicPr(payload, ticket, r.artifacts.prUrl)
       if (kind === 'build' && r.status === 'succeeded' && ticket.epic) await tagFixes(payload, ticket, r.artifacts.pushedSha).catch((e) => payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
@@ -942,6 +944,18 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   },
 }
 
+/** Daily: hard-deletes every archived Workspace past its `purgeAt` (see `purgeWorkspace`); a failure is logged and retried the next day. */
+export const purgeWorkspacesTask: TaskConfig<{ input: Record<string, never>; output: { purged: number } }> = {
+  slug: 'purge-workspaces',
+  schedule: scheduled('0 0 4 * * *'),
+  retries: 0,
+  handler: async ({ req }) => {
+    const purged = await purgeDueWorkspaces(req.payload)
+    if (purged.length) req.payload.logger.info({ purged }, 'purge-workspaces')
+    return { output: { purged: purged.length } }
+  },
+}
+
 /** Products scanned per tick; the rest wait for the next hour. */
 export const SCANS_PER_TICK = 5
 
@@ -988,4 +1002,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, storeCiSummaryTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, storeCiSummaryTask, securityScanTick, purgeWorkspacesTask]

@@ -8,7 +8,7 @@ import { workflowFor } from './factory'
 import { ownsGate } from './gates'
 import { tierModels } from './gateway'
 import { record } from './history'
-import { AGENT_REPAIRED, FINDING_FRESH_MS, type Cause } from './liveness'
+import { AGENT_RELEASED, AGENT_REPAIRED, FINDING_FRESH_MS, type Cause } from './liveness'
 import type { Ctx } from './mcp-tools'
 import { id } from './release'
 import { corePack, packDir, stage as stageDef, stagesOfRole, title as stageTitle, type Role, type Workflow } from './workflow'
@@ -141,7 +141,7 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
 }
 
 /** What an agent may do about a stuck Ticket, by cause: only repairs that exist as agent tools today; owner decisions are never in the list. */
-const allowedFor = (cause: Cause): { tool: string; args: string }[] => (AGENT_REPAIRED.includes(cause) ? [{ tool: 'return_to_build', args: '{ticket, reason}' }] : [])
+const allowedFor = (cause: Cause): { tool: string; args: string }[] => (AGENT_REPAIRED.includes(cause) ? [{ tool: 'return_to_build', args: '{ticket, reason}' }] : AGENT_RELEASED.includes(cause) ? [{ tool: 'release_fast_lane', args: '{ticket}' }] : [])
 
 const PROBLEMS: Partial<Record<Cause, string>> = {
   'mr-missing': 'the open MR was closed or is missing',
@@ -154,6 +154,7 @@ const PROBLEMS: Partial<Record<Cause, string>> = {
   'review-invalid': 'the last review produced no valid verdict',
   'review-stalled': 'a clean review waits for a human merge',
   'triage-expired': 'the only Triage Run ended unclaimed',
+  'fast-lane-held': 'it holds the fast lane while it waits for a human, and another expedite Ticket waits for the lane',
 }
 
 /**
@@ -163,7 +164,7 @@ const PROBLEMS: Partial<Record<Cause, string>> = {
 const exception = async (c: Ctx, wsId: number | string) => {
   const found = (await c.payload.db.drizzle.execute(sql`SELECT "id", "number", "title", "stage", "url", "updated_at", "liveness" FROM "tickets" WHERE "workspace_id" = ${wsId} AND "state" = 'open' AND "liveness" IS NOT NULL ORDER BY "id"`)).rows as Doc[]
   const fresh = found.filter((t) => Date.now() - Date.parse(t.liveness.at) < FINDING_FRESH_MS)
-  const d = fresh.find((t) => AGENT_REPAIRED.includes(t.liveness.cause)) ?? fresh[0]
+  const d = fresh.find((t) => AGENT_REPAIRED.includes(t.liveness.cause) || AGENT_RELEASED.includes(t.liveness.cause)) ?? fresh[0]
   if (!d) return null
   const cause = d.liveness.cause as Cause
   const allowed = allowedFor(cause)

@@ -1,0 +1,20 @@
+import Link from 'next/link'
+import type { Hold } from '../../../lib/holds'
+
+/** "Holding up work": every shared hold of the Workspace, each linked to its cause. Nothing renders when nothing holds. */
+export function HoldsStrip({ holds }: { holds: Pick<Hold, 'text' | 'href' | 'waiting'>[] }) {
+  if (!holds.length) return null
+  return (
+    <section aria-labelledby="holds-title" data-testid="holds-strip" className="border-b border-border bg-card px-4 py-2 max-sm:px-2">
+      <h2 id="holds-title" className="small font-medium text-warn">Holding up work</h2>
+      <ul className="small flex flex-col gap-0.5">
+        {holds.map((h) => (
+          <li key={h.href + h.text}>
+            <Link className="text-primary" href={h.href}>{h.text}</Link>
+            <span className="text-muted-foreground"> {h.waiting.length} waiting</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}

@@ -54,7 +54,8 @@ export type ActionCtx = { run: number | null; open: number; product: number; rel
 export const actionFor = (need: Need, { run, open, product, releaseRunUrl }: ActionCtx): Action | null => {
   switch (need) {
     case 'Expedite?': return { kind: 'expedite' }
-    case 'Decision needed': return null
+    case 'Decision needed':
+    case 'Fast lane held': return null
     case 'Approve plan': return { kind: 'approvePlan' }
     case 'Accept on staging':
     case 'Staging not confirmed': return { kind: 'acceptStaging' }

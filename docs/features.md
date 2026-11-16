@@ -30,7 +30,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Ticket page | Next-step bar, the decision sheet, plan, review findings, escalations, investigation and worklog | `/tickets/[id]` | Live |
 | Path | The stages this Ticket visited, on the same graph | `/tickets/[id]` | Live |
 | Steps timeline | Every wait and every piece of work with its executor, session, client, model, outcome and cost | `/tickets/[id]` | Live |
-| Epics and sub-tickets | Split a plan into sub-tickets that inherit the approval; the parent closes when all are done | `/?view=epics`, `/tickets/[id]` | Live |
+| Epics and sub-tickets | Split a plan into slices that inherit the approval: built one after the other on one epic branch, each reviewed on its own range, then one epic review and one merge | `/?view=epics`, `/tickets/[id]` | Live |
 | Repair | Set the stage, clear a wait, reset counters (with the counters' values), move to the top | `/tickets/[id]` details (Admin) | Live, hard to find |
 | Ticket by number | A link such as `/tickets/n/42`, used by the chat | `/tickets/n/[number]` | Live |
 | Run page | Timeline and list of Steps, tool calls, evidence, goal, gateway tokens, re-run, release lock, relink MR | `/runs/[id]` (Admin) | Live, hard to find |

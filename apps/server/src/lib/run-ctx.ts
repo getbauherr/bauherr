@@ -20,6 +20,7 @@ import { read as readKnowledge } from './knowledge'
 import { kindOfRun } from './stage-text'
 import { docsContext } from './docs-check'
 import { workflowFor } from './factory'
+import type { EpicField, SliceField } from './epic'
 import { byKind, is, nameOf, roleOf, stage as stageOf } from './workflow'
 
 export { tierModels }
@@ -75,8 +76,25 @@ export const providerOf = async (payload: Payload, workspace: number | string, m
   return conn ? presetOf(conn.config) : null
 }
 
-/** The epic/slice fields of the RunCtx (branch, MR title, slice range, epic worklog). Inert until the Ticket carries `epic`/`slice`. */
-const epicFields = (_ticket: Doc): Pick<RunCtx, 'branch' | 'prTitle' | 'slice' | 'epic'> => ({})
+/** The epic/slice fields of the RunCtx (branch, MR title, slice range, epic worklog): a slice gets its epic's branch and range, an epic parent the branch and slices; empty for every other Ticket. */
+const epicFields = async (payload: Payload, ticket: Doc, tickets: { listComments: (n: string) => Promise<{ body: string }[]> }): Promise<Pick<RunCtx, 'branch' | 'prTitle' | 'slice' | 'epic'>> => {
+  const slice = ticket.slice as SliceField | null | undefined
+  const parent = slice ? ((await payload.findByID({ collection: 'tickets', id: slice.epic, depth: 0, overrideAccess: true })) as Doc) : ticket.epic ? ticket : null
+  if (!parent) return {}
+  const epic = parent.epic as EpicField
+  const ids = epic.slices.flatMap((s) => (s.ticket ? [s.ticket] : []))
+  const subs = ids.length ? ((await payload.find({ collection: 'tickets', where: { id: { in: ids } }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) : []
+  const ctx: NonNullable<RunCtx['epic']> = {
+    parent: parent.number,
+    worklog: (await tickets.listComments(String(parent.number))).findLast((c) => c.body.startsWith(WORKLOG_MARKER))?.body ?? '',
+    slices: epic.slices.flatMap((s) => {
+      const sub = subs.find((t) => t.id === s.ticket)
+      const sl = sub?.slice as SliceField | undefined
+      return sub && sl ? [{ number: sub.number as number, title: s.title, prev: sl.prev, head: sl.head, fixes: sl.fixes }] : []
+    }),
+  }
+  return slice ? { branch: slice.branch, prTitle: parent.title, slice: { prev: slice.prev, mergeMain: slice.prev != null }, epic: ctx } : { branch: epic.branch, epic: ctx }
+}
 
 /** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
@@ -129,7 +147,7 @@ export const buildRunCtx = async (
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
       ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
-    ...epicFields(ticket),
+    ...(await epicFields(payload, ticket, tickets)),
     ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
