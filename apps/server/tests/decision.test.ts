@@ -6,7 +6,7 @@ import { GATES } from '../src/app/(app)/lib/gates'
 import { byKind, DEFAULT, graph } from '../src/lib/workflow'
 import { NEED_NODE } from '../src/lib/checkpoints'
 import { parseTldr, tldrError } from '../src/lib/tldr'
-import { PLAN_MARKER, decisionView, decisionsOpen, type Decision } from '../src/app/(app)/lib/plan'
+import { PLAN_MARKER, decisionView, decisionsOpen, fastLaneOf, openDecisionCount, type Decision } from '../src/app/(app)/lib/plan'
 
 const ACTIONS: DecisionAction[] = ['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open']
 const facts = {
@@ -171,15 +171,24 @@ describe('decisionView', () => {
 describe('decisionsOpen', () => {
   const sheet = { body: `${PLAN_MARKER}\n## Decisions\n| # | Question | Options | Default | Why | Critical |\n|---|---|---|---|---|---|\n| D1 | Keep the cache? | yes / no | yes | speed | yes |\n| D2 | Show the banner? | no / yes | no | clutter | no |\n| D3 | Log the retries? | yes / no | yes | debugging | yes |\n` }
 
-  it('counts the unanswered critical rows in the Plan stage', () => {
-    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false })).toBe(2)
+  it('is true for open rows in the Plan stage', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false })).toBe(true)
+    expect(openDecisionCount([sheet], { stageKind: 'plan', approved: false })).toBe(2)
   })
 
-  it('is 0 for a fast-lane Ticket in Build', () => {
-    expect(decisionsOpen([sheet], { stageKind: 'build', approved: false, fastLane: true })).toBe(0)
+  it('is false for a fast-lane Ticket, in Plan and in Build', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false, fastLane: true })).toBe(false)
+    expect(decisionsOpen([sheet], { stageKind: 'build', approved: false, fastLane: true })).toBe(false)
   })
 
-  it('is 0 once the plan is approved', () => {
-    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: true })).toBe(0)
+  it('is false once the plan is approved', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: true })).toBe(false)
+  })
+
+  it('fastLaneOf covers expedite and inherited approval', () => {
+    expect(fastLaneOf({ expedite: true })).toBe(true)
+    expect(fastLaneOf({ inheritedApprovalFrom: 12 })).toBe(true)
+    expect(fastLaneOf({ expedite: false, inheritedApprovalFrom: null })).toBe(false)
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false, fastLane: fastLaneOf({ inheritedApprovalFrom: 12 }) })).toBe(false)
   })
 })

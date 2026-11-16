@@ -1,6 +1,6 @@
 import { workflowFor } from '../factory'
 import type { Payload } from 'payload'
-import { decisionsOpen } from '../../app/(app)/lib/plan'
+import { fastLaneOf, openDecisionCount } from '../../app/(app)/lib/plan'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadOverviewRows, within, FORGE_TIMEOUT_MS } from '../../app/(app)/lib/overview'
 import { ticketsOf, tenantsOf } from '../actions'
@@ -50,7 +50,7 @@ const openDecisionsOf = async (payload: Payload, t: Doc, wf: Workflow): Promise<
   try {
     const ts = await ticketsOf(payload, typeof t.product === 'object' ? t.product.id : t.product)
     const comments = await within(decisionComments(payload, t as Doc, ts), FORGE_TIMEOUT_MS)
-    return decisionsOpen(comments, { stageKind: kindOf(wf, t.stage), approved: (t.labels ?? []).includes(APPROVED_PLAN), fastLane: !!t.expedite || !!t.inheritedApprovalFrom })
+    return openDecisionCount(comments, { stageKind: kindOf(wf, t.stage), approved: (t.labels ?? []).includes(APPROVED_PLAN), fastLane: fastLaneOf(t) })
   } catch {
     return null
   }

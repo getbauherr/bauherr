@@ -131,14 +131,19 @@ export const decisionView = (decisions: Decision[], answers: Record<string, stri
   return { open: unanswered.length, answered: decisions.length - unanswered.length, answerable: sheetOpen ? unanswered.length : 0, defaults: sheetOpen ? [] : unanswered, takenBy: fastLane ? 'fast lane' : 'at approval' }
 }
 
+/** A Ticket that skipped the plan gate: expedite, or the plan approval was inherited from its parent. */
+export const fastLaneOf = (t: { expedite?: boolean | null; inheritedApprovalFrom?: unknown }): boolean => !!t.expedite || !!t.inheritedApprovalFrom
+
 /** Unanswered critical rows the person can still answer: 0 once the plan is approved, the Ticket took the fast lane, or it is past Triage and Plan. */
-export const decisionsOpen = (comments: Commentish[], at: { stageKind: Kind | undefined; approved: boolean; fastLane?: boolean }): number => {
+export const openDecisionCount = (comments: Commentish[], at: { stageKind: Kind | undefined; approved: boolean; fastLane?: boolean }): number => {
   const sheet = sheetOf(comments)
   if (!sheet) return 0
   const decisions = parseDecisions(sheet.body)
   const answers = parseAnswers(answersOf(comments)?.body ?? '')
   return decisionView(decisions, answers, at).answerable ? unansweredCritical(decisions, answers).length : 0
 }
+
+export const decisionsOpen = (comments: Commentish[], at: Parameters<typeof openDecisionCount>[1]): boolean => openDecisionCount(comments, at) > 0
 
 export const unansweredCritical = (decisions: Decision[], answers: Record<string, string>): Decision[] =>
   decisions.filter((d) => d.critical && !answers[d.id])
