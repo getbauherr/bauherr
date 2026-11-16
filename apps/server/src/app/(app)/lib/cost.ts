@@ -93,7 +93,7 @@ const COLS = sql`e."run_id", e."ticket_id", e."stage", e."role", e."model", e."s
  * Session-reported rows are dropped once the gateway has priced the same thing (the gateway is exact): a Run with gateway rows, and every row of a session at or after that session's first gateway row.
  * So a session that moves from the usage hook to the gateway never counts a call twice.
  */
-const EFFECTIVE = sql`NOT (e."source" = 'session-reported' AND (
+export const EFFECTIVE = sql`NOT (e."source" = 'session-reported' AND (
   (e."run_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."run_id" = e."run_id" AND g."source" = 'gateway'))
   OR (e."session_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."session_id" = e."session_id" AND g."source" = 'gateway' AND g."at" <= e."at"))))`
 
