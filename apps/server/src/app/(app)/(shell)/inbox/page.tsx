@@ -16,7 +16,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const { product, checkpoint, t } = await searchParams
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const picked = CHECKPOINTS.find((c) => c === checkpoint)
-  const filters = { product: /^\d+$/.test(product ?? '') ? Number(product) : undefined, checkpoint: picked }
+  const filters = { product: /^\d{1,9}$/.test(product ?? '') ? Number(product) : undefined, checkpoint: picked }
   const owner = isProductOwner(user)
   let inbox
   try {
@@ -31,7 +31,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   }
   const { groups, counts, products, working } = inbox
   const total = Object.values(counts).reduce((n, c) => n + c, 0)
-  const { selected, detail, stale } = resolveSelection(groups, /^\d+$/.test(t ?? '') ? Number(t) : undefined)
+  const { selected, detail, stale } = resolveSelection(groups, /^\d{1,9}$/.test(t ?? '') ? Number(t) : undefined)
   const wf = workflowFor(workspace.id)
   const nodes = graph(wf).nodes
   const workflowHref = Object.fromEntries(CHECKPOINTS.flatMap((c) => { const id = nodes.find((n) => n.checkpoint && n.id.includes(':') && n.title === c)?.id ?? (c === 'Review' ? byKind(wf, 'review')?.name : undefined); return id ? [[c, `/?stage=${encodeURIComponent(id)}`]] : [] }))
