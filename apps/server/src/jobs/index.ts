@@ -39,7 +39,7 @@ import { scheduled } from '../lib/schedule'
 import { startSecurityScan } from '../lib/security-scan'
 import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
-import { inLiveWorkspace, live } from '../lib/workspace-delete'
+import { inLiveWorkspace, live, purgeDueWorkspaces } from '../lib/workspace-delete'
 import { PREEMPT_GRACE_MS, preemptSweep, preemptedRun } from '../lib/preempt'
 import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
@@ -944,6 +944,18 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   },
 }
 
+/** Daily: hard-deletes every archived Workspace past its `purgeAt` (see `purgeWorkspace`); a failure is logged and retried the next day. */
+export const purgeWorkspacesTask: TaskConfig<{ input: Record<string, never>; output: { purged: number } }> = {
+  slug: 'purge-workspaces',
+  schedule: scheduled('0 0 4 * * *'),
+  retries: 0,
+  handler: async ({ req }) => {
+    const purged = await purgeDueWorkspaces(req.payload)
+    if (purged.length) req.payload.logger.info({ purged }, 'purge-workspaces')
+    return { output: { purged: purged.length } }
+  },
+}
+
 /** Products scanned per tick; the rest wait for the next hour. */
 export const SCANS_PER_TICK = 5
 
@@ -990,4 +1002,4 @@ export const securityScanTick: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, storeCiSummaryTask, securityScanTick]
+export const TASKS = [pollTickets, runStage, mergeMainTask, distillSkillTask, expireSessions, reclaimJobs, reconcileCosts, pruneRequestLogsTask, watchGatewayTask, refreshPricesTask, pruneCommentMediaTask, watchReleaseTask, watchReviewsTask, watchProductionTask, resumeReviewsTask, publishReleaseTask, notifyGatesTask, syncProgressTask, resyncKnowledge, watchKnowledgePrsTask, watchLivenessTask, storeCiSummaryTask, securityScanTick, purgeWorkspacesTask]
