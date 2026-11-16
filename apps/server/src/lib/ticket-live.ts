@@ -4,7 +4,7 @@ type Track = { waitingFor?: string | null; reviewState?: string | null; releaseC
 
 /** The Ticket waits for the checks of its merge request or release. */
 export const ciWait = (wf: Workflow, stage: string, t: Track): boolean =>
-  t.waitingFor === 'checks' || (is(wf, stage, 'review') && t.reviewState === 'waiting_checks') || t.releaseChecksState === 'pending' || t.releaseChecksState === 'waiting'
+  t.waitingFor === 'checks' || (is(wf, stage, 'review') && t.reviewState === 'waiting_checks') || t.releaseChecksState === 'waiting'
 
 /** "Open pull request #88 on GitHub" / "Open merge request !88 on GitLab" / "Open merge request", linking `url`; null without a URL. */
 export const forgeButton = (kind: 'github' | 'gitlab' | null | undefined, url: string | null | undefined): { label: string; href: string } | null => {

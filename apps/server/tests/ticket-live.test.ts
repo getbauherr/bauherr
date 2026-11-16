@@ -12,7 +12,6 @@ const MR = 'https://gitlab.com/o/r/-/merge_requests/88'
 const waits: [string, string, Record<string, string>][] = [
   ['waitingFor checks', 'build', { waitingFor: 'checks' }],
   ['reviewState waiting_checks', 'review', { reviewState: 'waiting_checks' }],
-  ['releaseChecksState pending', 'release', { releaseChecksState: 'pending' }],
   ['releaseChecksState waiting', 'release', { releaseChecksState: 'waiting' }],
 ]
 const row = (stage: string, track: Record<string, string>): StatusRow => ({ open: true, stage, needsYou: null, blockedBy: [], queuedWhy: null, run: { ...running, stage, mode: 'autonomous', createdAt: running.startedAt }, owner: null, forge: 'github', gate: null, track })
@@ -30,6 +29,8 @@ describe('ticketLive', () => {
     expect(step.reason).toContain('Waiting for CI')
     for (const text of [live.chip, live.sentence, s.label, s.detail ?? '', step.label, step.reason]) expect(text).not.toMatch(lie)
   })
+  it('a CI wait without a running Run still gets the forge button, not a primary', () =>
+    expect(nextStep({ wf, ticket: { stage: 'review', reviewState: 'waiting_checks' }, need: null, run: null, waiting: null, blockers: [], admin: false, forge: 'gitlab', prUrl: MR })).toMatchObject({ label: 'Waiting for CI', reason: 'Waiting for CI.', forge: { label: 'Open merge request !88 on GitLab' } }))
   it('review waiting_checks outside review is not a CI wait', () => expect(ciWait(wf, 'build', { reviewState: 'waiting_checks' })).toBe(false))
   it('a running Run without a wait is Working', () => {
     expect(ticketLive({ ci: false, run: running }, now)).toMatchObject({ chip: 'Working', tone: 'accent', sentence: 'Working. Started 3 min ago.', forge: null })

@@ -68,7 +68,7 @@ const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | nul
   if (at('review') && t.reviewState === 'queued') return { label: 'Waiting on merge queue', detail: 'the merge request is in the merge queue' }
   if (at('release') && t.releaseState === 'waiting') return { label: 'Waiting on deploy', detail: 'the staging deploy' }
   if (at('release') && t.productionState === 'deploying') return { label: 'Waiting on deploy', detail: 'the production deploy' }
-  if (t.releaseChecksState === 'waiting' || t.releaseChecksState === 'pending') return { label: 'Waiting for CI', detail: 'the release checks' }
+  if (t.releaseChecksState === 'waiting') return { label: 'Waiting for CI', detail: 'the release checks' }
   return null
 }
 
