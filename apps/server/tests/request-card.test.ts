@@ -150,7 +150,7 @@ it('an urgent request of a member asks for the fast lane at once: the proposal l
   const row = await byNumber(number)
   expect(row).toMatchObject({ needsYou: 'Expedite?', expedite: false })
   expect(row.decision).toMatchObject({ ask: expect.stringContaining('Fast lane for'), why: expect.arrayContaining([expect.stringContaining('Checkout is down for all customers')]) })
-  const inbox = await (await import('../src/app/(app)/lib/inbox')).loadInbox(ws, { role: 'admin' })
+  const inbox = await (await import('../src/app/(app)/lib/inbox')).loadInbox(ws, { id: 1, role: 'admin' })
   expect(inbox.groups[0]!.items[0]!.decision.ask).toContain('Fast lane for')
 })
 

@@ -71,6 +71,9 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
   access: { read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly, ...extra.access },
 })
 
+/** A person sees and changes only their own rows (`user`). */
+const ownRow = ({ req }: { req: { user?: object | null } }) => (isBauherr(req.user as Doc | null) ? { user: { equals: (req.user as Doc).id } } : false)
+
 /** What a Product owner may write on their own account. */
 const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
 
@@ -985,6 +988,13 @@ export const collections: CollectionConfig[] = [
     text('claudeSession', { required: true, admin: { description: "The client's own session id (Claude Code `session_id`)." } }),
     json('totals'),
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['session', 'claudeSession'], unique: true }] }),
+  col('inbox_seen', [
+    rel('user', 'bauherren', { required: true }),
+    rel('ticket', 'tickets', { required: true }),
+    text('need', { required: true }),
+    text('since', { required: true, admin: { description: 'The `openSince` of the decision that was opened; a newer decision of the same need is unread again.' } }),
+    date('seenAt'),
+  ], { access: { read: ownRow, create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['user', 'ticket', 'need', 'since'], unique: true }] }), // written only by `markSeen` (overrideAccess), which ties `user` to the caller
   col('instance_state', [text('key', { required: true, unique: true }), json('value')], { access: { read: () => false, create: () => false, update: () => false, delete: () => false } }),
   ...chatCollections,
 ]
