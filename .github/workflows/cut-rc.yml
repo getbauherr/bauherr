@@ -1,0 +1,48 @@
+name: cut-rc
+# Tags the next release candidate on main HEAD and starts release.yml for it (image :X.Y.Z-rc.N, npm tag next), then keeps the draft GitHub Release of X.Y.Z up to date.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Bump of the latest final version (ignored while an unpromoted RC of that target exists)
+        type: choice
+        options: [patch, minor, major]
+        default: minor
+permissions:
+  contents: read
+concurrency:
+  group: release-cut
+  cancel-in-progress: false
+jobs:
+  cut:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # pushes the tag and writes the draft release
+      actions: write # starts release.yml (tags pushed with GITHUB_TOKEN trigger nothing)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUMP: ${{ inputs.bump }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {fetch-depth: 0}
+      - name: Tag, build and draft the release
+        run: |
+          read -r tag last < <(.github/scripts/rc-tags.sh next "$BUMP")
+          sha=$(git rev-parse HEAD)
+          version=${tag#v}
+          final=v${version%-rc.*}
+          git tag "$tag" "$sha"
+          git push origin "refs/tags/$tag"
+          gh workflow run release.yml --ref "$tag"
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$final" -f target_commitish="$sha" \
+            ${last:+-f previous_tag_name="$last"} --jq .body > "$RUNNER_TEMP/notes.md"
+          printf 'Release candidate %s (image ghcr.io/getbauherr/bauherr:%s). Promote it with the "promote" workflow.\n\n' "$tag" "$version" | cat - "$RUNNER_TEMP/notes.md" > "$RUNNER_TEMP/body.md"
+          # drafts are not found by tag, only in the list
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$final\") | .id" | head -n1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f target_commitish="$sha" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          else
+            gh release create "$final" --draft --target "$sha" --title "$final" --notes-file "$RUNNER_TEMP/body.md"
+          fi
+          echo "Cut $tag at $sha; release.yml builds ghcr.io/getbauherr/bauherr:$version." | tee -a "$GITHUB_STEP_SUMMARY"
