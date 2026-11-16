@@ -66,3 +66,24 @@ test('a Bauherr gets a 404 on Connections and so sees no Monitoring group', asyn
   await signIn(page, 'monitoring-bauherr@example.com')
   expect((await page.goto('/settings/connections'))?.status()).toBe(404)
 })
+
+test('Admin connects Prometheus: the scrape token and snippet show once, the metrics address refuses without it, an unreachable Prometheus fails in plain words', async ({ page, request }) => {
+  await signIn(page, email)
+  const region = await open(page, 'Prometheus')
+  await region.getByLabel('Prometheus address').fill('http://127.0.0.1:59999')
+  await region.getByRole('button', { name: 'Connect' }).click()
+  const snippet = region.getByRole('status').filter({ hasText: 'job_name: bauherr' })
+  await expect(snippet).toContainText('metrics_path: /-/metrics')
+  const token = /bhm_[A-Za-z0-9_-]{43}/.exec((await snippet.textContent()) ?? '')?.[0]
+  expect(token).toBeTruthy()
+
+  expect((await request.get('/-/metrics')).status()).toBe(401)
+  expect((await request.get('/-/metrics', { headers: { authorization: 'Bearer wrong' } })).status()).toBe(401)
+
+  await page.reload()
+  expect(await page.content()).not.toContain(token!)
+  await page.getByRole('region', { name: 'Prometheus', exact: true }).getByRole('button', { name: 'Test connection' }).click()
+  await expect(page.getByRole('region', { name: 'Prometheus', exact: true }).getByRole('alert').filter({ hasText: 'Cannot reach http://127.0.0.1:59999 (connection refused)' })).toBeVisible()
+  await open(page, 'Prometheus')
+  expect((await request.get('/-/metrics', { headers: { authorization: `Bearer ${token}` } })).status()).toBe(401) // removed with the Connection
+})

@@ -10,7 +10,7 @@ import { Table } from '../../../components/ui/table'
 import { connectionPresets as presets, isAdmin, loadConnections } from '../../../lib/settings'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { loadMonitoring, OFFERED, TITLES, type MonitoringView, type Service } from '../../../../../lib/monitoring'
-import { removeMonitoring, saveMonitoring, testMonitoringAction, verifyConnection } from '../actions'
+import { removeMonitoring, rotateScrapeToken, saveMonitoring, testMonitoringAction, verifyConnection } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +18,7 @@ const chip = { ok: ['ok', 'Verified'], failed: ['destructive', 'Failed'], none: 
 
 const HELP: Record<string, string> = {
   otlp: 'Where the gateway sends its request traces (OTLP). Changes apply without a restart. Removing it restores the bundled setup.',
+  prometheus: "Your Prometheus pulls Bauherr's metrics from /-/metrics with a token that is shown once, with the scrape_configs snippet to paste. The address below lets Test connection check that Prometheus scrapes Bauherr.",
   grafana: 'Adds an "Open dashboards" link to AI usage and Health.',
 }
 
@@ -32,10 +33,10 @@ function Monitoring({ service, value }: { service: Service; value?: MonitoringVi
         <p className="small m-0 flex flex-wrap items-center gap-2">
           <Badge variant={chip[value.status][0]}>{chip[value.status][1]}</Badge>
           {value.detail && <span className="text-muted-foreground">{value.status === 'ok' ? value.detail.slice(0, 16).replace('T', ' ') : value.detail}</span>}
-          {value.hasSecret && <span className="text-muted-foreground">{service === 'otlp' ? 'Header value' : 'Token'} saved, never shown again</span>}
+          {value.hasSecret && <span className="text-muted-foreground">{service === 'otlp' ? 'Header value' : service === 'prometheus' ? 'API token' : 'Token'} saved, never shown again</span>}
         </p>
       )}
-      <SettingsForm action={saveMonitoring} submit={value ? 'Save' : 'Connect'} primary={!value}>
+      <SettingsForm action={saveMonitoring} submit={value ? 'Save' : 'Connect'} primary={!value} copy={service === 'prometheus'}>
         {value && <input type="hidden" name="id" value={value.id} />}
         <input type="hidden" name="service" value={service} />
         {service === 'otlp' ? (
@@ -45,6 +46,11 @@ function Monitoring({ service, value }: { service: Service; value?: MonitoringVi
             <Field name="headerName" label="Auth header name (optional)" example="authorization" defaultValue={c.headerName} />
             <Field name="secret" label="Auth header value" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Written into the gateway's config.yaml (0600), not into the browser. Not offered by every collector." />
             <Field name="uiUrl" label="Traces UI address (optional)" type="url" example="https://jaeger.example.com" hint={'Where "Open traces" goes.'} defaultValue={c.uiUrl} />
+          </>
+        ) : service === 'prometheus' ? (
+          <>
+            <Field name="url" label="Prometheus address" type="url" example="https://prometheus.example.com" hint="Where Bauherr asks whether the target is up." defaultValue={c.url} required />
+            <Field name="secret" label="Prometheus API token (optional)" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Only used by Test connection, when your Prometheus API needs a bearer token." />
           </>
         ) : (
           <>
@@ -57,6 +63,7 @@ function Monitoring({ service, value }: { service: Service; value?: MonitoringVi
       {value && (
         <div className="flex flex-wrap items-center gap-3">
           <SettingsForm action={testMonitoringAction} submit="Test connection" inline><input type="hidden" name="id" value={value.id} /></SettingsForm>
+          {service === 'prometheus' && <SettingsForm action={rotateScrapeToken} submit="New scrape token" confirm="Yes, replace the token (the old one stops working)" inline copy><input type="hidden" name="id" value={value.id} /></SettingsForm>}
           <SettingsForm action={removeMonitoring} submit="Remove" confirm={`Yes, remove ${title}`} inline><input type="hidden" name="id" value={value.id} /></SettingsForm>
         </div>
       )}

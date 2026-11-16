@@ -64,7 +64,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
             {status}
           </div>
         )}
-        {state.notice && (copy ? <CopyField text={state.notice} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
+        {state.notice && (copy ? <CopyField text={state.notice} block={state.notice.includes('\n')} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
       </form>
     </Ctx>
   )

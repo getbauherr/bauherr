@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { connect } from 'node:net'
 import type { Payload, PayloadRequest } from 'payload'
 import { syncManagedConfig } from './gateway'
@@ -5,8 +6,7 @@ import { decrypt } from './secrets'
 
 export const SERVICES = ['otlp', 'prometheus', 'grafana'] as const
 export type Service = (typeof SERVICES)[number]
-/** Services a person can connect today; `prometheus` is refused until the scrape endpoint ships. */
-export const OFFERED: readonly Service[] = ['otlp', 'grafana']
+export const OFFERED: readonly Service[] = ['otlp', 'prometheus', 'grafana']
 export const TITLES: Record<Service, string> = { otlp: 'Traces (OTLP)', prometheus: 'Prometheus', grafana: 'Grafana' }
 export const TIMEOUT_MS = 5000
 
@@ -30,7 +30,7 @@ export const webUrl = (v: unknown): URL | null => {
 export const monitoringErrors = (service: Service | undefined, config: Cfg, secret: string | undefined, hasSecret: boolean): Issue[] => {
   const out: Issue[] = []
   const bad = (path: string, message: string) => out.push({ path, message })
-  if (!service || !OFFERED.includes(service)) return [{ path: 'service', message: service === 'prometheus' ? 'Prometheus is not available yet' : 'choose Traces (OTLP) or Grafana' }]
+  if (!service || !OFFERED.includes(service)) return [{ path: 'service', message: 'choose Traces (OTLP), Prometheus or Grafana' }]
   if (secret && /[\r\n]/.test(secret)) bad('secret', 'must be one line')
   if (service === 'otlp') {
     const m = HOST.exec(String(config.host ?? ''))
@@ -41,7 +41,10 @@ export const monitoringErrors = (service: Service | undefined, config: Cfg, secr
     if (name && !secret && !hasSecret) bad('secret', 'required with a header name')
     if (!name && secret) bad('headerName', 'required with a header value')
     if (config.uiUrl && !webUrl(config.uiUrl)) bad('uiUrl', 'must be an http(s) URL without credentials')
-  } else if (!webUrl(config.url)) bad('url', 'must be an http(s) URL without credentials, e.g. https://grafana.example.com')
+  } else {
+    if (!webUrl(config.url)) bad('url', `must be an http(s) URL without credentials, e.g. https://${service}.example.com`)
+    if (service === 'prometheus' && !/^[a-f0-9]{64}$/.test(String(config.tokenHash ?? ''))) bad('tokenHash', 'the scrape token is minted on saving')
+  }
   return out
 }
 
@@ -87,6 +90,27 @@ export const savedGrafanaUrl = async (payload: Payload): Promise<string | undefi
   return webUrl(url) ? String(url) : undefined
 }
 
+/** Job name of the scrape snippet and of the check that Prometheus scrapes Bauherr. */
+export const SCRAPE_JOB = 'bauherr'
+const sha256 = (v: string): Buffer => createHash('sha256').update(v).digest()
+
+/** A new scrape token and the hash that is stored; the token itself is shown once and never kept. */
+export const mintScrapeToken = (): { token: string; hash: string } => {
+  const token = `bhm_${randomBytes(32).toString('base64url')}`
+  return { token, hash: sha256(token).toString('hex') }
+}
+
+/** The `scrape_configs` entry to paste into Prometheus (`origin` is where Prometheus reaches Bauherr). */
+export const scrapeSnippet = (origin: URL, token: string): string =>
+  `scrape_configs:\n  - job_name: ${SCRAPE_JOB}\n    scheme: ${origin.protocol.slice(0, -1)}\n    metrics_path: /-/metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: ['${origin.host}']`
+
+/** Whether `presented` is the scrape token of the saved Prometheus Connection: compares hashes in constant time, false without a Connection. */
+export const scrapeTokenValid = async (payload: Payload, presented: string): Promise<boolean> => {
+  const stored = String((await monitoringRows(payload, undefined, 'prometheus'))[0]?.config?.tokenHash ?? '')
+  const want = Buffer.from(/^[a-f0-9]{64}$/.test(stored) ? stored : '0'.repeat(64), 'hex')
+  return timingSafeEqual(sha256(presented), want) && /^[a-f0-9]{64}$/.test(stored)
+}
+
 export type TestResult = { ok: true; message: string } | { ok: false; message: string }
 
 const WHY: Record<string, string> = { ECONNREFUSED: 'connection refused', ETIMEDOUT: 'timed out', ENOTFOUND: 'host not found', EHOSTUNREACH: 'host unreachable', ENETUNREACH: 'network unreachable', ECONNRESET: 'connection reset' }
@@ -120,6 +144,19 @@ const get = async (url: URL, path: string, token: string | undefined, timeoutMs:
   }
 }
 
+/** Asks Prometheus whether it scrapes Bauherr (`up{job="bauherr"}`); only a fixed phrase, the origin and a reason leave this function. */
+const testPrometheus = async (url: URL, secret: string | null, timeoutMs: number): Promise<TestResult> => {
+  const res = await get(url, `api/v1/query?query=${encodeURIComponent(`up{job="${SCRAPE_JOB}"}`)}`, secret ?? undefined, timeoutMs)
+  if (typeof res === 'string') return { ok: false, message: res }
+  if (res.status >= 300 && res.status < 400) return { ok: false, message: `${url.origin} redirected instead of answering: use the address Prometheus itself serves (HTTP ${res.status})` }
+  if (res.status === 401 || res.status === 403) return { ok: false, message: `${url.origin} did not accept the token (HTTP ${res.status})` }
+  const body = res.body as { status?: unknown; data?: { result?: { value?: unknown[] }[] } } | null
+  if (res.status !== 200 || body?.status !== 'success' || !Array.isArray(body.data?.result)) return { ok: false, message: `${url.origin} did not answer like Prometheus (HTTP ${res.status})` }
+  const up = body.data.result[0]?.value?.[1]
+  if (up === undefined) return { ok: false, message: `Prometheus answered, but it has not scraped Bauherr yet (no up{job="${SCRAPE_JOB}"}). Add the scrape snippet to its config.` }
+  return up === '1' ? { ok: true, message: "Prometheus answered and Bauherr's metrics target is up" } : { ok: false, message: "Prometheus answered, but Bauherr's metrics target is down (the scrape fails: check the address and the token)" }
+}
+
 /** Plain-word check of one monitoring Connection (`secret` is the decrypted credential, if any). Nothing but a fixed phrase, the host and a reason leaves this function. */
 export const testMonitoring = async (service: Service, config: Cfg, secret: string | null, timeoutMs = TIMEOUT_MS): Promise<TestResult> => {
   if (service === 'otlp') {
@@ -128,7 +165,8 @@ export const testMonitoring = async (service: Service, config: Cfg, secret: stri
     return failure ? { ok: false, message: `Cannot reach ${config.host} (${failure})` } : { ok: true, message: `Reachable: ${config.host} accepts connections. The gateway sends traces there; this check does not send one.` }
   }
   const url = webUrl(config.url)
-  if (service !== 'grafana' || !url) return { ok: false, message: 'Not available yet' }
+  if (!url) return { ok: false, message: 'Not a valid address' }
+  if (service === 'prometheus') return testPrometheus(url, secret, timeoutMs)
   const health = await get(url, 'api/health', undefined, timeoutMs)
   if (typeof health === 'string') return { ok: false, message: health }
   if (health.status >= 300 && health.status < 400) return { ok: false, message: `${url.origin} redirected instead of answering: use the address Grafana itself serves (HTTP ${health.status})` }
@@ -151,7 +189,7 @@ export const loadMonitoring = async (payload: Payload): Promise<Partial<Record<S
       r.service,
       {
         id: Number(r.id),
-        config: Object.fromEntries(Object.entries(r.config ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>,
+        config: Object.fromEntries(Object.entries(r.config ?? {}).filter(([k, v]) => typeof v === 'string' && k !== 'tokenHash')) as Record<string, string>,
         hasSecret: !!r.secret,
         status: r.capabilities?.lastError ? 'failed' : r.capabilities?.verifiedAt ? 'ok' : 'none',
         detail: String(r.capabilities?.lastError ?? r.capabilities?.verifiedAt ?? ''),

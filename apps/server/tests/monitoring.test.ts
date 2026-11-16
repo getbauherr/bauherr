@@ -47,14 +47,15 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('validates per service, refuses prometheus and a second entry of one service', async () => {
+it('validates per service and refuses a second entry of one service', async () => {
   await expect(make('otlp', { host: 'no-port' })).rejects.toThrow()
   await expect(make('otlp', { host: 'a.example:99999' })).rejects.toThrow()
   await expect(make('otlp', { host: 'a.example:4317', headerName: 'authorization' })).rejects.toThrow()
   await expect(make('otlp', { host: 'a.example:4317', uiUrl: 'javascript:alert(1)' })).rejects.toThrow()
   await expect(make('grafana', { url: 'https://user:pw@g.example' })).rejects.toThrow()
   await expect(make('grafana', { url: 'ftp://g.example' })).rejects.toThrow()
-  await expect(make('prometheus', { url: 'https://p.example' })).rejects.toThrow()
+  await expect(make('prometheus', { url: 'https://p.example' })).rejects.toThrow() // no scrape token hash
+  await expect(make('prometheus', { url: 'https://p.example', tokenHash: 'not-a-hash' })).rejects.toThrow()
   const g = await make('grafana', { url: 'https://g.example' })
   expect(g.config).toEqual({ url: 'https://g.example' })
   await expect(make('grafana', { url: 'https://other.example' })).rejects.toThrow()
@@ -188,4 +189,93 @@ it('the test: TCP reachable or a plain refusal, Grafana health and token, no red
   expect(slow.message).toContain('timed out')
   hang.closeAllConnections()
   hang.close()
+})
+
+const prom = async (token: string, extra: Record<string, unknown> = {}) => {
+  const { createHash } = await import('node:crypto')
+  return make('prometheus', { url: 'https://p.example', tokenHash: createHash('sha256').update(token).digest('hex') }, extra)
+}
+
+it('the scrape token is checked against a stored hash: right token only, never the token itself at rest or in a read', async () => {
+  const { scrapeTokenValid, mintScrapeToken } = await import('../src/lib/monitoring')
+  expect(await scrapeTokenValid(payload, 'anything')).toBe(false) // no Prometheus Connection
+  const { token, hash } = mintScrapeToken()
+  expect(token).toMatch(/^bhm_[A-Za-z0-9_-]{43}$/)
+  const row = await make('prometheus', { url: 'https://p.example', tokenHash: hash }, { secret: SECRET })
+  expect(await scrapeTokenValid(payload, token)).toBe(true)
+  expect(await scrapeTokenValid(payload, `${token}x`)).toBe(false)
+  expect(await scrapeTokenValid(payload, hash)).toBe(false) // the stored hash is not a credential
+  expect(await scrapeTokenValid(payload, '')).toBe(false)
+  const stored = JSON.stringify(await payload.findByID({ collection: 'connections', id: row.id, showHiddenFields: true, ...o }))
+  expect(stored).not.toContain(token)
+  const { loadMonitoring } = await import('../src/lib/monitoring')
+  const view = (await loadMonitoring(payload)).prometheus!
+  expect(JSON.stringify(view)).not.toContain(hash)
+  expect(JSON.stringify(view)).not.toContain(SECRET)
+  expect(view).toMatchObject({ config: { url: 'https://p.example' }, hasSecret: true })
+  await payload.update({ collection: 'connections', id: row.id, data: { config: { url: 'https://q.example' }, name: 'x' } as never, ...o })
+  expect(await scrapeTokenValid(payload, token)).toBe(true) // a save without a new hash keeps the token
+  await wipe()
+})
+
+it('/-/metrics: 401 without or with a wrong token, the gateway text with the right one, 502 when the gateway is down', async () => {
+  const { GET } = await import('../src/app/-/metrics/route')
+  const call = (auth?: string) => GET(new Request('http://x/-/metrics', { headers: auth ? { authorization: auth } : {} }))
+  await prom('right-token')
+  const gw = createServer((_q, res) => (res.setHeader('content-type', 'text/plain; version=0.0.4'), res.end('# TYPE up gauge\nagentgateway_up 1\n'))).listen(0, '127.0.0.1')
+  await new Promise((r) => gw.once('listening', r))
+  process.env.GATEWAY_METRICS_URL = `http://127.0.0.1:${(gw.address() as { port: number }).port}/metrics`
+  for (const bad of [undefined, 'Bearer wrong', 'Bearer ', 'right-token', 'Basic right-token', 'Bearer right-token extra']) {
+    const res = await call(bad)
+    expect(res.status, String(bad)).toBe(401)
+    expect(await res.text()).not.toContain('agentgateway_up')
+  }
+  const ok = await call('Bearer right-token')
+  expect(ok.status).toBe(200)
+  expect(ok.headers.get('content-type')).toContain('text/plain')
+  expect(await ok.text()).toBe('# TYPE up gauge\nagentgateway_up 1\n')
+  gw.close()
+  await new Promise((r) => setTimeout(r, 20))
+  expect((await call('Bearer right-token')).status).toBe(502)
+  await wipe()
+  expect((await call('Bearer right-token')).status).toBe(401) // removing the Connection closes the endpoint
+  delete process.env.GATEWAY_METRICS_URL
+})
+
+it('the snippet names the job, path and target, and holds the token once', async () => {
+  const { scrapeSnippet } = await import('../src/lib/monitoring')
+  const snippet = scrapeSnippet(new URL('https://bauherr.example.com'), 'bhm_x')
+  expect(parse(snippet)).toEqual({ scrape_configs: [{ job_name: 'bauherr', scheme: 'https', metrics_path: '/-/metrics', authorization: { type: 'Bearer', credentials: 'bhm_x' }, static_configs: [{ targets: ['bauherr.example.com'] }] }] })
+})
+
+it('Prometheus test: up, not scraped yet, target down, wrong token, not Prometheus, unreachable', async () => {
+  const { testMonitoring } = await import('../src/lib/monitoring')
+  const results: Record<string, unknown> = {}
+  let seen = ''
+  const server = createServer((req, res) => {
+    seen = `${req.url} ${req.headers.authorization ?? ''}`
+    const u = new URL(req.url!, 'http://x')
+    if (u.pathname === '/api/v1/query') {
+      if (req.headers.authorization !== `Bearer ${SECRET}`) return void ((res.statusCode = 401), res.end('{}'))
+      return void res.end(JSON.stringify({ status: 'success', data: { result: results.result } }))
+    }
+    res.statusCode = 404
+    res.end()
+  }).listen(0, '127.0.0.1')
+  await new Promise((r) => server.once('listening', r))
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  results.result = [{ metric: {}, value: [1, '1'] }]
+  expect(await testMonitoring('prometheus', { url: base }, SECRET)).toEqual({ ok: true, message: "Prometheus answered and Bauherr's metrics target is up" })
+  expect(decodeURIComponent(seen)).toBe(`/api/v1/query?query=up{job="bauherr"} Bearer ${SECRET}`)
+  results.result = []
+  expect(await testMonitoring('prometheus', { url: base }, SECRET)).toMatchObject({ ok: false, message: expect.stringContaining('not scraped Bauherr yet') })
+  results.result = [{ metric: {}, value: [1, '0'] }]
+  expect(await testMonitoring('prometheus', { url: base }, SECRET)).toMatchObject({ ok: false, message: expect.stringContaining('target is down') })
+  const wrong = await testMonitoring('prometheus', { url: base }, 'other-token')
+  expect(wrong).toMatchObject({ ok: false, message: expect.stringContaining('did not accept the token') })
+  expect(JSON.stringify(wrong)).not.toContain('other-token')
+  expect(await testMonitoring('prometheus', { url: `${base}/nope` }, SECRET)).toMatchObject({ ok: false, message: expect.stringContaining('did not answer like Prometheus') })
+  server.close()
+  await new Promise((r) => setTimeout(r, 20))
+  expect(await testMonitoring('prometheus', { url: base }, SECRET)).toEqual({ ok: false, message: `Cannot reach ${base} (connection refused)` })
 })
