@@ -40,7 +40,7 @@ import { startSecurityScan } from '../lib/security-scan'
 import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
 import { inLiveWorkspace, live } from '../lib/workspace-delete'
-import { PREEMPT_GRACE_MS, preemptSweep } from '../lib/preempt'
+import { PREEMPT_GRACE_MS, preemptSweep, preemptedRun } from '../lib/preempt'
 import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
 
@@ -187,7 +187,7 @@ export const startReviewIfReady = async (payload: Payload, t: Record<string, any
 export const RELEASED_BY = 'released by '
 
 /**
- * Ends a leased session Run as `abandoned` and queues a successor Run (same Ticket, stage, mode, Workspace; `previousRun` set), in one transaction.
+ * Ends a leased session Run, or a Runner Run that stopped for a hotfix, as `abandoned` and queues a successor Run (same Ticket, stage, mode, Workspace; `previousRun` set; a Runner successor also gets its `run-stage` job), in one transaction.
  * With `escalate`, a Run whose predecessor was also abandoned (not by a human release) goes `needs_human` instead (no successor, Ticket Comment).
  * The end is a conditional UPDATE (running, and with `staleBefore` still stale), so a heartbeat or finish that won the race keeps the Run.
  * Returns the new status, or null if the Run was not (stale and) running.
@@ -204,20 +204,23 @@ export const abandonRun = async (
   const escalation = run.escalation ?? (o.preempted || run.investigation || ['triage', 'scan', 'docs'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const reasonKind = status === 'needs_human' ? 'stuck' : o.preempted ? 'preempted' : null
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
+  let successor: number | null = null
   const ended = await payload.db.drizzle.transaction(async (tx: any) => {
     const done = await tx.execute(
-      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running'${stale} RETURNING "id"`,
+      sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "status" = 'running'${stale} RETURNING "id"`,
     )
     if (!done.rows.length) return false
     // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
-      await tx.execute(
-        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation", "preempted_by", "preempted_for") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, 'awaiting_session', ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb, ${o.preempted ? run.preemptedBy ?? null : null}, ${o.preempted ? run.preemptedFor ?? null : null})`,
+      const inserted = await tx.execute(
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation", "preempted_by", "preempted_for") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, ${run.mode === 'session' ? 'awaiting_session' : 'queued'}, ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb, ${o.preempted ? run.preemptedBy ?? null : null}, ${o.preempted ? run.preemptedFor ?? null : null}) RETURNING "id"`,
       )
+      successor = inserted.rows[0].id
     }
     return true
   })
   if (!ended) return null
+  if (successor && run.mode === 'autonomous') await payload.jobs.queue({ task: 'run-stage', queue: 'runs', input: { runId: successor } })
   await record(payload, id(run.ticket), { run: run.id, outcome: status, cause: 'run:abandoned' })
   if (status === 'abandoned' && !o.preempted && escalation?.step === 2) {
     try {
@@ -738,7 +741,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (!(await findLlmProvider(payload, run.workspace))) throw new Error('no LLM provider connected')
       const ws = (await payload.findByID({ collection: 'workspaces', id: id(run.workspace), ...opts, showHiddenFields: true })) as { gatewayKey?: string }
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
-      const ctx = await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })
+      const ctx = { ...(await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })), shouldStop: () => preemptedRun(payload, run.id) }
       const model = ctx.run.model ?? ctx.connection.modelByTier[ctx.run.tier]
       await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', role: roleOf(wf, run.stage)?.id, model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
       const ran = await exec(ctx)
@@ -748,6 +751,12 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       // Ended while it ran (sendBack, cancel): its result is dropped, the Run keeps the status it was given.
       const now = (await payload.findByID({ collection: 'runs', id: run.id, ...opts })).status as string
       if (now !== 'running') return { output: { status: now } }
+      if (r.status === 'preempted') {
+        const marked = await payload.findByID({ collection: 'runs', id: run.id, ...opts })
+        await payload.update({ collection: 'runs', id: run.id, data: { tokensIn: r.usage.inputTokens, tokensOut: r.usage.outputTokens, tokensCache: r.usage.cacheRead + r.usage.cacheWrite, costEstimateUsd: r.usage.costEstimateUsd }, ...opts })
+        await abandonRun(payload, marked, { reason: r.reason ?? 'preempted by a hotfix', escalate: false, preempted: true })
+        return { output: { status: 'abandoned' } }
+      }
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review, { round: reviewRoundOf(ticket), demote: true }) : null
       let agent: { outcome: string; comment?: string } | null = null
       let agentError: string | undefined

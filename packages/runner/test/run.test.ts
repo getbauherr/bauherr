@@ -106,6 +106,35 @@ test('runStage build: 29 changed lines skip the self-review', { timeout: 120_000
   }
 });
 
+test('runStage build: shouldStop stops the agent at the next tool boundary, the branch is pushed and kept, no self-review and no MR', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(40, [{ severity: 'high', file: 'src/a.ts', line: 1, msg: 'bad', scenario: 's' }]);
+  let polls = 0;
+  ctx.shouldStop = async () => ++polls > 0;
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'preempted', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(polls, 1);
+    assert.ok(res.artifacts.pushedSha);
+    assert.equal(execFileSync('git', ['rev-parse', 'refs/heads/bauherr/7-r1'], { cwd: bare(ctx) }).toString().trim(), res.artifacts.pushedSha);
+    assert.equal(ctx.prs.length, 0);
+    assert.ok(gw.seen.every((s) => !s.body.includes('Self-review of your own')));
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: shouldStop false leaves the Run untouched', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(2, []);
+  ctx.shouldStop = async () => false;
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(ctx.prs.length, 1);
+  } finally {
+    await gw.close();
+  }
+});
+
 test('runStage build: 30 changed lines run the self-review on the cheap tier and one fix pass', { timeout: 120_000 }, async () => {
   const { gw, ctx } = await buildRun(30, [{ severity: 'high', file: 'src/a.ts', line: 1, msg: 'bad', scenario: 's' }, { severity: 'low', file: 'src/a.ts', line: 2, msg: 'nit', scenario: 's' }]);
   try {
