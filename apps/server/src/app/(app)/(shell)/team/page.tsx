@@ -28,7 +28,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ r
       <PageTitle>Agent team</PageTitle>
       <AutoRefresh />
       <h1 className="title">Agent team</h1>
-      <TeamView initialRole={role} roles={team.roles} orphans={team.orphans} modelOptions={modelOptions} canEdit={admin} onSave={saveRole} docsHref={DOCS} mcpLine={mcpLine} gateway={gateway} cost={cost} />
+      <TeamView workspaceId={workspace.id} initialRole={role} roles={team.roles} orphans={team.orphans} presence={team.presence} modelOptions={modelOptions} canEdit={admin} onSave={saveRole} docsHref={DOCS} mcpLine={mcpLine} gateway={gateway} cost={cost} />
     </>
   )
 }

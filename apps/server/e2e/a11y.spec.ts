@@ -16,6 +16,7 @@ const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
   [/^#(step|cp)-|^select\[aria-label="Asked: |^(?=.*\.gap-1(\.|$))(?=.*\.small(\.|$))(?=.*\.text-muted-foreground(\.|$))(\.[\w-]+){3}$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
   [/^\.flex-\\\[1_1_20ch\\\]$/, 'Ticket page ActionBar sentence at 390 px on the Conversation tab: the fixed bar (opaque bg-card, painted above in the browser) covers the conversation composer\'s sticky artifact bar, which axe sorts above it; the text sits on the plain card background (same token pair as the states that pass)'],
+  [/^\.avatars-module__\w+__svg\[width="\d+"\]\[height="\d+"\] > text$/, 'Role avatar without its own drawing: one or two initials on a tile, nothing for axe to measure against'],
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
 ]
 

@@ -34,7 +34,7 @@ export function PresetPicker({ presets }: { presets: PresetCard[] }) {
           </button>
         ))}
       </div>
-      <TeamSelect key={id} preview roles={chosen.team} modelOptions={[]} canEdit={false} onSave={() => {}} docsHref="" mcpLine="" />
+      <TeamSelect key={id} roles={chosen.team} />
       <div className="flex flex-wrap items-center gap-3">
         <SettingsForm action={applyPreset} submit="Use this team" primary>
           <input type="hidden" name="preset" value={id} />

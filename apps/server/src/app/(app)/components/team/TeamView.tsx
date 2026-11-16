@@ -1,15 +1,20 @@
 import type { TeamCost } from '../../lib/cost'
 import type { GatewaySetup } from '../../lib/harnesses'
-import { SessionList } from './SessionList'
-import { teamSummary } from './helpers'
-import { TeamSelect } from './TeamSelect'
+import { ConnectPanel } from './ConnectPanel'
+import { NeedsAgentRow } from './NeedsAgentRow'
+import { RolesPart } from './RolesPart'
+import { SessionRow } from './SessionRow'
+import { SessionsSection } from './SessionsSection'
+import { listRows, teamSummary, type ListRow } from './helpers'
 import type { ModelOption, RoleSettings, SaveResult, TeamRole, TeamSession } from './types'
 
 type Props = {
-  /** The role card chosen on load (`/team?role=`). */
+  workspaceId: number | string
+  /** The role chosen on load (`/team?role=`). */
   initialRole?: string
   roles: TeamRole[]
   orphans: (TeamSession & { role: string })[]
+  presence: { key: boolean; anySession: boolean }
   modelOptions: ModelOption[]
   canEdit: boolean
   onSave: (roleId: string, settings: RoleSettings) => SaveResult | Promise<SaveResult>
@@ -19,15 +24,18 @@ type Props = {
   cost?: TeamCost
 }
 
-export function TeamView({ initialRole, roles, orphans, modelOptions, canEdit, onSave, docsHref, mcpLine, gateway, cost }: Props) {
+export function TeamView({ workspaceId, initialRole, roles, orphans, presence, modelOptions, canEdit, onSave, docsHref, mcpLine, gateway, cost }: Props) {
+  const { rows, disconnected } = listRows(roles, orphans)
+  const row = (r: ListRow) => (r.kind === 'needs' ? <NeedsAgentRow key={r.key} role={r.role} /> : <SessionRow key={r.key} row={r} costs={cost?.sessions} />)
   return (
     <div className="flex flex-col gap-8">
       <p className="small m-0 text-muted-foreground" role="status" data-testid="team-summary">{teamSummary(roles)}</p>
-      <TeamSelect initialRole={initialRole} roles={roles} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} docsHref={docsHref} mcpLine={mcpLine} gateway={gateway} />
-      <div className="flex flex-col gap-4">
-        <h2 className="heading">Sessions</h2>
-        <SessionList roles={roles} orphans={orphans} cost={cost} />
-      </div>
+      <ConnectPanel workspaceId={workspaceId} roles={roles} initialRole={initialRole} presence={presence} docsHref={docsHref} mcpLine={mcpLine} gateway={gateway} />
+      <SessionsSection rows={rows.map(row)} disconnected={disconnected.map(row)} count={disconnected.length} />
+      <section aria-labelledby="roles-heading" className="flex flex-col gap-4">
+        <h2 id="roles-heading" className="heading">Roles</h2>
+        <RolesPart roles={roles} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />
+      </section>
     </div>
   )
 }
