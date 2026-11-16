@@ -1,6 +1,6 @@
 'use server'
 import { randomBytes } from 'node:crypto'
-import { artifactRules, parseReviewChecks } from '@bauherr/runner'
+import { artifactRules, parseReviewChecks, storableProofRules } from '@bauherr/runner'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
@@ -187,7 +187,7 @@ export const saveDeploy = act({}, async (c, fd) => {
   if (fd.has('reviewChecks')) {
     try {
       const checks = parseReviewChecks(s(fd, 'reviewChecks')) ?? {}
-      const rules = fd.has('proofRules') ? artifactRules(JSON.parse(s(fd, 'proofRules') || '[]')) : []
+      const rules = fd.has('proofRules') ? storableProofRules(artifactRules(JSON.parse(s(fd, 'proofRules') || '[]'))) : []
       data.reviewChecks = rules.length ? { ...checks, artifacts: rules } : Object.keys(checks).length ? checks : null
     } catch (e) {
       errors.push({ path: fd.has('proofRules') && /^rule \d/.test((e as Error).message) ? 'proofRules' : 'reviewChecks', message: (e as Error).message })

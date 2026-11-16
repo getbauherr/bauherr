@@ -246,11 +246,11 @@ export function ConfirmButton({ label, confirm, primary }: { label: string; conf
   )
 }
 
-export type ProofRuleRow = { name: string; globs: string; kind: string; command: string; before: boolean }
+export type ProofRuleRow = { name: string; globs: string; kind: string; command: string; before: boolean; pathSet: string; pairs: string; builtin: boolean }
 const PROOF_KINDS: [string, string][] = [['image', 'Screenshot'], ['recording', 'Screen recording'], ['preview', 'Link to try it'], ['transcript', 'Terminal session'], ['sample', 'Request and response, or output'], ['report', 'Test or contract report']]
 
 /** The "Proof for review" rules of a Product: when a changed path matches, the command makes the proof a person judges. Posted as the JSON field `proofRules`. */
-export function ProofRules({ rows }: { rows: ProofRuleRow[] }) {
+export function ProofRules({ rows, sets }: { rows: ProofRuleRow[]; sets: string[] }) {
   const error = useContext(Ctx).fields?.proofRules
   const uid = useId()
   const [list, setList] = useState<ProofRuleRow[]>(rows)
@@ -258,26 +258,28 @@ export function ProofRules({ rows }: { rows: ProofRuleRow[] }) {
   return (
     <fieldset className="m-0 flex flex-col gap-3 border-0 p-0" aria-describedby={error ? `${uid}-e` : undefined}>
       <legend className="sr-only">Proof for review</legend>
-      <input type="hidden" name="proofRules" value={JSON.stringify(list.map((r) => ({ name: r.name, globs: r.globs, kind: r.kind, command: r.command, before: r.before })))} />
+      <input type="hidden" name="proofRules" value={JSON.stringify(list.map((r) => ({ name: r.name, globs: r.globs, kind: r.kind, command: r.command, before: r.before, pathSet: r.pathSet, pairs: r.pairs })))} />
       {list.map((r, i) => (
         <div key={i} className="flex flex-col gap-3 rounded-md border border-border p-4" data-testid="proof-rule">
           <div className="grid gap-3 @lg:grid-cols-2 sm:grid-cols-2">
-            <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-n${i}`} className="small">Name</Label><Input id={`${uid}-n${i}`} value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Screens" /></div>
-            <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-k${i}`} className="small">What it shows</Label><NativeSelect id={`${uid}-k${i}`} value={r.kind} onChange={(e) => set(i, { kind: e.target.value, before: e.target.value === 'image' && r.before })}>{PROOF_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</NativeSelect></div>
+            <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-n${i}`} className="small">Name</Label><Input id={`${uid}-n${i}`} value={r.name} readOnly={r.builtin} onChange={(e) => set(i, { name: e.target.value })} placeholder="Screens" /></div>
+            <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-k${i}`} className="small">What it shows</Label><NativeSelect id={`${uid}-k${i}`} value={r.kind} disabled={r.builtin} onChange={(e) => set(i, { kind: e.target.value, before: e.target.value === 'image' && r.before })}>{PROOF_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</NativeSelect></div>
           </div>
-          <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-g${i}`} className="small">Needed when these paths change</Label><Input id={`${uid}-g${i}`} value={r.globs} onChange={(e) => set(i, { globs: e.target.value })} placeholder="src/ui/**, src/pages/**" className="mono" /></div>
+          <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-s${i}`} className="small">Needed when this path set changes</Label><NativeSelect id={`${uid}-s${i}`} value={r.pathSet} disabled={r.builtin} onChange={(e) => set(i, { pathSet: e.target.value })}><option value="">None, use the paths below</option>{sets.map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect></div>
+          {!r.pathSet && <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-g${i}`} className="small">Needed when these paths change</Label><Input id={`${uid}-g${i}`} value={r.globs} onChange={(e) => set(i, { globs: e.target.value })} placeholder="src/ui/**, src/pages/**" className="mono" /></div>}
+          {r.pairs && <div className="flex flex-col gap-1"><Label htmlFor={`${uid}-p${i}`} className="small">Before/after pair for each of</Label><Input id={`${uid}-p${i}`} value={r.pairs} readOnly={r.builtin} onChange={(e) => set(i, { pairs: e.target.value })} className="mono" /></div>}
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`${uid}-c${i}`} className="small">Command that makes it</Label>
+            <Label htmlFor={`${uid}-c${i}`} className="small">Command that makes it{r.pairs ? ' (optional: the agent attaches the pair)' : ''}</Label>
             <span className="small text-muted-foreground">Writes into .bauherr/artifacts/ and lists each file in .bauherr/artifacts.json</span>
             <Input id={`${uid}-c${i}`} value={r.command} onChange={(e) => set(i, { command: e.target.value })} placeholder="pnpm screenshots" className="mono" />
           </div>
           <div className="flex flex-wrap items-center gap-4">
             {r.kind === 'image' && <label className="small flex items-center gap-2"><Checkbox checked={r.before} onChange={(e) => set(i, { before: e.target.checked })} />Also take it before the change</label>}
-            <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setList((l) => l.filter((_, n) => n !== i))}>Remove</Button>
+            <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setList((l) => l.filter((_, n) => n !== i))} disabled={r.builtin}>Remove</Button>
           </div>
         </div>
       ))}
-      <div><Button type="button" variant="outline" onClick={() => setList((l) => [...l, { name: '', globs: '', kind: 'image', command: '', before: false }])}>Add proof rule</Button></div>
+      <div><Button type="button" variant="outline" onClick={() => setList((l) => [...l, { name: '', globs: '', kind: 'image', command: '', before: false, pathSet: '', pairs: '', builtin: false }])}>Add proof rule</Button></div>
       {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
     </fieldset>
   )

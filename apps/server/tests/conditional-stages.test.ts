@@ -69,7 +69,7 @@ const ticketWith = async (title: string, files: string[], labels: string[] = [],
   await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', kind: 'build', status: 'succeeded', mode: 'session', workspace: ws, artifacts: { prUrl: pr.url } }, ...o })
   return id
 }
-const review = (id: number) => actions.requestReview(payload, member, { ticket: id, evidence: '' })
+const review = (id: number) => actions.requestReview(payload, member, { ticket: id, evidence: 'No artifact: UI change: before/after: this test is about routing' })
 const skipsOf = async (id: number) => (await eventsOf(id)).filter((e) => String(e.cause).startsWith('skip:')).map((e) => [e.cause, e.note])
 const finish = async (id: number, stage: string, outcome: string) => {
   const run = (await runsOf(id)).filter((r) => r.stage === stage && r.status === 'awaiting_session').at(-1)!
