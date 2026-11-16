@@ -50,33 +50,64 @@ test('every decision that is the owner\'s is a card with the ask, the recommenda
   }
 })
 
+test('a Triage question card ends in one Answer link, the Round cap card in one primary', async ({ page }) => {
+  await login(page)
+  await page.goto('/inbox')
+  await pick(page, 'Name the export file')
+  const pane = page.getByTestId('inbox-pane')
+  await expect(pane.getByTestId('answer-questions')).toHaveAttribute('href', /\/tickets\/\d+\?view=conversation$/)
+  await expect(pane.getByRole('button')).toHaveCount(0)
+  await pick(page, 'Stop the export retry loop')
+  await expect(pane.getByTestId('answer-questions')).toHaveCount(0)
+  await expect(pane.locator('footer .bg-primary')).toHaveCount(1)
+})
+
 test('a destructive option asks in a dialog first and changes nothing when cancelled', async ({ page }) => {
+  const native: string[] = []
+  page.on('dialog', (d) => { native.push(d.type()); void d.dismiss() })
   await login(page)
   await page.goto('/inbox')
   await pick(page, 'Stop the export retry loop')
   const cap = card(page, 'Stop the export retry loop')
+  await expect(cap.getByRole('button', { name: 'Give one more round' })).toHaveCount(1)
   await cap.getByRole('button', { name: 'Stop' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('The change stays open; the ticket goes back to triage.')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(cap).toBeVisible()
+  expect(native).toEqual([])
 })
 
-test('approving the plan on its card moves the ticket on, the card goes and the count drops', async ({ page }) => {
+test('approving the plan on its pane removes the row, selects the next and announces it; a stale decision restores the row with the error', async ({ page, context }) => {
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 (set E2E_FAKE_FORGE=1 here)')
   await login(page)
+  const stale = await context.newPage()
+  await stale.goto('/inbox')
+  await pick(stale, 'Rename the sign-in button')
   await page.goto('/inbox')
   const before = await badge(page)
   await pick(page, 'Rename the sign-in button')
   const plan = card(page, 'Rename the sign-in button')
+  await expect(plan.getByRole('button', { name: 'Approve plan' })).toHaveClass(/bg-primary/)
   await plan.getByRole('button', { name: 'Approve plan' }).click()
   await expect(plan).toBeHidden()
+  await expect(page.getByTestId('inbox-row').filter({ hasText: 'Rename the sign-in button' })).toHaveCount(0)
+  await expect(page.getByTestId('inbox-announce')).toHaveText(/^Plan approved for #\d+\. Next: #\d+\.$/)
+  await expect(page.getByTestId('inbox-announce')).toHaveAttribute('role', 'status')
+  const next = await page.getByTestId('inbox-row').and(page.locator('[aria-current=true]')).textContent()
+  expect(next).not.toContain('Rename the sign-in button')
   // other specs decide their own cards meanwhile (the count only ever drops here), so "one less" is not exact
   await expect.poll(() => badge(page)).toBeLessThan(before)
   await page.reload()
   await expect(card(page, 'Rename the sign-in button')).toHaveCount(0)
   expect(await badge(page)).toBeLessThan(before)
+  // the second tab still shows the decision that is taken now
+  await stale.locator('article[data-decision]').filter({ hasText: 'Rename the sign-in button' }).getByRole('button', { name: 'Approve plan' }).click()
+  await expect(stale.getByTestId('decision-error')).toContainText('This decision changed')
+  await expect(stale.getByTestId('inbox-pane')).toContainText('Rename the sign-in button')
+  await expect(stale.locator('article[data-decision]').filter({ hasText: 'Rename the sign-in button' })).toBeVisible()
+  await expect(stale.getByTestId('inbox-announce')).toHaveText('')
 })
 
 test('a pending skill proposal is a card with approve and reject; rejecting it closes the card', async ({ page }) => {
