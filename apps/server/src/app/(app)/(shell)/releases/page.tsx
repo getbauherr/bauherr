@@ -54,6 +54,9 @@ async function Draft({ payload, product, admin }: { payload: Payload; product: {
       product={product.id}
       admin={admin}
       tickets={draft.waiting.map((t) => ({ id: t.id as number, number: t.number as number, title: t.title as string, kind: kindOf(t) }))}
+      last={draft.last}
+      rc={draft.rc}
+      rcTickets={draft.rcTickets.map((t) => ({ number: t.number as number, title: t.title as string }))}
       version={draft.version}
       versions={draft.versions}
       notes={draft.notes}

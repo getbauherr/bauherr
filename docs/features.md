@@ -86,6 +86,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | Release train and merge queue | Merge direct, through the forge's queue, or as a train; preflight finds what blocks a mode | Product page, tab Checks & merging (`?tab=checks`) | Live |
 | Train state | Who waits in the queue or train, what is building, who was dropped back to Build | `/releases` strip above the panel | Live |
 | Release notes and shipping | Group done Tickets per Product, write the notes, publish the release; optionally as a pre-release (rc) | `/releases`; Product page, tab Releases | Live |
+| Release candidates | Cut an rc from done Tickets (GitHub and GitLab), test it, promote it: the final is tagged on the rc's commit with the notes of the whole line; CI only builds the tag | `/releases` | Live |
 | Release reminder | A banner when done Tickets wait too long for a release | `/` banner; Product page, tab Releases | Live |
 | Staging and production checks | Deploy checks, webhook, production gate, auto-merge, check retries | Product page, tabs Deploy, Approvals, Checks & merging | Live |
 | App changelog | The release notes of Bauherr itself | `/release-notes` via the user menu | Live |

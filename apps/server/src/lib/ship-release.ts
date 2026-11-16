@@ -52,24 +52,38 @@ export const waitingTickets = async (payload: Payload, product: number | string)
 const recordOldRelease = (payload: Payload, ticket: number | string, tag: string) =>
   payload.db.drizzle.execute(sql`UPDATE "tickets" SET "released_in" = ${tag} WHERE "id" = ${ticket} AND "released_in" IS NULL`)
 
-/** Versions offered for the next release: patch, minor, major from the last stable version, plus the next rc when the last release is an rc. No previous release = 0.1.0. */
-export const versionChoices = (last: string | null): string[] => {
-  const m = last && /^v?(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/.exec(last)
-  if (!m) return ['0.1.0']
-  const [major, minor, patch] = m.slice(1, 4).map(Number) as [number, number, number]
-  return [...(m[4] ? [`${major}.${minor}.${patch}-rc.${Number(m[4]) + 1}`] : []), `${major}.${minor}.${patch + 1}`, `${major}.${minor + 1}.0`, `${major + 1}.0.0`]
+const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/
+const parse = (tag: string) => { const m = SEMVER.exec(tag); return m && (m.slice(1).map((x) => (x === undefined ? 0 : Number(x))) as [number, number, number, number]) }
+const order = (a: string, b: string) => { const [x, y] = [parse(a)!, parse(b)!]; return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || x[3] - y[3] }
+
+/** The newest final tag and the open release-candidate line of `tags` (other tag names are ignored): the newest `vX.Y.Z-rc.N` of a line above the newest final whose `vX.Y.Z` does not exist yet. Tags, not releases, so an rc cut by the CLI fallback counts. */
+export const releaseLine = (tags: string[]): { final: string | null; rc: string | null } => {
+  const all = tags.filter((t) => /^v\d+\.\d+\.\d+(-rc\.\d+)?$/.test(t))
+  const final = all.filter((t) => !t.includes('-rc.')).sort(order).at(-1) ?? null
+  const rc = all.filter((t) => t.includes('-rc.') && !all.includes(t.replace(/-rc\.\d+$/, '')) && (!final || order(t.replace(/-rc\.\d+$/, ''), final) > 0)).sort(order).at(-1) ?? null
+  return { final, rc }
 }
 
-/** Next version (no `v`) from the last release tag: while that is an rc the rc number goes up; else any `breaking` label = major, any `type:feature` = minor, else patch; no previous release = 0.1.0. */
+/** Versions offered for the next release. From a final X.Y.Z: the rc.1 of the patch, minor and major bump, then the plain finals (a Product that does not use rcs). From an open rc line X.Y.Z-rc.N: only rc.N+1 (X.Y.Z itself is promoted, not cut). No previous release = 0.1.0 or its rc. */
+export const versionChoices = (last: string | null): string[] => {
+  const v = last && parse(last)
+  if (!v) return ['0.1.0', '0.1.0-rc.1']
+  const [major, minor, patch, rc] = v
+  if (last!.includes('-rc.')) return [`${major}.${minor}.${patch}-rc.${rc + 1}`]
+  const bumps = [`${major}.${minor}.${patch + 1}`, `${major}.${minor + 1}.0`, `${major + 1}.0.0`]
+  return [...bumps.map((b) => `${b}-rc.1`), ...bumps]
+}
+
+/** Next version (no `v`) from the last release tag: while that is an rc the rc number goes up; else any `breaking` label = major, any `type:feature` = minor, else patch, as the first rc of that bump; no previous release = 0.1.0. */
 export const proposeVersion = (last: string | null, tickets: { labels?: string[] | null }[]): string => {
-  const m = last && /^v?(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/.exec(last)
-  if (!m) return '0.1.0'
-  const [major, minor, patch] = m.slice(1, 4).map(Number) as [number, number, number]
-  if (m[4]) return `${major}.${minor}.${patch}-rc.${Number(m[4]) + 1}`
+  const v = last && parse(last)
+  if (!v) return '0.1.0'
+  const [major, minor, patch, rc] = v
+  if (last!.includes('-rc.')) return `${major}.${minor}.${patch}-rc.${rc + 1}`
   const labels = tickets.flatMap((t) => t.labels ?? [])
-  if (labels.includes('breaking')) return `${major + 1}.0.0`
-  if (labels.includes('type:feature')) return `${major}.${minor + 1}.0`
-  return `${major}.${minor}.${patch + 1}`
+  if (labels.includes('breaking')) return `${major + 1}.0.0-rc.1`
+  if (labels.includes('type:feature')) return `${major}.${minor + 1}.0-rc.1`
+  return `${major}.${minor}.${patch + 1}-rc.1`
 }
 
 /** Deterministic notes (Features, Fixes) of the Tickets from their staging summaries. */
@@ -87,8 +101,15 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   const forge = backend.forge
   const bad = a.tickets.find((t) => !t.mergeSha || (t.releasedIn && t.releasedIn !== tag))
   if (bad || !a.tickets.length) throw new Error(bad ? `Ticket #${bad.number} has no merge commit or is already in ${bad.releasedIn}` : 'no Tickets to ship')
+  const rcN = /-rc\.(\d+)$/.exec(tag)?.[1]
+  const line = tag.replace(/-rc\.\d+$/, '')
+  const tags = await forge.listTags(repo)
+  if (rcN && tags.includes(line)) throw new Error(`${line} already exists: the line is promoted, cut the next version`)
+  if (!rcN && tags.some((t) => t.startsWith(`${tag}-rc.`))) throw new Error(`${tag} has release candidates: promote the newest one instead of cutting ${tag} again`)
+  const prev = rcN && Number(rcN) > 1 ? `${line}-rc.${Number(rcN) - 1}` : null
+  if (prev && !tags.includes(prev)) throw new Error(`${tag} needs ${prev} first`)
   let release = await forge.releaseByTag(repo, tag)
-  let head = release?.sha
+  let head = release?.sha ?? (tags.includes(tag) ? await forge.tagSha(repo, tag) ?? undefined : undefined)
   if (!head) {
     const dates = await Promise.all(a.tickets.map(async (t) => new Date(await forge.getCommitDate(repo, t.mergeSha)).getTime()))
     head = a.tickets[dates.indexOf(Math.max(...dates))]!.mergeSha as string
@@ -96,11 +117,13 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   const contained = await mapLimit(a.tickets, (t) => forge.isAncestor(repo, t.mergeSha, head!))
   const stray = a.tickets.find((_, i) => !contained[i])
   if (stray) throw new Error(`Ticket #${stray.number} (${stray.mergeSha}) is not an ancestor of ${head}: it is not part of this release`)
+  const prevSha = prev && (await forge.tagSha(repo, prev))
+  if (prevSha && !(await forge.isAncestor(repo, prevSha, head!))) throw new Error(`${tag} would not contain ${prev} (${prevSha}): it cannot supersede it`)
   const first = a.tickets[0]!
   const touched = (await payload.find({ collection: 'human_touches', where: { and: [{ kind: { equals: 'ship:release' } }, { status: { equals: tag } }, { repo: { equals: repo } }] }, limit: 1, ...o })).totalDocs > 0
   if (!touched) await payload.create({ collection: 'human_touches', data: { kind: 'ship:release', ticket: first.id, workspace: id(first.workspace), actor: personOf(user), at: new Date().toISOString(), repo, status: tag }, ...o }).catch((e: unknown) => { if (!isDuplicate(e)) throw e })
   const marker = releaseMarker(head)
-  release ??= await forge.createRelease(repo, { tag, sha: head, name: tag, body: `${a.notes}\n\n${marker}`, prerelease: a.version.includes('-rc.') })
+  release ??= await forge.createRelease(repo, { tag, sha: head, name: tag, body: `${prev ? `Supersedes ${prev}.\n\n` : ''}${a.notes}\n\n${marker}`, prerelease: !!rcN })
   const at = new Date().toISOString()
   const headAt = new Date(await forge.getCommitDate(repo, head)).toISOString()
   for (const t of a.tickets) {
@@ -111,17 +134,56 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
   // After the loop: a retry after a failed Ticket still finds the unreleased ones waiting (see waitingTickets).
   const product = (await payload.findByID({ collection: 'products', id: a.product, ...o })) as Doc
   if (!product.lastReleaseAt || headAt > new Date(product.lastReleaseAt).toISOString()) await payload.update({ collection: 'products', id: a.product, data: { lastReleaseTag: tag, lastReleaseSha: head, lastReleaseAt: headAt }, ...o })
-  if (!a.version.includes('-rc.')) await changelogPr(forge, repo, release, marker, Date.now())
+  if (!rcN) await changelogPr(forge, repo, release, marker, Date.now())
   return { tag, url: release.url }
+}
+
+/**
+ * Promotes the newest release candidate `rc` (`vX.Y.Z-rc.N`) to `vX.Y.Z` on the same commit: refused unless `rc` is the newest rc of its line and `vX.Y.Z` is not on another commit; the final release carries the notes of every Ticket released in any rc of the line, those Tickets become `releasedIn` the final (with a Comment naming the rc), then the CHANGELOG MR and `lastRelease*`. Every step looks before it writes, so a retry finishes what is left.
+ */
+export const promoteRelease = async (payload: Payload, user: Doc, a: { product: number | string; rc: string }): Promise<{ tag: string; url: string }> => {
+  const m = /^(v\d+\.\d+\.\d+)-rc\.(\d+)$/.exec(a.rc)
+  if (!m) throw new Error(`${a.rc} is not a release candidate (vX.Y.Z-rc.N)`)
+  const final = m[1]!
+  const { backend, repo, tickets: ts } = await forgeOf(payload, a.product)
+  const forge = backend.forge
+  const tags = await forge.listTags(repo)
+  const newest = tags.filter((t) => t.startsWith(`${final}-rc.`) && /-rc\.\d+$/.test(t)).sort(order).at(-1)
+  if (newest !== a.rc) throw new Error(`${a.rc} is not the newest release candidate of ${final}${newest ? ` (${newest})` : ''}`)
+  const sha = await forge.tagSha(repo, a.rc)
+  if (!sha) throw new Error(`tag ${a.rc} does not exist`)
+  const finalSha = await forge.tagSha(repo, final)
+  if (finalSha && finalSha !== sha) throw new Error(`${final} already exists on another commit than ${a.rc}`)
+  const inLine = (t: Doc) => typeof t.releasedIn === 'string' && t.releasedIn.startsWith(`${final}-rc.`) && /^-rc\.\d+$/.test(t.releasedIn.slice(final.length))
+  const tickets = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: a.product } }, { releasedIn: { contains: `${final}-rc.` } }] }, sort: 'number', pagination: false, ...o })).docs as Doc[]).filter(inLine)
+  const first = tickets[0]
+  if (first && !(await payload.find({ collection: 'human_touches', where: { and: [{ kind: { equals: 'ship:release' } }, { status: { equals: final } }, { repo: { equals: repo } }] }, limit: 1, ...o })).totalDocs) await payload.create({ collection: 'human_touches', data: { kind: 'ship:release', ticket: first.id, workspace: id(first.workspace), actor: personOf(user), at: new Date().toISOString(), repo, status: final }, ...o }).catch((e: unknown) => { if (!isDuplicate(e)) throw e })
+  const marker = releaseMarker(sha)
+  let release = await forge.releaseByTag(repo, final)
+  if (!release) {
+    const notes = tickets.length ? await renderNotes(ts, tickets, await noteTemplates(payload, id(first!.workspace))) : ''
+    release = await forge.createRelease(repo, { tag: final, sha, name: final, body: `Promoted from ${a.rc} (commit ${sha.slice(0, 7)}).\n\n${notes}${notes ? '\n\n' : ''}${marker}`, prerelease: false })
+  }
+  for (const t of tickets) {
+    const n = String(t.number)
+    if (!latestWith(await ts.listComments(n), shippedMarker(final))) await ts.comment(n, `${shippedMarker(final)}\nReleased in [${final}](${release.url}) (tested as ${a.rc})`)
+    await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "released_in" = ${final}, "updated_at" = now() WHERE "id" = ${t.id} AND "released_in" IS DISTINCT FROM ${final}`)
+  }
+  const headAt = new Date(await forge.getCommitDate(repo, sha)).toISOString()
+  const product = (await payload.findByID({ collection: 'products', id: a.product, ...o })) as Doc
+  if (!product.lastReleaseAt || headAt >= new Date(product.lastReleaseAt).toISOString()) await payload.update({ collection: 'products', id: a.product, data: { lastReleaseTag: final, lastReleaseSha: sha, lastReleaseAt: headAt }, ...o })
+  await changelogPr(forge, repo, release, marker, Date.now())
+  return { tag: final, url: release.url }
 }
 
 /**
  * The Releases page data of a Product: Tickets waiting, the `picked` ones (all, or those in `ids`), the proposed version and notes for them, and the forge's releases (newest first, only with `withPast`).
  * With `withPast` (the page opened on purpose) it asks the forge for the releases, backfills `lastRelease*` once, and drops Tickets whose merge is already in the latest release (ancestry, 4 at a time). Without it nothing but the Ticket comments is read from the forge.
  */
-export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[], withPast = true) => {
+export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[], withPast = true, lastTag?: string | null) => {
   const { backend, repo, tickets: ts } = await forgeOf(payload, product)
   const past = withPast ? await backend.forge.listReleases(repo) : []
+  const line = releaseLine(withPast ? await backend.forge.listTags(repo) : [])
   const latest = past[0]
   let p = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
   let waiting = await waitingTickets(payload, product)
@@ -133,8 +195,16 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   if (latest && !p.lastReleaseAt) p = await payload.update({ collection: 'products', id: product, data: { lastReleaseTag: latest.tag, lastReleaseSha: latest.sha, lastReleaseAt: new Date(await backend.forge.getCommitDate(repo, latest.sha)).toISOString() }, ...o }) as Doc
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
   const notes = picked.length ? await renderNotes(ts, picked, await noteTemplates(payload, id(p.workspace))) : ''
-  const last = latest?.tag ?? p.lastReleaseTag ?? null
-  return { waiting, picked, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past }
+  const last = lastTag !== undefined ? lastTag : line.rc ?? line.final ?? latest?.tag ?? p.lastReleaseTag ?? null
+  const rcTickets = line.rc ? ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { releasedIn: { contains: `${line.rc.replace(/-rc\.\d+$/, '')}-rc.` } }] }, sort: 'number', pagination: false, ...o })).docs as Doc[]) : []
+  return { waiting, picked, last, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past, rc: line.rc, rcTickets }
+}
+
+/** Admin-only: promotes the release candidate `rc` of a Product of the Workspace (see `promoteRelease`). */
+export const promoteSelected = async (payload: Payload, user: Doc, a: { workspaceId: number | string; product: number | string; rc: string }): Promise<{ tag: string; url: string }> => {
+  if (user.role !== 'admin') throw new NotAdmin()
+  await productIn(payload, a.product, a.workspaceId)
+  return promoteRelease(payload, user, a)
 }
 
 /** The model-written summary over the notes of the Tickets `ids`, on request only (the Summarise button); empty without a gateway or on any model error. */

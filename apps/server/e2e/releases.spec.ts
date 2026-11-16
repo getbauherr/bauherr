@@ -34,6 +34,22 @@ test('lists the done Tickets of a manual Product, one ship button, notes preview
   await expect(page.getByLabel('Release notes')).not.toContainText('Relist the CSV header')
 })
 
+test('an open release candidate is promoted from the Releases page: same commit, the final is shipped', async ({ page }) => {
+  await page.goto('/releases')
+  await page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Acme Rcline' }).click()
+  const bar = page.getByTestId('action-bar')
+  await expect(page.getByRole('heading', { name: 'Promote v0.4.0-rc.1' })).toBeVisible()
+  await expect(page.getByText('Rcline export totals')).toBeVisible()
+  await bar.getByRole('combobox', { name: 'Action' }).click()
+  await page.getByRole('option', { name: 'Cut the next release candidate' }).click()
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveText('0.4.0-rc.2')
+  await expect(bar.getByRole('button', { name: 'Cut v0.4.0-rc.2 (1 Ticket)' })).toBeEnabled()
+  await bar.getByRole('combobox', { name: 'Action' }).click()
+  await page.getByRole('option', { name: 'Promote v0.4.0-rc.1' }).click()
+  await confirmClick(bar.getByRole('button', { name: 'Promote v0.4.0-rc.1 to v0.4.0' }), bar.getByRole('button', { name: 'Confirm promote v0.4.0-rc.1' }), (t) => expect(page.getByRole('link', { name: 'v0.4.0', exact: true })).toBeVisible({ timeout: t }))
+  await expect(bar.getByText('Shipped v0.4.0.')).toBeVisible()
+})
+
 test('the merge strip says how a Product merges, who waits in the train and who was dropped', async ({ page }) => {
   await page.goto('/releases')
   const products = page.getByRole('navigation', { name: 'Product' })
@@ -56,7 +72,7 @@ test('shipping marks the Tickets Released in the version', async ({ page }, test
     await confirmClick(bar.getByRole('button', { name: 'Ship v0.1.0 (2 Tickets)' }), bar.getByRole('button', { name: 'Confirm ship v0.1.0' }), (t) => expect(page.getByRole('link', { name: 'v0.1.0', exact: true })).toBeVisible({ timeout: t }))
   }
   await expect(shipped).toBeVisible()
-  await expect(bar.getByRole('button', { name: /^Ship v/ })).toBeDisabled()
+  await expect(bar.getByRole('button', { name: /^(Ship|Cut) v/ })).toBeDisabled()
   await page.goto('/?state=all')
   const card = page.locator('.card', { hasText: 'Reship the export totals' }).first()
   await expect(card.getByText('Released in v0.1.0')).toBeVisible()
