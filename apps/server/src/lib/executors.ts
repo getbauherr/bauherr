@@ -18,6 +18,9 @@ export type Executor = { line: string; action: { label: string; href: string } |
 
 export const DEPLOY_WAIT = "Waiting for the Product's deploy check"
 
+/** "a Software engineer", "an Orchestrator". */
+const article = (title: string): string => `${/^[aeiou]/i.test(title) ? 'an' : 'a'} ${title}`
+
 const minutes = (ms: number): string => {
   const m = Math.max(0, Math.round(ms / 60_000))
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`
@@ -32,7 +35,7 @@ export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | n
   if (stage.role && f.role) {
     const { title, working, idle, connected } = f.role
     if (connected > 0 || working > 0) return { line: `${title} · ${[working && `${working} working`, idle && `${idle} idle`].filter(Boolean).join(' · ') || `${connected} connected`}`, action: null, cannotRun: false }
-    return { line: `${title} · none connected${f.waiting ? `, ${f.waiting} ${f.waiting === 1 ? 'Run' : 'Runs'} waiting` : ''}`, action: { label: `Connect a ${title}`, href: `/team?role=${encodeURIComponent(f.role.id)}` }, cannotRun: true, waits: `Waiting for a ${title} session` }
+    return { line: `${title} · none connected${f.waiting ? `, ${f.waiting} ${f.waiting === 1 ? 'Run' : 'Runs'} waiting` : ''}`, action: { label: `Connect ${article(title)}`, href: `/team?role=${encodeURIComponent(f.role.id)}` }, cannotRun: true, waits: `Waiting for ${article(title)} session` }
   }
   if (stage.kind === 'release') {
     const d = f.deploy
@@ -50,6 +53,8 @@ export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | n
 export const waitingWho = (stageKind: string | undefined, e: Executor | undefined, t: { open: boolean; track: { releaseState?: string | null } }, s: { phase: string; who: string | null }): string | null => {
   if (!t.open || s.phase === 'working' || s.phase === 'done') return s.who
   if (stageKind === 'release' && t.track.releaseState === 'timed_out') return DEPLOY_WAIT
+  // The turn is a person's (a gate): name them, not the missing agent.
+  if (s.phase === 'human') return s.who
   return e?.waits ?? s.who
 }
 

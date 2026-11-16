@@ -46,6 +46,15 @@ describe('waitingWho', () => {
     const configured = executorOf({ name: 'release', kind: 'release' }, facts())!
     expect(waitingWho('release', configured, open('timed_out'), { phase: 'human', who: '@owner' })).toBe(DEPLOY_WAIT)
   })
+  it('a Ticket waiting for the owner at a gate keeps the owner as Who, even when the stage has no session', () => {
+    const noSession = executorOf({ name: 'plan', kind: 'plan', role: 'orchestrator' }, facts({ role: { ...role(), id: 'orchestrator', title: 'Orchestrator' } }))!
+    expect(waitingWho('plan', noSession, open(), { phase: 'human', who: '@owner' })).toBe('@owner')
+  })
+  it('a vowel-initial role title takes "an"', () => {
+    const e = executorOf({ name: 'plan', kind: 'plan', role: 'orchestrator' }, facts({ role: { ...role(), id: 'orchestrator', title: 'Orchestrator' } }))!
+    expect(e.waits).toBe('Waiting for an Orchestrator session')
+    expect(e.action?.label).toBe('Connect an Orchestrator')
+  })
   it('a healthy stage, a working or closed Ticket keep the status who', () => {
     expect(waitingWho('build', healthy, open(), { phase: 'queued', who: null })).toBeNull()
     expect(waitingWho('build', noSession, open(), { phase: 'working', who: 'eng-1' })).toBe('eng-1')
