@@ -1,3 +1,4 @@
+import { ConfirmButton } from '../../../components/SettingsForm'
 import { changeOf } from '../../../../../lib/decision'
 import { ciSummaryOf } from '../../../../../lib/ci-summary'
 import { forgeLinkOf, pendingCounts } from '../../../../../lib/ci-text'
@@ -317,7 +318,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
         <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
           <Badge variant={liveStatus?.tone ?? status.tone}>{liveStatus?.chip ?? status.label}</Badge>
           {liveStatus ? <span>{liveStatus.sentence}</span> : status.detail && <span>{status.detail}</span>}
-          {liveStatus?.release && running && <form action={releaseRunLock.bind(null, running.id)}><Button type="submit" variant="outline" size="sm">Release lock</Button></form>}
+          {liveStatus?.release && running && <form action={releaseRunLock.bind(null, running.id)} className="flex gap-2"><ConfirmButton label="Release lock" confirm={`Confirm release lock on run ${running.id}`} /></form>}
         </p>
         {(status.who ?? executor) && <p className="small m-0 text-muted-foreground">{status.who ?? `Last: ${executor}`}</p>}
       </section>
