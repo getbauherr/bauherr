@@ -250,3 +250,11 @@ describe('loadSession', () => {
     expect(JSON.stringify(v)).not.toMatch(/costUsd|tokens"|claude-code|"m1"|m@x\.io/)
   })
 })
+
+it('loadTeam for a non-Admin reader sends no client, model or provider of a session or a Runner Run', async () => {
+  const { loadTeam } = await import('../src/lib/sessions')
+  const team = await loadTeam(payload, ws, { admin: false })
+  const sessions = [...team.roles.flatMap((r) => r.sessions), ...team.orphans]
+  for (const s of sessions) expect([s.clientName, s.clientVersion, s.model, s.provider]).toEqual([null, null, null, null])
+  for (const a of team.roles.flatMap((r) => r.autonomous)) expect(a.model).toBeNull()
+})

@@ -320,13 +320,14 @@ const sessionRows = async (payload: Payload, where: ReturnType<typeof sql>): Pro
       ORDER BY s."connected_at"`)
   ).rows as Doc[]
 
-const toSession = (wf: Workflow, r: Doc, now: number, admin: boolean): TeamSession => ({
+/** `hide`: a non-Admin reader; client, model and provider are not sent (Cost panel pattern). */
+const toSession = (wf: Workflow, r: Doc, now: number, admin: boolean, hide = false): TeamSession => ({
   publicId: r.public_id,
   label: r.label,
-  clientName: r.client_name,
-  clientVersion: r.client_version,
-  model: r.model,
-  provider: r.provider,
+  clientName: hide ? null : r.client_name,
+  clientVersion: hide ? null : r.client_version,
+  model: hide ? null : r.model,
+  provider: hide ? null : r.provider,
   status: r.run_id ? 'working' : r.disconnected_at || new Date(r.last_seen_at).getTime() < now - sessionTimeoutS() * 1000 ? 'offline' : 'idle',
   health: sessionHealth({ hasRun: !!r.run_id, lastSeenAt: r.last_seen_at, disconnectedAt: r.disconnected_at }, now),
   ...(r.run_id && { run: r.run_id, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, activity: activityOf(kindOfRun(wf, { kind: r.run_kind, stage: r.run_stage })), runStartedAt: iso(r.run_started_at) }),
@@ -365,7 +366,8 @@ export const loadTeam = async (payload: Payload, workspace: number | string, opt
     db.execute(sql`SELECT 1 FROM "agent_sessions" WHERE "workspace_id" = ${workspace} LIMIT 1`).then((r) => r.rows.length > 0),
   ])
   const auto = (await db.execute(sql`SELECT r."id", r."stage", r."started_at", r."model", r."executor", t."number", t."title", t."stage" AS "ticket_stage" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."workspace_id" = ${workspace} AND r."status" = 'running' AND r."mode" = 'autonomous' ORDER BY r."started_at"`)).rows as Doc[]
-  const toS = (r: Doc) => toSession(wf, r, now, !!opts.admin)
+  const hide = opts.admin === false
+  const toS = (r: Doc) => toSession(wf, r, now, !!opts.admin, hide)
   const roleIds = wf.roles.map((r) => r.id)
   return {
     roles: wf.roles.map((role) => ({
@@ -382,7 +384,7 @@ export const loadTeam = async (payload: Payload, workspace: number | string, opt
       stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, activity: activityOf(s.kind) })),
       waiting: waiting.get(role.id) ?? 0,
       sessions: rows.filter((r) => r.role === role.id).map(toS),
-      autonomous: auto.filter((r) => stageDef(wf, r.stage)?.role === role.id).map((r) => ({ run: r.id, executor: r.executor === 'ci' ? 'ci' : r.executor === 'runner' ? 'runner' : null, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, startedAt: iso(r.started_at), model: r.model })),
+      autonomous: auto.filter((r) => stageDef(wf, r.stage)?.role === role.id).map((r) => ({ run: r.id, executor: r.executor === 'ci' ? 'ci' : r.executor === 'runner' ? 'runner' : null, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, startedAt: iso(r.started_at), model: hide ? null : r.model })),
     })),
     orphans: rows.filter((r) => !roleIds.includes(r.role)).map((r) => ({ ...toS(r), role: r.role })),
     presence: { key, anySession: ever },
