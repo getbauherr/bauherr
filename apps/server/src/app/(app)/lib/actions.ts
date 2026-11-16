@@ -175,6 +175,28 @@ export async function backToBacklogAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
+/** The Send back dialog: one entry over `backToBuild`, `backToBacklog` and `requestChanges`; the error is shown in the dialog. */
+export async function sendBackAction(form: FormData): Promise<{ error?: string }> {
+  const ticket = Number(form.get('ticket'))
+  const option = String(form.get('option'))
+  const note = String(form.get('note') ?? '').trim()
+  if (option === 'requestChanges' && !note) return { error: 'Say what needs to change.' }
+  const { user, payload, workspaceId } = await acting()
+  try {
+    if (option === 'backToBuild') await inWorkspace(backToBuild(payload, user, { ticket, note, workspaceId }))
+    else if (option === 'backToBacklog') await inWorkspace(backToBacklog(payload, user, { ticket, workspaceId }))
+    else if (option === 'requestChanges') await inWorkspace(requestChanges(payload, user, { ticket, note, workspaceId }))
+    else return { error: 'Unknown outcome.' }
+    await settleDecision(payload, ticket)
+  } catch (e) {
+    if (String((e as { digest?: unknown }).digest ?? '').startsWith('NEXT_')) throw e
+    return { error: e instanceof Error ? e.message : 'That did not go through.' }
+  }
+  revalidatePath(`/tickets/${ticket}`)
+  revalidatePath('/inbox')
+  return {}
+}
+
 export async function requestChangesAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
