@@ -1275,7 +1275,7 @@ export const sendBack = async (payload: Payload, user: Doc, a: { ticket: TicketI
  */
 export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null, at = Date.now()): Promise<ReviewOutcome> => {
   const wf = workflowFor(t.workspace)
-  if (!isFactoryPr(mr.pr, mr.repo, t.number) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
+  if (!isFactoryPr(mr.pr, mr.repo, t) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
   // Any head move starts a new review, except a Runner main-merge with an unchanged Ticket diff (`rebindReview` moves the verdict to the new head before this runs).
   if (mr.pr.headSha !== reviewedSha) {
     if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'review'))

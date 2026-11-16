@@ -289,7 +289,7 @@ const renewOnPushes = async (payload: Payload, now: number): Promise<number> => 
     try {
       const ticket = await payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true })
       const { backend, repo } = await forgeOf(payload, id(ticket.product))
-      const head = (await backend.forge.getBranch(repo, `bauherr/${ticket.number}-${run.id}`))?.sha ?? ((run.artifacts as { prUrl?: string } | null)?.prUrl ? (await prOf(payload, ticket, { fallback: true }))?.pr.headSha : undefined)
+      const head = (await backend.forge.getBranch(repo, ticket.epic?.branch ?? ticket.slice?.branch ?? `bauherr/${ticket.number}-${run.id}`))?.sha ?? ((run.artifacts as { prUrl?: string } | null)?.prUrl ? (await prOf(payload, ticket, { fallback: true }))?.pr.headSha : undefined)
       if (!head || head === run.lastSeenSha) continue
       const r = await payload.db.drizzle.execute(
         sql`UPDATE "runs" SET "heartbeat_at" = now(), "last_seen_sha" = ${head}, "updated_at" = now() WHERE "id" = ${run.id} AND "mode" = 'session' AND "status" = 'running' AND "heartbeat_at" < ${checkBefore} AND "heartbeat_at" >= ${expired} RETURNING "id"`,
