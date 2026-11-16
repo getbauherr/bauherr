@@ -28,6 +28,8 @@ export type StatusRun = {
   escalation?: { step: number; reason: string } | null
   /** Number of the hotfix Ticket this Run was paused for (`runs.preemptedFor`). */
   preemptedFor?: number | null
+  /** First line of the latest Step when the agent reported it as waiting_ci (`waitingStepOf`). */
+  waitingStep?: string | null
 }
 /** Ticket fields that say what the factory waits for between Runs. */
 export type Track = { waitingFor?: string | null; reviewState?: string | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; releaseError?: string | null }
@@ -71,6 +73,7 @@ const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | nul
   const checks = (detail: string) => (counts ? { label: waitingChip(counts), detail: waitingSentence(counts) } : { label: 'Waiting for CI', detail })
   const at = (k: 'review' | 'release') => is(wf, r.stage, k)
   const t = r.track
+  if (r.run?.status === 'running' && r.run.stage === r.stage && r.run.waitingStep != null) return { label: counts ? waitingChip(counts) : 'Waiting for CI', detail: r.run.waitingStep || 'the checks' }
   if (t.waitingFor === 'checks') return checks('checks of the merge request')
   if (at('review') && t.reviewState === 'waiting_checks') return checks('checks of the merge request')
   if (at('review') && t.reviewState === 'queued') return { label: 'Waiting on merge queue', detail: 'the merge request is in the merge queue' }

@@ -29,11 +29,12 @@ function Row({ avatar, s, role, titles, cost }: { avatar?: string; s: TeamSessio
     <li id={s.publicId} className="flex scroll-mt-20 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-3 target:bg-accent last:border-b-0" data-testid="session-row" data-status={s.status}>
       <span className="flex w-28 shrink-0 items-center gap-2">
         {s.status === 'working' && avatar ? <RoleAvatar avatar={avatar} size="sm" animate /> : <Dot status={s.status} />}
-        <span className="small">{WORD[s.status]}</span>
+        <span className="small" data-testid="session-state">{s.waiting?.chip ?? WORD[s.status]}</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate font-medium">{s.label ?? s.publicId}{role && <span className="small font-normal text-muted-foreground"> ({role})</span>}</span>
         <span className="small truncate text-muted-foreground">{[client, s.model].filter(Boolean).join(' · ')}</span>
+        {s.waiting?.words && <span className="small truncate" data-testid="session-waiting">{s.waiting.words}</span>}
       </span>
       {s.ticket ? <Ticket number={s.ticket.number} title={s.ticket.title} stage={titles[s.ticket.stage]} /> : <span className="small min-w-0 basis-64 text-muted-foreground">No ticket</span>}
       <span className="small w-64 shrink-0 text-right text-muted-foreground">

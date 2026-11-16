@@ -11,9 +11,10 @@ export const ciWait = (wf: Workflow, stage: string, t: Track): boolean =>
 export type TicketLive = { chip: string; tone: 'neutral' | 'accent'; sentence: string }
 
 /** What a Ticket with a running Run is truthfully doing: waiting for CI (with the check counts when `counts` is known) or working. Null when neither applies. */
-export const ticketLive = (row: { ci: boolean; run: { status: string; startedAt?: string | null } | null; counts?: CiCounts | null }, now = Date.now()): TicketLive | null => {
+export const ticketLive = (row: { ci: boolean; run: { status: string; startedAt?: string | null; /** First line of the latest Step when the agent reported it as waiting_ci. */ waitingStep?: string | null } | null; counts?: CiCounts | null }, now = Date.now()): TicketLive | null => {
   if (row.ci) return row.counts ? { chip: waitingChip(row.counts), tone: 'neutral', sentence: waitingSentence(row.counts) } : { chip: 'Waiting for CI', tone: 'neutral', sentence: 'Waiting for CI.' }
   if (row.run?.status !== 'running') return null
+  if (row.run.waitingStep != null) return { chip: row.counts ? waitingChip(row.counts) : 'Waiting for CI', tone: 'neutral', sentence: row.run.waitingStep ? `Waiting for CI: ${row.run.waitingStep}` : 'Waiting for CI.' }
   const min = row.run.startedAt ? Math.max(0, Math.round((now - +new Date(row.run.startedAt)) / 60000)) : null
   return { chip: 'Working', tone: 'accent', sentence: min === null ? 'Working.' : `Working. Started ${min} min ago.` }
 }

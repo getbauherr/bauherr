@@ -40,4 +40,24 @@ describe('ticketLive', () => {
     const step = nextStep({ wf, ticket: { stage: 'build', waitingFor: 'checks' }, need: 'Approve plan', run: running, waiting: null, blockers: [], admin: false, ci: counts })
     expect(step.label).toBe('Approve plan')
   })
+  describe('a Step reported as waiting_ci', () => {
+    const words = 'pipeline 4411 on the MR'
+    const counts = { passed: 2, total: 3, pending: 1 }
+    const waiting = { ...running, waitingStep: words }
+    it('reads Waiting for CI with the agent words, same on every surface', () => {
+      const live = ticketLive({ ci: false, run: waiting, counts }, now)!
+      expect(live).toMatchObject({ chip: 'Waiting for CI 2/3', sentence: `Waiting for CI: ${words}` })
+      const s = ticketStatus(wf, { ...row('build', {}), ci: counts, run: { ...row('build', {}).run!, waitingStep: words } }, now)
+      const step = nextStep({ wf, ticket: { stage: 'build' }, need: null, run: waiting, waiting: null, blockers: [], admin: false, ci: counts })
+      expect([s.phase, s.label, step.label]).toEqual(['ci', live.chip, live.chip])
+      expect(s.detail).toBe(words)
+      expect(step).toMatchObject({ enabled: false, reason: `Waiting for CI: ${words}.` })
+    })
+    it('without counts the chip is plain Waiting for CI; no waiting Step stays Working', () => {
+      expect(ticketLive({ ci: false, run: waiting }, now)).toMatchObject({ chip: 'Waiting for CI', sentence: `Waiting for CI: ${words}` })
+      expect(ticketLive({ ci: false, run: { ...running, waitingStep: null } }, now)).toMatchObject({ chip: 'Working' })
+      expect(ticketStatus(wf, { ...row('build', {}), run: { ...row('build', {}).run!, waitingStep: null } }, now).label).toBe('In progress')
+    })
+    it('a Run that is not running is not waiting', () => expect(ticketLive({ ci: false, run: { status: 'queued', waitingStep: words } }, now)).toBeNull())
+  })
 })
