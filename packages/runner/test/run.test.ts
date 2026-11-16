@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { runStage } from '../src/index.js';
+import { UI_PROOF_RULE, runStage, withProofDefaults } from '../src/index.js';
 import { makeBareRepo, makeCtx, startStubGateway, type StubTool } from './helpers.js';
 
 // Drives the real bundled Claude Code binary against a stub gateway (no LLM). The stub never edits
@@ -76,12 +76,12 @@ test('runStage build with mergeBase: a clean merge of main is pushed with no age
 const bare = (ctx: { connection: { gitBaseUrl?: string } }) => `${ctx.connection.gitBaseUrl!.replace('file://', '')}/o/n.git`;
 
 /** A build whose scripted agent writes `lines` lines to src/a.ts; the self-review pass reports `findings`; a fix pass writes src/fixed.ts. */
-const buildRun = async (lines: number, findings: object[], reviewChecks?: object, onBuild?: () => void) => {
+const buildRun = async (lines: number, findings: object[], reviewChecks?: object, onBuild?: (cwd: string) => void) => {
   const writes = (path: string, content: string): StubTool => ({ name: 'Write', input: { file_path: path, content } });
   const gw = await startStubGateway('done', 0, false, (model, prompt, cwd) =>
     model === 'cheap-m' ? (prompt.includes('Self-review of your own') ? writes(`${cwd}/.bauherr/self-review.json`, JSON.stringify({ findings })) : undefined)
     : prompt.includes('Fix pass') ? writes(`${cwd}/src/fixed.ts`, 'export const fixed = 1;\n')
-    : prompt.includes('Build Run') ? (onBuild?.(), writes(`${cwd}/src/a.ts`, 'x\n'.repeat(lines)))
+    : prompt.includes('Build Run') ? (onBuild?.(cwd), writes(`${cwd}/src/a.ts`, 'x\n'.repeat(lines)))
     : undefined);
   const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'build' });
   ctx.run.goal.statements = [];
@@ -161,6 +161,38 @@ test('runStage build: checks still failing after the fix pass push the branch an
     assert.equal(gw.seen.filter((s) => s.body.includes('Fix pass for Ticket')).length >= 1, true);
     assert.equal(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare(ctx), encoding: 'utf8' }).includes('src/a.ts'), true);
     assert.match(res.artifacts.pushedSha ?? '', /^[0-9a-f]{40}$/);
+  } finally {
+    await gw.close();
+  }
+});
+
+const UI_CHECKS = withProofDefaults(null, { ui: ['src/ui/**'] });
+const pairFiles = (variants: string[]) => (cwd: string) => {
+  mkdirSync(join(cwd, 'src/ui'), { recursive: true });
+  mkdirSync(join(cwd, '.bauherr/artifacts'), { recursive: true });
+  writeFileSync(join(cwd, 'src/ui/a.tsx'), 'export const a = 1;\n');
+  writeFileSync(join(cwd, '.bauherr/artifacts/s.png'), 'png');
+  writeFileSync(join(cwd, '.bauherr/artifacts.json'), JSON.stringify(variants.flatMap((v) => ['before', 'after'].map((pair) => ({ file: 's.png', kind: 'image', title: `${v}: Settings`, rule: UI_PROOF_RULE, pair })))));
+};
+
+test('runStage build: a ui diff with the light and dark pair passes pre-review and hands the pair on', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(1, [], UI_CHECKS as object, pairFiles(['light-desktop', 'dark-desktop']));
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'succeeded', JSON.stringify({ res, logs: ctx.logs }));
+    assert.equal(ctx.prs.length, 1);
+  } finally {
+    await gw.close();
+  }
+});
+
+test('runStage build: a ui diff without the full pair is refused with the same message as the server', { timeout: 120_000 }, async () => {
+  const { gw, ctx } = await buildRun(1, [], UI_CHECKS as object, pairFiles(['light-desktop']));
+  try {
+    const res = await runStage(ctx);
+    assert.equal(res.status, 'needs_human', JSON.stringify({ res, logs: ctx.logs }));
+    assert.match(res.reason ?? '', /- No before\/after pair "UI change: before\/after" on the pushed head, missing: dark-desktop before, dark-desktop after\. Attach each \(attach_artifact, kind image, rule "UI change: before\/after", pair before\|after, title starting with the variant, e\.g\. "light-desktop: <view>"\), or add the Evidence line "No artifact: UI change: before\/after: <reason>"/);
+    assert.equal(ctx.prs.length, 0);
   } finally {
     await gw.close();
   }

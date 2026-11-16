@@ -9,7 +9,7 @@ import { buildEvidence } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { mrBody } from '../src/index.js';
-import { artifactRules, artifactWaivers, UI_PROOF_RULE, withProofDefaults, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
+import { artifactRules, artifactWaivers, storableProofRules, titleNamesVariant, UI_PROOF_RULE, withProofDefaults, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
 import { makeProof, readManifest } from '../src/artifacts.js';
 import { FINDINGS_FILE, OUTCOME_FILE, TRIAGE_FILE, materialise } from '../src/materialise.js';
 import { makeCtx } from './helpers.js';
@@ -357,6 +357,21 @@ test('ui proof: the default rule needs a before and after image per variant on a
   assert.equal(artifactWaivers(`No artifact: ${UI_PROOF_RULE}:`, [UI_PROOF_RULE]).size, 0);
   assert.deepEqual(artifactRules([{ name: UI_PROOF_RULE, kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop' }]), [{ name: UI_PROOF_RULE, globs: [], kind: 'image', command: '', pathSet: 'ui', pairs: ['light-desktop', 'dark-desktop'] }]);
   assert.throws(() => artifactRules([{ name: 'a', kind: 'transcript', pathSet: 'ui', pairs: 'x' }]), /pairs are image variants/);
+});
+
+test('ui proof: the variant is a whole leading token of the title', () => {
+  for (const t of ['light-desktop', 'light-desktop: Settings', 'light-desktop, Settings', 'light-desktop · Settings', 'Light-Desktop: x', '  light-desktop (x)']) assert.equal(titleNamesVariant(t, 'light-desktop'), true, t);
+  for (const t of ['light-desktop-old', 'light-desktop2: x', 'dark-desktop: x', 'x light-desktop', 'light-desktop_x']) assert.equal(titleNamesVariant(t, 'light-desktop'), false, t);
+});
+
+test('ui proof: the settings form never stores the unmodified built-in row and refuses changes to its kind, path set or pairs', () => {
+  const builtin = artifactRules([{ name: UI_PROOF_RULE, kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop' }]);
+  const mine = artifactRules([{ name: 'Mine', globs: 'a/**', kind: 'image', command: 'c' }]);
+  assert.deepEqual(storableProofRules([...mine, ...builtin]).map((r) => r.name), ['Mine']);
+  assert.equal(storableProofRules(artifactRules([{ name: UI_PROOF_RULE, kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop', command: 'pnpm shots' }])).length, 1);
+  for (const change of [{ pathSet: 'docs' }, { pairs: 'light-desktop' }, { kind: 'report', pairs: '' }]) {
+    assert.throws(() => storableProofRules(artifactRules([...mine, { name: UI_PROOF_RULE, kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop', command: 'c', ...change }])), /rule 2: the built-in rule/);
+  }
 });
 
 test('proof manifest: files must lie inside .bauherr/artifacts, malformed entries are skipped, rules are run with the egress guard and no forge credentials', async () => {

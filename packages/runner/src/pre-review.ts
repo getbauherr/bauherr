@@ -51,6 +51,14 @@ export type ProofItem = { kind: ArtifactKind; title: string; criterion?: string;
 /** Rule names are plain words without a colon, so the Evidence line `No artifact: <name>: <reason>` parses. */
 const RULE_NAME = /^[\w .-]{1,60}$/;
 
+/** The validated rules of the settings form as they are stored: the unmodified built-in UI rule stays code-defined and is dropped; a built-in row with another kind, path set or pairs throws `rule N: ...`. A command or `before` on it keeps it. */
+export const storableProofRules = (rules: ArtifactRule[]): ArtifactRule[] =>
+  rules.filter((r, i) => {
+    if (r.name !== UI_PROOF_RULE) return true;
+    if (r.kind !== 'image' || r.pathSet !== 'ui' || (r.pairs ?? []).join() !== UI_PROOF_PAIRS.join()) throw new Error(`rule ${i + 1}: the built-in rule "${UI_PROOF_RULE}" keeps its kind, path set and pairs`);
+    return !!r.command || !!r.before;
+  });
+
 /** The rules of a settings form, validated; throws `rule N: ...`. */
 export function artifactRules(v: unknown): ArtifactRule[] {
   if (!Array.isArray(v)) throw new Error('rules must be a list');
@@ -98,8 +106,12 @@ export const changedLines = (numstat: string): number =>
 export const planStepCount = (plan: string): number =>
   (/^##\s+Steps\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(plan)?.[1] ?? '').match(/^\d+\.\s/gm)?.length ?? 0;
 
-/** The variant an image proof is for: the first word of its title, up to a colon or space. */
-const variantOf = (title: string) => title.trim().toLowerCase().split(/[:\s]/)[0];
+/** Whether an image proof's title names `variant`: the title starts with it (case-insensitive) and the variant is followed by the end, whitespace or punctuation, never by a letter, digit, `_` or `-` (so `light-desktop-old` is another variant). */
+export const titleNamesVariant = (title: string, variant: string): boolean => {
+  const t = title.trim().toLowerCase();
+  const v = variant.toLowerCase();
+  return t.startsWith(v) && !/^[\p{L}\p{N}_-]/u.test(t.slice(v.length));
+};
 
 const hit = (file: string, globs: string[]) => globs.some((g) => matchesGlob(file, g));
 
@@ -131,7 +143,7 @@ export function preReviewChecks(o: { files: string[]; evidence: string; planStep
   for (const r of matchingArtifactRules(config, files)) {
     if (Array.isArray(r.pairs) && r.pairs.length) {
       const have = (o.images ?? []).filter((i) => i.rule === r.name && i.pair);
-      const missing = r.pairs.flatMap((v) => (['before', 'after'] as const).filter((side) => !have.some((i) => i.pair === side && variantOf(i.title) === v.toLowerCase())).map((side) => `${v} ${side}`));
+      const missing = r.pairs.flatMap((v) => (['before', 'after'] as const).filter((side) => !have.some((i) => i.pair === side && titleNamesVariant(i.title, v))).map((side) => `${v} ${side}`));
       if (missing.length && !waived.has(r.name)) out.push(`No before/after pair "${r.name}" on the pushed head, missing: ${missing.join(', ')}. Attach each (attach_artifact, kind image, rule "${r.name}", pair before|after, title starting with the variant, e.g. "${r.pairs[0]}: <view>"), or add the Evidence line "No artifact: ${r.name}: <reason>"`);
       continue;
     }

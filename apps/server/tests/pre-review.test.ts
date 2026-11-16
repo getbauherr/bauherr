@@ -222,3 +222,14 @@ it('a Product without a ui path set (or with an empty one) gets no rule', async 
     await fake.forge.closePullRequest(repo, pr.number)
   }
 })
+
+it('attaching the same pair image again (a retry) stores one row', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { ticket, a } = await seed(UI_FILES)
+  const first = await shoot(a, 'light-desktop', 'before')
+  const again = await shoot(a, 'light-desktop', 'before')
+  expect(again).toMatchObject({ created: false, artifact: first.artifact })
+  const other = await shoot(a, 'dark-desktop', 'before')
+  expect(other.created).not.toBe(false)
+  expect((await payload.find({ collection: 'artifacts', where: { ticket: { equals: ticket.id } }, ...o })).totalDocs).toBe(2)
+})

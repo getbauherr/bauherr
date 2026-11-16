@@ -43,6 +43,25 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
+describe('the built-in UI proof rule', () => {
+  const BUILTIN = { name: 'UI change: before/after', kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop', globs: '', command: '', before: false }
+  const mine = { name: 'Mine', kind: 'image', globs: 'src/**', command: 'pnpm shots', before: false, pathSet: '', pairs: '' }
+  const save = (rules: object[]) => actions.saveDeploy({}, form({ id: product, reviewChecks: '', proofRules: JSON.stringify(rules) }))
+
+  it('is never stored while unmodified', async () => {
+    expect(await save([mine, BUILTIN])).toMatchObject({ saved: true })
+    expect((await productDoc()).reviewChecks.artifacts.map((r: { name: string }) => r.name)).toEqual(['Mine'])
+  })
+
+  it('a save that changes its kind, path set or pairs is refused and stores nothing', async () => {
+    await save([mine])
+    for (const change of [{ pathSet: 'docs' }, { pairs: 'light-desktop' }, { kind: 'report', pairs: '', command: 'c' }]) {
+      expect(await save([mine, { ...BUILTIN, ...change }])).toMatchObject({ fields: { proofRules: expect.stringContaining('the built-in rule') } })
+    }
+    expect((await productDoc()).reviewChecks.artifacts.map((r: { name: string }) => r.name)).toEqual(['Mine'])
+  })
+})
+
 describe('Product tabs save only their own fields', () => {
   it('the Releases tab writes the pre-release switch and leaves the Deploy fields alone', async () => {
     expect(await actions.saveDeploy({}, form({ id: product, section: 'releases', releaseMode: 'factory', releaseReminderDays: 7, releasePrerelease: 'on' }))).toMatchObject({ saved: true })
