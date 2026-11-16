@@ -30,7 +30,7 @@ export function CanvasSplitHeader({
 
 export function CanvasSplitBody({ writing, className, children, ...props }: ComponentProps<"div"> & { writing?: boolean }) {
   return (
-    <div data-slot="canvas-split-body" className={cn("flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-5 py-4", className)} {...props}>
+    <div data-slot="canvas-split-body" tabIndex={0} className={cn("flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-5 py-4", className)} {...props}>
       {children}
       {writing && <span aria-hidden className="h-[1.05em] w-[2px] animate-pulse rounded-full bg-foreground/70 motion-reduce:animate-none" />}
     </div>

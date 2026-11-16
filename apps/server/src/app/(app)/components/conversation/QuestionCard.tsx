@@ -15,7 +15,7 @@ export const QuestionCard: FC<{ id?: string; eyebrow: string; title?: string; wh
   <section data-testid="current-point" data-point={id} aria-label="Current question" className="mt-1 flex flex-col overflow-hidden rounded-md border border-border bg-card">
     <div className="flex flex-col gap-1 px-4 pt-3.5">
       <p className="m-0 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{eyebrow}</p>
-      {title && <h3 className="m-0 text-[16px] leading-6 font-semibold wrap-anywhere">{title}</h3>}
+      {title && <h2 className="m-0 text-[16px] leading-6 font-semibold wrap-anywhere">{title}</h2>}
       {why && (
         <p className="m-0 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
           {why} {onWhy && <button type="button" disabled={busy} onClick={onWhy} className="cursor-pointer text-primary hover:underline">Why this matters</button>}
