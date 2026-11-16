@@ -5,8 +5,8 @@ import { Table } from '../ui/table'
 import { GatewayStatus } from '../gateway/GatewayStatus'
 import type { GatewayStatus as Status } from '../../lib/gateway-setup'
 
-export const usd = (n: number | null): string => (n == null ? '—' : n >= 100 ? `$${n.toFixed(0)}` : n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`)
-export const tok = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(Math.round(n)))
+import { tok, usd } from '../../lib/format'
+export { tok, usd }
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)} %` : '—')
 const q = (x: Quantiles | null) => (x ? `${usd(x.median)} / ${usd(x.p85)}` : '—')
 

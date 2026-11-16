@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import type { TeamCost } from '../../lib/cost'
 import { ago, durationHm } from '../../lib/format'
 import { usd } from '../insights/CostSection'
+import { AgentLink } from './AgentNav'
 import { CopyButton } from './CopyButton'
 import { connectPrompt } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
@@ -32,7 +33,7 @@ function Row({ avatar, s, role, titles, cost }: { avatar?: string; s: TeamSessio
         <span className="small" data-testid="session-state">{s.waiting?.chip ?? WORD[s.status]}</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-medium">{s.label ?? s.publicId}{role && <span className="small font-normal text-muted-foreground"> ({role})</span>}</span>
+        <span className="truncate font-medium"><AgentLink className="hover:underline" href={`/team/${s.publicId}`}>{s.label ?? s.publicId}</AgentLink>{role && <span className="small font-normal text-muted-foreground"> ({role})</span>}</span>
         <span className="small truncate text-muted-foreground">{[client, s.model].filter(Boolean).join(' · ')}</span>
         {s.waiting?.words && <span className="small truncate" data-testid="session-waiting">{s.waiting.words}</span>}
       </span>

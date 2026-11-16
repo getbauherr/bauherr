@@ -107,7 +107,7 @@ test('a mixed decision sheet: the Product owner sees and answers their rows, the
   await expect(card(boss, 'Beta: settle the header copy')).toBeVisible()
   await expect(card(boss, 'Beta: settle the header copy').getByTestId('asked')).toHaveCount(0) // no Product owner on Beta: it asks the Bauherr
   await pick(boss, 'Alpha: settle the header copy')
-  await asked.getByRole('link', { name: 'Answer questions' }).click()
+  await asked.getByRole('link', { name: /^Answer \d+ questions?$/ }).click()
   await expect(boss.getByTestId('refine-thread')).toContainText('Triage asked 3 questions')
   await boss.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
   const all = boss.getByTestId('artifact-sheet')

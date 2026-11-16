@@ -223,6 +223,16 @@ describe('loadSession', () => {
     expect(v.session).toMatchObject({ publicId, role: 'engineer', health: 'working', activity: 'building', run: t.run, ticket: { number: t.number, title: t.title, stage: 'build' } })
   })
 
+  it('carries the stored check summary of the running Run while checks are pending, else none', async () => {
+    const { publicId, t } = await claim()
+    expect((await sessions.loadSession(payload, ws, publicId))!.ci).toBeUndefined()
+    const summary = (pending: number) => JSON.stringify({ total: 4, passed: 3, pending, failed: [], url: null, updatedAt: new Date().toISOString(), rows: [] })
+    await db().execute(sql`UPDATE "tickets" SET "ci_summary" = ${summary(1)}::jsonb WHERE "id" = ${t.id}`)
+    expect((await sessions.loadSession(payload, ws, publicId))!.ci).toEqual({ passed: 3, total: 4 })
+    await db().execute(sql`UPDATE "tickets" SET "ci_summary" = ${summary(0)}::jsonb WHERE "id" = ${t.id}`)
+    expect((await sessions.loadSession(payload, ws, publicId))!.ci).toBeUndefined()
+  })
+
   it('lists the Runs newest first with ticket, stage, outcome, duration and cost, also a released one', async () => {
     const { publicId, t } = await claim()
     const id = await sid(publicId)

@@ -5,6 +5,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { sourceOf } from './actions'
 import { workflowFor } from './factory'
+import type { CiSummary } from './ci-summary'
 import { ownsGate } from './gates'
 import { tierModels } from './gateway'
 import { record } from './history'
@@ -405,6 +406,8 @@ export type SessionRun = { id: number; ticket: { number: number; title: string }
 export type Usage = { usd: number; tokens: number }
 export type SessionView = {
   session: Omit<TeamSession, 'clientName' | 'clientVersion' | 'model' | 'provider'> & { role: string; clientName?: string | null; clientVersion?: string | null; model?: string | null; provider?: string | null }
+  /** The running Run's checks (passed of total) while some are pending, from the Ticket's stored summary. */
+  ci?: { passed: number; total: number }
   runs: SessionRun[]
   milestones: { run: number; seq: number | null; summary: string | null; at: string | null }[]
   /** Admin only: cost and tokens of the session, today and in the last 30 days. */
@@ -435,8 +438,10 @@ export const loadSession = async (payload: Payload, workspace: number | string, 
       : null,
   ])
   const u = usage?.rows[0] as Doc | undefined
+  const ci = row.run_id ? (row.ci_summary as CiSummary | null) : null
   return {
     session: { ...rest, role: row.role, ...(admin && { clientName, clientVersion, model, provider }) },
+    ...(ci && ci.pending > 0 && { ci: { passed: ci.passed, total: ci.total } }),
     runs: (runs.rows as Doc[]).map((r) => {
       const start = r.started_at ? new Date(r.started_at).getTime() : null
       const end = r.finished_at ? new Date(r.finished_at).getTime() : r.status === 'running' ? now : null
