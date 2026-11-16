@@ -22,7 +22,9 @@ test('Ticket and Run page show Waiting for CI 1/2, both checks and the pull requ
   await expect(rows.filter({ hasText: 'test' })).toContainText('Running')
   await expect(rows.filter({ hasText: 'lint' })).toContainText('Failed')
   await expect(page.getByTestId('ci-panel').locator('time')).toContainText(/^Updated /)
-  const link = page.getByTestId('action-bar').getByRole('link', { name: /^Open pull request #88 on GitHub/ })
+  // the bar's one secondary slot is the fast lane here, so the forge link sits in the CI panel header
+  await expect(page.getByTestId('action-bar').getByTestId('forge-link')).toHaveCount(0)
+  const link = page.getByTestId('ci-panel').getByRole('link', { name: /^Open pull request #88 on GitHub/ })
   await expect(link).toHaveAttribute('href', 'https://github.com/acme/ci/pull/88')
   await expect(link).toHaveAttribute('target', '_blank')
   await expect(link).toContainText('(opens in new tab)')
