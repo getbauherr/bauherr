@@ -334,7 +334,7 @@ const briefWs = (await ensure('workspaces', { slug: 'brief-lab' }, { name: 'Brie
   const applied = await applyFactory(payload, briefWs as number, stringify(doc), { by: 'seed', via: 'seed', note: 'brief-lab: the shipped default' })
   if (!applied.ok) throw new Error(`brief-lab factory file: ${applied.findings.join('; ')}`)
 }
-const briefHub = (await ensure('connections', { name: 'GitHub Brief' }, { name: 'GitHub Brief', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: briefWs })).id
+const briefHub = (await ensure('connections', { name: 'GitHub Brief' }, { name: 'GitHub Brief', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: briefWs })).id
 await ensure('bauherren', { email: 'brief-bauherr@example.com' }, { email: 'brief-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: briefWs }], githubLogin: 'e2e-brief-bauherr' })
 const briefProduct = (await ensure('products', { slug: 'brief-web' }, { name: 'Brief Web', slug: 'brief-web', workspace: briefWs, stagingUrl: 'https://staging.example.com/brief', productOwnerTestsStaging: true })).id
 await ensure('repositories', { fullName: 'acme/brief' }, { fullName: 'acme/brief', product: briefProduct, workspace: briefWs })
