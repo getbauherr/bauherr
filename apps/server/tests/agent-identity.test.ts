@@ -20,7 +20,7 @@ const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
 /** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `access: 'human'` on the tool. */
-const GATES = ['approve', 'decide', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'approve_production', 'approve_skill_proposal', 'reject_skill_proposal']
+const GATES = ['approve', 'decide', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'send_back', 'approve_production', 'approve_skill_proposal', 'reject_skill_proposal']
 
 let testDb: TestDb
 beforeAll(async () => {
@@ -86,8 +86,9 @@ it('with a human actor the gate tools work and every human touch names a person'
   expect(await call(human, 'approve', { ticket: await ticket('plan'), gate: 'plan' })).toEqual({ approved: 'bauherr:approved:plan' })
   expect(await call(human, 'accept_staging', { ticket: await ticket('release') })).toMatchObject({ approved: 'bauherr:approved:staging' })
   expect(await call(human, 'request_changes', { ticket: await ticket('release'), note: 'again' })).toMatchObject({ stage: 'build' })
+  expect(await call(human, 'send_back', { ticket: await ticket('build'), to: 'plan', note: 'rethink' })).toMatchObject({ stage: 'plan', moved: true })
   const touches = (await payload.find({ collection: 'human_touches', pagination: false, ...o })).docs as any[]
-  expect(touches.length).toBeGreaterThanOrEqual(3)
+  expect(touches.length).toBeGreaterThanOrEqual(4)
   for (const t of touches) expect(t.actor).toContain('@')
   const row = (await payload.find({ collection: 'tool_calls', where: { name: { equals: 'approve' } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as any
   expect(row).toMatchObject({ status: 'ok', agentKey: null })
