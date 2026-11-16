@@ -416,6 +416,18 @@ for (const [slug, name, repo] of [['who-alpha', 'Alpha', 'acme/who-alpha'], ['wh
   if (slug === 'who-alpha') await ensure('bauherren', { email: 'who-po@example.com' }, { email: 'who-po@example.com', password, role: 'product-owner', assignments: [{ workspace: who, scope: 'products', products: [whoProduct] }] })
 }
 // No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
+// ci-panel.spec.ts: a Product of its own with one Ticket in Build whose Run waits on CI: one check running, one failed (stored summary, as the poller writes it).
+const ciProduct = (await ensure('products', { slug: 'acme-ci' }, { name: 'Acme CI', slug: 'acme-ci', workspace })).id
+await ensure('repositories', { fullName: 'acme/ci' }, { fullName: 'acme/ci', product: ciProduct, workspace })
+await ensure('ticket_sources', { repo: 'acme/ci' }, { repo: 'acme/ci', product: ciProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+const ciTicket = await ticket(581, 'Show CI on the ticket', 'build', ciProduct, {
+  waitingFor: 'checks',
+  ciSummary: {
+    total: 2, passed: 0, pending: 1, failed: ['lint'], url: 'https://github.com/acme/ci/pull/88', updatedAt: new Date().toISOString(),
+    rows: [{ name: 'test', status: 'in_progress', conclusion: null, url: 'https://github.com/acme/ci/actions/runs/1' }, { name: 'lint', status: 'completed', conclusion: 'failure', url: 'https://github.com/acme/ci/actions/runs/2' }],
+  },
+})
+await run(ciTicket, 'build', 'running', { startedAt: new Date().toISOString(), artifacts: { prUrl: 'https://github.com/acme/ci/pull/88' } })
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>

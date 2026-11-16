@@ -179,6 +179,23 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
       await page.context().close()
     })
   }
+
+  test('Ticket and Run page with the CI panel (#581)', async ({ browser }) => {
+    test.setTimeout(120_000)
+    const page = await (await browser.newContext({ storageState: session })).newPage()
+    await page.goto('/tickets/n/581')
+    await expect(page.getByTestId('ci-panel')).toBeVisible()
+    const run = await page.getByRole('link', { name: /^Run #\d+$/ }).first().getAttribute('href')
+    for (const url of [page.url(), new URL(run!, page.url()).toString()]) {
+      await page.goto(url)
+      await expect(page.getByTestId('ci-panel')).toBeVisible()
+      for (const t of ['light', 'dark'] as const) {
+        await setTheme(page, t)
+        expect(await scan(page), `${url} (${t})`).toEqual([])
+      }
+    }
+    await page.context().close()
+  })
 })
 
 test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {

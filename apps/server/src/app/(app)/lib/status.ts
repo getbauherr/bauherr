@@ -1,6 +1,7 @@
 import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 import { activityOf, kindOfRun } from '../../../lib/stage-text'
 import { is, title as stageTitle, type Workflow } from '../../../lib/workflow'
+import { waitingChip, waitingSentence, type CiCounts } from '../../../lib/ci-text'
 import { duration } from './format'
 
 export type StatusPhase = 'working' | 'queued' | 'human' | 'ci' | 'blocked' | 'failed' | 'done'
@@ -45,6 +46,8 @@ export type StatusRow = {
   track: Track
   /** Sub-tickets of a split Ticket (stage of kind container). */
   children?: { total: number; done: number } | null
+  /** Pending counts of the stored check summary (`pendingCounts`); read from the database, never the forge. */
+  ci?: CiCounts | null
   /** The slice an epic parent is building: its number, the epic's size and the stage of its sub-ticket. */
   slicing?: { index: number; total: number; stage: string | null } | null
   /** A parked epic (or one of its open slices): stopped, holds no WIP. */
@@ -64,10 +67,12 @@ export const runWho = (r: Pick<StatusRun, 'mode' | 'executor' | 'sessionLabel' |
 }
 
 const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | null => {
+  const counts = r.ci
+  const checks = (detail: string) => (counts ? { label: waitingChip(counts), detail: waitingSentence(counts) } : { label: 'Waiting for CI', detail })
   const at = (k: 'review' | 'release') => is(wf, r.stage, k)
   const t = r.track
-  if (t.waitingFor === 'checks') return { label: 'Waiting for CI', detail: 'checks of the merge request' }
-  if (at('review') && t.reviewState === 'waiting_checks') return { label: 'Waiting for CI', detail: 'checks of the merge request' }
+  if (t.waitingFor === 'checks') return checks('checks of the merge request')
+  if (at('review') && t.reviewState === 'waiting_checks') return checks('checks of the merge request')
   if (at('review') && t.reviewState === 'queued') return { label: 'Waiting on merge queue', detail: 'the merge request is in the merge queue' }
   if (at('release') && t.releaseState === 'waiting') return { label: 'Waiting on deploy', detail: 'the staging deploy' }
   if (at('release') && t.productionState === 'deploying') return { label: 'Waiting on deploy', detail: 'the production deploy' }
@@ -92,7 +97,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   }
   const wait = ci(wf, r)
   const ciStatus = (w: { label: string; detail: string }): TicketStatus => ({ phase: 'ci', label: w.label, detail: w.detail, who: r.forge === 'gitlab' ? 'GitLab CI' : r.forge === 'github' ? 'GitHub Actions' : null, tone: 'neutral' })
-  if (run?.status === 'running' && wait?.label === 'Waiting for CI') return ciStatus(wait)
+  if (run?.status === 'running' && !r.needsYou && wait?.label.startsWith('Waiting for CI')) return ciStatus(wait)
   if (run?.status === 'running') {
     const kind = kindOfRun(wf, run) ?? ''
     const since = run.startedAt ? ` for ${duration((now - +new Date(run.startedAt)) / 1000)}` : ''
@@ -116,7 +121,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
 /** `ticketStatus` against the current workflow, as one line: "In progress: building for 4 min". */
 export const statusLine = (wf: Workflow, r: StatusRow): string => {
   const s = ticketStatus(wf, r)
-  return s.detail ? (s.detail.startsWith(s.label) ? s.detail : `${s.label}: ${s.detail}`) : s.label
+  return s.detail ? (s.detail.startsWith(s.label.replace(/ \d+\/\d+$/, '')) ? s.detail : `${s.label}: ${s.detail}`) : s.label
 }
 
 /** The status label of a history phase (`ticket_events.phase`) in the stage of kind `stageKind`. */
