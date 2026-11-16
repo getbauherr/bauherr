@@ -48,6 +48,14 @@ export type RunCtx = {
   fixBase?: string;
   /** Build Run on an existing MR: the Runner merges the base branch in before the agent (and skips the agent when the merge is clean). */
   mergeBase?: boolean;
+  /** Branch the Run creates instead of `bauherr/<number>-<run>` (an epic's integration branch). */
+  branch?: string;
+  /** Title of the MR a Build Run opens instead of `<title> (#<number>)`. */
+  prTitle?: string;
+  /** Slice of an epic: `prev` is the epic branch head the previous slice passed with (null for the first); `mergeMain` makes a Build Run merge the base branch into the branch before the agent. A Review Run reviews only the range after `prev`. */
+  slice?: { prev: string | null; mergeMain: boolean };
+  /** Epic the Run belongs to: the parent Ticket's number, its worklog (materialised as `.bauherr/epic-worklog.md`, upserted back after the Run) and the slices so far (written to `.bauherr/slices.md` for the epic review). */
+  epic?: { parent: number; worklog: string; slices: { number: number; title: string; prev: string | null; head: string | null; fixes: { sha: string; finding: string }[] }[] };
   /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */
   existingPr?: { number: number; url: string; branch: string; title: string; body: string };
   connection: {
@@ -77,10 +85,12 @@ export type RunCtx = {
   templates?: Record<string, { title: string; body: string }[]>;
   /** Path to the core pack (`pack/`). */
   packDir: string;
+  /** Polled after each tool of the Run's own agent turn: true stops the agent there, pushes a Build Run's branch and ends the Run `preempted`. */
+  shouldStop?: () => Promise<boolean>;
 };
 
 export type RunResult = {
-  status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted';
+  status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted' | 'preempted';
   reason?: string;
   /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;

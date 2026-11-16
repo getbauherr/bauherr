@@ -251,6 +251,59 @@ describe('AC3: no victim when it is not needed or not wanted', () => {
   })
 })
 
+describe('a hotfix preempts a Runner Run', () => {
+  /** A running autonomous engineer Run of a build Ticket. */
+  const runner = async (title: string) => {
+    const t = await ticket(title, 'build')
+    await db().execute(sql`UPDATE "runs" SET "mode" = 'autonomous', "status" = 'running', "role" = 'engineer', "started_at" = now() WHERE "id" = ${t.run}`)
+    return t
+  }
+
+  it('with no session Run to pause, the Runner Run is the one victim, once', async () => {
+    const r = await runner('r-build')
+    const hot = await hotfix()
+    expect(await preempt.preemptedRun(payload, r.run)).toBe(false)
+    expect(await preempt.preemptSweep(payload)).toBe(1)
+    expect(await preempt.preemptSweep(payload)).toBe(0)
+    expect(await rows(sql`SELECT "id" FROM "runs" WHERE "preempt_at" IS NOT NULL`)).toEqual([{ id: r.run }])
+    expect(await preempt.preemptedRun(payload, r.run)).toBe(true)
+    expect(hot.run).not.toBe(r.run)
+  })
+
+  it('a session Run is paused before a Runner Run, and an expedite Runner Run is never the victim', async () => {
+    const { wb } = await busy()
+    const r = await runner('r-build')
+    await hotfix()
+    expect(await preempt.preemptSweep(payload)).toBe(1)
+    expect(await rows(sql`SELECT "id" FROM "runs" WHERE "preempt_at" IS NOT NULL`)).toEqual([{ id: wb.run.id }])
+    await db().execute(sql`UPDATE "runs" SET "preempt_at" = NULL, "preempted_by" = NULL, "preempted_for" = NULL`)
+    await db().execute(sql`UPDATE "runs" SET "status" = 'abandoned' WHERE "id" = ${wb.run.id}`)
+    await db().execute(sql`UPDATE "tickets" SET "expedite" = true WHERE "id" = ${r.id}`)
+    expect(await preempt.preemptSweep(payload)).toBe(0)
+  })
+
+  it('a free session means the Runner Run is untouched', async () => {
+    const r = await runner('r-build')
+    await session('sc')
+    await hotfix()
+    expect(await preempt.preemptSweep(payload)).toBe(0)
+    expect(await preempt.preemptedRun(payload, r.run)).toBe(false)
+  })
+
+  it('the stopped Runner Run ends abandoned as preempted, its successor is queued and never escalated', async () => {
+    const r = await runner('r-build')
+    const hot = await hotfix()
+    await preempt.preemptSweep(payload)
+    const marked = (await payload.findByID({ collection: 'runs', id: r.run, ...o })) as Doc
+    expect(await jobs.abandonRun(payload, marked, { reason: 'stopped', escalate: false, preempted: true })).toBe('abandoned')
+    expect(await runRow(r.run)).toMatchObject({ status: 'abandoned', reason_kind: 'preempted' })
+    const succ = (await rows(sql`SELECT * FROM "runs" WHERE "previous_run_id" = ${r.run}`))[0]!
+    expect(succ).toMatchObject({ status: 'queued', mode: 'autonomous', escalation: null, preempted_by: String(hot.run) })
+    expect(await preempt.preemptedRun(payload, r.run)).toBe(false)
+    expect(await preempt.preemptSweep(payload)).toBe(0)
+  })
+})
+
 describe('resume first', () => {
   it('the successor sorts before an earlier-ranked Ticket of its stage once the hotfix is done', async () => {
     const [x, y] = [await ticket('a-other', 'build'), await ticket('z-victim', 'build')]

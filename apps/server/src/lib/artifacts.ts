@@ -90,7 +90,7 @@ export const checkProof = async (payload: Payload, workspace: number | string, p
 /** The open factory MR's head commit of the Ticket; throws when there is none (push first). */
 export const headShaOf = async (payload: Payload, t: Doc): Promise<string> => {
   const { backend, repo } = await forgeOf(payload, id(t.product))
-  const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t.number))
+  const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t))
   if (!pr?.headSha) throw new ArtifactRejected('no open factory MR with a pushed head: push your change first')
   return pr.headSha
 }
