@@ -326,6 +326,28 @@ for (const item of [
   { kind: 'transcript', title: 'Download from a terminal', criterion: 'Clicking it saves a CSV file', text: '$ curl -sO https://staging.example.com/proof/export.csv\n$ head -2 export.csv\ninvoice,total\nINV-1001,120.00' },
   { kind: 'preview', title: 'Try the export page', criterion: 'Clicking it saves a CSV file', url: 'https://preview.example.com/proof/1' },
 ] as const) await attachProof(payload, proofDoc, { sha: proofSha, item: item as never })
+// approval-brief.spec.ts: a Workspace of its own (`brief-lab`, the shipped default factory file) with a Bauherr and a Product owner assigned to its Product (so Accept on staging is asked), and two Tickets on staging with a stored approval brief; the second one has no visible bullet.
+const briefWs = (await ensure('workspaces', { slug: 'brief-lab' }, { name: 'Brief Lab', slug: 'brief-lab', wipLimits: {} })).id
+{
+  const doc = parseDocument(readFileSync(resolve(corePack(), 'factory.yaml'), 'utf8')).toJS() as Record<string, any>
+  inlineProfiles(doc, corePack(), [])
+  const applied = await applyFactory(payload, briefWs as number, stringify(doc), { by: 'seed', via: 'seed', note: 'brief-lab: the shipped default' })
+  if (!applied.ok) throw new Error(`brief-lab factory file: ${applied.findings.join('; ')}`)
+}
+const briefHub = (await ensure('connections', { name: 'GitHub Brief' }, { name: 'GitHub Brief', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: briefWs })).id
+await ensure('bauherren', { email: 'brief-bauherr@example.com' }, { email: 'brief-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: briefWs }], githubLogin: 'e2e-brief-bauherr' })
+const briefProduct = (await ensure('products', { slug: 'brief-web' }, { name: 'Brief Web', slug: 'brief-web', workspace: briefWs, stagingUrl: 'https://staging.example.com/brief', productOwnerTestsStaging: true })).id
+await ensure('repositories', { fullName: 'acme/brief' }, { fullName: 'acme/brief', product: briefProduct, workspace: briefWs })
+await ensure('ticket_sources', { repo: 'acme/brief' }, { repo: 'acme/brief', product: briefProduct, connection: briefHub, cursor: '2026-10-30T09:00:00Z', workspace: briefWs })
+await ensure('bauherren', { email: 'brief-po@example.com' }, { email: 'brief-po@example.com', password, role: 'product-owner', assignments: [{ workspace: briefWs, scope: 'products', products: [briefProduct] }] })
+const briefOf = (changes: { text: string; kind: string }[]) => ({
+  sha: 'abc1234def', changes, notIncluded: ['Bulk export of all invoices'], risk: 'Low. Revert the merge; no data is changed.', noted: [{ text: 'The button has no loading state', reason: 'low' }],
+  proof: { ticket: 0, rows: [{ criterion: 'The export page shows a Download button', items: [] }], waived: [{ rule: 'UI change: before/after', reason: 'no browser on the build host' }], staging: null },
+  checks: { ci: 'CI: 4 of 4 checks passed', testsAdded: 2, noProof: [{ rule: 'The export page shows a Download button', reason: 'No proof attached' }, { rule: 'UI change: before/after', reason: 'no browser on the build host' }] },
+  links: [{ label: 'Merge request #7', href: 'https://github.com/acme/brief/pull/7' }, { label: 'Staging', href: 'https://staging.example.com/brief' }],
+})
+await ensure('tickets', { externalId: 'e2e-brief-1' }, { title: 'Ship the invoice download', externalId: 'e2e-brief-1', number: 1, url: 'https://github.com/acme/brief/issues/1', state: 'open', labels: ['bauherr:stage:release'], releaseAt: new Date().toISOString(), ...rel, approvalBrief: briefOf([{ kind: 'visible', text: 'Finance clerks get a Download button on the invoice page' }, { kind: 'behaviour', text: 'The factory keeps the file for 7 days' }, { kind: 'internal', text: 'A CSV writer module and its tests' }]), product: briefProduct, workspace: briefWs, rank: '000331' })
+await ensure('tickets', { externalId: 'e2e-brief-2' }, { title: 'Speed up the invoice query', externalId: 'e2e-brief-2', number: 2, url: 'https://github.com/acme/brief/issues/2', state: 'open', labels: ['bauherr:stage:release'], releaseAt: new Date().toISOString(), ...rel, approvalBrief: briefOf([{ kind: 'internal', text: 'The invoice query uses an index' }]), product: briefProduct, workspace: briefWs, rank: '000332' })
 const minutesAgo = (m: number) => new Date(now - m * 6e4).toISOString()
 const session = (publicId: string, role: string, label: string, extra: Record<string, unknown> = {}) =>
   ensure('agent_sessions', { publicId }, { publicId, role, label, clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', connectedAt: minutesAgo(95), lastSeenAt: minutesAgo(0), workspace, ...extra })

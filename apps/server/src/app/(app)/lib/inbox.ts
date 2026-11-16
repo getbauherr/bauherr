@@ -6,12 +6,14 @@ import { asksOwner } from '../../../lib/addressee'
 import { payloadClient } from './session'
 import { renderMarkdown } from './markdown'
 import { waited } from './format'
+import type { ApprovalBrief } from './brief'
 import { loadProof, type ProofData } from './proof'
 
 type Doc = Record<string, any>
+const BRIEF_NEEDS = ['Accept on staging', 'Approve production']
 
 /** One card of the Inbox, as the client component needs it. */
-export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** The Ticket is on the fast lane (`expedite`). */ fastLane?: boolean; /** Open longer than 24 h. */ overdue?: boolean; /** Set for a Bauherr when the card asks the Product owner (a Bauherr may step in). */ asked?: 'product-owner'; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData; /** The signed-in person has not opened this decision (no seen row for its Ticket, need and decision time). */ unseen?: boolean }
+export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** The Ticket is on the fast lane (`expedite`). */ fastLane?: boolean; /** Open longer than 24 h. */ overdue?: boolean; /** Set for a Bauherr when the card asks the Product owner (a Bauherr may step in). */ asked?: 'product-owner'; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData; /** The frozen approval brief of the same decisions. */ brief?: ApprovalBrief; /** The signed-in person has not opened this decision (no seen row for its Ticket, need and decision time). */ unseen?: boolean }
 /** Waiting longer than this is shown in the warn tone. */
 export const OVERDUE_MS = 24 * 3600_000
 
@@ -40,7 +42,7 @@ export const loadInbox = async (workspace: number, user: Doc, opts: { product?: 
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const owner = isProductOwner(user)
   const [rows, products, working] = await Promise.all([
-    payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [asksOwner, productScope(user, workspace)] : []), ...(opts.product ? [{ product: { equals: opts.product } }] : [])] }, select: { workspace: true, expedite: true, needsBy: true, openOwnerRows: true, number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true }, ...o }),
+    payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [asksOwner, productScope(user, workspace)] : []), ...(opts.product ? [{ product: { equals: opts.product } }] : [])] }, select: { workspace: true, expedite: true, needsBy: true, openOwnerRows: true, number: true, title: true, product: true, needsYou: true, decision: true, stage: true, reviewRounds: true, openCriticalDecisions: true, releaseRunUrl: true, releasedIn: true, planTldr: true, stagingTldr: true, approvalBrief: true }, ...o }),
     payload.find({ collection: 'products', where: productsVisibleTo(user, workspace), select: { name: true, stagingUrl: true, reviewChecks: true, pathSets: true }, sort: 'name', ...o }),
     payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: false } }, ...(owner ? [productScope(user, workspace)] : [])] }, overrideAccess: true }),
   ])
@@ -72,6 +74,8 @@ export const loadInbox = async (workspace: number, user: Doc, opts: { product?: 
     for (const i of forProof) {
       const p = proof.get(i.id)
       if (p) i.proof = p
+      const brief = rowsById.get(i.id)?.approvalBrief
+      if (brief && BRIEF_NEEDS.includes(i.decision.need)) i.brief = brief
     }
   }
   const groups = CHECKPOINTS.map((checkpoint) => ({ checkpoint, items: items.filter((i) => i.decision.checkpoint === checkpoint).sort((a, b) => Number(b.decision.need === 'Expedite?') - Number(a.decision.need === 'Expedite?') || a.decision.openSince.localeCompare(b.decision.openSince) || a.number - b.number) })).filter((g) => g.items.length)
