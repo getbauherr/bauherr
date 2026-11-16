@@ -11,6 +11,8 @@ import { record } from './history'
 import { AGENT_RELEASED, AGENT_REPAIRED, FINDING_FRESH_MS, type Cause } from './liveness'
 import type { Ctx } from './mcp-tools'
 import { id } from './release'
+import { EFFECTIVE } from '../app/(app)/lib/cost'
+import { activityOf, kindOfRun } from './stage-text'
 import { corePack, packDir, stage as stageDef, stagesOfRole, title as stageTitle, type Role, type Workflow } from './workflow'
 
 type Doc = Record<string, any>
@@ -243,6 +245,18 @@ export const disconnect = async (c: Ctx, session: Doc) => {
 export const sweepSessions = async (payload: Payload): Promise<number> =>
   (await payload.db.drizzle.execute(sql`UPDATE "agent_sessions" s SET "disconnected_at" = now(), "end_reason" = 'timeout', "updated_at" = now() WHERE s."disconnected_at" IS NULL AND s."last_seen_at" < now() - make_interval(secs => ${sessionTimeoutS()}) AND NOT EXISTS (SELECT 1 FROM "runs" r WHERE r."session_id" = s."id" AND r."status" = 'running') RETURNING s."id"`)).rows.length
 
+export type Health = 'working' | 'idle' | 'stuck' | 'not-responding' | 'disconnected'
+
+/**
+ * The one derived state of a session: disconnected; else working or idle by whether it holds a running Run; a session silent past `sessionTimeoutS` is stuck (holds a Run) or not responding (holds none).
+ * `lastSeenAt` is the session's last signal; a session that never reported counts as silent.
+ */
+export const sessionHealth = (s: { hasRun: boolean; lastSeenAt: string | Date | null; disconnectedAt: string | Date | null }, now = Date.now(), timeoutS = sessionTimeoutS()): Health => {
+  if (s.disconnectedAt) return 'disconnected'
+  const silent = !s.lastSeenAt || now - new Date(s.lastSeenAt).getTime() > timeoutS * 1000
+  return s.hasRun ? (silent ? 'stuck' : 'working') : silent ? 'not-responding' : 'idle'
+}
+
 export type TeamSession = {
   publicId: string
   label: string | null
@@ -251,10 +265,19 @@ export type TeamSession = {
   model: string | null
   provider: string | null
   status: 'working' | 'idle' | 'offline'
+  health: Health
   ticket?: { number: number; title: string; stage: string }
   run?: number
+  /** The verb of the running Run's stage kind ("building"). */
+  activity?: string
+  /** Start of the running Run. */
+  runStartedAt?: string | null
   connectedAt: string | null
   lastSeenAt: string | null
+  disconnectedAt: string | null
+  endReason: 'disconnect' | 'timeout' | 'replaced' | null
+  /** Email of the agent key's owner. Admin only. */
+  keyOwner?: string | null
   activeSecondsToday: number
   activeSecondsTotal: number
 }
@@ -269,47 +292,80 @@ export type TeamRole = {
   model?: string
   agents?: number
   exceptions: boolean
-  stages: { name: string; title: string; kind: string }[]
+  stages: { name: string; title: string; kind: string; activity: string }[]
+  /** Open Tickets in a session-mode stage of the role whose Run waits for a session. */
+  waiting: number
   sessions: TeamSession[]
   autonomous: { run: number; executor: 'runner' | 'ci' | null; ticket: { number: number; title: string; stage: string }; startedAt: string | null; model: string | null }[]
 }
 
-/** DB-only read for the Team page: every role of the Workspace workflow with its sessions (connected ones and those disconnected in the last 24 h) and the autonomous Runs working for it right now. Sessions whose role left the workflow are in `orphans`. */
-export const loadTeam = async (payload: Payload, workspace: number | string): Promise<{ roles: TeamRole[]; orphans: (TeamSession & { role: string })[] }> => {
-  const wf = workflowFor(workspace)
-  const db = payload.db.drizzle
-  const rows = (
-    await db.execute(sql`
-      SELECT s."public_id", s."role", s."label", s."client_name", s."client_version", s."model", s."provider", s."connected_at", s."last_seen_at", s."disconnected_at",
-        r."id" AS "run_id", t."number", t."title", t."stage" AS "ticket_stage",
+const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null)
+
+/** Session rows with the Run each holds, its Ticket and the active time; `where` picks the sessions. */
+const sessionRows = async (payload: Payload, where: ReturnType<typeof sql>): Promise<Doc[]> =>
+  (
+    await payload.db.drizzle.execute(sql`
+      SELECT s."id" AS "sid", s."public_id", s."role", s."label", s."client_name", s."client_version", s."model", s."provider", s."connected_at", s."last_seen_at", s."disconnected_at", s."end_reason", u."email" AS "key_owner",
+        r."id" AS "run_id", r."kind" AS "run_kind", r."stage" AS "run_stage", r."started_at" AS "run_started_at", t."number", t."title", t."stage" AS "ticket_stage",
         COALESCE(sp."total", 0)::float8 AS "total", COALESCE(sp."today", 0)::float8 AS "today"
       FROM "agent_sessions" s
-      LEFT JOIN LATERAL (SELECT "id", "ticket_id" FROM "runs" WHERE "session_id" = s."id" AND "status" = 'running' ORDER BY "started_at" DESC LIMIT 1) r ON true
+      LEFT JOIN "bauherren" u ON u."id" = s."owner_id"
+      LEFT JOIN LATERAL (SELECT "id", "ticket_id", "kind", "stage", "started_at" FROM "runs" WHERE "session_id" = s."id" AND "status" = 'running' ORDER BY "started_at" DESC LIMIT 1) r ON true
       LEFT JOIN "tickets" t ON t."id" = r."ticket_id"
       LEFT JOIN (
         SELECT "session_id", sum(EXTRACT(EPOCH FROM ("last_at" - "started_at"))) AS "total", sum(GREATEST(0, EXTRACT(EPOCH FROM ("last_at" - GREATEST("started_at", date_trunc('day', now())))))) AS "today"
         FROM "session_spans" GROUP BY "session_id"
       ) sp ON sp."session_id" = s."id"
-      WHERE s."workspace_id" = ${workspace} AND (s."disconnected_at" IS NULL OR s."disconnected_at" > now() - make_interval(hours => ${OFFLINE_KEEP_H}))
+      WHERE ${where}
       ORDER BY s."connected_at"`)
   ).rows as Doc[]
+
+const toSession = (wf: Workflow, r: Doc, now: number, admin: boolean): TeamSession => ({
+  publicId: r.public_id,
+  label: r.label,
+  clientName: r.client_name,
+  clientVersion: r.client_version,
+  model: r.model,
+  provider: r.provider,
+  status: r.run_id ? 'working' : r.disconnected_at || new Date(r.last_seen_at).getTime() < now - sessionTimeoutS() * 1000 ? 'offline' : 'idle',
+  health: sessionHealth({ hasRun: !!r.run_id, lastSeenAt: r.last_seen_at, disconnectedAt: r.disconnected_at }, now),
+  ...(r.run_id && { run: r.run_id, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, activity: activityOf(kindOfRun(wf, { kind: r.run_kind, stage: r.run_stage })), runStartedAt: iso(r.run_started_at) }),
+  connectedAt: iso(r.connected_at),
+  lastSeenAt: iso(r.last_seen_at),
+  disconnectedAt: iso(r.disconnected_at),
+  endReason: r.end_reason ?? null,
+  ...(admin && { keyOwner: r.key_owner ?? null }),
+  activeSecondsToday: r.today,
+  activeSecondsTotal: r.total,
+})
+
+/** Open Tickets per role whose current stage has a Run waiting for a session (session-mode, no holder). */
+const waitingByRole = async (payload: Payload, wf: Workflow, workspace: number | string): Promise<Map<string, number>> => {
+  const rows = (await payload.db.drizzle.execute(sql`SELECT r."stage", count(DISTINCT r."ticket_id")::int AS "n" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" AND t."state" = 'open' AND t."stage" = r."stage" WHERE r."workspace_id" = ${workspace} AND r."status" = 'awaiting_session' AND r."mode" = 'session' GROUP BY r."stage"`)).rows as { stage: string; n: number }[]
+  const out = new Map<string, number>()
+  for (const r of rows) {
+    const role = stageDef(wf, r.stage)?.role
+    if (role) out.set(role, (out.get(role) ?? 0) + r.n)
+  }
+  return out
+}
+
+/**
+ * DB-only read for the Team page: every role of the Workspace workflow with its sessions (connected ones and those disconnected in the last 24 h), the Tickets waiting for it and the autonomous Runs working for it right now. Sessions whose role left the workflow are in `orphans`.
+ * `presence.key`: the person (`userId`) has an unrevoked agent key; `presence.anySession`: a session ever connected to the Workspace. `admin` adds the key owner of each session.
+ */
+export const loadTeam = async (payload: Payload, workspace: number | string, opts: { admin?: boolean; userId?: number | string; now?: number } = {}): Promise<{ roles: TeamRole[]; orphans: (TeamSession & { role: string })[]; presence: { key: boolean; anySession: boolean } }> => {
+  const wf = workflowFor(workspace)
+  const db = payload.db.drizzle
+  const now = opts.now ?? Date.now()
+  const [rows, waiting, key, ever] = await Promise.all([
+    sessionRows(payload, sql`s."workspace_id" = ${workspace} AND (s."disconnected_at" IS NULL OR s."disconnected_at" > now() - make_interval(hours => ${OFFLINE_KEEP_H}))`),
+    waitingByRole(payload, wf, workspace),
+    opts.userId == null ? false : db.execute(sql`SELECT 1 FROM "agent_keys" WHERE "owner_id" = ${opts.userId} AND "revoked_at" IS NULL LIMIT 1`).then((r) => r.rows.length > 0),
+    db.execute(sql`SELECT 1 FROM "agent_sessions" WHERE "workspace_id" = ${workspace} LIMIT 1`).then((r) => r.rows.length > 0),
+  ])
   const auto = (await db.execute(sql`SELECT r."id", r."stage", r."started_at", r."model", r."executor", t."number", t."title", t."stage" AS "ticket_stage" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."workspace_id" = ${workspace} AND r."status" = 'running' AND r."mode" = 'autonomous' ORDER BY r."started_at"`)).rows as Doc[]
-  const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null)
-  const silent = Date.now() - sessionTimeoutS() * 1000
-  const toSession = (r: Doc): TeamSession => ({
-    publicId: r.public_id,
-    label: r.label,
-    clientName: r.client_name,
-    clientVersion: r.client_version,
-    model: r.model,
-    provider: r.provider,
-    status: r.run_id ? 'working' : r.disconnected_at || new Date(r.last_seen_at).getTime() < silent ? 'offline' : 'idle',
-    ...(r.run_id && { run: r.run_id, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage } }),
-    connectedAt: iso(r.connected_at),
-    lastSeenAt: iso(r.last_seen_at),
-    activeSecondsToday: r.today,
-    activeSecondsTotal: r.total,
-  })
+  const toS = (r: Doc) => toSession(wf, r, now, !!opts.admin)
   const roleIds = wf.roles.map((r) => r.id)
   return {
     roles: wf.roles.map((role) => ({
@@ -323,11 +379,59 @@ export const loadTeam = async (payload: Payload, workspace: number | string): Pr
       ...(role.model && { model: role.model }),
       ...(role.agents && { agents: role.agents }),
       exceptions: !!role.exceptions,
-      stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind })),
-      sessions: rows.filter((r) => r.role === role.id).map(toSession),
+      stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, activity: activityOf(s.kind) })),
+      waiting: waiting.get(role.id) ?? 0,
+      sessions: rows.filter((r) => r.role === role.id).map(toS),
       autonomous: auto.filter((r) => stageDef(wf, r.stage)?.role === role.id).map((r) => ({ run: r.id, executor: r.executor === 'ci' ? 'ci' : r.executor === 'runner' ? 'runner' : null, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, startedAt: iso(r.started_at), model: r.model })),
     })),
-    orphans: rows.filter((r) => !roleIds.includes(r.role)).map((r) => ({ ...toSession(r), role: r.role })),
+    orphans: rows.filter((r) => !roleIds.includes(r.role)).map((r) => ({ ...toS(r), role: r.role })),
+    presence: { key, anySession: ever },
+  }
+}
+
+export type SessionRun = { id: number; ticket: { number: number; title: string }; stage: string; status: string; outcome: string | null; startedAt: string | null; finishedAt: string | null; durationSeconds: number | null; /** Admin only. */ costUsd?: number | null }
+export type Usage = { usd: number; tokens: number }
+export type SessionView = {
+  session: Omit<TeamSession, 'clientName' | 'clientVersion' | 'model' | 'provider'> & { role: string; clientName?: string | null; clientVersion?: string | null; model?: string | null; provider?: string | null }
+  runs: SessionRun[]
+  milestones: { run: number; seq: number | null; summary: string | null; at: string | null }[]
+  /** Admin only: cost and tokens of the session, today and in the last 30 days. */
+  usage?: { today: Usage; d30: Usage }
+}
+
+/**
+ * One session of the Workspace by its public id with its Runs (newest first, as far as it was ever on them: a released Run stays through its span), the last 10 milestones across them and, for an Admin, cost and tokens.
+ * Null for an unknown id or one of another Workspace. A non-Admin gets no client, model, provider, key owner, cost or tokens fields at all.
+ */
+export const loadSession = async (payload: Payload, workspace: number | string, publicId: string, opts: { admin?: boolean; now?: number } = {}): Promise<SessionView | null> => {
+  const wf = workflowFor(workspace)
+  const db = payload.db.drizzle
+  const now = opts.now ?? Date.now()
+  const admin = !!opts.admin
+  const row = (await sessionRows(payload, sql`s."workspace_id" = ${workspace} AND s."public_id" = ${publicId}`))[0]
+  if (!row) return null
+  const { clientName, clientVersion, model, provider, ...rest } = toSession(wf, row, now, admin)
+  const mine = sql`SELECT "run_id" FROM "session_spans" WHERE "session_id" = ${row.sid} UNION SELECT "id" FROM "runs" WHERE "session_id" = ${row.sid}`
+  const today = sql`date_trunc('day', ${new Date(now).toISOString()}::timestamptz)`
+  const [runs, steps, usage] = await Promise.all([
+    db.execute(sql`SELECT r."id", r."stage", r."status"::text AS "status", r."outcome", r."started_at", r."finished_at", t."number", t."title", ${admin ? sql`(SELECT sum(e."cost_usd") FROM "usage_entries" e WHERE e."run_id" = r."id" AND ${EFFECTIVE})::float8` : sql`NULL`} AS "cost" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."id" IN (${mine}) ORDER BY r."started_at" DESC NULLS FIRST, r."id" DESC LIMIT 50`),
+    db.execute(sql`SELECT st."run_id", st."seq", st."summary", COALESCE(st."started_at", st."created_at") AS "at" FROM "steps" st WHERE st."run_id" IN (${mine}) ORDER BY COALESCE(st."started_at", st."created_at") DESC, st."id" DESC LIMIT 10`),
+    admin
+      ? db.execute(sql`SELECT COALESCE(sum(e."cost_usd") FILTER (WHERE e."at" >= ${today}), 0)::float8 AS "usd_today", COALESCE(sum(e."cost_usd"), 0)::float8 AS "usd_30",
+          COALESCE(sum(COALESCE(e."tokens_in", 0) + COALESCE(e."tokens_out", 0)) FILTER (WHERE e."at" >= ${today}), 0)::float8 AS "tok_today", COALESCE(sum(COALESCE(e."tokens_in", 0) + COALESCE(e."tokens_out", 0)), 0)::float8 AS "tok_30"
+          FROM "usage_entries" e WHERE e."session_id" = ${row.sid} AND e."at" >= ${new Date(now - 30 * 864e5).toISOString()}::timestamptz AND ${EFFECTIVE}`)
+      : null,
+  ])
+  const u = usage?.rows[0] as Doc | undefined
+  return {
+    session: { ...rest, role: row.role, ...(admin && { clientName, clientVersion, model, provider }) },
+    runs: (runs.rows as Doc[]).map((r) => {
+      const start = r.started_at ? new Date(r.started_at).getTime() : null
+      const end = r.finished_at ? new Date(r.finished_at).getTime() : r.status === 'running' ? now : null
+      return { id: r.id, ticket: { number: Number(r.number), title: r.title }, stage: r.stage, status: r.status, outcome: r.outcome ?? null, startedAt: iso(r.started_at), finishedAt: iso(r.finished_at), durationSeconds: start != null && end != null ? Math.max(0, Math.round((end - start) / 1000)) : null, ...(admin && { costUsd: r.cost == null ? null : Number(r.cost) }) }
+    }),
+    milestones: (steps.rows as Doc[]).map((s) => ({ run: s.run_id, seq: s.seq == null ? null : Number(s.seq), summary: s.summary, at: iso(s.at) })),
+    ...(u && { usage: { today: { usd: u.usd_today, tokens: u.tok_today }, d30: { usd: u.usd_30, tokens: u.tok_30 } } }),
   }
 }
 
