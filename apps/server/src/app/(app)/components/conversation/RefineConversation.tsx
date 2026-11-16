@@ -58,7 +58,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
     return true
   }, [])
   useEffect(() => {
-    void refineState(ticket).then((r) => alive.current && take(r)).catch(() => alive.current && setError('The conversation could not be loaded.'))
+    void refineState(ticket).then((r) => alive.current && ('error' in r ? setError(r.error) : setView(r.view))).catch(() => alive.current && setError('The conversation could not be loaded.'))
   }, [ticket, take])
 
   const act = useCallback(

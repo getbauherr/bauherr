@@ -318,7 +318,7 @@ test('a rejected turn shows its error with "Try again", keeps the typed text, an
 
   await retry.click()
   await expect(error).toHaveCount(0)
-  await expect(page.getByTestId('points-count')).toHaveText('3 of 4 open')
+  await expect(page.getByTestId('artifact-bar')).toContainText('3 of 4 open') // the bar of the embedded conversation: the sheet with the points is closed
   expect(sent).toEqual(['Export them as CSV.', 'Export them as CSV.'])
   await expect(typed).toHaveValue('') // a second send must not repeat the text
 })
