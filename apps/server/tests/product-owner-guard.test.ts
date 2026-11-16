@@ -51,7 +51,7 @@ const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#requestSubmit': 'files their own draft; refused for any other',
 }
 const BAUHERR_ACTIONS = [
-  'approvePlanAction', 'expediteAction', 'decideOutcomeAction', 'acceptStagingAction', 'approveProductionAction', 'approveSkillProposalAction', 'rejectSkillProposalAction', 'grantReviewRoundAction', 'stopReviewAction', 'backToBuildAction', 'backToBacklogAction', 'requestChangesAction',
+  'approvePlanAction', 'expediteAction', 'decideOutcomeAction', 'acceptStagingAction', 'approveProductionAction', 'approveSkillProposalAction', 'rejectSkillProposalAction', 'grantReviewRoundAction', 'stopReviewAction', 'backToBuildAction', 'sendBackAction', 'backToBacklogAction', 'requestChangesAction',
   'selectWorkspace', 'reportProblem', 'postDockComment', 'orderRequests', 'refineTier', 'rerunStage', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
 ].map((n) => `lib/actions.ts#${n}`).concat([
   'lib/search.ts#searchTickets', '(shell)/team/actions.ts#saveRole',

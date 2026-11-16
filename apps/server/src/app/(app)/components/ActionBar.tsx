@@ -1,6 +1,8 @@
+import { sendBackOptions } from '../../../lib/send-back-options'
+import { SendBackDialog } from './SendBackDialog'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { acceptStagingAction, approvePlanAction, backToBacklogAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
+import { acceptStagingAction, approvePlanAction, backToBuildAction, approveProductionAction, expediteAction, grantReviewRoundAction, rerunStage, stopReviewAction } from '../lib/actions'
 import { GATES } from '../lib/gates'
 import { actionFor, fallbackFor, type Action, type NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
@@ -83,7 +85,8 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       }
     }
   })()
-  const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : need === 'Cancelled' ? <Post ticket={ticket} action={backToBacklogAction} variant="outline">Back to backlog</Post> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
+  const sendBack = sendBackOptions(need, gate?.kind)
+  const secondary = need === 'Round cap reached' ? <Post ticket={ticket} action={stopReviewAction} variant="outline">Stop</Post> : sendBack.length ? <SendBackDialog ticket={ticket} options={sendBack} /> : gate?.secondary ? <Button asChild variant="outline"><a href="#changes">{gate.secondary}</a></Button> : null
   return (
     <NextStepBar sentence={gate ? (ask ?? gate.sentence(ctx)) : <LinkedReason reason={idle.reason} links={idle.links} />} primary={step.primary ?? (need ? undefined : idle.href ? { label: idle.label, href: idle.href } : { label: idle.label, disabled: true, reason: idle.reason })}>
       {gate && gate.kind !== 'questions' && <a className="small text-primary" href="#details">Show details</a>}
