@@ -32,6 +32,7 @@ const shoot = async (page: Page, name: string) => {
   await page.emulateMedia({ colorScheme: 'light' })
 }
 const card = (page: Page, title: string) => page.locator('article[data-decision]').filter({ hasText: title })
+const pick = (page: Page, title: string) => page.getByTestId('inbox-row').filter({ hasText: title }).click()
 const badge = async (page: Page) => Number((await page.getByRole('navigation', { name: 'Main' }).getByLabel(/need you/).textContent()) ?? 0)
 const hrefs: Record<string, string> = {}
 
@@ -43,9 +44,11 @@ test('a Product owner\'s Inbox holds only what asks them on their Products, and 
   // Alpha's staging acceptance and Alpha's questions ask them; the plan is the Bauherr's, Beta has no Product owner.
   const staging = card(page, 'Alpha: check the new header on staging')
   const questions = card(page, 'Alpha: settle the header copy')
+  await pick(page, 'Alpha: check the new header on staging')
   await expect(staging.getByRole('button', { name: 'Accept on staging' })).toBeVisible()
+  await pick(page, 'Alpha: settle the header copy')
   await expect(questions.getByRole('link', { name: 'Answer questions' })).toBeVisible()
-  await expect(page.locator('article[data-decision]')).toHaveCount(2)
+  await expect(page.getByTestId('inbox-row')).toHaveCount(2)
   await expect(page.getByRole('main')).not.toContainText(/approve the retry policy|Beta/)
   await expect(page.getByTestId('asked')).toHaveCount(0)
   await expect(page.getByRole('link', { name: /Workflow|Runs|Agent team|Insights/ })).toHaveCount(0)
@@ -53,6 +56,7 @@ test('a Product owner\'s Inbox holds only what asks them on their Products, and 
   hrefs.questions = (await questions.getByRole('link', { name: 'Answer questions' }).getAttribute('href'))!
   await shoot(page, 'inbox-product-owner')
 
+  await pick(page, 'Alpha: check the new header on staging')
   await staging.getByRole('button', { name: 'Accept on staging' }).click()
   await expect(staging).toBeHidden()
   await expect.poll(() => badge(page)).toBe(1)
@@ -94,10 +98,15 @@ test('a mixed decision sheet: the Product owner sees and answers their rows, the
   const boss = await ctx.newPage()
   await signIn(boss, bauherr)
   await boss.goto('/inbox')
+  await boss.getByTestId('inbox-row').filter({ hasText: 'Alpha: settle the header copy' }).click()
   const asked = card(boss, 'Alpha: settle the header copy')
   await expect(asked.getByTestId('asked')).toHaveText('Asked: Product owner')
+  await pick(boss, 'Alpha: approve the retry policy')
   await expect(card(boss, 'Alpha: approve the retry policy').getByTestId('asked')).toHaveCount(0)
+  await pick(boss, 'Beta: settle the header copy')
+  await expect(card(boss, 'Beta: settle the header copy')).toBeVisible()
   await expect(card(boss, 'Beta: settle the header copy').getByTestId('asked')).toHaveCount(0) // no Product owner on Beta: it asks the Bauherr
+  await pick(boss, 'Alpha: settle the header copy')
   await asked.getByRole('link', { name: 'Answer questions' }).click()
   await expect(boss.getByTestId('refine-thread')).toContainText('Triage asked 3 questions')
   await boss.getByTestId('artifact-bar').click() // embedded in the Ticket page, the refined Ticket opens as a sheet from the bar
