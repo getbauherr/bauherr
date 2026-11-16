@@ -70,7 +70,7 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 const Pulse = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-sm bg-secondary`} aria-hidden />
 
 /** DB data of the page, passed to the streamed parts. */
-type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean }
+type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; forge: 'github' | 'gitlab' | null }
 
 /** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
@@ -110,7 +110,8 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const roleId = live0?.status === 'awaiting_session' ? roleOf(wf, live0.stage)?.id : undefined
   const connected = roleId ? (await connectedOfRole(payload, P.ws.id, roleId)) > 0 : true
   const fastLane = await fastLaneHolder(payload, ticket)
-  const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin })
+  const runPr = runs.find((r) => r.artifacts?.prUrl)?.artifacts.prUrl as string | undefined
+  const next = nextStep({ wf, ticket: { ...ticket, labels }, need: todo, run: live0, connected, waiting, blockers: blockers.filter((b) => b.state !== 'closed').map((b) => ({ id: b.id, number: b.number })), holders, admin, forge: P.forge, prUrl: isWebUrl(runPr) ? runPr : null })
   const idle = fastLane && !todo && (!live0 || live0.status === 'queued') && !blockers.some((b) => b.state !== 'closed') ? fastLaneStep(next, fastLane) : next
   const history = [summary && approved && 'Plan approved', acceptedStaging && 'Accepted on staging', labels.includes('bauherr:approved:production') && 'Approved for production', ticket.releasedIn && `Released in ${ticket.releasedIn}`].filter(Boolean).join(' · ')
   return { labels, forgeError, plan, worklog, investigation, escalations, decisions, missing, todo, approved, summary, gate, capFindings, reason, stagingSummary, view, idle, history }
@@ -223,8 +224,8 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   ])
   const noted = ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true }, ...q })).docs[0] as Doc | undefined)?.artifacts?.review?.open as OpenItem[] | undefined
   const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true }, ...q }).catch(() => null)) as { id: number; number: number } | null) : null
-  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin }
   const forge = forges.get(ticket.product)
+  const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin, forge: forge ?? null }
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
   const sessions = new Map<number, string>(sessionIds.length ? ((await payload.find({ collection: 'agent_sessions', where: { id: { in: sessionIds } }, select: { publicId: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; publicId: string }[]).map((x) => [x.id, x.publicId]) : [])
   const steps = buildSteps(wf, spans, runs, touches, { sessions, workflowVersion: (await activeVersion(payload, workspace.id))?.version ?? null, skips: skipped, current: stageOf(wf, ticket), provider: forge === 'gitlab' ? 'GitLab CI' : forge === 'github' ? 'GitHub Actions' : null, admin })
