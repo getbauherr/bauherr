@@ -1,12 +1,13 @@
 import { workflowFor } from '../factory'
 import type { Payload } from 'payload'
-import { unansweredCriticalCount } from '../../app/(app)/lib/plan'
+import { fastLaneOf, openDecisionCount } from '../../app/(app)/lib/plan'
 import { plainStatus } from '../../app/(app)/lib/epics'
 import { loadOverviewRows, within, FORGE_TIMEOUT_MS } from '../../app/(app)/lib/overview'
 import { ticketsOf, tenantsOf } from '../actions'
 import { decisionComments } from '../forge-channel'
 import { DEFAULT_MODEL_BY_TIER } from '../gateway'
-import { board, gates, is, nameOf, title as stageTitle } from '../workflow'
+import { board, gates, is, kindOf, nameOf, title as stageTitle, type Workflow } from '../workflow'
+import { APPROVED_PLAN } from '@bauherr/adapters'
 import { loadInsights, RANGES } from '../../app/(app)/lib/insights'
 import { nodeStats } from '../../app/(app)/lib/workflow-view'
 import { ticketStatus } from '../../app/(app)/lib/status'
@@ -45,10 +46,11 @@ const inboxPage = async (payload: Payload, user: Doc, ws: number): Promise<PageC
   return make('Inbox', ['Inbox: the decisions that wait for the person, each prepared the same way.', ...(rows.length ? rows.map((t) => `- #${t.number} ${line(t.title, 60)}: ${line(t.decision?.ask ?? t.needsYou, 140)}`) : ['Nothing needs the person.'])])
 }
 
-const decisionsOpen = async (payload: Payload, t: Doc): Promise<number | null> => {
+const openDecisionsOf = async (payload: Payload, t: Doc, wf: Workflow): Promise<number | null> => {
   try {
     const ts = await ticketsOf(payload, typeof t.product === 'object' ? t.product.id : t.product)
-    return unansweredCriticalCount(await within(decisionComments(payload, t as Doc, ts), FORGE_TIMEOUT_MS))
+    const comments = await within(decisionComments(payload, t as Doc, ts), FORGE_TIMEOUT_MS)
+    return openDecisionCount(comments, { stageKind: kindOf(wf, t.stage), approved: (t.labels ?? []).includes(APPROVED_PLAN), fastLane: fastLaneOf(t) })
   } catch {
     return null
   }
@@ -60,7 +62,7 @@ const ticketPage = async (payload: Payload, user: Doc, ws: number, id: number): 
   const wf = workflowFor(ws)
   const row = (await loadOverviewRows(ws, true)).tickets.find((r) => r.id === id)
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: id } }, sort: '-createdAt', limit: 4, select: { stage: true, status: true, mode: true, createdAt: true }, ...o })).docs as Doc[]
-  const open = row?.needsYou === 'Approve plan' || row?.needsYou === 'Answer decisions' ? await decisionsOpen(payload, t) : null
+  const open = row?.needsYou === 'Approve plan' || row?.needsYou === 'Answer decisions' ? await openDecisionsOf(payload, t, wf) : null
   const admin = user.role === 'admin'
   return make(`Ticket #${t.number} ${line(t.title, 60)}`, [
     `Ticket #${t.number}: ${line(t.title)}`,
