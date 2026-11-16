@@ -207,7 +207,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await expect(info).toContainText('Lead time')
   const bar0 = page.getByTestId('action-bar')
   await expect(bar0.getByRole('button', { name: 'Put on the fast lane' })).toBeVisible()
-  await expect(bar0.getByRole('button', { name: 'Comment' })).toBeVisible()
+  await expect(bar0.getByRole('button', { name: 'Comment' })).toHaveCount(0) // comments go through the conversation's composer
   await shoot(page, 'info-popover')
 
   await page.getByTestId('participant-line').click()

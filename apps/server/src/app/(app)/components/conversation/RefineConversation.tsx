@@ -13,6 +13,7 @@ import { DropdownMenuItem } from '../ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import type { View } from '../../../../lib/refine/engine'
 import { openOf, withoutQuestion, type Tier } from '../../../../lib/refine/model'
+import { CommentBox } from './CommentBox'
 import { Composer } from './Composer'
 import { ConversationShell } from './ConversationShell'
 import { ParticipantHeader } from './ParticipantHeader'
@@ -111,7 +112,10 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
     },
   })
 
-  if (view === null) return <p data-testid="no-conversation" className="m-0 rounded-md border border-border bg-card p-4 text-[13px] text-muted-foreground">Nothing was asked on this Ticket. Comments you post to the issue are read at the agent's next Run.</p>
+  if (view === null) {
+    const nothing = <p data-testid="no-conversation" className="m-0 rounded-md border border-border bg-card p-4 text-[13px] text-muted-foreground">Nothing was asked on this Ticket. Comments you post to the issue are read at the agent's next Run.</p>
+    return embedded ? <div className="flex flex-col gap-3">{nothing}<CommentBox ticket={ticket} /></div> : nothing
+  }
   if (!view || model === null) return error ? <p role="alert" className="m-0 text-destructive">{error}</p> : <p role="status" className="m-0 animate-pulse text-muted-foreground">Loading the conversation...</p>
   const open = openOf(view.points)
   const current = open[0]
@@ -156,7 +160,7 @@ export const RefineConversation: FC<{ ticket: number; kind: string | null; where
               {locked && <AgentHandoff data-testid="handoff" from={view.participant.role} to={view.planner} reason={view.next.replace(/^Then: /, 'Next: ')} carried={view.points.filter((p) => p.status === 'answered').map((p) => `${p.title}: ${p.answer}`)} settled />}
             </Stream>
           }
-          composer={locked ? <p data-testid="read-only" className="m-0 rounded-md border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">{view.queued ?? 'Sent to planning.'} This conversation is read-only history.</p> : <Composer models={view.models} tier={view.tier} cost={view.viewer === 'bauherr' ? view.cost : null} placeholder={open.length ? 'Answer in your own words' : 'Reply, or ask for a change to the Ticket'} streaming={!!turn?.user} onStop={stop} onModel={(t: Tier) => void act(() => refineTier(ticket, t), false)} />}
+          composer={locked ? <div className="flex flex-col gap-2"><p data-testid="read-only" className="m-0 rounded-md border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">{view.queued ?? 'Sent to planning.'} {embedded ? 'Comments go to the issue.' : 'This conversation is read-only history.'}</p>{embedded && <CommentBox ticket={ticket} />}</div> : <Composer models={view.models} tier={view.tier} cost={view.viewer === 'bauherr' ? view.cost : null} placeholder={open.length ? 'Answer in your own words' : 'Reply, or ask for a change to the Ticket'} streaming={!!turn?.user} onStop={stop} onModel={(t: Tier) => void act(() => refineTier(ticket, t), false)} />}
           bar={<><span data-testid="bar-count">{count}</span><span className="font-medium text-primary">View outcome</span></>}
           artifact={{
             title: 'Refined ticket',

@@ -5,7 +5,6 @@ import { GATES } from '../lib/gates'
 import { actionFor, fallbackFor, type Action, type NextStep } from '../../../lib/next-step'
 import type { Need } from '../lib/needs-you'
 import { isWebUrl } from '../lib/url'
-import { DockOpen } from './chat/DockOpen'
 import { FormPending, LinkedReason, NextStepBar, type NextStepPrimary } from './NextStepBar'
 import { SubmitButton } from './SubmitButton'
 import { Button } from './ui/button'
@@ -32,8 +31,6 @@ type Props = {
   canExpedite?: boolean
   /** The prepared Decision's ask: the bar's sentence, so the Inbox and this page say the same. */
   ask?: string | null
-  /** Open owner questions that can be answered now (the decision sheet while the plan is not approved); an outline button next to the primary opens the conversation. */
-  answerable?: number
 }
 
 const Post = ({ ticket, action, children, variant = 'default', title }: { ticket: number; action: (f: FormData) => Promise<void>; children: string; variant?: 'default' | 'outline'; title?: string }) => (
@@ -47,7 +44,7 @@ const Post = ({ ticket, action, children, variant = 'default', title }: { ticket
 export const FAST_LANE_HELP = 'Skips Triage and plan approval, jumps the queue. One at a time.'
 
 /** The one place the owner acts on a Ticket: same position in every state, one primary button. */
-export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask, answerable = 0 }: Props) {
+export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask }: Props) {
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open, reason }
   const verb = gate?.verb(ctx) ?? ''
@@ -90,8 +87,6 @@ export function ActionBar({ ticket, product, need, stage, missing, open, run, re
       {gate?.kind === 'release' && isWebUrl(stagingUrl) && <a className="small text-primary" href={stagingUrl}>Open staging</a>}
       {secondary}
       {canExpedite && !secondary && need !== 'Expedite?' && <Post ticket={ticket} action={expediteAction} variant="outline" title={FAST_LANE_HELP}>Put on the fast lane</Post>}
-      {answerable > 0 && !step.node && <Button asChild variant="outline" data-testid="answer-questions"><Link href={`/tickets/${ticket}?view=conversation`}>Answer {answerable} question{answerable === 1 ? '' : 's'}</Link></Button>}
-      <DockOpen ticket={ticket} variant="outline">Comment</DockOpen>
       {step.form}
       {step.node}
     </NextStepBar>

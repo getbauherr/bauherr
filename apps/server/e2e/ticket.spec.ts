@@ -45,8 +45,8 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       await expect(page.getByTestId('action-bar')).toHaveCount(1)
       await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveCount(1)
       await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText(verb)
-      await expect(bar.locator('[data-slot=button]:not([data-testid=dock-comment])')).not.toHaveCount(3)
-      await expect(bar.getByTestId('dock-comment')).toHaveText('Comment')
+      await expect(bar.locator('[data-slot=button]')).not.toHaveCount(3)
+      await expect(bar.getByRole('button', { name: 'Comment' })).toHaveCount(0)
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
@@ -245,7 +245,7 @@ test('a failed release with no run link offers one details button', async ({ pag
   await login(page)
   await page.locator('.card', { hasText: 'Release the CSV checks' }).first().getByRole('link', { name: 'Release the CSV checks' }).click()
   const bar = page.getByTestId('action-bar')
-  await expect(bar.locator('[data-slot=button]:not([data-testid=dock-comment])')).toHaveCount(1)
+  await expect(bar.locator('[data-slot=button]')).toHaveCount(1)
   await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText('Release failed: see details')
   await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveAttribute('href', '#details')
 })
@@ -280,4 +280,38 @@ test('a conditional step the Ticket passed is listed as skipped with the reason:
   await expect(skipped).toContainText('Skipped')
   await expect(skipped).toContainText('The change touches no security paths')
   await expect(steps.locator('[data-testid=visit][data-stage=e2e-security-review]')).toHaveCount(0)
+})
+
+// Own seeded Ticket #27 (read-only here): `/api/changes` is stubbed and time is the page's fake clock, so no step waits on real time.
+test('the Ticket page refreshes within 5 s of a change, keeps the composer draft and scroll, and asks nothing while the tab is hidden', async ({ page }) => {
+  let v = 1
+  let asked = 0
+  await page.route('**/api/changes', (route) => {
+    asked++
+    return route.fulfill({ json: { v } })
+  })
+  await login(page)
+  await page.clock.install()
+  await page.goto('/')
+  await page.locator('.card', { hasText: 'Review the retry policy' }).first().getByRole('link', { name: 'Review the retry policy' }).click()
+  const input = page.getByTestId('comment-box').getByRole('textbox', { name: 'Comment' })
+  await input.fill('a draft that survives')
+  await page.evaluate(() => window.scrollTo(0, 150))
+  const y = await page.evaluate(() => window.scrollY)
+  let refreshes = 0
+  page.on('request', (r) => r.url().includes('_rsc=') && refreshes++)
+  await page.clock.runFor(5000)
+  const quiet = refreshes
+  v = 2
+  await page.clock.runFor(5000)
+  await expect.poll(() => refreshes).toBeGreaterThan(quiet)
+  await expect(input).toHaveValue('a draft that survives')
+  expect(await page.evaluate(() => window.scrollY)).toBe(y)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  const before = asked
+  await page.clock.runFor(60_000)
+  expect(asked).toBe(before)
 })
