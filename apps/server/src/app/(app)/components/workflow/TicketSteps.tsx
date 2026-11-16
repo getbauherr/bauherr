@@ -48,7 +48,7 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
         <p className="small m-0 flex flex-wrap items-baseline gap-x-2 text-muted-foreground" data-testid="step-run">
           <span>{r.executor}</span>
           {r.sessionLabel ? (
-            <span className="text-foreground">{r.sessionId ? <Link className="text-primary" href={`/team#${r.sessionId}`}>{r.sessionLabel}</Link> : r.sessionLabel}{r.role && ` (${r.role})`}</span>
+            <span className="text-foreground">{r.sessionId ? <Link className="text-primary" href={`/team/${r.sessionId}`}>{r.sessionLabel}</Link> : r.sessionLabel}{r.role && ` (${r.role})`}</span>
           ) : (
             r.role && <span className="text-foreground">{r.role}</span>
           )}
@@ -69,7 +69,7 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
           <dl className="small m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5" data-testid="step-detail">
             <Meta k="Executor" v={r.executor} />
             <Meta k="Role" v={r.role} />
-            <Meta k="Session" v={r.sessionLabel} href={r.sessionId ? `/team#${r.sessionId}` : undefined} />
+            <Meta k="Session" v={r.sessionLabel} href={r.sessionId ? `/team/${r.sessionId}` : undefined} />
             <Meta k="Client" v={r.client} />
             <Meta k="Model" v={r.model} />
             <Meta k="Provider" v={r.provider} />
