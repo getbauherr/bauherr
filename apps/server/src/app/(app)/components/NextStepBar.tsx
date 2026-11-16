@@ -28,7 +28,7 @@ export function FormPending() {
 }
 
 /** The frame of the one place the owner acts on a page: sentence left, `children` then the primary button right, sticky at the top on desktop, fixed to the bottom at 640px and below. `main` pads for it (`--next-step-h`). */
-export function NextStepBar({ sentence, primary, children }: { sentence: ReactNode; primary?: NextStepPrimary; children?: ReactNode }) {
+export function NextStepBar({ sentence, primary, children, live }: { sentence: ReactNode; primary?: NextStepPrimary; children?: ReactNode; /** The sentence is a live status (the Ticket page's state), announced when it changes; off for static hints like "Unsaved changes". */ live?: boolean }) {
   const uid = useId()
   const [armed, setArmed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -81,7 +81,7 @@ export function NextStepBar({ sentence, primary, children }: { sentence: ReactNo
       role="region"
       aria-label="Next step"
     >
-      <p role="status" className="min-w-0 flex-[1_1_20ch] text-pretty max-sm:flex-none">{sentence}</p>
+      <p role={live ? 'status' : undefined} className="min-w-0 flex-[1_1_20ch] text-pretty max-sm:flex-none">{sentence}</p>
       {(children || button) && <div className="flex flex-wrap items-center gap-3 max-sm:justify-end">{children}{button}</div>}
     </div>
   )
