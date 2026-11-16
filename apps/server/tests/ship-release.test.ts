@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual'], ['rcl', 'manual'], ['rcb', 'manual'], ['rcc', 'manual'], ['rct', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual'], ['rcl', 'manual'], ['rcb', 'manual'], ['rcc', 'manual'], ['rct', 'manual'], ['rcf', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -391,4 +391,19 @@ it('promote refuses a final on another commit and a non-admin; a tag-only rc (CL
   expect(await ship.releaseDraft(payload, products.rct!)).toMatchObject({ rc: 'v0.5.0-rc.1', versions: ['0.5.0-rc.2'] })
   await ship.promoteSelected(payload, user, { workspaceId: ws, product: products.rct!, rc: 'v0.5.0-rc.1' })
   expect(slugTag('rct', 'v0.5.0')).toMatchObject({ sha: 'sha-t1', prerelease: false })
+})
+
+it('a promote that fails after the release was created is offered again as "finish" and completes without a second release', async () => {
+  const repo = 'acme/rcf'
+  fake.commit(repo, 'main', 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n')
+  const a = await done('rcf', 'Half', 'sha-f1', 1)
+  await ship.shipRelease(payload, user, { product: products.rcf!, tickets: [a], version: '0.1.0-rc.1', notes: 'n' })
+  vi.spyOn(fake.tickets(repo), 'comment').mockRejectedValueOnce(new Error('forge down'))
+  await expect(ship.promoteRelease(payload, user, { product: products.rcf!, rc: 'v0.1.0-rc.1' })).rejects.toThrow('forge down')
+  expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.1.0-rc.1', 'v0.1.0'])
+  expect(await ship.releaseDraft(payload, products.rcf!)).toMatchObject({ rc: 'v0.1.0-rc.1', finishing: true })
+  await ship.promoteRelease(payload, user, { product: products.rcf!, rc: 'v0.1.0-rc.1' })
+  expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.1.0-rc.1', 'v0.1.0'])
+  expect(await reload(a.id)).toMatchObject({ releasedIn: 'v0.1.0' })
+  expect(await ship.releaseDraft(payload, products.rcf!)).toMatchObject({ rc: null, finishing: false })
 })

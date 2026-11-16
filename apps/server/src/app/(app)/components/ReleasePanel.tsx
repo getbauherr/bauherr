@@ -18,7 +18,7 @@ const finalOf = (rc: string) => rc.replace(/-rc\.\d+$/, '')
 const VERSION = /^\d+\.\d+\.\d+(-rc\.\d+)?$/
 
 /** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the notes and an optional model-written summary (both editable; the summary only on the Summarise button), the ship button in the next-step bar, and the past releases. With an open release candidate (`rc`) the action select offers "Promote" next to cutting the next candidate; promoting tags the final on the candidate's commit. */
-export function ReleasePanel({ product, admin, tickets, last, rc, rcTickets, version: v0, versions, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; last: string | null; rc: string | null; rcTickets: { number: number; title: string }[]; version: string; versions: string[]; notes: string; past: Past[] }) {
+export function ReleasePanel({ product, admin, tickets, last, rc, finishing, rcTickets, version: v0, versions, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; last: string | null; rc: string | null; finishing: boolean; rcTickets: { number: number; title: string }[]; version: string; versions: string[]; notes: string; past: Past[] }) {
   const router = useRouter()
   const [picked, setPicked] = useState(() => new Set(tickets.map((t) => t.id)))
   const [version, setVersion] = useState(v0)
@@ -86,14 +86,14 @@ export function ReleasePanel({ product, admin, tickets, last, rc, rcTickets, ver
       <NextStepBar
         sentence={done ? `Shipped ${done}.` : promoting ? `${rc} is out for testing.` : n ? `${n} done ${n === 1 ? 'Ticket waits' : 'Tickets wait'} for a release.` : 'Nothing waits for a release.'}
         primary={promoting
-          ? { label: `Promote ${rc} to ${finalOf(rc)}`, disabled: !admin || pending, reason: admin ? undefined : 'Only an Admin can promote a release.', onClick: promote, confirm: `Confirm promote ${rc}` }
+          ? { label: `${finishing ? 'Finish promoting' : 'Promote'} ${rc} to ${finalOf(rc)}`, disabled: !admin || pending, reason: admin ? undefined : 'Only an Admin can promote a release.', onClick: promote, confirm: `Confirm promote ${rc}` }
           : { label: `${cutting} v${version} (${n} ${n === 1 ? 'Ticket' : 'Tickets'})`, disabled: !!reason || pending, reason: reason ?? undefined, onClick: ship, confirm: `Confirm ${cutting.toLowerCase()} v${version}` }}
       >
         {rc && (
           <Select value={flow} onValueChange={(v) => setFlow(v as 'cut' | 'promote')} disabled={!admin}>
             <SelectTrigger aria-label="Action"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="promote">Promote {rc}</SelectItem>
+              <SelectItem value="promote">{finishing ? 'Finish promoting' : 'Promote'} {rc}</SelectItem>
               <SelectItem value="cut">Cut the next release candidate</SelectItem>
             </SelectContent>
           </Select>

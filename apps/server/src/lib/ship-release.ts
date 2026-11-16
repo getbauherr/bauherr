@@ -1,4 +1,4 @@
-import type { TicketSource } from '@bauherr/adapters'
+import type { Forge, TicketSource } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { latestWith } from '../app/(app)/lib/plan'
@@ -176,6 +176,16 @@ export const promoteRelease = async (payload: Payload, user: Doc, a: { product: 
   return { tag: final, url: release.url }
 }
 
+/** The newest rc of the newest final's line when a promote of it did not finish: the final tag is on that rc's commit and a Ticket still says rc, the final release is missing, or its CHANGELOG MR is. Null otherwise. */
+const unfinishedPromotion = async (payload: Payload, forge: Forge, repo: string, product: number | string, tags: string[], finalTag: string | null): Promise<string | null> => {
+  if (!finalTag) return null
+  const rc = tags.filter((t) => t.startsWith(`${finalTag}-rc.`) && /-rc\.\d+$/.test(t)).sort(order).at(-1)
+  if (!rc || (await forge.tagSha(repo, finalTag)) !== (await forge.tagSha(repo, rc))) return null
+  const left = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { releasedIn: { contains: `${finalTag}-rc.` } }] }, limit: 1, ...o })).totalDocs > 0
+  const done = !left && !!(await forge.releaseByTag(repo, finalTag)) && (await forge.listPullRequests(repo, 'all')).some((p) => p.head === `bauherr/release-${finalTag}`)
+  return done ? null : rc
+}
+
 /**
  * The Releases page data of a Product: Tickets waiting, the `picked` ones (all, or those in `ids`), the proposed version and notes for them, and the forge's releases (newest first, only with `withPast`).
  * With `withPast` (the page opened on purpose) it asks the forge for the releases, backfills `lastRelease*` once, and drops Tickets whose merge is already in the latest release (ancestry, 4 at a time). Without it nothing but the Ticket comments is read from the forge.
@@ -183,7 +193,8 @@ export const promoteRelease = async (payload: Payload, user: Doc, a: { product: 
 export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[], withPast = true, lastTag?: string | null) => {
   const { backend, repo, tickets: ts } = await forgeOf(payload, product)
   const past = withPast ? await backend.forge.listReleases(repo) : []
-  const line = releaseLine(withPast ? await backend.forge.listTags(repo) : [])
+  const tags = withPast ? await backend.forge.listTags(repo) : []
+  const line = releaseLine(tags)
   const latest = past[0]
   let p = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
   let waiting = await waitingTickets(payload, product)
@@ -196,8 +207,9 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
   const notes = picked.length ? await renderNotes(ts, picked, await noteTemplates(payload, id(p.workspace))) : ''
   const last = lastTag !== undefined ? lastTag : line.rc ?? line.final ?? latest?.tag ?? p.lastReleaseTag ?? null
-  const rcTickets = line.rc ? ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { releasedIn: { contains: `${line.rc.replace(/-rc\.\d+$/, '')}-rc.` } }] }, sort: 'number', pagination: false, ...o })).docs as Doc[]) : []
-  return { waiting, picked, last, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past, rc: line.rc, rcTickets }
+  const rc = line.rc ?? (withPast ? await unfinishedPromotion(payload, backend.forge, repo, product, tags, line.final) : null)
+  const rcTickets = rc ? ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { releasedIn: { contains: `${rc.replace(/-rc\.\d+$/, '')}-rc.` } }] }, sort: 'number', pagination: false, ...o })).docs as Doc[]) : []
+  return { waiting, picked, last, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past, rc, finishing: !line.rc && !!rc, rcTickets }
 }
 
 /** Admin-only: promotes the release candidate `rc` of a Product of the Workspace (see `promoteRelease`). */
