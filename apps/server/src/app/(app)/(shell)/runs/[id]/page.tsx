@@ -32,7 +32,8 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()
   const admin = user.role === 'admin'
-  const { run, ticket, steps, stepsTotal, callsByStep, owner, agentKeyLabel, chain } = await loadRun(workspace.id, id, admin)
+  const { run, ticket, steps, stepsTotal, admin: adminData, chain } = await loadRun(workspace.id, id, admin)
+  const { callsByStep, owner, agentKeyLabel } = adminData ?? { callsByStep: new Map(), owner: null, agentKeyLabel: null }
   const ci = ciSummaryOf(ticket)
   const waiting = run.status === 'running' && ticket.waitingFor === 'checks' ? pendingCounts(ci?.summary) : null
   const forgeLink = forgeLinkOf((await forgeKinds(await payloadClient(), workspace.id)).get(ticket.product), ci?.summary.url ?? run.artifacts?.prUrl)
