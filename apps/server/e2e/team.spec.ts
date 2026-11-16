@@ -5,7 +5,7 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// Read-only: the test that saves a role lives in workflow-editor.spec.ts (both write the Workspace's factory file, so they share one worker). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
+// The roles are the ones every pack has (orchestrator, engineer, reviewer): the e2e-fake job runs the 3-role gated pack. The orchestrator has a session, so it is never the default role. Read-only: the test that saves a role lives in workflow-editor.spec.ts (both write the Workspace's factory file, so they share one worker). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
 
 const signIn = async (page: Page, who = email) => {
   await page.goto('/login')
@@ -60,11 +60,11 @@ test('one click on Copy prompt copies the prompt for the chosen role and the cho
   await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await page.getByTestId('connect-prompt').innerText())
   await expect(page.getByRole('button', { name: 'Copy prompt' })).toBeVisible({ timeout: 3000 }) // "Copied" lasts 1.5 s
-  await role(page).selectOption('security')
-  await expect(page.getByTestId('connect-prompt')).toContainText('as security')
+  await role(page).selectOption('orchestrator')
+  await expect(page.getByTestId('connect-prompt')).toContainText('as orchestrator')
   await page.getByRole('button', { name: 'Copy prompt' }).click()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('as security')
-  expect(await page.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith('bauherr-team-role:')).map(([, v]) => v))).toEqual(['security'])
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('as orchestrator')
+  expect(await page.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith('bauherr-team-role:')).map(([, v]) => v))).toEqual(['orchestrator'])
 })
 
 test('without an agent key Copy prompt is disabled, says why and First-time setup is open', async ({ page }) => {
@@ -78,9 +78,9 @@ test('without an agent key Copy prompt is disabled, says why and First-time setu
 
 test('/team?role= preselects the role; Connect on a needs-an-agent row selects it and focuses the select', async ({ page }) => {
   await signIn(page, keyed)
-  await page.goto('/team?role=ux')
-  await expect(role(page)).toHaveValue('ux')
-  await expect(page.getByTestId('connect-prompt')).toContainText('as ux')
+  await page.goto('/team?role=reviewer')
+  await expect(role(page)).toHaveValue('reviewer')
+  await expect(page.getByTestId('connect-prompt')).toContainText('as reviewer')
   await page.goto('/team')
   await page.getByTestId('needs-agent-row').first().getByRole('button', { name: 'Connect' }).click()
   await expect(role(page)).toBeFocused()
@@ -91,15 +91,15 @@ test('the role, the disclosure and the toggle survive a refresh', async ({ page 
   await signIn(page, keyed)
   await page.goto('/team')
   await expect(async () => {
-    await role(page).selectOption('test')
-    await expect(role(page)).toHaveValue('test', { timeout: 1000 })
+    await role(page).selectOption('orchestrator')
+    await expect(role(page)).toHaveValue('orchestrator', { timeout: 1000 })
   }).toPass()
   await page.locator('summary', { hasText: 'First-time setup' }).click()
   await page.getByRole('switch').check()
   const refreshed = page.waitForResponse((r) => r.request().headers().rsc === '1')
   await page.evaluate(() => (window as unknown as { next: { router: { refresh: () => void } } }).next.router.refresh()) // what the 5 s poll does when something changed
   await refreshed
-  await expect(role(page)).toHaveValue('test')
+  await expect(role(page)).toHaveValue('orchestrator')
   await expect(page.locator('details', { hasText: 'First-time setup' })).toHaveAttribute('open', '')
   await expect(page.getByRole('switch')).toBeChecked()
 })
