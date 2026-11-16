@@ -20,6 +20,7 @@ import { DecisionCard } from '../../../components/DecisionCard'
 import { RefineConversation } from '../../../components/conversation/RefineConversation'
 import { ReleaseGate } from '../../../components/Gate'
 import { Markdown } from '../../../components/Markdown'
+import { ApprovalBrief } from '../../../components/ApprovalBrief'
 import { ProofList } from '../../../components/ProofList'
 import { loadProof } from '../../../lib/proof'
 import { TicketSteps } from '../../../components/workflow/TicketSteps'
@@ -298,6 +299,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       )}
       <div className="flex min-w-0 flex-col gap-4" data-testid="current-block">
         {card && <DecisionCard compact item={{ ...card, product: undefined }} admin={admin} />}
+        {ticket.approvalBrief && ['Accept on staging', 'Approve production'].includes(ticket.needsYou) && <ApprovalBrief brief={ticket.approvalBrief} admin={admin} />}
         <Suspense fallback={<Pulse h="h-16" />}><Live P={P} d={d} /></Suspense>
       </div>
       <section className="flex flex-col gap-2" aria-label="Links" data-testid="ticket-links">

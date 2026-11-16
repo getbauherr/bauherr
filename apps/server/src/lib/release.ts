@@ -18,8 +18,10 @@ import { inKindStage } from './stage-scope'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { decidingAs, ownerAssigned, productOwnersOf } from './people'
-import { SUMMARY_MARKER, buildStagingSummary } from './summary'
+import { SUMMARY_MARKER, bullets, buildStagingSummary, section } from './summary'
 import { proofMarkdown } from './artifacts'
+import { type ApprovalBrief, approvalBriefMarkdown, freezeApprovalBrief, storeApprovalBrief } from './approval-brief'
+import { loadProof } from '../app/(app)/lib/proof'
 import { publicUrl } from './oidc'
 import { workflowFor } from './factory'
 import { stagingTldrOf, storeStagingTldr } from './decision'
@@ -67,31 +69,43 @@ export const forgeOf = async (payload: Payload, product: number | string, req?: 
   return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo), kind: connection.kind === 'gitlab' ? ('gitlab' as const) : ('github' as const) }
 }
 
-/** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. */
+/** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. Also freezes the approval brief of the merge commit once (`approvalBrief.sha`), so its MR body is parsed once per merge commit. */
 export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{ posted: boolean }> => {
   const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
   const mergeSha: string | null = t.mergeSha || null
   const comments = await ts.listComments(n)
   const posted = !latestWith(comments, SUMMARY_MARKER)?.body.includes(mergeSha ? `\`${mergeSha}\`` : SUMMARY_MARKER)
-  if (posted) {
+  const freeze = (t.approvalBrief as ApprovalBrief | null | undefined)?.sha !== (mergeSha ?? '')
+  if (posted || freeze) {
     const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
     const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).filter((x): x is number => x !== null))]
     const mrs = await Promise.all(numbers.map((num) => backend.forge.getPullRequest(repo, num)))
     const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
-    const tpl = await template(payload, id(t.workspace), 'staging-summary')
-    const summary = buildStagingSummary({
-        ticket: { number: t.number, title: t.title, url: t.url },
-        plan: latestWith(comments, PLAN_MARKER)?.body ?? null,
-        worklog: firstWith(comments, WORKLOG_MARKER)?.body ?? null,
-        mrs,
-        evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
-        stagingUrl: product.stagingUrl || null,
-        mergeSha,
-        proof: await proofMarkdown(payload, t, `${publicUrl()}/tickets/${t.id}`),
-      }, tpl)
-    await ts.comment(n, summary)
-    await storeStagingTldr(payload, t.id, stagingTldrOf(summary, { whatYouGet: headingOf(tpl, 'what-you-get'), found: headingOf(tpl, 'found') }))
+    const plan = latestWith(comments, PLAN_MARKER)?.body ?? null
+    let brief = t.approvalBrief as ApprovalBrief | null | undefined
+    if (freeze) {
+      const reviews = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true, kind: true, status: true }, ...o })).docs as Doc[]
+      const proof = (await loadProof(payload, [{ ...t, product: id(t.product) }], new Map([[id(t.product) as number, product]]), () => bullets(section(plan ?? '', 'Goal')))).get(t.id) ?? null
+      brief = await freezeApprovalBrief({ mergeSha, mrs, runs: [...reviews, ...runs], forge: backend.forge, repo, stagingUrl: product.stagingUrl || null, proof })
+      await storeApprovalBrief(payload, t.id, brief)
+    }
+    if (posted) {
+      const tpl = await template(payload, id(t.workspace), 'staging-summary')
+      const summary = buildStagingSummary({
+          ticket: { number: t.number, title: t.title, url: t.url },
+          plan,
+          worklog: firstWith(comments, WORKLOG_MARKER)?.body ?? null,
+          mrs,
+          evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
+          stagingUrl: product.stagingUrl || null,
+          mergeSha,
+          proof: await proofMarkdown(payload, t, `${publicUrl()}/tickets/${t.id}`),
+          brief: brief ? approvalBriefMarkdown(brief) : undefined,
+        }, tpl)
+      await ts.comment(n, summary)
+      await storeStagingTldr(payload, t.id, stagingTldrOf(summary, { whatYouGet: headingOf(tpl, 'what-you-get'), found: headingOf(tpl, 'found') }))
+    }
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: 'on_staging' }, overrideAccess: true })
   await record(payload, t.id, { cause: 'release:on_staging' })

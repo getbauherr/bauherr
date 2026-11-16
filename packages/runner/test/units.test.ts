@@ -127,6 +127,12 @@ test('MR body references the Ticket without a closing keyword', () => {
   assert.doesNotMatch(body, /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b/i);
 });
 
+test('MR body appends the approval brief after the Evidence', () => {
+  const body = mrBody('https://github.com/o/r/issues/7', '## Evidence', '## Approval brief\n### Not included\n- x\n');
+  assert.match(body, /## Evidence\n\n## Approval brief\n### Not included\n- x\n$/);
+  assert.equal(mrBody('u', '## Evidence'), 'Refs u\n\n## Evidence\n');
+});
+
 test('triage run: Ticket title and body are fenced as data', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'tri-'));
   const ctx = makeCtx({ gatewayUrl: 'http://x', gitBaseUrl: 'file:///x', stage: 'triage' });

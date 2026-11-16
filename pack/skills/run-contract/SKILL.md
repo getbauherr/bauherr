@@ -23,6 +23,9 @@ Produce the artifacts your Product's rules ask for, and map each acceptance crit
 
 Re-run the check after the last edit; evidence from before the last edit is stale. Format of the MR section: `rules/evidence.md`.
 
+## Approval brief
+Every Build writes `## Approval brief` in the MR body: [approval-brief](approval-brief.md).
+
 ## Return from Review
 The worklog's Unfinished work lists the review findings. For each with a `Failing test:` line, your first step is to add that test (its code is in the review comment on the MR, command and failure are in the line), run it and see it fail, then fix until it passes. A test that already passes voids the finding: change nothing for it and write one line under Open. Items under Open are noted, not sent back: do not work on them.
 
@@ -44,7 +47,7 @@ Options:
 
 ## Epic slice
 Only when the claim or `get_ticket` has `epic`.
-- You build one slice of an epic on the shared epic branch (`epic.branch`, one MR for the whole epic). Build only your slice; later slices are other Tickets.
+- You build one slice on the shared epic branch (`epic.branch`, one MR for the epic); later slices are other Tickets.
 - Slice 2 and later (`mergeMainFirst`): merge `origin/main` into the epic branch before you change anything, resolve conflicts if any, never rebase, never force push. `epic.prev` is the head the previous slice ended on.
 - The epic worklog is the worklog of the parent Ticket (`epic.parent`, mirrored as `.bauherr/epic-worklog.md`). Record the interfaces, names and decisions later slices depend on there, before you end.
 - A fix commit on an epic parent (fix forward after the epic review or on staging) carries the trailer `Bauherr-Slice: #<n>` naming the slice Ticket it belongs to; the factory records it on that slice. A fix without the trailer lands under Open in the parent's worklog.
@@ -63,7 +66,7 @@ Every blocker has a kind:
 - `decision`: a product question only a person can answer (which of two behaviours to ship). Reaches the Bauherr.
 - `access`: a credential, a repo setting or a permission you lack (the merge queue setting is off). Reaches the Bauherr.
 - `stuck`: anything else (tests still red after 3 tries). The factory retries it by itself on a stronger model, so write what you tried.
-A missing kind counts as `decision`. When the claim says `tier: 'strong'` (`run.escalation` holds the step and the reason), a stronger attempt is expected: use the strongest model available to you and read the earlier Runs' errors first.
+A missing kind counts as `decision`. On `tier: 'strong'` (`run.escalation` has step and reason) use the strongest model you have and read the earlier Runs' errors first.
 
 ## End
 Refer to the Ticket as `Refs #N` in the MR body and commit messages; never `Closes`, `Fixes` or `Resolves`: only acceptance on staging closes a Ticket. Update the worklog as your last action.
