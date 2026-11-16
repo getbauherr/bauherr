@@ -35,6 +35,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
   const flight = useRef(new Map<number, { item: InboxItem; next: InboxItem | undefined }>())
   const keep = useRef<number[]>([])
   const first = useRef(true)
+  const moving = useRef<number | null>(null)
   useEffect(() => {
     const to = redirectHref(location.hash, location.search)
     if (to) router.replace(to)
@@ -44,6 +45,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     setPane((p) => selectionChanged(p, selection))
     if (first.current) first.current = false
     else if (selection !== null && !keep.current.includes(selection)) say('')
+    if (selection === moving.current) moving.current = null
   }, [selection, say])
   const selectionNow = useRef(selection)
   selectionNow.current = selection
@@ -52,6 +54,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     const row = groups.flatMap((g) => g.items).find((i) => i.id === id)
     if (row) flight.current.set(id, { item: row, next: r.next })
     setPane(r.state)
+    moving.current = r.next?.id ?? null
     if (r.next) router.replace(inboxHref(filters, r.next.id), { scroll: false })
   }, [pane, groups, filters, router])
   const onSucceeded = useCallback((id: number, option: DecisionOption) => {
@@ -65,7 +68,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     const f = flight.current.get(id)
     flight.current.delete(id)
     if (!f) return
-    const r = restoreRow(pane, f.item, error, selectionNow.current, f.next?.id ?? id)
+    const r = restoreRow(pane, f.item, error, moving.current ?? selectionNow.current, f.next?.id ?? id)
     setPane(r.state)
     if (r.goTo) router.replace(inboxHref(filters, r.goTo), { scroll: false })
   }, [pane, filters, router])
