@@ -205,6 +205,12 @@ const build = (): FakeBackend => {
   void ts.create({ title: 'Switch the dashboard to a light theme', labels: ['bauherr:stage:plan'] })
   void ts.comment('42', PLAN)
   void ts.comment('42', WORKLOG)
+  // #43 and #44 are the Ticket page cases of ticket.spec.ts and a11y: a fast lane Ticket in Build with a plan sheet, and a stuck review the spec sends back.
+  void ts.create({ title: 'Hotfix: fix the export header', labels: ['bauherr:stage:build'] })
+  void ts.comment('43', PLAN)
+  void ts.comment('43', WORKLOG)
+  void ts.create({ title: 'Stuck review: sort the export rows', labels: ['bauherr:stage:review'] })
+  void ts.comment('44', WORKLOG)
   void gated.create({ title: 'Ship the gated header', labels: ['bauherr:stage:release', 'bauherr:approved:staging'] })
   void gated.comment('2', WORKLOG)
   void gated.comment('2', summary(2))

@@ -161,6 +161,9 @@ await ticket(23, 'Settle the export format', 'triage', product, { stage: null, l
 const t24 = await ticket(24, 'Add a light theme to the dashboard', 'plan', product, openCritical)
 // #42: the twin of #24 that its test uses on a retry (the first attempt answered and approved #24); twin in `src/lib/fake-forge.ts`.
 const t42 = await ticket(42, 'Switch the dashboard to a light theme', 'plan', product, openCritical)
+// #43 (a fast lane Ticket in Build whose plan sheet kept its defaults) and #44 (a review that needs the owner, sent back to Build by ticket.spec.ts); twins in `src/lib/fake-forge.ts`.
+await ticket(43, 'Hotfix: fix the export header', 'build', product, { expedite: true, expediteAt: '2026-11-05T08:00:00Z', rank: '9999995' })
+await ticket(44, 'Stuck review: sort the export rows', 'review', product, { reviewState: 'needs_human' })
 // Own Tickets of the next-step button cases in ticket.spec.ts (#385): #25 an approved plan held by an overlap, #26 a plan awaiting approval, #27 a Build with a live Run. Twins in `src/lib/fake-forge.ts` carry these numbers.
 await ticket(25, 'Hold the approved export tweak', 'plan', product, { labels: ['bauherr:stage:plan', 'bauherr:approved:plan'], waitingFor: 'build', waitingReason: 'overlaps #356' })
 const t26 = await ticket(26, 'Approve the retry policy', 'plan', product)
