@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Epic, epicHue, epicNamed, epicProgress, epicRestoreUrl, epicWhere, epicShortTitle, epicsToShow, inEpic } from '../src/app/(app)/lib/epics'
+import { type Epic, epicCount, epicSlicing, epicHue, epicNamed, epicProgress, epicRestoreUrl, epicWhere, epicShortTitle, epicsToShow, inEpic } from '../src/app/(app)/lib/epics'
 import { DEFAULT } from '../src/lib/workflow'
 
 const child = (id: number, stage: Epic['children'][0]['stage'], open: boolean) => ({ id, number: id, title: `c${id}`, stage, open, status: '' })
@@ -46,5 +46,15 @@ describe('epics', () => {
     expect(epicRestoreUrl('/', {}, 5, epics)).toBeNull()
     expect(epicRestoreUrl('/', {}, null, epics)).toBeNull()
     expect(epicRestoreUrl('/', {}, 6, epics)).toBeNull()
+  })
+  it('counts an epic from its planned slices, an old parent from its sub-tickets', () => {
+    const slices = [{ title: 'a', child: child(2, 'done', true), passed: true }, { title: 'b', child: child(3, 'build', true), passed: false }, { title: 'c', child: null, passed: false }]
+    const e = epic(1, null, true, 1, [child(2, 'done', true), child(3, 'build', true)])
+    expect(epicCount({ ...e, slices })).toEqual({ done: 1, total: 3 })
+    expect(epicProgress(DEFAULT(), { ...e, slices })).toEqual({ done: 1, total: 3, stages: [{ stage: 'build', count: 1 }] })
+    expect(epicCount(e)).toEqual({ done: 0, total: 2 })
+    expect(epicSlicing({ slices, current: 1 })).toEqual({ index: 2, total: 3, stage: 'build' })
+    expect(epicSlicing({ slices, current: null })).toBeNull()
+    expect(epicSlicing({ current: 0 })).toBeNull()
   })
 })

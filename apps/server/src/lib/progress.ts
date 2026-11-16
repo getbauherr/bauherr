@@ -8,6 +8,7 @@ import { APPROVED_STAGING, type Need } from './needs-you'
 import { cas, forgeOf, id } from './release'
 import { fillPlaceholders, type Section } from './template-text'
 import { packTemplate, template, type Tpl } from './templates'
+import type { EpicField } from './epic'
 import { byKind, type Kind, title as stageTitle, type Workflow } from './workflow'
 
 type Doc = Record<string, any>
@@ -27,6 +28,8 @@ export type ProgressFacts = {
   needsYou: Need | null
   blockedBy?: { number: number }[]
   children?: { total: number; done: number } | null
+  /** The slice an epic parent is building (see `StatusRow.slicing`). */
+  slicing?: { index: number; total: number; stage: string | null } | null
   stagingUrl?: string | null
   /** The Ticket page in the factory, for the keys where a person with a login acts there. */
   link?: string
@@ -87,7 +90,7 @@ export const progressOf = (wf: Workflow, t: Doc, facts: ProgressFacts, tpl: Tpl)
   const stage: string = t.stage ?? byKind(wf, 'triage')!.name
   const kind = wf.stages.find((s) => s.name === stage)?.kind
   const open = t.state !== 'closed'
-  const status = ticketStatus(wf, { open, stage, needsYou: facts.needsYou, blockedBy: facts.blockedBy ?? [], queuedWhy: null, run: facts.run, owner: null, forge: null, gate: null, children: facts.children ?? null, track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState } })
+  const status = ticketStatus(wf, { open, stage, needsYou: facts.needsYou, blockedBy: facts.blockedBy ?? [], queuedWhy: null, run: facts.run, owner: null, forge: null, gate: null, children: facts.children ?? null, slicing: facts.slicing ?? null, track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState } })
   if (facts.run?.status === 'awaiting_session' && facts.run.preemptedFor && open) return { key: 'waiting', headline: status.label, detail: 'A hotfix took its working session. This continues first when the hotfix is done.', step: stepOf(wf, stage) }
   const vars: Record<string, string | undefined> = { stage_title: stageTitle(wf, stage), staging_url: facts.stagingUrl ?? undefined }
   let key: ProgressKey = kindKey[kind as Kind] ?? 'received'
@@ -99,7 +102,7 @@ export const progressOf = (wf: Workflow, t: Doc, facts: ProgressFacts, tpl: Tpl)
     step = key === 'released' ? 5 : null
     vars.release_note = noteOf(t.stagingTldr?.whatYouGet)
   } else if (status.phase === 'blocked' && kind === 'container') {
-    vars.children = status.detail ?? undefined
+    vars.children = facts.slicing ? `${status.label}: ${status.detail}` : (status.detail ?? undefined)
   } else if (status.phase === 'human' && need && need !== 'Expedite?') {
     if (need === 'Answer questions' || need === 'Answer decisions') key = 'question'
     else if (need === 'Approve plan') key = 'approval'
@@ -138,7 +141,7 @@ export const loadProgress = async (payload: Payload, tickets: Doc[]): Promise<Ma
   const events = first((await payload.find({ collection: 'ticket_events', where: { ticket: { in: ids } }, sort: '-at', select: { ticket: true, at: true }, pagination: false, ...o })).docs as Doc[], (r) => id(r.ticket) as number)
   const blockerIds = [...new Set(tickets.flatMap((t) => ((t.blockedBy ?? []) as unknown[]).map(id) as number[]))]
   const blockers = blockerIds.length ? (await payload.find({ collection: 'tickets', where: { and: [{ id: { in: blockerIds } }, { state: { equals: 'open' } }] }, select: { number: true }, pagination: false, ...o })).docs as Doc[] : []
-  const children = (await payload.find({ collection: 'tickets', where: { parent: { in: ids } }, select: { parent: true, state: true }, pagination: false, ...o })).docs as Doc[]
+  const children = (await payload.find({ collection: 'tickets', where: { parent: { in: ids } }, select: { parent: true, state: true, stage: true, slice: true }, pagination: false, ...o })).docs as Doc[]
   const productIds = [...new Set(tickets.map((t) => id(t.product) as number))]
   const products = new Map(((await payload.find({ collection: 'products', where: { id: { in: productIds } }, select: { stagingUrl: true }, pagination: false, ...o })).docs as Doc[]).map((p) => [p.id as number, p.stagingUrl as string | null]))
   const tpls = new Map<number, Tpl>()
@@ -146,11 +149,13 @@ export const loadProgress = async (payload: Payload, tickets: Doc[]): Promise<Ma
     const ws = id(t.workspace) as number
     if (!tpls.has(ws)) tpls.set(ws, await template(payload, ws, 'progress'))
     const kids = children.filter((c) => id(c.parent) === t.id)
+    const epic = t.epic as EpicField | null
     const p = progressOf(workflowFor(t.workspace), t, {
       run: (runs.get(t.id) as StatusRun | undefined) ?? null,
       needsYou: t.needsYou ?? null,
       blockedBy: blockers.filter((b) => ((t.blockedBy ?? []) as unknown[]).map(id).includes(b.id)).map((b) => ({ number: b.number })),
-      children: kids.length ? { total: kids.length, done: kids.filter((c) => c.state === 'closed').length } : null,
+      children: epic ? { total: epic.slices.length, done: kids.filter((c) => c.slice?.passed).length } : kids.length ? { total: kids.length, done: kids.filter((c) => c.state === 'closed').length } : null,
+      slicing: epic ? { index: epic.current + 1, total: epic.slices.length, stage: (kids.find((c) => c.id === epic.slices[epic.current]?.ticket)?.stage as string | undefined) ?? null } : null,
       stagingUrl: products.get(id(t.product) as number) ?? null,
       link: `/tickets/${t.id}`,
     }, tpls.get(ws)!)

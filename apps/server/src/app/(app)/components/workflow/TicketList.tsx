@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import { executionOrder } from '../../../../lib/frontier'
-import { title as stageTitle, type Workflow } from '../../../../lib/workflow'
+import { is, title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { epicHue, epicShortTitle } from '../../lib/epics'
 import { duration, heartbeatAge } from '../../lib/format'
 import type { TicketRow } from '../../lib/overview'
@@ -18,6 +18,16 @@ const gateTip = (t: TicketRow) =>
 const EpicTag = ({ t }: { t: TicketRow }) =>
   t.parent ? (
     <Link className="epic-tag small inline-block max-w-full truncate rounded-sm border border-(--tint)/40 bg-[color-mix(in_oklch,var(--tint)_14%,var(--card))] px-2 text-[color-mix(in_oklch,var(--tint)_65%,var(--foreground))] hover:underline" style={{ '--tint': `oklch(60% .16 ${epicHue(t.parent.id)})` } as CSSProperties} href={`/tickets/${t.parent.id}`} title={`Epic #${t.parent.number} ${t.parent.title}`}>{epicShortTitle(t.parent.title)}</Link>
+  ) : null
+
+/** One card per epic: the slices passed of the plan, and "Epic review" in the review stage (while a slice is built the status column says "Slice i/n"). */
+const EpicCard = ({ wf, t }: { wf: Workflow; t: TicketRow }) =>
+  t.epic ? (
+    <span className="epic-card flex flex-wrap items-center gap-2" data-testid="epic-card">
+      {!t.slicing && <span className="label rounded-sm border border-border px-2 text-primary">{is(wf, t.stage, 'review') ? 'Epic review' : 'Epic'}</span>}
+      <progress className="h-1.5 w-20 accent-primary" value={t.epic.passed} max={Math.max(t.epic.total, 1)} aria-label={`${t.epic.passed} of ${t.epic.total} slices passed`} />
+      <span className="small text-muted-foreground">{t.epic.passed}/{t.epic.total} passed</span>
+    </span>
   ) : null
 
 export type Group = { stage: string; rows: TicketRow[] }
@@ -56,6 +66,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
                         {t.expedite && <span className="label text-destructive" data-hotfix>Hotfix</span>}
                         <KindChip kind={t.kind} />
                         <EpicTag t={t} />
+                        <EpicCard wf={wf} t={t} />
                         {t.product && showProduct && <span className="small text-muted-foreground @min-[800px]:hidden">{t.product.name}</span>}
                       </span>
                     </span>,
