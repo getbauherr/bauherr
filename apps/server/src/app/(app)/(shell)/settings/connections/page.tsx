@@ -44,18 +44,18 @@ function Monitoring({ service, value }: { service: Service; value?: MonitoringVi
             <Field name="host" label="Endpoint" example="collector.example.com:4317" hint="host:port of an OTLP receiver. No TLS: put a collector in front for anything beyond your own network." defaultValue={c.host} required />
             <Field name="protocol" label="Protocol" options={['grpc', 'http']} defaultValue={c.protocol ?? 'grpc'} hint="grpc is usually port 4317, http port 4318." />
             <Field name="headerName" label="Auth header name (optional)" example="authorization" defaultValue={c.headerName} />
-            <Field name="secret" label="Auth header value" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Written into the gateway's config.yaml (0600), not into the browser. Not offered by every collector." />
+            <Field key={`secret-${value?.id ?? "new"}-${value?.hasSecret ?? false}`} name="secret" label="Auth header value" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Written into the gateway's config.yaml (0600), not into the browser. Not offered by every collector." />
             <Field name="uiUrl" label="Traces UI address (optional)" type="url" example="https://jaeger.example.com" hint={'Where "Open traces" goes.'} defaultValue={c.uiUrl} />
           </>
         ) : service === 'prometheus' ? (
           <>
             <Field name="url" label="Prometheus address" type="url" example="https://prometheus.example.com" hint="Where Bauherr asks whether the target is up." defaultValue={c.url} required />
-            <Field name="secret" label="Prometheus API token (optional)" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Only used by Test connection, when your Prometheus API needs a bearer token." />
+            <Field key={`secret-${value?.id ?? "new"}-${value?.hasSecret ?? false}`} name="secret" label="Prometheus API token (optional)" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Only used by Test connection, when your Prometheus API needs a bearer token." />
           </>
         ) : (
           <>
             <Field name="url" label="Grafana address" type="url" example="https://grafana.example.com" defaultValue={c.url} required />
-            <Field name="secret" label="Service-account token (optional)" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Only used to check that Grafana accepts it." />
+            <Field key={`secret-${value?.id ?? "new"}-${value?.hasSecret ?? false}`} name="secret" label="Service-account token (optional)" type="password" autoComplete="off" placeholder={value?.hasSecret ? 'unchanged' : ''} hint="Only used to check that Grafana accepts it." />
           </>
         )}
         {value?.hasSecret && <label className="small flex items-center gap-2"><Checkbox name="clearSecret" />Remove the saved {service === 'otlp' ? 'header value' : 'token'}</label>}

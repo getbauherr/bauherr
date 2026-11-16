@@ -19,8 +19,9 @@ const open = async (page: Page, name: string) => {
   await page.goto('/settings/connections')
   const region = page.getByRole('region', { name, exact: true })
   const remove = region.getByRole('button', { name: 'Remove', exact: true })
+  await expect(remove.or(region.getByRole('button', { name: 'Connect', exact: true })).first()).toBeVisible() // isVisible does not wait for the page
   if (await remove.isVisible()) {
-    await confirmClick(remove, region.getByRole('button', { name: `Yes, remove ${name}` }), () => expect(region.getByRole('button', { name: 'Connect' })).toBeVisible())
+    await confirmClick(remove, region.getByRole('button', { name: `Yes, remove ${name}` }), () => expect(region.getByRole('button', { name: 'Connect', exact: true })).toBeVisible())
   }
   return region
 }
@@ -32,7 +33,7 @@ test('Admin saves Grafana, sees Saved without the token, and an unreachable addr
   const region = await open(page, 'Grafana')
   await region.getByLabel('Grafana address').fill('http://127.0.0.1:59999')
   await region.getByLabel('Service-account token (optional)').fill(TOKEN)
-  await region.getByRole('button', { name: 'Connect' }).click()
+  await region.getByRole('button', { name: 'Connect', exact: true }).click()
   await expect(region.getByText('Token saved, never shown again')).toBeVisible()
   expect(await page.content()).not.toContain(TOKEN)
   await expect(region.getByLabel('Service-account token (optional)')).toHaveValue('')
@@ -44,18 +45,18 @@ test('Admin saves Grafana, sees Saved without the token, and an unreachable addr
   expect(await page.content()).not.toContain(TOKEN)
 
   await open(page, 'Grafana')
-  await expect(page.getByRole('region', { name: 'Grafana', exact: true }).getByRole('button', { name: 'Connect' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Grafana', exact: true }).getByRole('button', { name: 'Connect', exact: true })).toBeVisible()
 })
 
 test('Admin saves Traces and the unreachable endpoint is reported', async ({ page }) => {
   await signIn(page, email)
   const region = await open(page, 'Traces (OTLP)')
   await region.getByLabel('Endpoint').fill('not a host')
-  await region.getByRole('button', { name: 'Connect' }).click()
+  await region.getByRole('button', { name: 'Connect', exact: true }).click()
   await expect(region.getByText('must be host:port')).toBeVisible()
   await region.getByLabel('Endpoint').fill('127.0.0.1:59999')
   await region.getByLabel('Traces UI address (optional)').fill('http://127.0.0.1:16686')
-  await region.getByRole('button', { name: 'Connect' }).click()
+  await region.getByRole('button', { name: 'Connect', exact: true }).click()
   await expect(region.getByRole('button', { name: 'Test connection' })).toBeVisible()
   await region.getByRole('button', { name: 'Test connection' }).click()
   await expect(region.getByRole('alert').filter({ hasText: 'Cannot reach 127.0.0.1:59999 (connection refused)' })).toBeVisible()
@@ -71,7 +72,7 @@ test('Admin connects Prometheus: the scrape token and snippet show once, the met
   await signIn(page, email)
   const region = await open(page, 'Prometheus')
   await region.getByLabel('Prometheus address').fill('http://127.0.0.1:59999')
-  await region.getByRole('button', { name: 'Connect' }).click()
+  await region.getByRole('button', { name: 'Connect', exact: true }).click()
   const snippet = region.getByRole('status').filter({ hasText: 'job_name: bauherr' })
   await expect(snippet).toContainText('metrics_path: /-/metrics')
   const token = /bhm_[A-Za-z0-9_-]{43}/.exec((await snippet.textContent()) ?? '')?.[0]
