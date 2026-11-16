@@ -64,7 +64,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
             {status}
           </div>
         )}
-        {state.notice && (copy ? <CopyField text={state.notice} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
+        {state.notice && (copy ? <CopyField text={state.notice} block={state.notice.includes('\n')} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
       </form>
     </Ctx>
   )
@@ -150,7 +150,7 @@ export function CopyField({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="flex flex-col gap-4">
-      {block ? <Alert className="mono overflow-x-auto"><pre className="m-0">{text}</pre></Alert> : <Alert role="status" className="mono">{text}</Alert>}
+      {block ? <Alert role="status" className="mono overflow-x-auto"><pre className="m-0">{text}</pre></Alert> : <Alert role="status" className="mono">{text}</Alert>}
       <Button
         type="button"
         variant="outline"
