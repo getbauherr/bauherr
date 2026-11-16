@@ -19,7 +19,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { refreshPrices } from '../lib/prices'
 import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
-import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advancePlan, closeFinishedParents, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
@@ -816,6 +816,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         await advance(payload, null, { ...ticket, stage: run.stage }, 'replan', { by: 'factory', run, note: note || undefined })
       }
       if (run.investigation && r.status === 'succeeded') await concludeInvestigation(payload, ticket, run, r.artifacts.investigation, ctx.connection.modelByTier.strong)
+      if (kind === 'build' && r.status === 'succeeded' && ticket.epic) await tagFixes(payload, ticket, r.artifacts.pushedSha).catch((e) => payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
         // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {

@@ -106,7 +106,7 @@ test('a mixed decision sheet: the Product owner sees and answers their rows, the
   for (const d of ['D1', 'D2', 'D3']) await expect(all.locator(`[data-point=${d}]`)).toBeVisible()
   await expect(all.locator('[data-point=D2]')).toHaveAttribute('data-status', 'done')
   await expect(boss.getByTestId('model-chip')).toBeVisible()
-  await expect(boss.getByTestId('cost-chip')).toBeVisible()
+  await expect(boss.getByTestId('cost-chip')).toHaveCount(0) // cost is an Admin's
   await shoot(boss, 'mixed-sheet-bauherr')
   await ctx.close()
 })

@@ -10,6 +10,7 @@ import { asksOwner } from '../../../lib/addressee'
 import { currentPersonWorkspace, currentWorkspace, payloadClient, requirePerson, type Person } from '../lib/session'
 import { isAdmin } from '../lib/settings'
 import { loadPresence } from '../../../lib/presence'
+import { loadHolds } from '../lib/holds-strip'
 import { loadSetup, SETUP_STEPS } from '../lib/setup'
 import { appVersion } from '../lib/version'
 
@@ -46,7 +47,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
   const person = await requirePerson()
   if (isProductOwner(person)) return <ProductOwnerShell person={person}>{children}</ProductOwnerShell>
   const { user, workspaces, workspace } = await currentWorkspace()
-  const [needsYou, drafts, setup, presence] = workspace ? await Promise.all([countNeedsYou(workspace.id, user.role === 'admin'), countOwnDrafts(user.id as number, workspace.id), isAdmin(user) ? setupOf(workspace.id) : undefined, payloadClient().then((p) => loadPresence(p, workspace.id))]) : [0, 0, undefined, { working: 0, idle: 0 }]
+  const [needsYou, drafts, setup, presence, holds] = workspace ? await Promise.all([countNeedsYou(workspace.id, user.role === 'admin'), countOwnDrafts(user.id as number, workspace.id), isAdmin(user) ? setupOf(workspace.id) : undefined, payloadClient().then((p) => loadPresence(p, workspace.id)), loadHolds(workspace.id)]) : [0, 0, undefined, { working: 0, idle: 0 }, []]
   return (
     <AppShell
       defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'}
@@ -55,6 +56,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
       workspaces={workspaces.map(({ slug, name }) => ({ slug, name }))}
       current={workspace?.slug}
       presence={presence}
+      holds={holds}
       version={appVersion()}
       needsYou={needsYou}
       drafts={drafts}
