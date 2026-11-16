@@ -175,6 +175,8 @@ await ensure('bauherren', { email: 'chat-other@example.com' }, { email: 'chat-ot
 // Own Tickets of inbox.spec.ts: #37 a plan to approve, #38 a review at its round cap, #39 a change on staging. Twins in `src/lib/fake-forge.ts` carry these numbers.
 const t37 = await ticket(37, 'Rename the sign-in button', 'plan', product)
 const t38 = await ticket(38, 'Stop the export retry loop', 'review', product, { reviewState: 'needs_human', reviewRounds: 3 })
+// #640: the widest row of inbox.spec.ts: a 120-character title, a 200-character ask (set after the needs sweep below), on the fast lane.
+await ticket(640, `Rework the export retry policy so a permanent error stops the loop ${'and says why '.repeat(4)}`.slice(0, 120), 'review', product, { reviewState: 'needs_human', reviewRounds: 3, expedite: true })
 await ticket(39, 'Check the new header on staging', 'release', product, { ...rel, stagingTldr: { whatYouGet: '- The header shows the new logo\n- The checks are green', found: '- Nothing recorded.' } })
 await run(t37, 'plan', 'succeeded', { startedAt: '2026-10-30T09:50:00Z', finishedAt: '2026-10-30T09:52:00Z' })
 const t40 = await ticket(40, 'Hand over the export notes', 'plan', product)
@@ -419,5 +421,7 @@ for (const t of (await payload.find({ collection: 'tickets', pagination: false, 
   const decision = need ? await prepareDecision(payload, row, need, latest ?? null) : null
   await payload.update({ collection: 'tickets', id: t.id, data: { needsYou: need, needsBy, decision, planTldr: planTldr ?? null }, ...o })
 }
+const wide = (await payload.find({ collection: 'tickets', where: { number: { equals: 640 } }, limit: 1, depth: 0, ...o })).docs[0] as Record<string, any> | undefined
+if (wide?.decision) await payload.update({ collection: 'tickets', id: wide.id, data: { decision: { ...wide.decision, ask: 'Give the review one more round or stop it, and read the finding first. '.repeat(4).slice(0, 200) } }, ...o })
 console.log('seeded')
 process.exit(0)
