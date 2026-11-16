@@ -13,6 +13,7 @@ import { Suspense } from 'react'
 import { OPEN_WORDS, sourceOf, type OpenItem } from '../../../../../lib/actions'
 import { decisionComments } from '../../../../../lib/forge-channel'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
+import { AutoRefresh } from '../../../components/AutoRefresh'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ForgeLink } from '../../../components/ForgeLink'
@@ -127,15 +128,13 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} answerable={x.view.answerable} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
 }
 
 /** The forge link in the CI panel header, only when the action bar's one secondary slot is taken. */
 async function PanelForge({ P, d }: { P: Page; d: Promise<Derived> }) {
   const x = await d
-  const { ticket, product, runs } = P
-  const taken = hasSecondary({ need: x.todo, canExpedite: canExpediteOf(P), answerable: x.view.answerable, run: runs[0]?.id ?? null, open: x.view.open, product: product.id as number, releaseRunUrl: ticket.releaseRunUrl })
-  return P.forgeLink && taken ? <div><ForgeLink {...P.forgeLink} /></div> : null
+  return P.forgeLink && hasSecondary({ need: x.todo, canExpedite: canExpediteOf(P) }) ? <div><ForgeLink {...P.forgeLink} /></div> : null
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -383,6 +382,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   return (
     <div className="flex flex-col gap-4">
       <PageTitle>{`#${ticket.number}`}</PageTitle>
+      <AutoRefresh />
       <header className="flex flex-col gap-2">
         <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
         {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
