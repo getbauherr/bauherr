@@ -39,7 +39,7 @@ test('a production-gated Ticket waits for an explicit production approval', asyn
   await open(page, 'Ship the gated export')
   await expect(page.getByRole('button', { name: 'Approve production' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Accept' }).click()
-  await expect(page.getByTestId('action-bar')).toContainText('Approve the production deploy.')
+  await expect(page.getByTestId('action-bar')).toContainText('Approve the production deploy of')
   await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText('Staging')
   await page.getByRole('button', { name: 'Approve production' }).click()
   await expect(page.getByText('Accepted on staging · Approved for production')).toBeVisible()

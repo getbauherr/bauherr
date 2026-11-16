@@ -92,8 +92,8 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
     return { phase: 'working', label: 'In progress', detail: `${VERB[kind] ?? 'running a step'}${since}${extra}`, who: runWho(run, r.owner, wf.roles.find((x) => x.id === run.role)?.title), tone: 'accent' }
   }
   if (run?.status === 'awaiting_session' && run.preemptedFor) return { phase: 'queued', label: `Paused for hotfix #${run.preemptedFor}`, detail: 'continues first when the hotfix is done', who: null, tone: 'muted' }
-  if (run?.status === 'awaiting_session') return { phase: 'queued', label: 'Queued', detail: 'waiting for a session', who: null, tone: 'muted' }
-  if (run?.status === 'queued') return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
+  if (run?.status === 'awaiting_session' && !r.needsYou) return { phase: 'queued', label: 'Queued', detail: 'waiting for a session', who: null, tone: 'muted' }
+  if (run?.status === 'queued' && !r.needsYou) return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
   if (r.needsYou) {
     const why = RUN_PROBLEMS.includes(r.needsYou) ? first(r.run?.error) : null
     return { phase: 'human', label: WAITING_FOR_YOU, detail: why ? `${r.needsYou}: ${why}` : r.needsYou === 'Decision needed' ? stageTitle(wf, r.stage) : r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
