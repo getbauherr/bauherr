@@ -1,3 +1,4 @@
+import { changeOf } from '../../../../../lib/decision'
 import { pausingFor } from '../../../../../lib/preempt'
 import { PageTitle } from '../../../components/PageTitle'
 import { ProductOwnerTicket } from './ProductOwnerTicket'
@@ -123,7 +124,7 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
+  return <ActionBar change={changeOf(ticket.stagingTldr, ticket.title)} ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {

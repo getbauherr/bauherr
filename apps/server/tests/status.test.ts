@@ -38,6 +38,8 @@ describe('ticketStatus', () => {
     ['budget exhausted', row({ run: run({ status: 'budget_exhausted' }) }), { phase: 'failed', label: 'Failed', detail: 'budget exhausted', who: null }],
     ['waiting for a free slot', row({ queuedWhy: 'Build is full (2/2)' }), { phase: 'queued', label: 'Queued', detail: 'Build is full (2/2)', who: null }],
     ['idle', row(), { phase: 'queued', label: 'Queued', detail: 'next in line', who: null }],
+    ['a queued Run while the owner is asked is not Queued', row({ needsYou: 'Accept on staging', run: run({ status: 'queued' }) }), { phase: 'human', label: 'Waiting for you', detail: 'Accept on staging', who: null }],
+    ['a Run waiting for a session while the owner is asked is not Queued', row({ needsYou: 'Approve production', run: run({ status: 'awaiting_session', mode: 'session' }) }), { phase: 'human', label: 'Waiting for you', detail: 'Approve production', who: null }],
   ]
   it.each(table)('%s', (_name, r, want) => {
     expect(at(r)).toMatchObject(want)
