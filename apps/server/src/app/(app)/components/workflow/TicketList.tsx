@@ -24,6 +24,7 @@ const EpicTag = ({ t }: { t: TicketRow }) =>
 const EpicCard = ({ wf, t }: { wf: Workflow; t: TicketRow }) =>
   t.epic ? (
     <span className="epic-card flex flex-wrap items-center gap-2" data-testid="epic-card">
+      {t.parked && <span className="label rounded-sm border border-border px-2 text-warn" data-testid="parked-badge">Parked</span>}
       {!t.slicing && <span className="label rounded-sm border border-border px-2 text-primary">{is(wf, t.stage, 'review') ? 'Epic review' : 'Epic'}</span>}
       <progress className="h-1.5 w-20 accent-primary" value={t.epic.passed} max={Math.max(t.epic.total, 1)} aria-label={`${t.epic.passed} of ${t.epic.total} slices passed`} />
       <span className="small text-muted-foreground">{t.epic.passed}/{t.epic.total} passed</span>
@@ -42,7 +43,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
         const sorted = rows.map((t) => ({ ...t, expediting: t.expedite })).sort(executionOrder)
         const limit = wip[stage]?.limit
         const state = limit != null && wip[stage]!.count > limit ? 'over' : limit != null && wip[stage]!.count === limit ? 'full' : undefined
-        const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}</span> : <span className="text-muted-foreground">{rows.length}</span>
+        const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}</span> : <span className="text-muted-foreground">{rows.filter((t) => !t.parked).length}</span>
         return (
           <section key={stage} data-stage={stage} className="col flex flex-col gap-2" aria-label={stageTitle(wf, stage)}>
             <h2 className={cn('m-0 flex items-baseline gap-2 py-1 text-[13px] font-semibold capitalize', sticky && 'sticky top-0 z-10 bg-background')} data-testid="group-heading">{stageTitle(wf, stage)} {limit != null && admin ? <Link href="/workflow/edit" className="hover:underline">{count}</Link> : count}</h2>

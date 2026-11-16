@@ -1,3 +1,8 @@
+import type { Where } from 'payload'
+
+/** Query part that leaves out parked Tickets (a stopped epic and its open slices): they hold no WIP, start no Run and are not watched. */
+export const NOT_PARKED: Where = { parked: { not_equals: true } }
+
 /** `tickets.epic` on a parent: the epic integration branch, its PR and the slice plan. Presence switches the Ticket to epic behaviour. */
 export type EpicField = {
   branch: string

@@ -239,6 +239,27 @@ describe('counting and workspaces', () => {
     expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
   })
 
+  it('a parked Ticket holds no slot, is not pulled, and starts no Run; unparked it counts and is pulled again', async () => {
+    usePack('bare-pack')
+    await limits({ build: 1 })
+    await ticket('held', 'build', { parked: true })
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(0)
+    const c = await ticket('c', 'plan')
+    await poll()
+    expect(await reload(c.id)).toMatchObject({ stage: 'build', waitingFor: null })
+    expect(await runs(c.id, 'build')).toHaveLength(1)
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(1)
+    const waiting = await ticket('w', 'plan', { waitingFor: 'build', parked: true })
+    await limits({ build: 5 })
+    await wip.pullWaiting(payload)
+    await poll()
+    expect(await reload(waiting.id)).toMatchObject({ stage: 'plan', waitingFor: 'build' })
+    expect(await runs(waiting.id, 'build')).toHaveLength(0)
+    await payload.update({ collection: 'tickets', id: waiting.id, data: { parked: false }, ...o })
+    await wip.pullWaiting(payload)
+    expect(await reload(waiting.id)).toMatchObject({ stage: 'build', waitingFor: null })
+  })
+
   it('counts the Release column too (Settings > Factory > Workflow shows it)', async () => {
     await ticket('rel', 'release')
     expect(await wip.wipCount(payload, ws, 'release')).toBe(1)

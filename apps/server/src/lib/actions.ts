@@ -36,7 +36,7 @@ import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProductio
 import { queueDistill } from './skill-distill'
 import { backendFor } from './adapters'
 import { connectionInput } from './connection'
-import type { EpicField, SliceField } from './epic'
+import { NOT_PARKED, type EpicField, type SliceField } from './epic'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -348,10 +348,10 @@ export const checksGate = async (payload: Payload, t: Doc, mr: Mr, at = Date.now
  * Pending past CHECKS_WAIT_MS: the latest Build Run goes `needs_human` (shown as "Run needs you" with the reason). Returns how many Tickets moved.
  */
 export const watchChecks = async (payload: Payload, at = Date.now()): Promise<number> => {
-  const waiting = (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'build'), { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const waiting = (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'build'), { state: { equals: 'open' } }, NOT_PARKED, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let moved = 0
   // A Ticket in Review that still carries the checks wait is watched by nobody else: drop the wait and let the review start decide (green: Review Run, pending: back to waiting in Build, red: back to Build).
-  for (const t of (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'review'), { state: { equals: 'open' } }, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
+  for (const t of (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'review'), { state: { equals: 'open' } }, NOT_PARKED, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
     try {
       await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
       if (await startReviewIfReady(payload, { ...t, waitingFor: null })) moved++
@@ -481,7 +481,7 @@ const covered = async (ts: TicketSource, n: string) => {
 export const advancePlan = async (payload: Payload, t: Doc): Promise<string | null> => {
   const wf = workflowFor(t.workspace)
   const gated = gateOn(wf, 'plan') && !t.expedite
-  if ((gated && !t.epic) || !is(wf, t.stage, 'plan') || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
+  if ((gated && !t.epic) || t.parked || !is(wf, t.stage, 'plan') || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
   const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
   if (!run || kindOfRun(wf, run) !== 'plan' || run.status !== 'succeeded') return null
   const { ts, n } = await sourceOf(payload, t)
@@ -797,7 +797,7 @@ export const advanceEpic = (payload: Payload, p: Doc): Promise<boolean> =>
     const parent = (await payload.findByID({ collection: 'tickets', id: p.id, ...ro })) as Doc
     const wf = workflowFor(parent.workspace)
     const epic = parent.epic as EpicField | null
-    if (!epic || parent.state !== 'open' || !is(wf, parent.stage, 'container')) return false
+    if (!epic || parent.parked || parent.state !== 'open' || !is(wf, parent.stage, 'container')) return false
     const current = epic.slices[epic.current]?.ticket
     const sub = current ? ((await payload.findByID({ collection: 'tickets', id: current, ...ro })) as Doc) : null
     if (!sub) {
@@ -821,13 +821,14 @@ export const advanceEpic = (payload: Payload, p: Doc): Promise<boolean> =>
     return entered === 'moved'
   })
 
-/** Poll sweep over epics: advances every slicing parent and closes the open slices of an epic that is accepted (closed or done). Returns how many parents moved. */
+/** Poll sweep over epics (never a parked one): advances every slicing parent and closes the open slices of an epic that is accepted (closed or done) or was discarded. Returns how many parents moved. */
 export const advanceEpics = async (payload: Payload): Promise<number> => {
   const stage = { or: [await inKindStage(payload, 'container'), await inKindStage(payload, 'done'), { state: { equals: 'closed' } }] } as Where
   const parents = (await payload.find({ collection: 'tickets', where: { and: [{ epic: { exists: true } }, stage] }, pagination: false, ...ro })).docs as Doc[]
   let moved = 0
   for (const p of parents) {
     try {
+      if (p.state === 'open' && p.parked) continue
       if (p.state === 'open' && is(workflowFor(p.workspace), p.stage, 'container')) {
         if (await advanceEpic(payload, p)) moved++
         continue
@@ -835,8 +836,10 @@ export const advanceEpics = async (payload: Payload): Promise<number> => {
       const open = (await payload.find({ collection: 'tickets', where: { and: [{ parent: { equals: p.id } }, { state: { equals: 'open' } }] }, pagination: false, ...ro })).docs as Doc[]
       if (!open.length) continue
       const ts = await ticketsOf(payload, id(p.product))
+      // A parent closed as not planned (discarded, abandoned) takes its slices with it; an accepted one closes them as completed.
+      const reason = p.state === 'closed' && (await ts.get(String(p.number))).closeReason === 'not_planned' ? 'not_planned' : 'completed'
       for (const k of open) {
-        if ((await ts.get(String(k.number))).state !== 'closed') await ts.close(String(k.number), 'completed')
+        if ((await ts.get(String(k.number))).state !== 'closed') await ts.close(String(k.number), reason)
         await payload.update({ collection: 'tickets', id: k.id, data: { state: 'closed' }, ...ro })
       }
     } catch (e) {
@@ -844,6 +847,124 @@ export const advanceEpics = async (payload: Payload): Promise<number> => {
     }
   }
   return moved
+}
+
+export class NotBauherr extends Error {
+  constructor() {
+    super('Only a Bauherr or Admin can do this.')
+  }
+}
+
+/** The epic parent a Ticket belongs to (the Ticket itself for a parent), or null for any other Ticket. */
+const epicParentOf = async (payload: Payload, t: Doc): Promise<Doc | null> =>
+  t.epic ? t : t.slice ? ((await payload.findByID({ collection: 'tickets', id: (t.slice as SliceField).epic, ...ro })) as Doc) : null
+
+/** The epic parent and its open slices. */
+const epicTickets = async (payload: Payload, parent: Doc): Promise<Doc[]> => [parent, ...((await payload.find({ collection: 'tickets', where: { and: [{ parent: { equals: parent.id } }, { state: { equals: 'open' } }] }, pagination: false, ...ro })).docs as Doc[])]
+
+/** Cancels every live Run of `tickets` (a session holding one gets `lease lost`); returns how many ended. */
+const cancelLiveRuns = async (payload: Payload, tickets: Doc[], why: string): Promise<number> => {
+  const ended = await payload.db.drizzle.execute(
+    sql`UPDATE "runs" SET "status" = 'cancelled', "error" = ${why}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t.id}`), sql`, `)}) AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)}) RETURNING "id"`,
+  )
+  for (const r of ended.rows as { id: number }[]) await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${r.id} AND "finished_at" IS NULL`)
+  return ended.rows.length
+}
+
+/** One history row and one epic worklog line for a park, resume or discard (the dedupe of `record` would swallow a repeat of the same stage and phase). */
+const epicNote = async (payload: Payload, parent: Doc, cause: string, by: string, executor: 'human' | 'factory', line: string): Promise<void> => {
+  const wf = workflowFor(parent.workspace)
+  await payload.create({ collection: 'ticket_events', data: { ticket: parent.id, workspace: id(parent.workspace), at: now(), stage: parent.stage, stageKind: stageDef(wf, parent.stage)?.kind ?? null, phase: 'queued', executor, actor: by, cause, note: line }, ...ro })
+  await addWorklogLines(payload, parent, '**Decisions**', [`- ${now().slice(0, 10)} ${line} By: ${by}.`])
+}
+
+const liveEpic = (wf: Workflow, parent: Doc): boolean => parent.state === 'open' && !is(wf, parent.stage, 'release', 'done')
+
+/**
+ * Parks the epic of `t` (a parent or one of its slices): the branch stays, nothing merges, the parent and its open slices hold no WIP and start no Run,
+ * and every live Run of them is cancelled. Idempotent; false when `t` is no epic, the epic is parked already or it is merged or closed.
+ */
+export const parkEpicNow = async (payload: Payload, t: Doc, o: { by: string; executor: 'human' | 'factory'; why: string }): Promise<boolean> => {
+  const root = await epicParentOf(payload, t)
+  if (!root) return false
+  return exclusive(`epic:${root.id}`, async () => {
+    const parent = (await payload.findByID({ collection: 'tickets', id: root.id, ...ro })) as Doc
+    if (!parent.epic || parent.parked || !liveEpic(workflowFor(parent.workspace), parent)) return false
+    const all = await epicTickets(payload, parent)
+    for (const x of all) await payload.update({ collection: 'tickets', id: x.id, data: { parked: true }, ...ro })
+    const cancelled = await cancelLiveRuns(payload, all, `epic parked: ${o.why}`)
+    await epicNote(payload, parent, 'epic:park', o.by, o.executor, `Epic parked: ${o.why}. Consequence: the epic branch \`${(parent.epic as EpicField).branch}\` is kept, nothing merges, ${cancelled} live Run(s) cancelled, no WIP held until it is resumed or discarded.`)
+    await (await ticketsOf(payload, id(parent.product))).comment(String(parent.number), `Bauherr: epic parked (${o.why}). The branch is kept and nothing merges. Resume or discard it on this Ticket.`)
+    return true
+  })
+}
+
+/** The owner's "Park epic": Bauherr or Admin, on the epic parent. */
+export const parkEpic = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  if (!isBauherr(user)) throw new NotBauherr()
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (!t.epic) throw new Error('the Ticket is not an epic')
+  if (t.parked) throw new Error('the epic is parked already')
+  if (!liveEpic(workflowFor(t.workspace), t)) throw new Error('the epic is merged or closed; there is nothing to park')
+  await parkEpicNow(payload, t, { by: personOf(user), executor: 'human', why: `stopped by ${user.email}` })
+  await touch(payload, user, t, 'epic:park')
+}
+
+/** Starts again what the park cancelled in `t`'s stage: its review, or its plan or Build Run when that stage's latest Run was cancelled. */
+const restartStage = async (payload: Payload, t: Doc): Promise<void> => {
+  const wf = workflowFor(t.workspace)
+  if (!t.stage || t.waitingFor || is(wf, t.stage, 'human', 'container', 'done', 'release')) return
+  const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
+  if (is(wf, t.stage, 'review') ? !t.reviewState : latest?.stage === t.stage && latest?.status === 'cancelled') await startAfterPull(payload, t, t.stage)
+}
+
+/** Resumes a parked epic where it stopped: clears the park, then continues the slicing (next slice) or restarts the stage the cancelled Run belonged to. */
+export const resumeEpic = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  if (!isBauherr(user)) throw new NotBauherr()
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (!t.epic || t.state !== 'open' || !t.parked) throw new Error('the epic is not parked')
+  await exclusive(`epic:${t.id}`, async () => {
+    const all = await epicTickets(payload, t)
+    for (const x of all) await payload.update({ collection: 'tickets', id: x.id, data: { parked: false }, ...ro })
+    await epicNote(payload, t, 'epic:resume', personOf(user), 'human', `Epic resumed by ${user.email}. Consequence: it continues where it stopped.`)
+  })
+  const parent = (await payload.findByID({ collection: 'tickets', id: t.id, ...ro })) as Doc
+  const wf = workflowFor(parent.workspace)
+  if (is(wf, parent.stage, 'container')) {
+    await advanceEpic(payload, parent)
+    const epic = ((await payload.findByID({ collection: 'tickets', id: parent.id, ...ro })) as Doc).epic as EpicField
+    const sub = epic.slices[epic.current]?.ticket ? ((await payload.findByID({ collection: 'tickets', id: epic.slices[epic.current]!.ticket!, ...ro })) as Doc) : null
+    if (sub?.state === 'open' && !(sub.slice as SliceField).passed) await restartStage(payload, sub)
+  } else await restartStage(payload, parent)
+  await touch(payload, user, t, 'epic:resume')
+}
+
+/**
+ * The owner's "Discard epic": cancels the live Runs, closes the epic PR unmerged, deletes the epic branch, then closes the parent and every open slice as not planned.
+ * Bauherr or Admin only; refused for an epic that is merged or closed. A retry after a partial failure finishes the rest (`advanceEpics` closes slices of a parent closed as not planned).
+ */
+export const discardEpic = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  if (!isBauherr(user)) throw new NotBauherr()
+  const t = await loadIn(payload, user, a.ticket, a.workspaceId)
+  if (!t.epic) throw new Error('the Ticket is not an epic')
+  await exclusive(`epic:${t.id}`, async () => {
+    const parent = (await payload.findByID({ collection: 'tickets', id: t.id, ...ro })) as Doc
+    if (!liveEpic(workflowFor(parent.workspace), parent)) throw new Error('the epic is merged or closed; there is nothing to discard')
+    const all = await epicTickets(payload, parent)
+    await cancelLiveRuns(payload, all, `epic discarded by ${user.email}`)
+    const { backend, repo } = await forgeOf(payload, id(parent.product))
+    const mr = await prOf(payload, parent, { fallback: false })
+    if (mr?.pr.state === 'open') await backend.forge.closePullRequest(repo, mr.pr.number)
+    await backend.forge.deleteBranch(repo, (parent.epic as EpicField).branch)
+    await epicNote(payload, parent, 'epic:discard', personOf(user), 'human', `Epic discarded by ${user.email}. Consequence: the epic PR is closed unmerged, the branch \`${(parent.epic as EpicField).branch}\` is deleted, the epic and its open slices are closed as not planned.`)
+    const ts = await ticketsOf(payload, id(parent.product))
+    await ts.comment(String(parent.number), `Bauherr: epic discarded by ${user.email}. The epic PR was closed without merging and its branch deleted.`)
+    for (const x of [parent, ...all.filter((k) => k.id !== parent.id)]) {
+      if ((await ts.get(String(x.number))).state !== 'closed') await ts.close(String(x.number), 'not_planned')
+      await payload.update({ collection: 'tickets', id: x.id, data: { state: 'closed' }, ...ro })
+    }
+  })
+  await touch(payload, user, t, 'epic:discard')
 }
 
 /** Finishes every parent (stage `parent`) whose sub-tickets are all closed, with a Comment listing them. Returns how many were closed. */
@@ -1448,9 +1569,9 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
     sql`UPDATE "tickets" SET "review_state" = NULL, "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "stage" = ${nameOf(wf, 'review')} AND "review_state" = 'needs_human' AND "review_rounds" > ${MAX_REVIEW_ROUNDS} RETURNING "id"`,
   )
   if (!claimed.rows.length) throw new Error('the Ticket is not at the review round cap')
-  const stopped = await advance(payload, mr.tickets, t, 'stop', { by: personOf(user), why: 'review_cap_stop' })
   const note = a.note?.trim()
-  await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}`)
+  const stopped = await advance(payload, mr.tickets, t, 'stop', { by: personOf(user), why: 'review_cap_stop', note: `stopped at the review round cap by ${user.email}${note ? `: ${note}` : ''}` })
+  await mr.tickets.comment(n, `Stopped at the review round cap by ${user.email}; MR #${mr.pr.number} stays open.${note ? `\n\n${note}` : ''}${stopped.entered === 'parked' ? '\n\nThe epic is parked; resume or discard it on the epic.' : ''}`)
   await touch(payload, user, t, 'review-cap:stop')
   return { stage: stopped.stage ?? nameOf(wf, 'triage') }
 }
@@ -1670,6 +1791,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
  */
 export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null, resume = false): Promise<{ outcome: ReviewOutcome }> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
+  if (t.parked) return { outcome: 'noop' }
   try {
     const mr = await prOf(payload, t)
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
@@ -1732,7 +1854,7 @@ export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: s
 /** Per-minute pass: Tickets waiting on checks re-run the merge gate against the latest reviewed SHA; waiting longer than 2 hours needs a human. */
 export const watchReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
   await recoverMergeFailures(payload)
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, await inKindStage(payload, 'review'), { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let merged = 0
   for (const t of tickets) {
     try {
@@ -1774,7 +1896,7 @@ export const queueRunsLink = (pr: { url: string; base: string }, repo: string): 
  * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first; not for a member of the running train of a `train` Product: the train has its own step timeout). An unknown queue state (the forge call failed) changes nothing.
  */
 export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, await inKindStage(payload, 'review'), { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let merged = 0
   for (const t of tickets) {
     try {
@@ -1832,7 +1954,7 @@ const RESUME_GRACE_MS = 2 * 60_000
 
 /** Per-minute pass: a review Run of the current review (reviewed the MR head, finished after the last Build Run) holds its verdict but the Ticket never left review (crash between the Run write and the stage move); the verdict is applied again. A stale Run is not applied; a fresh review starts. A crash after the round claim in `returnToBuild` counts that round twice on resume (accepted, D3). */
 export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, await inKindStage(payload, 'review'), { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let resumed = 0
   for (const t of tickets) {
     try {
@@ -1862,7 +1984,7 @@ const OWNER_REASONS = ['decision', 'access']
 
 /** Per-minute pass: a Ticket parked at `ready_for_human`, or at `needs_human` below the round cap, whose MR head moved since the last review restarts the review (a same-diff main merge is rebound instead). The cap is the owner's decision. */
 export const restartParkedReviews = async (payload: Payload): Promise<number> => {
-  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, await inKindStage(payload, 'review'), { reviewState: { in: ['ready_for_human', 'needs_human'] } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+  const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { in: ['ready_for_human', 'needs_human'] } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let restarted = 0
   for (const t of tickets) {
     try {

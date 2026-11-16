@@ -48,6 +48,7 @@ export function EpicsView({ wf, epics }: { wf: Workflow; epics: Epic[] }) {
             <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2" style={{ '--tint': `oklch(60% .16 ${epicHue(e.id)})` } as React.CSSProperties}>
               <span className="size-2.5 rounded-full bg-(--tint)" />
               <span className="mono small">#{e.number}</span> <strong>{e.title}</strong>
+              {e.parked && <span className="label rounded-sm border border-border px-2 text-warn" data-testid="parked-badge">Parked</span>}
               <span className="basis-full"><EpicProgress wf={wf} epic={e} /></span>
             </summary>
             <EpicChildren wf={wf} epic={e} />

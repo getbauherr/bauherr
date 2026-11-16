@@ -47,6 +47,8 @@ export type StatusRow = {
   children?: { total: number; done: number } | null
   /** The slice an epic parent is building: its number, the epic's size and the stage of its sub-ticket. */
   slicing?: { index: number; total: number; stage: string | null } | null
+  /** A parked epic (or one of its open slices): stopped, holds no WIP. */
+  parked?: boolean
 }
 
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
@@ -82,6 +84,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   if (!r.open) return { phase: 'done', label: 'Done', detail: null, who: null, tone: 'ok' }
   // Still open on the forge in the done stage: awaiting close or archive.
   if (is(wf, r.stage, 'done')) return { phase: 'done', label: 'Done', detail: 'closing', who: null, tone: 'ok' }
+  if (r.parked) return { phase: 'blocked', label: 'Parked', detail: 'stopped; resume or discard it', who: null, tone: 'muted' }
   if (is(wf, r.stage, 'container') && r.slicing) return { phase: 'blocked', label: `Slice ${r.slicing.index}/${r.slicing.total}`, detail: r.slicing.stage ? stageTitle(wf, r.slicing.stage) : 'starting', who: null, tone: 'muted' }
   if (is(wf, r.stage, 'container')) {
     const c = r.children ?? { total: 0, done: 0 }

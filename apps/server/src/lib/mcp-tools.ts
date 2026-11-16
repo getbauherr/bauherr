@@ -209,6 +209,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
   if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
+  if (ticket.parked) throw new ClaimLost(`ticket #${ticket.number} is parked`)
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
@@ -255,7 +256,7 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
     depth: 1,
   })
-  const all = tickets.docs.filter((t: Doc) => !is(workflowFor(t.workspace), t.stage, 'container'))
+  const all = tickets.docs.filter((t: Doc) => !t.parked && !is(workflowFor(t.workspace), t.stage, 'container'))
   for (const t of all) t.expediting = await isExpediting(c.payload, t)
   const unblocked = all.filter((t: Doc) => !openBlockers(t).length)
   const runs = await c.payload.find({
@@ -838,7 +839,7 @@ export const tools: Tool[] = [
   {
     name: 'stop_review',
     access: 'human',
-    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment. Refused for agent keys.',
+    description: 'Human only: at the review round cap, stop: the MR stays open, the Ticket moves to triage with a note Comment; an epic (parent or slice) is parked instead. Refused for agent keys.',
     inputSchema: obj({ ...ticketId, note: str('Why it was stopped') }, ['ticket']),
     async run(a, c) {
       await getTicket(c, a.ticket)

@@ -455,6 +455,12 @@ describe('github merge queue', () => {
     assert.deepEqual(created.calls.at(-1), { method: 'POST', path: '/repos/o/r/git/refs', body: { ref: 'refs/heads/bauherr/train', sha: 's1' } });
     await assert.rejects(run(() => new Response('boom', { status: 500 }), (f) => f.resetBranch('o/r', 'bauherr/train', 's1')), /500/);
   });
+  it('deleteBranch deletes the ref; a missing ref is fine, other errors surface', async () => {
+    const del = await run(() => new Response(null, { status: 204 }), (f) => f.deleteBranch('o/r', 'bauherr/9-epic'));
+    assert.deepEqual(del.calls, [{ method: 'DELETE', path: '/repos/o/r/git/refs/heads/bauherr/9-epic', body: undefined }]);
+    await run(() => new Response('nf', { status: 422 }), (f) => f.deleteBranch('o/r', 'bauherr/9-epic'));
+    await assert.rejects(run(() => new Response('boom', { status: 500 }), (f) => f.deleteBranch('o/r', 'bauherr/9-epic')), /500/);
+  });
   it('mergeIntoBranch POSTs /merges with the head sha; 201 gives the merge sha, 204 the branch tip, 409 a conflict', async () => {
     const ok = await run(() => json({ sha: 'm1' }, { status: 201 }), (f) => f.mergeIntoBranch('o/r', 'bauherr/train', 'h1'));
     assert.deepEqual(ok.res, { sha: 'm1' });
