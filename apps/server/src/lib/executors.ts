@@ -14,7 +14,12 @@ export type ExecutorFacts = {
   deploy: { configured: boolean; lastAt: string | null; ci: string; href: string }
   now: number
 }
-export type Executor = { line: string; action: { label: string; href: string } | null; /** Nobody can run the stage: the factory is stuck there when Tickets wait. */ cannotRun: boolean }
+export type Executor = { line: string; action: { label: string; href: string } | null; /** Nobody can run the stage: the factory is stuck there when Tickets wait. */ cannotRun: boolean; /** Why a Ticket of the stage waits, for its Who column (only when `cannotRun` and someone could be named). */ waits?: string }
+
+export const DEPLOY_WAIT = "Waiting for the Product's deploy check"
+
+/** "a Software engineer", "an Orchestrator". */
+const article = (title: string): string => `${/^[aeiou]/i.test(title) ? 'an' : 'a'} ${title}`
 
 const minutes = (ms: number): string => {
   const m = Math.max(0, Math.round(ms / 60_000))
@@ -30,15 +35,27 @@ export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | n
   if (stage.role && f.role) {
     const { title, working, idle, connected } = f.role
     if (connected > 0 || working > 0) return { line: `${title} · ${[working && `${working} working`, idle && `${idle} idle`].filter(Boolean).join(' · ') || `${connected} connected`}`, action: null, cannotRun: false }
-    return { line: `${title} · none connected${f.waiting ? `, ${f.waiting} ${f.waiting === 1 ? 'Run' : 'Runs'} waiting` : ''}`, action: { label: `Connect a ${title}`, href: `/team?role=${encodeURIComponent(f.role.id)}` }, cannotRun: true }
+    return { line: `${title} · none connected${f.waiting ? `, ${f.waiting} ${f.waiting === 1 ? 'Run' : 'Runs'} waiting` : ''}`, action: { label: `Connect ${article(title)}`, href: `/team?role=${encodeURIComponent(f.role.id)}` }, cannotRun: true, waits: `Waiting for ${article(title)} session` }
   }
   if (stage.kind === 'release') {
     const d = f.deploy
-    if (!d.configured) return { line: `${d.ci} · no deploy check configured`, action: { label: 'Configure deploy checks', href: d.href }, cannotRun: true }
+    if (!d.configured) return { line: `${d.ci} · no deploy check configured`, action: { label: 'Configure deploy checks', href: d.href }, cannotRun: true, waits: DEPLOY_WAIT }
     return { line: `${d.ci} · ${d.lastAt ? `last deploy ${minutes(f.now - Date.parse(d.lastAt))}` : 'no deploy reported yet'}`, action: null, cannotRun: false }
   }
   if (stage.gate === 'human' && !stage.role) return { line: 'You', action: null, cannotRun: false }
   return { line: 'No one assigned', action: { label: 'Edit workflow', href: '/workflow/edit' }, cannotRun: true }
+}
+
+/**
+ * The Who cell of a Ticket row: why an open, not working Ticket waits when its stage cannot run, or, in the release stage, when staging never reported back
+ * (`releaseState: timed_out`, the "Staging not confirmed" need, which still fires); otherwise the status's own `who`.
+ */
+export const waitingWho = (stageKind: string | undefined, e: Executor | undefined, t: { open: boolean; track: { releaseState?: string | null } }, s: { phase: string; who: string | null }): string | null => {
+  if (!t.open || s.phase === 'working' || s.phase === 'done') return s.who
+  if (stageKind === 'release' && t.track.releaseState === 'timed_out') return DEPLOY_WAIT
+  // The turn is a person's (a gate): name them, not the missing agent.
+  if (s.phase === 'human') return s.who
+  return e?.waits ?? s.who
 }
 
 /** Facts for every stage of a Workspace's workflow, from the database only (sessions by role, queued Runs, the Product's deploy settings and last release). */
