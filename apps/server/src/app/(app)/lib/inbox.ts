@@ -10,14 +10,14 @@ import { loadProof, type ProofData } from './proof'
 type Doc = Record<string, any>
 
 /** One card of the Inbox, as the client component needs it. */
-export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** Set for a Bauherr when the card asks the Product owner (a Bauherr may step in). */ asked?: 'product-owner'; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData }
+export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** Set for a Bauherr when the card asks the Product owner (a Bauherr may step in). */ asked?: 'product-owner'; /** Unanswered critical questions (stored by the gate sweep, so the Inbox stays database only); "Answer N questions" shows only above 0. */ open?: number; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData }
 export type InboxGroup = { checkpoint: Checkpoint; items: InboxItem[] }
 
 /** The view of a stored Decision (or one built from the row when the sweep has not reached the Ticket yet) that cards render. */
 export const cardOf = (t: Doc, product: { id: number; name: string; stagingUrl?: string | null }, urgentReason?: string | null): InboxItem | null => {
   if (!isNeed(t.needsYou)) return null
   const decision: Decision = t.decision?.need === t.needsYou ? t.decision : buildDecision(t.needsYou, { urgentReason, ticket: t as never, product, planTldr: t.planTldr, stagingTldr: t.stagingTldr, human: humanStage(t) })
-  return { id: t.id, number: t.number, product: { id: product.id, name: product.name }, decision, detailsHtml: decision.details ? renderMarkdown(decision.details) : null, waiting: waited(decision.openSince) }
+  return { id: t.id, number: t.number, product: { id: product.id, name: product.name }, decision, detailsHtml: decision.details ? renderMarkdown(decision.details) : null, waiting: waited(decision.openSince), open: t.openCriticalDecisions ?? 0 }
 }
 
 /** The card of a distilled skill proposal (the Ticket it was learned from carries the card's id and number). */

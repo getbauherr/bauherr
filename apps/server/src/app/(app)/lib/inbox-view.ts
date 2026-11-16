@@ -1,3 +1,4 @@
+import type { DecisionOption } from '../../../lib/decision'
 import type { InboxGroup, InboxItem } from './inbox'
 
 export type InboxFilters = { product?: number; checkpoint?: string }
@@ -43,3 +44,21 @@ export const emptyCopy = ({ error, picked, owner, working }: { error?: boolean; 
   : picked ? { text: `Nothing waits for you at ${picked}.`, action: { href: '/inbox', label: 'Show all decisions' } }
   : owner ? { text: 'Nothing waits for you.', action: { href: '/requests', label: 'Open Requests' } }
   : { text: `Nothing needs you. The factory is working on ${working} ticket${working === 1 ? '' : 's'}.`, action: { href: '/', label: 'Open the Workflow' } }
+
+const PAST: Partial<Record<DecisionOption['action'], string>> = { approvePlan: 'Plan approved', acceptStaging: 'Accepted on staging', approveProduction: 'Production approved', grantRound: 'One more round given', stopReview: 'Review stopped', backToBuild: 'Sent back to build', backToBacklog: 'Sent back to the backlog', requestChanges: 'Changes requested', expedite: 'Put on the fast lane', releaseLane: 'Fast lane released', rerun: 'Re-run started', approveSkill: 'Skill proposal approved', rejectSkill: 'Skill proposal rejected' }
+
+/** What the pane says once an option ran: "Plan approved for #471. Next: #455." */
+export const announcement = (o: DecisionOption, number: number, next?: number): string =>
+  `${PAST[o.action] ?? `${o.label} done`} for #${number}.${next ? ` Next: #${next}.` : ''}`
+
+/**
+ * The pane's action bar: at most one primary (the card's first), the other options as secondaries, and "Answer N questions" only while `open` questions remain
+ * (it is the primary of a card that has no other primary). A Triage "Answer questions" card has open questions by definition, its count unknown here, so its link is "Answer questions". The card's own link to the conversation is dropped; the bar replaces it.
+ */
+export const actionBar = (options: DecisionOption[], open: number, ticket: number, need?: string): { primary: DecisionOption | null; secondary: DecisionOption[]; answer: { label: string; href: string } | null } => {
+  const rest = options.filter((o) => !(o.action === 'open' && o.href?.includes('?view=conversation')))
+  const href = `/tickets/${ticket}?view=conversation`
+  const answer = open > 0 ? { label: `Answer ${open} question${open === 1 ? '' : 's'}`, href } : need === 'Answer questions' ? { label: 'Answer questions', href } : null
+  const primary = rest.find((o) => o.primary) ?? null
+  return { primary, secondary: rest.filter((o) => o !== primary), answer }
+}

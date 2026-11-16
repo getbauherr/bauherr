@@ -1,7 +1,9 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection } from '../src/app/(app)/lib/inbox-view'
+import { actionBar, announcement, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection } from '../src/app/(app)/lib/inbox-view'
+import { buildDecision } from '../src/lib/decision'
+import { NEEDS } from '../src/lib/needs-you'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }))
 vi.mock('../src/app/(app)/lib/actions', () => ({ decideAction: async () => ({}) }))
@@ -79,5 +81,39 @@ describe('inbox view', () => {
     const html = await view(1, true)
     expect(html).toContain('[overflow-wrap:anywhere]')
     expect(html).toContain('truncate')
+  })
+})
+
+describe('the pane action bar', () => {
+  const facts = { ticket: { id: 7, number: 7, title: 'A change', reviewRounds: 2, openCriticalDecisions: 2 }, product: { id: 1, name: 'web' }, human: { title: 'Pick', outcomes: ['yes', 'no'] }, skill: { name: 's', score: 1, baseline: 0, pr: 3 }, now: '2026-11-10T10:00:00.000Z' }
+  it.each(NEEDS)('%s: at most one primary, and no Answer link without an open question', (need) => {
+    const options = buildDecision(need, facts).options
+    const bar = actionBar(options, 0, 7, need)
+    expect(bar.answer).toEqual(need === 'Answer questions' ? { label: 'Answer questions', href: '/tickets/7?view=conversation' } : null)
+    expect(bar.primary ? 1 : 0).toBeLessThanOrEqual(1)
+    expect(bar.secondary).not.toContain(bar.primary)
+    expect(bar.secondary.every((o) => !o.href?.includes('?view=conversation'))).toBe(true)
+  })
+  it('a card without a primary has none', () => {
+    const options = buildDecision('Answer questions', facts).options
+    expect(actionBar(options, 0, 7, 'Answer questions')).toMatchObject({ primary: null, secondary: [], answer: { label: 'Answer questions' } })
+  })
+  it('Answer N questions shows only while questions are open', () => {
+    const options = buildDecision('Answer decisions', facts).options
+    expect(actionBar(options, 2, 7).answer).toEqual({ label: 'Answer 2 questions', href: '/tickets/7?view=conversation' })
+    expect(actionBar(options, 1, 7).answer?.label).toBe('Answer 1 question')
+    expect(actionBar(options, 0, 7, 'Answer decisions').answer).toBeNull()
+  })
+  it('keeps the destructive and note options as secondaries for the dialog', () => {
+    const bar = actionBar(buildDecision('Needs you', { ...facts, ticket: { ...facts.ticket, reviewRounds: 0 } }).options, 0, 7)
+    expect(bar.primary).toBeTruthy()
+    const cap = actionBar(buildDecision('Round cap reached', facts).options, 0, 7)
+    expect(cap.primary?.label).toBe('Give one more round')
+    expect(cap.secondary.map((o) => [o.label, o.destructive, o.note])).toEqual([['Stop', true, 'optional']])
+  })
+  it('announces what happened and the next row', () => {
+    const approve = { label: 'Approve plan', action: 'approvePlan', primary: true, effect: '' } as const
+    expect(announcement(approve, 471, 455)).toBe('Plan approved for #471. Next: #455.')
+    expect(announcement(approve, 471)).toBe('Plan approved for #471.')
   })
 })

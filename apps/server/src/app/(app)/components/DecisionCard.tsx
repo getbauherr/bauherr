@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import type { Decision, DecisionOption } from '../../../lib/decision'
 import { decideAction } from '../lib/actions'
+import { actionBar } from '../lib/inbox-view'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
@@ -13,7 +14,7 @@ import { Markdown } from './Markdown'
 import { ProofList } from './ProofList'
 import type { ProofData } from '../lib/proof'
 
-export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData; /** The card asks the Product owner; a Bauherr sees it too and may step in. */ asked?: 'product-owner' }
+export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData; /** The card asks the Product owner; a Bauherr sees it too and may step in. */ asked?: 'product-owner'; open?: number }
 
 const external = (url: string) => /^https?:\/\//.test(url)
 
@@ -21,7 +22,7 @@ const external = (url: string) => /^https?:\/\//.test(url)
  * One human checkpoint, prepared the same way everywhere: the ask first, one recommendation line, at most three facts, then the buttons.
  * `compact` (Ticket page) leaves the buttons to the next-step bar; the full card (Inbox) runs the option's existing action in place and leaves the list.
  */
-export function DecisionCard({ item, compact, admin = true, onDecided, onFailed }: { item: DecisionView; compact?: boolean; admin?: boolean; onDecided?: (id: number) => void; onFailed?: (id: number) => void }) {
+export function DecisionCard({ item, compact, admin = true, failure, onDecided, onFailed }: { item: DecisionView; compact?: boolean; admin?: boolean; /** The error of a decision that failed after the card had left, shown where it is back. */ failure?: string | null; onDecided?: (id: number, option: DecisionOption) => void; onFailed?: (id: number, error: string) => void }) {
   const d = item.decision
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -33,13 +34,13 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
     setError(null)
     setAsking(null)
     setGone(true)
-    onDecided?.(item.id)
+    onDecided?.(item.id, o)
     start(async () => {
       const r = await decideAction(item.id, d.need, o.action, text, o.outcome)
       if (r.error) {
         setError(r.error)
         setGone(false)
-        onFailed?.(item.id)
+        onFailed?.(item.id, r.error)
       } else router.refresh()
     })
   }
@@ -49,6 +50,15 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
       setAsking(o)
     } else run(o)
   }
+  const bar = actionBar(d.options, item.open ?? 0, item.id, d.need)
+  const optionButton = (o: DecisionOption, primary: boolean) =>
+    o.action === 'open' ? (
+      <Button key={o.label} asChild variant={primary ? 'default' : 'outline'} title={o.effect}>
+        <a href={o.href} {...(o.href && external(o.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{o.label}</a>
+      </Button>
+    ) : (
+      <Button key={o.label} variant={primary ? 'default' : 'outline'} className={o.destructive ? 'text-destructive' : undefined} disabled={pending} title={o.effect} onClick={() => click(o)}>{o.label}</Button>
+    )
   const evidence = d.evidence.filter((e) => admin || !e.url.startsWith('/runs/'))
   return (
     <Card asChild className={`gap-3 p-5 max-sm:p-4${gone ? ' hidden' : ''}`}>
@@ -91,23 +101,17 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onFailed 
         {!compact && (
           <footer className="mt-1 flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              {d.options.map((o) =>
-                o.action === 'open' && o.href?.includes('?view=conversation') ? (
-                  <Button key={o.label} asChild variant={o.primary ? 'default' : 'outline'} title={o.effect} data-testid="answer-questions">
-                    <Link href={o.href}>{o.label}</Link>
-                  </Button>
-                ) : o.action === 'open' ? (
-                  <Button key={o.label} asChild variant={o.primary ? 'default' : 'outline'} title={o.effect}>
-                    <a href={o.href} {...(o.href && external(o.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{o.label}</a>
-                  </Button>
-                ) : (
-                  <Button key={o.label} variant={o.primary ? 'default' : 'outline'} className={o.destructive ? 'text-destructive' : undefined} disabled={pending} title={o.effect} onClick={() => click(o)}>{o.label}</Button>
-                ),
+              {bar.primary && optionButton(bar.primary, true)}
+              {bar.answer && (
+                <Button asChild variant={bar.primary ? 'outline' : 'default'} data-testid="answer-questions">
+                  <Link href={bar.answer.href}>{bar.answer.label}</Link>
+                </Button>
               )}
+              {bar.secondary.map((o) => optionButton(o, false))}
               {pending && <span className="small text-muted-foreground" role="status">Working…</span>}
             </div>
-            <p className="small m-0 text-muted-foreground">{d.options.find((o) => o.primary)?.effect ?? d.next}</p>
-            {error && <p role="alert" className="small m-0 text-destructive">{error}</p>}
+            <p className="small m-0 text-muted-foreground">{bar.primary?.effect ?? d.next}</p>
+            {(error ?? failure) && <p role="alert" className="small m-0 text-destructive">{error ?? failure}</p>}
           </footer>
         )}
         <Dialog open={!!asking} onOpenChange={(open) => !open && setAsking(null)}>
