@@ -46,7 +46,8 @@ const adminSession = async (publicId: string) => {
 export const disconnectSession = async (publicId: string): Promise<SaveResult> => {
   const a = await adminSession(publicId)
   if (!a) return { error: 'Only an Admin can disconnect an agent.' }
-  const owner = await a.payload.findByID({ collection: 'bauherren', id: id(a.session.owner), depth: 0, overrideAccess: true }).catch(() => a.user)
+  const owner = await a.payload.findByID({ collection: 'bauherren', id: id(a.session.owner), depth: 0, overrideAccess: true }).catch(() => null)
+  if (!owner) return { error: 'The key owner of this agent is gone; it cannot be disconnected here.' }
   await disconnect({ payload: a.payload, user: owner as Record<string, any>, actor: { kind: 'human' }, workspace: a.workspace.id }, a.session)
   revalidatePath(`/team/${publicId}`)
   revalidatePath('/team')

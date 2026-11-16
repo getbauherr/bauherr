@@ -83,6 +83,13 @@ describe('agent view', () => {
     for (const secret of ['4.27', '4.2718', 'client-secret', MODEL, PROVIDER, OWNER, 'data-testid="agent-cost"', 'data-testid="agent-identity"', 'data-testid="disconnect"', 'data-testid="release-lock"', 'Disconnect', 'Release lock']) expect(out).not.toContain(secret)
   })
 
+  it('the non-Admin view data passed to client components holds no cost, usage, identity or key owner', async () => {
+    const { loadSession } = await import('../src/lib/sessions')
+    const json = JSON.stringify(await loadSession(payload, ws, 'ses_view', { admin: false }))
+    expect(json).toContain('agent-ses_view')
+    for (const secret of ['costUsd', '4.2718', 'client-secret', MODEL, PROVIDER, OWNER]) expect(json).not.toContain(secret)
+  })
+
   it('a disconnected session says when and why and offers no Disconnect', async () => {
     const out = text(await html(cookie.admin, 'ses_gone'))
     expect(out).toContain('Disconnected: The agent ended the session.')
