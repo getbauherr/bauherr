@@ -1,3 +1,4 @@
+import type { DecisionOption } from '../../../lib/decision'
 import type { InboxGroup, InboxItem } from './inbox'
 
 export type InboxFilters = { product?: number; checkpoint?: string }
@@ -53,3 +54,63 @@ export const visibleRows = <T extends { id: number }>(items: T[], selected: numb
 
 /** The relative waiting text of a row ("5 min") from `waited()`'s "Waiting for you · 5 min". */
 export const waitingText = (waiting: string): string => waiting.split(' · ').pop()!
+
+/** Whether a row shows the unread dot: a local toggle (`u`, or opened for a second) wins over what the loader said. */
+export const isUnseen = (i: { id: number; unseen?: boolean }, local: Record<number, boolean>): boolean => local[i.id] ?? !!i.unseen
+
+/** Milliseconds a row stays open before its need counts as seen. */
+export const SEEN_AFTER_MS = 1000
+
+/** A key press that `u` may act on: not in a field, not with a modifier, not behind a dialog. */
+export const toggleKey = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; target: unknown }): boolean => {
+  const t = e.target as { tagName?: string; isContentEditable?: boolean; closest?: (s: string) => unknown } | null
+  return e.key === 'u' && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '') && !t?.isContentEditable && !t?.closest?.('[role=dialog]')
+}
+
+const PAST: Partial<Record<DecisionOption['action'], string>> = { approvePlan: 'Plan approved', acceptStaging: 'Accepted on staging', approveProduction: 'Production approved', grantRound: 'One more round given', stopReview: 'Review stopped', backToBuild: 'Sent back to build', backToBacklog: 'Sent back to the backlog', requestChanges: 'Changes requested', expedite: 'Put on the fast lane', releaseLane: 'Fast lane released', rerun: 'Re-run started', approveSkill: 'Skill proposal approved', rejectSkill: 'Skill proposal rejected' }
+
+/** What the pane says once an option ran: "Plan approved for #471. Next: #455." */
+export const announcement = (o: DecisionOption, number: number, next?: number): string =>
+  `${PAST[o.action] ?? `${o.label} done`} for #${number}.${next ? ` Next: #${next}.` : ''}`
+
+/**
+ * The pane's action bar: at most one primary (the card's first), the other options as secondaries, and "Answer N questions" only while `open` questions remain
+ * (it is the primary of a card that has no other primary). A Triage "Answer questions" card has open questions by definition, its count unknown here, so its link is "Answer questions". The card's own link to the conversation is dropped; the bar replaces it.
+ */
+export const actionBar = (options: DecisionOption[], open: number, ticket: number, need?: string): { primary: DecisionOption | null; secondary: DecisionOption[]; answer: { label: string; href: string } | null } => {
+  const rest = options.filter((o) => !(o.action === 'open' && o.href?.includes('?view=conversation')))
+  const href = `/tickets/${ticket}?view=conversation`
+  const answer = open > 0 ? { label: `Answer ${open} question${open === 1 ? '' : 's'}`, href } : need === 'Answer questions' ? { label: 'Answer questions', href } : null
+  const primary = rest.find((o) => o.primary) ?? null
+  return { primary, secondary: rest.filter((o) => o !== primary), answer }
+}
+
+/** What the Inbox keeps while decisions run: rows removed at once (`gone`), those the server has since confirmed (`settled`), and the last failure with a snapshot of its row. */
+export type PaneState = { gone: number[]; settled: number[]; failed: { item: InboxItem; error: string; at: number | null } | null }
+export const emptyPane: PaneState = { gone: [], settled: [], failed: null }
+
+const rowsLeft = (groups: InboxGroup[], gone: number[]): InboxGroup[] => groups.map((g) => ({ ...g, items: g.items.filter((i) => !gone.includes(i.id)) }))
+
+/** The option was clicked: the row leaves the list and the next row (if any) becomes the selection; after the last row the decided id stays selected until the refresh resolves. */
+export const removeRow = (s: PaneState, groups: InboxGroup[], id: number): { state: PaneState; next: InboxItem | undefined } => {
+  const nextId = nextRow(rowsLeft(groups, s.gone), id)
+  return { state: { ...s, gone: s.gone.includes(id) ? s.gone : [...s.gone, id], failed: null }, next: groups.flatMap((g) => g.items).find((i) => i.id === nextId) }
+}
+
+/** The action succeeded: the row stays gone until the server list has caught up. */
+export const settleRow = (s: PaneState, id: number): PaneState => ({ ...s, settled: [...s.settled, id] })
+
+/** A new server list arrived: it wins over the rows removed at once that the server has confirmed. */
+export const syncRows = (s: PaneState): PaneState => (s.settled.length ? { ...s, gone: s.gone.filter((id) => !s.settled.includes(id)), settled: [] } : s)
+
+/**
+ * The action failed: the row is back (with a snapshot, so the pane needs no server row) and carries the error. The selection returns to it only while it is still where
+ * the removal moved it (`advancedTo`); a person who has moved on keeps their place.
+ */
+export const restoreRow = (s: PaneState, item: InboxItem, error: string, selection: number | null, advancedTo: number | null): { state: PaneState; goTo: number | undefined } => ({
+  state: { ...s, gone: s.gone.filter((id) => id !== item.id), failed: { item, error, at: selection } },
+  goTo: selection === advancedTo ? item.id : undefined,
+})
+
+/** A failure is shown while the selection is where it happened or on the failed row; any other selection clears it. */
+export const selectionChanged = (s: PaneState, selection: number | null): PaneState => (s.failed && selection !== s.failed.at && selection !== s.failed.item.id ? { ...s, failed: null } : s)

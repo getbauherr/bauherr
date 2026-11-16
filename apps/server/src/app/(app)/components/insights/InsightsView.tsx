@@ -133,7 +133,7 @@ export function InsightsView({ wf, data, wip, team, cost, days, gateway }: { wf:
                   <tbody>
                     {team.sessions.map((x) => (
                       <tr key={x.sessionId}>
-                        <td><Link className="hover:underline" href={`/team#${x.sessionId}`}>{x.label}</Link></td>
+                        <td><Link className="hover:underline" href={`/team/${x.sessionId}`}>{x.label}</Link></td>
                         <td className="small text-muted-foreground">{x.roleTitle}</td>
                         <td className="mono small">{durationHm(x.seconds)}</td>
                         <td className="mono small">{durationHm(x.connectedSeconds)}</td>
