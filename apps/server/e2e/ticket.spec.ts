@@ -315,3 +315,42 @@ test('the Ticket page refreshes within 5 s of a change, keeps the composer draft
   await page.clock.runFor(60_000)
   expect(asked).toBe(before)
 })
+
+// Own seeded Tickets #43 (fast lane, Build) and #44 (a review that needs the owner; sent back here), twins in `src/lib/fake-forge.ts`.
+test('a fast lane Ticket in Build asks nothing and lists its decisions as defaults taken', async ({ page }) => {
+  await login(page)
+  await openTicket(page, 43, 'Hotfix: fix the export header')
+  await expect(page.getByTestId('action-bar')).not.toContainText(/Answer \d+ questions?/)
+  await expect(page.getByRole('region', { name: 'Answer questions' })).toHaveCount(0)
+  const about = page.getByTestId('ticket-about')
+  await expect(about).toContainText('D1 Where to store the choice: default taken (fast lane)')
+  await expect(about).toContainText('D2 Follow the system setting: default taken (fast lane)')
+})
+
+test('a review that needs the owner is sent back to Build from the Send back dialog', async ({ page }, testInfo) => {
+  test.skip(testInfo.retry > 0, 'the first attempt already sent #44 back')
+  await login(page)
+  await page.locator('.card', { hasText: 'Stuck review: sort the export rows' }).first().getByRole('link', { name: 'Stuck review: sort the export rows' }).click()
+  const bar = page.getByTestId('action-bar')
+  await expect(bar.locator('[data-slot=button][data-variant=default]')).toHaveText('Back to build')
+  await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText(/review/i)
+  await bar.getByTestId('send-back').click()
+  const dialog = page.getByRole('dialog', { name: 'Send this Ticket back' })
+  await expect(dialog).toContainText('Build: fix what the review found')
+  await dialog.getByLabel('Why (optional)').fill('Sort by date, not by name')
+  await dialog.getByRole('button', { name: 'Send back', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('stage-strip').locator('[aria-current=step]')).toContainText(/build/i)
+  await expect(bar.getByTestId('send-back')).toHaveCount(0)
+})
+
+test('at 390 px the Ticket page opens on Conversation while a question waits, else on Status', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await login(page)
+  for (const [title, tab] of [['Clarify the export scope', 'conversation'], ['Ship the export header', 'status']] as const) {
+    await page.goto('/')
+    await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
+    await expect(page.getByTestId(`split-tab-${tab}`)).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId(`split-tab-${tab === 'status' ? 'conversation' : 'status'}`)).toHaveAttribute('aria-selected', 'false')
+  }
+})
