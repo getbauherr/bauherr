@@ -170,3 +170,15 @@ it('visibility per role: a Product owner sees only the cards addressed to them, 
   const admin = await ids({ id: 1, role: 'admin' })
   expect(admin).toEqual(expect.arrayContaining([toOwner, toBauherr, expedite, proposed]))
 })
+
+it('inbox_seen takes no write through the API: a person cannot mark (or unmark) a decision seen for someone else', async () => {
+  const other = await payload.create({ collection: 'bauherren', data: { email: 'b@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
+  const me = { ...(await payload.create({ collection: 'bauherren', data: { email: 'c@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })), collection: 'bauherren' } as never
+  const t = await seed('Seen by someone else', { stage: 'plan', needsYou: 'Approve plan' })
+  const data = { workspace: ws, user: other.id, ticket: t, need: 'Approve plan', since: '2026-11-16T00:00:00.000Z' }
+  await expect(payload.create({ collection: 'inbox_seen', data, user: me, overrideAccess: false })).rejects.toThrow()
+  const row = await payload.create({ collection: 'inbox_seen', data: { ...data, user: (me as { id: number }).id }, ...o })
+  await expect(payload.update({ collection: 'inbox_seen', id: row.id, data: { user: other.id }, user: me, overrideAccess: false })).rejects.toThrow()
+  const owner = (await payload.findByID({ collection: 'inbox_seen', id: row.id, depth: 0, ...o })).user
+  expect(owner).toBe((me as { id: number }).id)
+})

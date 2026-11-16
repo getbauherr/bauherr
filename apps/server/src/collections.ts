@@ -994,7 +994,7 @@ export const collections: CollectionConfig[] = [
     text('need', { required: true }),
     text('since', { required: true, admin: { description: 'The `openSince` of the decision that was opened; a newer decision of the same need is unread again.' } }),
     date('seenAt'),
-  ], { access: { read: ownRow, update: ownRow, delete: ownRow }, indexes: [{ fields: ['user', 'ticket', 'need', 'since'], unique: true }] }),
+  ], { access: { read: ownRow, create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['user', 'ticket', 'need', 'since'], unique: true }] }), // written only by `markSeen` (overrideAccess), which ties `user` to the caller
   col('instance_state', [text('key', { required: true, unique: true }), json('value')], { access: { read: () => false, create: () => false, update: () => false, delete: () => false } }),
   ...chatCollections,
 ]

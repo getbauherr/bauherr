@@ -400,7 +400,11 @@ export async function markSeen(key: SeenKey, seen = true): Promise<void> {
     await payload.delete({ collection: 'inbox_seen', where, ...o })
     return
   }
-  if (!(await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) await payload.create({ collection: 'inbox_seen', data: { workspace: workspaceId, user: user.id, ...key, seenAt: new Date().toISOString() }, ...o })
+  if ((await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) return
+  // A second tab marking the same decision at once hits the unique index: that row is the one we wanted.
+  await payload.create({ collection: 'inbox_seen', data: { workspace: workspaceId, user: user.id, ...key, seenAt: new Date().toISOString() }, ...o }).catch(async (e) => {
+    if (!(await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) throw e
+  })
 }
 
 /** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */
