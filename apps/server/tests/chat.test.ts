@@ -226,6 +226,27 @@ it('confirm round: the card is issued and the stream ends; approve runs the stor
   expect(((await payload.find({ collection: 'tool_calls', where: { name: { equals: 'approve' } }, depth: 0, ...o })).docs as Doc[]).map((d) => d.status)).toEqual(['ok'])
 })
 
+it('send_back: the card names the Ticket and target stage; confirming moves it, declining and a wrong target change nothing', async () => {
+  const issue = await fake.tickets(repo).create({ title: 'Back me', labels: ['bauherr:stage:build'] })
+  const t = await payload.create({ collection: 'tickets', data: { title: 'Back me', externalId: String(issue.number), number: issue.number, state: 'open', stage: 'build', labels: ['bauherr:stage:build'], product: ticket.product, workspace: wsA }, ...o })
+  const stageOf = async () => ((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, ...o })) as Doc).stage
+  const id = await newThread()
+  const thread = async () => (await threads.ownThread(who(alice, wsA), id))!
+  const answer = async (toolCallId: string, approved: boolean) => drain((await engine.resumeChat({ payload, user: alice, workspace: wsA, thread: await thread(), toolCallId, approved, reason: 'no', context: { label: 'x', markdown: '' }, model: fakeModel }))!)
+
+  const declined = (await turn(alice, wsA, id, `send back #${issue.number} to plan`)).find((e) => e.type === 'confirm')
+  expect(declined).toMatchObject({ name: 'send_back', title: `Send #${issue.number} back to Plan`, destructive: true })
+  await answer(declined.id, false)
+  expect(await stageOf()).toBe('build')
+
+  const confirm = (await turn(alice, wsA, id, `send back #${issue.number} to plan`)).find((e) => e.type === 'confirm')
+  expect(confirm.details).toContainEqual({ label: 'Stage', value: 'Build' })
+  expect((await answer(confirm.id, true)).find((e) => e.type === 'tool-result')).toMatchObject({ ok: true })
+  expect(await stageOf()).toBe('plan')
+
+  expect(types(await turn(alice, wsA, id, `send back #${issue.number} to release`))).not.toContain('confirm')
+})
+
 it('declining does not execute; the model hears the reason; a second pending call is refused while one waits', async () => {
   const issue = await fake.tickets(repo).create({ title: 'Second', labels: ['bauherr:stage:plan'] })
   const t2 = await payload.create({ collection: 'tickets', data: { title: 'Second', externalId: String(issue.number), number: issue.number, state: 'open', stage: 'plan', labels: ['bauherr:stage:plan'], product: ticket.product, workspace: wsA }, ...o })

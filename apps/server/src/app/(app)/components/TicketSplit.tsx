@@ -12,6 +12,8 @@ const KEY = 'bauherr.ticket-split'
 /** Clamps a Now pane width to the allowed range. */
 export const clampWidth = (w: number): number => Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, Math.round(w)))
 
+const SPLIT_TABS = [['conversation', 'Conversation'], ['status', 'Status']] as const
+
 type Saved = { width: number; collapsed: boolean }
 const read = (): Saved => {
   try {
@@ -89,7 +91,7 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
       style={{ '--now-w': `${saved.width}px` } as CSSProperties}
       before={
         <div role="tablist" aria-label="Ticket page" className="mb-3 flex gap-4 border-b border-border group-data-[wide=true]/split:hidden">
-        {([['conversation', 'Conversation'], ['status', 'Status']] as const).map(([id, label]) => (
+        {SPLIT_TABS.map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -97,8 +99,16 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
             id={`split-tab-${id}`}
             aria-selected={tab === id}
             aria-controls={`split-${id}`}
+            tabIndex={tab === id ? 0 : -1}
             data-testid={`split-tab-${id}`}
             onClick={() => setTab(id)}
+            onKeyDown={(e) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
+              e.preventDefault()
+              const next = SPLIT_TABS[e.key === 'Home' || e.key === 'ArrowLeft' ? 0 : 1][0]
+              setTab(next)
+              document.getElementById(`split-tab-${next}`)?.focus()
+            }}
             className="-mb-px h-11 border-b-2 border-transparent bg-transparent text-muted-foreground aria-selected:border-primary aria-selected:text-foreground"
           >
             {label}

@@ -6,9 +6,9 @@ import { loadRun } from '../../app/(app)/lib/run'
 import { loadProof, type ProofData } from '../../app/(app)/lib/proof'
 import { loadCost } from '../../app/(app)/lib/cost'
 import { loadTeam, type TeamSession } from '../sessions'
-import { NotInWorkspace, postComment } from '../actions'
+import { BACKLOG, NotInWorkspace, postComment, sendBackTargets } from '../actions'
 import { digest, callTool, tools as mcpTools, type Ctx } from '../mcp-tools'
-import { type Kind, board, byKind, nameOf, title as stageTitle } from '../workflow'
+import { type Kind, board, byKind, nameOf, stage as stageDef, title as stageTitle } from '../workflow'
 
 type Doc = Record<string, any>
 export type ToolKind = 'read' | 'confirm'
@@ -229,6 +229,21 @@ const ENTRIES: Record<string, Entry> = {
     kind: 'confirm',
     ticket: (t, i, c) => ({ ticket: t, note: i.note, workspaceId: c.workspace }),
     describe: gateCard((t) => `Request changes on ${ticketLine(t)}`, 'The Ticket goes back to Build with your note; a Build Run starts', { extra: note }),
+  },
+  send_back: {
+    description: "Send an open Ticket back to an earlier stage of its workflow (e.g. plan or build) or to the backlog, with an optional note. `to` must be a stage before the Ticket's current one, or backlog; read the Ticket first if unsure. Only after the person asked for it; they confirm on a card first.",
+    schema: withTicket({ to: prop('Earlier stage name (e.g. plan, build) or backlog'), note: prop('Why it is sent back') }, ['to']),
+    kind: 'confirm',
+    ticket: (t, i, c) => ({ ticket: t, to: i.to, note: i.note, workspaceId: c.workspace }),
+    describe: async (c, input) => {
+      const t = await ticketOf(c, input.ticket)
+      if (!t) throw new Error('Ticket not found in this Workspace')
+      const wf = workflowFor(t.workspace)
+      const to = input.to === BACKLOG ? BACKLOG : stageDef(wf, String(input.to))?.name
+      if (!to || !sendBackTargets(wf, stageOf(t)).includes(to)) throw new Error(`${ticketLine(t)} cannot be sent back to "${String(input.to)}" from ${stageOfTicket(t)}`)
+      const target = to === BACKLOG ? 'the Backlog' : stageTitle(wf, to)
+      return gateCard((x) => `Send #${x.number} back to ${target}`, `The Ticket moves to ${target}; its live Runs are cancelled`, { destructive: true, extra: note })(c, input)
+    },
   },
   post_comment: {
     description: 'Post a comment on the Ticket\'s issue. Draft the text from what the person asked for; they confirm on a card first. Images are not part of this tool (the person pastes them with /comment).',
