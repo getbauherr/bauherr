@@ -9,6 +9,7 @@ import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunIfNeeded } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
+import type { SeenKey } from '../../../lib/inbox-seen'
 import { type DecisionAction, canDecide, settleDecision } from '../../../lib/decision'
 import { repairable } from '../../../lib/workflow'
 import { RERUNNABLE } from './run'
@@ -386,6 +387,20 @@ export async function decideAction(ticket: number, need: string, action: Decisio
   revalidatePath('/inbox')
   revalidatePath(`/tickets/${ticket}`)
   return {}
+}
+
+/** Marks one decision of the Inbox seen by the signed-in person (or unseen again, `seen = false`). A Ticket outside their Workspace or Products is a 404. */
+export async function markSeen(key: SeenKey, seen = true): Promise<void> {
+  const { user, payload, workspaceId } = await actingPerson()
+  const row = (await payload.findByID({ collection: 'tickets', id: key.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { workspace: unknown; product: unknown } | null
+  if (!row || String(id(row.workspace)) !== String(workspaceId) || !canSeeProduct(user, { id: id(row.product), workspace: workspaceId })) notFound()
+  const where = { user: { equals: user.id }, ticket: { equals: key.ticket }, need: { equals: key.need }, since: { equals: key.since } }
+  const o = { overrideAccess: true, depth: 0 } as const
+  if (!seen) {
+    await payload.delete({ collection: 'inbox_seen', where, ...o })
+    return
+  }
+  if (!(await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) await payload.create({ collection: 'inbox_seen', data: { workspace: workspaceId, user: user.id, ...key, seenAt: new Date().toISOString() }, ...o })
 }
 
 /** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */

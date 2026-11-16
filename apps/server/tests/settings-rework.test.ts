@@ -128,19 +128,19 @@ describe('skill proposals in the Inbox', () => {
   it('an Admin gets an Approve skill proposal card with approve and reject, a member none', async () => {
     const ticket = (await payload.create({ collection: 'tickets', data: { title: 'Bound the retry loop', externalId: 'rw-1', number: 1, url: 'https://github.com/acme/web/issues/1', state: 'closed', labels: [], stage: 'done', product, workspace: ws }, ...o })).id as number
     await payload.create({ collection: 'skill_proposals', data: { ticket, workspace: ws, status: 'replayed', pr: 4, skillPath: 'workspace/skills/retry-limits/SKILL.md', score: 0.75, baselineScore: 0.25 }, ...o })
-    const { groups } = await loadInbox(ws, { role: 'admin' })
+    const { groups } = await loadInbox(ws, { id: 1, role: 'admin' })
     const card = groups.find((g) => g.checkpoint === 'Skill proposal')!.items[0]!
     expect(card.id).toBe(ticket)
     expect(card.decision.need).toBe('Approve skill proposal')
     expect(card.decision.ask).toContain('retry-limits')
     expect(card.decision.why[0]).toContain('75% against 25%')
     expect(card.decision.options.map((x) => x.action)).toEqual(['approveSkill', 'rejectSkill'])
-    expect((await loadInbox(ws, { role: 'bauherr' })).groups).toEqual([])
+    expect((await loadInbox(ws, { id: 1, role: 'bauherr' })).groups).toEqual([])
     const { rejectSkillProposal } = await import('../src/lib/actions')
     await expect(rejectSkillProposal(payload, member, { proposal: 1 })).rejects.toThrow('Only an Admin')
     const done = await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: ticket } }, ...o })
     await payload.update({ collection: 'skill_proposals', id: done.docs[0]!.id, data: { status: 'rejected' }, ...o })
-    expect((await loadInbox(ws, { role: 'admin' })).groups).toEqual([])
+    expect((await loadInbox(ws, { id: 1, role: 'admin' })).groups).toEqual([])
   })
 })
 

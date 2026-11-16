@@ -1,10 +1,11 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, waitingText } from '../src/app/(app)/lib/inbox-view'
+import { unseenOf } from '../src/lib/inbox-seen'
+import { emptyCopy, inboxHref, isUnseen, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, toggleKey, waitingText } from '../src/app/(app)/lib/inbox-view'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }))
-vi.mock('../src/app/(app)/lib/actions', () => ({ decideAction: async () => ({}) }))
+vi.mock('../src/app/(app)/lib/actions', () => ({ decideAction: async () => ({}), markSeen: async () => {} }))
 
 const item = (id: number, checkpoint = 'Approve plan') => ({ id, number: id + 100, product: { id: 1, name: 'web' }, decision: { need: 'Approve plan', checkpoint, title: `Ticket ${id}`, ask: `Ask ${id}`, recommendation: null, why: [], options: [], next: 'Then.', evidence: [], details: null, openSince: '2026-01-01T00:00:00Z' }, detailsHtml: null, waiting: '1 h' }) as never
 const groups = [{ checkpoint: 'Approve plan', items: [item(1), item(2)] }, { checkpoint: 'Review', items: [item(3, 'Review')] }] as never
@@ -98,7 +99,7 @@ describe('rows', () => {
   const row = async (extra: object) => {
     const { InboxList } = await import('../src/app/(app)/components/InboxList')
     const base = item(1) as never as { decision: object }
-    const html = renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items: [{ ...base, ...extra }] }] as never, gone: [], filters: {}, workflowHref: { 'Approve plan': '/?stage=plan' }, products: true }))
+    const html = renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items: [{ ...base, ...extra }] }] as never, gone: [], local: {}, filters: {}, workflowHref: { 'Approve plan': '/?stage=plan' }, products: true }))
     return html
   }
   it('is one link with number, title, checkpoint, ask, waiting time, the product and the unseen-dot slot', async () => {
@@ -124,10 +125,41 @@ describe('rows', () => {
   it('hides the product with one Product and "Show N more" past 25 rows', async () => {
     const { InboxList } = await import('../src/app/(app)/components/InboxList')
     const items = Array.from({ length: 27 }, (_, i) => item(i + 1))
-    const html = renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items }] as never, gone: [], filters: {}, workflowHref: {}, products: false }))
+    const html = renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items }] as never, gone: [], local: {}, filters: {}, workflowHref: {}, products: false }))
     expect(html.match(/data-testid="inbox-row"/g)).toHaveLength(25)
     expect(html).toContain('Show 2 more')
     expect(html).toContain('· 27')
     expect(html).not.toContain('>web<')
+  })
+})
+
+describe('unread', () => {
+  const at = (id: number, need: string, openSince: string) => ({ id, decision: { need, openSince } })
+  const seen = [{ ticket: 1, need: 'Approve plan', since: '2026-01-01T00:00:00Z' }]
+  it('a seen decision is read; a new need on the same Ticket is unread again', () => {
+    expect([...unseenOf(seen, [at(1, 'Approve plan', '2026-01-01T00:00:00Z'), at(2, 'Approve plan', '2026-01-01T00:00:00Z')])]).toEqual([2])
+    expect([...unseenOf(seen, [at(1, 'Accept on staging', '2026-01-02T00:00:00Z')])]).toEqual([1])
+  })
+  it('the same need opened again later is unread again', () => {
+    expect([...unseenOf(seen, [at(1, 'Approve plan', '2026-01-03T00:00:00Z')])]).toEqual([1])
+  })
+  it('a local toggle wins over the loader', () => {
+    expect(isUnseen({ id: 1, unseen: true }, {})).toBe(true)
+    expect(isUnseen({ id: 1, unseen: true }, { 1: false })).toBe(false)
+    expect(isUnseen({ id: 1 }, { 1: true })).toBe(true)
+  })
+  it('u toggles outside fields and dialogs only', () => {
+    const e = (over: object = {}) => ({ key: 'u', ctrlKey: false, metaKey: false, altKey: false, target: { tagName: 'A', closest: () => null }, ...over })
+    expect(toggleKey(e())).toBe(true)
+    expect(toggleKey(e({ key: 'j' }))).toBe(false)
+    expect(toggleKey(e({ ctrlKey: true }))).toBe(false)
+    expect(toggleKey(e({ target: { tagName: 'INPUT' } }))).toBe(false)
+    expect(toggleKey(e({ target: { tagName: 'DIV', closest: () => ({}) } }))).toBe(false)
+  })
+  it('an unread row shows a dot with the text "Unread", a read row neither', async () => {
+    const { InboxList } = await import('../src/app/(app)/components/InboxList')
+    const html = (unseen: boolean) => renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items: [{ ...(item(1) as object), unseen }] }] as never, gone: [], local: {}, filters: {}, workflowHref: {}, products: false }))
+    expect(html(true)).toContain('>Unread<')
+    expect(html(false)).not.toContain('Unread')
   })
 })

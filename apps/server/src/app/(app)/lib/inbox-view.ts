@@ -53,3 +53,15 @@ export const visibleRows = <T extends { id: number }>(items: T[], selected: numb
 
 /** The relative waiting text of a row ("5 min") from `waited()`'s "Waiting for you · 5 min". */
 export const waitingText = (waiting: string): string => waiting.split(' · ').pop()!
+
+/** Whether a row shows the unread dot: a local toggle (`u`, or opened for a second) wins over what the loader said. */
+export const isUnseen = (i: { id: number; unseen?: boolean }, local: Record<number, boolean>): boolean => local[i.id] ?? !!i.unseen
+
+/** Milliseconds a row stays open before its need counts as seen. */
+export const SEEN_AFTER_MS = 1000
+
+/** A key press that `u` may act on: not in a field, not with a modifier, not behind a dialog. */
+export const toggleKey = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; target: unknown }): boolean => {
+  const t = e.target as { tagName?: string; isContentEditable?: boolean; closest?: (s: string) => unknown } | null
+  return e.key === 'u' && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '') && !t?.isContentEditable && !t?.closest?.('[role=dialog]')
+}

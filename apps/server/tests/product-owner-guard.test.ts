@@ -43,6 +43,7 @@ const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
   'lib/actions.ts#decideAction': 'a card of the Inbox: only decisions addressed to the Product owner on assigned Products (`mayDecide` in every gate function); every other action of a card is refused',
+  'lib/actions.ts#markSeen': 'their own unread marks of the Inbox: only for Tickets of assigned Products (404 elsewhere), only their own row',
   '(shell)/settings/profile/actions.ts#saveOwnLogin': 'the profile: links or removes their own forge login; Payload refuses a login another account holds',
   ...Object.fromEntries(['refineState', 'refineSay', 'refinePick', 'refineExplain', 'refineRest', 'refineChange', 'refineFinish'].map((n) => [`lib/actions.ts#${n}`, 'the refinement conversation: only rows addressed to the Product owner (`loadGate`, `postDecisions`); no model choice, no cost'])),
   'lib/actions.ts#discardIntake': 'discards their own open draft; 404 for any other',
@@ -70,7 +71,7 @@ const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
 }
-const BAUHERR_COLLECTIONS = ['agent_keys', 'artifacts', 'workspaces', 'products', 'connections', 'repositories', 'ticket_sources', 'tickets', 'runs', 'steps', 'tool_calls', 'human_touches', 'skill_proposals', 'templates', 'check_flakes', 'knowledge_chunks', 'intake_sessions', 'embed_tokens', 'media', 'workflow_versions', 'ticket_events', 'agent_sessions', 'session_spans', 'usage_entries', 'usage_cursors', 'instance_state', 'chat_threads', 'chat_messages', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
+const BAUHERR_COLLECTIONS = ['agent_keys', 'artifacts', 'workspaces', 'products', 'connections', 'repositories', 'ticket_sources', 'tickets', 'runs', 'steps', 'tool_calls', 'human_touches', 'skill_proposals', 'templates', 'check_flakes', 'knowledge_chunks', 'intake_sessions', 'embed_tokens', 'media', 'workflow_versions', 'ticket_events', 'agent_sessions', 'session_spans', 'usage_entries', 'usage_cursors', 'inbox_seen', 'instance_state', 'chat_threads', 'chat_messages', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
 const COLLECTIONS: Record<string, 'closed' | Record<string, string>> = { ...Object.fromEntries(BAUHERR_COLLECTIONS.map((c) => [c, 'closed' as const])), ...PO_COLLECTIONS }
 const OPEN_PAGES = PO_PAGES
 const OPEN_ROUTES = PO_ROUTES
@@ -405,6 +406,7 @@ describe('what is open to a Product owner answers 404 outside the assignment', (
       expect(await call('refinePick', id, 'D1', 0), `refinePick ${id}`).toEqual({ outcome: '404' })
       expect(await call('refineFinish', id), `refineFinish ${id}`).toEqual({ outcome: '404' })
       expect(await call('decideAction', id, 'Approve plan', 'approvePlan'), `decideAction ${id}`).toEqual({ outcome: '404' })
+      expect(await call('markSeen', { ticket: id, need: 'Approve plan', since: '2026-01-01T00:00:00Z' }), `markSeen ${id}`).toEqual({ outcome: '404' })
     }
     // their own Ticket: nothing is addressed to them there, so nothing happens; the options only a Bauherr has are refused up front
     expect(await call('decideAction', mine.ticket, 'Run failed', 'rerun')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
@@ -416,6 +418,20 @@ describe('what is open to a Product owner answers 404 outside the assignment', (
       const res = await POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello' }) }), { params: Promise.resolve({ ticket: String(id) }) })
       expect(res.status, `turn ${id}`).toBe(404)
     }
+  })
+
+  it('markSeen writes only the caller\'s row, can be undone, and refuses a Ticket of another Workspace', async () => {
+    asPo()
+    const { markSeen } = await import('../src/app/(app)/lib/actions')
+    const key = { ticket: mine.ticket, need: 'Approve plan', since: '2026-01-01T00:00:00Z' }
+    const rows = async () => (await payload.find({ collection: 'inbox_seen', depth: 0, pagination: false, ...o })).docs as Record<string, any>[]
+    await markSeen(key)
+    await markSeen(key)
+    expect((await rows()).map((r) => [r.user, r.ticket, r.need, r.since, r.workspace])).toEqual([[po.id, mine.ticket, 'Approve plan', key.since, mine.workspace]])
+    await expect(markSeen({ ...key, ticket: foreign.otherWorkspace.ticket })).rejects.toSatisfy(notFound)
+    expect(await rows()).toHaveLength(1)
+    await markSeen(key, false)
+    expect(await rows()).toHaveLength(0)
   })
 
   it('every chat tool is closed to a Product owner, and every chat route refuses them', async () => {
