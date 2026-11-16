@@ -37,6 +37,9 @@ for (const w of [1, 2]) workerAdmins.push((await ensure('bauherren', { email: em
 const draftOwner = (await ensure('bauherren', { email: 'draft-owner@example.com' }, { email: 'draft-owner@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-draft-owner' })).id // owns the seeded Draft; only requests.spec signs in as this user, and its tests run in one worker
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme', wipLimits: {} })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
+// team.spec.ts: an Admin who holds an agent key (everyone else has none: the no-key state of the Connect panel); only team.spec signs in as this user.
+const keyed = await ensure('bauherren', { email: 'team-key@example.com' }, { email: 'team-key@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-team-key' })
+await ensure('agent_keys', { owner: keyed.id, label: 'e2e' }, { owner: keyed.id, label: 'e2e', keyHash: 'e2e-team-key-hash', prefix: 'bha_e2e0' })
 const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug: 'zeta' })).id
 const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
 await ensure('bauherren', { email: 'solo@example.com' }, { email: 'solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
