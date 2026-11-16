@@ -32,8 +32,8 @@ export type Visit = { stage: string; title: string; at: string; seconds: number;
 export type Row = { stage: string; title: string; run: StepRun | null; steps: Step[]; seconds: number; at: string }
 
 /** The sentence for the event a send back recorded (its `note` is the why), else null. */
-export const sentBackText = (wf: Workflow, s: Pick<Span, 'cause' | 'stage' | 'actor' | 'note'>): string | null =>
-  s.cause === 'sendBack' && s.stage ? `Sent back to ${title(wf, s.stage)} by ${s.actor ?? 'the owner'}${s.note ? `: ${s.note}` : '.'}` : null
+export const sentBackText = (wf: Workflow, s: Pick<Span, 'cause' | 'stage' | 'actor' | 'note' | 'outcome'>): string | null =>
+  s.cause === 'sendBack' && s.stage ? `Sent back to ${s.outcome === 'backlog' ? 'the backlog' : title(wf, s.stage)} by ${s.actor ?? 'the owner'}${s.note ? `: ${s.note}` : '.'}` : null
 
 export const rowsOf = (v: Visit): Row[] => {
   const rows: Row[] = []

@@ -63,6 +63,7 @@ describe('sent back text', () => {
     expect(sentBackText(wf, span)).toBe('Sent back to Plan by o@x.dev: Scope was wrong')
     expect(sentBackText(wf, { ...span, note: null })).toBe('Sent back to Plan by o@x.dev.')
     expect(sentBackText(wf, { ...span, cause: 'gate:approve' })).toBeNull()
+    expect(sentBackText(wf, { ...span, stage: 'triage', outcome: 'backlog', note: null })).toBe('Sent back to the backlog by o@x.dev.')
   })
   it('shows on the step the send back started', () => {
     const steps = buildSteps(wf, [span], [], [], { current: 'plan', provider: null, admin: false })

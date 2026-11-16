@@ -185,7 +185,10 @@ export async function sendBackAction(form: FormData): Promise<{ error?: string }
   try {
     if (option === 'backToBuild') await inWorkspace(backToBuild(payload, user, { ticket, note, workspaceId }))
     else if (option === 'backToBacklog') await inWorkspace(backToBacklog(payload, user, { ticket, workspaceId }))
-    else if (option.startsWith('to:')) await inWorkspace(sendBack(payload, user, { ticket, to: option.slice(3), note, workspaceId }))
+    else if (option.startsWith('to:')) {
+      if (!isBauherr(user)) return { error: 'Only a Bauherr can do this.' }
+      await inWorkspace(sendBack(payload, user, { ticket, to: option.slice(3), note, workspaceId }))
+    }
     else if (option === 'requestChanges') await inWorkspace(requestChanges(payload, user, { ticket, note, workspaceId }))
     else return { error: 'Unknown outcome.' }
     await settleDecision(payload, ticket)
