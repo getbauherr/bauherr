@@ -20,7 +20,7 @@ import { startSecurityScan } from '../../../../lib/security-scan'
 import { DEFAULT_DOCS_PATHS, startDocsCheck } from '../../../../lib/docs-check'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
 import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
-import { mintScrapeToken, monitoringRows, scrapeSnippet, SERVICES, testMonitoring, TITLES, type Service } from '../../../../lib/monitoring'
+import { mintScrapeToken, monitoringRows, scrapeOrigin, scrapeSnippet, SERVICES, testMonitoring, TITLES, type Service } from '../../../../lib/monitoring'
 import { decrypt } from '../../../../lib/secrets'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
@@ -372,6 +372,7 @@ export const saveMonitoring = act({}, async (c, fd) => {
   const service = s(fd, 'service') as Service
   if (!SERVICES.includes(service)) throw new Error('Unknown service.')
   const minted = service === 'prometheus' && !id(fd) ? mintScrapeToken() : undefined
+  const notice = minted && (await snippetFor(minted.token)) // built before anything is written: a failure leaves no token nobody saw
   const config = service === 'grafana' ? { url: s(fd, 'url') } : service === 'prometheus' ? { url: s(fd, 'url'), ...(minted && { tokenHash: minted.hash }) } : { host: s(fd, 'host'), protocol: s(fd, 'protocol'), headerName: s(fd, 'headerName'), uiUrl: s(fd, 'uiUrl') }
   const data = { kind: 'monitoring', service, name: TITLES[service], config, capabilities: {}, ...(fd.get('clearSecret') === 'on' ? { secret: null } : s(fd, 'secret') ? { secret: s(fd, 'secret') } : {}) }
   if (id(fd)) {
@@ -379,15 +380,13 @@ export const saveMonitoring = act({}, async (c, fd) => {
     if (row.service !== service) throw new Error('Not found.')
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
-  return minted && snippetFor(minted.token)
+  return notice
 })
 
 /** The snippet names where Prometheus reaches this Bauherr: the address this request came in on. */
 const snippetFor = async (token: string): Promise<string> => {
   const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost'
-  const proto = h.get('x-forwarded-proto') ?? (/^(localhost|127\.)/.test(host) ? 'http' : 'https')
-  return `Scrape token, shown once. Paste into Prometheus:\n${scrapeSnippet(new URL(`${proto}://${host}`), token)}`
+  return `Scrape token, shown once. Paste into Prometheus:\n${scrapeSnippet(scrapeOrigin({ forwardedHost: h.get('x-forwarded-host'), forwardedProto: h.get('x-forwarded-proto'), host: h.get('host') }), token)}`
 }
 
 /** Mints a new scrape token for the saved Prometheus Connection; the old one stops working at once. Shown once. */
@@ -396,8 +395,9 @@ export const rotateScrapeToken = act({}, async (c, fd) => {
   const row = await monitoringRow(c, id(fd))
   if (row.service !== 'prometheus') throw new Error('Not found.')
   const minted = mintScrapeToken()
+  const notice = await snippetFor(minted.token)
   await c.payload.update({ collection: 'connections', id: id(fd), data: { config: { ...row.config, tokenHash: minted.hash }, capabilities: {} }, ...c.w } as never)
-  return snippetFor(minted.token)
+  return notice
 })
 
 /** Deletes the Connection; removing Traces puts the bundled tracing back (the collection's afterDelete hook). */

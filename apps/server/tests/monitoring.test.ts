@@ -4,7 +4,7 @@ import { createServer as tcp } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { decrypt } from '../src/lib/secrets'
 import { createTestDb, type TestDb } from './helpers/test-db'
@@ -221,24 +221,25 @@ it('the scrape token is checked against a stored hash: right token only, never t
 it('/-/metrics: 401 without or with a wrong token, the gateway text with the right one, 502 when the gateway is down', async () => {
   const { GET } = await import('../src/app/-/metrics/route')
   const call = (auth?: string) => GET(new Request('http://x/-/metrics', { headers: auth ? { authorization: auth } : {} }))
-  await prom('right-token')
+  const right = `bhm_${'R'.repeat(43)}`
+  await prom(right)
   const gw = createServer((_q, res) => (res.setHeader('content-type', 'text/plain; version=0.0.4'), res.end('# TYPE up gauge\nagentgateway_up 1\n'))).listen(0, '127.0.0.1')
   await new Promise((r) => gw.once('listening', r))
   process.env.GATEWAY_METRICS_URL = `http://127.0.0.1:${(gw.address() as { port: number }).port}/metrics`
-  for (const bad of [undefined, 'Bearer wrong', 'Bearer ', 'right-token', 'Basic right-token', 'Bearer right-token extra']) {
+  for (const bad of [undefined, 'Bearer wrong', 'Bearer ', right, `Basic ${right}`, `Bearer ${right} extra`]) {
     const res = await call(bad)
     expect(res.status, String(bad)).toBe(401)
     expect(await res.text()).not.toContain('agentgateway_up')
   }
-  const ok = await call('Bearer right-token')
+  const ok = await call(`Bearer ${right}`)
   expect(ok.status).toBe(200)
   expect(ok.headers.get('content-type')).toContain('text/plain')
   expect(await ok.text()).toBe('# TYPE up gauge\nagentgateway_up 1\n')
   gw.close()
   await new Promise((r) => setTimeout(r, 20))
-  expect((await call('Bearer right-token')).status).toBe(502)
+  expect((await call(`Bearer ${right}`)).status).toBe(502)
   await wipe()
-  expect((await call('Bearer right-token')).status).toBe(401) // removing the Connection closes the endpoint
+  expect((await call(`Bearer ${right}`)).status).toBe(401) // removing the Connection closes the endpoint
   delete process.env.GATEWAY_METRICS_URL
 })
 
@@ -278,4 +279,23 @@ it('Prometheus test: up, not scraped yet, target down, wrong token, not Promethe
   server.close()
   await new Promise((r) => setTimeout(r, 20))
   expect(await testMonitoring('prometheus', { url: base }, SECRET)).toEqual({ ok: false, message: `Cannot reach ${base} (connection refused)` })
+})
+
+it('the snippet origin takes the first of a comma list, falls back to host, and never throws', async () => {
+  const { scrapeOrigin } = await import('../src/lib/monitoring')
+  expect(scrapeOrigin({ forwardedHost: 'a.example, b.example', forwardedProto: 'https, http', host: 'h' }).origin).toBe('https://a.example')
+  expect(scrapeOrigin({ forwardedHost: 'bad host ::', forwardedProto: 'ftp', host: 'bauherr.example.com' }).origin).toBe('https://bauherr.example.com')
+  expect(scrapeOrigin({ forwardedHost: 'a.example/path', host: 'localhost:3000' }).origin).toBe('http://localhost:3000')
+  expect(scrapeOrigin({ forwardedHost: 'u:p@a.example', host: 'x.example' }).origin).toBe('https://x.example')
+  expect(scrapeOrigin({ forwardedHost: '', host: null }).origin).toBe('http://localhost')
+})
+
+it('/-/metrics refuses a token of the wrong shape without touching the database', async () => {
+  const { GET } = await import('../src/app/-/metrics/route')
+  const find = vi.spyOn(payload, 'find')
+  for (const bad of ['Bearer short', `Bearer bhm_${'a'.repeat(44)}`, `Bearer xxx_${'a'.repeat(43)}`, `Bearer ${'a'.repeat(5000)}`]) {
+    expect((await GET(new Request('http://x/-/metrics', { headers: { authorization: bad } }))).status).toBe(401)
+  }
+  expect(find).not.toHaveBeenCalled()
+  find.mockRestore()
 })

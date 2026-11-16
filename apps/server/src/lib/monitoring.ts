@@ -100,9 +100,25 @@ export const mintScrapeToken = (): { token: string; hash: string } => {
   return { token, hash: sha256(token).toString('hex') }
 }
 
+/** Where Prometheus reaches Bauherr, from the request's headers: the first value of a comma list, the forwarded host before `host`, an unusable one falls back to the next, in the end `localhost`. */
+export const scrapeOrigin = (h: { forwardedHost?: string | null; forwardedProto?: string | null; host?: string | null }): URL => {
+  const first = (v?: string | null) => v?.split(',')[0]?.trim() ?? ''
+  const proto = first(h.forwardedProto).toLowerCase()
+  for (const host of [first(h.forwardedHost), first(h.host)]) {
+    try {
+      const u = new URL(`${proto === 'http' || proto === 'https' ? proto : /^(localhost|127\.)/.test(host) ? 'http' : 'https'}://${host}`)
+      if (host && !u.username && !u.password && u.pathname === '/' && !u.search && !u.hash) return u
+    } catch {}
+  }
+  return new URL('http://localhost')
+}
+
 /** The `scrape_configs` entry to paste into Prometheus (`origin` is where Prometheus reaches Bauherr). */
 export const scrapeSnippet = (origin: URL, token: string): string =>
   `scrape_configs:\n  - job_name: ${SCRAPE_JOB}\n    scheme: ${origin.protocol.slice(0, -1)}\n    metrics_path: /-/metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: ['${origin.host}']`
+
+/** Shape of a minted scrape token: checked before any lookup. */
+export const SCRAPE_TOKEN = /^bhm_[A-Za-z0-9_-]{43}$/
 
 /** Whether `presented` is the scrape token of the saved Prometheus Connection: compares hashes in constant time, false without a Connection. */
 export const scrapeTokenValid = async (payload: Payload, presented: string): Promise<boolean> => {
