@@ -1,3 +1,7 @@
+import { ciSummaryOf } from '../../../../../lib/ci-summary'
+import { forgeLinkOf, pendingCounts, waitingChip, waitingSentence } from '../../../../../lib/ci-text'
+import { CiPanel } from '../../../components/CiPanel'
+import { ForgeLink } from '../../../components/ForgeLink'
 import { PageTitle } from '../../../components/PageTitle'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -11,9 +15,9 @@ import { Card } from '../../../components/ui/card'
 import { Tab, Tabs } from '../../../components/ui/tabs'
 import { releaseRunLock, rerunStage } from '../../../lib/actions'
 import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
+import { forgeKinds } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
-import { currentWorkspace } from '../../../lib/session'
-import { isWebUrl } from '../../../lib/url'
+import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { kindOfRun } from '../../../../../lib/stage-text'
 import { workflowFor } from '../../../../../lib/factory'
 
@@ -29,7 +33,9 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   if (!workspace) notFound()
   const admin = user.role === 'admin'
   const { run, ticket, steps, stepsTotal, callsByStep, owner, agentKeyLabel, chain } = await loadRun(workspace.id, id, admin)
-  const prUrl = run.artifacts?.prUrl
+  const ci = ciSummaryOf(ticket)
+  const waiting = run.status === 'running' && ticket.waitingFor === 'checks' ? pendingCounts(ci?.summary) : null
+  const forgeLink = forgeLinkOf((await forgeKinds(await payloadClient(), workspace.id)).get(ticket.product), ci?.summary.url ?? run.artifacts?.prUrl)
   const leased = run.mode === 'session' && run.status === 'running'
   const rerun = RERUNNABLE.includes(run.status)
   const details: [string, React.ReactNode][] = [
@@ -64,12 +70,15 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       <header className="flex flex-col gap-4">
         <PageTitle>{`#${ticket.number} Run ${run.id}`}</PageTitle>
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
-        <p className="body"><StatusChip status={run.status} /> <span className="text-muted-foreground">{run.stage}</span></p>
+        <p className="body">{waiting ? <Badge variant="neutral">{waitingChip(waiting)}</Badge> : <StatusChip status={run.status} />} <span className="text-muted-foreground">{run.stage}</span></p>
         {run.preemptedFor && (run.preemptAt || run.reasonKind === 'preempted') && <p className="body" role="status">Preempted by #{run.preemptedFor}</p>}
+        {waiting && <p className="body" role="status">{waitingSentence(waiting)}</p>}
+        {forgeLink && <div><ForgeLink {...forgeLink} /></div>}
         {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-sm:grid-cols-[minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
+          {ci && run.status === 'running' && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} />}
           {run.verdict && (
             <Card asChild className="gap-4">
               <section aria-label="Review">
@@ -117,7 +126,6 @@ export default async function RunPage({ params, searchParams }: { params: Promis
           {run.error && <p className="text-destructive">{run.error}</p>}
           <p className="flex flex-wrap items-center justify-between gap-3">
             <Link className="text-primary" href={`/tickets/${ticket.id}#steps`}>Ticket #{ticket.number}, its steps</Link>
-            {isWebUrl(prUrl) && <a className="text-primary" href={prUrl}>Merge request</a>}
           </p>
           {admin && kindOfRun(workflowFor(run.workspace), run) === 'build' && <RelinkMr run={run.id} />}
         </aside>

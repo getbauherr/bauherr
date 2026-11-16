@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { duration } from '../../lib/format'
 import { rowsOf, type Row, type Steps } from '../../lib/steps'
+import { ciLinkLabel } from '../../../../lib/ci-text'
 import { Badge } from '../ui/badge'
 import { RowDetail } from './RowDetail'
 
@@ -42,7 +43,7 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
         <span className="small text-muted-foreground" title={row.at}>{when(row.at)}</span>
         {r && <Link className="small text-primary" href={`/runs/${r.id}`}>Run #{r.id}</Link>}
         {version != null && <span className="small text-muted-foreground" data-testid="step-workflow">workflow v{version}</span>}
-        {ci && <a className="small text-primary" href={ci}>Merge request and checks</a>}
+        {ci && <a className="small text-primary" href={ci}>{ciLinkLabel(waiting?.ci?.provider?.startsWith('GitLab') ? 'gitlab' : waiting?.ci?.provider ? 'github' : null)}</a>}
       </div>
       {r && (
         <p className="small m-0 flex flex-wrap items-baseline gap-x-2 text-muted-foreground" data-testid="step-run">
