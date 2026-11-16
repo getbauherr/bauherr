@@ -373,7 +373,7 @@ class GitlabForge implements Forge {
     return (await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(sha)}`)).committed_date as string;
   }
   private release(r: any): Release {
-    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self, createdAt: r.created_at ?? r.released_at };
+    return { id: r.tag_name, tag: r.tag_name, sha: r.commit?.id ?? '', name: r.name ?? r.tag_name, body: r.description ?? '', url: r._links.self, createdAt: r.created_at ?? r.released_at, prerelease: /^v?\d+\.\d+\.\d+-/.test(r.tag_name) };
   }
   async findRelease(repo: RepoRef, o: { sha: string }) {
     const tags = new Set<string>((await this.h.json('GET', `/projects/${enc(repo)}/repository/commits/${enc(o.sha)}/refs?type=tag&per_page=100`)).map((t: any) => t.name));
@@ -400,6 +400,14 @@ class GitlabForge implements Forge {
   }
   async listTags(repo: RepoRef) {
     return (await this.h.paginate(`/projects/${enc(repo)}/repository/tags?per_page=100`)).map((t) => t.name as string);
+  }
+  async tagSha(repo: RepoRef, tag: string) {
+    try {
+      return (await this.h.json('GET', `/projects/${enc(repo)}/repository/tags/${enc(tag)}`)).commit.id as string;
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return null;
+      throw e;
+    }
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     return this.release(await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }));

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { agentEnv, buildOptions, promptFor } from '../src/agent.js';
-import { buildEvidence } from '../src/evidence.js';
+import { buildEvidence, screenshotTable } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { mrBody } from '../src/index.js';
@@ -399,4 +399,21 @@ test('proof manifest: files must lie inside .bauherr/artifacts, malformed entrie
   const blocked = await makeProof({ dir: fresh, env: {}, base: 'main', rules: [{ ...RULE, name: 'Net', command: 'curl https://evil.test' }], gatewayHost: 'gw:1', log: (m) => logs.push(m) });
   assert.deepEqual(blocked, []);
   assert.match(logs.join(), /network access only to the gateway/);
+});
+
+test('screenshot table: UI-rule pairs only, loose titles, before left and after right, missing partner and markdown escaped', () => {
+  const img = (title: string, pair: 'before' | 'after', url?: string, rule = UI_PROOF_RULE) => ({ kind: 'image' as const, title, pair, rule, url, file: { name: `${title}-${pair}.png`, base64: '' } });
+  const table = screenshotTable([
+    img('light-desktop: Settings', 'before', 'https://x.test/a b.png'),
+    img(' Light-Desktop · Settings ', 'after', 'https://x.test/s(after).png'),
+    img('light-desktop: Settings', 'after', 'https://x.test/second.png'),
+    img('dark-desktop: In|box [beta]', 'after'),
+    img('light-desktop: Other rule', 'before', undefined, 'Report'),
+    { kind: 'report' as const, title: 'light-desktop: Not an image', text: 'x' },
+  ]);
+  const rows = table.split('\n').slice(3);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0], '| Settings | light | desktop | ![light-desktop: Settings](<https://x.test/a%20b.png>) | ![Light-Desktop · Settings](<https://x.test/s(after).png>) |');
+  assert.equal(rows[1], '| In\\|box \\[beta\\] | dark | desktop | - | dark-desktop: In\\|box \\[beta\\]-after.png |');
+  assert.equal(screenshotTable([img('light-desktop: X', 'before', undefined, 'Report')]), '');
 });

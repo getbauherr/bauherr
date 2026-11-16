@@ -528,11 +528,22 @@ class GithubForge implements Forge {
     return ['ahead', 'identical'].includes((await this.h.json('GET', `/repos/${repo}/compare/${enc(base)}...${enc(head)}?per_page=1`)).status);
   }
   async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
-    const r = await this.h.json('POST', `/repos/${repo}/releases`, { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease });
+    // drafts are not found by tag, only in the list: publish the one a workflow left instead of creating a second release
+    const draft = (await this.h.json('GET', `/repos/${repo}/releases?per_page=100`)).find((x: any) => x.draft && x.tag_name === o.tag);
+    const fields = { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease };
+    const r = draft ? await this.h.json('PATCH', `/repos/${repo}/releases/${draft.id}`, { ...fields, draft: false }) : await this.h.json('POST', `/repos/${repo}/releases`, fields);
     return { id: String(r.id), tag: o.tag, sha: o.sha, name: o.name, body: r.body ?? '', url: r.html_url as string, prerelease: !!o.prerelease, createdAt: r.created_at };
   }
   async listTags(repo: RepoRef) {
     return (await this.h.paginate(`/repos/${repo}/tags?per_page=100`)).map((t) => t.name as string);
+  }
+  async tagSha(repo: RepoRef, tag: string) {
+    try {
+      return (await this.h.json('GET', `/repos/${repo}/commits/${enc(tag)}`)).sha as string;
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return null;
+      throw e;
+    }
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, { body: o.body });

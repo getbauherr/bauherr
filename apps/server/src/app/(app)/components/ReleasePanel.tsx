@@ -1,7 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { previewRelease, shipReleaseAction, summariseRelease } from '../(shell)/releases/actions'
+import { previewRelease, promoteReleaseAction, shipReleaseAction, summariseRelease } from '../(shell)/releases/actions'
 import { Markdown } from './Markdown'
 import { NextStepBar } from './NextStepBar'
 import { Button } from './ui/button'
@@ -12,10 +12,13 @@ import { Textarea } from './ui/textarea'
 type Row = { id: number; number: number; title: string; kind: string }
 type Past = { tag: string; url: string; at: string | null; html: string }
 
+/** A rc tag is `vX.Y.Z-rc.N`; the final it promotes to is `vX.Y.Z`. */
+const finalOf = (rc: string) => rc.replace(/-rc\.\d+$/, '')
+
 const VERSION = /^\d+\.\d+\.\d+(-rc\.\d+)?$/
 
-/** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the notes and an optional model-written summary (both editable; the summary only on the Summarise button), the ship button in the next-step bar, and the past releases. */
-export function ReleasePanel({ product, admin, tickets, version: v0, versions, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; version: string; versions: string[]; notes: string; past: Past[] }) {
+/** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the notes and an optional model-written summary (both editable; the summary only on the Summarise button), the ship button in the next-step bar, and the past releases. With an open release candidate (`rc`) the action select offers "Promote" next to cutting the next candidate; promoting tags the final on the candidate's commit. */
+export function ReleasePanel({ product, admin, tickets, last, rc, finishing, rcTickets, version: v0, versions, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; last: string | null; rc: string | null; finishing: boolean; rcTickets: { number: number; title: string }[]; version: string; versions: string[]; notes: string; past: Past[] }) {
   const router = useRouter()
   const [picked, setPicked] = useState(() => new Set(tickets.map((t) => t.id)))
   const [version, setVersion] = useState(v0)
@@ -23,6 +26,7 @@ export function ReleasePanel({ product, admin, tickets, version: v0, versions, n
   const [summary, setSummary] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [flow, setFlow] = useState<'cut' | 'promote'>(rc ? 'promote' : 'cut')
   const [pending, start] = useTransition()
   const generated = useRef({ version: v0, notes: n0 })
   const latest = useRef(0)
@@ -38,7 +42,7 @@ export function ReleasePanel({ product, admin, tickets, version: v0, versions, n
     if (first.current) { first.current = false; return }
     const call = ++latest.current
     const timer = setTimeout(() => start(async () => {
-      const r = await previewRelease({ product, ids: [...picked] })
+      const r = await previewRelease({ product, ids: [...picked], last })
       if (call !== latest.current) return
       if ('error' in r) return setError(r.error)
       setError(null)
@@ -65,14 +69,49 @@ export function ReleasePanel({ product, admin, tickets, version: v0, versions, n
       router.refresh()
     })
 
+  const promote = () =>
+    start(async () => {
+      const r = await promoteReleaseAction({ product, rc: rc! })
+      if ('error' in r) return setError(r.error)
+      setError(null)
+      setDone(r.tag)
+      router.refresh()
+    })
+
+  const promoting = !!rc && flow === 'promote'
+  const cutting = version.includes('-rc.') ? 'Cut' : 'Ship'
   const reason = !admin ? 'Only an Admin can ship a release.' : !n ? 'No done Tickets are waiting for a release.' : !VERSION.test(version) ? 'Enter a version like 0.2.0.' : undefined
   return (
     <>
       <NextStepBar
-        sentence={done ? `Shipped ${done}.` : n ? `${n} done ${n === 1 ? 'Ticket waits' : 'Tickets wait'} for a release.` : 'Nothing waits for a release.'}
-        primary={{ label: `Ship v${version} (${n} ${n === 1 ? 'Ticket' : 'Tickets'})`, disabled: !!reason || pending, reason: reason ?? undefined, onClick: ship, confirm: `Confirm ship v${version}` }}
-      />
+        sentence={done ? `Shipped ${done}.` : promoting ? `${rc} is out for testing.` : n ? `${n} done ${n === 1 ? 'Ticket waits' : 'Tickets wait'} for a release.` : 'Nothing waits for a release.'}
+        primary={promoting
+          ? { label: `${finishing ? 'Finish promoting' : 'Promote'} ${rc} to ${finalOf(rc)}`, disabled: !admin || pending, reason: admin ? undefined : 'Only an Admin can promote a release.', onClick: promote, confirm: `Confirm promote ${rc}` }
+          : { label: `${cutting} v${version} (${n} ${n === 1 ? 'Ticket' : 'Tickets'})`, disabled: !!reason || pending, reason: reason ?? undefined, onClick: ship, confirm: `Confirm ${cutting.toLowerCase()} v${version}` }}
+      >
+        {rc && (
+          <Select value={flow} onValueChange={(v) => setFlow(v as 'cut' | 'promote')} disabled={!admin}>
+            <SelectTrigger aria-label="Action"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="promote">{finishing ? 'Finish promoting' : 'Promote'} {rc}</SelectItem>
+              <SelectItem value="cut">Cut the next release candidate</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+      </NextStepBar>
       {error && <p role="alert" className="text-destructive">{error}</p>}
+      {promoting && (
+        <section className="flex flex-col gap-3" aria-labelledby="promote">
+          <h2 className="heading" id="promote">Promote {rc}</h2>
+          <p className="small max-w-[80ch] text-muted-foreground">Tags {finalOf(rc)} on the commit of {rc} (the one you tested), publishes the release with the notes of every candidate of this line and marks these Tickets as released in {finalOf(rc)}. Needs a fix first? Choose "Cut the next release candidate".</p>
+          {rcTickets.length ? (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {rcTickets.map((t) => <li key={t.number} className="flex gap-3"><span>{t.title}</span><span className="mono small text-muted-foreground">#{t.number}</span></li>)}
+            </ul>
+          ) : <p className="small text-muted-foreground">No Ticket is recorded for this line.</p>}
+        </section>
+      )}
+      {!promoting && <>
       <section className="flex flex-col gap-3" aria-labelledby="waiting">
         <h2 className="heading" id="waiting">Waiting for a release</h2>
         {tickets.length ? (
@@ -109,6 +148,7 @@ export function ReleasePanel({ product, admin, tickets, version: v0, versions, n
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!admin} rows={12} className="mono max-w-[80ch]" />
         </label>
       </section>
+      </>}
       <section className="flex flex-col gap-3" aria-labelledby="past">
         <h2 className="heading" id="past">Past releases</h2>
         {past.length ? past.map((r) => (
