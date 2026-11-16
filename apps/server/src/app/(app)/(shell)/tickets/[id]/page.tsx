@@ -32,6 +32,7 @@ import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../../lib/summary'
 import { cardOf } from '../../../lib/inbox'
+import { epicCount, epicSlicing } from '../../../lib/epics'
 import { forgeKinds, kindOfLabels, loadEpic, within } from '../../../lib/overview'
 import { buildSteps } from '../../../lib/steps'
 import { skips, timeline } from '../../../../../lib/history'
@@ -224,7 +225,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     forgeKinds(payload, workspace.id),
   ])
   const noted = ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true }, ...q })).docs[0] as Doc | undefined)?.artifacts?.review?.open as OpenItem[] | undefined
-  const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true }, ...q }).catch(() => null)) as { id: number; number: number } | null) : null
+  const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true, epic: true }, ...q }).catch(() => null)) as { id: number; number: number; epic?: { slices: unknown[] } | null } | null) : null
   const P: Page = { wf, ticket, product, ws, runs, blockers, blocks, shots, admin }
   const forge = forges.get(ticket.product)
   const sessionIds = [...new Set(runs.map((r) => (typeof r.session === 'object' ? r.session?.id : r.session)).filter(Boolean))]
@@ -244,7 +245,8 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     owner: null,
     forge: forge === 'gitlab' || forge === 'github' ? forge : null,
     gate: null,
-    children: epic ? { total: epic.children.length, done: epic.children.filter((c) => !c.open).length } : null,
+    children: epic ? epicCount(epic) : null,
+    slicing: epic ? epicSlicing(epic) : null,
     track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
   } satisfies StatusRow)
   const roleOf = (r: Doc) => wf.roles.find((x) => x.id === r.role)?.title
@@ -269,6 +271,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const now = (
     <>
       <section className="flex flex-col gap-1" aria-label="Status" data-testid="status-block">
+        {ticket.slice && inherited?.epic && <p className="body m-0" data-testid="slice-line">Slice {ticket.slice.index + 1}/{inherited.epic.slices.length}: {stageTitle(wf, stageOf(wf, ticket))}</p>}
         <p className="body m-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="ticket-status">
           <Badge variant={status.tone}>{status.label}</Badge>
           {status.detail && <span>{status.detail}</span>}

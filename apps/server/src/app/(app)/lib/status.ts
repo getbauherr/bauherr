@@ -45,6 +45,8 @@ export type StatusRow = {
   track: Track
   /** Sub-tickets of a split Ticket (stage of kind container). */
   children?: { total: number; done: number } | null
+  /** The slice an epic parent is building: its number, the epic's size and the stage of its sub-ticket. */
+  slicing?: { index: number; total: number; stage: string | null } | null
 }
 
 const VERB: Record<string, string> = { triage: 'triaging', plan: 'planning', build: 'building', review: 'reviewing', release: 'deploying', agent: 'working' }
@@ -81,6 +83,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   if (!r.open) return { phase: 'done', label: 'Done', detail: null, who: null, tone: 'ok' }
   // Still open on the forge in the done stage: awaiting close or archive.
   if (is(wf, r.stage, 'done')) return { phase: 'done', label: 'Done', detail: 'closing', who: null, tone: 'ok' }
+  if (is(wf, r.stage, 'container') && r.slicing) return { phase: 'blocked', label: `Slice ${r.slicing.index}/${r.slicing.total}`, detail: r.slicing.stage ? stageTitle(wf, r.slicing.stage) : 'starting', who: null, tone: 'muted' }
   if (is(wf, r.stage, 'container')) {
     const c = r.children ?? { total: 0, done: 0 }
     return { phase: 'blocked', label: 'Split', detail: `into ${c.total} sub-ticket${c.total === 1 ? '' : 's'} (${c.done} done)`, who: null, tone: 'muted' }

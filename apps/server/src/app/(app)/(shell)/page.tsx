@@ -40,8 +40,9 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const restore = list ? null : epicRestoreUrl('/', all, user.uiPrefs?.epic, data.epics)
   if (restore) redirect(restore)
   const product = Number(sp.product) || null
-  const epicIds = new Set(data.epics.map((e) => e.id))
-  const inProduct = inEpic(data.tickets.filter((t) => !epicIds.has(t.id) && (!product || t.product?.id === product)), Number(sp.epic) || null)
+  const sliced = new Set(data.tickets.filter((t) => t.epic).map((t) => t.id))
+  const epicIds = new Set(data.epics.filter((e) => !sliced.has(e.id)).map((e) => e.id))
+  const inProduct = inEpic(data.tickets.filter((t) => !epicIds.has(t.id) && (!t.slice || sp.epic) && (!product || t.product?.id === product)), Number(sp.epic) || null)
   const epics = epicsToShow(data.epics, sp.done === '1', product)
   const reminders = workspace && !graph && !list ? await releaseReminders(await payloadClient(), workspace.id) : []
   const shown = sp.state === 'all' && !graph ? inProduct : inProduct.filter((t) => t.open)
@@ -62,7 +63,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const pickedStage = picked?.split(':')[0]
   const groups: Group[] = board(wf)
     .filter((s) => !pickedStage || s === pickedStage)
-    .map((stage) => ({ stage, rows: shown.filter((t) => t.stage === stage && (!picked?.includes(':') || checkpointOf(wf, t) === picked)) }))
+    .map((stage) => ({ stage, rows: shown.filter((t) => (t.slicing?.stage ?? t.stage) === stage && (!picked?.includes(':') || checkpointOf(wf, t) === picked)) }))
     .filter((g) => g.rows.length > 0 || g.stage === picked)
   return (
     <>
