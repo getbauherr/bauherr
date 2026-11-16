@@ -86,6 +86,7 @@ const epicFields = async (payload: Payload, ticket: Doc, tickets: { listComments
   const subs = ids.length ? ((await payload.find({ collection: 'tickets', where: { id: { in: ids } }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) : []
   const ctx: NonNullable<RunCtx['epic']> = {
     parent: parent.number,
+    parentUrl: parent.url,
     worklog: (await tickets.listComments(String(parent.number))).findLast((c) => c.body.startsWith(WORKLOG_MARKER))?.body ?? '',
     slices: epic.slices.flatMap((s) => {
       const sub = subs.find((t) => t.id === s.ticket)
