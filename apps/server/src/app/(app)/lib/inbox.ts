@@ -13,7 +13,7 @@ type Doc = Record<string, any>
 const BRIEF_NEEDS = ['Accept on staging', 'Approve production']
 
 /** One card of the Inbox, as the client component needs it. */
-export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** The Ticket is on the fast lane (`expedite`). */ fastLane?: boolean; /** Open longer than 24 h. */ overdue?: boolean; /** Set for a Bauherr when the card asks the Product owner (a Bauherr may step in). */ asked?: 'product-owner'; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData; /** The frozen approval brief of the same decisions. */ brief?: ApprovalBrief; /** The signed-in person has not opened this decision (no seen row for its Ticket, need and decision time). */ unseen?: boolean }
+export type InboxItem = { id: number; number: number; product: { id: number; name: string }; decision: Decision; detailsHtml: string | null; waiting: string; /** The Ticket is on the fast lane (`expedite`). */ fastLane?: boolean; /** Open longer than 24 h. */ overdue?: boolean; /** Set for a Bauherr when the card asks the Product owner (a Bauherr may step in). */ asked?: 'product-owner'; /** Unanswered critical questions (stored by the gate sweep, so the Inbox stays database only); "Answer N questions" shows only above 0. */ open?: number; /** The proof table of a decision that accepts or approves a result. */ proof?: ProofData; /** The frozen approval brief of the same decisions. */ brief?: ApprovalBrief; /** The signed-in person has not opened this decision (no seen row for its Ticket, need and decision time). */ unseen?: boolean }
 /** Waiting longer than this is shown in the warn tone. */
 export const OVERDUE_MS = 24 * 3600_000
 
@@ -23,7 +23,7 @@ export type InboxGroup = { checkpoint: Checkpoint; items: InboxItem[] }
 export const cardOf = (t: Doc, product: { id: number; name: string; stagingUrl?: string | null }, urgentReason?: string | null): InboxItem | null => {
   if (!isNeed(t.needsYou)) return null
   const decision: Decision = t.decision?.need === t.needsYou ? t.decision : buildDecision(t.needsYou, { urgentReason, ticket: t as never, product, planTldr: t.planTldr, stagingTldr: t.stagingTldr, human: humanStage(t) })
-  return { id: t.id, number: t.number, product: { id: product.id, name: product.name }, decision, detailsHtml: decision.details ? renderMarkdown(decision.details) : null, waiting: waited(decision.openSince), overdue: Date.now() - +new Date(decision.openSince) > OVERDUE_MS, fastLane: !!t.expedite }
+  return { id: t.id, number: t.number, product: { id: product.id, name: product.name }, decision, detailsHtml: decision.details ? renderMarkdown(decision.details) : null, waiting: waited(decision.openSince), overdue: Date.now() - +new Date(decision.openSince) > OVERDUE_MS, fastLane: !!t.expedite, open: t.openCriticalDecisions ?? 0 }
 }
 
 /** The card of a distilled skill proposal (the Ticket it was learned from carries the card's id and number). */
