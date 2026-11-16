@@ -36,6 +36,7 @@ import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProductio
 import { queueDistill } from './skill-distill'
 import { backendFor } from './adapters'
 import { connectionInput } from './connection'
+import type { EpicField, SliceField } from './epic'
 
 
 /** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
@@ -824,6 +825,50 @@ const appendToSection = (worklog: string, heading: string, lines: string[]): str
 }
 const setInstructions = (worklog: string, text: string): string => setSection(worklog, '**Current instructions**', text)
 
+/** Adds `lines` under `heading` of the Ticket's worklog Comment (created from the template when missing). */
+const addWorklogLines = async (payload: Payload, t: Doc, heading: string, lines: string[]): Promise<void> => {
+  const src = await sourceOf(payload, t)
+  const log = await worklogComment(src)
+  if (log) await src.ts.updateComment(src.n, log.id, `${WORKLOG_MARKER}\n${appendToSection(log.body.slice(WORKLOG_MARKER.length).trimStart(), heading, lines)}`)
+  else await src.ts.comment(src.n, `${WORKLOG_MARKER}\n${appendToSection(await worklogTemplate(payload, t), heading, lines)}`)
+}
+
+const SLICE_TRAILER = /^Bauherr-Slice:[ \t]*#(\d+)[ \t]*$/im
+
+/**
+ * After a Build Run on an epic parent: attributes the fix commits since the last reviewed head to the slices they belong to (trailer `Bauherr-Slice: #<n>`).
+ * A tagged commit goes to the owning sub's `slice.fixes`, its history (`epic:fix`) and worklog; an untagged one to the parent's worklog under Open. Idempotent by sha. `head` defaults to the head of the epic PR.
+ */
+export const tagFixes = async (payload: Payload, parent: Doc, head?: string | null): Promise<{ tagged: number; untagged: number }> => {
+  if (!parent.epic) return { tagged: 0, untagged: 0 }
+  const reviewed = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: parent.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }, { reviewedSha: { exists: true } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+  const to = head ?? (await prOf(payload, parent))?.pr.headSha
+  if (!reviewed?.reviewedSha || !to || to === reviewed.reviewedSha) return { tagged: 0, untagged: 0 }
+  const { backend, repo } = await forgeOf(payload, id(parent.product))
+  const commits = await backend.forge.listCommits(repo, { from: reviewed.reviewedSha, to })
+  const ids = (parent.epic as EpicField).slices.flatMap((s) => (s.ticket ? [s.ticket] : []))
+  const subs = ids.length ? ((await payload.find({ collection: 'tickets', where: { id: { in: ids } }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) : []
+  const loose: string[] = []
+  let tagged = 0
+  for (const c of commits) {
+    const subject = c.message.split('\n')[0]!.trim()
+    const sub = subs.find((s) => String(s.number) === SLICE_TRAILER.exec(c.message)?.[1])
+    if (!sub) {
+      loose.push(`- ${c.sha.slice(0, 7)} ${subject} (fix without a \`Bauherr-Slice\` trailer)`)
+      continue
+    }
+    const fixes = (sub.slice as SliceField).fixes
+    if (fixes.some((f) => f.sha === c.sha)) continue
+    await payload.update({ collection: 'tickets', id: sub.id, data: { slice: { ...sub.slice, fixes: [...fixes, { sha: c.sha, finding: subject }] } }, overrideAccess: true })
+    const [stage, phase] = String(sub.historyKey ?? '').split('|')
+    await payload.create({ collection: 'ticket_events', data: { ticket: sub.id, workspace: id(sub.workspace), at: now(), stage: stage || sub.stage, stageKind: stageDef(workflowFor(sub.workspace), stage || sub.stage)?.kind ?? null, phase: phase || 'closed', executor: 'factory', cause: 'epic:fix', note: `${c.sha.slice(0, 7)} ${subject}` }, overrideAccess: true })
+    await addWorklogLines(payload, sub, '**Decisions**', [`- ${now().slice(0, 10)} Epic fix ${c.sha.slice(0, 7)}: ${subject}. Consequence: fixed forward on the epic branch. By: epic review.`])
+    tagged++
+  }
+  if (loose.length) await addWorklogLines(payload, parent, '**Open**', loose)
+  return { tagged, untagged: loose.length }
+}
+
 /** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
 export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
   const rawNote = a.note?.trim()
@@ -887,7 +932,7 @@ export const MAX_PATCH = 4000
 
 export type FindingClass = (typeof FINDING_CLASSES)[number]
 export type FindingTest = { command: string; failure: string; patch?: string }
-export type Finding = { severity: 'high' | 'medium' | 'low'; class: FindingClass; file: string; line: number; msg: string; scenario: string; test?: FindingTest }
+export type Finding = { severity: 'high' | 'medium' | 'low'; class: FindingClass; file: string; line: number; msg: string; scenario: string; test?: FindingTest; /** Ticket number of the slice the finding belongs to (epic review). */ slice?: number }
 /** Noted by the reviewer, never sent back to Build and never changes the outcome. */
 export type OpenItem = { text: string; reason: (typeof OPEN_REASONS)[number] }
 /** `problem` is set when the output cannot be trusted as a verdict (incomplete checklist, contradictory verdict): the Ticket goes to a human, never to a merge. */
@@ -933,7 +978,8 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
     if (t !== undefined && (!t || typeof t.command !== 'string' || !t.command.trim() || t.command.length > MAX_TEXT || typeof t.failure !== 'string' || !t.failure.trim() || t.failure.length > MAX_TEXT || (t.patch !== undefined && (typeof t.patch !== 'string' || t.patch.length > MAX_PATCH)))) {
       throw new Error(`finding ${i}: test needs command and failure (max ${MAX_TEXT} characters) and optionally patch (max ${MAX_PATCH})`)
     }
-    const finding: Finding = { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
+    if (f.slice !== undefined && !(Number.isInteger(f.slice) && f.slice > 0)) throw new Error(`finding ${i}: slice must be a positive integer (the slice Ticket number)`)
+    const finding: Finding = { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(f.slice !== undefined && { slice: f.slice }), ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
     const refusal = NEEDS_TEST.includes(f.class) && !t
       ? { reason: 'no-failing-test' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no failing test: add test {command, failure} (the test that fails on the MR head and what it prints) or move it to open with reason no-failing-test` }
       : round > 1 && counts(finding) && !SEVERE.includes(f.class)
