@@ -1,6 +1,6 @@
 import { type HumanGate, humanGates } from './mode'
 import { kindOfRun } from './stage-text'
-import { is, type Kind, liveStages, nameOf, stage, type Workflow } from './workflow'
+import { is, type Kind, liveStages, nameOf, stage, type Workflow, wipStages } from './workflow'
 
 /** A stage name of the workflow; `parent` is a Ticket whose plan was split into sub-tickets (no Runs, closes with its last child). */
 export type Stage = string
@@ -22,6 +22,13 @@ export const EXPEDITE_PROPOSED = 'bauherr:expedite-proposed'
 /** Returns from review to build per Ticket before it needs a human. */
 export const MAX_REVIEW_ROUNDS = 2
 const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
+
+/** The needs that park a Ticket: it waits for the owner on something outside an approval, so it keeps its card but holds no WIP slot (`wipWhere`). */
+export const PARKING_NEEDS: readonly Need[] = ['Run needs you', 'Needs you', 'Cancelled', 'Run failed', 'Decision needed']
+
+/** The need when it parks the Ticket (open, in a WIP stage, a parking need, no queued, awaiting_session or running Run), else null. Approval gates, answers and acceptances never park, nor does a `human` stage (a checkpoint the owner decides). */
+export const parkingNeed = (wf: Workflow, t: { state?: string | null; stage?: string | null }, need: Need | null, run: { status: string } | null): Need | null =>
+  need && PARKING_NEEDS.includes(need) && t.state !== 'closed' && !!t.stage && wipStages(wf).includes(t.stage) && !is(wf, t.stage, 'human') && !IN_PROGRESS.includes(run?.status ?? '') ? need : null
 
 /** Closed tickets are `done`; open ones without a known stage label are `triage`. */
 export const stageOf = (wf: Workflow, t: { state?: string | null; stage?: string | null }): Stage => {

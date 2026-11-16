@@ -29,7 +29,7 @@ import { syncProgress } from '../lib/progress'
 import { record } from '../lib/history'
 import { isForward, moveStage, stageOf } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
-import { enterStage, pullWaiting } from '../lib/wip'
+import { enterStage, pullWaiting, rejoin } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
 import { fileFindings } from '../lib/security-scan'
@@ -80,6 +80,9 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
     (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
   const existing = await findActive()
   if (existing) return { run: existing, created: false }
+  // A parked Ticket takes a slot again first; with its column full it waits and starts no Run (`pullWaiting` starts it).
+  const parked = (await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true, req })) as Record<string, any>
+  if (parked.parkedNeed && parked.stage === stage && (await rejoin(payload, parked)) === 'waiting') return { run: undefined as never, created: false } // the callers that read `run` start Runs of a Ticket that is not parked
   const workspace = id(ticket.workspace)
   const mode = await modeFor(payload, workspace, stage, req)
   let run

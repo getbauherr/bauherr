@@ -35,7 +35,7 @@ export type Group = { stage: string; rows: TicketRow[] }
 
 /** The Tickets of the Workflow view, one ranked table per stage in workflow order. */
 /** `collapsed`: the stage whose rows hide behind a "Show N done" link to `expandHref`; `sticky`: headings stay under the shell header while their group is on screen. */
-export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed, expandHref, sticky }: { wf: Workflow; groups: Group[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
+export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed, expandHref, sticky }: { wf: Workflow; groups: Group[]; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; parked: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
   return (
     <div className="@container flex flex-col gap-6" data-testid="ticket-list">
       {groups.map(({ stage, rows }, g) => {
@@ -43,7 +43,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
         const sorted = rows.map((t) => ({ ...t, expediting: t.expedite })).sort(executionOrder)
         const limit = wip[stage]?.limit
         const state = limit != null && wip[stage]!.count > limit ? 'over' : limit != null && wip[stage]!.count === limit ? 'full' : undefined
-        const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}</span> : <span className="text-muted-foreground">{rows.filter((t) => !t.parked).length}</span>
+        const count = limit != null ? <span className="font-semibold text-muted-foreground data-[state=full]:text-warn data-[state=over]:text-destructive" data-state={state}>{wip[stage]!.count} / {limit}{wip[stage]!.parked > 0 && ` · ${wip[stage]!.parked} parked`}</span> : <span className="text-muted-foreground">{rows.filter((t) => !t.parked && !t.parkedWhy).length}</span>
         return (
           <section key={stage} data-stage={stage} className="col flex flex-col gap-2" aria-label={stageTitle(wf, stage)}>
             <h2 className={cn('m-0 flex items-baseline gap-2 py-1 text-[13px] font-semibold capitalize', sticky && 'sticky top-0 z-10 bg-background')} data-testid="group-heading">{stageTitle(wf, stage)} {limit != null && admin ? <Link href="/workflow/edit" className="hover:underline">{count}</Link> : count}</h2>
@@ -68,6 +68,7 @@ export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed
                         <KindChip kind={t.kind} />
                         <EpicTag t={t} />
                         <EpicCard wf={wf} t={t} />
+                        {t.parkedWhy && <span className="label rounded-sm border border-border px-2 text-warn" data-testid="parked-badge" title="Waits for you and holds no slot">Parked</span>}
                         {t.product && showProduct && <span className="small text-muted-foreground @min-[800px]:hidden">{t.product.name}</span>}
                       </span>
                     </span>,

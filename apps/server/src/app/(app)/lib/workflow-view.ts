@@ -41,7 +41,7 @@ export const stageMedians = async (payload: Payload, workspace: number, product:
 }
 
 /** Per stage: tickets, WIP limit, the four-phase bar, who works there right now, median time in stage and a state for the top border; and per checkpoint the Tickets waiting at it. */
-export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, { count: number; limit: number | null }>, medians: Record<string, number>, now = Date.now()) => {
+export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, { count: number; parked: number; limit: number | null }>, medians: Record<string, number>, now = Date.now()) => {
   const stages = new Map<string, NodeStats>()
   const checkpoints = new Map<string, number>()
   const of = (stage: string): NodeStats => {
