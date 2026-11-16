@@ -1,5 +1,5 @@
 import type { Check, Forge } from '@bauherr/adapters'
-import { formatReviewChecks } from '@bauherr/runner'
+import { formatReviewChecks, proofRules, UI_PROOF_RULE } from '@bauherr/runner'
 import { ValidationError } from 'payload'
 import { type Cause, FINDING_FRESH_MS } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
@@ -111,7 +111,8 @@ export async function loadProducts(workspace: number) {
           merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
           reviewChecks: formatReviewChecks(p.reviewChecks),
           overlap: overlapOf(p),
-          proofRules: ((p.reviewChecks?.artifacts ?? []) as { name: string; globs: string[]; kind: string; command: string; before?: boolean }[]).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before })),
+          proofRules: proofRules(p.reviewChecks, p.pathSets).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before, pathSet: r.pathSet ?? '', pairs: (r.pairs ?? []).join(', '), builtin: r.name === UI_PROOF_RULE })),
+          pathSetNames: Object.keys(p.pathSets ?? {}).sort(),
           pathSets: { text: formatPathSets(p.pathSets), missing: missingSuggestions(p.pathSets ?? {}), never: neverRuns(workflowFor(workspace), p.pathSets ?? {}) },
           securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
           docsCheck: { paths: ((p.docsCheck?.paths ?? DEFAULT_DOCS_PATHS) as string[]).join('\n'), lastCheckAt: (p.docsCheck?.lastCheckAt ?? null) as string | null },

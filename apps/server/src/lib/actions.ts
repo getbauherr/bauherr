@@ -1608,14 +1608,14 @@ export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: Tick
 }
 
 /** The untriaged state: no stage label, no stage; the next sweep offers Triage. `note` is posted as the Ticket Comment. */
-export const sendToBacklog = async (payload: Payload, t: Doc, a: { executor: 'human' | 'factory'; actor: string; note?: string; cause?: string }): Promise<void> => {
+export const sendToBacklog = async (payload: Payload, t: Doc, a: { executor: 'human' | 'factory'; actor: string; note?: string; why?: string; cause?: string }): Promise<void> => {
   const wf = workflowFor(t.workspace)
   const { ts, n } = await sourceOf(payload, t)
   const stale = (await ts.get(n)).labels.filter((l) => stageOf(wf, [l]) !== null)
   if (stale.length) await ts.removeLabels(n, stale)
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = NULL WHERE "id" = ${t.id}`)
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: null, reviewState: null, triagedAt: null, triageAttempts: 0, labels: ((t.labels ?? []) as string[]).filter((l) => stageOf(wf, [l]) === null) }, overrideAccess: true })
-  await record(payload, t.id, { cause: a.cause ?? 'backToBacklog', executor: a.executor, actor: a.actor })
+  await record(payload, t.id, { cause: a.cause ?? 'backToBacklog', executor: a.executor, actor: a.actor, note: a.why, ...(a.cause === 'sendBack' && { outcome: BACKLOG }) })
   if (a.note) await ts.comment(n, a.note)
 }
 
@@ -1680,10 +1680,10 @@ export const sendBack = async (payload: Payload, user: Doc, a: { ticket: TicketI
     )
     for (const r of ended.rows as { id: number }[]) await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${r.id} AND "finished_at" IS NULL`)
     const { ts, n } = await sourceOf(payload, t)
-    const text = `Sent back to ${toBacklog ? 'the backlog' : stageTitle(wf, to)} by ${user.email}${note ? `: ${note}` : '.'}`
-    if (toBacklog) await sendToBacklog(payload, t, { executor: 'human', actor, note: text, cause: 'sendBack' })
+    const text = `Sent back to ${toBacklog ? 'the backlog' : stageTitle(wf, to)} by ${user.email}${note ? `: ${note.replace(/^(\s*)(\*\*|#)/gm, '$1\\$2')}` : '.'}`
+    if (toBacklog) await sendToBacklog(payload, t, { executor: 'human', actor, note: text, why: note, cause: 'sendBack' })
     else {
-      await record(payload, t.id, { stage: to, phase: 'queued', cause: 'sendBack', executor: 'human', actor })
+      await record(payload, t.id, { stage: to, phase: 'queued', cause: 'sendBack', executor: 'human', actor, note })
       await ts.comment(n, text)
       if (is(wf, to, 'build')) await handBackToBuild(payload, t, { ts, n }, text)
       else {
