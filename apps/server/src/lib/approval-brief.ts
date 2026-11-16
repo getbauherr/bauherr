@@ -30,7 +30,9 @@ export const parseApprovalBrief = (body: string): Pick<ApprovalBrief, 'changes' 
   return { changes, notIncluded: bullets(part('not included')).map((b) => clip(b, 300)), risk: clip(part('risk').trim().replace(/\s*\n\s*/g, ' '), 600) }
 }
 
-const list = (items: string[]) => items.map((i) => `- ${i}`).join('\n')
+/** Agent-written text goes into a forge Comment: break @mentions so it notifies nobody. */
+const quiet = (s: string) => s.replace(/@(?=\w)/g, '@\u200b')
+const list = (items: string[]) => items.map((i) => `- ${quiet(i)}`).join('\n')
 
 /** The brief as markdown for the gate Comment (the proof table follows in its own section). */
 export const approvalBriefMarkdown = (b: ApprovalBrief): string => {
@@ -40,7 +42,7 @@ export const approvalBriefMarkdown = (b: ApprovalBrief): string => {
     reason ? `No visible change. ${reason}` : '',
     b.changes.length ? list(b.changes.map((c) => `[${c.kind}] ${c.text}`)) : '',
     `**Not included**\n${b.notIncluded.length ? list(b.notIncluded) : 'Nothing listed.'}`,
-    `**Risk and rollback**\n${b.risk || 'Not stated.'}`,
+    `**Risk and rollback**\n${quiet(b.risk) || 'Not stated.'}`,
     `**Checks**\n${list([
       b.checks.ci ?? 'CI: unknown',
       b.checks.testsAdded == null ? 'Tests added: unknown' : `Tests added: ${b.checks.testsAdded}`,

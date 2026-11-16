@@ -47,7 +47,7 @@ Options:
 
 ## Epic slice
 Only when the claim or `get_ticket` has `epic`.
-- You build one slice on the shared epic branch (`epic.branch`, one MR for the epic); later slices are other Tickets.
+- You build one slice on the shared epic branch (`epic.branch`, one MR for the epic). Build only your slice; later slices are other Tickets.
 - Slice 2 and later (`mergeMainFirst`): merge `origin/main` into the epic branch before you change anything, resolve conflicts if any, never rebase, never force push. `epic.prev` is the head the previous slice ended on.
 - The epic worklog is the worklog of the parent Ticket (`epic.parent`, mirrored as `.bauherr/epic-worklog.md`). Record the interfaces, names and decisions later slices depend on there, before you end.
 - A fix commit on an epic parent (fix forward after the epic review or on staging) carries the trailer `Bauherr-Slice: #<n>` naming the slice Ticket it belongs to; the factory records it on that slice. A fix without the trailer lands under Open in the parent's worklog.

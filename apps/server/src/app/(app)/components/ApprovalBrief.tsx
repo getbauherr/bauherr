@@ -46,7 +46,7 @@ export function ApprovalBrief({ brief, admin = true }: { brief: Brief; admin?: b
         <ul className="small m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
           {brief.links.filter((l) => admin || !l.href.startsWith('/runs/')).map((l) => {
             const web = isWebUrl(l.href)
-            return <li key={l.href}>{web || l.href.startsWith('/') ? <a className="min-h-6 py-[3px] text-primary underline-offset-2 hover:underline" href={l.href} {...(web ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{l.label}</a> : l.label}</li>
+            return <li key={l.href}>{web || /^\/(?!\/)/.test(l.href) ? <a className="min-h-6 py-[3px] text-primary underline-offset-2 hover:underline" href={l.href} {...(web ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{l.label}</a> : l.label}</li>
           })}
         </ul>
       </Part>

@@ -79,3 +79,18 @@ it('stores an empty brief with the no-visible-change fallback when the MR has no
   const { noVisibleReason } = await import('../src/lib/approval-brief')
   expect(noVisibleReason(stored)).toBe('The merge request has no approval brief.')
 })
+
+it('a failing freeze still posts the summary and moves the Ticket on staging; mentions are broken', async () => {
+  const { t } = await staged('mention', BODY.replace('A new card', 'A new card for @octocat'))
+  const spy = vi.spyOn(fake.forge, 'listChecks').mockRejectedValue(new Error('down'))
+  const store = vi.spyOn(await import('../src/lib/approval-brief'), 'freezeApprovalBrief')
+  await release.publishStagingSummary(payload, await reload(t.id as number))
+  expect((await reload(t.id as number)).approvalBrief.changes[0].text).toBe('A new card for @octocat')
+  const last = (await fake.tickets(repo).listComments(String(t.number))).at(-1)!.body
+  expect(last).toContain('@​octocat')
+  store.mockImplementation(() => Promise.reject(new Error('boom')))
+  await payload.update({ collection: 'tickets', id: t.id, data: { mergeSha: 'fix3', releaseState: null }, ...o })
+  await release.publishStagingSummary(payload, await reload(t.id as number))
+  expect((await reload(t.id as number)).releaseState).toBe('on_staging')
+  spy.mockRestore(); store.mockRestore()
+})
