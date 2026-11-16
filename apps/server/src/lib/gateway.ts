@@ -129,8 +129,8 @@ export const rotateSessionKey = async (req: PayloadRequest, id: number | string)
 /** Gateway model IDs per tier; a tier the Workspace never set gets the default model of its (first) non-router LLM Connection, or fails the Run when it has none. `auto` is added only while the Workspace has a `router` Connection. */
 export const tierModels = async (payload: Payload, ws: Record<string, any>, req?: PayloadRequest): Promise<Record<string, string>> => {
   const set = (ws.modelByTier ?? {}) as Record<string, string>
-  // Filtered here, not in SQL: older migrations call this through renderModels before the `router` enum value exists, and a query comparing against it aborts their transaction.
-  const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, ...(req ? { req } : {}) })).docs as Record<string, any>[]
+  // Filtered here, not in SQL: older migrations call this through renderModels before the `router` enum value exists, and a query comparing against it aborts their transaction. `select` keeps those queries off columns added later (e.g. `service`).
+  const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', select: { provider: true, slug: true }, depth: 0, pagination: false, overrideAccess: true, ...(req ? { req } : {}) })).docs as Record<string, any>[]
   const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t]) ? conns.find((c) => c.provider !== 'router') : undefined
   const tiers = Object.fromEntries(
     Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, def]) => {
@@ -248,7 +248,7 @@ export const renderRouter = async (req: PayloadRequest): Promise<void> => {
   const path = join(dir(), 'router', 'config.yaml')
   // Filtered here, not in SQL (see tierModels): older migrations render the gateway before the `router` enum value exists.
   const gone = await archivedIds(req)
-  const conn = ((await req.payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs as Record<string, any>[]).find((c) => c.provider === 'router' && !gone.includes(typeof c.workspace === 'object' ? c.workspace.id : c.workspace))
+  const conn = ((await req.payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, sort: 'id', select: { provider: true, workspace: true }, depth: 0, pagination: false, overrideAccess: true, req })).docs as Record<string, any>[]).find((c) => c.provider === 'router' && !gone.includes(typeof c.workspace === 'object' ? c.workspace.id : c.workspace))
   if (!conn) return void (await rm(path, { force: true }))
   const ws = await loadWs(req, typeof conn.workspace === 'object' ? (conn.workspace as { id: number }).id : (conn.workspace as number))
   if (!ws.routerKey) {

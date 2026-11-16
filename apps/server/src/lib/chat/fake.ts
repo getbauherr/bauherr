@@ -1,7 +1,7 @@
 import { assertFakeAllowed } from '../fake-guard'
 import type { ModelCall, ModelEvent } from './stream'
 
-/** E2E and tests only (`CHAT_FAKE=1`, never in production): `approve #<n>` calls `approve`, `comment #<n>: <text>` calls `post_comment`, `status` calls `factory_status`, a tool result is acknowledged, anything else is echoed. */
+/** E2E and tests only (`CHAT_FAKE=1`, never in production): `approve #<n>` calls `approve`, `send back #<n> to <stage>` calls `send_back`, `comment #<n>: <text>` calls `post_comment`, `status` calls `factory_status`, a tool result is acknowledged, anything else is echoed. */
 assertFakeAllowed('CHAT_FAKE')
 
 const usage = (text: string): ModelEvent => ({ type: 'usage', tokensIn: 10, tokensOut: Math.max(1, Math.ceil(text.length / 4)), model: 'fake' })
@@ -65,6 +65,13 @@ const run = async function* ({ messages, tools, signal }: Parameters<ModelCall>[
     yield { type: 'text', text: 'Preparing the approval. ' }
     yield { type: 'tool_use', id: `toolu_fake_approve_${approve[1]}`, name: 'approve', input: { ticket: Number(approve[1]) } }
     yield usage('approve')
+    return
+  }
+  const back = /send back #(\d+) to (\w+)/.exec(said)
+  if (back) {
+    yield { type: 'text', text: 'Preparing to send it back. ' }
+    yield { type: 'tool_use', id: `toolu_fake_back_${back[1]}`, name: 'send_back', input: { ticket: Number(back[1]), to: back[2] } }
+    yield usage('send back')
     return
   }
   const comment = /comment #(\d+): (.+)/.exec(said)
