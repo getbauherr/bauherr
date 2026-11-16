@@ -76,6 +76,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
         {waiting && <p className="body" role="status">{waitingSentence(waiting)}</p>}
         {forgeLink && <div><ForgeLink {...forgeLink} /></div>}
         {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}
+        {notice === 'healthy' && <p className="body" role="status">Not released: the session still reports in.</p>}
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-sm:grid-cols-[minmax(0,1fr)]">
         <div className="flex flex-col gap-4">

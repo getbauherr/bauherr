@@ -122,6 +122,16 @@ it('release lock: a Workspace member abandons the Run, a non-member is refused',
   await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toThrow('not a running session Run')
 })
 
+it('release lock: a live session keeps a Run with a stale heartbeat', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  const session = await payload.create({ collection: 'agent_sessions', data: { publicId: 'ses_live', role: 'engineer', label: 'live', connectedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), workspace: ws } as never, ...o })
+  await payload.update({ collection: 'runs', id: run.id, data: { session: session.id } as never, ...o })
+  await stale(run.id)
+  await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toBeInstanceOf(actions.RunHealthy)
+  expect(await status(run.id)).toBe('running')
+})
+
 it('a human release never escalates to needs_human', async () => {
   const { run } = await seed()
   await call(member, 'claim_run', { runId: run.id })
