@@ -59,4 +59,15 @@ describe('AutoRefresh', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('a page mounted in a hidden tab refreshes at the first visible poll, once', async () => {
+    visibility = 'hidden'
+    await mount()
+    visibility = 'visible'
+    listeners.visibilitychange!()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.refresh).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.refresh).toHaveBeenCalledTimes(1)
+  })
 })

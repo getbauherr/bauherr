@@ -370,6 +370,16 @@ describe('the model of a conversation, its images and its cost', () => {
     expect(v!.cost.usd).toBeNull()
   })
 
+  it('cost and usage are an Admin\'s: a member who is not an Admin gets an empty cost and no message usage', async () => {
+    const member = await payload.create({ collection: 'bauherren', data: { email: 'member@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] } as never, ...o })
+    const v = (await refine.loadRefine(payload, member as never, w()))!
+    expect(v).toMatchObject({ showCost: false, cost: { turns: [], tokens: 0, usd: null } })
+    expect(v.messages.some((m) => m.usage)).toBe(false)
+    const admin = (await refine.loadRefine(payload, user, w()))!
+    expect(admin.showCost).toBe(true)
+    expect(admin.messages.some((m) => m.usage)).toBe(true)
+  })
+
   it('an image of another Workspace is refused, one of this Workspace goes to the model as an image block and is shown on the message', async () => {
     const { saveMedia } = await import('../src/lib/intake/media')
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')

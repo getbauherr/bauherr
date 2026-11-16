@@ -29,7 +29,7 @@ export const CommentBox: FC<{ ticket: number }> = ({ ticket }) => {
       const r = await postDockComment(ticket, text, images)
       if ('error' in r) {
         setRestore(text)
-        return setError(r.error)
+        return setError(images.length ? 'The comment was not posted. Your text is kept; attach the image again.' : r.error)
       }
       setPosted(true)
       router.refresh()
