@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, sendBack, personOf, CommentRefused, postCommentFromChat } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunIfNeeded } from '../../../jobs'
@@ -175,7 +175,7 @@ export async function backToBacklogAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** The Send back dialog: one entry over `backToBuild`, `backToBacklog` and `requestChanges`; the error is shown in the dialog. */
+/** The Send back dialog: one entry over `backToBuild`, `backToBacklog`, `requestChanges` and `sendBack` to any target (`to:<stage>`); the error is shown in the dialog. */
 export async function sendBackAction(form: FormData): Promise<{ error?: string }> {
   const ticket = Number(form.get('ticket'))
   const option = String(form.get('option'))
@@ -185,6 +185,7 @@ export async function sendBackAction(form: FormData): Promise<{ error?: string }
   try {
     if (option === 'backToBuild') await inWorkspace(backToBuild(payload, user, { ticket, note, workspaceId }))
     else if (option === 'backToBacklog') await inWorkspace(backToBacklog(payload, user, { ticket, workspaceId }))
+    else if (option.startsWith('to:')) await inWorkspace(sendBack(payload, user, { ticket, to: option.slice(3), note, workspaceId }))
     else if (option === 'requestChanges') await inWorkspace(requestChanges(payload, user, { ticket, note, workspaceId }))
     else return { error: 'Unknown outcome.' }
     await settleDecision(payload, ticket)

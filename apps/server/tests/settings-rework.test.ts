@@ -161,7 +161,7 @@ describe('pure parts', () => {
   })
 
   it('a step shows the workflow version only when it differs from the active one', () => {
-    const span = (id: number, workflowVersion: number | null): Span => ({ id, at: '2026-01-01T00:00:00Z', until: '2026-01-01T00:01:00Z', seconds: 60, stage: 'plan', stageKind: 'plan', phase: 'working', fromStage: null, outcome: null, run: null, executor: 'runner', actor: null, cause: null, backfilled: false, workflowVersion })
+    const span = (id: number, workflowVersion: number | null): Span => ({ id, at: '2026-01-01T00:00:00Z', until: '2026-01-01T00:01:00Z', seconds: 60, stage: 'plan', stageKind: 'plan', phase: 'working', fromStage: null, outcome: null, run: null, executor: 'runner', actor: null, cause: null, note: null, backfilled: false, workflowVersion })
     const steps = buildSteps(wf, [span(1, 2), span(2, 3), span(3, null)], [], [], { current: 'plan', provider: null, admin: false, workflowVersion: 3 })
     expect(steps.visits[0]!.steps.map((s) => s.workflowVersion)).toEqual([2, null, null])
   })
