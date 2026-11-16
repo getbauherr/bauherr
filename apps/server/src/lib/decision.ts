@@ -13,7 +13,7 @@ import { parseTldr, type PlanTldr } from './tldr'
 /** The decisions that show the proof: accepting on staging and approving production. */
 export const PROOF_NEEDS: readonly string[] = ['Accept on staging', 'Staging not confirmed', 'Approve production', 'Production deploy failed']
 
-export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
+export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'releaseLane' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
 export type DecisionOption = { label: string; action: DecisionAction; primary?: boolean; destructive?: boolean; /** The option takes a one-line note first. */ note?: 'required' | 'optional'; /** `open` only: where it is done. */ href?: string; /** `decide` only: the outcome of the `human` stage it takes. */ outcome?: string; effect: string }
 export type Decision = {
   need: Need | typeof SKILL_NEED
@@ -228,6 +228,14 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
           next: 'The skill is merged into the Knowledge repo, or the proposal is closed.',
         }
       }
+      case 'Fast lane held':
+        return {
+          ask: sentence('Release the fast lane held by', t.title, '?'),
+          recommendation: 'Release it: it waits for a person while another urgent ticket queues for the lane.',
+          why: [`"${clip(one(t.title), 100)}" has no live Run and waits for a human`, 'Another expedite ticket waits for the lane', 'It keeps its work; only the flag goes, and you can set it again'],
+          options: [{ label: 'Release the fast lane', action: 'releaseLane', primary: true, effect: 'The ticket loses the expedite flag and the next urgent ticket enters.' }, open('Open the ticket', `/tickets/${tid}`, 'Opens the ticket.', false)],
+          next: 'The next urgent ticket enters the lane.',
+        }
       case 'Expedite?':
         return {
           ask: sentence('Fast lane for', t.title, '?'),

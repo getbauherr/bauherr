@@ -45,7 +45,8 @@ import { ago } from '../../../lib/format'
 import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
 import { isBauherr } from '../../../../../lib/people'
-import type { SendBackTarget } from '../../../../../lib/send-back-options'
+import { sendBackOptions, type SendBackTarget } from '../../../../../lib/send-back-options'
+import { SendBackDialog } from '../../../components/SendBackDialog'
 import { currentWorkspace, payloadClient, requirePerson } from '../../../lib/session'
 import { isWebUrl } from '../../../lib/url'
 import { KindChip } from '../../../components/RequestParts'
@@ -125,7 +126,7 @@ const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ti
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
   const x = await d
-  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={P.sentBack && !x.todo ? { ...x.idle, reason: `${P.sentBack} ${x.idle.reason}` } : x.idle} sendBackTargets={P.sendBack} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
+  return <ActionBar ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={P.sentBack && !x.todo ? { ...x.idle, reason: `${P.sentBack} ${x.idle.reason}` } : x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} />
 }
 
 async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
@@ -299,6 +300,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           </ul>
         )}
         {dependencies}
+        {sendBack.length > 0 && <div data-testid="ticket-send-back"><SendBackDialog ticket={ticket.id} options={sendBackOptions(null, null, sendBack)} /></div>}
       </section>
       {admin && <CostPanel runs={runs} />}
       <details data-testid="ticket-about">
