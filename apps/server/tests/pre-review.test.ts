@@ -136,3 +136,89 @@ it('a docs Ticket whose MR changes a path outside the docs paths is refused, nam
   await payload.update({ collection: 'tickets', id: ok.ticket.id, data: { labels: ['bauherr:docs'] }, ...o })
   expect((await call(member, 'run_checks', ok.a)).failures).toEqual([])
 })
+
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+const UI_RULE = 'UI change: before/after'
+const VARIANTS = ['light-desktop', 'dark-desktop']
+const uiProduct = (pathSets: Record<string, string[]> | null) => payload.update({ collection: 'products', id: product, data: { reviewChecks: null, pathSets }, ...o })
+const shoot = (a: object, variant: string, pair: 'before' | 'after') => call(member, 'attach_artifact', { ...a, kind: 'image', rule: UI_RULE, pair, title: `${variant}: Settings ${pair}`, file: { name: 'a.png', base64: PNG } })
+const UI_FILES = { 'src/ui/a.tsx': 'x' }
+/** Earlier tests leave Tickets in review; the WIP limit would keep the next one in build. */
+const emptyReview = () => payload.update({ collection: 'tickets', where: { stage: { equals: 'review' } }, data: { stage: 'done' }, ...o })
+
+it('a ui diff is refused without the light and dark before/after pair, naming what is missing', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { ticket, a } = await seed(UI_FILES)
+  await expect(call(member, 'request_review', a)).rejects.toThrow(`No before/after pair "${UI_RULE}" on the pushed head, missing: light-desktop before, light-desktop after, dark-desktop before, dark-desktop after`)
+  expect(await stage(ticket.id as number)).toBe('build')
+  await shoot(a, 'light-desktop', 'before')
+  await shoot(a, 'light-desktop', 'after')
+  await shoot(a, 'dark-desktop', 'before')
+  await expect(call(member, 'run_checks', a)).resolves.toMatchObject({ failures: [expect.stringContaining('missing: dark-desktop after')] })
+})
+
+it('a ui diff passes once every variant has a before and an after image on the head', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { a } = await seed(UI_FILES)
+  for (const v of VARIANTS) for (const p of ['before', 'after'] as const) await shoot(a, v, p)
+  expect((await call(member, 'run_checks', a)).failures).toEqual([])
+  await emptyReview()
+  await expect(call(member, 'request_review', a)).resolves.toMatchObject({ stage: 'review' })
+})
+
+it('only kind=image proof with a pair counts: a report or an unpaired image does not', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { a } = await seed(UI_FILES)
+  for (const v of VARIANTS) {
+    await call(member, 'attach_artifact', { ...a, kind: 'report', rule: UI_RULE, title: `${v}: before`, text: 'ok' })
+    await call(member, 'attach_artifact', { ...a, kind: 'image', rule: UI_RULE, title: `${v}: shot`, file: { name: 'a.png', base64: PNG } })
+  }
+  expect((await call(member, 'run_checks', a)).failures[0]).toContain('missing: light-desktop before')
+})
+
+it('pair images of an older head do not count after a new push', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { a, pr } = await seed(UI_FILES)
+  for (const v of VARIANTS) for (const p of ['before', 'after'] as const) await shoot(a, v, p)
+  expect((await call(member, 'run_checks', a)).failures).toEqual([])
+  fake.commit(repo, pr.head, 'src/ui/b.tsx', 'y')
+  expect((await call(member, 'run_checks', a)).failures[0]).toContain('missing: light-desktop before')
+})
+
+it('"No artifact: UI change: before/after: <reason>" passes and the reason reaches the proof list', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { ticket, a } = await seed(UI_FILES)
+  await call(member, 'attach_evidence', { ...a, markdown: `No artifact: ${UI_RULE}: copy change only, nothing to shoot` })
+  await emptyReview()
+  await expect(call(member, 'request_review', a)).resolves.toMatchObject({ stage: 'review' })
+  const waiver = (await payload.find({ collection: 'artifacts', where: { and: [{ ticket: { equals: ticket.id } }, { waived: { equals: true } }] }, ...o })).docs[0]
+  expect(waiver).toMatchObject({ rule: UI_RULE, text: 'copy change only, nothing to shoot' })
+  const { loadProof } = await import('../src/app/(app)/lib/proof')
+  const doc = (await payload.findByID({ collection: 'products', id: product, depth: 0, ...o })) as Record<string, any>
+  const shown = (await loadProof(payload, [await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, ...o })], new Map([[product, doc]]))).get(ticket.id as number)
+  expect(shown?.waived).toEqual([{ rule: UI_RULE, reason: 'copy change only, nothing to shoot' }])
+})
+
+it('a line for another rule or a malformed one does not waive the ui rule', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { a } = await seed(UI_FILES)
+  for (const markdown of ['No artifact: UI change: no reason given:', 'No artifact: Other: because', `No artifact: ${UI_RULE}`, `No artifact: ${UI_RULE}:   `]) {
+    await call(member, 'attach_evidence', { ...a, markdown })
+    expect((await call(member, 'run_checks', a)).failures[0]).toContain('No before/after pair')
+  }
+})
+
+it('a diff outside the ui paths is not affected', async () => {
+  await uiProduct({ ui: ['src/ui/**'] })
+  const { a } = await seed({ 'src/api/a.ts': 'x' })
+  expect((await call(member, 'run_checks', a)).failures).toEqual([])
+})
+
+it('a Product without a ui path set (or with an empty one) gets no rule', async () => {
+  for (const sets of [null, { security: ['src/auth/**'] }, { ui: [] }] as (Record<string, string[]> | null)[]) {
+    await uiProduct(sets)
+    const { a, pr } = await seed(UI_FILES)
+    expect((await call(member, 'run_checks', a)).failures).toEqual([])
+    await fake.forge.closePullRequest(repo, pr.number)
+  }
+})

@@ -97,7 +97,8 @@ export const headShaOf = async (payload: Payload, t: Doc): Promise<string> => {
 
 /** Stores one proof of a Ticket on `sha`; idempotent per (run, rule or title, pair, sha): the same call again returns the first row. */
 export const attachProof = async (payload: Payload, t: Doc, a: { run?: number | string; sha: string; item: ProofInput }): Promise<{ id: number | string; created: boolean }> => {
-  const key: Where = a.item.rule?.trim() ? { rule: { equals: a.item.rule.trim().slice(0, 60) } } : { title: { equals: String(a.item.title ?? '').trim().slice(0, 200) } }
+  const title: Where = { title: { equals: String(a.item.title ?? '').trim().slice(0, 200) } }
+  const key: Where = a.item.rule?.trim() ? { and: [{ rule: { equals: a.item.rule.trim().slice(0, 60) } }, ...(a.item.pair ? [title] : [])] } : title
   const same = await payload.find({ collection: 'artifacts', where: { and: [{ ticket: { equals: t.id } }, { sha: { equals: a.sha } }, { run: a.run ? { equals: a.run } : { exists: false } }, { pair: a.item.pair ? { equals: a.item.pair } : { exists: false } }, { waived: { not_equals: true } }, key] }, limit: 1, ...o })
   if (same.docs[0]) return { id: same.docs[0].id, created: false }
   const data = await checkProof(payload, id(t.workspace), id(t.product), a.item)
@@ -109,10 +110,14 @@ export const attachProof = async (payload: Payload, t: Doc, a: { run?: number | 
 export const ruleNamesWithProof = async (payload: Payload, ticket: number | string, sha: string): Promise<string[]> =>
   [...new Set((await payload.find({ collection: 'artifacts', where: { and: [{ ticket: { equals: ticket } }, { sha: { equals: sha } }, { waived: { not_equals: true } }, { rule: { exists: true } }] }, pagination: false, select: { rule: true }, ...o })).docs.flatMap((d) => (d.rule ? [d.rule as string] : [])))]
 
+/** The images with a `pair` (not waivers) of this Ticket on `sha`, for rules that need a before/after pair. */
+export const pairedImages = async (payload: Payload, ticket: number | string, sha: string): Promise<{ rule?: string; title: string; pair?: string }[]> =>
+  (await payload.find({ collection: 'artifacts', where: { and: [{ ticket: { equals: ticket } }, { sha: { equals: sha } }, { kind: { equals: 'image' } }, { pair: { exists: true } }, { waived: { not_equals: true } }] }, pagination: false, select: { rule: true, title: true, pair: true }, ...o })).docs.map((d) => ({ rule: (d.rule ?? undefined) as string | undefined, title: d.title as string, pair: (d.pair ?? undefined) as string | undefined }))
+
 /** Stores the `No artifact: <rule>: <reason>` Evidence lines for the rules of the Product, once per (rule, sha), so the human sees "No proof for <rule>: <reason>". */
 export const recordWaivers = async (payload: Payload, t: Doc, a: { run?: number | string; sha: string; evidence: string; config: ReviewChecks | null | undefined }): Promise<void> => {
   const names = new Set((a.config?.artifacts ?? []).map((r) => r.name))
-  for (const [rule, reason] of artifactWaivers(a.evidence)) {
+  for (const [rule, reason] of artifactWaivers(a.evidence, [...names])) {
     if (!names.has(rule)) continue
     const have = await payload.count({ collection: 'artifacts', where: { and: [{ ticket: { equals: t.id } }, { sha: { equals: a.sha } }, { rule: { equals: rule } }, { waived: { equals: true } }] }, overrideAccess: true })
     if (!have.totalDocs) await payload.create({ collection: 'artifacts', data: { ticket: t.id, run: a.run, workspace: id(t.workspace), kind: 'report', title: `No proof for ${rule}`, rule, text: reason.slice(0, 500), sha: a.sha, waived: true } as never, ...o })

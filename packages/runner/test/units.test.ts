@@ -9,7 +9,7 @@ import { buildEvidence } from '../src/evidence.js';
 import { checkGoal } from '../src/goal.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { mrBody } from '../src/index.js';
-import { artifactRules, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
+import { artifactRules, artifactWaivers, UI_PROOF_RULE, withProofDefaults, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, type ReviewChecks } from '../src/pre-review.js';
 import { makeProof, readManifest } from '../src/artifacts.js';
 import { FINDINGS_FILE, OUTCOME_FILE, TRIAGE_FILE, materialise } from '../src/materialise.js';
 import { makeCtx } from './helpers.js';
@@ -336,6 +336,27 @@ test('artifact rules: validated, matched by changed path, a missing proof refuse
   assert.deepEqual(run(['src/ui/a.tsx'], 'No artifact: UI shots: hidden flag'), []);
   assert.equal(run(['src/ui/a.tsx'], 'No artifact: Other: nope').length, 1);
   assert.deepEqual([...artifactWaivers('x\nNo artifact: A b: c: d\nNo artifact: E:')], [['A b', 'c: d']]);
+});
+
+test('ui proof: the default rule needs a before and after image per variant on a ui path set', () => {
+  const sets = { ui: ['src/ui/**'] };
+  assert.equal(withProofDefaults(null, { security: ['a'] }), null);
+  assert.equal(withProofDefaults(null, { ui: [] }), null);
+  const config = withProofDefaults(null, sets)!;
+  assert.deepEqual(config.artifacts![0]!.globs, ['src/ui/**']);
+  assert.equal(withProofDefaults(config, sets)!.artifacts!.length, 1);
+  const run = (files: string[], images: { rule?: string; title: string; pair?: string }[] = [], evidence = '') => preReviewChecks({ files, evidence, planSteps: 0, images, exists: () => true, config });
+  const all = ['light-desktop', 'dark-desktop'].flatMap((v) => ['before', 'after'].map((pair) => ({ rule: UI_PROOF_RULE, title: `${v}: Settings`, pair })));
+  assert.deepEqual(run(['src/api/a.ts']), []);
+  assert.match(run(['src/ui/a.tsx'])[0]!, /missing: light-desktop before, light-desktop after, dark-desktop before, dark-desktop after/);
+  assert.match(run(['src/ui/a.tsx'], all.slice(0, 3))[0]!, /missing: dark-desktop after\./);
+  assert.match(run(['src/ui/a.tsx'], all.map((i) => ({ ...i, rule: 'Other' })))[0]!, /missing: light-desktop before/);
+  assert.deepEqual(run(['src/ui/a.tsx'], all), []);
+  assert.deepEqual(run(['src/ui/a.tsx'], [], `No artifact: ${UI_PROOF_RULE}: copy only`), []);
+  assert.deepEqual([...artifactWaivers(`No artifact: ${UI_PROOF_RULE}: copy: only`, [UI_PROOF_RULE])], [[UI_PROOF_RULE, 'copy: only']]);
+  assert.equal(artifactWaivers(`No artifact: ${UI_PROOF_RULE}:`, [UI_PROOF_RULE]).size, 0);
+  assert.deepEqual(artifactRules([{ name: UI_PROOF_RULE, kind: 'image', pathSet: 'ui', pairs: 'light-desktop, dark-desktop' }]), [{ name: UI_PROOF_RULE, globs: [], kind: 'image', command: '', pathSet: 'ui', pairs: ['light-desktop', 'dark-desktop'] }]);
+  assert.throws(() => artifactRules([{ name: 'a', kind: 'transcript', pathSet: 'ui', pairs: 'x' }]), /pairs are image variants/);
 });
 
 test('proof manifest: files must lie inside .bauherr/artifacts, malformed entries are skipped, rules are run with the egress guard and no forge credentials', async () => {

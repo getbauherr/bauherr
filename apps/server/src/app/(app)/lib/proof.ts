@@ -1,3 +1,4 @@
+import { proofRules } from '@bauherr/runner'
 import type { Payload } from 'payload'
 
 type Doc = Record<string, any>
@@ -46,7 +47,7 @@ export const loadProof = async (payload: Payload, tickets: Doc[], products: Map<
   for (const t of tickets) {
     const mine = (arts.docs as Doc[]).filter((a) => (typeof a.ticket === 'object' ? a.ticket.id : a.ticket) === t.id)
     const product = products.get(t.product)
-    if (!mine.length && !product?.reviewChecks?.artifacts?.length) continue
+    if (!mine.length && !proofRules(product?.reviewChecks, product?.pathSets).length) continue
     const sha = mine[0]?.sha
     const session = (sessions.docs as Doc[]).find((s) => s.ticketNumber === t.number && s.product === t.product)
     const criteria = ((session?.draft?.acceptance_criteria as string[] | undefined) ?? fallback(t)).filter((c) => c?.trim())

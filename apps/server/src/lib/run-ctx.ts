@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import type { Payload } from 'payload'
-import type { RunCtx } from '@bauherr/runner'
+import { withProofDefaults, type RunCtx } from '@bauherr/runner'
 import { sql } from '@payloadcms/db-postgres'
 import { presetOf } from './providers'
 import { moveStage } from './stage-move'
@@ -151,7 +151,7 @@ export const buildRunCtx = async (
     ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
-    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: productDoc.reviewChecks,
+    product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: withProofDefaults(productDoc.reviewChecks, productDoc.pathSets),
       ...(kind === 'docs' && { docs: await docsContext(payload, productDoc) }),
       ...(kind === 'scan' && { securityContext: (await readKnowledge(payload, workspace, 'SECURITY-CONTEXT.md', productDoc.slug))?.text }) },
     connection: {
