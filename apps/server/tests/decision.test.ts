@@ -6,7 +6,7 @@ import { GATES } from '../src/app/(app)/lib/gates'
 import { byKind, DEFAULT, graph } from '../src/lib/workflow'
 import { NEED_NODE } from '../src/lib/checkpoints'
 import { parseTldr, tldrError } from '../src/lib/tldr'
-import { decisionView, type Decision } from '../src/app/(app)/lib/plan'
+import { PLAN_MARKER, decisionView, decisionsOpen, type Decision } from '../src/app/(app)/lib/plan'
 
 const ACTIONS: DecisionAction[] = ['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'open']
 const facts = {
@@ -165,5 +165,21 @@ describe('decisionView', () => {
     expect(decisionView(rows, {}, { stageKind: 'plan', approved: true })).toMatchObject({ answerable: 0, defaults: rows })
     expect(decisionView(rows, {}, { stageKind: 'build', approved: true }).takenBy).toBe('at approval')
     expect(decisionView(rows, {}, { stageKind: 'plan', approved: false, fastLane: true })).toMatchObject({ answerable: 0, defaults: rows, takenBy: 'fast lane' })
+  })
+})
+
+describe('decisionsOpen', () => {
+  const sheet = { body: `${PLAN_MARKER}\n## Decisions\n| # | Question | Options | Default | Why | Critical |\n|---|---|---|---|---|---|\n| D1 | Keep the cache? | yes / no | yes | speed | yes |\n| D2 | Show the banner? | no / yes | no | clutter | no |\n| D3 | Log the retries? | yes / no | yes | debugging | yes |\n` }
+
+  it('counts the unanswered critical rows in the Plan stage', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: false })).toBe(2)
+  })
+
+  it('is 0 for a fast-lane Ticket in Build', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'build', approved: false, fastLane: true })).toBe(0)
+  })
+
+  it('is 0 once the plan is approved', () => {
+    expect(decisionsOpen([sheet], { stageKind: 'plan', approved: true })).toBe(0)
   })
 })
