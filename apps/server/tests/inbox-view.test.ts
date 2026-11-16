@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection } from '../src/app/(app)/lib/inbox-view'
+import { emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, waitingText } from '../src/app/(app)/lib/inbox-view'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }))
 vi.mock('../src/app/(app)/lib/actions', () => ({ decideAction: async () => ({}) }))
@@ -59,7 +59,7 @@ describe('empty copy', () => {
 describe('inbox view', () => {
   const view = async (selected: number, detail: boolean) => {
     const { InboxView } = await import('../src/app/(app)/components/InboxView')
-    return renderToStaticMarkup(createElement(InboxView, { groups, selected, detail, admin: true, filters: {}, workflowHref: {} }))
+    return renderToStaticMarkup(createElement(InboxView, { groups, selected, detail, admin: true, filters: {}, workflowHref: {}, products: true }))
   }
   it('lists every row as a link and marks the selected one', async () => {
     const html = await view(2, true)
@@ -79,5 +79,55 @@ describe('inbox view', () => {
     const html = await view(1, true)
     expect(html).toContain('[overflow-wrap:anywhere]')
     expect(html).toContain('truncate')
+  })
+})
+
+describe('rows', () => {
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: i + 1 }))
+  it('shows 25 rows, then all once expanded or when the selection lies beyond them', () => {
+    expect(ROW_LIMIT).toBe(25)
+    expect(visibleRows(many, 1, false)).toHaveLength(25)
+    expect(visibleRows(many, undefined, false)).toHaveLength(25)
+    expect(visibleRows(many, 1, true)).toHaveLength(30)
+    expect(visibleRows(many, 28, false)).toHaveLength(30)
+    expect(visibleRows(many.slice(0, 25), 1, false)).toHaveLength(25)
+  })
+  it('takes the relative time out of the waiting text', () => {
+    expect(waitingText('Waiting for you · 5 min')).toBe('5 min')
+  })
+  const row = async (extra: object) => {
+    const { InboxList } = await import('../src/app/(app)/components/InboxList')
+    const base = item(1) as never as { decision: object }
+    const html = renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items: [{ ...base, ...extra }] }] as never, gone: [], filters: {}, workflowHref: { 'Approve plan': '/?stage=plan' }, products: true }))
+    return html
+  }
+  it('is one link with number, title, checkpoint, ask, waiting time, the product and the unseen-dot slot', async () => {
+    const html = await row({})
+    expect(html.match(/<a /g)).toHaveLength(2)
+    expect(html).toContain('#101')
+    expect(html).toContain('Ticket 1')
+    expect(html).toContain('Ask 1')
+    expect(html).toContain('>web<')
+    expect(html).toContain('data-slot="unseen"')
+    expect(html).toContain('h-16')
+    expect(html).toContain('Show in workflow')
+    expect(html).not.toContain('Fast lane')
+    expect(html).not.toContain('Asked: Product owner')
+    expect(html).not.toContain('data-overdue')
+  })
+  it('marks the fast lane, the Product owner ask and a decision waiting past 24 h', async () => {
+    const html = await row({ fastLane: true, asked: 'product-owner', overdue: true })
+    expect(html).toContain('Fast lane')
+    expect(html).toContain('Asked: Product owner')
+    expect(html).toContain('data-overdue')
+  })
+  it('hides the product with one Product and "Show N more" past 25 rows', async () => {
+    const { InboxList } = await import('../src/app/(app)/components/InboxList')
+    const items = Array.from({ length: 27 }, (_, i) => item(i + 1))
+    const html = renderToStaticMarkup(createElement(InboxList, { groups: [{ checkpoint: 'Approve plan', items }] as never, gone: [], filters: {}, workflowHref: {}, products: false }))
+    expect(html.match(/data-testid="inbox-row"/g)).toHaveLength(25)
+    expect(html).toContain('Show 2 more')
+    expect(html).toContain('· 27')
+    expect(html).not.toContain('>web<')
   })
 })
