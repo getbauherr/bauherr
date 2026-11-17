@@ -488,7 +488,7 @@ export const changelogPr = async (forge: Forge, repo: string, release: Release, 
     await forge.createBranch(repo, branch, base)
     await forge.putFile(repo, { branch, path: 'CHANGELOG.md', content: file.content.replace(/^(## Unreleased.*)$/m, `$1\n\n${entry}`), message: `docs(changelog): ${release.tag}`, expectSha: file.sha })
   }
-  if (!(await forge.listPullRequests(repo, 'all')).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
+  if (!(await forge.listPullRequests(repo, 'all', branch)).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
 }
 
 /** While a `notes-only` Product's tooling has not made the release yet, look again after this long. */

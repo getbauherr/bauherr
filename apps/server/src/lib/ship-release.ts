@@ -182,7 +182,7 @@ const unfinishedPromotion = async (payload: Payload, forge: Forge, repo: string,
   const rc = tags.filter((t) => t.startsWith(`${finalTag}-rc.`) && /-rc\.\d+$/.test(t)).sort(order).at(-1)
   if (!rc || (await forge.tagSha(repo, finalTag)) !== (await forge.tagSha(repo, rc))) return null
   const left = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { releasedIn: { contains: `${finalTag}-rc.` } }] }, limit: 1, ...o })).totalDocs > 0
-  const done = !left && !!(await forge.releaseByTag(repo, finalTag)) && (await forge.listPullRequests(repo, 'all')).some((p) => p.head === `bauherr/release-${finalTag}`)
+  const done = !left && !!(await forge.releaseByTag(repo, finalTag)) && (await forge.listPullRequests(repo, 'all', `bauherr/release-${finalTag}`)).some((p) => p.head === `bauherr/release-${finalTag}`)
   return done ? null : rc
 }
 

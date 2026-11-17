@@ -321,9 +321,10 @@ class GitlabForge implements Forge {
   async getPullRequest(repo: RepoRef, n: number) {
     return this.pr(repo, await this.h.json('GET', `/projects/${enc(repo)}/merge_requests/${n}`));
   }
-  async listPullRequests(repo: RepoRef, state: 'open' | 'closed' | 'all' = 'open') {
+  async listPullRequests(repo: RepoRef, state: 'open' | 'closed' | 'all' = 'open', head?: string) {
     const q = state === 'open' ? 'opened' : 'all';
-    const prs = await Promise.all((await this.h.paginate(`/projects/${enc(repo)}/merge_requests?state=${q}&per_page=100`)).map((m) => this.pr(repo, m)));
+    const byHead = head ? `&source_branch=${enc(head)}` : '';
+    const prs = await Promise.all((await this.h.paginate(`/projects/${enc(repo)}/merge_requests?state=${q}&per_page=100${byHead}`)).map((m) => this.pr(repo, m)));
     return state === 'closed' ? prs.filter((p) => p.state !== 'open') : prs;
   }
   async listMergedPullRequests(repo: RepoRef, limit: number) {
