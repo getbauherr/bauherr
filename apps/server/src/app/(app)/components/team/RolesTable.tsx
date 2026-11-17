@@ -34,7 +34,7 @@ export function RolesTable({ roles, settings }: { roles: TeamRole[]; settings?: 
             {settings && (
               <td className="text-right">
                 <Sheet>
-                  <SheetTrigger asChild><Button variant="outline" size="sm"><span className="max-sm:sr-only">Role </span>settings</Button></SheetTrigger>
+                  <SheetTrigger asChild><Button variant="outline" size="sm" aria-label="Role settings"><span className="max-sm:hidden">Role </span>settings</Button></SheetTrigger>
                   <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
                     <SheetDescription className="sr-only">Model and agents of the role</SheetDescription>
                     <div className="flex flex-col gap-6 p-6">
