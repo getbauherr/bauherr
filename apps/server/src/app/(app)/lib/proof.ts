@@ -55,3 +55,27 @@ export const loadProof = async (payload: Payload, tickets: Doc[], products: Map<
   }
   return out
 }
+
+export type EvidenceStep = { step: number; title?: string; status: 'proved' | 'no_proof'; proof: string }
+
+/**
+ * The `| Plan step | done/deferred | Evidence or reason |` table of the Run's evidence (pack/rules/evidence.md) as one entry per step, plus the markdown outside that table.
+ * `done` with evidence is proved; `deferred` or no evidence is no proof. Null when no such table parses (the page shows the markdown).
+ */
+export const parseEvidence = (md: string | null | undefined, planSteps: { n: number; title: string }[] = []): { steps: EvidenceStep[]; rest: string } | null => {
+  const lines = (md ?? '').split('\n')
+  const head = lines.findIndex((l, i) => /^\s*\|\s*Plan step\s*\|/i.test(l) && /^\s*\|[\s:|-]+\|?\s*$/.test(lines[i + 1] ?? ''))
+  if (head < 0) return null
+  let end = head + 2
+  const steps: EvidenceStep[] = []
+  for (; end < lines.length && /^\s*\|/.test(lines[end]!); end++) {
+    const m = /^\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|(.*)$/.exec(lines[end]!)
+    const step = Number(m?.[1])
+    if (!m || !Number.isInteger(step) || step < 1) continue
+    const [, , status, rest] = m
+    const proof = rest!.replace(/\|\s*$/, '').trim()
+    const title = planSteps.find((p) => p.n === step)?.title
+    steps.push({ step, ...(title && { title }), status: /^done$/i.test(status!) && proof ? 'proved' : 'no_proof', proof })
+  }
+  return steps.length ? { steps, rest: [...lines.slice(0, head), ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n').trim() } : null
+}

@@ -51,6 +51,7 @@ const seed = async () => {
 const status = async (id: number | string) => (await payload.findByID({ collection: 'runs', id, ...o })).status
 const successorOf = async (id: number | string) => (await payload.find({ collection: 'runs', where: { previousRun: { equals: id } }, depth: 0, ...o })).docs[0]
 const raw = (q: ReturnType<typeof sql>) => (payload.db as any).drizzle.execute(q)
+const stale = (id: number | string) => raw(sql`UPDATE "runs" SET "heartbeat_at" = now() - interval '1 hour' WHERE "id" = ${id}`)
 const late = () => Date.now() + jobs.SESSION_TIMEOUT_MS + 60_000
 
 it('claim returns a token; the same user with another token or none is refused', async () => {
@@ -112,6 +113,7 @@ it('release lock: a Workspace member abandons the Run, a non-member is refused',
   const { leaseToken } = await call(member, 'claim_run', { runId: run.id })
   await expect(actions.releaseLock(payload, outsider, { runId: run.id })).rejects.toBeInstanceOf(actions.NotInWorkspace)
   expect(await status(run.id)).toBe('running')
+  await stale(run.id)
   await expect(actions.releaseLock(payload, member, { runId: run.id })).resolves.toEqual({ status: 'abandoned' })
   expect(await status(run.id)).toBe('abandoned')
   expect(await successorOf(run.id)).toMatchObject({ status: 'awaiting_session' })
@@ -120,12 +122,23 @@ it('release lock: a Workspace member abandons the Run, a non-member is refused',
   await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toThrow('not a running session Run')
 })
 
+it('release lock: a live session keeps a Run with a stale heartbeat', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  const session = await payload.create({ collection: 'agent_sessions', data: { publicId: 'ses_live', role: 'engineer', label: 'live', connectedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), workspace: ws } as never, ...o })
+  await payload.update({ collection: 'runs', id: run.id, data: { session: session.id } as never, ...o })
+  await stale(run.id)
+  await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toBeInstanceOf(actions.RunHealthy)
+  expect(await status(run.id)).toBe('running')
+})
+
 it('a human release never escalates to needs_human', async () => {
   const { run } = await seed()
   await call(member, 'claim_run', { runId: run.id })
   await jobs.expireStaleSessions(payload, late())
   const second = await successorOf(run.id)
   await call(member, 'claim_run', { runId: second.id })
+  await stale(second.id)
   await actions.releaseLock(payload, member, { runId: second.id })
   expect(await status(second.id)).toBe('abandoned')
   expect(await successorOf(second.id)).toBeDefined()
@@ -154,6 +167,14 @@ it('a Run handed back via release_run stays awaiting_session', async () => {
   expect(await status(run.id)).toBe('awaiting_session')
 })
 
+it('release lock refuses a healthy Run and leaves it running', async () => {
+  const { run } = await seed()
+  await call(member, 'claim_run', { runId: run.id })
+  await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toBeInstanceOf(actions.RunHealthy)
+  await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toThrow(`run ${run.id} is healthy; its session reported 0 min ago`)
+  expect(await status(run.id)).toBe('running')
+})
+
 it('release lock refuses a Run that is not running', async () => {
   const { run } = await seed()
   await expect(actions.releaseLock(payload, member, { runId: run.id })).rejects.toBeInstanceOf(actions.NotReleasable)
@@ -176,6 +197,7 @@ it('abandon is conditional and creates exactly one successor, clearing the lease
 it('a human-released predecessor does not count toward the escalation', async () => {
   const { run } = await seed()
   await call(member, 'claim_run', { runId: run.id })
+  await stale(run.id)
   await actions.releaseLock(payload, member, { runId: run.id })
   const second = await successorOf(run.id)
   await call(member, 'claim_run', { runId: second.id })

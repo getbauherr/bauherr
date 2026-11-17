@@ -48,6 +48,7 @@ export const Ellipsis = icon(
     <circle cx="5" cy="12" r="1" />
   </>,
 )
+export const Clock = icon(<><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>)
 export const Check = icon(<path d="M20 6 9 17l-5-5" />)
 export const ChevronRight = icon(<path d="m9 18 6-6-6-6" />)
 export const ChevronsUpDown = icon(<path d="m7 15 5 5 5-5M7 9l5-5 5 5" />)

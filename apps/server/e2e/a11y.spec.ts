@@ -16,6 +16,7 @@ const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
   [/^#(step|cp)-|^select\[aria-label="Asked: |^(?=.*\.gap-1(\.|$))(?=.*\.small(\.|$))(?=.*\.text-muted-foreground(\.|$))(\.[\w-]+){3}$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
   [/^\.flex-\\\[1_1_20ch\\\]$/, 'Ticket page ActionBar sentence at 390 px on the Conversation tab: the fixed bar (opaque bg-card, painted above in the browser) covers the conversation composer\'s sticky artifact bar, which axe sorts above it; the text sits on the plain card background (same token pair as the states that pass)'],
+  [/^\.flex-\\\[1_1_20ch\\\] > \.mono$/, 'Run page action bar at 390 px: the session name inside the status sentence; the fixed bar (opaque bg-card, painted above in the browser) overlaps page content that axe sorts above it, the text sits on the plain card background (same token pair as the sentence itself, which passes)'],
   [/^\.[\w-]*svg\[width="\d+"\]\[height="\d+"\] > text$/, 'Role avatar without its own drawing: one or two initials on a tile, nothing for axe to measure against (the class is `avatars-module__<hash>__svg` in dev and `<hash>_svg` in the production build)'],
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
 ]
@@ -198,6 +199,36 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
     }
     await page.context().close()
   })
+})
+
+test.describe('Run page: axe in each state at 1280 and 390 px', () => {
+  const states = ['Run page: working session', 'Run page: stuck session', 'Run page: session gone', 'Run page: failed build', 'Show CI on the ticket', 'Export invoices as CSV', 'Recover the stalled import', 'Wait for an engineer agent'] as const
+  let session: Awaited<ReturnType<BrowserContext['storageState']>>
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext()
+    await signIn(await context.newPage())
+    session = await context.storageState()
+    await context.close()
+  })
+  const inRunLab = new Set<string>(['Run page: working session', 'Run page: stuck session', 'Run page: session gone', 'Run page: failed build']) // the Run page seed has a Workspace of its own
+  for (const title of states) {
+    test(title, async ({ browser }) => {
+      test.setTimeout(120_000)
+      for (const width of [1280, 390]) {
+        const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
+        if (inRunLab.has(title)) await page.context().addCookies([{ name: 'bauherr-ws', value: 'runpage', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+        await page.goto('/runs')
+        await page.locator('table tbody tr').filter({ hasText: title }).getByRole('link').first().click()
+        await expect(page).toHaveURL(/\/runs\/\d+$/)
+        await expect(page.getByRole('heading', { level: 2, name: 'Timeline' })).toBeVisible()
+        for (const t of ['light', 'dark'] as const) {
+          await setTheme(page, t)
+          expect(await scan(page), `${title} ${width}px (${t})`).toEqual([])
+        }
+        await page.context().close()
+      }
+    })
+  }
 })
 
 test.describe('axe on the Agent team pages at 375 px, light and dark', () => {

@@ -6,6 +6,8 @@ import type { Decision } from '../app/(app)/lib/plan'
 import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, addedOf, answersOf, formatDecision, freezeDecisions, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets, goalOf } from '../app/(app)/lib/plan'
 import { canPutOnFastLane, laneOn, releaseFastLane } from './expedite'
 import { workflowFor } from './factory'
+import { runHealth } from './run-health'
+import { sessionTimeoutS } from './sessions'
 import { storePlanTldr } from './decision'
 import { headingOf, packTemplate, renderTemplate, template, type Tpl } from './templates'
 import { tldrError } from './tldr'
@@ -187,6 +189,13 @@ export class NotReleasable extends Error {
   }
 }
 
+/** A Run whose session still reports in cannot be force-released. */
+export class RunHealthy extends Error {
+  constructor(runId: TicketId, minutesSinceReport: number | null) {
+    super(`run ${runId} is healthy; its session reported ${minutesSinceReport ?? '?'} min ago`)
+  }
+}
+
 /** Workspace ids of a Bauherr's tenants. */
 export const tenantsOf = (user: Doc): TicketId[] => ((user.tenants as { tenant: unknown }[]) ?? []).map((t) => id(t.tenant))
 
@@ -197,7 +206,20 @@ export { personOf }
 export const releaseLock = async (payload: Payload, user: Doc, a: { runId: TicketId }) => {
   const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
   if (!run || (user.role !== 'admin' && !tenantsOf(user).some((w) => String(w) === String(id(run.workspace))))) throw new NotInWorkspace()
-  if (run.mode !== 'session' || run.status !== 'running' || (await abandonRun(payload, run, { reason: `${RELEASED_BY}${user.email}`, escalate: false })) === null) throw new NotReleasable(run.id)
+  if (run.mode !== 'session' || run.status !== 'running') throw new NotReleasable(run.id)
+  const [session, ticket] = await Promise.all([
+    run.session ? payload.find({ collection: 'agent_sessions', where: { id: { equals: id(run.session) } }, limit: 1, depth: 0, overrideAccess: true }).then((r) => (r.docs[0] as Doc | undefined) ?? null) : null,
+    payload.findByID({ collection: 'tickets', id: id(run.ticket), depth: 0, overrideAccess: true }) as Promise<Doc>,
+  ])
+  const at = Date.now()
+  const health = runHealth({ run: run as never, session, ticket: ticket as never, connected: 0, isAdmin: true, now: at, timeoutS: sessionTimeoutS(), wf: workflowFor(run.workspace) })
+  if (health.state !== 'stuck' && health.state !== 'session_gone') {
+    const seen = [run.heartbeatAt, session?.lastSeenAt].filter(Boolean).sort().pop()
+    throw new RunHealthy(run.id, seen ? Math.round((at - +new Date(seen)) / 60000) : null)
+  }
+  // A heartbeat after the health read keeps the Run (conditional end in abandonRun).
+  const staleBefore = run.heartbeatAt ? new Date(+new Date(run.heartbeatAt) + 1).toISOString() : undefined
+  if ((await abandonRun(payload, run, { reason: `${RELEASED_BY}${user.email}`, escalate: false, staleBefore })) === null) throw new NotReleasable(run.id)
   await payload.create({
     collection: 'human_touches',
     data: { kind: `release-lock:${run.stage}`, ticket: id(run.ticket), run: run.id, workspace: id(run.workspace), actor: personOf(user), at: now() },

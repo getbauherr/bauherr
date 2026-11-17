@@ -1,6 +1,5 @@
-import { Table } from './ui/table'
 import { cn } from '@/lib/utils'
-import { durationMs, fmtDuration, type RunDoc, type StepDoc, type ToolCallDoc } from '../lib/run'
+import { fmtDuration, type RunDoc, type StepDoc, type ToolCallDoc } from '../lib/run'
 
 type Calls = Map<number, ToolCallDoc[]>
 
@@ -39,42 +38,5 @@ export function TimelineView({ run, steps, calls, now }: { run: RunDoc; steps: S
         )
       })}
     </div>
-  )
-}
-
-export function ListView({ run, steps, total, calls }: { run: RunDoc; steps: StepDoc[]; total: number; calls: Calls }) {
-  if (!steps.length) return <p className="text-muted-foreground">No steps recorded.</p>
-  const end = run.finishedAt ?? null
-  return (
-    <>
-      {total > steps.length && <p className="small text-muted-foreground">Showing the first {steps.length} of {total} steps.</p>}
-      <Table>
-        <thead><tr className="label">{['#', 'Step', 'Tokens in/out', 'Started', 'Duration', 'Tool calls'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
-        <tbody>
-          {steps.map((s, i) => {
-            const cs = calls.get(s.id) ?? []
-            return (
-              <tr key={s.id}>
-                <td className="mono">{s.seq}</td>
-                <td>{s.summary ?? 'Step'}</td>
-                <td className="mono">{s.tokensIn ?? 0} / {s.tokensOut ?? 0}</td>
-                <td className="mono">{s.at.slice(11, 19)}</td>
-                <td className="mono">{fmtDuration(durationMs(s.at, steps[i + 1]?.at ?? end))}</td>
-                <td>
-                  <details className="calls">
-                    <summary className="mono">{cs.length}</summary>
-                    <ul className="m-0 mt-2 pl-4">
-                      {cs.map((c) => (
-                        <li key={c.id}><span className="mono">{c.name}</span> <span className="mono small text-muted-foreground">{c.inputDigest ?? ''}</span> <span className={cn('label', c.status === 'error' ? 'text-destructive' : 'text-ok')}>{c.status ?? '—'}</span></li>
-                      ))}
-                    </ul>
-                  </details>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </Table>
-    </>
   )
 }

@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, sendBack } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, RunHealthy, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, sendBack } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunOrRejoin } from '../../../jobs'
@@ -414,10 +414,12 @@ export async function markSeen(key: SeenKey, seen = true): Promise<void> {
 export async function releaseRunLock(runId: number) {
   const user = await requireBauherr()
   if (user.role !== 'admin') redirect(`/runs/${runId}`)
+  let healthy = false
   await releaseLock(await payloadClient(), user, { runId }).catch((e) => {
-    if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
+    if (e instanceof RunHealthy) healthy = true
+    else if (!(e instanceof NotInWorkspace || e instanceof NotReleasable)) throw e
   })
-  redirect(`/runs/${runId}`)
+  redirect(healthy ? `/runs/${runId}?notice=healthy` : `/runs/${runId}`)
 }
 
 /** Persists a Board drop: the Ticket now sits between `before` and `after` (Admin or Workspace member, selected Workspace only). */

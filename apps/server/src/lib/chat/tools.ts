@@ -109,7 +109,7 @@ const listTickets = async (c: Ctx, a: Doc) => {
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n)}…` : s) : null)
 const getRun = async (c: Ctx, a: Doc) => {
   const admin = c.user.role === 'admin'
-  const loaded = await loadRun(Number(c.workspace), String(a.run), false).catch(() => null)
+  const loaded = await loadRun(Number(c.workspace), String(a.run), admin).catch(() => null)
   if (!loaded) return { error: `No Run ${a.run} in this Workspace.` }
   const { run, ticket } = loaded
   const wf = workflowFor(c.workspace)
