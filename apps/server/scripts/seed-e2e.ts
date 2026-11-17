@@ -478,6 +478,41 @@ const ciTicket = await ticket(581, 'Show CI on the ticket', 'build', ciProduct, 
   },
 })
 await run(ciTicket, 'build', 'running', { startedAt: new Date().toISOString(), artifacts: { prUrl: 'https://github.com/acme/ci/pull/88' } })
+// workflow-stage.spec.ts: a Workspace of its own (`bauherr-ws=stagelab`, the shipped factory: Plan has the Jobs plan, ax-scan, approve), an Admin that only that spec signs in as, and four Plan Tickets: scan running, scan failed, scan skipped, plan done and waiting for approval (with history, so the Ticket page nests the Jobs under Plan).
+const stageWs = (await ensure('workspaces', { slug: 'stagelab' }, { name: 'Stage Lab', slug: 'stagelab', wipLimits: {} })).id
+await ensure('bauherren', { email: 'stage-admin@example.com' }, { email: 'stage-admin@example.com', password, role: 'admin', githubLogin: 'e2e-stage-admin' })
+const stageGithub = (await ensure('connections', { name: 'GitHub Stage' }, { name: 'GitHub Stage', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: stageWs })).id
+const stageProduct = (await ensure('products', { slug: 'stage-app' }, { name: 'Stage App', slug: 'stage-app', workspace: stageWs })).id
+await ensure('repositories', { fullName: 'acme/stage' }, { fullName: 'acme/stage', product: stageProduct, workspace: stageWs })
+await ensure('ticket_sources', { repo: 'acme/stage' }, { repo: 'acme/stage', product: stageProduct, connection: stageGithub, cursor: '2026-10-30T09:00:00Z', workspace: stageWs })
+const stageTicket = async (n: number, title: string) => (await ensure('tickets', { externalId: `e2e-stage-${n}` }, { title, externalId: `e2e-stage-${n}`, number: n, url: `https://github.com/acme/stage/issues/${n}`, state: 'open', labels: ['bauherr:stage:plan'], stage: 'plan', historyKey: 'plan|working', product: stageProduct, workspace: stageWs, rank: String(n).padStart(6, '0') })).id
+const stageRun = (t: string | number, job: string | null, status: string, extra: Record<string, unknown> = {}) =>
+  ensure('runs', { ticket: t, stage: 'plan', status, ...(job && { job }) }, { ticket: t, stage: 'plan', status, mode: 'autonomous', executor: 'runner', role: job ? 'ax' : 'engineer', workspace: stageWs, ...(job && { job, kind: 'agent' }), ...extra })
+const stageAt = (minutes: number) => new Date(seedNow - minutes * 60e3).toISOString()
+const stageHistory = async (t: string | number, n: number) => {
+  for (const [i, [stage, phase, minutes]] of ([['triage', 'working', 300], ['plan', 'queued', 240], ['plan', 'working', 230]] as const).entries()) {
+    const cause = `e2e:stage:${n}:${i}`
+    await ensure('ticket_events', { ticket: t, cause }, { ticket: t, workspace: stageWs, at: stageAt(minutes), stage, stageKind: stage, phase, fromStage: i ? 'triage' : null, executor: phase === 'working' ? 'runner' : 'factory', cause })
+  }
+}
+const scanning = await stageTicket(1, 'Stage lab: scan in flight')
+await stageHistory(scanning, 1)
+await stageRun(scanning, null, 'succeeded', { startedAt: stageAt(228), finishedAt: stageAt(220), gatewayCostUsd: 0.31 })
+await stageRun(scanning, 'ax-scan', 'running', { startedAt: stageAt(5) })
+const failedScan = await stageTicket(2, 'Stage lab: scan failed')
+await stageHistory(failedScan, 2)
+await stageRun(failedScan, null, 'succeeded', { startedAt: stageAt(228), finishedAt: stageAt(220), gatewayCostUsd: 0.25 })
+await stageRun(failedScan, 'ax-scan', 'failed', { startedAt: stageAt(200), finishedAt: stageAt(197), error: 'the scan could not read the repository' })
+const skippedScan = await stageTicket(3, 'Stage lab: scan skipped')
+await stageHistory(skippedScan, 3)
+await stageRun(skippedScan, null, 'succeeded', { startedAt: stageAt(228), finishedAt: stageAt(220) })
+await ensure('ticket_events', { ticket: skippedScan, cause: 'skip:plan' }, { ticket: skippedScan, workspace: stageWs, at: stageAt(219), stage: 'plan', stageKind: 'plan', phase: 'queued', fromStage: 'plan', executor: 'factory', cause: 'skip:plan', note: 'the change touches no security paths', job: 'ax-scan' })
+const approving = await stageTicket(4, 'Stage lab: waiting for approval')
+await stageHistory(approving, 4)
+await ensure('ticket_events', { ticket: approving, cause: 'e2e:stage:4:3' }, { ticket: approving, workspace: stageWs, at: stageAt(190), stage: 'plan', stageKind: 'plan', phase: 'human', fromStage: 'plan', executor: 'human', cause: 'e2e:stage:4:3' })
+await stageRun(approving, null, 'succeeded', { startedAt: stageAt(228), finishedAt: stageAt(220), gatewayCostUsd: 0.4 })
+await stageRun(approving, 'ax-scan', 'succeeded', { startedAt: stageAt(215), finishedAt: stageAt(212), outcome: 'pass', gatewayCostUsd: 0.12 })
+await payload.update({ collection: 'tickets', id: approving, data: { historyKey: 'plan|human' }, ...o })
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>

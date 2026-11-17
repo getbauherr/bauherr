@@ -1,12 +1,20 @@
 import Link from 'next/link'
-import type { Steps } from '../lib/steps'
+import { JOB_STATUS, type JobRow, type Steps } from '../lib/steps'
 import { costSplit } from '../../../lib/cost'
 import { Card } from './ui/card'
 
 type Doc = Record<string, any>
 
+const JobStates = ({ jobs }: { jobs: JobRow[] }) => (
+  <ol aria-label="Jobs" data-testid="strip-jobs" className="m-0 flex list-none gap-2 p-0 font-normal text-muted-foreground">
+    {jobs.map((j) => <li key={j.id} data-job={j.id} data-status={j.status}>{j.title} <span className="mono">{JOB_STATUS[j.status].toLowerCase()}</span></li>)}
+  </ol>
+)
+
 /** The Ticket's route as one line: done stages with a check, the current one marked, "×N" for a stage entered more than once. Scrolls, never wraps. */
 export function StageStrip({ stages, steps }: { stages: { name: string; title: string }[]; steps: Steps }) {
+  const last = steps.visits?.at(-1)
+  const jobs = last?.stage === steps.path.current ? last.jobs : undefined
   const rounds = new Map(steps.rounds.map((r) => [r.stage, r.n]))
   const current = steps.path.current
   const at = stages.findIndex((s) => s.name === current)
@@ -21,6 +29,7 @@ export function StageStrip({ stages, steps }: { stages: { name: string; title: s
               {done && <span aria-hidden>✓</span>}
               {s.title}
               {n && <span className="mono" title={`${n} times`}>×{n}</span>}
+              {s.name === current && jobs && <JobStates jobs={jobs} />}
             </li>
           )
         })}

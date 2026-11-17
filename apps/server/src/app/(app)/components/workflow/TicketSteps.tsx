@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { duration } from '../../lib/format'
-import { rowsOf, type Row, type Steps } from '../../lib/steps'
+import { JOB_STATUS, rowsOf, type JobRow, type JobStatus, type Row, type Steps } from '../../lib/steps'
 import { ciLinkLabel } from '../../../../lib/ci-text'
 import { Badge } from '../ui/badge'
 import { RowDetail } from './RowDetail'
@@ -10,6 +10,30 @@ const BAR = { working: 'bg-primary', human: 'bg-warn', ci: 'bg-muted-foreground'
 const when = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`
 
 const Meta = ({ k, v, href }: { k: string; v: string | null; href?: string }) => (v ? <><dt className="text-muted-foreground">{k}</dt><dd className="m-0 min-w-0 break-words">{href ? <Link className="text-primary" href={href}>{v}</Link> : v}</dd></> : null)
+
+const JOB_TONE: Record<JobStatus, 'ok' | 'accent' | 'muted' | 'destructive' | 'warn'> = { done: 'ok', working: 'accent', queued: 'muted', skipped: 'muted', failed: 'destructive', cancelled: 'muted', needs_you: 'warn', waiting: 'warn', pending: 'muted' }
+
+/** The Jobs of a stage visit nested under it: status, who worked it, how long and what it cost. */
+export function JobList({ jobs, stage }: { jobs: JobRow[]; stage: string }) {
+  return (
+    <ol className="m-0 flex list-none flex-col gap-1.5 border-l-2 border-border p-0 pl-3" aria-label={`Jobs of ${stage}`} data-testid="step-jobs">
+      {jobs.map((j) => {
+        const r = j.run
+        return (
+          <li key={j.id} className="small flex flex-wrap items-center gap-x-3 gap-y-0.5" data-testid="step-job" data-job={j.id} data-status={j.status}>
+            <span className="font-medium">{j.title}</span>
+            <Badge variant={JOB_TONE[j.status]}>{JOB_STATUS[j.status]}</Badge>
+            {j.reason && <span className="text-muted-foreground" data-testid="step-job-reason">{cap(j.reason)}</span>}
+            {r && <span className="text-muted-foreground" data-testid="step-job-executor">{[r.executor, r.sessionLabel ?? r.role].filter(Boolean).join(' · ')}</span>}
+            {j.seconds != null && <span className="mono" data-testid="step-job-duration">{duration(j.seconds)}</span>}
+            {r?.usage && <span className="mono" data-testid="step-job-cost">{r.usage}</span>}
+            {r && <Link className="text-primary" href={`/runs/${r.id}`}>Run #{r.id}</Link>}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
@@ -61,6 +85,7 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
         {timed.map((s) => <span key={s.id} className={`${BAR[s.phase] ?? 'bg-border'} h-full min-w-1`} style={{ flexGrow: Math.max(s.seconds / total, 0.03) }} title={`${s.label} ${duration(s.seconds)}`} />)}
       </div>
       <p className="small m-0 text-muted-foreground" data-testid="phases">{timed.map((s) => `${s.label} ${duration(s.seconds)}`).join(' → ')}</p>
+      {row.jobs && <JobList jobs={row.jobs} stage={row.title} />}
       {sentBack && <p className="small m-0" data-testid="step-sent-back">{sentBack}</p>}
       {waiting && <p className="small m-0 text-muted-foreground">Waiting on {waiting.ci!.provider}</p>}
       {open && !decision && row.steps.at(-1)!.phase === 'human' && <p className="small m-0" data-testid="step-open-decision">{open.ask} <Link className="text-primary" href={`/inbox?t=${open.ticket}`}>Decide in Inbox</Link></p>}

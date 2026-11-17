@@ -123,10 +123,10 @@ export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { na
 }
 
 /** The conditional steps the Ticket passed without entering, in order: `{ stage, at, reason }`. */
-export const skips = async (payload: Payload, ticketId: number | string): Promise<{ stage: string; at: string; reason: string }[]> =>
+export const skips = async (payload: Payload, ticketId: number | string): Promise<{ stage: string; at: string; reason: string; job: string | null }[]> =>
   ((await payload.find({ collection: 'ticket_events', where: { and: [{ ticket: { equals: ticketId } }, { cause: { like: SKIP_CAUSE } }] }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[])
     .filter((e) => String(e.cause).startsWith(SKIP_CAUSE))
-    .map((e) => ({ stage: e.stage, at: e.at, reason: e.note ?? '' }))
+    .map((e) => ({ stage: e.stage, at: e.at, reason: e.note ?? '', job: e.job ?? null }))
 
 export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; note: string | null; backfilled: boolean; workflowVersion: number | null; job?: string | null }
 

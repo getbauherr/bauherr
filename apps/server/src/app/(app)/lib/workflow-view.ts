@@ -66,6 +66,10 @@ export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, {
   return { stages, checkpoints }
 }
 
+/** The live Runs (queued, awaiting a session, running) of the Workspace: which Ticket works which Job of which stage right now. */
+export const liveJobRuns = async (payload: Payload, workspace: number): Promise<{ ticket: number; stage: string; job: string | null }[]> =>
+  ((await payload.find({ collection: 'runs', where: { and: [{ workspace: { equals: workspace } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, select: { ticket: true, stage: true, job: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { ticket: number; stage: string; job?: string | null }[]).map((r) => ({ ticket: r.ticket, stage: r.stage, job: r.job ?? null }))
+
 export type StageAgents = { role: { id: string; title: string; avatar: string }; working: number; idle: number; runner: number; ci: number; text: string | null; missing: boolean }
 
 /**

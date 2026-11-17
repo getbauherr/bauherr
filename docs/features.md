@@ -13,6 +13,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Feature | What it does | Where | Status |
 |---|---|---|---|
 | Workflow graph | The stages as a graph with open Tickets, who waits on whom, medians and the human checkpoints; the home page | `/` | Live |
+| Stage drill-down and Jobs | Jobs of a stage as chips on the Workflow graph, the stage page `/workflow/<stage>` with its Job graph and the Tickets in each Job, and the Jobs nested under their stage in the Ticket's Steps | `/` (a Job chip on a stage), `/workflow/<stage>?job=<id>`, a Ticket's History tab | Live |
 | Graph and Epics views | The Ticket dependency graph, and parent Tickets with their sub-tickets | `/?view=graph`, `/?view=epics` | Live |
 | Stage table and ranking | Tickets per stage; drag, Alt+arrows or the row menu rank them | `/` | Live |
 | Stages from the factory file | Stage kinds (triage, plan, build, review, release, container, done, agent, human), roles, outcomes and WIP in one file; [`pack/factory.yaml`](https://github.com/getbauherr/bauherr/blob/main/pack/factory.yaml) is the default | `/workflow/edit`; "Edit workflow" on `/` (Admin) | Live |
@@ -178,6 +179,6 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 
 ## Known gaps
 
-- No UI, by design: `return_to_build` (agent repair), the connection slug, job-level status; see "Not in the UI" in [ui.md](ui.md).
+- No UI, by design: `return_to_build` (agent repair), the connection slug; see "Not in the UI" in [ui.md](ui.md).
 - Written but never shown: `oidcSynced`, `productionApprovedSha`.
 - Security scan findings have no page of their own: the last scan links its Run and the finding Tickets. The same holds for the docs check.

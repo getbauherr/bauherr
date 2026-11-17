@@ -95,6 +95,7 @@ const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/team/[id]': linkOn('/team', /^\/team\/[^/?#]+$/),
   '/tickets/[id]': linkOn('/', /^\/tickets\/\d+$/),
   '/tickets/n/[number]': '/tickets/n/1', // a number two Products share: the chooser, not the redirect to one Ticket
+  '/workflow/[stage]': '/workflow/plan',
   '/workflow/edit': '/workflow/edit',
 }
 

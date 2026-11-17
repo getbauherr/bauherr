@@ -82,6 +82,15 @@ export function StepPanel({ yaml, doc, findings, name, roles, skills, pathSets, 
           <RoleSelect label="Who works here" roles={roles} value={s.role} onChange={(id) => mutate((y) => setStageField(y, s.name, 'role', id))} />
         </Row>
       )}
+      {Array.isArray(s.jobs) && s.jobs.length > 0 && (
+        <div className="flex flex-col gap-1.5" data-testid="editor-jobs">
+          <span className="small font-medium">Jobs</span>
+          <ol className="small m-0 flex list-none flex-col gap-1 p-0">
+            {(s.jobs as Doc[]).map((j) => <li key={j.id} data-job={j.id}>{humanize(j.id)} <span className="text-muted-foreground">{j.kind === 'human' ? (j.by === 'product-owner' ? 'asked of the Product owner' : 'asked of you') : (roles.find((r) => r.id === (j.role ?? s.role))?.title ?? 'agent')}</span></li>)}
+          </ol>
+          <span className="small text-muted-foreground">Jobs are read-only here: edit them in the YAML tab.</span>
+        </div>
+      )}
       {kind === 'agent' && (
         <Row title="Skill" id="panel-skill">
           <NativeSelect id="panel-skill" value={s.skill ?? ''} onChange={(e) => mutate((y) => setStageField(y, s.name, 'skill', e.target.value))}>
