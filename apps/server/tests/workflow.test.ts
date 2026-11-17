@@ -206,7 +206,7 @@ it('files without jobs compile to the same hash as before jobs existed', () => {
     [`${fixtures}/renamed-pack/factory.yaml`]: '77bd6b01a9c6a0c762eedfcb939bf2fa1b6484f1fcf5e006ba8edc65036c74c9',
     [`${fixtures}/routing-pack/factory.yaml`]: '04a2fc4931b99cad01f94a0651c0020570e5494e614a243dfbf2b71630cc622d',
   }
-  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack')).length).toBe(Object.keys(expected).length - 4)
+  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack') && d !== 'jobs-pack').length).toBe(Object.keys(expected).length - 4)
   for (const [file, hash] of Object.entries(expected)) expect(hashFile(file), file).toBe(hash)
 })
 

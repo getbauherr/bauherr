@@ -4,7 +4,7 @@ import { workflowFor } from './factory'
 import { isExpediting } from './expedite'
 import { id } from './release'
 import { sessionTimeoutS } from './sessions'
-import { roleOf } from './workflow'
+import { roleOfRun } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
@@ -36,7 +36,7 @@ export const pickVictim = async (tx: any, workspace: number, roleId: string, cap
  * The check and the mark share one transaction under the Workspace's advisory lock, so two sweeps cannot mark two. Returns the victim Run id, or null.
  */
 export const markPreempt = async (payload: Payload, hot: Doc, ticket: Doc): Promise<number | null> => {
-  const role = roleOf(workflowFor(hot.workspace), hot.stage)
+  const role = roleOfRun(workflowFor(hot.workspace), hot)
   if (!role) return null
   const ws = Number(id(hot.workspace))
   return payload.db.drizzle.transaction(async (tx: any) => {

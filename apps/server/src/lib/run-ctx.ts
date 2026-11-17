@@ -21,7 +21,7 @@ import { kindOfRun } from './stage-text'
 import { docsContext } from './docs-check'
 import { workflowFor } from './factory'
 import type { EpicField, SliceField } from './epic'
-import { byKind, is, nameOf, roleOf, stage as stageOf } from './workflow'
+import { byKind, is, jobOf, nameOf, roleOfRun, stage as stageOf } from './workflow'
 
 export { tierModels }
 
@@ -131,8 +131,9 @@ export const buildRunCtx = async (
   const escalated = await isEscalated(payload, run)
   const caps = escalated ? escalatedCaps(kind, base) : base
   if (escalated && kind === 'build') await noteEscalatedBuild(payload, run, caps)
-  const role = roleOf(wf, run.stage)
   const def = stageOf(wf, run.stage)
+  const job = def && jobOf(def, run)
+  const role = roleOfRun(wf, run)
   const roleModel = !escalated && role?.provider && role.model ? `ws-${ws.slug}/${role.provider}/${role.model}` : undefined
   const tier = escalated ? 'strong' : role?.tier ?? (kind === 'review' || kind === 'scan' || kind === 'docs' ? 'standard' : 'cheap')
   const fixBase = kind === 'review' ? await fixBaseOf(payload, ticket) : null
@@ -142,7 +143,7 @@ export const buildRunCtx = async (
     stageNames: { review: byKind(wf, 'review')?.name },
     templates: Object.fromEntries(await Promise.all(Object.entries(SKILL_TEMPLATES).filter(([skill]) => skill !== 'intake').map(async ([skill, names]) => [skill, await Promise.all(names.map(async (n) => { const t = await template(payload, workspace, n); return { title: t.title, body: forAgent(t.body) } }))] as const))),
     run: { id: String(run.id), stage: run.stage, kind: kind as RunCtx['run']['kind'], goal: { statements }, ...caps, tier, ...(roleModel && { model: roleModel }) },
-    ...(kind === 'agent' && def?.skill && { agent: { stage: def.name, title: def.title, skill: def.skill, roleProfile: role?.profile ?? '', outcomes: def.outcomeOrder ?? Object.keys(def.outcomes) } }),
+    ...(kind === 'agent' && def && job?.skill && { agent: { stage: def.name, title: def.title, skill: job.skill, roleProfile: role?.profile ?? '', outcomes: job.outcomeOrder } }),
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
