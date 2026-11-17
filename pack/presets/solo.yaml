@@ -12,11 +12,6 @@ team:
         Picks up: Triage, Plan, Build and Review Runs; reads the Goal and the worklog before any other action.
         Hands on: a triage decision, a plan Comment, an MR with the `## Evidence` section, a review verdict.
         Never: reviews an MR it did not read in full, works outside the plan, or merges its own MR.
-    ax:
-      title: Agent experience engineer
-      skills: [Trust pyramid, Guard checks, Verification, Feature map]
-      tier: strong
-      profile_file: roles/ax.md
 workflow:
   stages:
     - {name: triage, kind: triage, role: engineer, skill: triage, exclude_labels: [wayfinder:map, wayfinder:grilling, wayfinder:research, bauherr:security-scan, bauherr:docs-check], outcomes: {plan: plan, refine: triage, skip: backlog}}

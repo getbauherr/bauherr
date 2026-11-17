@@ -80,7 +80,7 @@ it('Solo: one engineer works every stage, plans pass, production is asked', asyn
   const { ws } = await workspace('solo')
   expect(await apply(ws, 'solo')).toMatchObject({ saved: true })
   const w = factory.workflowFor(ws)
-  expect(w.roles.map((r) => r.id)).toEqual(['engineer', 'ax'])
+  expect(w.roles.map((r) => r.id)).toEqual(['engineer'])
   expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
   expect(new Set(w.stages.map((s) => s.role).filter(Boolean))).toEqual(new Set(['engineer']))
   expect(wf.gates(w)).toEqual({ plan: false, staging: false, production: true })
