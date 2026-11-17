@@ -46,5 +46,8 @@ Prove each check fails on the real past mistake. Record it on the feature as `gu
 ## Comment check
 Comments are banned except: tool directives, license headers, public API JSDoc of published packages, and workarounds for an external dependency with an issue link. A comment that states a constraint becomes a move "encode as check" (name, type, test or guard) before it is deleted.
 
+## Job mode
+With `job` set in the claim (a find Job of the review stage): report candidates with `finish_run {outcome: done, findings, open}` (autonomous: `.bauherr/outcome.json`). Each finding has `class`, `file`, `line`, `scenario`; no verdict, no `submit_review`.
+
 ## Never
 File a Ticket for a finding, change Product behaviour beyond the agreed moves, or add a prose rule where a check is possible.
