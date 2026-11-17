@@ -56,7 +56,7 @@ const seed = async (file: string, content = 'x') => {
   const branch = `bauherr/${issue.number}-feat`
   await fake.forge.createBranch(repo, branch)
   fake.commit(repo, branch, file, content)
-  const pr = await fake.forge.openPullRequest(repo, { title: 'train', body: 'Done\n\n## Evidence\n| Goal | verified |\n', head: branch, base: 'main' })
+  const pr = await fake.forge.openPullRequest(repo, { title: 'train', body: 'Done\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n', head: branch, base: 'main' })
   fake.setChecks(repo, pr.headSha, green)
   await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', status: 'succeeded', mode: 'session', workspace: ws, artifacts: { prUrl: pr.url } }, ...o })
   await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'review', status: 'succeeded', mode: 'session', workspace: ws, reviewedSha: pr.headSha, verdict: 'clean' }, ...o })

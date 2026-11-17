@@ -91,7 +91,7 @@ it('Standard is the pack default workflow plus the security review, with the app
   expect(await apply(ws, 'standard')).toMatchObject({ saved: true })
   expect(wf.order(factory.workflowFor(ws))).toEqual(['triage', 'plan', 'parent', 'build', 'security-review', 'review', 'release', 'done'])
   expect(wf.gates(factory.workflowFor(ws))).toEqual({ plan: true, staging: true, production: true })
-  expect(factory.workflowFor(ws).roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs'])
+  expect(factory.workflowFor(ws).roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax'])
 })
 
 it('Careful adds the three conditional specialist stages between Build and Review, staging acceptance, and the specialist roles', async () => {
@@ -182,7 +182,7 @@ const drive = async (slug: string, preset: string, edit?: (d: Record<string, any
     const head = `bauherr/${issue.number}-feat`
     if (!(await fake.forge.listBranches(repo)).some((b) => b.name === head)) await fake.forge.createBranch(repo, head)
     fake.commit(repo, head, 'a.ts', `x${Math.random()}`)
-    const pr = (await fake.forge.listPullRequests(repo)).find((p) => p.head === head && p.state === 'open') ?? (await fake.forge.openPullRequest(repo, { title: 'route', body: 'Done\n\n## Evidence\n| Goal | verified |\n', head, base: 'main' }))
+    const pr = (await fake.forge.listPullRequests(repo)).find((p) => p.head === head && p.state === 'open') ?? (await fake.forge.openPullRequest(repo, { title: 'route', body: 'Done\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n', head, base: 'main' }))
     fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'completed', conclusion: 'success' }])
     return pr
   }

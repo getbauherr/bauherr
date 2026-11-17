@@ -8,7 +8,8 @@ import { workflowFor } from './factory'
 import { nameOf } from './workflow'
 import { completeCheap } from './gateway'
 import { noteTemplates } from './templates'
-import { collectItem, renderNotes as renderItems, summarizeRelease } from './release-notes'
+import { renderNotes as renderItems, summarizeRelease } from './release-notes'
+import { collectItems, mapLimit } from './release-items'
 import { personOf } from './person'
 import { SUMMARY_MARKER } from './summary'
 
@@ -31,14 +32,6 @@ const inRelease = async (repo: string, sha: string, release: string, ask: () => 
   ancestry.set(key, answer)
   if (ancestry.size > LRU) ancestry.delete(ancestry.keys().next().value!)
   return answer
-}
-
-/** `fn` over `items` with at most 4 in flight, so the forge's secondary rate limit is not tripped. */
-const mapLimit = async <T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]> => {
-  const out: R[] = new Array(items.length)
-  let next = 0
-  await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]!) } }))
-  return out
 }
 
 /** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Once the Product has a `lastReleaseAt`, Tickets whose `releaseAt` is not after it are left out: they were merged before the latest release. Tickets without `releaseAt` still count until the Releases page records them. Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
@@ -86,9 +79,8 @@ export const proposeVersion = (last: string | null, tickets: { labels?: string[]
   return `${major}.${minor}.${patch + 1}-rc.1`
 }
 
-/** Deterministic notes (Features, Fixes) of the Tickets from their staging summaries. */
-export const renderNotes = async (ts: TicketSource, tickets: Doc[], tpls?: Awaited<ReturnType<typeof noteTemplates>>): Promise<string> =>
-  renderItems(await Promise.all(tickets.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: t.labels ?? [] }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null, tpls?.summary))), tpls?.note)
+export const renderNotes = async (payload: Payload, product: number | string, ts: TicketSource, tickets: Doc[], tpls?: Awaited<ReturnType<typeof noteTemplates>>): Promise<string> =>
+  renderItems(await collectItems(payload, product, tickets, ts, tpls?.summary), tpls?.note)
 
 const shippedMarker = (tag: string) => `<!-- bauherr:shipped:${tag} -->`
 
@@ -161,7 +153,7 @@ export const promoteRelease = async (payload: Payload, user: Doc, a: { product: 
   const marker = releaseMarker(sha)
   let release = await forge.releaseByTag(repo, final)
   if (!release) {
-    const notes = tickets.length ? await renderNotes(ts, tickets, await noteTemplates(payload, id(first!.workspace))) : ''
+    const notes = tickets.length ? await renderNotes(payload, a.product, ts, tickets, await noteTemplates(payload, id(first!.workspace))) : ''
     release = await forge.createRelease(repo, { tag: final, sha, name: final, body: `Promoted from ${a.rc} (commit ${sha.slice(0, 7)}).\n\n${notes}${notes ? '\n\n' : ''}${marker}`, prerelease: false })
   }
   for (const t of tickets) {
@@ -205,7 +197,7 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   }
   if (latest && !p.lastReleaseAt) p = await payload.update({ collection: 'products', id: product, data: { lastReleaseTag: latest.tag, lastReleaseSha: latest.sha, lastReleaseAt: new Date(await backend.forge.getCommitDate(repo, latest.sha)).toISOString() }, ...o }) as Doc
   const picked = ids ? waiting.filter((t) => ids.map(String).includes(String(t.id))) : waiting
-  const notes = picked.length ? await renderNotes(ts, picked, await noteTemplates(payload, id(p.workspace))) : ''
+  const notes = picked.length ? await renderNotes(payload, product, ts, picked, await noteTemplates(payload, id(p.workspace))) : ''
   const last = lastTag !== undefined ? lastTag : line.rc ?? line.final ?? latest?.tag ?? p.lastReleaseTag ?? null
   const rc = line.rc ?? (withPast ? await unfinishedPromotion(payload, backend.forge, repo, product, tags, line.final) : null)
   const rcTickets = rc ? ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { releasedIn: { contains: `${rc.replace(/-rc\.\d+$/, '')}-rc.` } }] }, sort: 'number', pagination: false, ...o })).docs as Doc[]) : []

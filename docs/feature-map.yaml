@@ -30,8 +30,8 @@ features:
       - apps/server/tests/overview.test.ts
       - apps/server/e2e/graph.spec.ts
       - apps/server/e2e/overview.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify workflow-graph
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -51,8 +51,8 @@ features:
       - apps/server/tests/graph.test.ts
       - apps/server/tests/epics.test.ts
       - apps/server/e2e/graph.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify graph-and-epics-views
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -73,8 +73,8 @@ features:
       - apps/server/tests/stage-guard.test.ts
       - apps/server/tests/backlog.test.ts
       - apps/server/e2e/workflow-rank.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify stage-table-and-ranking
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -95,8 +95,8 @@ features:
       - apps/server/tests/workflow.test.ts
       - apps/server/tests/factory-cache-race.test.ts
       - apps/server/tests/default-workflow-guard.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify stages-from-the-factory-file
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -113,8 +113,8 @@ features:
       - apps/server/src/lib/wip-limits.ts
     tests:
       - apps/server/tests/wip.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify wip-limits
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -135,8 +135,8 @@ features:
       - apps/server/tests/overlap.test.ts
       - apps/server/tests/holds.test.ts
       - apps/server/tests/holds-strip.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify overlap-hold
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -155,8 +155,8 @@ features:
       - apps/server/tests/expedite.test.ts
       - apps/server/tests/expedite-gates.test.ts
       - apps/server/tests/fast-lane-hold.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify fast-lane
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -175,8 +175,8 @@ features:
       - apps/server/tests/workflow.test.ts
       - apps/server/tests/run-tier.test.ts
       - apps/server/tests/agent-stage-autonomous.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify run-mode-per-stage
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -199,8 +199,8 @@ features:
       - apps/server/tests/custom-apply.test.ts
       - apps/server/e2e/workflow-editor.spec.ts
       - packages/cli/test/cli.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify one-factory-file-per-workspace
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -221,8 +221,8 @@ features:
       - apps/server/tests/custom-ui.test.ts
       - apps/server/tests/human-gates.test.ts
       - apps/server/tests/agent-stage-autonomous.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify custom-agent-and-human-stages
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -242,8 +242,8 @@ features:
     tests:
       - apps/server/tests/workflow-when.test.ts
       - apps/server/tests/conditional-stages.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify conditional-steps
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -262,8 +262,8 @@ features:
       - apps/server/tests/gates.test.ts
       - apps/server/tests/default-workflow-guard.test.ts
       - apps/server/tests/human-gates.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify approve-plan-on-by-default
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -282,8 +282,8 @@ features:
     tests:
       - apps/server/tests/triage.test.ts
       - apps/server/tests/triage-stop.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify triage
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -302,8 +302,8 @@ features:
     tests:
       - apps/server/tests/plan.test.ts
       - apps/server/tests/submit-plan.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify plan-stage
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -321,8 +321,8 @@ features:
       - pack/skills/plan/investigation.md
     tests:
       - apps/server/tests/investigation.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify failure-investigation
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -343,8 +343,8 @@ features:
       - apps/server/tests/next-step.test.ts
       - apps/server/tests/ticket-live.test.ts
       - apps/server/e2e/ticket.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify ticket-page
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -363,8 +363,8 @@ features:
       - apps/server/tests/history.test.ts
       - apps/server/tests/history-phase.test.ts
       - apps/server/e2e/ticket.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify ticket-path
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -383,8 +383,8 @@ features:
       - apps/server/tests/history-runner.test.ts
       - apps/server/tests/history.test.ts
       - apps/server/e2e/ticket.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify steps-timeline
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -409,8 +409,8 @@ features:
       - apps/server/tests/sub-tickets.test.ts
       - apps/server/tests/ticket-split.test.ts
       - apps/server/tests/epic-run-ctx.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify epics-and-sub-tickets
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -428,8 +428,8 @@ features:
     tests:
       - apps/server/tests/repair.test.ts
       - apps/server/tests/state-guards.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify repair
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -446,8 +446,8 @@ features:
     tests:
       - apps/server/e2e/team.spec.ts
       - apps/server/e2e/chat-dock.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify ticket-by-number
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -468,8 +468,8 @@ features:
       - apps/server/e2e/run.spec.ts
       - apps/server/tests/run-claim.test.ts
       - apps/server/tests/repair.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify run-page
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -487,8 +487,8 @@ features:
     tests:
       - apps/server/e2e/run.spec.ts
       - apps/server/tests/run-kind.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify run-list
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -507,8 +507,8 @@ features:
       - apps/server/tests/liveness.test.ts
       - apps/server/tests/lease.test.ts
       - apps/server/tests/escalation.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify successor-run-chain
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -527,8 +527,8 @@ features:
     tests:
       - apps/server/tests/agent-sessions.test.ts
       - apps/server/tests/liveness.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify return-to-build
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -550,8 +550,8 @@ features:
       - apps/server/tests/inbox-view.test.ts
       - apps/server/tests/needs-you-column.test.ts
       - apps/server/e2e/inbox.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify inbox
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -571,8 +571,9 @@ features:
     tests:
       - apps/server/tests/decision.test.ts
       - apps/server/tests/gates.test.ts
-    drive: null
-    proof: null
+      - apps/server/tests/notify-gates-task.test.ts
+    drive: pnpm verify approve-plan
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -596,8 +597,8 @@ features:
       - apps/server/tests/refine-model.test.ts
       - apps/server/tests/conversation-view.test.ts
       - apps/server/e2e/conversation.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify answer-questions-and-decisions
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -620,8 +621,9 @@ features:
       - apps/server/tests/production-gate.test.ts
       - apps/server/tests/approval-brief.test.ts
       - apps/server/tests/human-gates.test.ts
-    drive: null
-    proof: null
+      - apps/server/tests/mcp-worklog-staging-skill.test.ts
+    drive: pnpm verify accept-staging-approve-production
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -643,8 +645,8 @@ features:
       - apps/server/tests/decision.test.ts
       - apps/server/tests/inbox.test.ts
       - apps/server/e2e/review.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify review-round-cap
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -665,8 +667,8 @@ features:
       - apps/server/tests/send-back.test.ts
       - apps/server/tests/send-back-dialog.test.ts
       - apps/server/e2e/send-back.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify request-changes-back-to-build-or-backlog
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -686,8 +688,8 @@ features:
       - apps/server/tests/needs-you-column.test.ts
       - apps/server/tests/checkpoints-who.test.ts
       - apps/server/e2e/checkpoints-who.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify notifications-at-checkpoints
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -705,8 +707,8 @@ features:
     tests:
       - apps/server/tests/progress.test.ts
       - apps/server/e2e/request-page.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify plain-word-progress-for-product-owners
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -727,8 +729,8 @@ features:
       - apps/server/tests/chat.test.ts
       - apps/server/tests/chat-guard.test.ts
       - apps/server/e2e/chat-dock.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify docked-chat
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -746,8 +748,8 @@ features:
     tests:
       - apps/server/tests/chat.test.ts
       - apps/server/e2e/chat-dock.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify stored-threads
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -765,8 +767,8 @@ features:
     tests:
       - apps/server/tests/chat-guard.test.ts
       - apps/server/e2e/chat-dock.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify confirm-cards
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -785,8 +787,8 @@ features:
       - apps/server/tests/media.test.ts
       - apps/server/tests/chat.test.ts
       - apps/server/e2e/composer-attach.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify chat-images
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -805,8 +807,8 @@ features:
     tests:
       - apps/server/tests/chat.test.ts
       - apps/server/e2e/chat-dock.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify chat-feedback
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -824,8 +826,8 @@ features:
     tests:
       - apps/server/e2e/shell.spec.ts
       - apps/server/e2e/chat-dock.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify command-palette
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -846,8 +848,8 @@ features:
       - apps/server/tests/request-conversation.test.ts
       - apps/server/tests/intake.test.ts
       - apps/server/e2e/request-conversation.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify new-request
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -866,8 +868,8 @@ features:
     tests:
       - apps/server/tests/request-card.test.ts
       - apps/server/e2e/request-card.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify request-card
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -888,8 +890,8 @@ features:
       - apps/server/tests/requests.test.ts
       - apps/server/tests/request-card.test.ts
       - apps/server/e2e/requests.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify requests-workbench
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -907,8 +909,8 @@ features:
     tests:
       - apps/server/tests/requests.test.ts
       - apps/server/e2e/request-page.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify request-page
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -928,8 +930,8 @@ features:
       - apps/server/tests/product-owner-guard.test.ts
       - apps/server/e2e/product-owner-view.spec.ts
       - apps/server/e2e/product-owner.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify product-owner-view
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -948,8 +950,8 @@ features:
       - apps/server/tests/forge-channel.test.ts
       - apps/server/tests/label-gate.test.ts
       - apps/server/tests/checkpoints-who-gates.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify forge-channel
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -969,8 +971,8 @@ features:
       - apps/server/tests/embed.test.ts
       - apps/server/tests/widget-size.test.ts
       - apps/server/e2e/embed-widget.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify website-widget
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -986,8 +988,8 @@ features:
       - apps/server/src/lib/intake/api.ts
     tests:
       - apps/server/tests/embed.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify widget-rate-limit-per-token
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1007,8 +1009,8 @@ features:
       - apps/server/tests/train.test.ts
       - apps/server/tests/merge-queue.test.ts
       - apps/server/tests/merge-preflight.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify release-train-and-merge-queue
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1028,8 +1030,8 @@ features:
       - apps/server/tests/train.test.ts
       - apps/server/tests/holds.test.ts
       - apps/server/e2e/releases.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify train-state
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1044,14 +1046,17 @@ features:
     source:
       - apps/server/src/lib/ship-release.ts
       - apps/server/src/lib/release-notes.ts
+      - apps/server/src/lib/release-items.ts
+      - apps/server/src/lib/feature-map.ts
       - apps/server/src/lib/summary.ts
+      - pack/templates/release-note.md
     tests:
       - apps/server/tests/ship-release.test.ts
       - apps/server/tests/release-notes.test.ts
       - apps/server/tests/release-publish.test.ts
       - apps/server/e2e/release.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify release-notes-and-shipping
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1070,8 +1075,8 @@ features:
       - apps/server/tests/release-workflow.test.ts
       - apps/server/tests/ship-release.test.ts
       - apps/server/e2e/releases.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify release-candidates
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1090,8 +1095,8 @@ features:
       - apps/server/tests/ship-release.test.ts
       - apps/server/tests/settings-rework.test.ts
       - apps/server/e2e/releases.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify release-reminder
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1111,15 +1116,15 @@ features:
       - apps/server/tests/production-gate.test.ts
       - apps/server/tests/ci-summary.test.ts
       - apps/server/tests/check-retry.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify staging-and-production-checks
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
   - id: app-changelog
     area: Releases
     title: App changelog
-    summary: The release notes of Bauherr itself
+    summary: The release notes of Bauherr itself, filterable by feature area, internal changes collapsed
     status: live
     page: /release-notes
     reach: "`/release-notes` via the user menu"
@@ -1127,12 +1132,13 @@ features:
     source:
       - apps/server/src/app/(app)/(shell)/release-notes/page.tsx
       - apps/server/src/app/(app)/lib/version.ts
+      - apps/server/src/lib/changelog.ts
       - apps/server/src/lib/release-notes.ts
     tests:
       - apps/server/tests/release-notes.test.ts
       - apps/server/tests/version.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify app-changelog
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1151,8 +1157,8 @@ features:
     tests:
       - apps/server/tests/review.test.ts
       - apps/server/e2e/review.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify review-stage
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1172,11 +1178,12 @@ features:
     tests:
       - apps/server/tests/pre-review.test.ts
       - packages/runner/test/units.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify pre-review-checks
+    proof: screenshot
     gotchas: []
     guards: []
-    debt: []
+    debt:
+      - pre-review does not run the Product's verify command yet
   - id: flaky-check-tracking
     area: Quality and security
     title: Flaky-check tracking
@@ -1189,8 +1196,8 @@ features:
       - apps/server/src/lib/check-retry.ts
     tests:
       - apps/server/tests/check-retry.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify flaky-check-tracking
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1209,8 +1216,8 @@ features:
       - apps/server/tests/security-scan.test.ts
       - apps/server/tests/security-tick.test.ts
       - apps/server/tests/security-findings.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify security-scan
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1229,8 +1236,8 @@ features:
       - apps/server/tests/docs-check.test.ts
       - apps/server/tests/docs-check-actions.test.ts
       - apps/server/e2e/docs-check.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify docs-check
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1250,8 +1257,8 @@ features:
       - apps/server/tests/review.test.ts
       - apps/server/tests/merge-queue.test.ts
       - packages/runner/test/units.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify run-evidence
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1272,8 +1279,8 @@ features:
     tests:
       - apps/server/tests/artifacts.test.ts
       - apps/server/e2e/proof.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify review-artifacts
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1291,8 +1298,8 @@ features:
       - apps/server/src/lib/skill-distill.ts
     tests:
       - apps/server/tests/skill-distill.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify skill-proposals
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1310,8 +1317,8 @@ features:
     tests:
       - apps/server/e2e/admin-pages.spec.ts
       - apps/server/e2e/settings.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify audit-log
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1339,8 +1346,8 @@ features:
       - apps/server/tests/claim-stages.test.ts
       - apps/server/tests/lease.test.ts
       - apps/server/tests/mcp.e2e.ts
-    drive: null
-    proof: null
+    drive: pnpm verify your-own-claude-code-session
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1359,8 +1366,8 @@ features:
       - apps/server/tests/api-key.test.ts
       - apps/server/tests/agent-keys-migration.test.ts
       - apps/server/tests/agent-identity.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify agent-keys-and-personal-key
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -1378,8 +1385,8 @@ features:
     tests:
       - apps/server/e2e/settings.spec.ts
       - apps/server/e2e/shell.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify account-profile
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1398,8 +1405,8 @@ features:
     tests:
       - apps/server/tests/roles-table.test.ts
       - apps/server/tests/team-data.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify agent-roles
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1420,8 +1427,8 @@ features:
     tests:
       - apps/server/tests/agent-sessions.test.ts
       - apps/server/tests/team-connect.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify connect-as-a-role
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1441,8 +1448,8 @@ features:
       - apps/server/tests/presence.test.ts
       - apps/server/tests/agent-status.test.ts
       - apps/server/e2e/agent-view.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify agent-presence
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1466,8 +1473,8 @@ features:
       - apps/server/tests/team-helpers.test.ts
       - apps/server/e2e/team.spec.ts
       - apps/server/e2e/agent-view.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify agent-team-page
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1485,8 +1492,8 @@ features:
     tests:
       - apps/server/tests/people.test.ts
       - apps/server/e2e/people.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify people-and-roles
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1506,8 +1513,8 @@ features:
       - apps/server/tests/workspace-delete.test.ts
       - apps/server/tests/isolation.test.ts
       - apps/server/e2e/workspace-delete.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify workspaces
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1526,8 +1533,8 @@ features:
       - apps/server/tests/oidc.test.ts
       - apps/server/tests/oidc-callback.test.ts
       - apps/server/e2e/oidc.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify oidc-sign-in
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -1553,8 +1560,9 @@ features:
       - apps/server/tests/lease-renewal.test.ts
       - apps/server/tests/run-claim.test.ts
       - apps/server/tests/epic-mcp.test.ts
-    drive: null
-    proof: null
+      - apps/server/tests/mcp-worklog-staging-skill.test.ts
+    drive: pnpm verify agent-run-protocol
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -1576,8 +1584,8 @@ features:
       - apps/server/tests/knowledge.test.ts
       - apps/server/tests/knowledge-page.test.ts
       - apps/server/e2e/knowledge.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify knowledge-repo
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1594,8 +1602,9 @@ features:
     tests:
       - apps/server/tests/knowledge-edit.test.ts
       - apps/server/e2e/knowledge-edit.spec.ts
-    drive: null
-    proof: null
+      - apps/server/tests/watch-tasks.test.ts
+    drive: pnpm verify write-backs
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1613,8 +1622,8 @@ features:
     tests:
       - apps/server/tests/knowledge.test.ts
       - apps/server/tests/settings-rework.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify knowledge-repo-setting
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1632,8 +1641,8 @@ features:
     tests:
       - apps/server/tests/knowledge-edit.test.ts
       - apps/server/e2e/knowledge-edit.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify knowledge-editor
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1653,8 +1662,9 @@ features:
     tests:
       - packages/cli/test/lint.test.ts
       - apps/server/tests/template-parity.test.ts
-    drive: null
-    proof: null
+      - apps/server/tests/mcp-worklog-staging-skill.test.ts
+    drive: pnpm verify pack
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -1677,8 +1687,8 @@ features:
       - apps/server/tests/templates.test.ts
       - apps/server/tests/template-parity.test.ts
       - apps/server/e2e/templates.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify editable-text-templates
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1698,8 +1708,8 @@ features:
       - apps/server/tests/gateway-config.test.ts
       - apps/server/tests/gateway-select.test.ts
       - apps/server/e2e/gateway.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify ai-gateway-with-budgets
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1717,8 +1727,8 @@ features:
     tests:
       - apps/server/tests/run-tier.test.ts
       - apps/server/tests/router.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify model-tiers
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1736,8 +1746,8 @@ features:
     tests:
       - apps/server/tests/usage.test.ts
       - apps/server/tests/cost-aggregate.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify cost-per-product
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1757,8 +1767,8 @@ features:
       - apps/server/tests/providers.test.ts
       - apps/server/tests/providers-db.test.ts
       - apps/server/tests/providers-security.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify connections
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1775,8 +1785,8 @@ features:
     tests:
       - apps/server/tests/gateway-config.test.ts
       - apps/server/tests/monitoring.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify gateway-key-rotation
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1795,8 +1805,8 @@ features:
     tests:
       - apps/server/tests/insights.test.ts
       - apps/server/e2e/insights.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify insights-metrics
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1816,8 +1826,9 @@ features:
       - apps/server/tests/session-usage.test.ts
       - apps/server/tests/harnesses.test.ts
       - apps/server/e2e/gateway.spec.ts
-    drive: null
-    proof: null
+      - apps/server/tests/watch-tasks.test.ts
+    drive: pnpm verify measure-session-cost
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1834,8 +1845,8 @@ features:
       - apps/server/src/app/(app)/components/gateway/PricesStatus.tsx
     tests:
       - apps/server/tests/prices.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify prices-and-models
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1857,8 +1868,8 @@ features:
       - apps/server/tests/cost-aggregate.test.ts
       - apps/server/tests/cost-tools.test.ts
       - apps/server/tests/reconcile.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify tokens-and-cost
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1878,8 +1889,8 @@ features:
       - apps/server/tests/monitoring.test.ts
       - apps/server/tests/stale-jobs.test.ts
       - apps/server/e2e/monitoring.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify health-page
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1903,8 +1914,8 @@ features:
     tests:
       - apps/server/tests/product-settings.test.ts
       - apps/server/e2e/product-settings.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify products-and-repositories
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1926,8 +1937,8 @@ features:
       - apps/server/tests/setup-steps.test.ts
       - apps/server/tests/setup.test.ts
       - apps/server/e2e/setup.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify setup-wizard
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1947,8 +1958,8 @@ features:
       - apps/server/tests/settings.test.ts
       - apps/server/tests/settings-rework.test.ts
       - apps/server/e2e/settings.spec.ts
-    drive: null
-    proof: null
+    drive: pnpm verify settings-by-scope
+    proof: screenshot
     gotchas: []
     guards: []
     debt: []
@@ -1966,8 +1977,30 @@ features:
     tests:
       - apps/server/tests/stale-jobs.test.ts
       - apps/server/tests/run-pool.test.ts
-    drive: null
-    proof: null
+      - apps/server/tests/notify-gates-task.test.ts
+      - apps/server/tests/watch-tasks.test.ts
+    drive: pnpm verify background-jobs
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
+  - id: verify-cli
+    area: Administration
+    title: Verify per feature
+    summary: "`pnpm verify` runs the tests of a feature, an area or the changed files and screenshots the pages of features that have one"
+    status: no-ui
+    page: null
+    reach: "`pnpm verify <feature-id | area | --changed [base]> [--e2e]`"
+    mcp: []
+    source:
+      - apps/server/scripts/verify.ts
+      - apps/server/scripts/verify-resolve.ts
+      - apps/server/e2e/verify-proof.spec.ts
+    tests:
+      - apps/server/tests/verify-resolve.test.ts
+      - apps/server/tests/feature-map.test.ts
+    drive: pnpm verify verify-cli
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -1984,8 +2017,8 @@ features:
     tests:
       - apps/server/tests/stale-jobs.test.ts
       - apps/server/tests/monitoring.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify health-endpoint
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2002,8 +2035,8 @@ features:
       - apps/server/src/app/(app)/lib/admin-proxy.ts
     tests:
       - apps/server/tests/admin-proxy.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify payload-admin
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2019,8 +2052,8 @@ features:
       - packages/cli/src/cli.ts
     tests:
       - packages/cli/test/cli.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify bauherr-cli
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2036,8 +2069,8 @@ features:
       - packages/cli/src/lint.ts
     tests:
       - packages/cli/test/lint.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify pack-lint
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2053,8 +2086,8 @@ features:
       - packages/eval/src/index.ts
     tests:
       - packages/eval/test/eval.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify skill-eval
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2073,8 +2106,8 @@ features:
       - apps/server/tests/mcp.e2e.ts
       - apps/server/tests/agent-identity.test.ts
       - apps/server/tests/chat-guard.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify mcp-server
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2094,8 +2127,8 @@ features:
       - apps/server/tests/chat.test.ts
       - apps/server/tests/intake.test.ts
       - apps/server/tests/embed.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify rest-api
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2113,8 +2146,8 @@ features:
     tests:
       - packages/runner/test/run.test.ts
       - packages/runner/test/units.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify runner
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -2134,8 +2167,8 @@ features:
       - apps/server/tests/gateway-config.test.ts
       - apps/server/tests/media-storage-config.test.ts
       - apps/server/tests/gateway-public-url.test.ts
-    drive: null
-    proof: null
+    drive: pnpm verify environment-flags
+    proof: tests
     gotchas: []
     guards: []
     debt: []

@@ -94,7 +94,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | Release candidates | Cut an rc from done Tickets (GitHub and GitLab), test it, promote it: the final is tagged on the rc's commit with the notes of the whole line; CI only builds the tag | `/releases` | Live |
 | Release reminder | A banner when done Tickets wait too long for a release | `/` banner; Product page, tab Releases | Live |
 | Staging and production checks | Deploy checks, webhook, production gate, auto-merge, check retries | Product page, tabs Deploy, Approvals, Checks & merging | Live |
-| App changelog | The release notes of Bauherr itself | `/release-notes` via the user menu | Live |
+| App changelog | The release notes of Bauherr itself, filterable by feature area, internal changes collapsed | `/release-notes` via the user menu | Live |
 
 ## Quality and security
 
@@ -160,6 +160,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | Setup wizard | Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new) | `/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist" | Live |
 | Settings by scope | Account, Factory, Workspace and Admin groups; Product page in tabs; a place in the UI for every feature | `/settings/*` | Live |
 | Background jobs | 19 jobs: polling, Runs, merging, releases, scans, pruning | Counts on Health | No UI |
+| Verify per feature | `pnpm verify` runs the tests of a feature, an area or the changed files and screenshots the pages of features that have one | `pnpm verify <feature-id | area | --changed [base]> [--e2e]` | No UI |
 | Health endpoint | Unauthenticated JSON of stale jobs | `/api/health` | No UI |
 | Payload admin | Developer escape hatch | `/admin` with `BAUHERR_ENABLE_ADMIN=1` | No UI |
 

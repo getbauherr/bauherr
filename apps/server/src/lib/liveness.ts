@@ -8,7 +8,8 @@ import { resumeInvestigations } from './investigation'
 import { MAX_REVIEW_ROUNDS, type Need, needsYou } from './needs-you'
 import { kindOfRun } from './stage-text'
 import { workflowFor } from './factory'
-import { is, liveStages, nameOf } from './workflow'
+import { visitWorst } from './stage-jobs'
+import { is, liveStages, nameOf, stage as stageDef } from './workflow'
 import { laneWaiter } from './expedite'
 import { forgeOf, id, isFactoryPr, mergeChecks, prOf } from './release'
 
@@ -94,7 +95,7 @@ export const deadTickets = async (payload: Payload, workspace?: number | string)
   for (const t of tickets) {
     const mine = runs.filter((r) => id(r.ticket) === t.id)
     if (mine.some((r) => ACTIVE.includes(r.status))) continue
-    const latest = mine[0] ?? null
+    const latest = (stageDef(workflowFor(t.workspace), t.stage)?.jobs ? visitWorst(t, mine) : mine[0]) ?? null
     let cause = (await causeOf(payload, t, latest)) ?? (latest && latest.stage === t.stage && ['failed', 'abandoned', 'cancelled', 'needs_human'].includes(latest.status) ? 'unknown' : null)
     if (!cause) continue
     // A holder that waits for a human merge (the poller yields the slot of a `needsYou` holder itself) while an expedite Ticket waits for the lane.

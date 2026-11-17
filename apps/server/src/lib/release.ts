@@ -10,7 +10,8 @@ import { connectionInput, webOrigin } from './connection'
 import { EXPEDITE_SKIP_TOUCH } from './needs-you'
 import { APPROVED_STAGING, GATE_LABELS, verifyGateLabels } from './gate-labels'
 import { completeCheap } from './gateway'
-import { collectItem, nextVersion, renderNotes, rewrite } from './release-notes'
+import { collectItems } from './release-items'
+import { nextVersion, renderNotes, rewrite } from './release-notes'
 import { gateOn, humanGates, productionGateOn, stagingGateOn } from './mode'
 import { gatesOf } from './staging'
 import { record } from './history'
@@ -565,7 +566,8 @@ export const publishRelease = async (payload: Payload, productId: number | strin
     notes = batch[0]!.releaseNotes
     if (!notes || batch.some((t) => t.releaseNotes !== notes)) {
       const tpls = await noteTemplates(payload, id(product.workspace))
-      const items = await Promise.all(batch.map(async (t) => collectItem({ number: t.number, title: t.title, url: t.url, labels: (await ts.get(String(t.number))).labels }, latestWith(await ts.listComments(String(t.number)), SUMMARY_MARKER)?.body ?? null, tpls.summary)))
+      const labelled = await Promise.all(batch.map(async (t) => ({ ...t, labels: (await ts.get(String(t.number))).labels })))
+      const items = await collectItems(payload, productId, labelled, ts, tpls.summary)
       const deterministic = renderNotes(items, tpls.note)
       const ws = (await payload.findByID({ collection: 'workspaces', id: id(product.workspace), ...o })) as Doc
       notes = process.env.GATEWAY_URL ? await rewrite(deterministic, (system, user) => completeCheap(ws as Parameters<typeof completeCheap>[0], system, user)) : deterministic

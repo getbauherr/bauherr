@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await payload.create({ collection: 'bauherren', data: { email: 'a@x.io', password: 'pw-123456', role: 'admin' }, ...o })
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', gatewayKey: (await import('../src/lib/secrets')).encrypt('k') }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
-  for (const [slug, releaseMode] of [['ship', 'factory'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual'], ['rcl', 'manual'], ['rcb', 'manual'], ['rcc', 'manual'], ['rct', 'manual'], ['rcf', 'manual']] as const) {
+  for (const [slug, releaseMode] of [['ship', 'factory'], ['areas', 'manual'], ['bad', 'factory'], ['retry', 'factory'], ['stale', 'factory'], ['man', 'manual'], ['page', 'manual'], ['old', 'manual'], ['board', 'manual'], ['burst', 'manual'], ['backfill', 'manual'], ['dates', 'manual'], ['dates-ship', 'manual'], ['cutoff', 'manual'], ['rcl', 'manual'], ['rcb', 'manual'], ['rcc', 'manual'], ['rct', 'manual'], ['rcf', 'manual']] as const) {
     products[slug] = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws, releaseMode }, ...o })).id as number
     await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product: products[slug], connection, workspace: ws }, ...o })
   }
@@ -109,7 +109,7 @@ it('ships: tag on the newest merge, release, comments, releasedIn, CHANGELOG MR 
   const c = await done('ship', 'Search', 'sha-c', 3, ['type:feature'])
   tickets.push(c)
   fake.setAncestors('acme/ship', 'sha-c', ['sha-b'])
-  const notes = await ship.renderNotes(fake.tickets('acme/ship'), tickets)
+  const notes = await ship.renderNotes(payload, products.ship!, fake.tickets('acme/ship'), tickets)
   const version = ship.proposeVersion(null, tickets)
   const res = await ship.shipRelease(payload, user, { product: products.ship!, tickets, version, notes })
   expect(res.tag).toBe('v0.1.0')
@@ -330,7 +330,7 @@ it('cuts rc.1 and rc.2, then promotes rc.2: same sha, notes of the whole line, T
   const draft = await ship.releaseDraft(payload, products.rcl!)
   expect(draft).toMatchObject({ version: '0.4.0-rc.1', rc: null })
   expect(draft.versions).toEqual(['0.3.1-rc.1', '0.4.0-rc.1', '1.0.0-rc.1', '0.3.1', '0.4.0', '1.0.0'])
-  await ship.shipSelected(payload, user, { workspaceId: ws, product: products.rcl!, ids: [a.id, b.id], version: '0.4.0-rc.1', notes: await ship.renderNotes(fake.tickets(repo), [a, b]) })
+  await ship.shipSelected(payload, user, { workspaceId: ws, product: products.rcl!, ids: [a.id, b.id], version: '0.4.0-rc.1', notes: await ship.renderNotes(payload, products.rcl!, fake.tickets(repo), [a, b]) })
   expect(slugTag('rcl', 'v0.4.0-rc.1')).toMatchObject({ sha: 'sha-l2', prerelease: true })
   expect(await fake.forge.listPullRequests(repo, 'all')).toEqual([])
   expect(await reload(a.id)).toMatchObject({ releasedIn: 'v0.4.0-rc.1' })
@@ -340,7 +340,7 @@ it('cuts rc.1 and rc.2, then promotes rc.2: same sha, notes of the whole line, T
 
   const c = await done('rcl', 'Gamma fix', 'sha-l3', 3)
   fake.setAncestors(repo, 'sha-l3', ['sha-l2', 'sha-l1', 'sha-0'])
-  await ship.shipRelease(payload, user, { product: products.rcl!, tickets: [c], version: '0.4.0-rc.2', notes: await ship.renderNotes(fake.tickets(repo), [c]) })
+  await ship.shipRelease(payload, user, { product: products.rcl!, tickets: [c], version: '0.4.0-rc.2', notes: await ship.renderNotes(payload, products.rcl!, fake.tickets(repo), [c]) })
   expect(slugTag('rcl', 'v0.4.0-rc.2')).toMatchObject({ sha: 'sha-l3', prerelease: true })
   expect(slugTag('rcl', 'v0.4.0-rc.2')!.body).toContain('Supersedes v0.4.0-rc.1.')
   await expect(ship.promoteRelease(payload, user, { product: products.rcl!, rc: 'v0.4.0-rc.1' })).rejects.toThrow('not the newest release candidate of v0.4.0 (v0.4.0-rc.2)')
@@ -406,4 +406,16 @@ it('a promote that fails after the release was created is offered again as "fini
   expect(fake.listReleases(repo).map((r) => r.tag)).toEqual(['v0.1.0-rc.1', 'v0.1.0'])
   expect(await reload(a.id)).toMatchObject({ releasedIn: 'v0.1.0' })
   expect(await ship.releaseDraft(payload, products.rcf!)).toMatchObject({ rc: null, finishing: false })
+})
+
+it('groups the notes by the feature-map area of the files each Ticket changed', async () => {
+  fake.commit('acme/areas', 'main', 'docs/feature-map.yaml', 'features:\n  - { id: a, area: Releases, source: [apps/server/src/lib/release.ts] }\n  - { id: b, area: Requests, source: [apps/server/src/lib/intake/] }\n')
+  const plan = (files: string[]) => `<!-- bauherr:plan -->\n## Files\n${files.map((f) => `- ${f}`).join('\n')}`
+  const [a, b, c, d] = [await done('areas', 'feat: Ship faster', 'sha-a1', 1), await done('areas', 'feat: Intake form', 'sha-a2', 2), await done('areas', 'feat: Unmapped', 'sha-a3', 3), await done('areas', 'chore!: Drop old flag', 'sha-a4', 4)]
+  for (const [t, files] of [[a, ['apps/server/src/lib/release.ts']], [b, ['apps/server/src/lib/intake/x.ts']], [c, ['README.md']], [d, ['apps/server/src/lib/release.ts']]] as const) await fake.tickets('acme/areas').comment(String(t.number), plan([...files]))
+  const notes = await ship.renderNotes(payload, products.areas!, fake.tickets('acme/areas'), [a, b, c, d])
+  expect(notes).toMatch(/^### Changed behaviour\n- Drop old flag \(\[#4\]/)
+  expect(notes).toContain('### Releases\n- Ship faster ([#1]')
+  expect(notes).toContain('### Requests\n- Intake form ([#2]')
+  expect(notes).toContain('### Other\n- Unmapped ([#3]')
 })

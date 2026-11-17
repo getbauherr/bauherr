@@ -42,8 +42,9 @@ import { DOCS_CHECK_LABEL, fileDocsTicket } from '../lib/docs-check'
 import { budgetOut } from '../lib/escalation'
 import { inLiveWorkspace, live, purgeDueWorkspaces } from '../lib/workspace-delete'
 import { PREEMPT_GRACE_MS, preemptSweep, preemptedRun } from '../lib/preempt'
+import { startReadyJobs } from '../lib/stage-jobs'
 import { kindOfRun } from '../lib/stage-text'
-import { byKind, is, nameOf, roleOf, type Kind, type Workflow } from '../lib/workflow'
+import { byKind, is, nameOf, roleOfRun, type Kind, type Workflow } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -78,10 +79,10 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
  * `startRunIfNeeded` for a Ticket that may be parked in `stage` (the owner's Retry of its stopped Run): it takes its slot back first (`rejoin`). With the column full it waits for it,
  * no Run starts and the result is null; `pullWaiting` starts the Run when a slot frees.
  */
-export const startRunOrRejoin = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string) => {
+export const startRunOrRejoin = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}) => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true })) as Record<string, any>
   if (t.parkedNeed && t.stage === stage && (await rejoin(payload, t)) === 'waiting') return null
-  return startRunIfNeeded(payload, ticket, stage)
+  return startRunIfNeeded(payload, ticket, stage, extra)
 }
 
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
@@ -224,7 +225,7 @@ export const abandonRun = async (
     // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
       const inserted = await tx.execute(
-        sql`INSERT INTO "runs" ("ticket_id", "stage", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation", "preempted_by", "preempted_for") VALUES (${id(run.ticket)}, ${run.stage}, ${run.mode}, ${run.mode === 'session' ? 'awaiting_session' : 'queued'}, ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb, ${o.preempted ? run.preemptedBy ?? null : null}, ${o.preempted ? run.preemptedFor ?? null : null}) RETURNING "id"`,
+        sql`INSERT INTO "runs" ("ticket_id", "stage", "job", "role", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation", "preempted_by", "preempted_for") VALUES (${id(run.ticket)}, ${run.stage}, ${run.job ?? null}, ${run.job ? run.role ?? null : null}, ${run.mode}, ${run.mode === 'session' ? 'awaiting_session' : 'queued'}, ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb, ${o.preempted ? run.preemptedBy ?? null : null}, ${o.preempted ? run.preemptedFor ?? null : null}) RETURNING "id"`,
       )
       successor = inserted.rows[0].id
     }
@@ -538,6 +539,24 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
   }
 }
 
+const startMissingJobs = async (payload: Payload): Promise<void> => {
+  const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
+    const stages = workflowFor(w.id).stages.filter((s) => s.jobs).map((s) => s.name)
+    return stages.length ? [{ and: [{ workspace: { equals: w.id } }, { stage: { in: stages } }] as Where[] }] : []
+  })
+  if (!or.length) return
+  const tickets = await payload.find({ collection: 'tickets', where: { and: [{ or }, { state: { equals: 'open' } }, NOT_PARKED] }, limit: 200, depth: 1, overrideAccess: true })
+  for (const t of tickets.docs) {
+    try {
+      if (t.waitingFor || hasOpenBlocker(t) || !logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
+      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }, { status: { in: ACTIVE } }] }, overrideAccess: true })).totalDocs) continue
+      await startReadyJobs(payload, t)
+    } catch (e) {
+      payload.logger.error({ err: e, ticket: t.id }, 'startMissingJobs failed')
+    }
+  }
+}
+
 export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; output: { merged: number } }> = {
   slug: 'watch-knowledge-prs',
   schedule: scheduled('0 * * * * *'),
@@ -719,6 +738,7 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
     await pullWaiting(payload)
     await startExpedites(payload)
     await startMissingRuns(payload)
+    await startMissingJobs(payload)
     await preemptSweep(payload)
     await advancePlans(payload)
     await triageSweep(payload)
@@ -755,7 +775,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (!ws.gatewayKey) throw new Error('workspace has no gateway key')
       const ctx = { ...(await buildRunCtx(payload, { run, ticket, repo: src.repo, github, gatewayKey: decrypt(ws.gatewayKey) })), shouldStop: () => preemptedRun(payload, run.id) }
       const model = ctx.run.model ?? ctx.connection.modelByTier[ctx.run.tier]
-      await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', role: roleOf(wf, run.stage)?.id, model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
+      await payload.update({ collection: 'runs', id: run.id, data: { executor: 'runner', role: roleOfRun(wf, run)?.id, model, provider: await providerOf(payload, id(run.workspace), model) }, ...opts })
       const ran = await exec(ctx)
       const { proof, ...stored } = ran.artifacts
       const r = { ...ran, artifacts: stored }

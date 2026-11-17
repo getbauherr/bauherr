@@ -200,6 +200,21 @@ _Avoid_: Task, step
 One agent execution on exactly one Ticket, of one agent Job. Work that starts without a Ticket first creates one.
 _Avoid_: execution, session
 
+**AX (Agent experience engineer)**:
+The team role that keeps a Product easy and safe for agents to change: moves rules into code, checks and proof, and keeps the feature map and the verify skill current. Works inside the Ticket at hand; never files Tickets for findings.
+_Avoid_: DevEx engineer, platform engineer
+
+**Trust pyramid**:
+The order of investment for making agent changes safe: the codebase first, then static analysis, then verification, then prose, and human review least.
+
+**Guard**:
+A deterministic check (type, lint rule, guard test) recorded on a feature in the feature map as `guards[]: {check, because, since}`, that makes a past mistake fail instead of repeating.
+_Avoid_: Rule (prose a person must remember)
+
+**Debt note**:
+A `debt[]` entry on a feature in the feature map for an improvement too big for the Ticket at hand. Never becomes a Ticket by itself.
+_Avoid_: Finding Ticket, backlog item
+
 **Step**:
 One recorded unit inside a Run (an agent turn or tool call), kept for audit and cost; it is not a Job.
 _Avoid_: Action, event

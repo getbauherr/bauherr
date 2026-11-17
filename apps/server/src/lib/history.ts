@@ -82,15 +82,15 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
 export const SKIP_CAUSE = 'skip:'
 
 /** Notes that a Ticket passed a conditional step without entering it (`reason` in plain words); never throws. */
-export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { name: string; kind: string }; reason: string }, opts: { from: string; by?: string }): Promise<void> => {
+export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { name: string; kind: string }; reason: string }, opts: { from: string; by?: string; job?: string }): Promise<void> => {
   try {
     const cause = SKIP_CAUSE + sk.stage.name
     const last = (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticket.id } }, sort: ['-at', '-id'], limit: 1, ...o })).docs[0] as Doc | undefined
-    if (last?.cause === cause && last.note === sk.reason) return
+    if (last?.cause === cause && last.note === sk.reason && (last.job ?? null) === (opts.job ?? null)) return
     const ws = typeof ticket.workspace === 'object' ? ticket.workspace.id : ticket.workspace
     await payload.create({
       collection: 'ticket_events',
-      data: { ticket: ticket.id, workspace: ws, at: new Date().toISOString(), stage: sk.stage.name, stageKind: sk.stage.kind, phase: 'queued', fromStage: opts.from, executor: 'factory', actor: opts.by ?? null, cause, note: sk.reason, workflowVersion: (await activeVersion(payload, ws))?.version ?? null },
+      data: { ticket: ticket.id, workspace: ws, at: new Date().toISOString(), stage: sk.stage.name, stageKind: sk.stage.kind, phase: 'queued', fromStage: opts.from, executor: 'factory', actor: opts.by ?? null, cause, note: sk.reason, job: opts.job ?? null, workflowVersion: (await activeVersion(payload, ws))?.version ?? null },
       ...o,
     })
   } catch (e) {

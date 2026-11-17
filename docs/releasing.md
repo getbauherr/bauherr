@@ -10,6 +10,16 @@ Primary path: the **Releases page** of Bauherr (`/releases`, Admin only). It wor
 
 The open line and the last final are read from the **tags** (also tags without a release, as the CLI fallback makes them). GitLab has no pre-release flag: a tag `X.Y.Z-<suffix>` (every `-rc.N`) is the pre-release convention, reported as pre-release by the GitLab adapter and never `latest`. The tag pipeline of the Product (GitLab CI on tags) builds the image from the tag. The forge contract cannot list GitHub drafts; `createRelease` on GitHub publishes an existing draft of the tag (left by `cut-rc.yml`) instead of creating a second release. If a promote fails after the release was published, the page keeps offering "Finish promoting vX.Y.Z-rc.N" while a Ticket still says rc, or the final release or its CHANGELOG MR is missing; running it again completes the rest.
 
+## Release notes format
+
+One line per Ticket (at most 15 words: the first "what you get" bullet of its staging summary, else the Ticket title), linked to the Ticket, grouped by feature area:
+
+- **Changed behaviour** on top: a `!` in the conventional type or the label `breaking`.
+- **One group per feature area**, biggest first, `Other` last. A Ticket's area is the area of the feature whose `source` paths its merge request changed (most hits win; no hit: `Other`). The map is `products/<slug>/feature-map.yaml` of the Knowledge repo, else `docs/feature-map.yaml` of the Product's own repo (default branch). Without a map the group is `Changes`.
+- **`Internal: N changes`** as the last line: types `ci`, `test`, `refactor`, `chore`, `build`, `deps`, and `docs` without an area. `/release-notes` expands it and filters by area; the staging-summary bullets stay on the Ticket.
+
+`pnpm --filter server regen-release-notes [<product-slug>]` strips the bullet floods from `CHANGELOG.md`; with a Product slug it also rewrites each released version from the stored Ticket data and the Ticket's `releaseNotes`.
+
 The Product needs release mode `manual` (Settings > Product > Release notes) so that the factory does not tag on its own.
 
 ## CLI fallback (GitHub Actions)

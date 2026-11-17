@@ -16,7 +16,7 @@ import { id } from './release'
 import { firstLine } from './waiting-step'
 import { EFFECTIVE } from '../app/(app)/lib/cost'
 import { activityOf, kindOfRun } from './stage-text'
-import { corePack, packDir, stage as stageDef, stagesOfRole, title as stageTitle, type Role, type Workflow } from './workflow'
+import { corePack, jobOf, jobsOf, packDir, stage as stageDef, stagesOfRole, title as stageTitle, type Role, type Workflow } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
@@ -138,7 +138,7 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
       title: role.title,
       skills: role.skills ?? [],
       profile: profileOf(role),
-      stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, skill: s.skill, outcomes: s.outcomeOrder ?? Object.keys(s.outcomes) })),
+      stages: wf.stages.filter((s) => stagesOfRole(wf, role.id).includes(s.name)).map((s) => ({ name: s.name, title: s.title, kind: s.kind, ...((j) => ({ skill: j.skill, outcomes: j.outcomeOrder }))(jobsOf(s).find((x) => x.role === role.id)!) })),
       model: { ...(role.tier && { tier: role.tier }), ...(role.provider && { provider: role.provider }), ...(role.model && { model: role.model }) },
     },
     ...(modelHint && { modelHint }),
@@ -190,7 +190,7 @@ const exception = async (c: Ctx, wsId: number | string) => {
  * Presence check-in plus claim: the next Run of a stage the session's role works, through the same claim path as `claim_next` (`claimNext`), respecting the role's `agents` cap.
  * An exceptions role with nothing normal to claim gets the next stuck Ticket.
  */
-export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[] }) => Promise<Doc | null>) => {
+export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[]; roles: string[] }) => Promise<Doc | null>) => {
   const session = c.session!
   const wsId = id(session.workspace)
   const wf = workflowFor(wsId)
@@ -205,11 +205,12 @@ export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[] }) => P
     if (running.n >= role.agents) return none(`${role.title} is at its limit of ${role.agents} agent${role.agents === 1 ? '' : 's'}`)
   }
   const stages = stagesOfRole(wf, role.id)
-  const claimed = stages.length ? await claimNext({ stages }) : null
+  const claimed = stages.length ? await claimNext({ stages, roles: [role.id] }) : null
   if (claimed) {
     const def = stageDef(wf, claimed.run.stage)
+    const job = def && jobOf(def, claimed.run)
     const mission = missionOf(profileOf(role))
-    return { work: { ...claimed, skill: def?.skill, outcomes: def?.outcomeOrder ?? Object.keys(def?.outcomes ?? {}), roleReminder: `You work as ${role.title} (${role.id}).${mission ? ` Mission: ${mission}` : ''} Stay in this role.` } }
+    return { work: { ...claimed, skill: job?.skill, outcomes: job?.outcomeOrder ?? [], roleReminder: `You work as ${role.title} (${role.id}).${mission ? ` Mission: ${mission}` : ''} Stay in this role.` } }
   }
   if (role.exceptions) {
     const found = await exception(c, wsId)
@@ -396,7 +397,7 @@ export const loadTeam = async (payload: Payload, workspace: number | string, opt
       ...(role.model && { model: role.model }),
       ...(role.agents && { agents: role.agents }),
       exceptions: !!role.exceptions,
-      stages: wf.stages.filter((s) => s.role === role.id).map((s) => ({ name: s.name, title: s.title, kind: s.kind, activity: activityOf(s.kind) })),
+      stages: wf.stages.filter((s) => stagesOfRole(wf, role.id).includes(s.name)).map((s) => ({ name: s.name, title: s.title, kind: s.kind, activity: activityOf(s.kind) })),
       waiting: waiting.get(role.id) ?? 0,
       sessions: rows.filter((r) => r.role === role.id).map(toS),
       autonomous: auto.filter((r) => stageDef(wf, r.stage)?.role === role.id).map((r) => ({ run: r.id, executor: r.executor === 'ci' ? 'ci' : r.executor === 'runner' ? 'runner' : null, ticket: { number: Number(r.number), title: r.title, stage: r.ticket_stage }, startedAt: iso(r.started_at), model: hide ? null : r.model })),
