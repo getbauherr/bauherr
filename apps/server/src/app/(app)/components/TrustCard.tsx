@@ -25,7 +25,7 @@ export function TrustCard({ trust, cost }: { trust: TicketTrust; cost: boolean }
           {trust.groups.map((g) => (
             <li key={g.id} data-testid="trust-group" data-group={g.id}>
               <details>
-                <summary className="small flex cursor-pointer items-center"><Mark pass={g.pass} />{g.label}</summary>
+                <summary className="small flex min-h-6 cursor-pointer items-center"><Mark pass={g.pass} />{g.label}</summary>
                 <ul className="small m-0 mt-1 flex list-none flex-col gap-1 p-0 pl-4 text-muted-foreground">
                   {g.lines.map((l) => <li key={l.text} className="flex"><Mark pass={l.pass} /><span>{l.text}</span></li>)}
                 </ul>
