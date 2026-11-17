@@ -19,7 +19,7 @@ export const stageOf = (wf: Workflow, labels: string[]) => {
 
 /** The factory's own stage move: records it on the Ticket row first, so the poller can tell it from a hand-set forge label (#196), then sets the label and records the move in the Ticket's history (`why`: the machine reason). */
 export const moveStage = async (payload: Payload, ts: TicketSource, t: Record<string, any>, name: string, why = ''): Promise<void> => {
-  const row = (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = ${name} WHERE "product_id" = ${idOf(t.product)} AND "number" = ${t.number} RETURNING "id"`)).rows[0] as { id: number } | undefined
+  const row = (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = ${name}, "stage_since" = now() WHERE "product_id" = ${idOf(t.product)} AND "number" = ${t.number} RETURNING "id"`)).rows[0] as { id: number } | undefined
   await setStage(ts, String(t.number), name)
   if (row) await record(payload, row.id, { stage: name, cause: why ? `moveStage:${why}` : 'moveStage' })
 }
