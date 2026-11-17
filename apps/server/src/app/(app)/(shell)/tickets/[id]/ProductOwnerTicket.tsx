@@ -6,6 +6,8 @@ import { RefineConversation } from '../../../components/conversation/RefineConve
 import { PageTitle } from '../../../components/PageTitle'
 import { ProgressPath } from '../../../components/ProgressPath'
 import { ProofList } from '../../../components/ProofList'
+import { TrustCard } from '../../../components/TrustCard'
+import { ticketTrust } from '../../../../../lib/trust'
 import { KindChip, LaneChip, StatusLine } from '../../../components/RequestParts'
 import { RequestCard } from '../../../components/RequestCard'
 import { Comments } from '../../../components/RequestComments'
@@ -69,6 +71,7 @@ export async function ProductOwnerTicket({ id, view: wanted }: { id: string; vie
         </section>
       )}
       {proof && <div className="max-w-[860px]"><ProofList data={proof} /></div>}
+      <div className="max-w-xs"><TrustCard trust={await ticketTrust(payload, t.id)} cost={false} /></div>
       <section className="flex flex-col gap-2" aria-labelledby="comments">
         <h2 className="heading" id="comments">Comments</h2>
         <Suspense fallback={<div className="h-16 animate-pulse rounded-sm bg-secondary" aria-busy="true" />}>

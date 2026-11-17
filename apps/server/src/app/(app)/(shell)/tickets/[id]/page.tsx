@@ -41,6 +41,8 @@ import { TicketFacts } from '../../../components/TicketFacts'
 import { Badge } from '../../../components/ui/badge'
 import { TicketSplit, PaneTabs } from '../../../components/TicketSplit'
 import { CostPanel, StageStrip } from '../../../components/TicketNow'
+import { TrustCard } from '../../../components/TrustCard'
+import { ticketTrust } from '../../../../../lib/trust'
 import { Table } from '../../../components/ui/table'
 import { hasProductionChecks } from '../../../../../lib/mode'
 import { SUMMARY_MARKER, bullets, section as summarySection } from '../../../../../lib/summary'
@@ -137,6 +139,10 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
 type Derived = Awaited<ReturnType<typeof derive>>
 
 const canExpediteOf = (P: Page) => P.admin && P.ticket.state === 'open' && !P.ticket.expedite && P.ws.expediteLane !== false && !is(P.wf, stageOf(P.wf, P.ticket), 'release', 'container')
+
+async function Trust({ ticket, admin }: { ticket: number; admin: boolean }) {
+  return <TrustCard trust={await ticketTrust(await payloadClient(), ticket)} cost={admin} />
+}
 
 async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { ticket, product, ws, runs, admin } = P
@@ -353,6 +359,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
         {!(ci && ci.summary.rows.length > 0) && <Suspense fallback={null}><PanelForge P={P} d={d} at="links" /></Suspense>}
         {sendBack.length > 0 && <div data-testid="ticket-send-back"><SendBackDialog ticket={ticket.id} options={sendBackOptions(null, null, sendBack)} /></div>}
       </section>
+      <Suspense fallback={<Pulse h="h-32" />}><Trust ticket={ticket.id} admin={admin} /></Suspense>
       {admin && <CostPanel runs={runs} />}
       <details data-testid="ticket-about">
         <summary className="label w-fit cursor-pointer text-muted-foreground">About</summary>

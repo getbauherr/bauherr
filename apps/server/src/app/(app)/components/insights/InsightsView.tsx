@@ -3,11 +3,12 @@ import Link from 'next/link'
 import { title as stageTitle, type Workflow } from '../../../../lib/workflow'
 import { duration, durationHm } from '../../lib/format'
 import type { Cost } from '../../lib/cost'
-import { PHASES, type Insights, type PhaseKey, type TeamTime, type WipAge } from '../../lib/insights'
+import { PHASES, type Insights, type PhaseKey, type ProductTrust, type TeamTime, type WipAge } from '../../lib/insights'
 import { cn } from '@/lib/utils'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
 import { CostSection } from './CostSection'
+import { TrustSection } from './TrustSection'
 
 const SERIES: Record<PhaseKey, string> = { working: 'bg-primary', human: 'bg-warn', ci: 'bg-foreground/45', queued: 'bg-muted-foreground/30' }
 const sec = (s: number | null) => (s == null ? '—' : duration(s))
@@ -28,7 +29,7 @@ const Legend = () => (
 )
 
 /** Time to market of the Tickets that started in the range: tiles, where time goes per stage, throughput and WIP age. Plain markup, no chart library. */
-export function InsightsView({ wf, data, wip, team, cost, days, gateway }: { wf: Workflow; data: Insights; wip: WipAge[]; team?: TeamTime; cost?: Cost; days: number; gateway?: ComponentProps<typeof CostSection>['gateway'] }) {
+export function InsightsView({ wf, data, wip, team, cost, trust, days, gateway }: { wf: Workflow; data: Insights; wip: WipAge[]; team?: TeamTime; cost?: Cost; trust?: ProductTrust[]; days: number; gateway?: ComponentProps<typeof CostSection>['gateway'] }) {
   const max = Math.max(1, ...data.stages.map((s) => s.total))
   const weeks = Math.max(1, ...data.throughput.map((w) => w.tickets))
   return (
@@ -112,6 +113,7 @@ export function InsightsView({ wf, data, wip, team, cost, days, gateway }: { wf:
           <p className="m-0 text-muted-foreground">No open Tickets.</p>
         )}
       </section>
+      {trust && trust.length > 0 && <TrustSection trust={trust} days={days} />}
       {cost && <CostSection cost={cost} days={days} gateway={gateway} />}
       {team && (
         <section className="flex flex-col gap-3" aria-labelledby="team">
