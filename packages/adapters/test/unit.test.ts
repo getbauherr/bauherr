@@ -154,6 +154,25 @@ describe('appAuth (fake key, fake GitHub)', () => {
   });
 });
 
+describe('github reviewPullRequest', () => {
+  it('posts one COMMENT review with RIGHT-side line comments and lists its body with the comments', async () => {
+    const calls: { method: string; url: string; body: any }[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        const url = new URL(String(u));
+        calls.push({ method: init?.method ?? 'GET', url: url.pathname, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (init?.method === 'POST') return json({ id: 9, user: { login: 'bot' }, body: 'sum', submitted_at: 't' });
+        return json(url.pathname.endsWith('/reviews') ? [{ id: 9, user: { login: 'bot' }, body: 'sum', submitted_at: 't' }, { id: 10, user: { login: 'bot' }, body: '' }] : []);
+      },
+    });
+    const c = await b.forge.reviewPullRequest('o/r', 5, { body: 'sum', comments: [{ path: 'a.ts', line: 3, body: 'x' }] });
+    assert.deepEqual(calls[0], { method: 'POST', url: '/repos/o/r/pulls/5/reviews', body: { event: 'COMMENT', body: 'sum', comments: [{ path: 'a.ts', line: 3, side: 'RIGHT', body: 'x' }] } });
+    assert.deepEqual([c.id, c.author, c.body], ['9', 'bot', 'sum']);
+    assert.deepEqual((await b.forge.listPullRequestComments('o/r', 5)).map((x) => x.body), ['sum']);
+  });
+});
+
 describe('github mergePullRequest', () => {
   const run = async (headRepo: string, del: Response = new Response(null, { status: 204 }), stacked: number[] = [], patch: Response | null = null) => {
     const calls: { method: string; url: string; body: any }[] = [];

@@ -4,7 +4,7 @@ import type {
 } from './contracts.js';
 import { parseRelations, renderRelations, type Relations } from './body-convention.js';
 import { createHash } from 'node:crypto';
-import { Conflict, NotQueueableError, linkLabel } from './contracts.js';
+import { Conflict, type InlineComment, NotQueueableError, linkLabel } from './contracts.js';
 import { closeReasonLabel } from './stage.js';
 
 interface FakeTicket {
@@ -19,6 +19,7 @@ interface FakeRepo {
   /** Checks `rerunFailed` switches `checks[sha]` to. */
   rerunChecks: Map<string, Check[]>;
   reruns: Check[][];
+  reviews: { number: number; body: string; comments: InlineComment[] }[];
   commitDates: Map<string, string>;
   releases: Release[];
   tags: string[];
@@ -131,6 +132,11 @@ export class FakeBackend implements Backend {
     return this.repo(repo).reruns;
   }
 
+  /** Test helper: the `reviewPullRequest` calls so far. */
+  reviews(repo: RepoRef): { number: number; body: string; comments: InlineComment[] }[] {
+    return this.repo(repo).reviews;
+  }
+
   /** Test helper: overrides fields of a PR (draft, headRepo, head, ...). */
   setPullRequest(repo: RepoRef, number: number, patch: Partial<PullRequest>): void {
     const pr = this.repo(repo).prs.find((p) => p.number === number);
@@ -196,7 +202,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
       r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
@@ -212,6 +218,12 @@ export class FakeBackend implements Backend {
       return pr;
     };
     const comments = new Map<string, Comment[]>();
+    const post = (repo: RepoRef, n: number, body: string) => {
+      find(repo, n);
+      const c: Comment = { id: String(++this.seq), author: this.actingAs, body, createdAt: this.now() };
+      comments.set(`${repo}#${n}`, [...(comments.get(`${repo}#${n}`) ?? []), c]);
+      return c;
+    };
     const view = (repo: RepoRef, name: string): Repository => ({
       fullName: name, defaultBranch: this.repo(repo).defaultBranch, private: true, url: `https://fake/${name}`,
     });
@@ -250,11 +262,10 @@ export class FakeBackend implements Backend {
         const pr = find(repo, n);
         if (pr.state === 'open') pr.state = 'closed';
       },
-      commentOnPullRequest: async (repo, n, body) => {
-        find(repo, n);
-        const c: Comment = { id: String(++this.seq), author: this.actingAs, body, createdAt: this.now() };
-        comments.set(`${repo}#${n}`, [...(comments.get(`${repo}#${n}`) ?? []), c]);
-        return c;
+      commentOnPullRequest: async (repo, n, body) => post(repo, n, body),
+      reviewPullRequest: async (repo, n, review) => {
+        this.repo(repo).reviews.push({ number: n, ...review });
+        return post(repo, n, review.body);
       },
       listPullRequestComments: async (repo, n) => {
         find(repo, n);
