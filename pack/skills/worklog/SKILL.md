@@ -44,6 +44,7 @@ One pinned factory Comment per Ticket, mirrored to `.bauherr/worklog.md` in the 
 - After a claim, record the claim result's `skipped` reasons as one Decisions sentence (see run-contract).
 - Decisions are dated and carry their consequence. Never delete one; supersede it with a new dated entry.
 - "Current instructions" holds the latest only; history lives in Decisions.
+- A claim about behaviour in a worklog line is tagged `measured`, `inferred` or `guess`.
 - Facts, paths, commands, results: no narrative. A line a successor cannot act on does not belong.
 
 ## Reconcile after a handoff

@@ -49,7 +49,7 @@ const seed = async (opts: { branch?: string; rank?: string; mergeSha?: string } 
   const head = opts.branch ?? `bauherr/${issue.number}-x`
   await fake.forge.createBranch(repo, head)
   fake.commit(repo, head, 'src/a.ts', 'x')
-  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: '## Evidence\nx', head, base: 'main' })
+  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: '## Evidence\nx\n\n## Blast radius\nSure: `read the code`', head, base: 'main' })
   const run = await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'build', mode: 'session', status: 'awaiting_session', workspace: ws, artifacts: { prUrl: pr.url } }, ...o })
   return { id: ticket.id as number, runId: run.id as number, pr }
 }

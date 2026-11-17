@@ -20,7 +20,7 @@ let owner: Doc
 let productOwner: Doc
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
-const EVIDENCE = 'Refs it\n\n## Evidence\n| Goal | verified |\n'
+const EVIDENCE = 'Refs it\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n'
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 const PLAN = (items: string[]) => `<!-- bauherr:plan -->\n## Goal\n- g\n\n## Sub-tickets\n${items.map((t, i) => `- **${t}** — body ${i}.${i ? `\n  after: ${items[0]}` : ''}`).join('\n')}\n`
 

@@ -16,7 +16,7 @@ let actions: typeof import('../src/lib/actions')
 let call: (actor: unknown, name: string, input: unknown) => Promise<any>
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
-const EVIDENCE = 'x\n\n## Evidence\n| Goal | verified |\n'
+const EVIDENCE = 'x\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n'
 
 let testDb: TestDb
 beforeAll(async () => {

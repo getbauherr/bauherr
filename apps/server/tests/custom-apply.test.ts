@@ -44,7 +44,7 @@ const buildTicket = async ({ ws, product, repo }: { ws: number; product: number;
   const t = (await payload.create({ collection: 'tickets', data: { title: 't', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', product, workspace: ws }, ...o })).id as number
   const head = `bauherr/${issue.number}-x`
   await fake.forge.createBranch(repo, head)
-  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: 'x\n\n## Evidence\n| Goal | verified |\n', head, base: 'main' })
+  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: 'x\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n', head, base: 'main' })
   fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'completed', conclusion: 'success' }])
   return t
 }

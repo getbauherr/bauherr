@@ -12,7 +12,7 @@ let release: typeof import('../src/lib/release')
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 const check = (id: number, conclusion: string | null, status = conclusion ? 'completed' : 'in_progress') => ({ id, runId: 7, name: 'ci', status, conclusion, url: `https://fake/run/${id}` })
-const EVIDENCE = 'Closes it\n\n## Evidence\n| Goal | verified |\n'
+const EVIDENCE = 'Closes it\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n'
 
 let testDb: TestDb
 beforeAll(async () => {

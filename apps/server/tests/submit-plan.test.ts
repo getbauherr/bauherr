@@ -100,7 +100,7 @@ const finish = async (stage: 'plan' | 'build', input: Record<string, unknown>) =
     const head = `bauherr/${n}-x`
     await fake.forge.createBranch(repo, head)
     fake.commit(repo, head, 'a.ts', n)
-    input = { ...input, prUrl: (await fake.forge.openPullRequest(repo, { title: 't', head, base: 'main' })).url }
+    input = { ...input, prUrl: (await fake.forge.openPullRequest(repo, { title: 't', body: '## Blast radius\nSure: `read the code`', head, base: 'main' })).url }
   }
   await call(member, 'finish_run', { runId: run.id, leaseToken, ...input })
   const ticket = (await payload.findByID({ collection: 'tickets', id: (run.ticket as any).id ?? run.ticket, ...o })) as Record<string, any>

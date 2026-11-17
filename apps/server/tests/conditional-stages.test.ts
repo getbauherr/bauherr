@@ -64,7 +64,7 @@ const ticketWith = async (title: string, files: string[], labels: string[] = [],
   const head = `bauherr/${issue.number}-feat`
   await fake.forge.createBranch(r, head)
   for (const f of files) fake.commit(r, head, f, `x${Math.random()}`)
-  const pr = await fake.forge.openPullRequest(r, { title, body: 'Done\n\n## Evidence\n| Goal | verified |\n', head, base: 'main' })
+  const pr = await fake.forge.openPullRequest(r, { title, body: 'Done\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n', head, base: 'main' })
   fake.setChecks(r, pr.headSha, green)
   await payload.create({ collection: 'runs', data: { ticket: id, stage: 'build', kind: 'build', status: 'succeeded', mode: 'session', workspace: ws, artifacts: { prUrl: pr.url } }, ...o })
   return id
