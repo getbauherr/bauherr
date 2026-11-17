@@ -243,3 +243,15 @@ it('a file with jobs applies; a job with an unknown skill is refused', async () 
   const again = await factory.applyFactory(payload, a, await factory.exportFactory(payload, a), by)
   expect(again).toMatchObject({ ok: true, changed: false })
 })
+
+it('a removed Job with an active Run is held, like a removed stage; once the Run ended the Job can go', async () => {
+  const t = await seedTicket(a, 'acme/web', 'audit')
+  const run = (await payload.create({ collection: 'runs', data: { ticket: t, stage: 'audit', kind: 'agent', job: 'ux', status: 'running', mode: 'autonomous', workspace: a }, ...o })).id as number
+  const swap = () => edit(a, (d) => (stageDoc(d, 'audit').jobs = [{ id: 'sec', role: 'security', skill: 'mr-security-review' }]))
+  const refused = await factory.applyFactory(payload, a, await swap(), by)
+  expect(refused.ok).toBe(false)
+  expect(refused.findings.join()).toMatch(/job "ux" of stage "audit" is removed but has 1 active Run\(s\)/)
+  expect(refused.held).toEqual([{ stage: 'audit/ux', tickets: 0, runs: 1 }])
+  await payload.update({ collection: 'runs', id: run, data: { status: 'cancelled' }, ...o })
+  expect(await factory.applyFactory(payload, a, await swap(), by)).toMatchObject({ ok: true, changed: true })
+})

@@ -5,7 +5,7 @@ import { IN_FLIGHT, LIVE, WIP, askedBy, jobOf, lint, parseFactory, type Addresse
 
 export * from './workflow-rules'
 
-export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
+export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean; jobs?: { id: string; kind: 'agent' | 'human'; role?: string; blocking: boolean; needs: string[] }[] }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
 
 const job = ({ id, kind, role, skill, needs, when, blocking, outcomes }: Record<string, any>, stageOutcomes: string[]): JobDef => {
   const o: Record<string, string> = outcomes ?? Object.fromEntries(stageOutcomes.map((k, i) => [k, i ? k : 'done']))
@@ -110,7 +110,7 @@ export const graph = (wf: Workflow): Graph => {
   const nodes: Graph['nodes'] = []
   const edges: Graph['edges'] = []
   for (const s of wf.stages) {
-    nodes.push({ id: s.name, title: s.title, kind: s.kind, ...(s.role && { role: s.role }), checkpoint: s.kind === 'human' })
+    nodes.push({ id: s.name, title: s.title, kind: s.kind, ...(s.role && { role: s.role }), checkpoint: s.kind === 'human', ...(s.jobs && { jobs: s.jobs.map(({ id, kind, role, blocking, needs }) => ({ id, kind, ...(role && { role }), blocking, needs })) }) })
     const checkpoint = (suffix: string, label: string) => nodes.push({ id: `${s.name}:${suffix}`, title: label, kind: 'human', checkpoint: true })
     if (s.kind === 'triage') checkpoint('refine', GRAPH_CHECKPOINT.refine)
     if (s.gate === 'human') checkpoint('gate', s.kind === 'plan' ? GRAPH_CHECKPOINT.plan : GRAPH_CHECKPOINT.staging)

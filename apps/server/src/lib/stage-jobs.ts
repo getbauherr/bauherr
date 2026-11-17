@@ -4,7 +4,7 @@ import { ACTIVE, startRunIfNeeded } from '../jobs'
 import { advance } from './advance'
 import { workflowFor } from './factory'
 import { matches } from './glob'
-import { SKIP_CAUSE, skipEvent } from './history'
+import { jobEvent, SKIP_CAUSE, skipEvent } from './history'
 import { cas } from './release'
 import { factsOf } from './route'
 import { jobOf, stage as stageDef } from './workflow'
@@ -92,7 +92,10 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
       if (verdict && !verdict.match) {
         await skipEvent(payload, t, { stage: def, reason: verdict.reason }, { from: t.stage, by: 'factory', job: j.id })
         done.add(j.id)
-      } else await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, { job: j.id, kind: 'agent', role: j.role })
+      } else {
+        const started = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, { job: j.id, kind: 'agent', role: j.role })
+        if (started.created) await jobEvent(payload, t, { stage: t.stage, job: j.id, what: 'queued', run: started.run.id })
+      }
     }
   }
   if (def.kind === 'plan' || done.size < def.jobs.length) return
@@ -108,6 +111,7 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
 export const finishJob = async (payload: Payload, run: Doc, ticket: Doc, outcome: string, note?: string): Promise<void> => {
   const job = jobOf(stageDef(workflowFor(run.workspace), run.stage)!, run)!
   const to = job.outcomes[outcome]!
+  await jobEvent(payload, ticket, { stage: run.stage, job: job.id, what: 'finished', run: run.id, outcome })
   if (!job.blocking || to === 'done') return startReadyJobs(payload, ticket)
   await closeAndAdvance(payload, ticket, to, blockedClaim(run.stage, run.id), { blocker: { ...run, outcome }, note })
 }

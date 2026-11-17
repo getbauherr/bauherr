@@ -144,6 +144,17 @@ export const applyFactory = async (payload: Payload, workspaceId: number, yaml: 
         held.push({ stage: s.name, tickets, runs })
       }
     }
+    for (const s of old.stages) {
+      const kept = wf.stages.find((x) => x.name === s.name)
+      for (const j of kept ? s.jobs ?? [] : []) {
+        if (j.id === s.name || kept!.jobs?.some((x) => x.id === j.id)) continue
+        const runs = await count(sql`SELECT count(*) AS n FROM "runs" WHERE "workspace_id" = ${workspaceId} AND "stage" = ${s.name} AND "job" = ${j.id} AND "status" IN ${LIVE_RUNS}`)
+        if (runs) {
+          problems.push(`job "${j.id}" of stage "${s.name}" is removed but has ${runs} active Run(s): wait for them or cancel them first`)
+          held.push({ stage: `${s.name}/${j.id}`, tickets: 0, runs })
+        }
+      }
+    }
     for (const [from, to] of Object.entries(migrate)) {
       const tickets = await count(sql`SELECT count(*) AS n FROM "tickets" WHERE "workspace_id" = ${workspaceId} AND ("stage" = ${from} OR "waiting_for" = ${from} OR "factory_stage" = ${from})`)
       const runs = await count(sql`SELECT count(*) AS n FROM "runs" WHERE "workspace_id" = ${workspaceId} AND "stage" = ${from}${kindOf(old, from) === kindOf(wf, to) ? sql`` : sql` AND "status" IN ${LIVE_RUNS}`}`)

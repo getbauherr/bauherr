@@ -81,6 +81,30 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
 /** The cause of an event that only notes a skipped conditional step: it is no visit of that stage, takes no time and is left out of the spans and the flow metrics. */
 export const SKIP_CAUSE = 'skip:'
 
+/** The cause of an event that only notes a Job of a stage (`job:<id>:queued` or `job:<id>:finished`): like a skip it is no visit of a stage and is left out of the spans and the flow metrics. */
+export const JOB_CAUSE = 'job:'
+
+/** Records that a Job of the stage was queued (its Run created) or finished (`outcome`); one row per call, never deduplicated, never throws. */
+export const jobEvent = async (payload: Payload, ticket: Doc, e: { stage: string; job: string; what: 'queued' | 'finished'; run?: number | string; outcome?: string | null }): Promise<void> => {
+  try {
+    const wf = workflowFor(ticket.workspace)
+    const ws = typeof ticket.workspace === 'object' ? ticket.workspace.id : ticket.workspace
+    await payload.create({
+      collection: 'ticket_events',
+      data: { ticket: ticket.id, workspace: ws, at: new Date().toISOString(), stage: e.stage, stageKind: kindOf(wf, e.stage) ?? null, phase: e.what === 'queued' ? 'queued' : 'working', fromStage: e.stage, executor: 'factory', cause: `${JOB_CAUSE}${e.job}:${e.what}`, job: e.job, run: e.run ?? null, outcome: e.outcome ?? null, workflowVersion: (await activeVersion(payload, ws))?.version ?? null },
+      ...o,
+    })
+  } catch (err) {
+    payload.logger.warn({ err, ticket: ticket.id, job: e.job }, 'recording a job event failed')
+  }
+}
+
+/** The Job events of the Ticket in order: `{ stage, job, what, at, run, outcome }`. */
+export const jobs = async (payload: Payload, ticketId: number | string): Promise<{ stage: string; job: string; what: 'queued' | 'finished'; at: string; run: number | null; outcome: string | null }[]> =>
+  ((await payload.find({ collection: 'ticket_events', where: { and: [{ ticket: { equals: ticketId } }, { cause: { like: JOB_CAUSE } }] }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[])
+    .filter((e) => String(e.cause).startsWith(JOB_CAUSE))
+    .map((e) => ({ stage: e.stage, job: e.job, what: String(e.cause).endsWith(':queued') ? 'queued' : 'finished', at: e.at, run: e.run ? (typeof e.run === 'object' ? e.run.id : e.run) : null, outcome: e.outcome ?? null }))
+
 /** Notes that a Ticket passed a conditional step without entering it (`reason` in plain words); never throws. */
 export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { name: string; kind: string }; reason: string }, opts: { from: string; by?: string; job?: string }): Promise<void> => {
   try {
@@ -104,17 +128,17 @@ export const skips = async (payload: Payload, ticketId: number | string): Promis
     .filter((e) => String(e.cause).startsWith(SKIP_CAUSE))
     .map((e) => ({ stage: e.stage, at: e.at, reason: e.note ?? '' }))
 
-export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; note: string | null; backfilled: boolean; workflowVersion: number | null }
+export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; note: string | null; backfilled: boolean; workflowVersion: number | null; job?: string | null }
 
 /** The Ticket's events in order; `until` is the next event's `at` (now for the newest, which is its own `at` once closed). */
 export const timeline = async (payload: Payload, ticketId: number | string): Promise<Span[]> => {
-  const events = ((await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticketId } }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[]).filter((e) => !String(e.cause).startsWith(SKIP_CAUSE))
+  const events = ((await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticketId } }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[]).filter((e) => !String(e.cause).startsWith(SKIP_CAUSE) && !String(e.cause).startsWith(JOB_CAUSE))
   return events.map((e, i) => {
     const until = events[i + 1]?.at ?? (e.phase === 'closed' ? e.at : new Date().toISOString())
     return {
       id: e.id, at: e.at, until, seconds: (new Date(until).getTime() - new Date(e.at).getTime()) / 1000,
       stage: e.stage, stageKind: e.stageKind, phase: e.phase, fromStage: e.fromStage, outcome: e.outcome, run: e.run ? (typeof e.run === 'object' ? e.run.id : e.run) : null,
-      executor: e.executor, actor: e.actor, cause: e.cause, note: e.note ?? null, backfilled: !!e.backfilled, workflowVersion: e.workflowVersion ?? null,
+      executor: e.executor, actor: e.actor, cause: e.cause, note: e.note ?? null, backfilled: !!e.backfilled, workflowVersion: e.workflowVersion ?? null, job: e.job ?? null,
     }
   })
 }
@@ -135,7 +159,7 @@ export const flow = async (payload: Payload, workspace: number | string, w: { fr
     WITH ev AS (
       SELECT e."ticket_id", e."stage", e."stage_kind", e."phase", e."at", LEAD(e."at") OVER (PARTITION BY e."ticket_id" ORDER BY e."at", e."id") AS "until"
       FROM "ticket_events" e JOIN "tickets" t ON t."id" = e."ticket_id"
-      WHERE e."workspace_id" = ${workspace}::int AND COALESCE(e."cause", '') NOT LIKE ${SKIP_CAUSE + '%'} ${w.product == null ? sql`` : sql`AND t."product_id" = ${w.product}::int`}
+      WHERE e."workspace_id" = ${workspace}::int AND COALESCE(e."cause", '') NOT LIKE ${SKIP_CAUSE + '%'} AND COALESCE(e."cause", '') NOT LIKE ${JOB_CAUSE + '%'} ${w.product == null ? sql`` : sql`AND t."product_id" = ${w.product}::int`}
     ), span AS (
       SELECT "ticket_id", "stage", "stage_kind", "phase", "at", EXTRACT(EPOCH FROM (COALESCE("until", CASE WHEN "phase" = 'closed' THEN "at" ELSE now() END) - "at"))::float8 AS "sec" FROM ev
     ), cohort AS (

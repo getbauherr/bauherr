@@ -317,3 +317,13 @@ describe('jobs in the plan stage', () => {
     expect(w.lint(d).join('\n')).toContain(message)
   })
 })
+
+it('graph lists the Jobs of a stage on its node', () => {
+  const d = defaultDoc()
+  const p = d.workflow.stages.find((x: any) => x.name === 'plan')
+  delete p.gate
+  p.jobs = [{ id: 'plan' }, { id: 'ax-scan', role: 'security', skill: 'harden', blocking: false }, { id: 'approve', kind: 'human' }]
+  const node = w.graph(w.compile(d)).nodes.find((n) => n.id === 'plan')!
+  expect(node.jobs).toEqual([{ id: 'plan', kind: 'agent', role: 'engineer', blocking: true, needs: [] }, { id: 'ax-scan', kind: 'agent', role: 'security', blocking: false, needs: ['plan'] }])
+  expect(w.graph(wf).nodes.find((n) => n.id === 'plan')?.jobs).toBeUndefined()
+})

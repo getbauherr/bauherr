@@ -213,3 +213,14 @@ it('liveness sees a failed Job Run although a sibling succeeded after it', async
   const { deadTickets } = await import('../src/lib/liveness')
   expect((await deadTickets(payload, ws)).find((d) => d.ticket.id === id)).toMatchObject({ cause: 'run-failed' })
 })
+
+it('Job events record each Job Run queued and finished, and stay out of the timeline', async () => {
+  const history = await import('../src/lib/history')
+  const id = await audited('events', ['src/lib/a.ts'])
+  await finish(id, 'security', 'pass')
+  const causes = (await events(id)).map((e) => e.cause).filter((c) => String(c).startsWith('job:'))
+  expect(causes).toEqual(expect.arrayContaining(['job:security:queued', 'job:test:queued', 'job:security:finished']))
+  expect(causes.filter((c) => c === 'job:security:queued')).toHaveLength(1)
+  expect((await history.timeline(payload, id)).some((s) => String(s.cause).startsWith('job:'))).toBe(false)
+  expect(await history.jobs(payload, id)).toEqual(expect.arrayContaining([expect.objectContaining({ stage: 'audit', job: 'security', what: 'finished', outcome: 'pass' })]))
+})

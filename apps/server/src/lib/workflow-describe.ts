@@ -8,6 +8,7 @@ import { whenClause } from './workflow-when'
 const roles = (d: Doc): Doc => d?.team?.roles ?? {}
 const roleTitle = (d: Doc, id: unknown): string => roles(d)[String(id)]?.title ?? String(id)
 const limit = (n: unknown): string => (typeof n === 'number' ? String(n) : 'no limit')
+const gateOf = (s: Doc): unknown => s.gate ?? ((j) => j && { by: j.by ?? 'bauherr' })(s.jobs?.find((x: Doc) => x?.kind === 'human'))
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 /** The step before `name` in the flow (containers skipped). */
 const before = (list: Doc[], name: string): Doc | undefined => {
@@ -48,15 +49,28 @@ export const describeChanges = (a: Doc, b: Doc): string[] => {
     if (!same(x.when, y.when)) out.push(y.when ? `${t} now runs only ${whenClause(y.when)}` : `${t} now runs for every ticket`)
     if (x.skill !== y.skill) out.push(`${t}: now follows the skill ${y.skill ?? 'none'}`)
     if (x.wip !== y.wip) out.push(`${t}: at most ${limit(x.wip)} → ${limit(y.wip)} tickets at a time`)
-    if (!!askedBy(x.gate) !== !!askedBy(y.gate)) out.push(`${t}: you are ${y.gate ? 'now' : 'no longer'} asked to ${kind === 'plan' ? 'approve the plan' : 'accept the result on staging'}`)
+    if (!!askedBy(gateOf(x)) !== !!askedBy(gateOf(y))) out.push(`${t}: you are ${gateOf(y) ? 'now' : 'no longer'} asked to ${kind === 'plan' ? 'approve the plan' : 'accept the result on staging'}`)
     if (!!askedBy(x.production_gate) !== !!askedBy(y.production_gate)) out.push(`${t}: you are ${y.production_gate ? 'now' : 'no longer'} asked to approve production`)
     const who = (what: string, a: unknown, b: unknown) => {
       if (a !== undefined && b !== undefined && askedBy(a) !== askedBy(b)) out.push(`${t}: ${what} is now asked of the ${ASKED[askedBy(b) ?? 'bauherr']} instead of the ${ASKED[askedBy(a) ?? 'bauherr']}`)
     }
-    who(kind === 'plan' ? 'approving the plan' : 'accepting the result on staging', x.gate, y.gate)
+    who(kind === 'plan' ? 'approving the plan' : 'accepting the result on staging', gateOf(x), gateOf(y))
     who('approving production', x.production_gate, y.production_gate)
     who('answering open questions', x.refine ?? { by: 'bauherr' }, y.refine ?? { by: 'bauherr' })
     if (kind === 'human' && askedBy({ by: x.by }) !== askedBy({ by: y.by })) out.push(`${t}: the decision is now asked of the ${ASKED[askedBy({ by: y.by }) ?? 'bauherr']} instead of the ${ASKED[askedBy({ by: x.by }) ?? 'bauherr']}`)
+    const ja = new Map<string, Doc>((x.jobs ?? []).filter((j: Doc) => j?.kind !== 'human').map((j: Doc) => [String(j.id), j]))
+    const jb = new Map<string, Doc>((y.jobs ?? []).filter((j: Doc) => j?.kind !== 'human').map((j: Doc) => [String(j.id), j]))
+    for (const [id, j] of jb) {
+      const o = ja.get(id)
+      if (!o) out.push(`${t}: new job ${id}${j.role ? `, worked by ${roleTitle(b, j.role)}` : ''}${j.when ? `, only ${whenClause(j.when)}` : ''}${j.blocking === false ? ', does not block' : ''}`)
+      else if (id !== y.name && !same(o, j)) {
+        if (o.role !== j.role) out.push(`${t}: job ${id} is now worked by ${j.role ? roleTitle(b, j.role) : 'no agent'}`)
+        if (!same(o.when, j.when)) out.push(j.when ? `${t}: job ${id} now runs only ${whenClause(j.when)}` : `${t}: job ${id} now runs for every ticket`)
+        if ((o.blocking ?? true) !== (j.blocking ?? true)) out.push(`${t}: job ${id} ${j.blocking === false ? 'no longer blocks' : 'now blocks'} the step`)
+        if (!same({ ...o, role: 0, when: 0, blocking: 0 }, { ...j, role: 0, when: 0, blocking: 0 })) out.push(`${t}: job ${id} changed`)
+      }
+    }
+    for (const id of ja.keys()) if (!jb.has(id)) out.push(`${t}: job ${id} removed`)
     if (!same(x.exclude_labels, y.exclude_labels)) out.push(`${t}: the labels that keep a ticket out of the factory changed`)
     for (const key of new Set([...Object.keys(x.outcomes ?? {}), ...Object.keys(y.outcomes ?? {})])) {
       const from = x.outcomes?.[key]
