@@ -9,7 +9,7 @@ import { SKILL_TEMPLATES, template, templateBlock } from './templates'
 import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, sendBack, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, mergedOwnMr, prOf, releaseMerged } from './release'
-import { preReviewFailures } from './pre-review'
+import { preReviewReport } from './pre-review'
 import { ARTIFACT_KINDS } from '@bauherr/runner'
 import { ArtifactRejected, attachProof, headShaOf } from './artifacts'
 import { logins } from './forge-channel'
@@ -563,13 +563,13 @@ export const tools: Tool[] = [
   {
     name: 'run_checks',
     access: 'agent',
-    description: 'The Product\'s pre-review checks against the Ticket\'s open MR and the Run\'s Evidence so far: {failures: []} means request_review passes them. Other scorecard rules are listed with result unknown.',
+    description: 'The Product\'s pre-review checks against the Ticket\'s open MR and the Run\'s Evidence so far: {failures: []} means request_review passes them. Other scorecard rules are listed with result unknown. `failures` also carries the fake-green guard (deleted tests or test cases, added skip/only/todo, loosened coverage, lint or retries settings; allowed per file by a plan line `Allowed: remove tests <path>`); `warnings` carries the diff budget (a diff over 400 changed lines without lockfiles, generated files and tests).',
     inputSchema: obj({ ...runId, ...leaseToken }, ['runId', 'leaseToken']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
-      const failures = await preReviewFailures(c.payload, await getTicket(c, id(run.ticket)), run.evidence ?? '')
-      return { failures, rules: walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' })), leaseExpiresAt }
+      const { failures, warnings } = await preReviewReport(c.payload, await getTicket(c, id(run.ticket)), run.evidence ?? '')
+      return { failures, warnings, rules: walk(PACK()).filter((f) => f.startsWith('rules/')).map((rule) => ({ rule, result: 'unknown' })), leaseExpiresAt }
     },
   },
   {
