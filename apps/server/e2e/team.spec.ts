@@ -5,7 +5,7 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// The roles are the ones every pack has (orchestrator, engineer, reviewer): the e2e-fake job runs the 3-role gated pack. The orchestrator has a session, so it is never the default role. Read-only: the test that saves a role lives in workflow-editor.spec.ts (both write the Workspace's factory file, so they share one worker). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
+// The roles are the ones every pack has (orchestrator, engineer, reviewer): the e2e-fake job runs the 3-role gated pack. The orchestrator has a session, so it is never the default role. The Role settings test saves the reviewer's agents and restores it (it writes the Workspace's factory file, so it shares one worker with workflow-editor.spec.ts). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
 
 const signIn = async (page: Page, who = email) => {
   await page.goto('/login')
@@ -147,13 +147,41 @@ test('Insights lists the sessions with their active time', async ({ page }) => {
   await expect(page.getByTestId('team-sessions')).toContainText('orchestrator-1@laptop')
 })
 
-test('a member sees the Agent team page but cannot change a role', async ({ page }) => {
+test('Role settings opens a drawer: an Admin saves and sees "Saved"; Esc returns focus to the trigger', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/team')
+  await expect(page.getByRole('table', { name: 'Roles' }).getByRole('columnheader')).toHaveText(['Role', 'Model', 'Agents', 'Skills', 'Waiting', 'Actions'])
+  const trigger = page.locator('[data-testid=roles-table] tr[data-role=reviewer]').getByRole('button', { name: 'Role settings' })
+  await trigger.click()
+  const drawer = page.getByRole('dialog', { name: 'Reviewer' })
+  await expect(drawer.getByText('Only the owner can change a role.')).toHaveCount(0)
+  await drawer.getByLabel('No limit').uncheck()
+  await drawer.getByRole('button', { name: 'More agents' }).click()
+  await drawer.getByRole('button', { name: 'Save' }).click()
+  await expect(drawer.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(drawer).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await expect(page.locator('[data-testid=roles-table] tr[data-role=reviewer]')).toContainText('2 agents')
+  await trigger.click()
+  await drawer.getByLabel('No limit').check()
+  await drawer.getByRole('button', { name: 'Save' }).click()
+  await expect(drawer.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible()
+})
+
+test('a member sees the Agent team page and the Roles table but cannot change a role', async ({ page }) => {
   await signIn(page, 'member@example.com')
   await page.goto('/team')
   await expect(page.getByRole('heading', { name: 'Agent team', level: 1 })).toBeVisible()
-  await page.locator('[data-testid=role-details][data-role=engineer] summary').click()
-  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
-  await expect(page.locator('[data-testid=role-details][data-role=engineer]').getByText('Only the owner can change a role.')).toBeVisible()
+  const trigger = page.locator('[data-testid=roles-table] tr[data-role=engineer]').getByRole('button', { name: 'Role settings' })
+  await trigger.click()
+  const drawer = page.getByRole('dialog', { name: 'Software engineer' })
+  await expect(drawer.getByRole('button', { name: 'Save' })).toBeDisabled()
+  await expect(drawer.getByRole('button', { name: 'Fewer agents' })).toBeDisabled()
+  await expect(drawer.getByLabel('No limit')).toBeDisabled()
+  await expect(drawer.getByText('Only the owner can change a role.')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
 })
 
 test('the header pill and the sidebar dot show who is working on every page; Settings does not list the Agent team', async ({ page }) => {

@@ -1,7 +1,6 @@
 'use client'
 import * as SelectPrimitive from '@radix-ui/react-select'
-import { useRef, useState, type KeyboardEvent } from 'react'
-import { cn } from '@/lib/utils'
+import { useState, type ElementType } from 'react'
 import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -9,59 +8,13 @@ import { Markdown } from '../Markdown'
 import { SubmitButton } from '../SubmitButton'
 import { renderMarkdown } from '../../lib/markdown'
 import { Chip } from './Chip'
-import { agentsLabel, groupOptions, live, modelName, modelValue, profileMarkdown, tagline } from './helpers'
+import { agentsLabel, groupOptions, modelName, modelValue, profileMarkdown } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
 import type { ModelOption, RoleSettings, SaveResult, TeamRole } from './types'
 
 const MAX_AGENTS = 10
 
-type Props = {
-  /** The role chosen on load; the first when it names none. */
-  initialRole?: string
-  roles: TeamRole[]
-}
-
 export type SettingsProps = { modelOptions: ModelOption[]; canEdit: boolean; onSave: (roleId: string, settings: RoleSettings) => SaveResult | Promise<SaveResult> }
-
-function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: boolean; hot: boolean; onPick: () => void; onHot: (on: boolean) => void }) {
-  const working = role.sessions.filter((s) => s.status === 'working').length
-  const connected = live(role.sessions)
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={chosen}
-      tabIndex={chosen ? 0 : -1}
-      data-role={role.id}
-      onClick={onPick}
-      onMouseEnter={() => onHot(true)}
-      onMouseLeave={() => onHot(false)}
-      onFocus={() => onHot(true)}
-      onBlur={() => onHot(false)}
-      className={cn(
-        'flex w-64 shrink-0 cursor-pointer items-center gap-3 rounded-md border bg-card p-3 text-left outline-none transition-[transform,background-color,border-color] duration-(--duration-state) ease-(--ease-out) focus-visible:ring-2 focus-visible:ring-ring lg:w-full',
-        chosen ? '-translate-y-0.5 border-primary bg-accent ring-2 ring-primary' : 'border-border hover:bg-secondary',
-      )}
-    >
-      <RoleAvatar avatar={role.avatar} size="lg" animate={chosen || hot} />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="heading truncate">{role.title}</span>
-        <span className="small line-clamp-2 text-muted-foreground">{tagline(role.profile)}</span>
-        {role.skills.length > 0 && <span className="flex flex-wrap gap-1">{role.skills.slice(0, 3).map((k) => <Chip key={k} muted>{k}</Chip>)}</span>}
-        <span className="small flex flex-wrap items-center gap-x-2 gap-y-1">
-          {modelName(role) && <Chip>{modelName(role)}</Chip>}
-          <span className="text-muted-foreground">{agentsLabel(role.agents)}</span>
-          {connected > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <span className={cn('size-2 rounded-full', working ? 'bg-primary' : 'bg-muted-foreground')} aria-hidden />
-              {working ? `${working} working` : `${connected} idle`}
-            </span>
-          )}
-        </span>
-      </span>
-    </button>
-  )
-}
 
 export function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: SettingsProps & { role: TeamRole }) {
   const current = modelValue(role)
@@ -115,7 +68,7 @@ export function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Settin
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <SubmitButton variant="outline" disabled={!canEdit || !model || !dirty}>Save</SubmitButton>
+        <SubmitButton variant="default" disabled={!canEdit || !model || !dirty}>Save</SubmitButton>
         {!canEdit && <span className="small text-muted-foreground">Only the owner can change a role.</span>}
         {saved && <span className="small text-ok" role="status">Saved</span>}
       </div>
@@ -124,8 +77,8 @@ export function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Settin
   )
 }
 
-/** Avatar, title, model, skills, profile and stages of a role. */
-export function RoleBody({ role, heading: Heading = 'h2' }: { role: TeamRole; heading?: 'h2' | 'h3' }) {
+/** Avatar, title (`heading`), model, skills, profile and stages of a role. */
+export function RoleBody({ role, heading: Heading = 'h2' }: { role: TeamRole; heading?: ElementType }) {
   return (
     <>
       <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -145,38 +98,5 @@ export function RoleBody({ role, heading: Heading = 'h2' }: { role: TeamRole; he
         {role.exceptions && <p className="small m-0 text-muted-foreground">Handles stuck tickets.</p>}
       </div>
     </>
-  )
-}
-
-/** Read-only roster of the setup wizard: one card per role and the chosen role's details. */
-export function TeamSelect({ initialRole, roles }: Props) {
-  const [id, setId] = useState(roles.find((r) => r.id === initialRole)?.id ?? roles[0]?.id)
-  const [hot, setHot] = useState<string>()
-  const group = useRef<HTMLDivElement>(null)
-  const role = roles.find((r) => r.id === id)
-  if (!role) return null
-
-  const pick = (next: number) => {
-    const to = roles[(next + roles.length) % roles.length]!
-    setId(to.id)
-    group.current?.querySelector<HTMLElement>(`[data-role="${to.id}"]`)?.focus()
-  }
-  const at = roles.indexOf(role)
-  const onKey = (e: KeyboardEvent) => {
-    const next = { ArrowDown: at + 1, ArrowRight: at + 1, ArrowUp: at - 1, ArrowLeft: at - 1, Home: 0, End: roles.length - 1 }[e.key]
-    if (next === undefined) return
-    e.preventDefault()
-    pick(next)
-  }
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[24rem_minmax(0,1fr)]">
-      <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-1">
-        {roles.map((r) => <Card key={r.id} role={r} chosen={r.id === id} hot={hot === r.id} onPick={() => setId(r.id)} onHot={(on) => setHot(on ? r.id : undefined)} />)}
-      </div>
-      <section aria-label={`${role.title} settings`} className="flex flex-col gap-6 rounded-md border border-border bg-card p-6">
-        <RoleBody role={role} />
-      </section>
-    </div>
   )
 }

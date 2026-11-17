@@ -3,7 +3,9 @@ import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { PARKING_NEEDS, parkingNeed } from '../src/lib/needs-you'
 import { wipLimit, wipLimitsError } from '../src/lib/wip-limits'
+import { DEFAULT } from '../src/lib/workflow'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -236,7 +238,7 @@ describe('counting and workspaces', () => {
     expect(await reload(c.id)).toMatchObject({ stage: 'plan', waitingFor: 'build' })
     expect(await runs(c.id, 'build')).toHaveLength(0)
     expect(await wip.waitingLabel(payload, await reload(c.id))).toBe('Waiting: Build is full (2/2)')
-    expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
+    expect(await wip.wipCount(payload, ws, 'plan')).toBe(0)
   })
 
   it('a parked Ticket holds no slot, is not pulled, and starts no Run; unparked it counts and is pulled again', async () => {
@@ -330,7 +332,7 @@ describe('Board counts and waiting display', () => {
     const { wip: board } = await loadOverview(ws, false)
     const expected = { plan: await wip.wipCount(payload, ws, 'plan'), build: await wip.wipCount(payload, ws, 'build'), review: await wip.wipCount(payload, ws, 'review'), release: await wip.wipCount(payload, ws, 'release') }
     for (const s of ['plan', 'build', 'review', 'release'] as const) expect(board[s].count).toBe(expected[s])
-    expect(await wip.wipCounts(payload, ws)).toEqual(expected)
+    expect(Object.fromEntries(Object.entries(await wip.wipCounts(payload, ws)).map(([s, c]) => [s, c.count]))).toEqual(expected)
     expect(expected.build).toBe(3)
   })
 
@@ -404,7 +406,7 @@ describe('limits', () => {
   it('new Workspaces have no override and get the limits of their factory file; only an Admin may change them', async () => {
     const w = await payload.create({ collection: 'workspaces', data: { name: 'new', slug: 'new' }, ...o })
     expect(w.wipLimits).toBeNull()
-    expect(['plan', 'build', 'review', 'release'].map((s) => wipLimit(w, s))).toEqual([3, 2, 3, 5])
+    expect(['plan', 'build', 'review', 'release'].map((s) => wipLimit(w, s))).toEqual([4, 2, 3, 5])
     const member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: w.id }] }, ...o })
     await expect(payload.update({ collection: 'workspaces', id: w.id, data: { wipLimits: { build: 9 } }, user: member, overrideAccess: false })).rejects.toThrow()
     expect((await payload.findByID({ collection: 'workspaces', id: w.id, ...o })).wipLimits).toBeNull()
@@ -419,5 +421,121 @@ describe('limits', () => {
     expect(rows.length).toBeGreaterThan(0)
     for (const r of rows) expect(r.w).toEqual({ plan: 3, build: 2, review: 3, release: 5 })
     await db.execute(sql`SELECT "waiting_for" FROM "tickets" LIMIT 1`)
+  })
+})
+
+describe('parked Tickets and approved plans (#577)', () => {
+  const run = (t: { id: number }, stage: string, status: string) => payload.create({ collection: 'runs', data: { ticket: t.id, stage, status, mode: 'autonomous', workspace: ws }, ...o })
+  const gates = async () => (await import('../src/lib/gates')).syncGates(payload)
+  const parkedBuild = async () => {
+    const p = await ticket('p', 'build', { needsYou: 'Run needs you', parkedNeed: 'Run needs you' })
+    await run(p, 'build', 'needs_human')
+    for (const title of ['a', 'b']) await run(await ticket(title, 'build'), 'build', 'running')
+    return p
+  }
+
+  it('AC1: a Ticket waiting for you with no live Run holds no slot, so a fourth enters a limit-3 Build', async () => {
+    usePack('bare-pack')
+    await limits({ build: 3 })
+    await parkedBuild()
+    const d = await ticket('d', 'plan')
+    expect(await wip.wipCounts(payload, ws)).toMatchObject({ build: { count: 2, parked: 1 } })
+    expect(await wip.enterStage(payload, await reload(d.id), 'build', async () => {})).toBe('moved')
+  })
+
+  it('the gate sweep parks a Ticket whose latest Run needs you, and not one with a live Run or at an approval gate', async () => {
+    usePack('bare-pack')
+    const p = await ticket('p', 'build')
+    await run(p, 'build', 'needs_human')
+    const live = await ticket('l', 'build')
+    await run(live, 'build', 'needs_human')
+    await run(live, 'build', 'queued')
+    await gates()
+    expect(await reload(p.id)).toMatchObject({ needsYou: 'Run needs you', parkedNeed: 'Run needs you' })
+    expect((await reload(live.id)).parkedNeed ?? null).toBeNull()
+  })
+
+  it('AC2: when the need clears into a full Build the Ticket waits, starts no Run, and a freed slot pulls it', async () => {
+    usePack('bare-pack')
+    await limits({ build: 3 })
+    const p = await parkedBuild()
+    const third = await ticket('c', 'build')
+    await run(third, 'build', 'running')
+    expect(await wip.rejoin(payload, await reload(p.id))).toBe('waiting')
+    expect(await reload(p.id)).toMatchObject({ waitingFor: 'build', parkedNeed: null })
+    expect(await runs(p.id, 'build')).toHaveLength(1)
+    expect((await fake.tickets(repo).listComments(p.n)).filter((c) => c.body.includes('the need is cleared'))).toHaveLength(1)
+    await wip.rejoin(payload, { ...(await reload(p.id)), parkedNeed: 'Run needs you' })
+    expect((await fake.tickets(repo).listComments(p.n)).filter((c) => c.body.includes('the need is cleared'))).toHaveLength(1)
+    await payload.update({ collection: 'tickets', id: third.id, data: { stage: 'review' }, ...o })
+    await wip.pullWaiting(payload)
+    expect(await reload(p.id)).toMatchObject({ stage: 'build', waitingFor: null })
+    expect((await runs(p.id, 'build')).filter((r) => r.status === 'queued')).toHaveLength(1)
+  })
+
+  it('the owner\'s Retry of a parked Ticket first rejoins: with Build full it starts no Run, with room it does', async () => {
+    usePack('bare-pack')
+    await limits({ build: 1 })
+    const p = await ticket('p', 'build', { needsYou: 'Run failed', parkedNeed: 'Run failed' })
+    const w = await ticket('w', 'build')
+    await run(w, 'build', 'running')
+    expect(await jobs.startRunOrRejoin(payload, (await reload(p.id)) as never, 'build')).toBeNull()
+    expect(await runs(p.id, 'build')).toHaveLength(0)
+    expect(await reload(p.id)).toMatchObject({ waitingFor: 'build', parkedNeed: null })
+    await limits({ build: 2 })
+    const q = await ticket('q', 'build', { needsYou: 'Run failed', parkedNeed: 'Run failed' })
+    expect((await jobs.startRunOrRejoin(payload, (await reload(q.id)) as never, 'build'))?.created).toBe(true)
+    expect((await reload(q.id)).parkedNeed ?? null).toBeNull()
+  })
+
+  it('AC3: a Ticket at Approve plan keeps its Plan slot', async () => {
+    await limits({ plan: 2 })
+    const t = await ticket('t', 'plan', { needsYou: 'Approve plan' })
+    await gates()
+    expect(await reload(t.id)).toMatchObject({ needsYou: 'Approve plan' })
+    expect((await reload(t.id)).parkedNeed ?? null).toBeNull()
+    expect(await wip.wipCount(payload, ws, 'plan')).toBe(1)
+  })
+
+  it('AC4: approved plans waiting for Build do not fill Plan, so a sixth enters a limit-5 Plan', async () => {
+    await limits({ plan: 5 })
+    for (let i = 0; i < 5; i++) await ticket(`w${i}`, 'plan', { waitingFor: 'build' })
+    expect(await wip.wipCount(payload, ws, 'plan')).toBe(0)
+    const sixth = await ticket('s', 'triage')
+    expect(await wip.enterStage(payload, await reload(sixth.id), 'plan', async () => {})).toBe('moved')
+  })
+
+  it('the holds strip names the parked Tickets of a column', async () => {
+    usePack('bare-pack')
+    const p = await ticket('p', 'build', { parkedNeed: 'Run failed' })
+    const holds = await (await import('../src/lib/holds')).holdsOf(payload, ws)
+    expect(holds).toMatchObject([{ kind: 'parked', stage: 'build', text: '1 parked Ticket not counted in Build', href: '/?stage=build', waiting: [{ id: p.id }] }])
+  })
+
+  it('AC5: pullWaiting and the Board count read the same definition', async () => {
+    usePack('bare-pack')
+    await limits({ build: 2 })
+    await ticket('p', 'build', { parkedNeed: 'Run failed' })
+    await ticket('w', 'build')
+    await ticket('x', 'build', { waitingFor: 'review' })
+    const counted = (await payload.count({ collection: 'tickets', where: wip.wipWhere(ws, 'build'), ...o })).totalDocs
+    expect(counted).toBe(2)
+    expect((await wip.wipCounts(payload, ws)).build).toEqual({ count: counted, parked: 1 })
+    expect(await wip.wipCount(payload, ws, 'build')).toBe(counted)
+  })
+})
+
+describe('parkingNeed', () => {
+  const wf = DEFAULT()
+  const t = { state: 'open', stage: 'build' }
+  it.each(PARKING_NEEDS)('parks on %s', (need) => expect(parkingNeed(wf, t, need, null)).toBe(need))
+  it.each(['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Approve production'] as const)('never parks on %s', (need) => expect(parkingNeed(wf, t, need, null)).toBeNull())
+  it('does not park with a live Run, a closed Ticket, a non-WIP stage or no need', () => {
+    for (const status of ['queued', 'awaiting_session', 'running']) expect(parkingNeed(wf, t, 'Run failed', { status })).toBeNull()
+    expect(parkingNeed(wf, t, 'Run failed', { status: 'failed' })).toBe('Run failed')
+    expect(parkingNeed(wf, { ...t, state: 'closed' }, 'Run failed', null)).toBeNull()
+    expect(parkingNeed(wf, { ...t, stage: 'done' }, 'Run failed', null)).toBeNull()
+    expect(parkingNeed(wf, t, null, null)).toBeNull()
+    expect(parkingNeed({ ...wf, stages: [...wf.stages, { name: 'signoff', kind: 'human', wip: 1 } as never] }, { ...t, stage: 'signoff' }, 'Decision needed', null)).toBeNull()
   })
 })

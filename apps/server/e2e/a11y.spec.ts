@@ -224,7 +224,7 @@ test('Inbox: list, detail and the keys dialog at 1280 and 390 px, light and dark
 })
 
 test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {
-  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser']] as const
+  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser'], ['Build waiting for CI', 'Show CI on the ticket']] as const
   let session: Awaited<ReturnType<BrowserContext['storageState']>>
   test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext()

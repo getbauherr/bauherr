@@ -6,7 +6,7 @@ import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, sendBack } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
-import { startRunIfNeeded } from '../../../jobs'
+import { startRunOrRejoin } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
 import type { SeenKey } from '../../../lib/inbox-seen'
@@ -325,7 +325,10 @@ const startRerun = async (user: Awaited<ReturnType<typeof requireBauherr>>, payl
   const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number } | null
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) return null
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
-  const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
+  const started = await startRunOrRejoin(payload, ticket, run.stage)
+  // Parked in a full column: the Ticket waits for its slot (no Run yet); its page says so.
+  if (!started) return { run, next: null, created: false }
+  const { run: next, created } = started
   if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
   return { run, next: next.id as number, created }
 }
@@ -337,7 +340,7 @@ export async function rerunStage(runId: number) {
   const r = await startRerun(user, payload, runId)
   if (!r) redirect(`/runs/${runId}`)
   await settleDecision(payload, r.run.ticket)
-  redirect(`/runs/${r.next}${r.created ? '' : '?notice=active'}`)
+  redirect(r.next ? `/runs/${r.next}${r.created ? '' : '?notice=active'}` : `/tickets/${r.run.ticket}`)
 }
 
 /** One decision of the Inbox card: runs the existing action of the option for the Ticket (a note goes where the action takes one), then closes the card at once. A card for a need the Ticket no longer has is refused. Answers an error text instead of throwing. */

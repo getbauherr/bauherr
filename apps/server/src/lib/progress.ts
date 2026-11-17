@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { type StatusRun, ticketStatus } from '../app/(app)/lib/status'
+import { parkedWhyOf, type StatusRun, ticketStatus } from '../app/(app)/lib/status'
 import { workflowFor } from './factory'
 import { gateOwnersOf } from './forge-channel'
 import { APPROVED_STAGING, type Need } from './needs-you'
@@ -90,7 +90,7 @@ export const progressOf = (wf: Workflow, t: Doc, facts: ProgressFacts, tpl: Tpl)
   const stage: string = t.stage ?? byKind(wf, 'triage')!.name
   const kind = wf.stages.find((s) => s.name === stage)?.kind
   const open = t.state !== 'closed'
-  const status = ticketStatus(wf, { open, stage, needsYou: facts.needsYou, blockedBy: facts.blockedBy ?? [], queuedWhy: null, run: facts.run, owner: null, forge: null, gate: null, children: facts.children ?? null, slicing: facts.slicing ?? null, parked: !!t.parked, track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState } })
+  const status = ticketStatus(wf, { open, stage, needsYou: facts.needsYou, blockedBy: facts.blockedBy ?? [], queuedWhy: null, run: facts.run, owner: null, forge: null, gate: null, children: facts.children ?? null, slicing: facts.slicing ?? null, parked: !!t.parked, parkedWhy: parkedWhyOf(t), track: { waitingFor: t.waitingFor, reviewState: t.reviewState, releaseState: t.releaseState, productionState: t.productionState, releaseChecksState: t.releaseChecksState } })
   if (facts.run?.status === 'awaiting_session' && facts.run.preemptedFor && open) return { key: 'waiting', headline: status.label, detail: 'A hotfix took its working session. This continues first when the hotfix is done.', step: stepOf(wf, stage) }
   const vars: Record<string, string | undefined> = { stage_title: stageTitle(wf, stage), staging_url: facts.stagingUrl ?? undefined }
   let key: ProgressKey = kindKey[kind as Kind] ?? 'received'
