@@ -18,6 +18,8 @@ import type { ProofData } from '../lib/proof'
 
 export type DecisionView = { id: number; number: number; decision: Decision; detailsHtml: string | null; waiting: string; product?: string; proof?: ProofData; /** The frozen approval brief of a change waiting for acceptance or production approval; replaces `proof` (it holds the same rows). */ brief?: Brief; /** The card asks the Product owner; a Bauherr sees it too and may step in. */ asked?: 'product-owner'; open?: number }
 
+const sendsBack = (o: DecisionOption) => o.action === 'requestChanges' || o.action === 'backToBuild' || o.action === 'backToBacklog'
+
 const external = (url: string) => /^https?:\/\//.test(url)
 
 /**
@@ -55,11 +57,11 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onSucceed
   const bar = actionBar(d.options, item.open ?? 0, item.id, d.need)
   const optionButton = (o: DecisionOption, primary: boolean) =>
     o.action === 'open' ? (
-      <Button key={o.label} asChild variant={primary ? 'default' : 'outline'} title={o.effect}>
+      <Button key={o.label} asChild variant={primary ? 'default' : 'outline'} title={o.effect} data-primary={primary || undefined}>
         <a href={o.href} {...(o.href && external(o.href) ? { target: '_blank', rel: 'noreferrer' } : {})}>{o.label}</a>
       </Button>
     ) : (
-      <Button key={o.label} variant={primary ? 'default' : 'outline'} className={o.destructive ? 'text-destructive' : undefined} disabled={pending} title={o.effect} onClick={() => click(o)}>{o.label}</Button>
+      <Button key={o.label} variant={primary ? 'default' : 'outline'} className={o.destructive ? 'text-destructive' : undefined} disabled={pending} title={o.effect} data-primary={primary || undefined} data-send-back={sendsBack(o) || undefined} onClick={() => click(o)}>{o.label}</Button>
     )
   const evidence = d.evidence.filter((e) => admin || !e.url.startsWith('/runs/'))
   return (
@@ -105,7 +107,7 @@ export function DecisionCard({ item, compact, admin = true, onDecided, onSucceed
             <div className="flex flex-wrap items-center gap-2">
               {bar.primary && optionButton(bar.primary, true)}
               {bar.answer && (
-                <Button asChild variant={bar.primary ? 'outline' : 'default'} data-testid="answer-questions">
+                <Button asChild variant={bar.primary ? 'outline' : 'default'} data-testid="answer-questions" data-primary={!bar.primary || undefined}>
                   <Link href={bar.answer.href}>{bar.answer.label}</Link>
                 </Button>
               )}

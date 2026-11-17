@@ -226,8 +226,31 @@ test.describe('axe on the Agent team pages at 375 px, light and dark', () => {
   }
 })
 
+test('Inbox: list, detail and the keys dialog at 1280 and 390 px, light and dark', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const context = await browser.newContext()
+  await signIn(await context.newPage())
+  const session = await context.storageState()
+  await context.close()
+  for (const width of [1280, 390]) {
+    const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
+    await page.goto('/inbox')
+    await expect(page.getByTestId('inbox-row').first()).toBeVisible()
+    await page.getByTestId('inbox-row').first().click()
+    await expect(page.getByTestId('inbox-pane')).toBeVisible()
+    for (const t of ['light', 'dark'] as const) {
+      await setTheme(page, t)
+      expect(await scan(page), `Inbox ${width}px (${t})`).toEqual([])
+    }
+    await page.keyboard.press('?')
+    await expect(page.getByRole('dialog', { name: 'Keyboard' })).toBeVisible()
+    expect(await scan(page), `Inbox keys dialog ${width}px`).toEqual([])
+    await page.context().close()
+  }
+})
+
 test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {
-  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser']] as const
+  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser'], ['Build waiting for CI', 'Show CI on the ticket']] as const
   let session: Awaited<ReturnType<BrowserContext['storageState']>>
   test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext()

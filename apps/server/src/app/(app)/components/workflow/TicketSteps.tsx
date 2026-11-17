@@ -63,7 +63,7 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
       <p className="small m-0 text-muted-foreground" data-testid="phases">{timed.map((s) => `${s.label} ${duration(s.seconds)}`).join(' → ')}</p>
       {sentBack && <p className="small m-0" data-testid="step-sent-back">{sentBack}</p>}
       {waiting && <p className="small m-0 text-muted-foreground">Waiting on {waiting.ci!.provider}</p>}
-      {open && !decision && row.steps.at(-1)!.phase === 'human' && <p className="small m-0" data-testid="step-open-decision">{open.ask} <Link className="text-primary" href={`/inbox#t${open.ticket}`}>Decide in Inbox</Link></p>}
+      {open && !decision && row.steps.at(-1)!.phase === 'human' && <p className="small m-0" data-testid="step-open-decision">{open.ask} <Link className="text-primary" href={`/inbox?t=${open.ticket}`}>Decide in Inbox</Link></p>}
       {decision && <p className="small m-0" data-testid="step-decision">Decided: {decision.what}{decision.actor ? ` by ${decision.actor}` : ''}</p>}
       {r && (
         <RowDetail>

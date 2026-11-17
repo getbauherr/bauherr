@@ -462,14 +462,14 @@ export const tools: Tool[] = [
     name: 'report_step',
     access: 'agent',
     description: 'Record a Step of your session Run.',
-    inputSchema: obj({ ...runId, ...leaseToken, summary: str('What was done'), tokens: { type: 'object', properties: { in: { type: 'number' }, out: { type: 'number' } } } }, ['runId', 'leaseToken', 'summary']),
+    inputSchema: obj({ ...runId, ...leaseToken, summary: str('What was done'), state: { enum: ['working', 'waiting_ci'], description: 'waiting_ci while you wait for the MR\'s checks; say what you wait for in `summary`. Default working.' }, tokens: { type: 'object', properties: { in: { type: 'number' }, out: { type: 'number' } } } }, ['runId', 'leaseToken', 'summary']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       const seq = (await c.payload.count({ collection: 'steps', where: { run: { equals: run.id } }, overrideAccess: true })).totalDocs + 1
       const step = await c.payload.create({
         collection: 'steps',
-        data: { run: run.id, workspace: id(run.workspace), seq, summary: a.summary, tokensIn: a.tokens?.in, tokensOut: a.tokens?.out, startedAt: now() },
+        data: { run: run.id, workspace: id(run.workspace), seq, summary: a.summary, state: a.state, tokensIn: a.tokens?.in, tokensOut: a.tokens?.out, startedAt: now() },
         ...scoped(c),
       })
       return { step: step.id, seq, leaseExpiresAt }

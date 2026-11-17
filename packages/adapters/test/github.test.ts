@@ -41,6 +41,10 @@ describe('github: read-only against getbauherr/bauherr', () => {
     assert.ok(Array.isArray(prs));
     assert.ok(prs.every((p) => ['open', 'closed', 'merged'].includes(p.state)));
   });
+  it('tagSha resolves an existing tag and returns null for a missing one', async () => {
+    assert.match((await backend.forge.tagSha(READ_ONLY, 'v0.4.0'))!, /^[0-9a-f]{40}$/);
+    assert.equal(await backend.forge.tagSha(READ_ONLY, 'v999.0.0'), null);
+  });
   it('get() on a sub-ticket reports its parent', async () => {
     const [child] = await ts.listSubTickets('1');
     if (child) assert.equal((await ts.get(child.id)).parent, '1');

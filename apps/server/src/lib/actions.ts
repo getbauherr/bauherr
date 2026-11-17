@@ -3,7 +3,7 @@ import { APPROVED_PLAN, type TicketSource, MergePendingError, NotQueueableError,
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest, Where } from 'payload'
 import type { Decision } from '../app/(app)/lib/plan'
-import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, addedOf, answersOf, formatDecision, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets, goalOf } from '../app/(app)/lib/plan'
+import { DECISIONS_MARKER, PLAN_MARKER, TRIAGE_MARKER, WORKLOG_MARKER, addedOf, answersOf, formatDecision, freezeDecisions, firstWith, latestWith, openCritical, decisionsSectionHasRows, parseAnswers, parseDecisions, sheetOf, subTickets, goalOf } from '../app/(app)/lib/plan'
 import { canPutOnFastLane, laneOn, releaseFastLane } from './expedite'
 import { workflowFor } from './factory'
 import { storePlanTldr } from './decision'
@@ -404,8 +404,11 @@ const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'plan')
   const { ts, n } = await sourceOf(payload, t)
-  const open = openCritical(await decisionComments(payload, t, ts))
+  const comments = await decisionComments(payload, t, ts)
+  const open = openCritical(comments)
   if (open.length) throw new Error(`Answer the critical decisions first: ${open.map((d) => d.id).join(', ')}`)
+  const sheet = sheetOf(comments)
+  if (sheet) await payload.update({ collection: 'tickets', id: t.id, data: { decisionsAtApproval: freezeDecisions(parseDecisions(sheet.body), parseAnswers(answersOf(comments)?.body ?? '')) }, overrideAccess: true, depth: 0 })
   await touch(payload, user, t, 'approve:plan', checkpointBy(workflowFor(t.workspace), 'plan'))
   await ts.addLabels(n, [APPROVED_PLAN])
   await spawnSubTickets(payload, t)
