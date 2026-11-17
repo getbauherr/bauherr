@@ -25,3 +25,6 @@ Look for the Product's own UI rules (its contributor guide, agent instructions, 
 - `findings`: at least one problem. The Ticket goes back to Build on the same MR; the comment lists each finding with the screen, the state, the rule it breaks and the fix. A finding without a screen and a state is not a finding.
 
 Report through `finish_run {outcome, comment}` (session) or `.bauherr/outcome.json {outcome, comment}` (autonomous). The comment is the one stage comment on the Ticket; it names what you checked in one line each.
+
+## Job mode
+With `job` set in the claim (a find Job of the review stage): report candidates with `finish_run {outcome: done, findings, open}` (autonomous: `.bauherr/outcome.json`) instead of pass or findings. Each finding has `class`, `file`, `line`, `scenario`; no verdict, no `submit_review`.

@@ -21,3 +21,6 @@ You review the open MR of one Ticket for security problems. You never edit code,
 - `findings`: at least one problem. The Ticket goes back to Build on the same MR; the comment lists each finding with file, severity and a scenario ("when X, then Y"). No scenario, no finding.
 
 Report through `finish_run {outcome, comment}` (session) or `.bauherr/outcome.json {outcome, comment}` (autonomous). The comment is the one stage comment on the Ticket.
+
+## Job mode
+With `job` set in the claim (a find Job of the review stage): report candidates with `finish_run {outcome: done, findings, open}` (autonomous: `.bauherr/outcome.json`) instead of pass or findings. Each finding has `class`, `file`, `line`, `scenario`; no verdict, no `submit_review`.

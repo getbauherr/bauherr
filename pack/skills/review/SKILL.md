@@ -43,29 +43,10 @@ Only a counting `class` sends the Ticket back; the rest goes under `open`. Prefi
 With `epic`: a slice Ticket: review only `epic.prev`..HEAD (autonomous: `diff.patch`). The parent (`slices` listed) is the epic review: the whole epic, slice by slice; each counting finding carries `slice` (owning `slices[].number`).
 
 ## Output
-Session Run: call `submit_review {runId, leaseToken, verdict, findings, open, checked, markdown}`.
-Autonomous Run: write `.bauherr/review.json`, then set the Goal statement to verified; no shell: read `.bauherr/diff.patch`.
+Verdict, findings, `checked` and `markdown` format: [output](output.md). Session: `submit_review`; autonomous: `.bauherr/review.json`.
 
-`checked` is required: one note per area (`correctness`, `over-engineering`, `spec-vs-plan`, `evidence`); a missing area or contradicting `verdict` goes to a human.
-
-```json
-{"verdict": "clean | changes",
- "findings": [{"severity": "high|medium|low", "class": "<class from the table>", "file": "src/a.ts", "line": 12, "msg": "what is wrong", "scenario": "when ..., then ...", "test": {"command": "...", "failure": "...", "patch": "..."}}],
- "open": [{"text": "...", "reason": "no-failing-test|constructed-input|out-of-round-scope|no-evidence"}],
- "checked": [{"area": "correctness", "note": "traced X with Y; fine"}, ...one per area],
- "markdown": "..."}
-```
-`verdict` is `changes` iff a finding with a class other than `low` and `pre-existing` exists (the factory derives it). `low` goes with severity low, `pre-existing` with any severity, every other class with high or medium; no `class` is refused. Limits (server-enforced): 50 findings, 50 `open`, `file` a repository path, `line` >= 0. `markdown` is posted as the MR comment (the factory adds the failing tests and `open`):
-
-```markdown
-**Verdict**: clean | changes
-## Findings
-- [high] src/a.ts:12 <defect>. Scenario: <when ..., then ...>
-## Open
-- 🟡 [low] <nits and what you could not check>
-## Pre-existing
-- 🟣 src/b.ts:4 <bug this MR did not introduce>
-```
+## Job mode
+With `job` set in the claim (a find Job of the review stage): report candidates with `finish_run {outcome: done, findings, open}` (autonomous: `.bauherr/outcome.json`). No verdict, no `submit_review`, no `checked`; same class and proof rules.
 
 ## Self-review mode
 Before `request_review` (30+ changed lines) the author runs this checklist in a fresh cheapest-tier subagent on the diff only: findings `{severity, file, line, msg, scenario}` (autonomous: `.bauherr/self-review.json`), no verdict, no `class` or `test`. Fix high and medium once; low goes into the Evidence.
