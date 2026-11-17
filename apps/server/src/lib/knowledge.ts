@@ -148,7 +148,7 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
     }
   }
 
-  if (ws.knowledgeRepo && ws.knowledgeConnection) await sync('git', 'gitFailed', ws.knowledgeRepo, ws.knowledgeRepo, ws.knowledgeConnection, isMd)
+  if (ws.knowledgeRepo && ws.knowledgeConnection) await sync('git', 'gitFailed', ws.knowledgeRepo, ws.knowledgeRepo, ws.knowledgeConnection, (path) => isMd(path) || /^products\/[^/]+\/feature-map\.yaml$/.test(path))
   else if (indexed.git || indexed.gitFailed) {
     delete indexed.git
     delete indexed.gitFailed

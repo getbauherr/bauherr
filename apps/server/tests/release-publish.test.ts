@@ -72,11 +72,11 @@ it('factory mode: one release with a computed tag, grouped notes, a CHANGELOG MR
   expect(await release.publishRelease(payload, products.fac!)).toMatchObject({ state: 'published' })
   const releases = fake.listReleases('acme/fac')
   expect(releases).toMatchObject([{ tag: 'v0.1.0', sha: 'sha-b' }])
-  expect(body('fac')).toMatch(/### Features\n- CSV export \(\[#1\]\(.+\), \[#1 CSV export\]\(.+\)\)\n {2}- CSV export works\n\n### Fixes\n- Totals wrong/)
+  expect(body('fac')).toMatch(/### Changes\n- CSV export works \(\[#1\]\(.+\)\)\n- Totals wrong works \(\[#2\]/)
   expect(body('fac')).toContain(release.releaseMarker('sha-b'))
   const prs = await fake.forge.listPullRequests('acme/fac', 'all')
   expect(prs).toMatchObject([{ head: 'bauherr/release-v0.1.0', base: 'main' }])
-  expect((await fake.forge.getFile('acme/fac', 'CHANGELOG.md', 'bauherr/release-v0.1.0')).content).toMatch(/## Unreleased\n\n## 0\.1\.0 - \d{4}-\d\d-\d\d\n\n### Features/)
+  expect((await fake.forge.getFile('acme/fac', 'CHANGELOG.md', 'bauherr/release-v0.1.0')).content).toMatch(/## Unreleased\n\n## 0\.1\.0 - \d{4}-\d\d-\d\d\n\n### Changes/)
   for (const t of [a, b]) {
     expect((await reload(t.id)).releaseUrl).toBe(releases[0]!.url)
     expect((await fake.tickets('acme/fac').listComments(t.n)).at(-1)!.body).toContain(`Released in [v0.1.0](${releases[0]!.url})`)
@@ -94,7 +94,7 @@ it('notes-only with an existing release: its body gets the notes, no new tag', a
   const t = await approved('notes', 'Dark mode', 'sha-n')
   expect(await release.publishRelease(payload, products.notes!)).toMatchObject({ state: 'published' })
   expect(fake.listReleases('acme/notes')).toHaveLength(1)
-  expect(body('notes')).toMatch(/^semantic-release notes\n\n## What's new\n\n### Features\n- Dark mode/)
+  expect(body('notes')).toMatch(/^semantic-release notes\n\n## What's new\n\n### Changes\n- Dark mode/)
   expect((await reload(t.id)).releaseUrl).toBe(fake.listReleases('acme/notes')[0]!.url)
   expect(await fake.forge.listPullRequests('acme/notes', 'all')).toHaveLength(0)
 })
@@ -105,7 +105,7 @@ it('notes-only without a release waits, then posts the notes on the Tickets afte
   expect(await release.publishRelease(payload, products.late!, Date.now() + release.RELEASE_WAIT_MS + 60_000)).toEqual({ state: 'fallback' })
   const last = (await fake.tickets('acme/late').listComments(t.n)).at(-1)!.body
   expect(last).toContain('no release found for `sha-l`')
-  expect(last).toContain('### Features')
+  expect(last).toContain('### Changes')
   expect(fake.listReleases('acme/late')).toHaveLength(0)
   expect(await reload(t.id)).toMatchObject({ releaseUrl: null })
   expect(await release.publishRelease(payload, products.late!)).toEqual({ state: 'none' })
@@ -120,7 +120,7 @@ it('publishes the deterministic notes when the gateway is down', async () => {
   expect(await release.publishRelease(payload, products.down!)).toMatchObject({ state: 'published' })
   delete process.env.GATEWAY_URL
   expect(down).toHaveBeenCalledOnce()
-  expect(body('down')).toContain('### Features\n- Billing ([#1]')
+  expect(body('down')).toContain('### Changes\n- Billing works ([#1]')
 })
 
 it('tags the newest merge commit by date, not the newest approved sha', async () => {
@@ -138,7 +138,7 @@ it('notes-only matches the release whose tag commit contains the merge sha', asy
   const t = await approved('ct', 'Contained', 'sha-c')
   expect(await release.publishRelease(payload, products.ct!)).toMatchObject({ state: 'published' })
   expect(fake.listReleases('acme/ct')).toHaveLength(1)
-  expect(body('ct')).toContain('### Features\n- Contained')
+  expect(body('ct')).toContain('### Changes\n- Contained')
   expect((await reload(t.id)).releaseUrl).toBe(fake.listReleases('acme/ct')[0]!.url)
 })
 

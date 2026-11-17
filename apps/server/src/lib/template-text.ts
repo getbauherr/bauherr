@@ -101,7 +101,7 @@ export const SAMPLES: Record<TemplateName, Record<string, string>> = {
   decision: { decision: 'Approve the plan for "Login redirect"', recommendation: 'Approve: one file changes and a test covers it.', why: '- One file changes\n- A regression test is added', options: '- **Approve plan**: Build starts when a slot is free.', next: 'Build starts when a slot is free.' },
   review: { verdict: 'changes', findings: '- [medium] src/a.ts:12 The retry never stops. Scenario: when the gateway answers 402, then it retries forever.', open: '- [low] Unused import', checked: '- correctness: traced the retry path' },
   'staging-summary': { 'what-you-get': '- Users can switch to a dark theme\n\n**Merge requests**\n- [#7 Dark theme](https://example.com/7)', found: '- Toggle lacked a label (MR #7)', decisions: '- Use CSS custom properties', open: 'Nothing.', accept: 'Check it on staging, then accept or request changes.' },
-  'release-note': { features: '- CSV export ([#7](https://example.com/7))\n  - Download invoices as CSV', fixes: '- Totals wrong ([#8](https://example.com/8))' },
+  'release-note': { changed: '- Plans wait for approval by default ([#9](https://example.com/9))', changes: '- Download invoices as CSV ([#7](https://example.com/7))' },
   worklog: {},
   progress: {},
   'triage-questions': { questions: 'Triage needs your answers before this Ticket can be planned: the export scope is open', decisions: '- **D1 Scope, critical**. Default: all invoices. Alternatives: paid only.' },
