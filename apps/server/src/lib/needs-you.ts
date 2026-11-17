@@ -58,8 +58,9 @@ export const needsYou = (
   if (at('human')) return 'Decision needed'
   if (at('review') && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (at('review') && ticket.reviewState === 'needs_human') return 'Needs you'
+  // Once the Ticket reached release (its MR merged, e.g. during a Build), an earlier stage's Run asks nothing.
   // `stuck` is the factory's to escalate to a stronger model; the other kinds, and a Run that never said, are the owner's.
-  if (run?.status === 'needs_human' && !runIs('triage') && run.reasonKind !== 'stuck') return 'Run needs you'
+  if (run?.status === 'needs_human' && !(at('release') && run.stage !== stage) && !runIs('triage') && run.reasonKind !== 'stuck') return 'Run needs you'
   if (at('release') && !accepted) {
     if (ticket.releaseState === 'on_staging' && gates.includes('staging')) return 'Accept on staging'
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
@@ -71,7 +72,7 @@ export const needsYou = (
   if (ticket.releaseChecksState === 'failed') return 'Release failed'
   if (run?.status === 'cancelled' && run.stage === stage && liveStages(wf).includes(stage)) return 'Cancelled'
   // A failed Run is the owner's only once the escalation ladder ended (`reasonKind` set by `escalate`); until then the factory retries it on a stronger model.
-  if (run?.status === 'failed' && !runIs('triage') && run.reasonKind && run.reasonKind !== 'stuck') return 'Run failed'
+  if (run?.status === 'failed' && !(at('release') && run.stage !== stage) && !runIs('triage') && run.reasonKind && run.reasonKind !== 'stuck') return 'Run failed'
   if (ticket.laneHeld) return 'Fast lane held'
   if (ticket.labels.includes(EXPEDITE_PROPOSED) && !ticket.expedite && !ticket.labels.includes(EXPEDITE_LABEL) && !at('release')) return 'Expedite?'
   return null

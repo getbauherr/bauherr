@@ -41,6 +41,10 @@ describe('needsYou', () => {
     expect(needsYou(DEFAULT(), t('review'), r('build', 'needs_human'))).toBe('Run needs you')
     expect(needsYou(DEFAULT(), t('build'), { ...r('build', 'failed'), reasonKind: 'decision' })).toBe('Run failed')
   })
+  it('a Build Run that needed a person asks nothing once the Ticket reached release (MR merged during Build, #693)', () => {
+    expect(needsYou(DEFAULT(), t('release'), r('build', 'needs_human'))).not.toBe('Run needs you')
+    expect(needsYou(DEFAULT(), t('release'), { ...r('build', 'failed'), reasonKind: 'decision' })).not.toBe('Run failed')
+  })
   it('hides a failed Run until the escalation ladder ended, and a stuck needs_human Run always', () => {
     expect(needsYou(DEFAULT(), t('build'), r('build', 'failed'))).toBeNull()
     expect(needsYou(DEFAULT(), t('build'), { ...r('build', 'failed'), reasonKind: 'stuck' })).toBeNull()
