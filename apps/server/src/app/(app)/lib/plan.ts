@@ -131,6 +131,19 @@ export const decisionView = (decisions: Decision[], answers: Record<string, stri
   return { open: unanswered.length, answered: decisions.length - unanswered.length, answerable: sheetOpen ? unanswered.length : 0, defaults: sheetOpen ? [] : unanswered, takenBy: fastLane ? 'fast lane' : 'at approval' }
 }
 
+/** A decision row as it stood at plan approval (`tickets.decisionsAtApproval`). */
+export type FrozenDecision = { id: string; title: string; status: 'answered' | 'default'; answer?: string; default?: string }
+
+/** The rows of the sheet with the answers given so far, for storing at approval. */
+export const freezeDecisions = (decisions: Decision[], answers: Record<string, string>): FrozenDecision[] =>
+  decisions.map((d) => (answers[d.id] ? { id: d.id, title: d.title, status: 'answered', answer: answers[d.id] } : { id: d.id, title: d.title, status: 'default', default: d.default }))
+
+/** What the read-only chips show: once the plan is approved, the rows stored at approval (when there are any), else the live sheet and answers. */
+export const decisionsShown = (frozen: FrozenDecision[] | null | undefined, decisions: Decision[], answers: Record<string, string>, approved: boolean): { decisions: Decision[]; answers: Record<string, string> } =>
+  frozen && approved
+    ? { decisions: frozen.map((r) => ({ id: r.id, title: r.title, critical: false, default: r.default ?? '', options: [] })), answers: Object.fromEntries(frozen.flatMap((r) => (r.status === 'answered' ? [[r.id, r.answer ?? '']] : []))) }
+    : { decisions, answers }
+
 /** A Ticket that skipped the plan gate: expedite, or the plan approval was inherited from its parent. */
 export const fastLaneOf = (t: { expedite?: boolean | null; inheritedApprovalFrom?: unknown }): boolean => !!t.expedite || !!t.inheritedApprovalFrom
 

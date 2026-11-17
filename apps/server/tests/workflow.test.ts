@@ -26,7 +26,7 @@ describe('derived lists reproduce the constants they replace', () => {
   })
   it('wip', () => {
     expect(w.wipStages(wf)).toEqual(['plan', 'build', 'review', 'release'])
-    expect(w.defaultWip(wf)).toEqual({ plan: 3, build: 2, review: 3, release: 5 })
+    expect(w.defaultWip(wf)).toEqual({ plan: 4, build: 2, review: 3, release: 5 })
     expect(w.heldStages(wf)).toEqual(['review', 'build', 'plan'])
   })
   it('live, in flight, repairable, exclude labels', () => {

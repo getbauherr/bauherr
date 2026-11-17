@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useTransition } from 'react'
 
-/** Polls `/api/changes` and refreshes the page only when something of the Workspace changed (or the tab was hidden when the page mounted); idle while the tab is hidden or a refresh is in flight, and held back (the change stays pending) while a person is clicking or typing or a navigation runs, since a refresh would cancel it. */
-export function AutoRefresh({ ms = 5000 }: { ms?: number }) {
+/** Polls `src` (default `/api/changes`) and refreshes the page only when something of the Workspace changed (or the tab was hidden when the page mounted); idle while the tab is hidden or a refresh is in flight, and held back (the change stays pending) while a person is clicking or typing or a navigation runs, since a refresh would cancel it. */
+export function AutoRefresh({ ms = 5000, src = '/api/changes' }: { ms?: number; src?: string }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const busy = useRef(false)
@@ -19,7 +19,7 @@ export function AutoRefresh({ ms = 5000 }: { ms?: number }) {
     const poll = async () => {
       if (document.visibilityState !== 'visible' || busy.current) return
       try {
-        const res = await fetch('/api/changes', { cache: 'no-store' })
+        const res = await fetch(src, { cache: 'no-store' })
         if (!res.ok) return
         const { v } = (await res.json()) as { v: number }
         const changed = stale || (seen.current !== null && v !== seen.current)
@@ -40,6 +40,6 @@ export function AutoRefresh({ ms = 5000 }: { ms?: number }) {
       document.removeEventListener('pointerdown', touch, true)
       document.removeEventListener('keydown', touch, true)
     }
-  }, [router, ms])
+  }, [router, ms, src])
   return null
 }
