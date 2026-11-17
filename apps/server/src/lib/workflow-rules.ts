@@ -28,6 +28,7 @@ export const NO_ROLE: Kind[] = ['container', 'release', 'done', 'human']
 export const WIP: Kind[] = ['plan', 'build', 'review', 'release', 'agent', 'human']
 export const IN_FLIGHT: Kind[] = ['plan', 'build', 'review', 'release', 'agent', 'human']
 export const LIVE: Kind[] = ['plan', 'build', 'review', 'agent']
+export const OWN_VERDICT: Kind[] = ['plan', 'review', 'release']
 
 const obj = (v: unknown): Record<string, any> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : undefined)
 const posInt = (v: unknown) => Number.isInteger(v) && (v as number) > 0

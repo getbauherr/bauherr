@@ -24,7 +24,7 @@ workflow:
         - {id: ux, role: ux, skill: ux-review, when: {touches: ui}}
         - {id: test, role: test, skill: test-review, when: {types: [bug]}}
         - {id: verify, role: reviewer, skill: review, needs: [security, ux, test]}
-        - {id: review}
+        - {id: review, needs: [verify]}
       outcomes: {clean: release, changes: build, stop: triage}
     - {name: release, kind: release, title: Staging, wip: 5, outcomes: {accepted: done, changes: build}}
     - {name: done, kind: done}

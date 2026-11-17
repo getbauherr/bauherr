@@ -63,7 +63,7 @@ const causeOf = async (payload: Payload, t: Doc, latest: Doc | null): Promise<Ca
       if (!mr || mr.pr.state === 'closed') return 'mr-missing'
       if (mr.pr.state === 'merged') return null
       // No verdict applied and the review Run ended without one: the Run's own end state decides (escalate, or a need).
-      if (t.reviewState !== 'needs_human') return !t.reviewState && latestIs('review') ? runEnd(latest as Doc) : null
+      if (t.reviewState !== 'needs_human') return !t.reviewState && (latestIs('review') || latest?.job) ? runEnd(latest as Doc) : null
       // At the round cap one strong fix round is repaired, then the owner decides (grant one more round or stop); never agent-callable.
       if ((t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'review-escalated'
       return mergeChecks(await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)).state === 'red' ? 'checks-red' : 'review-escalated'

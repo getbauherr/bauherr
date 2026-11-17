@@ -1498,8 +1498,16 @@ export const moveReview = async (payload: Payload, ticket: TicketId, to: string 
   ).rows.length > 0
 
 /** Cancels the Ticket's active review Runs. */
-const cancelReviewRuns = async (payload: Payload, ticket: TicketId): Promise<void> => {
-  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "updated_at" = now() WHERE "ticket_id" = ${ticket} AND "kind" = 'review' AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
+const cancelReviewRuns = async (payload: Payload, t: Doc): Promise<void> => {
+  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "updated_at" = now() WHERE "ticket_id" = ${t.id} AND ("kind" = 'review' OR "stage" = ${byKind(workflowFor(t.workspace), 'review')?.name ?? ''}) AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
+}
+
+/** The head moved after a verdict: a review stage without Jobs starts its Review Run, one with Jobs starts a new visit of all its Jobs. */
+const restartReview = async (payload: Payload, t: Doc): Promise<void> => {
+  const wf = workflowFor(t.workspace)
+  const stage = nameOf(wf, 'review')
+  if (stageDef(wf, stage)?.jobs) await startReviewIfReady(payload, { ...t, reviewState: null })
+  else await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, stage)
 }
 
 /** Parks the Ticket on a human with a Ticket comment (never overwrites a completed merge). */
@@ -1553,7 +1561,7 @@ export const handBackToBuild = async (payload: Payload, t: Doc, src: Source, tex
   if (low.length) worklog = appendToSection(worklog, '**Open**', low)
   if (log) await ts.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await ts.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
-  await cancelReviewRuns(payload, t.id)
+  await cancelReviewRuns(payload, t)
   await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'), escalation ? { escalation } : {})
   await moveStage(payload, ts, t, nameOf(wf, 'build'), 'back_to_build')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null }, overrideAccess: true })
@@ -1612,7 +1620,7 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   const worklog = setInstructions(log ? log.body.slice(WORKLOG_MARKER.length).trimStart() : await worklogTemplate(payload, t), text)
   if (log) await mr.tickets.updateComment(n, log.id, `${WORKLOG_MARKER}\n${worklog}`)
   else await mr.tickets.comment(n, `${WORKLOG_MARKER}\n${worklog}`)
-  await cancelReviewRuns(payload, t.id)
+  await cancelReviewRuns(payload, t)
   const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
   await moveStage(payload, mr.tickets, t, nameOf(wf, 'build'), 'review_cap_grant')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build') }, overrideAccess: true })
@@ -1788,7 +1796,7 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   if (!isFactoryPr(mr.pr, mr.repo, t) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
   // Any head move starts a new review, except a Runner main-merge with an unchanged Ticket diff (`rebindReview` moves the verdict to the new head before this runs).
   if (mr.pr.headSha !== reviewedSha) {
-    if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'review'))
+    if (await moveReview(payload, t.id, null)) await restartReview(payload, t)
     return 'review_restarted'
   }
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
@@ -1980,7 +1988,7 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
       }
       if (mr.pr.headSha !== (await reviewedShaOf(payload, t))) {
         await dequeueBeforeChange(payload, t, mr)
-        if (await moveReview(payload, t.id, null)) await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(workflowFor(t.workspace), 'review'))
+        if (await moveReview(payload, t.id, null)) await restartReview(payload, t)
         continue
       }
       const since = t.queuedAt ? Date.parse(t.queuedAt) : at
@@ -2057,8 +2065,9 @@ export const restartParkedReviews = async (payload: Payload): Promise<number> =>
   for (const t of tickets) {
     try {
       if (t.reviewState === 'needs_human' && (t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) continue
+      const reviewStage = nameOf(workflowFor(t.workspace), 'review')
       // A review that asked the owner (a product decision, an access problem) waits for the answer: a new head must not merge past it.
-      const newest = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
+      const newest = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { or: [{ kind: { equals: 'review' } }, { stage: { equals: reviewStage } }] }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (newest?.status === 'needs_human' && OWNER_REASONS.includes(newest.reasonKind)) continue
       const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (!last?.reviewedSha) continue

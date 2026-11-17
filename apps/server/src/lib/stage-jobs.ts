@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { ACTIVE, startRunIfNeeded } from '../jobs'
+import { ACTIVE, reviewExtra, startRunIfNeeded } from '../jobs'
 import { advance } from './advance'
 import type { Finding, OpenItem } from './actions'
 import { workflowFor } from './factory'
@@ -8,7 +8,7 @@ import { matches } from './glob'
 import { jobEvent, SKIP_CAUSE, skipEvent } from './history'
 import { cas } from './release'
 import { factsOf } from './route'
-import { jobOf, stage as stageDef } from './workflow'
+import { OWN_VERDICT, jobOf, stage as stageDef } from './workflow'
 import { evalWhen } from './workflow-when'
 
 type Doc = Record<string, any>
@@ -80,14 +80,18 @@ export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
  * A Job is done when its Run succeeded with an outcome that maps to `done`. A blocking Job whose recorded outcome maps to a stage outcome applies it (the recovery of a `finishJob` that did not finish).
  * When all Jobs are done the stage applies its first outcome; one conditional UPDATE of `stage_since` decides which concurrent caller advances.
  */
-export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<void> => {
+export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boolean> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })) as Doc
   const def = stageDef(workflowFor(t.workspace), t.stage)
-  if (!def?.jobs || t.state !== 'open') return
+  if (!def?.jobs || t.state !== 'open') return false
+  if (def.kind === 'review' && (t.reviewState || t.parked || t.waitingFor)) return false
   const { since, runs, skipped } = await visitOf(payload, t.id, t.stage)
+  const own = def.kind === 'review' ? def.jobs.find((j) => j.id === def.name) : undefined
   const done = new Set<string>()
   let facts
+  let started = false
   for (const j of def.jobs) {
+    if (j === own) continue
     const mine = runs.filter((r) => (r.job ?? def.name) === j.id)
     if (j.id === def.name) {
       if (mine.some((r) => r.status === 'succeeded')) done.add(j.id)
@@ -97,7 +101,8 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
     const to = finished && j.outcomes[finished.outcome!]
     if (finished && j.blocking && to !== 'done') {
       const run = (await payload.findByID({ collection: 'runs', id: finished.id, ...o })) as Doc
-      return closeAndAdvance(payload, t, to!, blockedClaim(t.stage, run.id), { blocker: run })
+      await closeAndAdvance(payload, t, to!, blockedClaim(t.stage, run.id), { blocker: run })
+      return started
     }
     if (to === 'done' || finished || skipped.has(j.id)) done.add(j.id)
     else if (!mine.length && j.needs.every((n) => done.has(n))) {
@@ -106,15 +111,21 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
         await skipEvent(payload, t, { stage: def, reason: verdict.reason }, { from: t.stage, by: 'factory', job: j.id })
         done.add(j.id)
       } else {
-        const started = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, { job: j.id, kind: 'agent', role: j.role })
-        if (started.created) await jobEvent(payload, t, { stage: t.stage, job: j.id, what: 'queued', run: started.run.id })
+        const queued = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, { job: j.id, kind: 'agent', role: j.role })
+        if (queued.created) await jobEvent(payload, t, { stage: t.stage, job: j.id, what: 'queued', run: queued.run.id })
+        started = true
       }
     }
   }
-  if (def.kind === 'plan' || done.size < def.jobs.length) return
+  if (own && own.needs.every((n) => done.has(n)) && !runs.some((r) => r.job === null)) {
+    await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, await reviewExtra(payload, t))
+    started = true
+  }
+  if (OWN_VERDICT.includes(def.kind) || done.size < def.jobs.length) return started
   const last = runs.findLast((r) => r.status === 'succeeded')
   const claim = sql`"stage" = ${t.stage} AND "stage_since" IS NOT DISTINCT FROM ${since}::timestamptz`
   await closeAndAdvance(payload, t, def.outcomeOrder![0]!, claim, { run: last && ((await payload.findByID({ collection: 'runs', id: last.id, ...o })) as Doc) })
+  return started
 }
 
 /**
@@ -125,6 +136,9 @@ export const finishJob = async (payload: Payload, run: Doc, ticket: Doc, outcome
   const job = jobOf(stageDef(workflowFor(run.workspace), run.stage)!, run)!
   const to = job.outcomes[outcome]!
   await jobEvent(payload, ticket, { stage: run.stage, job: job.id, what: 'finished', run: run.id, outcome })
-  if (!job.blocking || to === 'done') return startReadyJobs(payload, ticket)
+  if (!job.blocking || to === 'done') {
+    await startReadyJobs(payload, ticket)
+    return
+  }
   await closeAndAdvance(payload, ticket, to, blockedClaim(run.stage, run.id), { blocker: { ...run, outcome }, note })
 }
