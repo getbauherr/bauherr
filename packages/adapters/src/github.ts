@@ -350,8 +350,9 @@ class GithubForge implements Forge {
   async getPullRequest(repo: RepoRef, n: number) {
     return pr(await this.h.json('GET', `/repos/${repo}/pulls/${n}`));
   }
-  async listPullRequests(repo: RepoRef, state: 'open' | 'closed' | 'all' = 'open') {
-    return (await this.h.paginate(`/repos/${repo}/pulls?state=${state}&per_page=100`)).map(pr);
+  async listPullRequests(repo: RepoRef, state: 'open' | 'closed' | 'all' = 'open', head?: string) {
+    const byHead = head ? `&head=${enc(`${repo.split('/')[0]}:${head}`)}` : '';
+    return (await this.h.paginate(`/repos/${repo}/pulls?state=${state}&per_page=100${byHead}`)).map(pr);
   }
   async listMergedPullRequests(repo: RepoRef, limit: number) {
     const out: PullRequest[] = [];

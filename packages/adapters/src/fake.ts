@@ -243,8 +243,8 @@ export class FakeBackend implements Backend {
         return created;
       },
       getPullRequest: async (repo, n) => find(repo, n),
-      listPullRequests: async (repo, state = 'open') =>
-        this.repo(repo).prs.filter((p) => state === 'all' || (state === 'open') === (p.state === 'open')),
+      listPullRequests: async (repo, state = 'open', head) =>
+        this.repo(repo).prs.filter((p) => (state === 'all' || (state === 'open') === (p.state === 'open')) && (!head || p.head === head)),
       listMergedPullRequests: async (repo, limit) => this.repo(repo).prs.filter((p) => p.state === 'merged').slice(-limit).reverse(),
       closePullRequest: async (repo, n) => {
         const pr = find(repo, n);

@@ -204,6 +204,8 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal(p.state, 'open');
       assert.equal((await f.getPullRequest(repo, p.number)).head, branch);
       assert.ok((await f.listPullRequests(repo)).some((x) => x.number === p.number));
+      assert.deepEqual((await f.listPullRequests(repo, 'all', branch)).map((x) => x.number), [p.number]);
+      assert.deepEqual(await f.listPullRequests(repo, 'all', `${branch}-none`), []);
       assert.equal((await f.commentOnPullRequest(repo, p.number, 'lgtm')).body, 'lgtm');
       assert.ok((await f.listPullRequestComments(repo, p.number)).some((c) => c.body === 'lgtm'));
       const files = await f.listPullRequestFiles(repo, p.number);
