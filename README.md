@@ -88,24 +88,9 @@ Each Workspace has one factory file (`factory.yaml`) for its team and workflow. 
 
 ## ✨ Features
 
-One row per area. The full list, with the page of each feature, is in [docs/features.md](docs/features.md).
+Every feature, where you reach it and how well it is reachable, is in [docs/features.md](docs/features.md). It is generated from [docs/feature-map.yaml](docs/feature-map.yaml), which also lists the source files and tests behind each feature; a test fails when the two drift.
 
-| Area | What Bauherr does |
-|---|---|
-| 🗺️ [Workflow](docs/features.md#workflow) | The stages as a graph on the home page, one editable factory file per Workspace with custom agent and human stages, WIP limits, a fast lane for urgent bugs (an urgent request, or "Put on the fast lane" on a Ticket), overlap hold between Builds |
-| 🎫 [Tickets](docs/features.md#tickets) | One status vocabulary, a Path through the stages, a Steps timeline with executor, model and cost, epics and sub-tickets |
-| 📥 [Decisions](docs/features.md#decisions) | An Inbox of prepared decision cards for plans, staging, production and review round caps |
-| 💬 [Chat](docs/chat.md) | A chat on every page that knows the page, stored threads, confirm cards for actions, pasted screenshots, answer feedback |
-| 📝 [Requests](docs/intake-embed.md) | A request assistant in the app and an embeddable website widget that turn a wish into a Ticket |
-| 🚀 [Releases](docs/features.md#releases) | Merge direct, through the forge's queue or in a train; release notes and shipping per Product |
-| 🛡️ [Quality and security](docs/features.md#quality-and-security) | A review stage, pre-review checks, flaky-check tracking, a scheduled security scan, evidence on every merge request |
-| 👥 [Team and sessions](docs/session-mode.md) | An Agent team page to pick roles with profiles, skills and models; sessions that connect as a role and pull work; who is working, on what, for how long; agent keys, people, OIDC sign-in |
-| 📚 [Knowledge](docs/features.md#knowledge) | A repository of your documents and skills that agents search, and a pack of skills, rules and hooks per Run |
-| 💶 [Models and cost](docs/gateway.md) | A bundled AI gateway that also measures your own coding sessions, self-updating prices, budgets, model tiers, cost per Product, Ticket and stage |
-| 📈 [Insights](docs/features.md#models-and-cost) | Lead time, cycle time, time per stage with the bottleneck, throughput per week; [tokens and cost](docs/cost.md) per model, role, session, stage and Ticket |
-| 🧾 [Audit](docs/observability.md) | Human touches and tool calls in the UI, metrics and traces in Prometheus and Jaeger |
-| ⚙️ [Administration](docs/features.md#administration) | Workspaces, Products, Connections, editable text templates, a command palette |
-| 🔌 [CLI and API](docs/features.md#cli-and-api) | `npx bauherr`, an MCP server, Payload's REST API, a Runner built on the Claude Agent SDK |
+Standing on the shoulders of others: [Credits](docs/references.md).
 
 ## 📸 Screenshots
 
@@ -212,7 +197,7 @@ pnpm test        # needs the compose `db` service on 127.0.0.1:54330
 
 Pre-release. The factory builds Bauherr itself. Every feature with its page: [docs/features.md](docs/features.md).
 - **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Agent team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, fast lane, request card with types and the Requests workbench, WIP limits, AI gateway with budgets, audit, OIDC.
-- **Planned:** a GitLab driver, notifications at checkpoints ([#77](https://github.com/getbauherr/bauherr/issues/77)), provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
+- **Planned:** provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
 Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: [docs/releasing.md](docs/releasing.md).
 
@@ -245,7 +230,7 @@ Prompts and the code an agent reads go to the model provider you configured, and
 <details>
 <summary><b>Does it work with GitLab?</b></summary>
 
-Not yet. GitHub Issues and GitHub repositories are the supported forge. The GitLab driver is designed ([research](docs/research/gitlab-driver.md)) and not built.
+Yes. A GitLab Connection works next to GitHub ([design](docs/research/gitlab-driver.md)).
 </details>
 
 <details>

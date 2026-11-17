@@ -1,3 +1,5 @@
+Generated from docs/feature-map.yaml by `pnpm --filter server feature-map`; do not edit.
+
 # Features
 
 Every capability of Bauherr on `main`, where you reach it, and how well it is reachable. Paths are in the app at `/`. Settings pages are under `/settings/`, grouped by scope: Account, Factory, Workspace, Admin.
@@ -22,6 +24,9 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Custom `agent` and `human` stages | A role works the Ticket and reports an outcome, or a person picks one; outcomes route Tickets; shown in the graph, Inbox, Path and Steps, Insights | Factory file | Live |
 | Conditional steps | A specialist step (security, UX, tests) runs only when the change touches a path set of the Product, has a label or is of a request type; otherwise it is skipped and the Steps list says why | Workflow editor, "When does this step run?" (`/workflow/edit`); Product › Checks & merging › Path sets; presets Standard and Careful | Live |
 | Approve plan on by default | Every plan waits for the owner; remove the gate in the factory file to let plans through | Factory file | Live |
+| Triage | A Triage Run reads a new Ticket and either sends it to planning or posts questions for the owner; it can propose the fast lane | Automatic for every new Ticket; questions appear in the Inbox | Live |
+| Plan stage | A Plan Run writes the plan comment; it starts with a TL;DR (decision, recommendation, why, risk) and waits for approval | `/tickets/[id]`, Inbox card | Live |
+| Failure investigation | A Ticket whose Build failed twice gets an investigation Plan Run that records the cause and one decision in its investigation Comment | `/tickets/[id]` | Live |
 
 ## Tickets
 
@@ -119,6 +124,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | People and roles | Admin or Bauherr per person, Workspaces, forge login (the column shows who has none), SSO subject, unlock, remove | Settings › Workspace › People (`/settings/bauherren`) | Live |
 | Workspaces | Isolation boundary with its own Connections, budget and keys; Admins always have the menu with settings and New Workspace | Settings › Workspace › General (`/settings/workspace`), workspace menu | Live |
 | OIDC sign-in | SSO with role and Workspace mapping | `/login`; [auth.md](auth.md) | Live |
+| Session Run protocol | The tools a session uses while it holds a Run: read and update the worklog, report Steps, finish or give the Run back | MCP only: `/mcp`; [session-mode.md](session-mode.md) | No UI |
 
 ## Knowledge
 
