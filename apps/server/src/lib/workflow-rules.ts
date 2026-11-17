@@ -44,27 +44,33 @@ export const skipTarget = (s: { outcomes?: Record<string, string>; outcomeOrder?
 export const parseFactory = (yaml: string): unknown => parse(yaml)
 
 const lintJobs = (n: string, k: Kind, s: Record<string, any>, stageOutcomes: string[], roles: Record<string, unknown>, out: string[]) => {
-  if (k !== 'agent' && k !== 'plan') return void out.push(`stage "${n}": jobs are only allowed on agent and plan stages`)
+  if (!['agent', 'plan', 'review', 'release'].includes(k)) return void out.push(`stage "${n}": jobs are only allowed on agent, plan, review and release stages`)
   if (!Array.isArray(s.jobs) || !s.jobs.length) return void out.push(`stage "${n}": jobs must be a non-empty list`)
   const plan = k === 'plan'
-  if (!plan && (s.role !== undefined || s.skill !== undefined)) out.push(`stage "${n}": a stage with jobs has no role or skill of its own; declare them on the jobs`)
+  if (k !== 'plan' && k !== 'review' && (s.role !== undefined || s.skill !== undefined)) out.push(`stage "${n}": a stage with jobs has no role or skill of its own; declare them on the jobs`)
   const humans = s.jobs.filter((j: unknown) => obj(j)?.kind === 'human').length
   if (plan && humans && s.gate !== undefined) out.push(`stage "${n}": a human job replaces gate`)
   if (humans > 1) out.push(`stage "${n}": at most one human job`)
   const seen: string[] = []
+  const last = s.jobs.length - 1
+  if (k === 'review' && obj(s.jobs[last])?.id !== n) out.push(`stage "${n}": the last job of a review stage must be the stage's own job {id: ${n}}`)
   s.jobs.forEach((raw: unknown, i: number) => {
     const j = obj(raw) ?? {}
     const id = String(j.id)
     const at = `stage "${n}" job "${id}"`
-    const own = plan && i === 0
+    const own = (plan && i === 0) || (k === 'review' && i === last && id === n)
     const kind = j.kind ?? 'agent'
     const human = plan && kind === 'human'
     if (own) {
-      if (id !== n) out.push(`stage "${n}": the first job of a plan stage must be the stage itself (id "${n}")`)
+      if (plan && id !== n) out.push(`stage "${n}": the first job of a plan stage must be the stage itself (id "${n}")`)
       for (const key of ['kind', 'role', 'skill', 'by', 'when', 'blocking', 'outcomes']) if (j[key] !== undefined) out.push(`${at}: the stage's own job takes no ${key}`)
     } else if (!/^[a-z][a-z0-9-]*$/.test(id)) out.push(`${at}: id must match ^[a-z][a-z0-9-]*$`)
     else if (id === n) out.push(`${at}: id must not be the stage name`)
     else if (seen.includes(id)) out.push(`${at}: duplicate job id`)
+    if (own && k === 'review') {
+      if (j.needs !== undefined && !(Array.isArray(j.needs) && j.needs.every((x: unknown) => typeof x === 'string'))) out.push(`${at}: needs must be a list of job ids`)
+      else for (const x of j.needs ?? []) if (!seen.includes(x)) out.push(`${at}: needs "${x}", which is not an earlier job of the stage`)
+    }
     if (!own) {
       if (kind !== 'agent' && !human) out.push(`${at}: kind ${JSON.stringify(kind)} is not supported yet (only agent${plan ? ' and human' : ''})`)
       if (human) {
@@ -84,7 +90,11 @@ const lintJobs = (n: string, k: Kind, s: Record<string, any>, stageOutcomes: str
         const o = obj(j.outcomes)
         if (!o || !Object.keys(o).length) out.push(`${at}: outcomes must be a non-empty mapping`)
         else {
-          for (const [key, to] of Object.entries(o)) if (to !== 'done' && !stageOutcomes.includes(String(to))) out.push(`${at}: outcome ${key} maps to "${to}", which is neither done nor an outcome of the stage`)
+          for (const [key, to] of Object.entries(o)) {
+            if (k === 'review' && to !== 'done') out.push(`${at}: outcome ${key} maps to "${to}"; review Jobs report findings, the stage's own Job gives the verdict`)
+            else if (k === 'release' && to !== 'done' && to !== 'changes') out.push(`${at}: outcome ${key} maps to "${to}", which is neither done nor changes`)
+            else if ((k === 'agent' || k === 'plan') && to !== 'done' && !stageOutcomes.includes(String(to))) out.push(`${at}: outcome ${key} maps to "${to}", which is neither done nor an outcome of the stage`)
+          }
           if (!Object.values(o).includes('done')) out.push(`${at}: at least one outcome must map to done`)
         }
       }
@@ -195,7 +205,7 @@ export const lint = (doc: unknown): string[] => {
       else if (names.includes(String(to))) edges.push([n, String(to)])
     }
     if (s.role !== undefined && !(s.role in roles)) out.push(`stage "${n}": role "${s.role}" is not in team.roles`)
-    else if (NEEDS_ROLE.includes(k) && !s.role && (s.jobs === undefined || k === 'plan')) out.push(`stage "${n}" (${k}): role is required`)
+    else if (NEEDS_ROLE.includes(k) && !s.role && (s.jobs === undefined || k === 'plan' || k === 'review')) out.push(`stage "${n}" (${k}): role is required`)
     if (k === 'agent' && !s.skill && s.jobs === undefined) out.push(`stage "${n}" (agent): skill is required`)
     if (k === 'human' && (keys.length > 4 || keys.some((x) => !/^[a-z][a-z0-9_-]*$/.test(x)))) out.push(`stage "${n}" (human): 1 to 4 outcome keys matching ^[a-z][a-z0-9_-]*$`)
     if (NO_ROLE.includes(k) && s.role) out.push(`stage "${n}" (${k}): role is not allowed`)
@@ -257,4 +267,4 @@ export const lint = (doc: unknown): string[] => {
 export const jobsOf = (def: StageDef): JobDef[] =>
   def.jobs ?? [{ id: def.name, kind: 'agent', ...(def.role && { role: def.role }), ...(def.skill && { skill: def.skill }), needs: [], blocking: true, outcomes: Object.fromEntries(Object.keys(def.outcomes).map((k) => [k, k])), outcomeOrder: def.outcomeOrder ?? Object.keys(def.outcomes) }]
 
-export const jobOf = (def: StageDef, run: { job?: string | null }): JobDef | undefined => (run.job ? def.jobs?.find((j) => j.id === run.job) : jobsOf(def)[0])
+export const jobOf = (def: StageDef, run: { job?: string | null }): JobDef | undefined => (run.job ? def.jobs?.find((j) => j.id === run.job) : (def.kind === 'review' && def.jobs?.find((j) => j.id === def.name)) || jobsOf(def)[0])

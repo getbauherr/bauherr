@@ -206,7 +206,7 @@ it('files without jobs keep their hash; the shipped factory, standard and carefu
     [`${fixtures}/renamed-pack/factory.yaml`]: '77bd6b01a9c6a0c762eedfcb939bf2fa1b6484f1fcf5e006ba8edc65036c74c9',
     [`${fixtures}/routing-pack/factory.yaml`]: '04a2fc4931b99cad01f94a0651c0020570e5494e614a243dfbf2b71630cc622d',
   }
-  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack') && d !== 'jobs-pack' && d !== 'plan-jobs-pack').length).toBe(Object.keys(expected).length - 4)
+  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack') && !['jobs-pack', 'plan-jobs-pack', 'review-jobs-pack', 'release-jobs-pack'].includes(d)).length).toBe(Object.keys(expected).length - 4)
   for (const [file, hash] of Object.entries(expected)) expect(hashFile(file), file).toBe(hash)
 })
 
@@ -242,7 +242,7 @@ describe('jobs in stages', () => {
   })
   const stageDoc = (d: any) => d.workflow.stages.find((x: any) => x.name === 'audit')
   const bad: [string, (d: any) => void, string][] = [
-    ['jobs on a build stage', (d) => (d.workflow.stages.find((x: any) => x.name === 'build').jobs = two), 'jobs are only allowed on agent and plan stages'],
+    ['jobs on a build stage', (d) => (d.workflow.stages.find((x: any) => x.name === 'build').jobs = two), 'jobs are only allowed on agent, plan, review and release stages'],
     ['empty jobs', (d) => (stageDoc(d).jobs = []), 'jobs must be a non-empty list'],
     ['stage role', (d) => (stageDoc(d).role = 'security'), 'no role or skill of its own'],
     ['id pattern', (d) => (stageDoc(d).jobs[0].id = 'Bad_Id'), 'id must match'],
@@ -261,7 +261,7 @@ describe('jobs in stages', () => {
     ['blocking', (d) => (stageDoc(d).jobs[1].blocking = 'yes'), 'blocking must be true or false'],
     ['outcome target', (d) => (stageDoc(d).jobs[0].outcomes.findings = 'nowhere'), 'neither done nor an outcome of the stage'],
     ['no done outcome', (d) => (stageDoc(d).jobs[0].outcomes = { findings: 'findings' }), 'at least one outcome must map to done'],
-    ['jobs on review', (d) => (d.workflow.stages.find((x: any) => x.name === 'review').jobs = two), 'jobs are only allowed on agent and plan stages'],
+    ['jobs on triage', (d) => (d.workflow.stages.find((x: any) => x.name === 'triage').jobs = two), 'jobs are only allowed on agent, plan, review and release stages'],
   ]
   it('accepts a valid stage with jobs', () => {
     expect(w.lint(withJobs(two))).toEqual([])
@@ -326,4 +326,77 @@ it('graph lists the Jobs of a stage on its node', () => {
   const node = w.graph(w.compile(d)).nodes.find((n) => n.id === 'plan')!
   expect(node.jobs).toEqual([{ id: 'plan', kind: 'agent', role: 'engineer', blocking: true, needs: [] }, { id: 'ax-scan', kind: 'agent', role: 'security', blocking: false, needs: ['plan'] }])
   expect(w.graph(wf).nodes.find((n) => n.id === 'build')?.jobs).toBeUndefined()
+})
+
+describe('jobs on review and release stages', () => {
+  const reviewDoc = () => {
+    const d = defaultDoc()
+    d.team.roles.ux = { title: 'UX', provider: 'anthropic', model: 'x' }
+    const r = d.workflow.stages.find((x: any) => x.name === 'review')
+    r.jobs = [
+      { id: 'security', role: 'security', skill: 'mr-security-review', when: { touches: 'security' } },
+      { id: 'ux', role: 'ux', skill: 'ux-review', needs: ['security'] },
+      { id: 'review' },
+    ]
+    return { d, r }
+  }
+  const releaseDoc = () => {
+    const d = defaultDoc()
+    const r = d.workflow.stages.find((x: any) => x.name === 'release')
+    r.jobs = [{ id: 'staging-walk', role: 'ax', skill: 'verify-maintain', outcomes: { pass: 'done', findings: 'changes' } }]
+    return { d, r }
+  }
+  it('compiles the own Job of a review stage last with the stage role, skill and every earlier Job as needs', () => {
+    const s = w.stage(w.compile(reviewDoc().d), 'review')!
+    expect(s.role).toBe('reviewer')
+    expect(s.jobs!.map((j) => j.id)).toEqual(['security', 'ux', 'review'])
+    expect(s.jobs![0]).toEqual(expect.objectContaining({ blocking: true, outcomes: { done: 'done' }, outcomeOrder: ['done'] }))
+    expect(s.jobs![2]).toEqual({ id: 'review', kind: 'agent', role: 'reviewer', skill: 'review', needs: ['security', 'ux'], blocking: true, outcomes: { clean: 'clean', changes: 'changes', stop: 'stop' }, outcomeOrder: ['clean', 'changes', 'stop'] })
+    expect(w.jobOf(s, {})?.id).toBe('review')
+    expect(w.jobOf(s, { job: 'ux' })?.id).toBe('ux')
+  })
+  it('keeps explicit needs on the own Job of a review stage', () => {
+    const { d, r } = reviewDoc()
+    r.jobs[2].needs = ['ux']
+    expect(w.stage(w.compile(d), 'review')!.jobs![2]!.needs).toEqual(['ux'])
+  })
+  it('compiles release Jobs as given', () => {
+    const s = w.stage(w.compile(releaseDoc().d), 'release')!
+    expect(s.jobs).toEqual([{ id: 'staging-walk', kind: 'agent', role: 'ax', skill: 'verify-maintain', needs: [], blocking: true, outcomes: { pass: 'done', findings: 'changes' }, outcomeOrder: ['pass', 'findings'] }])
+  })
+  const cases: [string, (x: ReturnType<typeof reviewDoc>) => void, string][] = [
+    ['no own Job last', ({ r }) => r.jobs.pop(), "the last job of a review stage must be the stage's own job"],
+    ['own Job not last', ({ r }) => r.jobs.reverse(), "the last job of a review stage must be the stage's own job"],
+    ['own Job with a role', ({ r }) => (r.jobs[2].role = 'reviewer'), 'own job takes no role'],
+    ['own Job with outcomes', ({ r }) => (r.jobs[2].outcomes = { clean: 'done' }), 'own job takes no outcomes'],
+    ['own Job needs a later Job', ({ r }) => (r.jobs[2].needs = ['ghost']), 'not an earlier job'],
+    ['review Job outcome to a stage outcome', ({ r }) => (r.jobs[0].outcomes = { done: 'done', findings: 'changes' }), 'review Jobs report findings'],
+    ['review stage without role', ({ r }) => delete r.role, '(review): role is required'],
+    ['id is the stage name on a non-last Job', ({ r }) => (r.jobs[0].id = 'review'), 'id must not be the stage name'],
+  ]
+  it.each(cases)('rejects %s', (_n, mutate, message) => {
+    const x = reviewDoc()
+    mutate(x)
+    expect(w.lint(x.d).join('\n')).toContain(message)
+  })
+  it('accepts a review stage with Jobs', () => {
+    expect(w.lint(reviewDoc().d)).toEqual([])
+  })
+  const releaseCases: [string, (x: ReturnType<typeof releaseDoc>) => void, string][] = [
+    ['an accepted outcome', ({ r }) => (r.jobs[0].outcomes = { pass: 'accepted' }), 'neither done nor changes'],
+    ['an own Job', ({ r }) => (r.jobs[0].id = 'release'), 'id must not be the stage name'],
+    ['a stage role', ({ r }) => (r.role = 'ax'), 'role is not allowed'],
+    ['no done outcome', ({ r }) => (r.jobs[0].outcomes = { findings: 'changes' }), 'at least one outcome must map to done'],
+  ]
+  it.each(releaseCases)('rejects a release Job with %s', (_n, mutate, message) => {
+    const x = releaseDoc()
+    mutate(x)
+    expect(w.lint(x.d).join('\n')).toContain(message)
+  })
+  it('accepts release Jobs', () => {
+    expect(w.lint(releaseDoc().d)).toEqual([])
+  })
+  it('lints the review and release fixture packs clean', () => {
+    for (const p of ['review-jobs-pack', 'release-jobs-pack']) expect(w.lint(w.parseFactory(readFileSync(fileURLToPath(new URL(`./fixtures/${p}/factory.yaml`, import.meta.url)), 'utf8'))), p).toEqual([])
+  })
 })
