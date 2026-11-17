@@ -2,7 +2,7 @@ import { type CiCounts } from './ci-text'
 import { overlapText } from './hold-text'
 import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
 import { ciWait, ticketLive } from './ticket-live'
-import { is, liveStages, roleOf, title, type Workflow } from './workflow'
+import { is, liveStages, roleOfRun, title, type Workflow } from './workflow'
 
 /** The one button of the Ticket page: the owner's turn (`enabled`) or, disabled, who has the turn and why (`reason`, plain words). `links` has one entry per Ticket (`#N`) or Run (`Run N`) the reason names, `text` being the token as written. */
 export type NextStep = { label: string; enabled: boolean; reason: string; links: { text: string; href: string }[]; /** The button is a link (e.g. "Connect an agent") instead of a disabled button. */ href?: string }
@@ -16,17 +16,17 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
  * agent-side owner, first match: open blocker, live Run, waiting state (overlap, full column, checks), release/review wait, idle.
  * `waiting` is `waitingText` of a waiting Ticket; `admin` gates the Run number and link (Runs are an Admin view).
  */
-export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin, connected = true, ci = null }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null; /** Hotfix Ticket number this Run was paused for. */ preemptedFor?: number | null; /** Number of the Ticket whose session this expedite Run is pausing, while that session has not released yet. */ pausing?: number | null; /** First line of the latest Step when it is waiting_ci. */ waitingStep?: string | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean; /** Whether an agent of the Run's stage role is connected (matters for `awaiting_session` only). */ connected?: boolean; /** Pending counts of the stored check summary: a running Run whose Ticket waits on checks then reads as waiting for CI. */ ci?: CiCounts | null }): NextStep => {
+export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin, connected = true, ci = null }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; job?: string | null; status: string; escalation?: { step: number; reason: string } | null; /** Hotfix Ticket number this Run was paused for. */ preemptedFor?: number | null; /** Number of the Ticket whose session this expedite Run is pausing, while that session has not released yet. */ pausing?: number | null; /** First line of the latest Step when it is waiting_ci. */ waitingStep?: string | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean; /** Whether an agent of the Run's stage role is connected (matters for `awaiting_session` only). */ connected?: boolean; /** Pending counts of the stored check summary: a running Run whose Ticket waits on checks then reads as waiting for CI. */ ci?: CiCounts | null }): NextStep => {
   const runLink = run && admin ? [{ text: `Run ${run.id}`, href: `/runs/${run.id}` }] : []
   if (need) return { label: need, enabled: true, reason: '', links: [] }
   if (ticket.parked) return { label: 'Parked', enabled: false, reason: 'Parked: resume it or discard it on the epic.', links: [] }
   if (blockers.length) return { label: 'Blocked', enabled: false, reason: `Blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}.`, links: blockers.map((b) => ({ text: `#${b.number}`, href: `/tickets/${b.id}` })) }
   if (run?.status === 'awaiting_session' && run.preemptedFor) return { label: 'Paused', enabled: false, reason: `Paused for hotfix #${run.preemptedFor}. It continues first when the hotfix is done.`, links: [] }
-  if (run?.status === 'awaiting_session' && run.pausing) return { label: 'Connect an agent', enabled: false, href: '/team', reason: `Starting: ${roleOf(wf, run.stage)?.title ?? 'agent'} session pausing #${run.pausing}, up to 2 min.`, links: [] }
+  if (run?.status === 'awaiting_session' && run.pausing) return { label: 'Connect an agent', enabled: false, href: '/team', reason: `Starting: ${roleOfRun(wf, run)?.title ?? 'agent'} session pausing #${run.pausing}, up to 2 min.`, links: [] }
   if (run && ['running', 'awaiting_session'].includes(run.status) && run.escalation) return { label: 'Escalated', enabled: false, reason: `Escalated to the strong model (step ${run.escalation.step} of 4): ${run.escalation.reason}${admin ? ` (Run ${run.id})` : ''}.`, links: runLink }
   const ref = admin ? ` (Run ${run?.id})` : ''
   if (run?.status === 'awaiting_session') {
-    const role = roleOf(wf, run.stage)?.title
+    const role = roleOfRun(wf, run)?.title
     return { label: 'Connect an agent', enabled: false, href: '/team', reason: connected ? `Waiting for ${role ? `a ${role}` : 'an'} agent to pick this up${ref}.` : `No ${role ? `${role} ` : ''}agent is connected${ref}.`, links: runLink }
   }
   if (run?.status === 'queued') return { label: 'Queued', enabled: false, reason: `Queued for the Runner${ref}.`, links: runLink }

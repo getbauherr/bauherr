@@ -69,7 +69,7 @@ export const roleOfRun = (wf: Workflow, run: Record<string, any>): Role | undefi
   const def = stage(wf, run.stage)
   return wf.roles.find((r) => r.id === (def && jobOf(def, run))?.role)
 }
-export const stagesOfRole = (wf: Workflow, roleId: string): string[] => wf.stages.filter((s) => s.role === roleId).map((s) => s.name)
+export const stagesOfRole = (wf: Workflow, roleId: string): string[] => wf.stages.filter((s) => s.role === roleId || s.jobs?.some((j) => j.role === roleId)).map((s) => s.name)
 export const target = (wf: Workflow, from: string, outcome: string): string | undefined => stage(wf, from)?.outcomes[outcome]
 
 const named = (wf: Workflow, ...kinds: Kind[]) => wf.stages.filter((s) => kinds.includes(s.kind)).map((s) => s.name)

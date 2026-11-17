@@ -24,7 +24,7 @@ import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { kindOfRun } from './stage-text'
 import { advance } from './advance'
 import { workflowFor } from './factory'
-import { is, pullRank, stage as stageDef, type Workflow } from './workflow'
+import { is, jobOf, pullRank, stage as stageDef, type Workflow } from './workflow'
 import { assertOutcome, finishAgentRun } from './agent-stage'
 import { untrustedBlock } from '@bauherr/runner'
 import { goalFor, type GoalStage } from './run-ctx'
@@ -168,8 +168,9 @@ const stagesOf = (a: { stages?: unknown }, c: Ctx): string[] | null => {
 /** What a session needs to work an `agent` stage: its skill, the role's profile and the outcome keys it may report. */
 const agentBrief = (wf: Workflow, run: Doc) => {
   const def = stageDef(wf, run.stage)!
-  const role = wf.roles.find((r) => r.id === def.role)
-  return { stage: def.name, title: def.title, skill: def.skill, role: role && { id: role.id, title: role.title, profile: role.profile ?? '' }, outcomes: def.outcomeOrder ?? Object.keys(def.outcomes), reads: 'get_ticket, read_worklog, load_skill; no push, no MR, no approval tools' }
+  const job = jobOf(def, run)!
+  const role = wf.roles.find((r) => r.id === job.role)
+  return { stage: def.name, title: def.title, ...(run.job && { job: run.job }), skill: job.skill, role: role && { id: role.id, title: role.title, profile: role.profile ?? '' }, outcomes: job.outcomeOrder, reads: 'get_ticket, read_worklog, load_skill; no push, no MR, no approval tools' }
 }
 
 /** The GitHub login a session Run assigns on the Ticket. */
@@ -248,7 +249,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }), ...(epic && { epic }) }, ...(kind === 'review' && epic && 'slices' in epic && { slices: epic.slices }), goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
 }
 
-type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null> }
+type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null>; claimable: Map<unknown, Doc[]> }
 
 /** Open, unblocked, non-parent Tickets in frontier order with their latest Run; `all` also holds the blocked ones (for skip reasons). `stages` keeps only Tickets whose latest Run (else the Ticket) is in one of them. */
 const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = null): Promise<Frontier | null> => {
@@ -274,17 +275,20 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
     ...scoped(c),
   })
   const latest = new Map<unknown, Doc>()
+  const awaiting = new Map<unknown, Doc[]>()
   const builders = new Map<unknown, string | null>()
   for (const r of runs.docs as Doc[]) {
     if (!latest.has(id(r.ticket))) latest.set(id(r.ticket), r)
+    if (isClaimable(r)) awaiting.set(id(r.ticket), [r, ...(awaiting.get(id(r.ticket)) ?? [])])
     if (kindOfRun(workflowFor(r.workspace), r) === 'build' && !builders.has(id(r.ticket))) builders.set(id(r.ticket), r.sessionLabel ?? null)
   }
   for (const t of unblocked) {
     const r = latest.get(t.id)
     t.resumed = r?.status === 'awaiting_session' && r.preemptedFor != null
   }
-  const inStages = (t: Doc) => !stages || stages.includes((latest.get(t.id)?.stage ?? t.stage) as string)
-  return { open: frontierOrder(unblocked.filter(inStages) as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all: all.filter(inStages), builders }
+  const claimable = new Map<unknown, Doc[]>(unblocked.map((t) => [t.id, stageDef(workflowFor(t.workspace), t.stage)?.jobs ? (awaiting.get(t.id) ?? []).filter((r) => r.stage === t.stage) : isClaimable(latest.get(t.id)) ? [latest.get(t.id)!] : []]))
+  const inStages = (t: Doc) => !stages || (claimable.get(t.id)?.length ? claimable.get(t.id)!.some((r) => stages.includes(r.stage)) : stages.includes((latest.get(t.id)?.stage ?? t.stage) as string))
+  return { open: frontierOrder(unblocked.filter(inStages) as Doc[] as (Doc & { id: number; number: number })[], latest as Map<number, Doc & { stage: string; status: string }>), latest, all: all.filter(inStages), builders, claimable }
 }
 
 const openBlockers = (t: Doc): Doc[] => ((t.blockedBy as Doc[]) ?? []).filter((b) => b.state === 'open')
@@ -306,9 +310,9 @@ const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: st
   const blockers = openBlockers(t)
   if (blockers.length) return `blocked by ${blockers.map((b) => `#${b.number}`).join(', ')}`
   const r = latest.get(t.id)
+  if (f.claimable.get(t.id)?.length) return isOwnBuild(t, f, label) ? 'your own build' : null
   if (r?.status === 'running' && r.mode === 'session') return `leased by ${owners.get(id(r.sessionOwner)) ?? 'another session'}`
-  if (isClaimable(r) && isOwnBuild(t, f, label)) return 'your own build'
-  return isClaimable(r) ? null : 'no claimable Run'
+  return 'no claimable Run'
 }
 
 /** The Tickets ahead of `claimed` in the pull order that could not be claimed, with the reason. */
@@ -349,7 +353,7 @@ export const tools: Tool[] = [
       const owners = await leaseOwners(c, latest)
       return open.map((t: Doc) => {
         const r = latest.get(t.id)
-        const claimable = isClaimable(r) && !isOwnBuild(t, f, label)
+        const claimable = !!f.claimable.get(t.id)?.length && !isOwnBuild(t, f, label)
         return {
           ticket: t.id, number: t.number, title: t.title, url: t.url, stage: t.stage, labels: t.labels, assignee: t.assignee,
           run: r ? { id: r.id, stage: r.stage, status: r.status, mode: r.mode } : null,
@@ -391,10 +395,10 @@ export const tools: Tool[] = [
         if (is(workflowFor(ticket.workspace), ticket.stage, 'container')) throw new Error('parents are not claimable')
         if (stages && !stages.includes(run.stage as string)) throw new Error(`Run ${run.id} is a ${run.stage} Run, not in stages ${stages.join(', ')}`)
         const f = (await frontier(c, undefined, stages))!
-        if (f.latest.get(id(run.ticket))?.id !== run.id || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
-        const top = f.open.filter((t) => !isOwnBuild(t, f, label)).map((t) => f.latest.get(t.id)).find((r) => isClaimable(r) && !recentlyFailed(r!))
+        if (!f.claimable.get(id(run.ticket))?.some((r) => r.id === run.id) || !f.open.some((t) => t.id === ticket.id)) throw new Error(`Run ${run.id} is not claimable now (blocked, leased or superseded)`)
+        const top = f.open.filter((t) => !isOwnBuild(t, f, label)).flatMap((t) => f.claimable.get(t.id)!).find((r) => !recentlyFailed(r))
         if (isOwnBuild(ticket, f, label) && !top) throw new Error(`Run ${run.id} is your own build: another session reviews it`)
-        if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => f.latest.get(t.id) === top) as Doc).number}, ${top.stage}) first`)
+        if (top && top.id !== run.id) throw new Error(`take Run ${top.id} (#${(f.open.find((t) => t.id === id(top.ticket)) as Doc).number}, ${top.stage}) first`)
       }
       return claimRun(c, a.runId, label, stages, clientOf(a, c))
     },
@@ -404,23 +408,25 @@ export const tools: Tool[] = [
     access: 'agent',
     description: 'Claim the top claimable Run in frontier order (Tickets of the expedite lane first, then right to left: Release, Review, Build, Plan, Triage, then the owner\'s Board rank; blocked and leased Tickets are skipped). Same payload as claim_run, or null when nothing is claimable. Two sessions calling at once get different Runs.',
     get inputSchema() {
-      return obj({ product: str('Product slug'), ...sessionArg, ...stagesArg(), ...clientArgs })
+      return obj({ product: str('Product slug'), ...sessionArg, ...stagesArg(), roles: { type: 'array', items: { type: 'string' }, description: 'Only Runs of these roles (Runs without a role always qualify).' }, ...clientArgs })
     },
     async run(a, c) {
       const label = labelOf(a)
       const stages = stagesOf(a, c)
+      const roles = Array.isArray(a.roles) ? (a.roles as string[]) : null
       const f = await frontier(c, a.product, stages)
       const failed: { run: number | string; reason: string }[] = []
       for (const t of f?.open ?? []) {
-        const r = f!.latest.get(t.id)
-        if (!isClaimable(r) || isOwnBuild(t, f!, label)) continue
-        try {
-          const claimed = await claimRun(c, r!.id, label, stages, clientOf(a, c))
-          return { ...claimed, skipped: [...claimed.skipped, ...failed] }
-        } catch (e) {
-          if (e instanceof ClaimLost) continue
-          failedClaims.set(String(r!.id), Date.now())
-          failed.push({ run: r!.id, reason: `claim failed: ${(e as Error).message}` })
+        if (isOwnBuild(t, f!, label)) continue
+        for (const r of f!.claimable.get(t.id)!.filter((x) => !roles || !x.role || roles.includes(x.role))) {
+          try {
+            const claimed = await claimRun(c, r.id, label, stages, clientOf(a, c))
+            return { ...claimed, skipped: [...claimed.skipped, ...failed] }
+          } catch (e) {
+            if (e instanceof ClaimLost) continue
+            failedClaims.set(String(r.id), Date.now())
+            failed.push({ run: r.id, reason: `claim failed: ${(e as Error).message}` })
+          }
         }
       }
       return null
@@ -437,8 +443,8 @@ export const tools: Tool[] = [
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       const f = await frontier(c)
       const label = (run.sessionLabel as string | null) ?? null
-      const next = f?.open.find((t) => t.expediting && t.id !== id(run.ticket) && isClaimable(f.latest.get(t.id)) && !isOwnBuild(t, f, label))
-      return { ok: true, leaseExpiresAt, ...(usage?.note && { note: usage.note }), ...(next && { expedite: { ticket: next.id, run: f!.latest.get(next.id)!.id } }) }
+      const next = f?.open.find((t) => t.expediting && t.id !== id(run.ticket) && f.claimable.get(t.id)?.length && !isOwnBuild(t, f, label))
+      return { ok: true, leaseExpiresAt, ...(usage?.note && { note: usage.note }), ...(next && { expedite: { ticket: next.id, run: f!.claimable.get(next.id)![0]!.id } }) }
     },
   },
   {
@@ -928,7 +934,7 @@ export const tools: Tool[] = [
     inputSchema: obj({ sessionId: str('From connect') }, ['sessionId']),
     async run(a, c) {
       const claimNext = tools.find((t) => t.name === 'claim_next')!
-      return sessions.nextWork(c, ({ stages }) => claimNext.run({ stages, session: c.session!.label }, c) as Promise<Doc | null>)
+      return sessions.nextWork(c, ({ stages, roles }) => claimNext.run({ stages, roles, session: c.session!.label }, c) as Promise<Doc | null>)
     },
   },
   {
