@@ -8,6 +8,7 @@ import { readGoal } from './goal.js';
 import { BRIEF_FILE, DIFF_FILE, DOCS_FINDINGS_FILE, EPIC_WORKLOG_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, matchingArtifactRules, planStepCount, preReviewChecks, type ProofItem } from './pre-review.js';
 import { startProxy } from './proxy.js';
+import { diffBudgetWarning, fakeGreenFindings } from './trust.js';
 import type { RunCtx, RunResult } from './types.js';
 
 export type * from './types.js';
@@ -18,6 +19,7 @@ export { egressGuard, writeScopeGuard } from './guards.js';
 export { buildEvidence } from './evidence.js';
 export { ARTIFACTS_DIR, ARTIFACTS_MANIFEST, makeProof, readManifest, type ProofItem } from './artifacts.js';
 export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, UI_PROOF_PAIRS, UI_PROOF_RULE, artifactRules, storableProofRules, titleNamesVariant, artifactWaivers, changedLines, formatReviewChecks, matchingArtifactRules, parseReviewChecks, planStepCount, preReviewChecks, proofRules, withProofDefaults, type ArtifactKind, type ArtifactRule, type ReviewChecks } from './pre-review.js';
+export { DIFF_BUDGET_LINES, diffBudgetWarning, fakeGreenFindings } from './trust.js';
 export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
@@ -154,6 +156,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       if (ctx.run.kind === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
       return finish('budget_exhausted', 'gateway budget exceeded');
     }
+    if (state.stuck) return finish('needs_human', state.stuck, 'stuck');
     const r = state.result;
     if (!r) return finish('failed', 'agent ended without a result');
     if (r.subtype !== 'success') return finish('failed', r.subtype);
@@ -270,15 +273,20 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       if (state.budgetExhausted) return finish('budget_exhausted', 'gateway budget exceeded');
       extra.push(`**Self-review**: ${findings.length} findings, ${blocking.length} fixed`, ...findings.filter((f) => f.severity === 'low').map((f) => `- low ${f.file ?? ''}:${f.line ?? 0} ${f.msg}`), '');
     }
-    const evidence = () => buildEvidence(goal, state.toolCalls, ctx.ticket.plan, extra);
+    let warning: string[] = [];
+    const evidence = () => buildEvidence(goal, state.toolCalls, ctx.ticket.plan, [...extra, ...warning]);
     let proof: ProofItem[] = [];
     const failures = async () => {
       const files = (await diff('--name-only')).split('\n').filter(Boolean);
+      const unified = await diff();
+      const guards = fakeGreenFindings(unified, ctx.ticket.plan ?? '');
+      const large = diffBudgetWarning(unified);
+      warning = large ? [`**Warning**: ${large}`, ''] : [];
       const rules = matchingArtifactRules(ctx.product.reviewChecks, files);
       const made = rules.filter((r) => r.command);
       const named = new Set(rules.filter((r) => !r.command && r.pairs?.length).map((r) => r.name));
       if (made.length || named.size) proof = [...(made.length ? await makeProof({ dir, env, base, rules: made, gatewayHost: new URL(proxy!.url).host, log: (m) => ctx.recorder.log(m) }) : []), ...readManifest(dir).filter((i) => i.rule && named.has(i.rule))];
-      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), images: proof.filter((i) => i.kind === 'image' && i.pair), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks });
+      return preReviewChecks({ files, evidence: evidence(), planSteps: planStepCount(ctx.ticket.plan ?? ''), artifacts: proof.flatMap((i) => (i.rule ? [i.rule] : [])), images: proof.filter((i) => i.kind === 'image' && i.pair), exists: (p) => existsSync(join(dir, p)), config: ctx.product.reviewChecks }).concat(guards);
     };
     let failed = await failures();
     if (failed.length) {

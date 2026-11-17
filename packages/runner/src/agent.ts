@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { query, type HookCallbackMatcher, type Options, type SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { egressGuard, writeScopeGuard, type Decision } from './guards.js';
@@ -17,7 +18,24 @@ export type AgentState = {
   budgetExhausted?: boolean;
   /** `ctx.shouldStop` answered true: the agent was aborted at a tool boundary. */
   preempted?: boolean;
+  /** The Run stopped because the agent ran the same Bash command with the same result `SPIN_LIMIT` times in a row. */
+  stuck?: string;
+  spin?: { key: string; n: number };
 };
+
+export const SPIN_LIMIT = 3;
+
+/** Counts consecutive identical Bash results (command, exit code, output hash); any other tool call resets the streak. Returns the stop reason once the limit is hit. */
+export function trackSpin(state: AgentState, tool: string, input: unknown, exitCode: number, output: unknown): string | undefined {
+  if (tool !== 'Bash') {
+    state.spin = undefined;
+    return undefined;
+  }
+  const command = String((input as { command?: string }).command ?? '');
+  const key = `${command}\0${exitCode}\0${createHash('sha256').update(JSON.stringify(output) ?? '').digest('hex')}`;
+  state.spin = { key, n: state.spin?.key === key ? state.spin.n + 1 : 1 };
+  return state.spin.n >= SPIN_LIMIT ? `Spinning: \`${command.slice(0, 200)}\` ran ${SPIN_LIMIT} times in a row with exit code ${exitCode} and identical output` : undefined;
+}
 
 /** `build` is the Run's own agent turn; `self-review` and `fix` are the extra passes before the MR is pushed. */
 export type AgentKind = 'build' | 'self-review' | 'fix';
@@ -29,6 +47,12 @@ const DISALLOWED = [
   'WebFetch', 'WebSearch', 'Bash(git push:*)', 'Bash(curl:*)', 'Bash(wget:*)',
   'Bash(ssh:*)', 'Bash(printenv:*)', 'Bash(env)', 'Bash(env:*)',
 ];
+
+const stopIfSpinning = (state: AgentState, reason: string | undefined) => {
+  if (!reason) return;
+  state.stuck = reason;
+  state.abort.abort();
+};
 
 const preToolUse = (d: Decision) => ({
   hookSpecificOutput: {
@@ -82,6 +106,7 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
       hooks: [async (i) => {
         if (i.hook_event_name === 'PostToolUse') {
           await record({ toolUseId: i.tool_use_id, tool: i.tool_name, input: i.tool_input, ok: true, durationMs: i.duration_ms, ...(i.tool_name === 'Bash' ? { exitCode: 0 } : {}) });
+          stopIfSpinning(state, trackSpin(state, i.tool_name, i.tool_input, 0, i.tool_response));
           if (!o.kind && ctx.shouldStop && (await ctx.shouldStop())) {
             state.preempted = true;
             state.abort.abort();
@@ -95,6 +120,7 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
         if (i.hook_event_name === 'PostToolUseFailure') {
           const code = /Exit code (\d+)/.exec(i.error)?.[1];
           await record({ toolUseId: i.tool_use_id, tool: i.tool_name, input: i.tool_input, ok: false, durationMs: i.duration_ms, ...(i.tool_name === 'Bash' ? { exitCode: code ? Number(code) : 1 } : {}) });
+          stopIfSpinning(state, trackSpin(state, i.tool_name, i.tool_input, code ? Number(code) : 1, i.error));
         }
         return {};
       }],
@@ -186,6 +212,6 @@ export async function runAgent(ctx: RunCtx, options: Options, state: AgentState,
       }
     }
   } catch (e) {
-    if (!state.budgetExhausted && !state.preempted) throw e;
+    if (!state.budgetExhausted && !state.preempted && !state.stuck) throw e;
   }
 }

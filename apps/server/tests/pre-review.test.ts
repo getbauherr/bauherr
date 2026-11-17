@@ -78,6 +78,16 @@ it('request_review passes with the rules off', async () => {
   await expect(call(member, 'request_review', a)).resolves.toMatchObject({ stage: 'review' })
 })
 
+it('trust guards apply with the rules off: an added skip blocks, a large diff only warns', async () => {
+  await payload.update({ collection: 'products', id: product, data: { reviewChecks: null }, ...o })
+  const skipped = await seed({ 'tests/a.test.ts': "it.skip('a', f)" })
+  await expect(call(member, 'run_checks', skipped.a)).resolves.toMatchObject({ failures: [expect.stringContaining('tests/a.test.ts: adds 1 skipped')], warnings: [] })
+  await expect(call(member, 'request_review', skipped.a)).rejects.toThrow('fake-green guard')
+  await fake.forge.closePullRequest(repo, skipped.pr.number)
+  const large = await seed({ 'src/big.ts': Array.from({ length: 450 }, (_, i) => `const a${i} = ${i}`).join('\n') })
+  await expect(call(member, 'run_checks', large.a)).resolves.toMatchObject({ failures: [], warnings: [expect.stringContaining('Large diff (')] })
+})
+
 it('finish_run with an MR enforces the same checks and keeps the Run running', async () => {
   const { ticket, run, a, pr } = await seed({ 'src/a.ts': 'x' })
   await expect(call(member, 'finish_run', { ...a, status: 'succeeded', prUrl: pr.url })).rejects.toThrow('Pre-review checks failed')

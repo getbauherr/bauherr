@@ -1,6 +1,7 @@
 ---
 globs: ["**"]
 applies: Build Runs; the MR description
+sources: [osmani-review, osmani-long-running]
 ---
 
 # Evidence
@@ -41,6 +42,9 @@ Every MR carries a `## Evidence` section. The Runner appends it from recorded St
 - A failing or skipped check is listed, never omitted.
 - No prose summary replaces a row; a row without a reference is `unverified`.
 - Checks are recorded by the Runner; copying output by hand is not evidence.
+- Fake-green guard: a diff that deletes a test file or test cases, adds `.skip`/`.only`/`xit`/`test.todo`, or lowers a coverage or lint threshold or raises `retries` is refused by pre-review naming the file; only a plan line `Allowed: remove tests <path>` permits removing tests.
+- Diff budget: above 400 changed lines (without lockfiles, generated files and tests) pre-review warns `Large diff (N lines)`; split per the plan or say why in Evidence.
+- Spin guard: the Runner stops a Run that ran the same Bash command 3 times in a row with an identical exit code and output as `needs_human` `stuck`; change approach after one repeat.
 - A Product may require commands: a `ran: <command>` rule needs the Evidence to show that command with exit code 0 and the pushed head SHA (first 7 characters), run after the last edit.
 - A Product may require proof per path rule (a kind, the path globs, the command that makes it into `.bauherr/artifacts/`); a waiver line is stored and shown to the person who accepts as "No proof for <rule>: <reason>".
 - A Product may require, per path rule, tests for changed source, a migration for a changed schema and a row per plan step: `request_review` is refused with the failing lines otherwise.
