@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { scanned } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 type Doc = Record<string, any>
@@ -297,6 +298,7 @@ const secondInBuild = async (items = ['One', 'Two', 'Three']) => {
 const replanned = async (parent: Doc, plan: string) => {
   await fake.tickets(repo).comment(String(parent.number), plan)
   await payload.create({ collection: 'runs', data: { ticket: parent.id, stage: 'plan', status: 'succeeded', mode: 'autonomous', workspace: ws }, ...o })
+  await scanned(payload, parent.id, ws)
 }
 const sliceTitles = async (id: number) => (await reload(id)).epic.slices.map((s: Doc) => s.title)
 

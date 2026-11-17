@@ -59,6 +59,10 @@ const stageDoc = (d: Doc, name: string) => d.workflow.stages.find((s: Doc) => s.
 const renameStage = (d: Doc, from: string, to: string) => {
   for (const s of d.workflow.stages as Doc[]) {
     if (s.name === from) s.name = to
+    for (const j of s.jobs ?? []) {
+      if (j.id === from) j.id = to
+      j.needs = (j.needs ?? []).map((n: string) => (n === from ? to : n))
+    }
     for (const [k, v] of Object.entries(s.outcomes ?? {})) if (v === from) s.outcomes[k] = to
   }
 }

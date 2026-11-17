@@ -208,7 +208,9 @@ describe('jobs in the plan stage', () => {
   })
   it('describeChanges names added, changed and removed jobs', () => {
     const y = withApproval()
-    expect(describeChanges(doc(base), doc(y))).toContain('Plan: new job ax-scan, worked by Security specialist, does not block')
+    const bare = doc(y)
+    e.stagesOf(bare).find((x) => x.name === 'plan')!.jobs.splice(1, 1)
+    expect(describeChanges(bare, doc(y))).toContain('Plan: new job ax-scan, worked by Security specialist, does not block')
     const off = e.setCheckpoint(y, 'plan', false)
     expect(describeChanges(doc(y), doc(off))).toEqual(['Plan: you are no longer asked to approve the plan'])
     const d = doc(y)

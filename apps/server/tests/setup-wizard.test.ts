@@ -6,6 +6,7 @@ import type { Payload } from 'payload'
 import { parse, stringify } from 'yaml'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { claimOnly } from './helpers/claim'
+import { scanned } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -194,6 +195,7 @@ const drive = async (slug: string, preset: string, edit?: (d: Record<string, any
     await call(m, 'finish_run', { runId: plan.runId, leaseToken: plan.leaseToken, status: 'succeeded' })
     await poll()
     expect(await stage()).toBe('plan')
+    await scanned(payload, id, ws)
     await call(m, 'approve', { ticket: id, gate: 'plan' })
     await poll()
     expect(await stage()).toBe('build')
@@ -250,7 +252,7 @@ it('an agent stage or a human stage that returns a Ticket to the plan stage plan
   await d.call(d.m, 'finish_run', { runId: sec1.runId, leaseToken: sec1.leaseToken, status: 'succeeded', outcome: 'findings', comment: 'replan please' })
   expect(await d.stage()).toBe('plan')
   expect(await d.labels()).not.toContain('bauherr:approved:plan')
-  expect((await d.runs('plan')).map((r) => r.status).sort()).toEqual(['awaiting_session', 'succeeded'])
+  expect((await d.runs('plan')).filter((r) => !r.job).map((r) => r.status).sort()).toEqual(['awaiting_session', 'succeeded'])
   await d.poll()
   expect((await d.runs('plan')).filter((r) => r.status === 'awaiting_session')).toHaveLength(1)
 

@@ -158,7 +158,7 @@ it('graph of the default file', () => {
     nodes: [
       { id: 'triage', title: 'Triage', kind: 'triage', role: 'orchestrator', checkpoint: false },
       { id: 'triage:refine', title: 'Answer questions', kind: 'human', checkpoint: true },
-      { id: 'plan', title: 'Plan', kind: 'plan', role: 'engineer', checkpoint: false },
+      { id: 'plan', title: 'Plan', kind: 'plan', role: 'engineer', checkpoint: false, jobs: [{ id: 'plan', kind: 'agent', role: 'engineer', blocking: true, needs: [] }, { id: 'ax-scan', kind: 'agent', role: 'ax', blocking: false, needs: ['plan'] }] },
       { id: 'plan:gate', title: 'Approve plan', kind: 'human', checkpoint: true },
       { id: 'parent', title: 'Split', kind: 'container', checkpoint: false },
       { id: 'build', title: 'Build', kind: 'build', role: 'engineer', checkpoint: false },
@@ -191,14 +191,14 @@ it('graph of the default file', () => {
 const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as any)[k])])) : v)
 const hashFile = (path: string) => createHash('sha256').update(JSON.stringify(canon(w.compile(w.parseFactory(readFileSync(path, 'utf8')))))).digest('hex')
 
-it('files without jobs compile to the same hash as before jobs existed', () => {
+it('files without jobs keep their hash; the shipped factory, standard and careful files changed only by the plan Jobs and the ax role', () => {
   const root = fileURLToPath(new URL('../../..', import.meta.url))
   const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
   const expected: Record<string, string> = {
-    [`${root}pack/factory.yaml`]: '54fe519bf2a413e83b369e7ac17d0da826f77152f17d8b5cf9dac721bcd552d0',
+    [`${root}pack/factory.yaml`]: '4b7de56156cdaa4dff99ac2e6f7e3bc269adf70efc62937ef791bb9b28176415',
     [`${root}pack/presets/solo.yaml`]: '454b110bd5170fce5f0133a90dee014f587aa2ff8b69df837b3ccce5be3bca10',
-    [`${root}pack/presets/standard.yaml`]: 'cf6eae7529901e8262436140ac5987d04bb39f9b2bcd8a98a1acff67fb4a2742',
-    [`${root}pack/presets/careful.yaml`]: 'e09099a9cf3be3fc3ba99beddcf5d48e9bfe4c43d344eaddd851e9b5404f39e6',
+    [`${root}pack/presets/standard.yaml`]: '12c85740fd5ce1810a82e7735ef89e4c366be94a4c48e3888ba5deafe5ecf7a8',
+    [`${root}pack/presets/careful.yaml`]: '1a3f9306f01c3724b904d3f3eff1d028ac2c1052996751c33f09e1d1c1305bec',
     [`${fixtures}/bare-pack/factory.yaml`]: '4dd0536b8bfd0ec5a131fa8517d8e04e1b7db170e311d736820c65a7e000fb30',
     [`${fixtures}/custom-pack/factory.yaml`]: '3e5b636c36941e08c0b3270a4516320c781e3b6ecf94a48f3208c2fd73d18de0',
     [`${fixtures}/gated-pack/factory.yaml`]: 'c7c1856377b135e59f3afc3bb505c955153ac0b32eb9909e81007a9530834afa',
@@ -325,5 +325,5 @@ it('graph lists the Jobs of a stage on its node', () => {
   p.jobs = [{ id: 'plan' }, { id: 'ax-scan', role: 'security', skill: 'harden', blocking: false }, { id: 'approve', kind: 'human' }]
   const node = w.graph(w.compile(d)).nodes.find((n) => n.id === 'plan')!
   expect(node.jobs).toEqual([{ id: 'plan', kind: 'agent', role: 'engineer', blocking: true, needs: [] }, { id: 'ax-scan', kind: 'agent', role: 'security', blocking: false, needs: ['plan'] }])
-  expect(w.graph(wf).nodes.find((n) => n.id === 'plan')?.jobs).toBeUndefined()
+  expect(w.graph(wf).nodes.find((n) => n.id === 'build')?.jobs).toBeUndefined()
 })
