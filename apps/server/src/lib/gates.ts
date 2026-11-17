@@ -20,7 +20,7 @@ import { askedOf, needBy } from './addressee'
 import { productOwnersOfTicket } from './people'
 import { decisionComments, gateOwnersOf, logins } from './forge-channel'
 import { rejoin } from './wip'
-import { visitWorst } from './stage-jobs'
+import { jobsOpen, visitWorst } from './stage-jobs'
 import { is, stage as stageDef, wipStages } from './workflow'
 
 type Doc = Record<string, any>
@@ -56,11 +56,11 @@ const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?:
  * A gate whose owners are all rejected for good is not notified and is flagged `gateUnreachable`; it is retried each sweep.
  * Returns whether the Ticket row changed.
  */
-export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
+export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; kind?: string | null; job?: string | null; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
   const wf = workflowFor(t.workspace)
   const productionChecksMissing = is(wf, t.stage, 'release') && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
   // A checkpoint the owner decided in the UI a moment ago stays closed until the forge side has caught up.
-  const raw = needsOf(wf, t, run, productionChecksMissing, await gatesOf(payload, wf, t))
+  const raw = needsOf(wf, { ...t, jobsOpen: await jobsOpen(payload, t) }, run, productionChecksMissing, await gatesOf(payload, wf, t))
   const candidate = justDecided(t, raw) ? null : raw
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
@@ -146,7 +146,7 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   // Closes the claim/poll race: the poll may have seen the new assignee before it was recorded and skipped the Run start on stage entry.
   const factory = [...mine, ...added]
   if (is(wf, t.stage, 'plan', 'build') && t.state === 'open' && !t.waitingFor && logins(t.assignees).every((a) => factory.includes(a))) {
-    const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, ...o })
+    const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }, { job: { exists: false } }] }, ...o })
     if (!runs.totalDocs && !(is(wf, t.stage, 'build') && (await holdOverlap(payload, t)))) await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage)
   }
   return true

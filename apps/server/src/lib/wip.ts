@@ -109,7 +109,7 @@ export const startAfterPull = async (payload: Payload, t: Doc, stage: string): P
   if (fresh.parked || is(workflowFor(t.workspace), stage, 'human')) return
   if (is(workflowFor(t.workspace), stage, 'review')) await startReviewIfReady(payload, fresh)
   else if (logins(fresh.assignees).every((a) => logins(fresh.gateAssignees).includes(a))) {
-    if (stageDef(workflowFor(t.workspace), stage)?.jobs) await startReadyJobs(payload, fresh)
+    if (!is(workflowFor(t.workspace), stage, 'plan') && stageDef(workflowFor(t.workspace), stage)?.jobs) await startReadyJobs(payload, fresh)
     else await startRunIfNeeded(payload, fresh as { id: number; workspace?: unknown }, stage)
   }
 }

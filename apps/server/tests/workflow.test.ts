@@ -206,7 +206,7 @@ it('files without jobs compile to the same hash as before jobs existed', () => {
     [`${fixtures}/renamed-pack/factory.yaml`]: '77bd6b01a9c6a0c762eedfcb939bf2fa1b6484f1fcf5e006ba8edc65036c74c9',
     [`${fixtures}/routing-pack/factory.yaml`]: '04a2fc4931b99cad01f94a0651c0020570e5494e614a243dfbf2b71630cc622d',
   }
-  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack') && d !== 'jobs-pack').length).toBe(Object.keys(expected).length - 4)
+  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack') && d !== 'jobs-pack' && d !== 'plan-jobs-pack').length).toBe(Object.keys(expected).length - 4)
   for (const [file, hash] of Object.entries(expected)) expect(hashFile(file), file).toBe(hash)
 })
 
@@ -242,7 +242,7 @@ describe('jobs in stages', () => {
   })
   const stageDoc = (d: any) => d.workflow.stages.find((x: any) => x.name === 'audit')
   const bad: [string, (d: any) => void, string][] = [
-    ['jobs on a build stage', (d) => (d.workflow.stages.find((x: any) => x.name === 'build').jobs = two), 'jobs are only allowed on agent stages'],
+    ['jobs on a build stage', (d) => (d.workflow.stages.find((x: any) => x.name === 'build').jobs = two), 'jobs are only allowed on agent and plan stages'],
     ['empty jobs', (d) => (stageDoc(d).jobs = []), 'jobs must be a non-empty list'],
     ['stage role', (d) => (stageDoc(d).role = 'security'), 'no role or skill of its own'],
     ['id pattern', (d) => (stageDoc(d).jobs[0].id = 'Bad_Id'), 'id must match'],
@@ -261,7 +261,7 @@ describe('jobs in stages', () => {
     ['blocking', (d) => (stageDoc(d).jobs[1].blocking = 'yes'), 'blocking must be true or false'],
     ['outcome target', (d) => (stageDoc(d).jobs[0].outcomes.findings = 'nowhere'), 'neither done nor an outcome of the stage'],
     ['no done outcome', (d) => (stageDoc(d).jobs[0].outcomes = { findings: 'findings' }), 'at least one outcome must map to done'],
-    ['jobs on review', (d) => (d.workflow.stages.find((x: any) => x.name === 'review').jobs = two), 'jobs are only allowed on agent stages'],
+    ['jobs on review', (d) => (d.workflow.stages.find((x: any) => x.name === 'review').jobs = two), 'jobs are only allowed on agent and plan stages'],
   ]
   it('accepts a valid stage with jobs', () => {
     expect(w.lint(withJobs(two))).toEqual([])
@@ -269,6 +269,51 @@ describe('jobs in stages', () => {
   it.each(bad)('rejects %s', (_n, mutate, message) => {
     const d = withJobs(JSON.parse(JSON.stringify(two)))
     mutate(d)
+    expect(w.lint(d).join('\n')).toContain(message)
+  })
+})
+
+describe('jobs in the plan stage', () => {
+  const planDoc = (jobs: unknown[] = [{ id: 'plan' }, { id: 'ax-scan', role: 'security', skill: 'harden', blocking: false, outcomes: { pass: 'done', findings: 'done' } }, { id: 'approve', kind: 'human', by: 'bauherr' }]) => {
+    const d = defaultDoc()
+    const p = d.workflow.stages.find((x: any) => x.name === 'plan')
+    delete p.gate
+    p.jobs = jobs
+    return { d, p }
+  }
+  it('plan, scan and approval compile to the own Job, the scan after it, and the same human gate as gate: human', () => {
+    const { d } = planDoc()
+    const c = w.compile(d)
+    const p = w.stage(c, 'plan')!
+    expect(p.gate).toBe('human')
+    expect(p.gate_by).toBeUndefined()
+    expect(p.jobs).toEqual([
+      expect.objectContaining({ id: 'plan', role: 'engineer', needs: [], blocking: true }),
+      { id: 'ax-scan', kind: 'agent', role: 'security', skill: 'harden', needs: ['plan'], blocking: false, outcomes: { pass: 'done', findings: 'done' }, outcomeOrder: ['pass', 'findings'] },
+    ])
+    expect(w.gates(c)).toEqual(w.gates(wf))
+    expect(w.jobOf(p, {})?.role).toBe('engineer')
+    expect(w.jobOf(p, { job: 'ax-scan' })?.role).toBe('security')
+  })
+  it('a human job by the product owner compiles to gate_by', () => {
+    const { d } = planDoc([{ id: 'plan' }, { id: 'approve', kind: 'human', by: 'product-owner' }])
+    const p = w.stage(w.compile(d), 'plan')!
+    expect(p.gate_by).toBe('product-owner')
+    expect(p.jobs).toBeUndefined()
+  })
+  const bad: [string, (p: any) => void, string][] = [
+    ['gate next to a human job', (p) => (p.gate = 'human'), 'a human job replaces gate'],
+    ['a first job that is not the stage', (p) => (p.jobs[0].id = 'x'), 'the first job of a plan stage must be the stage itself'],
+    ['a role on the own job', (p) => (p.jobs[0].role = 'engineer'), "the stage's own job takes no role"],
+    ['two human jobs', (p) => p.jobs.push({ id: 'approve2', kind: 'human' }), 'at most one human job'],
+    ['a human job not last', (p) => p.jobs.push({ id: 'more', role: 'security', skill: 'harden' }), 'the human job must be the last job'],
+    ['a role on a human job', (p) => (p.jobs[2].role = 'security'), 'a human job takes no role'],
+    ['an unknown approver', (p) => (p.jobs[2].by = 'nobody'), 'by must be bauherr or product-owner'],
+    ['a ci job', (p) => (p.jobs[1].kind = 'ci'), 'not supported yet'],
+  ]
+  it.each(bad)('rejects %s', (_n, mutate, message) => {
+    const { d, p } = planDoc()
+    mutate(p)
     expect(w.lint(d).join('\n')).toContain(message)
   })
 })
