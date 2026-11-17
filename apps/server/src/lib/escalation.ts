@@ -8,6 +8,7 @@ import { baseCaps, escalatedCaps, REVIEW_CAP_REASON, startInvestigation } from '
 import { modeFor } from './mode'
 import { id } from './release'
 import { tierModels } from './run-ctx'
+import { jobExtra } from './stage-jobs'
 import { kindOfRun } from './stage-text'
 import { workflowFor } from './factory'
 import { nameOf } from './workflow'
@@ -126,7 +127,7 @@ export const escalate = async (payload: Payload, t: Doc, run: Doc, reason: strin
   }
   await noteRetry(payload, t, run, reason)
   const extra = run.investigation ? { investigation: run.investigation } : { escalation: { step: 2, reason: reason.split('\n')[0]!.slice(0, 300), previousRuns: [run.id] } }
-  const { created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, run.stage, { previousRun: run.id, ...extra })
+  const { created } = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, run.stage, { previousRun: run.id, ...extra, ...jobExtra(run) })
   return created ? `Started one new ${run.stage} Run on strong.` : false
 }
 

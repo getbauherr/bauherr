@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { GRAPH_CHECKPOINT } from './checkpoints'
 import { resolve } from 'node:path'
-import { IN_FLIGHT, LIVE, WIP, askedBy, lint, parseFactory, type Addressee, type JobDef, type Kind, type Role, type StageDef, type Workflow } from './workflow-rules'
+import { IN_FLIGHT, LIVE, WIP, askedBy, jobOf, lint, parseFactory, type Addressee, type JobDef, type Kind, type Role, type StageDef, type Workflow } from './workflow-rules'
 
 export * from './workflow-rules'
 
@@ -65,6 +65,10 @@ export const kindOf = (wf: Workflow, name: string): Kind | undefined => stage(wf
 export const is = (wf: Workflow, name: string, ...kinds: Kind[]): boolean => kinds.includes(kindOf(wf, name) as Kind)
 export const title = (wf: Workflow, name: string): string => stage(wf, name)?.title ?? name
 export const roleOf = (wf: Workflow, name: string): Role | undefined => wf.roles.find((r) => r.id === stage(wf, name)?.role)
+export const roleOfRun = (wf: Workflow, run: Record<string, any>): Role | undefined => {
+  const def = stage(wf, run.stage)
+  return wf.roles.find((r) => r.id === (def && jobOf(def, run))?.role)
+}
 export const stagesOfRole = (wf: Workflow, roleId: string): string[] => wf.stages.filter((s) => s.role === roleId).map((s) => s.name)
 export const target = (wf: Workflow, from: string, outcome: string): string | undefined => stage(wf, from)?.outcomes[outcome]
 

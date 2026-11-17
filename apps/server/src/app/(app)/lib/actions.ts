@@ -7,6 +7,7 @@ import { NotInWorkspace, NotReleasable, RunHealthy, decide, acceptStaging, appro
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunOrRejoin } from '../../../jobs'
+import { jobExtra } from '../../../lib/stage-jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
 import type { SeenKey } from '../../../lib/inbox-seen'
@@ -322,10 +323,10 @@ export const refineFinish = async (ticket: number) => refining({ ticket }, (x) =
 /** Starts a new Run of the stage of a failed or needs_human Run (Admin or a member of its Workspace) and records a human touch; null when the Run cannot be re-run by this person. */
 const startRerun = async (user: Awaited<ReturnType<typeof requireBauherr>>, payload: Awaited<ReturnType<typeof payloadClient>>, runId: number) => {
   const o = { depth: 0, overrideAccess: true } as const
-  const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number } | null
+  const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number; job?: string | null } | null
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) return null
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
-  const started = await startRunOrRejoin(payload, ticket, run.stage)
+  const started = await startRunOrRejoin(payload, ticket, run.stage, jobExtra(run))
   // Parked in a full column: the Ticket waits for its slot (no Run yet); its page says so.
   if (!started) return { run, next: null, created: false }
   const { run: next, created } = started

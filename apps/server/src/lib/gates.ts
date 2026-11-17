@@ -20,7 +20,8 @@ import { askedOf, needBy } from './addressee'
 import { productOwnersOfTicket } from './people'
 import { decisionComments, gateOwnersOf, logins } from './forge-channel'
 import { rejoin } from './wip'
-import { is, wipStages } from './workflow'
+import { worstRun } from './stage-jobs'
+import { is, stage as stageDef, wipStages } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -155,9 +156,15 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
 export const syncGates = async (payload: Payload, expediteOnly = false): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', sort: '-expedite', where: { and: [...(expediteOnly ? [{ expedite: { equals: true } }] : []), { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }, { and: [{ state: { equals: 'closed' } }, { progressHash: { exists: true } }, { updatedAt: { greater_than: new Date(Date.now() - 2 * 864e5).toISOString() } }] }] }] }, pagination: false, ...o })).docs as Doc[]
   if (!tickets.length) return 0
-  const latest = new Map<number, Doc>()
+  const runsOf = new Map<number, Doc[]>()
   for (const r of (await payload.find({ collection: 'runs', where: { ticket: { in: tickets.map((t) => t.id) } }, sort: '-createdAt', pagination: false, ...o })).docs as Doc[]) {
-    if (!latest.has(r.ticket)) latest.set(r.ticket, r)
+    runsOf.set(r.ticket, [...(runsOf.get(r.ticket) ?? []), r])
+  }
+  const latest = new Map<number, Doc>()
+  for (const t of tickets) {
+    const runs = runsOf.get(t.id) ?? []
+    const run = stageDef(workflowFor(t.workspace), t.stage)?.jobs ? worstRun(runs.filter((r) => r.stage === t.stage && (!t.stageSince || r.createdAt >= t.stageSince))) : runs[0]
+    if (run) latest.set(t.id, run)
   }
   let changed = 0
   for (const t of tickets) {
