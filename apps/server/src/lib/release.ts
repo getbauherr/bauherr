@@ -259,6 +259,43 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
   return { approved: APPROVED_STAGING, stage }
 }
 
+/** A merged factory MR of the Ticket that it was not released with before: a Ticket sent back from release keeps its old merge. */
+export const mergedDuringBuild = (pr: PullRequest, repo: string, t: Doc): boolean => pr.state === 'merged' && isFactoryPr(pr, repo, t) && !(t.mergeSha && pr.mergeSha === t.mergeSha)
+
+/** The PR URLs linked on the Ticket (its epic MR, then the MR of each Run, newest first) and the first trusted PR number among them. */
+const linkedPr = (t: Doc, runs: Doc[], repo: string, web: string) => {
+  const urls = [t.epic?.pr, ...runs.map((r) => r.artifacts?.prUrl)].filter(Boolean)
+  return { urls, num: urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null) }
+}
+
+/** `prUrl` (else the MR linked on the Ticket) when it is a merged factory MR the Ticket was not released with (see `mergedDuringBuild`), with the Ticket's source; `released` when the Ticket already sits in release with that very merge (a claim or the watcher moved it first). Null otherwise. */
+export const mergedOwnMr = async (payload: Payload, t: Doc, prUrl?: unknown): Promise<{ ts: TicketSource; pr: PullRequest; released: boolean } | null> => {
+  const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
+  const runs = prUrl ? [] : ((await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[])
+  const num = prUrl ? prNumber(prUrl, repo, web) : linkedPr(t, runs, repo, web).num
+  const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
+  if (!pr || pr.state !== 'merged' || !isFactoryPr(pr, repo, t)) return null
+  if (mergedDuringBuild(pr, repo, t)) return { ts, pr, released: false }
+  return t.stage === byKind(workflowFor(t.workspace), 'release')!.name && t.mergeSha && pr.mergeSha === t.mergeSha ? { ts, pr, released: true } : null
+}
+
+/** Moves a Ticket whose MR merged to `release` (conditional on its stage, so two callers release it once; false when another won), clears what waited for the owner, cancels queued Build Runs of a Ticket released from Build, and records the move. */
+export const releaseMerged = async (payload: Payload, ts: TicketSource, t: Doc, pr: PullRequest, now = Date.now()): Promise<boolean> => {
+  const wf = workflowFor(t.workspace)
+  const release = byKind(wf, 'release')!.name
+  const build = byKind(wf, 'build')?.name
+  const at = new Date(now).toISOString()
+  if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL, "needs_you" = NULL, "needs_by" = NULL, "parked_need" = NULL, "decision" = NULL`, sql`"stage" = ${t.stage}`))) return false
+  if (build && build !== byKind(wf, 'review')?.name && t.stage === build) {
+    const queued = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: build } }, { status: { in: ['queued', 'awaiting_session'] } }] }, pagination: false, ...o })
+    for (const r of queued.docs) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'the MR merged during Build', finishedAt: at }, ...o })
+  }
+  Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
+  await moveStage(payload, ts, t, release, 'merged')
+  await clearApprovalLabel(payload, ts, String(t.number))
+  return true
+}
+
 /** Review Tickets whose MR merged move to `release`, and so do Build Tickets whose factory MR merged during the Build (a human merged a review fix round; no Run can end that Build); release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
@@ -305,26 +342,20 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
         // A running Build may still push to its MR; the next pass looks again once it ended.
         if (inBuild && runs.some((r) => r.stage === build && r.status === 'running')) continue
-        const urls = [t.epic?.pr, ...runs.map((r) => r.artifacts?.prUrl)].filter(Boolean)
-        const num = urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null)
+        const { urls, num } = linkedPr(t, runs, repo, web)
         if (num == null) {
           if (urls.length && !inBuild) payload.logger.warn({ ticket: t.id, urls }, 'ignoring pull request URL outside the ticket source repo')
           continue
         }
         const pr = await backend.forge.getPullRequest(repo, num)
         // In Build only a merged factory MR that was not released before counts: a Ticket sent back from release keeps its old merge.
-        if (inBuild && (pr.state !== 'merged' || !isFactoryPr(pr, repo, t) || (t.mergeSha && pr.mergeSha === t.mergeSha))) continue
+        if (inBuild && !mergedDuringBuild(pr, repo, t)) continue
         if (pr.state === 'closed') {
           const marker = `<!-- bauherr:mr-closed:${num} -->`
           if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the MR was closed without merge; re-run Build or close the Ticket.`)
         }
         if (pr.state !== 'merged') continue
-        const at = new Date(now).toISOString()
-        if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = ${t.stage}`))) continue
-        if (inBuild) for (const r of runs.filter((x) => x.stage === build && ['queued', 'awaiting_session'].includes(x.status))) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'the MR merged during Build', finishedAt: new Date(now).toISOString() }, ...o })
-        Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
-        await moveStage(payload, ts, t, release, 'merged')
-        await clearApprovalLabel(payload, ts, n)
+        if (!(await releaseMerged(payload, ts, t, pr, now))) continue
         out.released++
       }
       const names = String(product.deployChecks ?? '').split(',').map((x) => x.trim()).filter(Boolean)
