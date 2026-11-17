@@ -529,7 +529,7 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
       const wf = workflowFor(t.workspace)
       if (t.waitingFor || hasOpenBlocker(t)) continue
       if (!logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
-      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }] }, overrideAccess: true })).totalDocs) continue
+      if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }, { job: { exists: false } }] }, overrideAccess: true })).totalDocs) continue
       if (is(wf, t.stage, 'build') && (await holdOverlap(payload, t))) continue
       await startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, t.stage as string)
       payload.logger.info({ ticket: t.id, stage: t.stage }, 'run started for a Ticket without one')

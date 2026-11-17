@@ -96,17 +96,27 @@ export const setCheckpoint = (yaml: string, which: Exclude<CheckpointKey, 'refin
   const [kind, key] = GATE[which]
   const s = kindStage(open(yaml).toJS(), kind)
   if (!s) throw new Error(`no ${kind} step`)
+  const human = humanJob(s)
+  if (human && on) return yaml
+  if (human) return edit(yaml, (d) => void d.deleteIn(['workflow', 'stages', at(d, s.name), 'jobs', s.jobs.indexOf(human)]))
   return setStageField(yaml, s.name, key, on ? 'human' : undefined)
 }
-export const checkpointOn = (s: Doc | undefined, which: Exclude<CheckpointKey, 'refine'>): boolean => askedBy(s?.[GATE[which][1]]) !== undefined
+const humanJob = (s: Doc | undefined): Doc | undefined => (Array.isArray(s?.jobs) ? s.jobs.find((j: Doc) => j?.kind === 'human') : undefined)
+export const checkpointOn = (s: Doc | undefined, which: Exclude<CheckpointKey, 'refine'>): boolean => askedBy(s?.[GATE[which][1]]) !== undefined || (which === 'plan' && !!humanJob(s))
 
 /** Who a checkpoint asks in the file: `gate: {by}`, `production_gate: {by}`, `refine: {by}` of the triage stage or `by` of a human stage; the Bauherr when the file does not say. */
 export const askedOf = (s: Doc | undefined, which: CheckpointKey | 'human'): Addressee =>
-  (which === 'refine' ? askedBy(s?.refine) : which === 'human' ? askedBy({ by: s?.by }) : askedBy(s?.[GATE[which][1]])) ?? 'bauherr'
+  (which === 'refine' ? askedBy(s?.refine) : which === 'human' ? askedBy({ by: s?.by }) : which === 'plan' && humanJob(s) ? askedBy({ by: humanJob(s)!.by }) : askedBy(s?.[GATE[which][1]])) ?? 'bauherr'
 
 /** Sets whom a checkpoint asks: the Bauherr is the plain `human` (nothing for refine and human steps), the Product owner a `{by: product-owner}` map. `stage` is the step that carries it. */
 export const setAsked = (yaml: string, which: CheckpointKey | 'human', stage: string, by: Addressee): string =>
   edit(yaml, (d) => {
+    const stageDoc = stagesOf(d.toJS())[at(d, stage)]!
+    const job = which === 'plan' ? humanJob(stageDoc) : undefined
+    if (job) {
+      const by_ = ['workflow', 'stages', at(d, stage), 'jobs', stageDoc.jobs.indexOf(job), 'by']
+      return void (by === 'bauherr' ? d.deleteIn(by_) : d.setIn(by_, by))
+    }
     const key = which === 'refine' ? 'refine' : which === 'human' ? 'by' : GATE[which][1]
     const path = ['workflow', 'stages', at(d, stage), key]
     if (by === 'bauherr' && (which === 'refine' || which === 'human')) return void d.deleteIn(path)

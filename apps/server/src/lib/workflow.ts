@@ -5,7 +5,7 @@ import { IN_FLIGHT, LIVE, WIP, askedBy, jobOf, lint, parseFactory, type Addresse
 
 export * from './workflow-rules'
 
-export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
+export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean; jobs?: { id: string; kind: 'agent' | 'human'; role?: string; blocking: boolean; needs: string[] }[] }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
 
 const job = ({ id, kind, role, skill, needs, when, blocking, outcomes }: Record<string, any>, stageOutcomes: string[]): JobDef => {
   const o: Record<string, string> = outcomes ?? Object.fromEntries(stageOutcomes.map((k, i) => [k, i ? k : 'done']))
@@ -20,7 +20,13 @@ export const compile = (doc: unknown): Workflow => {
   return {
     version: 1,
     roles: Object.entries(d.team.roles as Record<string, Omit<Role, 'id'>>).map(([id, r]) => ({ id, ...r })),
-    stages: (d.workflow.stages as Record<string, any>[]).map(({ refine, gate, production_gate, jobs, ...s }) => ({ ...s, ...(gate !== undefined && { gate: 'human', ...(askedBy(gate) === 'product-owner' && { gate_by: 'product-owner' }) }), ...(production_gate !== undefined && { production_gate: 'human', ...(askedBy(production_gate) === 'product-owner' && { production_gate_by: 'product-owner' }) }), ...(refine?.by === 'product-owner' && { refine_by: 'product-owner' }), ...(jobs && { jobs: (jobs as Record<string, any>[]).map((j) => job(j, Object.keys(s.outcomes ?? {}))) }), title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
+    stages: (d.workflow.stages as Record<string, any>[]).map(({ refine, gate: gateKey, production_gate, jobs: jobKeys, ...s }) => {
+      const human = s.kind === 'plan' ? (jobKeys as Record<string, any>[] | undefined)?.find((j) => j.kind === 'human') : undefined
+      const gate = human ? { by: human.by ?? 'bauherr' } : gateKey
+      const agents = s.kind === 'plan' ? (jobKeys as Record<string, any>[] | undefined)?.slice(1).filter((j) => j.kind !== 'human').map((j) => ({ needs: [s.name], ...j })) : undefined
+      const jobs = s.kind === 'plan' ? agents?.length && [{ id: s.name, role: s.role, skill: s.skill, outcomes: Object.fromEntries(Object.keys(s.outcomes ?? {}).map((k) => [k, k])) }, ...agents] : jobKeys
+      return ({ ...s, ...(gate !== undefined && { gate: 'human', ...(askedBy(gate) === 'product-owner' && { gate_by: 'product-owner' }) }), ...(production_gate !== undefined && { production_gate: 'human', ...(askedBy(production_gate) === 'product-owner' && { production_gate_by: 'product-owner' }) }), ...(refine?.by === 'product-owner' && { refine_by: 'product-owner' }), ...(jobs && { jobs: (jobs as Record<string, any>[]).map((j) => job(j, Object.keys(s.outcomes ?? {}))) }), title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef
+    }),
     aliases: d.workflow.aliases ?? {},
   }
 }
@@ -104,7 +110,7 @@ export const graph = (wf: Workflow): Graph => {
   const nodes: Graph['nodes'] = []
   const edges: Graph['edges'] = []
   for (const s of wf.stages) {
-    nodes.push({ id: s.name, title: s.title, kind: s.kind, ...(s.role && { role: s.role }), checkpoint: s.kind === 'human' })
+    nodes.push({ id: s.name, title: s.title, kind: s.kind, ...(s.role && { role: s.role }), checkpoint: s.kind === 'human', ...(s.jobs && { jobs: s.jobs.map(({ id, kind, role, blocking, needs }) => ({ id, kind, ...(role && { role }), blocking, needs })) }) })
     const checkpoint = (suffix: string, label: string) => nodes.push({ id: `${s.name}:${suffix}`, title: label, kind: 'human', checkpoint: true })
     if (s.kind === 'triage') checkpoint('refine', GRAPH_CHECKPOINT.refine)
     if (s.gate === 'human') checkpoint('gate', s.kind === 'plan' ? GRAPH_CHECKPOINT.plan : GRAPH_CHECKPOINT.staging)

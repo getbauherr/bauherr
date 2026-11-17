@@ -30,6 +30,7 @@ import { canSeeProduct, decidingAs, isBauherr, mayDecide } from './people'
 import type { Addressee } from './workflow-rules'
 import { preReviewFailures } from './pre-review'
 import { advance } from './advance'
+import { jobsOpen } from './stage-jobs'
 import { enterStage, startAfterPull, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, evenRanks, rankBetween } from './frontier'
@@ -426,6 +427,7 @@ const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
 /** Plan gate: refuses while critical decisions are unanswered, then adds `bauherr:approved:plan` and records the human touch. */
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'plan')
+  if (await jobsOpen(payload, t)) throw new Error('The plan is not ready: its checks are still running')
   const { ts, n } = await sourceOf(payload, t)
   const comments = await decisionComments(payload, t, ts)
   const open = openCritical(comments)
@@ -508,8 +510,8 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<string | nu
   const wf = workflowFor(t.workspace)
   const gated = gateOn(wf, 'plan') && !t.expedite
   if ((gated && !t.epic) || t.parked || !is(wf, t.stage, 'plan') || t.state !== 'open' || t.waitingFor || t.labels?.includes(APPROVED_PLAN)) return null
-  const run = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
-  if (!run || kindOfRun(wf, run) !== 'plan' || run.status !== 'succeeded') return null
+  const run = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { job: { exists: false } }] }, sort: '-createdAt', limit: 1, ...ro })).docs[0] as Doc | undefined
+  if (!run || kindOfRun(wf, run) !== 'plan' || run.status !== 'succeeded' || (await jobsOpen(payload, t))) return null
   const { ts, n } = await sourceOf(payload, t)
   const comments = await decisionComments(payload, t, ts)
   const plan = latestWith(comments, PLAN_MARKER)

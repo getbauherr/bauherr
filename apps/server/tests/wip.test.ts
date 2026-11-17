@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { PARKING_NEEDS, parkingNeed } from '../src/lib/needs-you'
 import { wipLimit, wipLimitsError } from '../src/lib/wip-limits'
 import { DEFAULT } from '../src/lib/workflow'
+import { scanned } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -82,6 +83,7 @@ const ticket = async (title: string, stage: string, extra: Record<string, unknow
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: stage === 'triage' ? null : stage, labels, product, workspace: ws, rank: title, ...extra }, ...o })
   if (stage === 'plan') {
     await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'plan', status: 'succeeded', mode: 'autonomous', workspace: ws }, ...o })
+    await scanned(payload, t.id as number, ws)
     await actions.submitPlan(payload, user, { ticket: t.id as number, markdown })
   }
   return { id: t.id as number, n: String(issue.number) }

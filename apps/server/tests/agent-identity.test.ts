@@ -4,6 +4,7 @@ import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { claimOnly } from './helpers/claim'
+import { scanned } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -83,7 +84,9 @@ it.each(GATES)('%s refuses an agent key: no human touch, tool_calls row has stat
 })
 
 it('with a human actor the gate tools work and every human touch names a person', async () => {
-  expect(await call(human, 'approve', { ticket: await ticket('plan'), gate: 'plan' })).toEqual({ approved: 'bauherr:approved:plan' })
+  const planned = await ticket('plan')
+  await scanned(payload, planned, ws)
+  expect(await call(human, 'approve', { ticket: planned, gate: 'plan' })).toEqual({ approved: 'bauherr:approved:plan' })
   expect(await call(human, 'accept_staging', { ticket: await ticket('release') })).toMatchObject({ approved: 'bauherr:approved:staging' })
   expect(await call(human, 'request_changes', { ticket: await ticket('release'), note: 'again' })).toMatchObject({ stage: 'build' })
   expect(await call(human, 'send_back', { ticket: await ticket('build'), to: 'plan', note: 'rethink' })).toMatchObject({ stage: 'plan', moved: true })

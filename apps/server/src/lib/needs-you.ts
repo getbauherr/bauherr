@@ -42,8 +42,8 @@ export const stageOf = (wf: Workflow, t: { state?: string | null; stage?: string
  */
 export const needsYou = (
   wf: Workflow,
-  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; laneHeld?: boolean | null },
-  run: { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null,
+  ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; laneHeld?: boolean | null; jobsOpen?: boolean | null },
+  run: { stage: string; kind?: string | null; job?: string | null; status: string; reasonKind?: string | null } | null,
   unansweredCritical = 0,
   gates: readonly HumanGate[] = humanGates(wf),
 ): Need | null => {
@@ -51,8 +51,9 @@ export const needsYou = (
   const at = (...k: Kind[]) => is(wf, stage, ...k)
   const runIs = (k: string) => !!run && kindOfRun(wf, run) === k
   const accepted = gates.includes('staging') ? ticket.labels.includes(APPROVED_STAGING) : !!ticket.productionState
-  if (at('plan') && runIs('plan') && IN_PROGRESS.includes(run?.status ?? '')) return null
-  if (at('plan') && gates.includes('plan') && !ticket.expedite && !ticket.labels.includes(APPROVED_PLAN) && runIs('plan') && run?.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
+  const planRun = runIs('plan') || (!!run?.job && run.stage === stage)
+  if (at('plan') && planRun && IN_PROGRESS.includes(run?.status ?? '')) return null
+  if (at('plan') && gates.includes('plan') && !ticket.expedite && !ticket.labels.includes(APPROVED_PLAN) && !ticket.jobsOpen && planRun && run?.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   // A held Ticket whose points are all answered only waits for a free slot: `waitingFor` is set once it reached `enterStage`.
   if (at('triage') && ticket.labels.includes(NEEDS_REFINEMENT)) return ticket.waitingFor ? null : 'Answer questions'
   if (at('human')) return 'Decision needed'
@@ -102,13 +103,13 @@ export const reviewWord = (reviewState?: string | null): string =>
     needs_human: 'Needs a human, see the latest Comment',
   })[reviewState ?? ''] ?? 'Factory reviewing'
 
-type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; parked?: boolean | null; liveness?: { cause?: string; need?: string | null } | null }
+type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; jobsOpen?: boolean | null; parked?: boolean | null; liveness?: { cause?: string; need?: string | null } | null }
 
 /** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. `gates`: the Product's human gates when they differ from the workflow's (`humanGates(wf, stagingGateOn(...))`). Closed Tickets only while a release check failed. */
-export const needsOf = (wf: Workflow, t: Row, run: { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean, gates?: readonly HumanGate[]): Need | null => {
+export const needsOf = (wf: Workflow, t: Row, run: { stage: string; kind?: string | null; job?: string | null; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean, gates?: readonly HumanGate[]): Need | null => {
   const need =
   t.parked ? null : t.state !== 'closed' || t.releaseChecksState === 'failed'
-    ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor, laneHeld: t.liveness?.cause === 'fast-lane-held' && t.liveness.need === 'Fast lane held' }, run, 0, gates)
+    ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor, jobsOpen: t.jobsOpen, laneHeld: t.liveness?.cause === 'fast-lane-held' && t.liveness.need === 'Fast lane held' }, run, 0, gates)
     : null
   // The stored count of unanswered critical decisions turns "Approve plan" into "Answer decisions" without a forge call.
   return need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need

@@ -4,7 +4,7 @@ import { ACTIVE, startRunIfNeeded } from '../jobs'
 import { advance } from './advance'
 import { workflowFor } from './factory'
 import { matches } from './glob'
-import { SKIP_CAUSE, skipEvent } from './history'
+import { jobEvent, SKIP_CAUSE, skipEvent } from './history'
 import { cas } from './release'
 import { factsOf } from './route'
 import { jobOf, stage as stageDef } from './workflow'
@@ -54,6 +54,14 @@ const closeAndAdvance = async (payload: Payload, t: Doc, to: string, claim: Retu
 
 const blockedClaim = (stage: string, run: number) => sql`"stage" = ${stage} AND ("stage_since" IS NULL OR "stage_since" <= (SELECT "created_at" FROM "runs" WHERE "id" = ${run}))`
 
+/** Whether a plan stage's extra Jobs (the agent Jobs besides its own Run, e.g. the agent-experience scan) are not all done in this visit; the plan cannot be approved or advance meanwhile. */
+export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
+  const def = stageDef(workflowFor(t.workspace), t.stage)
+  if (def?.kind !== 'plan' || !def.jobs) return false
+  const { runs, skipped } = await visitOf(payload, t.id, t.stage)
+  return def.jobs.some((j) => j.id !== def.name && !skipped.has(j.id) && !runs.some((r) => r.job === j.id && r.status === 'succeeded' && r.outcome))
+}
+
 /**
  * Starts every Job of the Ticket's stage that is ready (all `needs` done or skipped, `when` matching) and has no Run in this visit; a Job whose `when` does not match is skipped and recorded.
  * A Job is done when its Run succeeded with an outcome that maps to `done`. A blocking Job whose recorded outcome maps to a stage outcome applies it (the recovery of a `finishJob` that did not finish).
@@ -67,7 +75,11 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
   const done = new Set<string>()
   let facts
   for (const j of def.jobs) {
-    const mine = runs.filter((r) => r.job === j.id)
+    const mine = runs.filter((r) => (r.job ?? def.name) === j.id)
+    if (j.id === def.name) {
+      if (mine.some((r) => r.status === 'succeeded')) done.add(j.id)
+      continue
+    }
     const finished = mine.find((r) => r.status === 'succeeded' && r.outcome)
     const to = finished && j.outcomes[finished.outcome!]
     if (finished && j.blocking && to !== 'done') {
@@ -80,10 +92,13 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
       if (verdict && !verdict.match) {
         await skipEvent(payload, t, { stage: def, reason: verdict.reason }, { from: t.stage, by: 'factory', job: j.id })
         done.add(j.id)
-      } else await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, { job: j.id, kind: 'agent', role: j.role })
+      } else {
+        const started = await startRunIfNeeded(payload, t as { id: number; workspace?: unknown }, t.stage, { job: j.id, kind: 'agent', role: j.role })
+        if (started.created) await jobEvent(payload, t, { stage: t.stage, job: j.id, what: 'queued', run: started.run.id })
+      }
     }
   }
-  if (done.size < def.jobs.length) return
+  if (def.kind === 'plan' || done.size < def.jobs.length) return
   const last = runs.findLast((r) => r.status === 'succeeded')
   const claim = sql`"stage" = ${t.stage} AND "stage_since" IS NOT DISTINCT FROM ${since}::timestamptz`
   await closeAndAdvance(payload, t, def.outcomeOrder![0]!, claim, { run: last && ((await payload.findByID({ collection: 'runs', id: last.id, ...o })) as Doc) })
@@ -96,6 +111,7 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
 export const finishJob = async (payload: Payload, run: Doc, ticket: Doc, outcome: string, note?: string): Promise<void> => {
   const job = jobOf(stageDef(workflowFor(run.workspace), run.stage)!, run)!
   const to = job.outcomes[outcome]!
+  await jobEvent(payload, ticket, { stage: run.stage, job: job.id, what: 'finished', run: run.id, outcome })
   if (!job.blocking || to === 'done') return startReadyJobs(payload, ticket)
   await closeAndAdvance(payload, ticket, to, blockedClaim(run.stage, run.id), { blocker: { ...run, outcome }, note })
 }

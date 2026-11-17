@@ -21,6 +21,7 @@ export type RunRow = {
   ticket: number
   stage: string
   kind?: string | null
+  job?: string | null
   status: string
   /** Why the Run ended (failed, cancelled, needs_human). */
   error?: string | null
@@ -110,7 +111,7 @@ const LIVE = ['running', 'awaiting_session']
 export const RUNS_LIMIT = 100
 const CLOSED_LIMIT = 200
 export const FORGE_TIMEOUT_MS = 3000
-const RUN_FIELDS = { ticket: true, stage: true, kind: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, reconcileStatus: true, gatewayTokensTotal: true, createdAt: true, escalation: true, investigation: true, reasonKind: true, preemptedFor: true, executor: true, role: true, sessionLabel: true, clientName: true, clientVersion: true, model: true, provider: true } as const
+const RUN_FIELDS = { ticket: true, stage: true, kind: true, job: true, status: true, error: true, mode: true, sessionOwner: true, heartbeatAt: true, startedAt: true, finishedAt: true, costUsd: true, reconcileStatus: true, gatewayTokensTotal: true, createdAt: true, escalation: true, investigation: true, reasonKind: true, preemptedFor: true, executor: true, role: true, sessionLabel: true, clientName: true, clientVersion: true, model: true, provider: true } as const
 
 export { within } from '../../../lib/within'
 
@@ -133,7 +134,7 @@ export const forgeKinds = async (payload: Payload, workspace: number): Promise<M
 
 /** The newest stage-change event of each Ticket: when it entered its current stage. */
 const stageEntries = async (payload: Payload, tickets: number[]): Promise<Map<number, string>> =>
-  !tickets.length ? new Map() : new Map((await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "ticket_id" AS ticket, "at" FROM "ticket_events" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) AND "stage" IS NOT NULL AND COALESCE("cause", '') NOT LIKE 'skip:%' AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "ticket_id", "at" DESC, "id" DESC`)).rows.map((r) => [r.ticket as number, new Date(r.at as string).toISOString()]))
+  !tickets.length ? new Map() : new Map((await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "ticket_id" AS ticket, "at" FROM "ticket_events" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) AND "stage" IS NOT NULL AND COALESCE("cause", '') NOT LIKE 'skip:%' AND COALESCE("cause", '') NOT LIKE 'job:%' AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "ticket_id", "at" DESC, "id" DESC`)).rows.map((r) => [r.ticket as number, new Date(r.at as string).toISOString()]))
 
 /** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
 const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null; productOwnerTestsStaging?: boolean | null }[], wip: Base['wip']): Promise<TicketRow[]> => {

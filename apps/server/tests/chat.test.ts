@@ -2,6 +2,7 @@ import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { answer, contractViolations, spyOnModelFetch } from './helpers/anthropic-contract'
+import { scanned } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 type Doc = Record<string, any>
@@ -63,6 +64,7 @@ beforeAll(async () => {
   const pB = (await payload.create({ collection: 'products', data: { name: 'other', slug: 'other', workspace: wsB }, ...o })).id as number
   foreign = await payload.create({ collection: 'tickets', data: { title: 'Secret of B', externalId: '900', number: 900, state: 'open', stage: 'plan', product: pB, workspace: wsB }, ...o })
   const { submitPlan } = await import('../src/lib/actions')
+  await scanned(payload, ticket.id, wsA)
   await submitPlan(payload, alice, { ticket: ticket.id, markdown: '## Goal\n- Fix it\n\n## Steps\n1. Do it' })
 })
 

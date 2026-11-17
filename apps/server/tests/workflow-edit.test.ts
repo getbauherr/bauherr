@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { stringify as yamlStringify } from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { describeChanges } from '../src/lib/workflow-describe'
 import * as e from '../src/lib/workflow-edit'
@@ -178,5 +179,42 @@ describe('describeChanges', () => {
   it('names role and migrate changes', () => {
     const y = e.setMigrate(base, 'gone', 'build')
     expect(after(y)).toEqual(['Tickets in Gone move to Build'])
+  })
+})
+
+describe('jobs in the plan stage', () => {
+  const withApproval = (extra: Record<string, unknown> = {}) => {
+    const d = doc(base)
+    const p = e.stagesOf(d).find((x) => x.name === 'plan')!
+    delete p.gate
+    p.jobs = [{ id: 'plan' }, { id: 'ax-scan', role: 'security', skill: 'mr-security-review', blocking: false, outcomes: { pass: 'done', findings: 'done' } }, { id: 'approve', kind: 'human', ...extra }]
+    return stringify(d)
+  }
+  const stringify = (d: unknown) => yamlStringify(d)
+
+  it('the approval job is the plan checkpoint: read, asked of, switched off and on', () => {
+    const y = withApproval()
+    valid(y)
+    expect(e.checkpointOn(stage(y, 'plan'), 'plan')).toBe(true)
+    expect(e.askedOf(stage(y, 'plan'), 'plan')).toBe('bauherr')
+    const po = e.setAsked(y, 'plan', 'plan', 'product-owner')
+    expect(e.askedOf(stage(po, 'plan'), 'plan')).toBe('product-owner')
+    valid(po)
+    const off = e.setCheckpoint(y, 'plan', false)
+    valid(off)
+    expect(e.checkpointOn(stage(off, 'plan'), 'plan')).toBe(false)
+    expect(stage(off, 'plan').jobs.map((j: any) => j.id)).toEqual(['plan', 'ax-scan'])
+    expect(e.setCheckpoint(y, 'plan', true)).toBe(y)
+  })
+  it('describeChanges names added, changed and removed jobs', () => {
+    const y = withApproval()
+    const bare = doc(y)
+    e.stagesOf(bare).find((x) => x.name === 'plan')!.jobs.splice(1, 1)
+    expect(describeChanges(bare, doc(y))).toContain('Plan: new job ax-scan, worked by Security specialist, does not block')
+    const off = e.setCheckpoint(y, 'plan', false)
+    expect(describeChanges(doc(y), doc(off))).toEqual(['Plan: you are no longer asked to approve the plan'])
+    const d = doc(y)
+    e.stagesOf(d).find((x) => x.name === 'plan')!.jobs[1].blocking = true
+    expect(describeChanges(doc(y), d)).toEqual(['Plan: job ax-scan now blocks the step'])
   })
 })

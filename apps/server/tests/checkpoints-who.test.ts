@@ -153,13 +153,13 @@ describe('decision rows carry `for:`', () => {
 describe('the editor sets whom a checkpoint asks', () => {
   it('writes `{by: product-owner}` and goes back to the plain forms for the Bauherr', () => {
     let y = e.setAsked(shipped, 'plan', 'plan', 'product-owner')
-    expect(stage(y, 'plan').gate).toEqual({ by: 'product-owner' })
+    expect(stage(y, 'plan').jobs.at(-1)).toMatchObject({ kind: 'human', by: 'product-owner' })
     expect(e.askedOf(stage(y, 'plan'), 'plan')).toBe('product-owner')
     expect(e.checkpointOn(stage(y, 'plan'), 'plan')).toBe(true)
     expect(y).toContain('# The factory: the team and the workflow')
     expect(lint(doc(y))).toEqual([])
     y = e.setAsked(y, 'plan', 'plan', 'bauherr')
-    expect(stage(y, 'plan').gate).toBe('human')
+    expect(stage(y, 'plan').jobs.at(-1).by).toBeUndefined()
     y = e.setAsked(y, 'refine', 'triage', 'bauherr')
     expect(stage(y, 'triage').refine).toBeUndefined()
     y = e.setAsked(e.setAsked(y, 'production', 'release', 'product-owner'), 'staging', 'release', 'bauherr')
