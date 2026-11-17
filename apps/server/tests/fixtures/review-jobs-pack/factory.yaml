@@ -1,0 +1,30 @@
+version: 1
+team:
+  roles:
+    orchestrator: {title: Orchestrator, tier: cheap, profile: "Triage the Ticket."}
+    engineer:     {title: Software engineer, tier: cheap, profile: "Plan and build."}
+    reviewer:     {title: Reviewer, tier: standard, profile: "Review the MR."}
+    security:     {title: Security reviewer, tier: standard, profile: "Look for security problems in the open MR."}
+    ux:           {title: UX reviewer, tier: standard, profile: "Look at what people see."}
+    test:         {title: Test reviewer, tier: standard, profile: "Look at the tests."}
+    ax:           {title: Agent experience engineer, tier: standard, profile: "Verify the walk."}
+workflow:
+  stages:
+    - {name: triage, kind: triage, role: orchestrator, skill: triage, outcomes: {plan: plan, refine: triage, skip: backlog}}
+    - {name: plan, kind: plan, role: engineer, skill: run-contract, wip: 3, outcomes: {done: build, split: parent, decisions: triage}}
+    - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: review, stuck: escalate, replan: plan}}
+    - name: review
+      kind: review
+      role: reviewer
+      skill: review
+      wip: 3
+      jobs:
+        - {id: security, role: security, skill: mr-security-review, when: {touches: security}}
+        - {id: ux, role: ux, skill: ux-review, when: {touches: ui}}
+        - {id: test, role: test, skill: test-review, when: {types: [bug]}}
+        - {id: verify, role: reviewer, skill: review, needs: [security, ux, test]}
+        - {id: review, needs: [verify]}
+      outcomes: {clean: release, changes: build, stop: triage}
+    - {name: release, kind: release, title: Staging, wip: 5, outcomes: {accepted: done, changes: build}}
+    - {name: done, kind: done}

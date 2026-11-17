@@ -95,3 +95,13 @@ it('claim_run answers with the first claimable Job Run of the Ticket', async () 
   await expect(call('claim_run', { runId: runs[1]!.id })).rejects.toThrow(`take Run ${runs[0]!.id}`)
   expect((await call('claim_run', { runId: runs[0]!.id })).run.id).toBe(runs[0]!.id)
 })
+
+it('finish_run refuses candidate findings on a Job of an agent stage and on a stage-own Run', async () => {
+  await audited()
+  const security = await session('security')
+  const a = await call('next_work', { sessionId: security })
+  const finding = { severity: 'medium', class: 'rule', file: 'a.ts', line: 1, msg: 'm', scenario: 's' }
+  await expect(call('finish_run', { runId: a.work.run.id, leaseToken: a.work.leaseToken, status: 'succeeded', outcome: 'pass', findings: [finding], sessionId: security })).rejects.toThrow('only for the Jobs of a review stage')
+  await expect(call('finish_run', { runId: a.work.run.id, leaseToken: a.work.leaseToken, status: 'succeeded', outcome: 'pass', open: [], sessionId: security })).rejects.toThrow('only for the Jobs of a review stage')
+  expect((await payload.findByID({ collection: 'runs', id: a.work.run.id, depth: 0, ...o })).status).toBe('running')
+})

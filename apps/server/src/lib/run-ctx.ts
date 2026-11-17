@@ -8,6 +8,7 @@ import { advance } from './advance'
 import { backendFor } from './adapters'
 import { prOf } from './release'
 import { fixBaseOf, reviewRoundOf } from './actions'
+import { candidatesOf } from './stage-jobs'
 import { dequeueBeforeChange } from './merge-mode'
 import { baseCaps, escalatedCaps, isEscalated, noteEscalatedBuild, scanCaps } from './investigation'
 import { INVESTIGATION_MARKER } from '../app/(app)/lib/plan'
@@ -136,22 +137,25 @@ export const buildRunCtx = async (
   const role = roleOfRun(wf, run)
   const roleModel = !escalated && role?.provider && role.model ? `ws-${ws.slug}/${role.provider}/${role.model}` : undefined
   const tier = escalated ? 'strong' : role?.tier ?? (kind === 'review' || kind === 'scan' || kind === 'docs' ? 'standard' : 'cheap')
-  const fixBase = kind === 'review' ? await fixBaseOf(payload, ticket) : null
+  const reviewing = kind === 'review' || def?.kind === 'review'
+  const fixBase = reviewing ? await fixBaseOf(payload, ticket) : null
+  const candidates = reviewing ? await candidatesOf(payload, ticket, run) : []
   const repoInfo = d.defaultBranch ? { defaultBranch: d.defaultBranch } : await backend.forge.getRepository(repo)
 
   return {
     stageNames: { review: byKind(wf, 'review')?.name },
     templates: Object.fromEntries(await Promise.all(Object.entries(SKILL_TEMPLATES).filter(([skill]) => skill !== 'intake').map(async ([skill, names]) => [skill, await Promise.all(names.map(async (n) => { const t = await template(payload, workspace, n); return { title: t.title, body: forAgent(t.body) } }))] as const))),
     run: { id: String(run.id), stage: run.stage, kind: kind as RunCtx['run']['kind'], goal: { statements }, ...caps, tier, ...(roleModel && { model: roleModel }) },
-    ...(kind === 'agent' && def && job?.skill && { agent: { stage: def.name, title: def.title, skill: job.skill, roleProfile: role?.profile ?? '', outcomes: job.outcomeOrder } }),
+    ...(kind === 'agent' && def && job?.skill && { agent: { stage: def.name, title: def.title, skill: job.skill, roleProfile: role?.profile ?? '', outcomes: job.outcomeOrder, ...(reviewing && { findings: true }) } }),
     ticket: { id: String(ticket.id), number: ticket.number, url: ticket.url, title: ticket.title, body: issue.body,
       ...(lastWith(WORKLOG_MARKER) ? { worklog: lastWith(WORKLOG_MARKER)!.body } : {}),
       ...((kind !== 'plan' || run.investigation) && lastWith(PLAN_MARKER) ? { plan: lastWith(PLAN_MARKER)!.body } : {}),
       ...(run.investigation ? { investigation: lastWith(INVESTIGATION_MARKER)?.body ?? `${INVESTIGATION_MARKER}\nFailed ${run.investigation.stage} Runs: ${(run.investigation.failedRuns as number[]).map((r) => `#${r}`).join(', ')} (see their Run pages).` } : {}) },
     ...(existingPr && { existingPr }),
     ...(await epicFields(payload, ticket, tickets)),
-    ...(kind === 'review' && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
-    ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
+    ...(reviewing && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
+    ...(reviewing && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
+    ...(candidates.length && { candidates }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
     product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: withProofDefaults(productDoc.reviewChecks, productDoc.pathSets),
       ...(kind === 'docs' && { docs: await docsContext(payload, productDoc) }),

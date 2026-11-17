@@ -20,7 +20,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { refreshPrices } from '../lib/prices'
 import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
-import { advanceEpics, advancePlan, noteMergeFailure, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advanceEpics, advancePlan, noteMergeFailure, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeCandidates, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
@@ -31,7 +31,7 @@ import { isForward, moveStage, stageOf } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
 import { enterStage, pullWaiting, rejoin } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
-import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
+import { NO_PRODUCTION, cas, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
 import { fileFindings } from '../lib/security-scan'
 import { resync } from '../lib/knowledge'
 import { watchKnowledgePrs } from '../lib/knowledge-edit'
@@ -44,7 +44,7 @@ import { inLiveWorkspace, live, purgeDueWorkspaces } from '../lib/workspace-dele
 import { PREEMPT_GRACE_MS, preemptSweep, preemptedRun } from '../lib/preempt'
 import { startReadyJobs } from '../lib/stage-jobs'
 import { kindOfRun } from '../lib/stage-text'
-import { byKind, is, nameOf, roleOfRun, type Kind, type Workflow } from '../lib/workflow'
+import { byKind, is, nameOf, roleOfRun, stage as stageDef, type Kind, type Workflow } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -175,14 +175,24 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   return started
 }
 
-/** Starts the Review Run of a Ticket in review that has an open factory MR and no review verdict state yet. */
-export const startReviewIfReady = async (payload: Payload, t: Record<string, any>) => {
+/** A fix round granted at the review round cap is reviewed on the strong tier too. */
+export const reviewExtra = async (payload: Payload, t: Record<string, any>): Promise<Record<string, unknown>> => {
+  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  return build?.escalation?.reason === REVIEW_CAP_REASON ? { escalation: build.escalation } : {}
+}
+
+/**
+ * Starts the review of a Ticket in review that has an open factory MR and no review verdict state yet.
+ * A review stage without Jobs starts its Review Run. With Jobs: the head moved since the visit's own Review Run concluded, so a new visit starts and all Jobs run again;
+ * else an own Run that exists in the visit runs again alone (invalid output, a restart), else the Jobs that are ready start.
+ */
+export const startReviewIfReady = async (payload: Payload, t: Record<string, any>): Promise<{ created: boolean; run?: Record<string, any> } | null> => {
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'review') || t.state !== 'open' || t.parked || t.reviewState || t.waitingFor) return null
   const mr = await prOf(payload, t)
   if (mr?.pr.state !== 'open') return null
-  // Review only green heads, whichever path moved the Ticket here (session, autonomous Runner, poller, pull from a full column). A review already under way is left alone.
-  const live = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { in: ACTIVE } }] }, overrideAccess: true })
+  const stage = nameOf(wf, 'review')
+  const live = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, overrideAccess: true })
   if (!live.totalDocs) {
     const gate = await checksGate(payload, t, mr)
     if (gate.state !== 'green') {
@@ -190,9 +200,14 @@ export const startReviewIfReady = async (payload: Payload, t: Record<string, any
       return null
     }
   }
-  // A fix round granted at the review round cap is reviewed on the strong tier too.
-  const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
-  return startRunIfNeeded(payload, t as { id: number | string; workspace?: unknown }, nameOf(wf, 'review'), build?.escalation?.reason === REVIEW_CAP_REASON ? { escalation: build.escalation } : {})
+  const ticket = t as { id: number | string; workspace?: unknown }
+  if (!stageDef(wf, stage)?.jobs) return startRunIfNeeded(payload, ticket, stage, await reviewExtra(payload, t))
+  const db = payload.db.drizzle
+  const own = (await db.execute(sql`SELECT r."status", r."reviewed_sha" AS "sha", t."stage_since"::text AS "since" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" WHERE r."ticket_id" = ${t.id} AND r."stage" = ${stage} AND r."job" IS NULL AND (t."stage_since" IS NULL OR r."created_at" >= t."stage_since") ORDER BY r."id" DESC LIMIT 1`)).rows[0] as { status: string; sha: string | null; since: string | null } | undefined
+  if (own?.status === 'succeeded' && own.sha && own.sha !== mr.pr.headSha) {
+    await cas(payload, t.id, sql`"stage_since" = now()`, sql`"stage" = ${stage} AND "stage_since" IS NOT DISTINCT FROM ${own.since}::timestamptz`)
+  } else if (own) return startRunIfNeeded(payload, ticket, stage, await reviewExtra(payload, t))
+  return { created: await startReadyJobs(payload, t) }
 }
 
 /** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
@@ -541,7 +556,7 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
 
 const startMissingJobs = async (payload: Payload): Promise<void> => {
   const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
-    const stages = workflowFor(w.id).stages.filter((s) => s.jobs).map((s) => s.name)
+    const stages = workflowFor(w.id).stages.filter((s) => s.jobs && s.kind !== 'release').map((s) => s.name)
     return stages.length ? [{ and: [{ workspace: { equals: w.id } }, { stage: { in: stages } }] as Where[] }] : []
   })
   if (!or.length) return
@@ -549,6 +564,7 @@ const startMissingJobs = async (payload: Payload): Promise<void> => {
   for (const t of tickets.docs) {
     try {
       if (t.waitingFor || hasOpenBlocker(t) || !logins(t.assignees).every((a) => logins(t.gateAssignees).includes(a))) continue
+      if (is(workflowFor(t.workspace), t.stage, 'review') && (t.reviewState || (await prOf(payload, t))?.pr.state !== 'open')) continue
       if ((await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }, { status: { in: ACTIVE } }] }, overrideAccess: true })).totalDocs) continue
       await startReadyJobs(payload, t)
     } catch (e) {
@@ -791,12 +807,14 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       }
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review, { round: reviewRoundOf(ticket), demote: true }) : null
       let agent: { outcome: string; comment?: string } | null = null
+      let candidates: ReturnType<typeof normalizeCandidates> | null = null
       let agentError: string | undefined
       if (kind === 'agent' && r.status === 'succeeded') {
-        const reported = r.artifacts.agentOutcome as { outcome?: unknown; comment?: unknown } | undefined
+        const reported = r.artifacts.agentOutcome as { outcome?: unknown; comment?: unknown; findings?: unknown; open?: unknown } | undefined
         try {
           if (!reported) throw new Error('no outcome reported')
           agent = { outcome: assertOutcome(run, reported.outcome), ...(typeof reported.comment === 'string' && { comment: reported.comment }) }
+          if (run.job && stageDef(wf, run.stage)?.kind === 'review') candidates = normalizeCandidates(reported)
         } catch (e) {
           agentError = e instanceof Error ? e.message : String(e)
         }
@@ -820,7 +838,8 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         id: run.id,
         data: {
           status: agentError ? 'failed' : r.status,
-          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, open: review.open, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
+          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, open: review.open, ...(review.problem && { problem: review.problem }) } } : candidates && !agentError ? { ...r.artifacts, open: candidates.open } : r.artifacts,
+          ...(candidates && !agentError && { findings: candidates.findings }),
           error: agentError ?? (r.status === 'succeeded' ? null : r.reason),
           ...(r.status === 'needs_human' && { reasonKind: r.reasonKind ?? 'decision' }),
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null, reviewedPatchId: r.artifacts.reviewedPatchId || null }),
