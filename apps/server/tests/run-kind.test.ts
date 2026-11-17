@@ -33,3 +33,17 @@ it('every Run started through startRunIfNeeded records its stage kind; an unknow
   await expect(startRunIfNeeded(payload, { id: t.id, workspace: ws }, 'nope')).rejects.toThrow()
   expect((await payload.find({ collection: 'runs', where: { stage: { equals: 'nope' } }, ...o })).totalDocs).toBe(0)
 })
+
+it('startRunIfNeeded keys the active Run by job: one per job, the stage\'s own Job has none', async () => {
+  const { startRunIfNeeded } = await import('../src/jobs')
+  const ws = (await payload.create({ collection: 'workspaces', data: { name: 'jobs', slug: 'jobs' }, ...o })).id as number
+  const product = (await payload.create({ collection: 'products', data: { name: 'j', slug: 'j', workspace: ws }, ...o })).id as number
+  const t = await payload.create({ collection: 'tickets', data: { product, workspace: ws, externalId: 'j1', number: '1', title: 'T', stage: 'build' } as never, ...o })
+  const start = (job?: string) => startRunIfNeeded(payload, { id: t.id, workspace: ws }, 'build', job ? { job } : {})
+  const own = await start()
+  const security = await start('security')
+  expect(security).toMatchObject({ created: true, run: { job: 'security' } })
+  expect(security.run.id).not.toBe(own.run.id)
+  expect(await start('security')).toMatchObject({ created: false, run: { id: security.run.id } })
+  expect(await start()).toMatchObject({ created: false, run: { id: own.run.id } })
+})

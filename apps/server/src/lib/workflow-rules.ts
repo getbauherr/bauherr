@@ -6,7 +6,8 @@ export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'relea
 /** Who a checkpoint asks. `gate: human` is `{by: bauherr}`; a Bauherr or Admin can always step in for the Product owner. */
 export const ADDRESSEES = ['bauherr', 'product-owner'] as const
 export type Addressee = (typeof ADDRESSEES)[number]
-export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; /** Compiled `gate: {by}`; absent = bauherr. */ gate_by?: Addressee; production_gate?: 'human'; production_gate_by?: Addressee; /** Triage's questions (`refine: {by}` on the triage stage); absent = bauherr. */ refine_by?: Addressee; /** Who decides a `human` stage; absent = bauherr. */ by?: Addressee; wip?: number; exclude_labels?: string[]; /** A step of kind agent or human that runs only when the change matches; otherwise the Ticket moves on (see `skipTarget`). */ when?: When; skip_to?: string; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
+export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; /** Compiled `gate: {by}`; absent = bauherr. */ gate_by?: Addressee; production_gate?: 'human'; production_gate_by?: Addressee; /** Triage's questions (`refine: {by}` on the triage stage); absent = bauherr. */ refine_by?: Addressee; /** Who decides a `human` stage; absent = bauherr. */ by?: Addressee; wip?: number; exclude_labels?: string[]; /** A step of kind agent or human that runs only when the change matches; otherwise the Ticket moves on (see `skipTarget`). */ when?: When; skip_to?: string; jobs?: JobDef[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
+export type JobDef = { id: string; kind: 'agent' | 'human'; role?: string; skill?: string; by?: Addressee; needs: string[]; when?: When; blocking: boolean; outcomes: Record<string, string>; outcomeOrder: string[] }
 export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; skills?: string[]; exceptions?: boolean; profile?: string; profile_file?: string }
 /** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
@@ -41,6 +42,55 @@ export const askedBy = (v: unknown): Addressee | undefined => {
 export const skipTarget = (s: { outcomes?: Record<string, string>; outcomeOrder?: string[]; skip_to?: string }): string | undefined => s.skip_to ?? s.outcomes?.[(s.outcomeOrder ?? Object.keys(s.outcomes ?? {}))[0] as string]
 
 export const parseFactory = (yaml: string): unknown => parse(yaml)
+
+const lintJobs = (n: string, k: Kind, s: Record<string, any>, stageOutcomes: string[], roles: Record<string, unknown>, out: string[]) => {
+  if (k !== 'agent') return void out.push(`stage "${n}": jobs are only allowed on agent stages`)
+  if (!Array.isArray(s.jobs) || !s.jobs.length) return void out.push(`stage "${n}": jobs must be a non-empty list`)
+  if (s.role !== undefined || s.skill !== undefined) out.push(`stage "${n}": a stage with jobs has no role or skill of its own; declare them on the jobs`)
+  const seen: string[] = []
+  s.jobs.forEach((raw: unknown) => {
+    const j = obj(raw) ?? {}
+    const id = String(j.id)
+    const at = `stage "${n}" job "${id}"`
+    if (!/^[a-z][a-z0-9-]*$/.test(id)) out.push(`${at}: id must match ^[a-z][a-z0-9-]*$`)
+    else if (id === n) out.push(`${at}: id must not be the stage name`)
+    else if (seen.includes(id)) out.push(`${at}: duplicate job id`)
+    const kind = j.kind ?? 'agent'
+    if (kind !== 'agent') out.push(`${at}: kind ${JSON.stringify(kind)} is not supported yet (only agent)`)
+    if (!j.role || !(j.role in roles)) out.push(`${at}: role ${j.role ? `"${j.role}" is not in team.roles` : 'is required'}`)
+    if (typeof j.skill !== 'string' || !j.skill) out.push(`${at}: skill is required`)
+    if (j.by !== undefined) out.push(`${at}: by is only allowed on a human job`)
+    if (j.needs !== undefined && !(Array.isArray(j.needs) && j.needs.every((x: unknown) => typeof x === 'string'))) out.push(`${at}: needs must be a list of job ids`)
+    else for (const x of j.needs ?? []) if (!seen.includes(x)) out.push(`${at}: needs "${x}", which is not an earlier job of the stage`)
+    if (j.when !== undefined) out.push(...lintWhen(at, j.when))
+    if (j.blocking !== undefined && typeof j.blocking !== 'boolean') out.push(`${at}: blocking must be true or false`)
+    if (j.outcomes !== undefined) {
+      const o = obj(j.outcomes)
+      if (!o || !Object.keys(o).length) out.push(`${at}: outcomes must be a non-empty mapping`)
+      else {
+        for (const [key, to] of Object.entries(o)) if (to !== 'done' && !stageOutcomes.includes(String(to))) out.push(`${at}: outcome ${key} maps to "${to}", which is neither done nor an outcome of the stage`)
+        if (!Object.values(o).includes('done')) out.push(`${at}: at least one outcome must map to done`)
+      }
+    }
+    seen.push(id)
+  })
+}
+
+const lintWhen = (prefix: string, when: unknown): string[] => {
+  const out: string[] = []
+  const w = obj(when)
+  const bad = (m: string) => out.push(`${prefix}: when ${m}`)
+  const list = (v: unknown, ok: (x: unknown) => boolean = (x) => typeof x === 'string' && x !== '') => Array.isArray(v) && v.length > 0 && v.every(ok)
+  if (!w || !Object.keys(w).length) bad('must name at least one of touches, paths, labels, types')
+  else {
+    for (const key of Object.keys(w)) if (!(WHEN_KEYS as readonly string[]).includes(key)) bad(`has an unknown key "${key}" (use touches, paths, labels or types)`)
+    if (w.touches !== undefined && !(list(asList(w.touches), (x) => typeof x === 'string' && SET_NAME.test(x)) && (typeof w.touches === 'string' || Array.isArray(w.touches)))) bad('touches must be a path set name or a list of names matching ^[a-z][a-z0-9-]*$')
+    if (w.paths !== undefined && !list(w.paths)) bad('paths must be a non-empty list of path globs')
+    if (w.labels !== undefined && !list(w.labels)) bad('labels must be a non-empty list of labels')
+    if (w.types !== undefined && !list(w.types, (x) => (REQUEST_TYPES as readonly string[]).includes(x as string))) bad(`types must be a non-empty list of ${REQUEST_TYPES.join(', ')}`)
+  }
+  return out
+}
 
 /** Findings of a factory document; empty = valid. */
 export const lint = (doc: unknown): string[] => {
@@ -128,8 +178,8 @@ export const lint = (doc: unknown): string[] => {
       else if (names.includes(String(to))) edges.push([n, String(to)])
     }
     if (s.role !== undefined && !(s.role in roles)) out.push(`stage "${n}": role "${s.role}" is not in team.roles`)
-    else if (NEEDS_ROLE.includes(k) && !s.role) out.push(`stage "${n}" (${k}): role is required`)
-    if (k === 'agent' && !s.skill) out.push(`stage "${n}" (agent): skill is required`)
+    else if (NEEDS_ROLE.includes(k) && !s.role && s.jobs === undefined) out.push(`stage "${n}" (${k}): role is required`)
+    if (k === 'agent' && !s.skill && s.jobs === undefined) out.push(`stage "${n}" (agent): skill is required`)
     if (k === 'human' && (keys.length > 4 || keys.some((x) => !/^[a-z][a-z0-9_-]*$/.test(x)))) out.push(`stage "${n}" (human): 1 to 4 outcome keys matching ^[a-z][a-z0-9_-]*$`)
     if (NO_ROLE.includes(k) && s.role) out.push(`stage "${n}" (${k}): role is not allowed`)
     if (s.gate !== undefined && !(k === 'plan' || k === 'release')) out.push(`stage "${n}": gate: human is only allowed on the plan and release stages`)
@@ -140,18 +190,8 @@ export const lint = (doc: unknown): string[] => {
     if (s.by !== undefined && !(k === 'human' && addressee(s.by))) out.push(`stage "${n}": by: bauherr | product-owner is only allowed on a human stage`)
     if (s.wip !== undefined && !(posInt(s.wip) && WIP.includes(k))) out.push(`stage "${n}": wip must be a positive integer on a plan, build, review, release, agent or human stage`)
     if (s.when !== undefined) {
-      const w = obj(s.when)
-      const bad = (m: string) => out.push(`stage "${n}": when ${m}`)
-      const list = (v: unknown, ok: (x: unknown) => boolean = (x) => typeof x === 'string' && x !== '') => Array.isArray(v) && v.length > 0 && v.every(ok)
-      if (k !== 'agent' && k !== 'human') bad('is only allowed on agent and human stages')
-      else if (!w || !Object.keys(w).length) bad('must name at least one of touches, paths, labels, types')
-      else {
-        for (const key of Object.keys(w)) if (!(WHEN_KEYS as readonly string[]).includes(key)) bad(`has an unknown key "${key}" (use touches, paths, labels or types)`)
-        if (w.touches !== undefined && !(list(asList(w.touches), (x) => typeof x === 'string' && SET_NAME.test(x)) && (typeof w.touches === 'string' || Array.isArray(w.touches)))) bad('touches must be a path set name or a list of names matching ^[a-z][a-z0-9-]*$')
-        if (w.paths !== undefined && !list(w.paths)) bad('paths must be a non-empty list of path globs')
-        if (w.labels !== undefined && !list(w.labels)) bad('labels must be a non-empty list of labels')
-        if (w.types !== undefined && !list(w.types, (x) => (REQUEST_TYPES as readonly string[]).includes(x as string))) bad(`types must be a non-empty list of ${REQUEST_TYPES.join(', ')}`)
-      }
+      if (k !== 'agent' && k !== 'human') out.push(`stage "${n}": when is only allowed on agent and human stages`)
+      else out.push(...lintWhen(`stage "${n}"`, s.when))
       const skip = skipTarget(s as never)
       const to = st.find((x) => x.name === skip)
       if (!to) out.push(`stage "${n}": the step it skips to ("${skip}") must be a stage`)
@@ -161,6 +201,7 @@ export const lint = (doc: unknown): string[] => {
         if (s.skip_to !== undefined) edges.push([n, String(skip)])
       }
     } else if (s.skip_to !== undefined) out.push(`stage "${n}": skip_to needs a when`)
+    if (s.jobs !== undefined) lintJobs(n, k, s, keys, roles, out)
     if (s.mode !== undefined && s.mode !== 'session' && s.mode !== 'autonomous') out.push(`stage "${n}": mode must be session or autonomous`)
   })
   for (const s of st) {
@@ -195,3 +236,8 @@ export const lint = (doc: unknown): string[] => {
   }
   return out
 }
+
+export const jobsOf = (def: StageDef): JobDef[] =>
+  def.jobs ?? [{ id: def.name, kind: 'agent', ...(def.role && { role: def.role }), ...(def.skill && { skill: def.skill }), needs: [], blocking: true, outcomes: Object.fromEntries(Object.keys(def.outcomes).map((k) => [k, k])), outcomeOrder: def.outcomeOrder ?? Object.keys(def.outcomes) }]
+
+export const jobOf = (def: StageDef, run: { job?: string | null }): JobDef | undefined => (run.job ? def.jobs?.find((j) => j.id === run.job) : jobsOf(def)[0])

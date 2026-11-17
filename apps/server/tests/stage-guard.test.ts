@@ -74,7 +74,9 @@ it('reverts an unrecorded forward stage label with one Comment and starts no Run
 it('accepts a forward move the factory recorded and clears the record', async () => {
   const n = await known('plan')
   const r = await row(n)
+  expect((await row(n)).stageSince ?? null).toBeNull()
   await moveStage(payload, ts(), r, 'build')
+  expect((await row(n)).stageSince).toBeTruthy()
   await poll()
   const after = await row(n)
   expect(after.stage).toBe('build')

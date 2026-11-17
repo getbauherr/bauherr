@@ -1,11 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { GRAPH_CHECKPOINT } from './checkpoints'
 import { resolve } from 'node:path'
-import { IN_FLIGHT, LIVE, WIP, askedBy, lint, parseFactory, type Addressee, type Kind, type Role, type StageDef, type Workflow } from './workflow-rules'
+import { IN_FLIGHT, LIVE, WIP, askedBy, lint, parseFactory, type Addressee, type JobDef, type Kind, type Role, type StageDef, type Workflow } from './workflow-rules'
 
 export * from './workflow-rules'
 
 export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
+
+const job = ({ id, kind, role, skill, needs, when, blocking, outcomes }: Record<string, any>, stageOutcomes: string[]): JobDef => {
+  const o: Record<string, string> = outcomes ?? Object.fromEntries(stageOutcomes.map((k, i) => [k, i ? k : 'done']))
+  return { id, kind: kind ?? 'agent', role, skill, needs: needs ?? [], ...(when && { when }), blocking: blocking ?? true, outcomes: o, outcomeOrder: Object.keys(o) }
+}
 
 /** Throws one Error listing every lint finding. */
 export const compile = (doc: unknown): Workflow => {
@@ -15,7 +20,7 @@ export const compile = (doc: unknown): Workflow => {
   return {
     version: 1,
     roles: Object.entries(d.team.roles as Record<string, Omit<Role, 'id'>>).map(([id, r]) => ({ id, ...r })),
-    stages: (d.workflow.stages as Record<string, any>[]).map(({ refine, gate, production_gate, ...s }) => ({ ...s, ...(gate !== undefined && { gate: 'human', ...(askedBy(gate) === 'product-owner' && { gate_by: 'product-owner' }) }), ...(production_gate !== undefined && { production_gate: 'human', ...(askedBy(production_gate) === 'product-owner' && { production_gate_by: 'product-owner' }) }), ...(refine?.by === 'product-owner' && { refine_by: 'product-owner' }), title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
+    stages: (d.workflow.stages as Record<string, any>[]).map(({ refine, gate, production_gate, jobs, ...s }) => ({ ...s, ...(gate !== undefined && { gate: 'human', ...(askedBy(gate) === 'product-owner' && { gate_by: 'product-owner' }) }), ...(production_gate !== undefined && { production_gate: 'human', ...(askedBy(production_gate) === 'product-owner' && { production_gate_by: 'product-owner' }) }), ...(refine?.by === 'product-owner' && { refine_by: 'product-owner' }), ...(jobs && { jobs: (jobs as Record<string, any>[]).map((j) => job(j, Object.keys(s.outcomes ?? {}))) }), title: s.title ?? (s.name ?? '').charAt(0).toUpperCase() + (s.name ?? '').slice(1), outcomes: s.outcomes ?? {}, ...((s.kind === 'human' || s.kind === 'agent') && { outcomeOrder: Object.keys(s.outcomes ?? {}) }) }) as StageDef),
     aliases: d.workflow.aliases ?? {},
   }
 }

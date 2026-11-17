@@ -80,7 +80,10 @@ class Stale extends Error {}
 const contextFindings = async (payload: Payload, workspaceId: number, wf: Workflow): Promise<string[]> => {
   const out: string[] = []
   const skillOk = (n: unknown) => typeof n === 'string' && /^[\w-]+$/.test(n) && [packDir(), corePack()].some((d) => existsSync(resolve(d, 'skills', n, 'SKILL.md')))
-  for (const s of wf.stages) if (s.skill && !skillOk(s.skill)) out.push(`stage "${s.name}": skill "${s.skill}" is not a skill of the pack (skills/${s.skill}/SKILL.md)`)
+  for (const s of wf.stages) {
+    if (s.skill && !skillOk(s.skill)) out.push(`stage "${s.name}": skill "${s.skill}" is not a skill of the pack (skills/${s.skill}/SKILL.md)`)
+    for (const j of s.jobs ?? []) if (j.skill && !skillOk(j.skill)) out.push(`stage "${s.name}" job "${j.id}": skill "${j.skill}" is not a skill of the pack (skills/${j.skill}/SKILL.md)`)
+  }
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspaceId, select: { modelByTier: true }, ...o })) as Doc
   const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: workspaceId }, kind: { equals: 'llm-provider' } }, pagination: false, ...o })).docs as Doc[]
   const tiers = Object.keys(ws.modelByTier ?? {})

@@ -87,7 +87,7 @@ export const startRunOrRejoin = async (payload: Payload, ticket: { id: number | 
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
 export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}, req?: Partial<PayloadRequest>) => {
   const findActive = async () =>
-    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
+    (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { job: extra.job ? { equals: extra.job } : { exists: false } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
   const existing = await findActive()
   if (existing) return { run: existing, created: false }
   const workspace = id(ticket.workspace)

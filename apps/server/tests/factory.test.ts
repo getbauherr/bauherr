@@ -227,3 +227,19 @@ it('the API: an agent key and a non-Admin are refused, an Admin can check, apply
   expect(await ok.json()).toMatchObject({ ok: true, version: current + 1, changed: true })
   expect((await call('PUT', adminKey, { body: 'version: 2', headers: {} })).status).toBe(422)
 })
+
+it('a file with jobs applies; a job with an unknown skill is refused', async () => {
+  const withJobs = (skill: string) => edit(a, (d) => {
+    d.team.roles.ux ??= { title: 'UX', tier: 'standard' }
+    const st = d.workflow.stages as Doc[]
+    const build = st.find((s) => s.kind === 'build')!
+    const review = st.find((s) => s.kind === 'review')!
+    build.outcomes.done = 'audit'
+    st.splice(st.indexOf(review), 0, { name: 'audit', kind: 'agent', jobs: [{ id: 'ux', role: 'ux', skill }], outcomes: { pass: review.name, findings: build.name } })
+  })
+  expect((await factory.applyFactory(payload, a, await withJobs('nope'), by)).findings.join()).toMatch(/job "ux": skill "nope"/)
+  const applied = await factory.applyFactory(payload, a, await withJobs('ux-review'), by)
+  expect(applied).toMatchObject({ ok: true, changed: true })
+  const again = await factory.applyFactory(payload, a, await factory.exportFactory(payload, a), by)
+  expect(again).toMatchObject({ ok: true, changed: false })
+})
