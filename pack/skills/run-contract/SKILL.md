@@ -5,7 +5,7 @@ description: Use at the start and end of every Run. Defines how to read the Run'
 
 # Run contract
 
-A Run works one Ticket toward its Goal and ends only with the result of its stage or a declared blocker. This text is the part every Run shares; your mode adds its own part below (`session.md` for a session Run, `autonomous.md` for an autonomous Run). Follow only the part you were given.
+A Run works one Ticket toward its Goal and ends only with the result of its stage or a declared blocker. Your mode adds its own part (`session.md`, `autonomous.md`); follow only the one you were given. A Build whose own MR already merged ends `succeeded` with that `prUrl`.
 
 ## Start
 1. Read the Goal: each line is one checkable statement.

@@ -8,7 +8,7 @@ import type { EpicField, SliceField } from './epic'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
 import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, sendBack, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
-import { assertOpenFactoryMr, prOf } from './release'
+import { assertOpenFactoryMr, mergedOwnMr, prOf, releaseMerged } from './release'
 import { preReviewFailures } from './pre-review'
 import { ARTIFACT_KINDS } from '@bauherr/runner'
 import { ArtifactRejected, attachProof, headShaOf } from './artifacts'
@@ -210,6 +210,10 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const ticket = await getTicket(c, id(run.ticket))
   if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
   if (ticket.parked) throw new ClaimLost(`ticket #${ticket.number} is parked`)
+  if (kind === 'build') {
+    const merged = await mergedOwnMr(c.payload, ticket)
+    if (merged && (await releaseMerged(c.payload, merged.ts, ticket, merged.pr))) throw new ClaimLost(`ticket #${ticket.number}: the MR merged during Build`)
+  }
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
@@ -568,7 +572,7 @@ export const tools: Tool[] = [
   {
     name: 'finish_run',
     access: 'agent',
-    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output (an agent stage: outcome, optionally one comment; a Build Run that cannot go on: outcome replan); otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build whose MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
+    description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output (an agent stage: outcome, optionally one comment; a Build Run that cannot go on: outcome replan); otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build Run may end succeeded on an MR of its own Ticket that already merged (a human merged it during the Build): the Ticket then moves to Release. A Build whose open MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
     inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket'), outcome: str('agent stages (required with succeeded): one of the outcome keys of the claim\'s agent.outcomes; a Build Run may report replan'), comment: str('agent stages: one markdown comment posted on the Ticket'), ...USAGE_ARG }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
@@ -586,12 +590,13 @@ export const tools: Tool[] = [
         if (a.status === 'succeeded') assertOutcome(run, a.outcome)
       } else if (a.outcome !== undefined && !replan) throw new Error('outcome is for agent stages (and replan on a Build Run)')
       const { ts, n } = await sourceOf(c.payload, ticket)
+      const merged = a.prUrl && kind === 'build' && a.status === 'succeeded' && !replan ? await mergedOwnMr(c.payload, ticket, a.prUrl) : null
       if (a.prUrl) {
-        await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
+        if (!merged) await assertOpenFactoryMr(c.payload, ticket, a.prUrl)
         await ts.addLink(n, a.prUrl)
       }
       if (a.status === 'needs_human') await ts.comment(n, `Bauherr needs a human: ${a.reason}`)
-      if (a.status === 'succeeded' && a.prUrl && kind === 'build' && !replan) {
+      if (a.status === 'succeeded' && a.prUrl && kind === 'build' && !replan && !merged) {
         const asked = await requestReview(c.payload, c.user, { ticket: id(run.ticket), evidence: run.evidence ?? '', run: run.id })
         if ('refused' in asked) throw new Error(`${asked.refused}: fix them on the MR, push, run the required checks, then finish again`)
       }
@@ -604,7 +609,8 @@ export const tools: Tool[] = [
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
       if (a.prUrl) await setEpicPr(c.payload, ticket, a.prUrl)
       if (kind === 'build' && a.status === 'succeeded' && ticket.epic) await tagFixes(c.payload, ticket).catch((e) => c.payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
-      if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
+      if (merged) await releaseMerged(c.payload, ts, ticket, merged.pr)
+      else if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       if ((kind === 'agent' && a.status === 'succeeded') || replan) {
         if (replan) await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET "outcome" = 'replan' WHERE "id" = ${run.id}`)
         if (replan) await advance(c.payload, ts, ticket, 'replan', { by: 'factory', run, note: a.comment })
