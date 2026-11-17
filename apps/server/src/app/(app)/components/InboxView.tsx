@@ -3,8 +3,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { DecisionOption } from '../../../lib/decision'
 import type { InboxGroup, InboxItem } from '../lib/inbox'
-import { markSeen } from '../lib/actions'
-import { announcement, emptyPane, inboxHref, isUnseen, KEY_HELP, keyAction, moveSelection, newRows, redirectHref, removeRow, restoreRow, SEEN_AFTER_MS, selectionChanged, settleRow, syncRows, type InboxFilters, type InboxKey } from '../lib/inbox-view'
+import { announcement, emptyPane, inboxHref, isUnseen, KEY_HELP, keyAction, moveSelection, newRows, pinSelection, redirectHref, removeRow, restoreRow, SEEN_AFTER_MS, selectionChanged, settleRow, syncRows, type InboxFilters, type InboxKey } from '../lib/inbox-view'
 import { InboxList } from './InboxList'
 import { InboxPane } from './InboxPane'
 import { SplitPane } from './SplitPane'
@@ -34,7 +33,10 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
   const router = useRouter()
   const say = useContext(Say)
   const t = Number(useSearchParams().get('t')) || null
-  const selection = t ?? selected
+  const ids = groups.flatMap((g) => g.items.map((i) => i.id))
+  const shown = useRef<number | null>(null)
+  shown.current = t !== null ? null : pinSelection(shown.current, ids, selected)
+  const selection = t ?? shown.current
   const [pane, setPane] = useState(emptyPane)
   const flight = useRef(new Map<number, { item: InboxItem; next: InboxItem | undefined }>())
   const keep = useRef<number[]>([])
@@ -79,7 +81,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     if (r.goTo) router.replace(inboxHref(filters, r.goTo), { scroll: false })
   }, [pane, filters, router])
   const failedHere = pane.failed && t === pane.failed.item.id ? pane.failed.item : null
-  const item = failedHere ?? groups.flatMap((g) => g.items).find((i) => i.id === selected)
+  const item = failedHere ?? groups.flatMap((g) => g.items).find((i) => i.id === selection) ?? groups.flatMap((g) => g.items).find((i) => i.id === selected)
   const [local, setLocal] = useState<Record<number, boolean>>({})
   const unseen = useRef(false)
   unseen.current = !!item && isUnseen(item, local)
@@ -90,18 +92,19 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     const k = keyRef.current
     if (!k || k.ticket !== ticket) return
     setLocal((x) => ({ ...x, [ticket]: !seen }))
-    void markSeen(k, seen).catch(() => setLocal((x) => ({ ...x, [ticket]: seen })))
+    void fetch('/api/inbox-seen', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: k, seen }) })
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)) })
+      .catch(() => setLocal((x) => ({ ...x, [ticket]: seen })))
   }
   useEffect(() => {
     if (!item?.id || !unseen.current) return
     const id = item.id
-    const timer = setTimeout(() => { if (unseen.current) set(id, true) }, SEEN_AFTER_MS)
+    const timer = setTimeout(() => { if (unseen.current && document.querySelector<HTMLElement>('[data-testid=inbox-pane]')?.offsetParent) set(id, true) }, SEEN_AFTER_MS)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.id, item?.decision.need, item?.decision.openSince])
+  }, [item?.id, item?.decision.need, item?.decision.openSince, t])
   const [help, setHelp] = useState(false)
   const filtersKey = inboxHref(filters)
-  const ids = groups.flatMap((g) => g.items.map((i) => i.id))
   const known = useRef<{ key: string; ids: number[] } | null>(null)
   const [fresh, setFresh] = useState<number[]>([])
   useEffect(() => {
@@ -110,10 +113,12 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     setFresh((f) => (before?.key === filtersKey ? [...f.filter((id) => ids.includes(id)), ...newRows([...before.ids, ...f], ids)] : []))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups])
+  useEffect(() => setFresh((f) => (f.includes(selection ?? 0) ? f.filter((id) => id !== selection) : f)), [selection])
   useEffect(() => { document.querySelector('[data-testid=inbox-row][aria-current=true]')?.scrollIntoView({ block: 'nearest' }) }, [selection])
   const act = useRef<(k: InboxKey) => boolean>(() => false)
   act.current = (key) => {
-    const pane = document.querySelector('[data-testid=inbox-pane]')
+    const found = document.querySelector<HTMLElement>('[data-testid=inbox-pane]')
+    const pane = found?.offsetParent ? found : null // keys act on the shown decision, not on one hidden behind the phone list
     const k = keyRef.current
     switch (key) {
       case 'next': case 'prev': {
@@ -127,8 +132,8 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
         return true
       }
       case 'sendBack': pane?.querySelector<HTMLElement>('[data-send-back]')?.click(); return true
-      case 'open': if (k) router.push(`/tickets/${k.ticket}`); return !!k
-      case 'unread': if (k) set(k.ticket, unseen.current); return !!k
+      case 'open': if (k && pane) router.push(`/tickets/${k.ticket}`); return !!k && !!pane
+      case 'unread': if (k && pane) set(k.ticket, unseen.current); return !!k && !!pane
       case 'filters': document.querySelector<HTMLElement>('[data-testid=inbox-filters] select')?.focus(); return true
       case 'help': setHelp(true); return true
       case 'back': {
@@ -148,19 +153,19 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     return () => removeEventListener('keydown', on)
   }, [])
   const multi = new Set(groups.flatMap((g) => g.items.map((i) => i.product.id))).size > 1
-  const arrived = fresh.filter((id) => id !== selection).length
+  const arrived = fresh.length
   return (
     <SplitPane testId="inbox-split" cols="group-data-[wide=true]/split:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)] group-data-[wide=true]/split:gap-6" before={
       <>
-        <p role="status" data-testid="inbox-new" className="small m-0 mb-2 text-primary" hidden={!arrived}>{arrived ? `${arrived} new` : ''}</p>
+        <p role="status" data-testid="inbox-new" className={arrived ? 'small m-0 mb-2 text-primary' : 'sr-only'}>{arrived ? `${arrived} new` : ''}</p>
         <Dialog open={help} onOpenChange={setHelp}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Keyboard</DialogTitle>
               <DialogDescription>Keys work on the Inbox outside fields and dialogs.</DialogDescription>
             </DialogHeader>
-            <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-              {KEY_HELP.map(([k, what]) => <div key={k} className="contents"><dt className="mono">{k}</dt><dd className="m-0">{what}</dd></div>)}
+            <dl className="m-0 flex flex-col gap-2">
+              {KEY_HELP.map(([k, what]) => <div key={k} className="flex flex-col"><dt className="mono">{k}</dt><dd className="m-0">{what}</dd></div>)}
             </dl>
           </DialogContent>
         </Dialog>

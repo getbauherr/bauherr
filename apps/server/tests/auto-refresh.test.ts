@@ -25,7 +25,7 @@ beforeEach(() => {
   fetchMock.mockClear()
   h.refresh.mockClear()
   vi.stubGlobal('fetch', fetchMock)
-  vi.stubGlobal('document', { get visibilityState() { return visibility }, addEventListener: (e: string, f: () => void) => (listeners[e] = f), removeEventListener: () => {} })
+  vi.stubGlobal('document', { get visibilityState() { return visibility }, querySelector: () => null, addEventListener: (e: string, f: () => void) => (listeners[e] = f), removeEventListener: () => {} })
 })
 afterEach(() => {
   h.cleanups.splice(0).forEach((c) => c())
@@ -45,6 +45,16 @@ describe('AutoRefresh', () => {
     await vi.advanceTimersByTimeAsync(5000)
     expect(h.refresh).not.toHaveBeenCalled()
     version = 2
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds a change back for 1.5 s after a key or pointer press, then refreshes', async () => {
+    await mount()
+    version = 2
+    listeners.pointerdown!()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.refresh).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(5000)
     expect(h.refresh).toHaveBeenCalledTimes(1)
   })

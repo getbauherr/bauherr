@@ -14,8 +14,8 @@ const login = async (page: Page, as = email) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 const card = (page: Page, title: string) => page.locator('article[data-decision]').filter({ hasText: title })
-// a live refresh that lands in the instant of the click can swallow it: click again until the pane shows the row
-const pick = (page: Page, title: string) => expect(async () => { await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title, { timeout: 4000 }) }).toPass({ timeout: 20_000 })
+// `data-wide` is set once the page has hydrated (the split measures itself): a click before that is lost
+const pick = async (page: Page, title: string) => { await expect(page.getByTestId('inbox-split')).toHaveAttribute('data-wide', 'true'); await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
 const badge = async (page: Page) => Number((await page.getByRole('navigation', { name: 'Main' }).getByLabel(/need you/).textContent()) ?? 0)
 
 test('every decision that is the owner\'s is a card with the ask, the recommendation, the facts and the real options', async ({ page }) => {
@@ -88,6 +88,8 @@ test('approving the plan on its pane removes the row, selects the next and annou
   await stale.goto('/inbox')
   await pick(stale, 'Rename the sign-in button')
   await page.goto('/inbox')
+  await page.bringToFront() // a tab opened in the background refreshes once when it comes forward: let that finish before the click
+  await page.waitForLoadState('networkidle')
   const before = await badge(page)
   await pick(page, 'Rename the sign-in button')
   const plan = card(page, 'Rename the sign-in button')
@@ -330,26 +332,26 @@ test('the page refreshes every few seconds when the Workspace changed and keeps 
   const refreshed = page.waitForRequest((r) => r.headers()['rsc'] === '1' && r.url().includes('/inbox?t='), { timeout: 15_000 })
   v = 2
   await refreshed
-  await expect(page.getByTestId('inbox-new')).toBeHidden()
+  await expect(page.getByTestId('inbox-new')).toHaveText('')
   expect(page.url()).toBe(url)
   await expect(selectedRow(page)).toContainText('Check the new header on staging')
   await expect(page.getByTestId('inbox-pane')).toContainText('Check the new header on staging')
 })
-
-const opens = (page: Page) => expect(async () => { await rowOf(page, 'Check the new header on staging').click(); await expect(page).toHaveURL(/\/inbox\?t=\d+$/, { timeout: 4000 }) }).toPass({ timeout: 20_000 }) // as `pick`: a refresh can swallow the click
 
 test('on a phone the list is the page, a row opens the detail and Inbox (or Esc) goes back', async ({ page }) => {
   await login(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/inbox')
   await expect(page.getByTestId('inbox-pane')).toBeHidden()
-  await opens(page)
+  await rowOf(page, 'Check the new header on staging').click()
+  await expect(page).toHaveURL(/\/inbox\?t=\d+$/)
   await expect(page.getByTestId('inbox-pane')).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Decisions' })).toBeHidden()
   await page.getByRole('link', { name: 'Inbox', exact: true }).click()
   await expect(page).toHaveURL(/\/inbox$/)
   await expect(page.getByRole('navigation', { name: 'Decisions' })).toBeVisible()
-  await opens(page)
+  await rowOf(page, 'Check the new header on staging').click()
+  await expect(page).toHaveURL(/\/inbox\?t=\d+$/)
   await page.keyboard.press('Escape')
   await expect(page).toHaveURL(/\/inbox$/)
 })

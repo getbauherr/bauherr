@@ -66,13 +66,16 @@ export type InboxKey = 'next' | 'prev' | 'primary' | 'open' | 'sendBack' | 'unre
 const KEYS: Record<string, InboxKey> = { j: 'next', ArrowDown: 'next', k: 'prev', ArrowUp: 'prev', e: 'primary', o: 'open', r: 'sendBack', u: 'unread', '/': 'filters', '?': 'help', Escape: 'back' }
 
 /** The keys the `?` dialog lists. */
-export const KEY_HELP: [string, string][] = [['j / k, ↓ / ↑', 'Next / previous decision'], ['e', 'Take the primary action'], ['o', 'Open the Ticket'], ['r', 'Send back'], ['u', 'Toggle unread'], ['/', 'Focus the filters'], ['?', 'Show these keys'], ['Esc', 'Back to the list']]
+export const KEY_HELP: [string, string][] = [['j / k, Arrow down / Arrow up', 'Next / previous decision'], ['e', 'Take the primary action'], ['o', 'Open the Ticket'], ['r', 'Send back'], ['u', 'Toggle unread'], ['/', 'Focus the filters'], ['?', 'Show these keys'], ['Escape', 'Back to the list']]
 
-/** What an Inbox key press means: nothing while typing in a field, with a modifier, or behind a dialog. */
-export const keyAction = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; target: unknown }): InboxKey | null => {
+/** What an Inbox key press means: nothing while typing in a field, with a modifier, or behind a dialog; a held key repeats only to move (never to decide the next row). */
+export const keyAction = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey?: boolean; repeat?: boolean; target: unknown }): InboxKey | null => {
   const t = e.target as { tagName?: string; isContentEditable?: boolean; closest?: (s: string) => unknown } | null
   if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '') || t?.isContentEditable || t?.closest?.('[role=dialog]')) return null
-  return KEYS[e.key] ?? null
+  const key = KEYS[e.key]
+  if (e.repeat && key !== 'next' && key !== 'prev') return null
+  if (e.shiftKey && e.key.startsWith('Arrow')) return null
+  return key ?? null
 }
 
 /** The row `j` (1) or `k` (-1) selects, none past the ends; without a selection the first row. */
@@ -81,6 +84,9 @@ export const moveSelection = (ids: number[], current: number | null, dir: 1 | -1
   const to = at < 0 ? 0 : at + dir
   return to === at ? undefined : ids[to]
 }
+
+/** The row shown without `?t=`: the one already shown while it is still listed, else the server's first row, so a live refresh that adds a row on top does not swap the decision. */
+export const pinSelection = (shown: number | null, ids: number[], server: number | null): number | null => (shown !== null && ids.includes(shown) ? shown : server)
 
 /** The ids in `now` that were not in `known`: the rows a live refresh brought in ("1 new"). */
 export const newRows = (known: number[], now: number[]): number[] => now.filter((id) => !known.includes(id))

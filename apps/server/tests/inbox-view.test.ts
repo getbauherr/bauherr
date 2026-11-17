@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { unseenOf } from '../src/lib/inbox-seen'
-import { actionBar, announcement, emptyPane, removeRow, restoreRow, selectionChanged, settleRow, syncRows, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, waitingText, isUnseen, keyAction, moveSelection, newRows } from '../src/app/(app)/lib/inbox-view'
+import { actionBar, announcement, emptyPane, removeRow, restoreRow, selectionChanged, settleRow, syncRows, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, waitingText, isUnseen, keyAction, moveSelection, newRows, pinSelection } from '../src/app/(app)/lib/inbox-view'
 import { buildDecision } from '../src/lib/decision'
 import { NEEDS } from '../src/lib/needs-you'
 
@@ -230,6 +230,18 @@ describe('unread', () => {
     for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) expect(keyAction(e('j', { target: { tagName } }))).toBeNull()
     expect(keyAction(e('j', { target: { tagName: 'DIV', isContentEditable: true } }))).toBeNull()
     expect(keyAction(e('Escape', { target: { tagName: 'DIV', closest: () => ({}) } }))).toBeNull()
+  })
+  it('a held key repeats only to move, and shift+arrow is not a move', () => {
+    const e = (key: string, over: object = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, target: { tagName: 'A', closest: () => null }, ...over })
+    for (const key of ['e', 'r', 'o', 'u', '/', '?', 'Escape']) expect(keyAction(e(key, { repeat: true }))).toBeNull()
+    for (const key of ['j', 'k', 'ArrowDown', 'ArrowUp']) expect(keyAction(e(key, { repeat: true }))).not.toBeNull()
+    expect(keyAction(e('ArrowDown', { shiftKey: true }))).toBeNull()
+  })
+  it('the row shown without ?t= stays while it is listed, even when a row arrives on top', () => {
+    expect(pinSelection(2, [9, 2, 3], 9)).toBe(2)
+    expect(pinSelection(2, [9, 3], 9)).toBe(9)
+    expect(pinSelection(null, [9, 3], 9)).toBe(9)
+    expect(pinSelection(null, [], null)).toBeNull()
   })
   it('j and k move one row and stop at the ends; without a selection the first row', () => {
     expect(moveSelection([1, 2, 3], 2, 1)).toBe(3)
