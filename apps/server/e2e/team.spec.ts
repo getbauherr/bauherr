@@ -189,8 +189,12 @@ for (const width of phones) {
     for (const url of ['/team', '/team/ses_e2e_working']) {
       await page.goto(url)
       await page.locator('h1').first().waitFor()
-      const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth])
-      expect(scroll, url).toBeLessThanOrEqual(client)
+      const [scroll, client, wide] = await page.evaluate(() => {
+        const w = document.documentElement.clientWidth
+        const out = [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > w + 0.5).slice(-5).map((e) => `${e.tagName.toLowerCase()}.${(e.getAttribute('class') ?? '').split(' ').slice(0, 4).join('.')} ${Math.round(e.getBoundingClientRect().right)}px "${(e.textContent ?? '').trim().slice(0, 40)}"`)
+        return [document.documentElement.scrollWidth, w, out.join(' | ')] as const
+      })
+      expect(scroll, `${url}: ${wide}`).toBeLessThanOrEqual(client)
     }
     await page.goto('/team')
     const copy = await page.getByRole('button', { name: 'Copy prompt' }).boundingBox()
