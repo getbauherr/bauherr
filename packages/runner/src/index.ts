@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, buildOptions, promptFor, type AgentKind, type AgentState } from './agent.js';
-import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId, sliceBase, sliceDiff } from './clone.js';
+import { baseReviewMd, cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId, sliceBase, sliceDiff } from './clone.js';
 import { makeProof, readManifest } from './artifacts.js';
 import { buildEvidence, screenshotTable } from './evidence.js';
 import { readGoal } from './goal.js';
@@ -129,7 +129,8 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       }
     }
     const fixedGoal = ctx.run.kind === 'plan' ? (ctx.ticket.investigation ? INVESTIGATION_GOAL : PLAN_GOAL) : ctx.run.kind === 'triage' ? TRIAGE_GOAL : ctx.run.kind === 'review' ? REVIEW_GOAL : ctx.run.kind === 'scan' ? SCAN_GOAL : ctx.run.kind === 'docs' ? DOCS_GOAL : ctx.run.kind === 'agent' ? AGENT_GOAL : null;
-    const agentCtx: RunCtx = { ...ctx, ...(sliceConflict && { mergeBase: true }), ...(fixedGoal && { run: { ...ctx.run, goal: { statements: fixedGoal } } }) };
+    const reviewMd = ctx.run.kind === 'review' ? await baseReviewMd(clone, clone.env, base) : '';
+    const agentCtx: RunCtx = { ...ctx, ...(reviewMd && { product: { ...ctx.product, reviewMd } }), ...(sliceConflict && { mergeBase: true }), ...(fixedGoal && { run: { ...ctx.run, goal: { statements: fixedGoal } } }) };
     const agentsMd = materialise(clone.dir, agentCtx);
     if (ctx.run.kind === 'review') {
       const remote = `origin/${base}`;
