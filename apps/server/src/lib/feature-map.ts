@@ -2,6 +2,7 @@ import { parse } from 'yaml'
 import { matches, WILD } from './glob'
 
 export const STATUSES = ['live', 'hard-to-find', 'no-ui', 'in-progress'] as const
+export const PROOFS = ['screenshot', 'tests', 'recording', 'none'] as const
 
 export interface Feature {
   id: string
@@ -16,7 +17,7 @@ export interface Feature {
   source: string[]
   tests: string[]
   drive: string | null
-  proof: string | null
+  proof: (typeof PROOFS)[number]
   gotchas: string[]
   guards: string[]
   debt: string[]

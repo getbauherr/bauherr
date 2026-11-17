@@ -38,7 +38,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Epics and sub-tickets | Split a plan into slices that inherit the approval: built one after the other on one epic branch, each reviewed on its own range, then one epic review and one merge | `/?view=epics`, `/tickets/[id]` | Live |
 | Repair | Set the stage, clear a wait, reset counters (with the counters' values), move to the top | `/tickets/[id]` details (Admin) | Live, hard to find |
 | Ticket by number | A link such as `/tickets/n/42`, used by the chat | `/tickets/n/[number]` | Live |
-| Run page | Timeline and list of Steps, tool calls, evidence, goal, gateway tokens, re-run, release lock, relink MR | `/runs/[id]` (Admin) | Live, hard to find |
+| Run page | Truthful state and the one action, Timeline of reported Steps (everyone), agent, links, relations, times, evidence, goal and tool calls (Admin), re-run, release lock, relink MR | `/runs/[id]` | Live |
 | Run list | All Runs of the Workspace with status | `/runs` (Admin) | Live |
 | Successor-run chain | Which Run replaced a failed one: "Continues Run #x" and "Continued by Run #y" | `/runs/[id]` | Live |
 | Agent repair of a dead Ticket (`return_to_build`) | An agent sends a stuck Ticket back to Build | MCP only | No UI |
@@ -160,6 +160,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | Setup wizard | Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new) | `/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist" | Live |
 | Settings by scope | Account, Factory, Workspace and Admin groups; Product page in tabs; a place in the UI for every feature | `/settings/*` | Live |
 | Background jobs | 19 jobs: polling, Runs, merging, releases, scans, pruning | Counts on Health | No UI |
+| Verify per feature | `pnpm verify` runs the tests of a feature, an area or the changed files and screenshots the pages of features that have one | `pnpm verify <feature-id | area | --changed [base]> [--e2e]` | No UI |
 | Health endpoint | Unauthenticated JSON of stale jobs | `/api/health` | No UI |
 | Payload admin | Developer escape hatch | `/admin` with `BAUHERR_ENABLE_ADMIN=1` | No UI |
 

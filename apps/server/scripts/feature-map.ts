@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { type FeatureMap, parseMap, STATUSES } from '../src/lib/feature-map'
+import { type Feature, type FeatureMap, parseMap, PROOFS, STATUSES } from '../src/lib/feature-map'
 
-export { STATUSES }
+export { PROOFS, STATUSES }
+export type { Feature, FeatureMap }
 
 export const root = fileURLToPath(new URL('../../../', import.meta.url))
 export const mapFile = `${root}docs/feature-map.yaml`

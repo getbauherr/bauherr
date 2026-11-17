@@ -199,6 +199,7 @@ TypeScript monorepo (pnpm workspaces, Node 24). Glossary: [CONTEXT.md](CONTEXT.m
 pnpm install
 pnpm typecheck   # builds the packages, then type-checks all of them
 pnpm test        # needs the compose `db` service on 127.0.0.1:54330
+pnpm verify inbox            # the tests of one feature of docs/feature-map.yaml (or an area, or --changed)
 ```
 
 ## 🧭 Status and roadmap
