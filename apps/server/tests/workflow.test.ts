@@ -90,7 +90,7 @@ describe('lint', () => {
   })
   it('the default team has the specialists, unused by any stage, and one exceptions role', () => {
     const c = w.compile(defaultDoc())
-    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs'])
+    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax'])
     expect(c.roles.filter((r) => r.exceptions).map((r) => r.id)).toEqual(['orchestrator'])
     expect(w.stagesOfRole(c, 'security')).toEqual([])
     expect(c.roles.every((r) => r.profile_file && r.profile_file.startsWith('roles/'))).toBe(true)
@@ -195,10 +195,10 @@ it('files without jobs compile to the same hash as before jobs existed', () => {
   const root = fileURLToPath(new URL('../../..', import.meta.url))
   const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
   const expected: Record<string, string> = {
-    [`${root}pack/factory.yaml`]: '6c983450d69e8e6c8ceb4bf403b1ecd307dcf97f95ae64572a669e98435d557e',
+    [`${root}pack/factory.yaml`]: '54fe519bf2a413e83b369e7ac17d0da826f77152f17d8b5cf9dac721bcd552d0',
     [`${root}pack/presets/solo.yaml`]: '454b110bd5170fce5f0133a90dee014f587aa2ff8b69df837b3ccce5be3bca10',
-    [`${root}pack/presets/standard.yaml`]: 'b4316d2a1ef062fdfccf39fbaef038f42857fe8b51833effeb5aceb472cd82c0',
-    [`${root}pack/presets/careful.yaml`]: 'c7cd7c49966df5e8d1a2c405753d0bde391fd529f69810da99f1ab6128b42d7a',
+    [`${root}pack/presets/standard.yaml`]: 'cf6eae7529901e8262436140ac5987d04bb39f9b2bcd8a98a1acff67fb4a2742',
+    [`${root}pack/presets/careful.yaml`]: 'e09099a9cf3be3fc3ba99beddcf5d48e9bfe4c43d344eaddd851e9b5404f39e6',
     [`${fixtures}/bare-pack/factory.yaml`]: '4dd0536b8bfd0ec5a131fa8517d8e04e1b7db170e311d736820c65a7e000fb30',
     [`${fixtures}/custom-pack/factory.yaml`]: '3e5b636c36941e08c0b3270a4516320c781e3b6ecf94a48f3208c2fd73d18de0',
     [`${fixtures}/gated-pack/factory.yaml`]: 'c7c1856377b135e59f3afc3bb505c955153ac0b32eb9909e81007a9530834afa',

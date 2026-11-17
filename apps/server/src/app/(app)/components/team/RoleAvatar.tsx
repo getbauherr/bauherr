@@ -85,6 +85,22 @@ const art: Record<string, () => ReactNode> = {
       ))}
     </>
   ),
+  docs: () => (
+    <>
+      <path className={s.paper} d="M16 8h24l8 8v40H16Z" />
+      <path className={s.muted} d="M40 8v8h8" />
+      <path className={cn(s.ink, s.type)} style={d('0s')} d="M22 26h20" pathLength="1" />
+      <path className={cn(s.ink, s.type)} style={d('0.3s')} d="M22 34h20" pathLength="1" />
+      <path className={cn(s.acc, s.type)} style={d('0.6s')} d="M22 42h12" pathLength="1" />
+    </>
+  ),
+  ax: () => (
+    <>
+      <path className={s.paper} d="M8 12h48L32 54Z" />
+      <path className={s.muted} d="M14.5 22h35M20 32h24M26 42h12" />
+      <path className={cn(s.ok, s.tick)} style={d('0s')} d="m25 22 5 5 9-10" pathLength="1" />
+    </>
+  ),
 }
 
 /** Character of a role. Each known `avatar` id has its own drawing; any other id gets initials on a shape. Motion is CSS only and only with `animate`. */

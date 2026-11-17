@@ -86,6 +86,8 @@ By default the Product owner answers **Answer questions** and accepts on staging
 
 Each Workspace has one factory file (`factory.yaml`) for its team and workflow. You can add custom `agent` stages (a role works the Ticket and reports an outcome) and `human` stages (a person picks an outcome), and rename, remove or reorder stages. The outcomes route Tickets, and the custom stages show in the graph, the Inbox, Path and Steps and Insights. There is exactly one build, review and release chain. Stages, labels, triggers, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
 
+The team also has an **AX** role (Agent experience engineer) that keeps a Product easy and safe for agents to change: it moves rules into code, checks and proof (the trust pyramid) and keeps the feature map and the Product's verify skill current. No stage uses it yet.
+
 ## ✨ Features
 
 Every feature, where you reach it and how well it is reachable, is in [docs/features.md](docs/features.md). It is generated from [docs/feature-map.yaml](docs/feature-map.yaml), which also lists the source files and tests behind each feature; a test fails when the two drift.
