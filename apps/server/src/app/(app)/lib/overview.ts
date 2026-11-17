@@ -13,7 +13,7 @@ import { fastLaneText, overlapText } from '../../../lib/hold-text'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
 import { workflowFor } from '../../../lib/factory'
 import { byKind, is, title, wipStages, type Workflow } from '../../../lib/workflow'
-import { statusLine, type Track } from './status'
+import { parkedWhyOf, statusLine, type Track } from './status'
 import type { EpicField, SliceField } from '../../../lib/epic'
 
 export type RunRow = {
@@ -102,6 +102,8 @@ export type TicketRow = {
   slice: { index: number; total: number } | null
   /** A parked epic or one of its open slices: stopped, not counted in its column. */
   parked: boolean
+  /** Why the Ticket waits for the owner without holding a WIP slot (`parkedWhyOf`); null = it holds one. */
+  parkedWhy: string | null
 }
 
 const LIVE = ['running', 'awaiting_session']
@@ -113,7 +115,7 @@ const RUN_FIELDS = { ticket: true, stage: true, kind: true, status: true, error:
 export const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([p, new Promise<never>((_, reject) => AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error('forge timeout'))))])
 
-type Base = { tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; epics: Epic[]; wip: Record<string, { count: number; limit: number | null }> }
+type Base = { tickets: TicketRow[]; runs: RunRow[]; runsTotal: number; products: { id: number; name: string }[]; epics: Epic[]; wip: Record<string, { count: number; parked: number; limit: number | null }> }
 type Doc = Record<string, any>
 const q = { depth: 0, overrideAccess: true } as const
 
@@ -200,6 +202,7 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
       epic: t.epic ? { total: (t.epic as EpicField).slices.length, passed: passedOf(t) } : null,
       slicing: slicingOf(t),
       parked: isOpen && !!t.parked,
+      parkedWhy: isOpen ? parkedWhyOf(t) : null,
       slice: t.slice && epicTotals.has(t.parent) ? { index: (t.slice as SliceField).index + 1, total: epicTotals.get(t.parent)! } : null,
       children: !containerIds.includes(t.id) ? null : t.epic ? { total: (t.epic as EpicField).slices.length, done: passedOf(t) } : { total: kids.filter((k) => k.parent === t.id).length, done: kids.filter((k) => k.parent === t.id && k.state === 'closed').length },
       enteredAt: entered.get(t.id) ?? t.updatedAt,
@@ -242,7 +245,7 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
   const known = new Set(ticketDocs.map((t) => t.id))
   const missing = [...new Set(runRows.map((r) => r.ticket))].filter((id) => !known.has(id))
   if (missing.length) ticketDocs.push(...(await docsOf(payload, 'tickets', { where: { and: [ws, { id: { in: missing } }] } })))
-  const wip = Object.fromEntries(wipStages(wf).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s, wf) }]))
+  const wip = Object.fromEntries(wipStages(wf).map((s) => [s, { ...counts[s]!, limit: wipLimit(wsDoc, s, wf) }]))
   const productRows = products.docs as unknown as { id: number; name: string; productionChecks?: string | null }[]
   const [rows, epicDocs] = await Promise.all([rowsOf(payload, workspace, ticketDocs, productRows, wip), docsOf(payload, 'tickets', { where: { and: [ws, epicWhere(wf, [...new Set(subs.map((c) => c.parent as number))])] } })])
   const byRow = new Map(rows.map((r) => [r.id, r]))
@@ -264,6 +267,6 @@ export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | n
     wipCounts(payload, workspace),
   ])
   if (!subs.length && !is(wf, ticket.stage, 'container')) return null
-  const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(wf).map((s) => [s, { count: counts[s], limit: wipLimit(wsDoc, s, wf) }])))
+  const rows = await rowsOf(payload, workspace, subs, products as never, Object.fromEntries(wipStages(wf).map((s) => [s, { ...counts[s]!, limit: wipLimit(wsDoc, s, wf) }])))
   return epicOf(wf, ticket, subs, new Map(rows.map((r) => [r.id, r])))
 }

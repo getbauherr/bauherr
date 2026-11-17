@@ -6,9 +6,10 @@ import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { NotInWorkspace, NotReleasable, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, sendBack } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
-import { startRunIfNeeded } from '../../../jobs'
+import { startRunOrRejoin } from '../../../jobs'
 import { workflowFor } from '../../../lib/factory'
 import { SKILL_NEED } from '../../../lib/checkpoints'
+import type { SeenKey } from '../../../lib/inbox-seen'
 import { type DecisionAction, canDecide, settleDecision } from '../../../lib/decision'
 import { repairable } from '../../../lib/workflow'
 import { RERUNNABLE } from './run'
@@ -324,7 +325,10 @@ const startRerun = async (user: Awaited<ReturnType<typeof requireBauherr>>, payl
   const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number } | null
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) return null
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
-  const { run: next, created } = await startRunIfNeeded(payload, ticket, run.stage)
+  const started = await startRunOrRejoin(payload, ticket, run.stage)
+  // Parked in a full column: the Ticket waits for its slot (no Run yet); its page says so.
+  if (!started) return { run, next: null, created: false }
+  const { run: next, created } = started
   if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
   return { run, next: next.id as number, created }
 }
@@ -336,7 +340,7 @@ export async function rerunStage(runId: number) {
   const r = await startRerun(user, payload, runId)
   if (!r) redirect(`/runs/${runId}`)
   await settleDecision(payload, r.run.ticket)
-  redirect(`/runs/${r.next}${r.created ? '' : '?notice=active'}`)
+  redirect(r.next ? `/runs/${r.next}${r.created ? '' : '?notice=active'}` : `/tickets/${r.run.ticket}`)
 }
 
 /** One decision of the Inbox card: runs the existing action of the option for the Ticket (a note goes where the action takes one), then closes the card at once. A card for a need the Ticket no longer has is refused. Answers an error text instead of throwing. */
@@ -386,6 +390,24 @@ export async function decideAction(ticket: number, need: string, action: Decisio
   revalidatePath('/inbox')
   revalidatePath(`/tickets/${ticket}`)
   return {}
+}
+
+/** Marks one decision of the Inbox seen by the signed-in person (or unseen again, `seen = false`). A Ticket outside their Workspace or Products is a 404. */
+export async function markSeen(key: SeenKey, seen = true): Promise<void> {
+  const { user, payload, workspaceId } = await actingPerson()
+  const row = (await payload.findByID({ collection: 'tickets', id: key.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { workspace: unknown; product: unknown } | null
+  if (!row || String(id(row.workspace)) !== String(workspaceId) || !canSeeProduct(user, { id: id(row.product), workspace: workspaceId })) notFound()
+  const where = { user: { equals: user.id }, ticket: { equals: key.ticket }, need: { equals: key.need }, since: { equals: key.since } }
+  const o = { overrideAccess: true, depth: 0 } as const
+  if (!seen) {
+    await payload.delete({ collection: 'inbox_seen', where, ...o })
+    return
+  }
+  if ((await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) return
+  // A second tab marking the same decision at once hits the unique index: that row is the one we wanted.
+  await payload.create({ collection: 'inbox_seen', data: { workspace: workspaceId, user: user.id, ...key, seenAt: new Date().toISOString() }, ...o }).catch(async (e) => {
+    if (!(await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) throw e
+  })
 }
 
 /** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */

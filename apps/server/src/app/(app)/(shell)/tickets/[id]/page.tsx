@@ -57,7 +57,7 @@ import { activeVersion, workflowFor } from '../../../../../lib/factory'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, fastLaneOf, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { waitingStepOf } from '../../../../../lib/waiting-step'
-import { runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
+import { parkedWhyOf, runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
 import { isBauherr } from '../../../../../lib/people'
 import { sendBackOptions, type SendBackTarget } from '../../../../../lib/send-back-options'
@@ -278,6 +278,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     children: epic ? epicCount(epic) : null,
     slicing: epic ? epicSlicing(epic) : null,
     parked: !!ticket.parked,
+    parkedWhy: parkedWhyOf(ticket),
     track: { waitingFor: ticket.waitingFor, reviewState: ticket.reviewState, releaseState: ticket.releaseState, productionState: ticket.productionState, releaseChecksState: ticket.releaseChecksState, releaseError: ticket.releaseError },
   } satisfies StatusRow)
   const running = latest?.status === 'running' ? latest : null

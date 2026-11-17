@@ -24,17 +24,17 @@ describe('readDraft', () => {
 describe('field operations keep the file valid and keep comments', () => {
   it('title, role, skill, limit, checkpoint', () => {
     let y = e.setTitle(base, 'build', 'Construction')
-    y = e.setStageField(y, 'build', 'wip', 4)
+    y = e.setStageField(y, 'build', 'wip', 7)
     y = e.setStageField(y, 'review', 'role', 'test')
     y = e.setCheckpoint(y, 'plan', false)
     y = e.setCheckpoint(y, 'staging', true)
     valid(y)
-    expect(stage(y, 'build')).toMatchObject({ title: 'Construction', wip: 4 })
+    expect(stage(y, 'build')).toMatchObject({ title: 'Construction', wip: 7 })
     expect(stage(y, 'review').role).toBe('test')
     expect(stage(y, 'plan').gate).toBeUndefined()
     expect(stage(y, 'release').gate).toBe('human')
     expect(y).toContain('# The factory: the team and the workflow')
-    expect(e.setStageField(y, 'build', 'wip', undefined)).not.toContain('wip: 4')
+    expect(e.setStageField(y, 'build', 'wip', undefined)).not.toContain('wip: 7')
   })
   it('setPath and renamePath', () => {
     valid(e.setPath(base, 'build', 'stuck', 'backlog'))

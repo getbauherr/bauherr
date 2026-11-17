@@ -8,11 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Markdown } from '../Markdown'
 import { SubmitButton } from '../SubmitButton'
 import { renderMarkdown } from '../../lib/markdown'
-import { ConnectBlock } from './ConnectBlock'
 import { Chip } from './Chip'
-import { agentsLabel, connectPrompt, groupOptions, live, modelName, modelValue, profileMarkdown, tagline } from './helpers'
+import { agentsLabel, groupOptions, live, modelName, modelValue, profileMarkdown, tagline } from './helpers'
 import { RoleAvatar } from './RoleAvatar'
-import { sessionName, type GatewaySetup } from '../../lib/harnesses'
 import type { ModelOption, RoleSettings, SaveResult, TeamRole } from './types'
 
 const MAX_AGENTS = 10
@@ -21,17 +19,9 @@ type Props = {
   /** The role chosen on load; the first when it names none. */
   initialRole?: string
   roles: TeamRole[]
-  modelOptions: ModelOption[]
-  canEdit: boolean
-  onSave: (roleId: string, settings: RoleSettings) => SaveResult | Promise<SaveResult>
-  docsHref: string
-  /** The `claude mcp add` line with the factory URL and a key placeholder. */
-  mcpLine: string
-  /** Values for the per-tool setup that also routes the session through the gateway. */
-  gateway?: GatewaySetup
-  /** Read-only roster (setup wizard): no model/agents form and no connect block. */
-  preview?: boolean
 }
+
+export type SettingsProps = { modelOptions: ModelOption[]; canEdit: boolean; onSave: (roleId: string, settings: RoleSettings) => SaveResult | Promise<SaveResult> }
 
 function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: boolean; hot: boolean; onPick: () => void; onHot: (on: boolean) => void }) {
   const working = role.sessions.filter((s) => s.status === 'working').length
@@ -73,7 +63,7 @@ function Card({ role, chosen, hot, onPick, onHot }: { role: TeamRole; chosen: bo
   )
 }
 
-function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, 'modelOptions' | 'canEdit' | 'onSave'> & { role: TeamRole }) {
+export function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: SettingsProps & { role: TeamRole }) {
   const current = modelValue(role)
   const [model, setModel] = useState(current)
   const [limited, setLimited] = useState(role.agents !== undefined)
@@ -125,7 +115,7 @@ function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, '
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <SubmitButton variant="default" disabled={!canEdit || !model || !dirty}>Save</SubmitButton>
+        <SubmitButton variant="outline" disabled={!canEdit || !model || !dirty}>Save</SubmitButton>
         {!canEdit && <span className="small text-muted-foreground">Only the owner can change a role.</span>}
         {saved && <span className="small text-ok" role="status">Saved</span>}
       </div>
@@ -134,7 +124,32 @@ function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Pick<Props, '
   )
 }
 
-export function TeamSelect({ initialRole, roles, modelOptions, canEdit, onSave, docsHref, mcpLine, gateway, preview }: Props) {
+/** Avatar, title, model, skills, profile and stages of a role. */
+export function RoleBody({ role, heading: Heading = 'h2' }: { role: TeamRole; heading?: 'h2' | 'h3' }) {
+  return (
+    <>
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+        <RoleAvatar avatar={role.avatar} size="xl" animate />
+        <div className="flex flex-col gap-2">
+          <Heading className="title">{role.title}</Heading>
+          <p className="small m-0 text-muted-foreground">{[modelName(role), agentsLabel(role.agents)].filter(Boolean).join(' · ')}</p>
+          {role.skills.length > 0 && <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label="Skills">{role.skills.map((k) => <li key={k}><Chip muted>{k}</Chip></li>)}</ul>}
+        </div>
+      </div>
+      <Markdown html={renderMarkdown(profileMarkdown(role.profile))} />
+      <div className="flex flex-col gap-2">
+        <span className="label text-muted-foreground">Works on</span>
+        <div className="flex flex-wrap gap-2">
+          {role.stages.length ? role.stages.map((s) => <Chip key={s.name} title={s.kind} className="capitalize">{s.title}</Chip>) : <span className="small text-muted-foreground">No stage</span>}
+        </div>
+        {role.exceptions && <p className="small m-0 text-muted-foreground">Handles stuck tickets.</p>}
+      </div>
+    </>
+  )
+}
+
+/** Read-only roster of the setup wizard: one card per role and the chosen role's details. */
+export function TeamSelect({ initialRole, roles }: Props) {
   const [id, setId] = useState(roles.find((r) => r.id === initialRole)?.id ?? roles[0]?.id)
   const [hot, setHot] = useState<string>()
   const group = useRef<HTMLDivElement>(null)
@@ -153,32 +168,14 @@ export function TeamSelect({ initialRole, roles, modelOptions, canEdit, onSave, 
     e.preventDefault()
     pick(next)
   }
-  const prompt = connectPrompt(role, gateway ? sessionName(role.id, gateway.roll) : undefined)
 
   return (
     <div className="grid gap-6 lg:grid-cols-[24rem_minmax(0,1fr)]">
       <div ref={group} role="radiogroup" aria-label="Roles" onKeyDown={onKey} className="-mx-4 flex gap-3 overflow-x-auto px-4 py-1 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-1">
         {roles.map((r) => <Card key={r.id} role={r} chosen={r.id === id} hot={hot === r.id} onPick={() => setId(r.id)} onHot={(on) => setHot(on ? r.id : undefined)} />)}
       </div>
-      <section aria-label={`${role.title} settings`} className={cn('flex flex-col gap-6 rounded-md border border-border bg-card p-6', !preview && 'min-h-[40rem]')}>
-        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-          <RoleAvatar avatar={role.avatar} size="xl" animate />
-          <div className="flex flex-col gap-2">
-            <h2 id="role-title" className="title">{role.title}</h2>
-            <p className="small m-0 text-muted-foreground">{[modelName(role), agentsLabel(role.agents)].filter(Boolean).join(' · ')}</p>
-            {role.skills.length > 0 && <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label="Skills">{role.skills.map((k) => <li key={k}><Chip muted>{k}</Chip></li>)}</ul>}
-          </div>
-        </div>
-        <Markdown html={renderMarkdown(profileMarkdown(role.profile))} />
-        <div className="flex flex-col gap-2">
-          <span className="label text-muted-foreground">Works on</span>
-          <div className="flex flex-wrap gap-2">
-            {role.stages.length ? role.stages.map((s) => <Chip key={s.name} title={s.kind} className="capitalize">{s.title}</Chip>) : <span className="small text-muted-foreground">No stage</span>}
-          </div>
-          {role.exceptions && <p className="small m-0 text-muted-foreground">Handles stuck tickets.</p>}
-        </div>
-        {!preview && <RoleSettingsForm key={role.id} role={role} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />}
-        {!preview && <ConnectBlock mcpLine={mcpLine} prompt={prompt} docsHref={docsHref} gateway={gateway} role={role.id} />}
+      <section aria-label={`${role.title} settings`} className="flex flex-col gap-6 rounded-md border border-border bg-card p-6">
+        <RoleBody role={role} />
       </section>
     </div>
   )

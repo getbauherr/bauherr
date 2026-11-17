@@ -54,7 +54,12 @@ export type StatusRow = {
   slicing?: { index: number; total: number; stage: string | null } | null
   /** A parked epic (or one of its open slices): stopped, holds no WIP. */
   parked?: boolean
+  /** The reason a Ticket parked on a need holds no WIP slot (`parkedWhyOf`); null = not parked that way. */
+  parkedWhy?: string | null
 }
+
+/** Why a Ticket holds no slot while it waits for the owner (`tickets.parkedNeed`): the prepared Decision's ask, else the need; null when it is not parked that way. */
+export const parkedWhyOf = (t: { parkedNeed?: string | null; decision?: { ask?: string } | null }): string | null => (t.parkedNeed ? (t.decision?.ask ?? t.parkedNeed) : null)
 
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
 const RUN_PROBLEMS = ['Cancelled', 'Run failed', 'Run needs you']
@@ -93,6 +98,7 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   // Still open on the forge in the done stage: awaiting close or archive.
   if (is(wf, r.stage, 'done')) return { phase: 'done', label: 'Done', detail: 'closing', who: null, tone: 'ok' }
   if (r.parked) return { phase: 'blocked', label: 'Parked', detail: 'stopped; resume or discard it', who: null, tone: 'muted' }
+  if (r.parkedWhy) return { phase: 'human', label: `Parked: ${WAITING_FOR_YOU.toLowerCase()} (${r.parkedWhy})`, detail: r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
   if (is(wf, r.stage, 'container') && r.slicing) return { phase: 'blocked', label: `Slice ${r.slicing.index}/${r.slicing.total}`, detail: r.slicing.stage ? stageTitle(wf, r.slicing.stage) : 'starting', who: null, tone: 'muted' }
   if (is(wf, r.stage, 'container')) {
     const c = r.children ?? { total: 0, done: 0 }

@@ -6,7 +6,7 @@ import { PROOF_NEEDS, decisionMarkdown, justDecided, prepareDecision, sameDecisi
 import { template } from './templates'
 import { record } from './history'
 import { hasProductionChecks } from './mode'
-import { type Need, needsOf } from './needs-you'
+import { type Need, needsOf, PARKING_NEEDS, parkingNeed } from './needs-you'
 import { publicUrl } from './oidc'
 import { proofMarkdown } from './artifacts'
 import { startRunIfNeeded } from '../jobs'
@@ -19,7 +19,8 @@ import { gatesOf } from './staging'
 import { askedOf, needBy } from './addressee'
 import { productOwnersOfTicket } from './people'
 import { decisionComments, gateOwnersOf, logins } from './forge-channel'
-import { is } from './workflow'
+import { rejoin } from './wip'
+import { is, wipStages } from './workflow'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
@@ -62,6 +63,13 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   const candidate = justDecided(t, raw) ? null : raw
   // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
+  // Parked on a need outside an approval: no slot while no Run of the Ticket is live. When the need clears the Ticket rejoins its column in turn (`rejoin`).
+  const liveRun = candidate && PARKING_NEEDS.includes(candidate) ? (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { in: ['running', 'queued', 'awaiting_session'] } }] }, limit: 1, select: { status: true }, ...o })).docs[0] as { status: string } | undefined : null
+  const parking = parkingNeed(wf, t, candidate, liveRun ?? run)
+  if ((t.parkedNeed ?? null) !== parking) {
+    if (!parking && t.parkedNeed && t.state === 'open' && wipStages(wf).includes(t.stage)) await rejoin(payload, t)
+    else await cas(payload, t.id, sql`"parked_need" = ${parking}`, sql`"parked_need" IS DISTINCT FROM ${parking}`)
+  }
   // Who it asks (`needsBy`): what the workflow addresses it to, the Bauherr when that is the Product owner and the Product has none assigned.
   const nominal = candidate ? needBy(wf, candidate, t.stage) : null
   const ownerRows = nominal === 'product-owner' ? await productOwnersOfTicket(payload, t) : []

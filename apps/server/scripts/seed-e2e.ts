@@ -37,6 +37,9 @@ for (const w of [1, 2]) workerAdmins.push((await ensure('bauherren', { email: em
 const draftOwner = (await ensure('bauherren', { email: 'draft-owner@example.com' }, { email: 'draft-owner@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-draft-owner' })).id // owns the seeded Draft; only requests.spec signs in as this user, and its tests run in one worker
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme', wipLimits: {} })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
+// team.spec.ts: an Admin who holds an agent key (everyone else has none: the no-key state of the Connect panel); only team.spec signs in as this user.
+const keyed = await ensure('bauherren', { email: 'team-key@example.com' }, { email: 'team-key@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-team-key' })
+await ensure('agent_keys', { owner: keyed.id, label: 'e2e' }, { owner: keyed.id, label: 'e2e', keyHash: 'e2e-team-key-hash', prefix: 'bha_e2e0' })
 const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug: 'zeta' })).id
 const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
 await ensure('bauherren', { email: 'solo@example.com' }, { email: 'solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
@@ -69,6 +72,17 @@ const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 
 await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
 await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
 await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
+// board-parked.spec.ts: a Workspace of its own (`bauherr-ws=park`, Build limit 3), an Admin that only that spec signs in as, one Product and three Build Tickets: one parked on `Run needs you` (its Run waits for the owner) and two with a running Run. Twin in `src/lib/fake-forge.ts` (acme/park).
+const parkWs = (await ensure('workspaces', { slug: 'park' }, { name: 'Park Lab', slug: 'park', wipLimits: { build: 3 } })).id
+await ensure('bauherren', { email: 'park-admin@example.com' }, { email: 'park-admin@example.com', password, role: 'admin', githubLogin: 'e2e-park-admin' })
+const parkGithub = (await ensure('connections', { name: 'GitHub Park' }, { name: 'GitHub Park', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: parkWs })).id
+const parkProduct = (await ensure('products', { slug: 'park-app' }, { name: 'Park App', slug: 'park-app', workspace: parkWs })).id
+await ensure('repositories', { fullName: 'acme/park' }, { fullName: 'acme/park', product: parkProduct, workspace: parkWs })
+await ensure('ticket_sources', { repo: 'acme/park' }, { repo: 'acme/park', product: parkProduct, connection: parkGithub, cursor: '2026-10-30T09:00:00Z', workspace: parkWs })
+for (const [n, title, status] of [[1, 'Parked: needs cloud credentials', 'needs_human'], [2, 'Working: first', 'running'], [3, 'Working: second', 'running']] as const) {
+  const t = (await ensure('tickets', { externalId: `e2e-park-${n}` }, { title, externalId: `e2e-park-${n}`, number: n, url: `https://github.com/acme/park/issues/${n}`, state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: parkProduct, workspace: parkWs, rank: `00005${n}`, ...(n === 1 ? { needsYou: 'Run needs you', parkedNeed: 'Run needs you' } : {}) })).id
+  await ensure('runs', { ticket: t, stage: 'build', status }, { ticket: t, stage: 'build', status, mode: 'autonomous', workspace: parkWs })
+}
 // request-conversation.spec.ts: a Workspace of its own (`bauherr-ws=rc`) with two Products (Rc Web, Rc Api), models as `<connection>/<model>` (the short name is what is shown), a Bauherr and a Product owner (assigned to Rc Web only) that only that spec signs in as. Twins in `src/lib/fake-forge.ts` (acme/rc-web, acme/rc-api).
 const rcWs = (await ensure('workspaces', { slug: 'rc' }, { name: 'Request Lab', slug: 'rc', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'rc-bauherr@example.com' }, { email: 'rc-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: rcWs }] })
