@@ -22,17 +22,17 @@ export function HarnessSetup({ setup, roles, role }: { setup: GatewaySetup; role
     <div className="flex flex-col gap-3" data-testid="harness-setup">
       <div className="flex flex-wrap gap-4">
         {!role && roles && (
-          <label className="small flex flex-col gap-1">
+          <label className="small flex max-w-full flex-col gap-1">
             Role of the session
             <NativeSelect value={picked} onChange={(e) => setPicked(e.target.value)} aria-label="Role of the session">{roles.map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</NativeSelect>
           </label>
         )}
-        <label className="small flex flex-col gap-1">
+        <label className="small flex max-w-full flex-col gap-1">
           Coding tool
           <NativeSelect value={id} onChange={(e) => setId(e.target.value)} aria-label="Coding tool">{HARNESSES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</NativeSelect>
         </label>
         {h.routes.length > 1 && (
-          <label className="small flex flex-col gap-1">
+          <label className="small flex max-w-full flex-col gap-1">
             Pay with
             <NativeSelect value={active} onChange={(e) => setRoute(e.target.value as Route)} aria-label="Pay with">{h.routes.map((x) => <option key={x} value={x}>{ROUTE_LABEL[x]}</option>)}</NativeSelect>
           </label>
@@ -44,7 +44,7 @@ export function HarnessSetup({ setup, roles, role }: { setup: GatewaySetup; role
           {blocks.map((b) => (
             <div key={b.title} className="flex flex-col gap-2">
               <span className="small">{b.title}</span>
-              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{b.text}</pre>
+              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap [overflow-wrap:anywhere]">{b.text}</pre>
               <div><CopyButton text={b.text} label="Copy" /></div>
             </div>
           ))}

@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, type ComponentProps } from 'react'
 
 const FROM_TEAM = 'bauherr:team-list'
+/** The list's scroll offset when an agent was opened; the Sessions list scrolls back to it. */
+export const LIST_SCROLL = 'bauherr:team-scroll'
 const store = (fn: (s: Storage) => void) => {
   try {
     fn(sessionStorage)
@@ -11,7 +13,12 @@ const store = (fn: (s: Storage) => void) => {
 }
 
 /** A link from the Team page to an agent; remembers that the visit started on the list, so Back returns to it as it was. */
-export const AgentLink = (props: ComponentProps<typeof Link>) => <Link {...props} onClick={() => store((s) => s.setItem(FROM_TEAM, '1'))} />
+export const AgentLink = (props: ComponentProps<typeof Link>) => <Link {...props} onClick={() =>
+      store((s) => {
+        s.setItem(FROM_TEAM, '1')
+        s.setItem(LIST_SCROLL, String(scrollY))
+      })
+    } />
 
 /** "Agent team": history back when the agent was opened from the list (toggle and scroll as they were), else a plain link. */
 export function BackLink({ className }: { className?: string }) {

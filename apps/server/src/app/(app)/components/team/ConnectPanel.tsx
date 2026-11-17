@@ -73,17 +73,17 @@ export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHr
       <div className="flex flex-col gap-2">
         <label htmlFor="connect-role" className="label text-muted-foreground">Role</label>
         <div className="flex flex-wrap items-center gap-3">
-          <NativeSelect id="connect-role" ref={select} className="min-w-64 max-sm:w-full" value={role.id} onChange={(e) => setChoice({ id: e.target.value, hint: PICKED })}>
+          <NativeSelect id="connect-role" ref={select} className="min-w-64 [@media(max-width:640px)]:w-full" value={role.id} onChange={(e) => setChoice({ id: e.target.value, hint: PICKED })}>
             {roles.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
           </NativeSelect>
-          <CopyButton primary className="max-sm:w-full" text={prompt} label="Copy prompt" disabled={!presence.key} onCopy={remember} />
+          <CopyButton primary className="[@media(max-width:640px)]:w-full" text={prompt} label="Copy prompt" disabled={!presence.key} onCopy={remember} />
           {!presence.key && <span className="small text-muted-foreground" id="no-key">Create an agent key first.</span>}
         </div>
         <span className="small text-muted-foreground" data-testid="connect-hint">{choice.hint}</span>
       </div>
       <div aria-live="polite">
         <span className="sr-only">Prompt for {role.title}</span>
-        <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap" data-testid="connect-prompt">{prompt}</pre>
+        <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap [overflow-wrap:anywhere]" data-testid="connect-prompt">{prompt}</pre>
       </div>
       <details open={setup} onToggle={(e) => setSetup(e.currentTarget.open)} className="flex flex-col gap-3">
         <summary className="small cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring">First-time setup</summary>
@@ -96,7 +96,7 @@ export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHr
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">{mcpLine}</pre>
+              <pre className="mono m-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap [overflow-wrap:anywhere]">{mcpLine}</pre>
               <div><CopyButton text={mcpLine} label="Copy command" /></div>
             </div>
           )}

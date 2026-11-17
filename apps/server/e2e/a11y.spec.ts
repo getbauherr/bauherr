@@ -200,6 +200,32 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
   })
 })
 
+test.describe('axe on the Agent team pages at 375 px, light and dark', () => {
+  let session: Awaited<ReturnType<BrowserContext['storageState']>>
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext()
+    await signIn(await context.newPage())
+    session = await context.storageState()
+    await context.close()
+  })
+  for (const route of ['/team', '/team/[id]'] as const) {
+    test(route, async ({ browser }) => {
+      test.setTimeout(120_000)
+      const page = await (await browser.newContext({ storageState: session, viewport: { width: 375, height: 844 } })).newPage()
+      const target = routes[route]!
+      const url = typeof target === 'string' ? target : await target(page)
+      await page.goto(url)
+      await expect(page.getByRole('banner')).toBeVisible()
+      await page.locator('h1').first().waitFor({ timeout: 10_000 })
+      for (const t of ['light', 'dark'] as const) {
+        await setTheme(page, t)
+        expect(await scan(page), `${url} 375px (${t})`).toEqual([])
+      }
+      await page.context().close()
+    })
+  }
+})
+
 test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {
   const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser']] as const
   let session: Awaited<ReturnType<BrowserContext['storageState']>>

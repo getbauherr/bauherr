@@ -1,10 +1,21 @@
 'use client'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Switch } from '../ui/switch'
+import { LIST_SCROLL } from './AgentNav'
 
-/** The Sessions list: `rows` are always shown, `disconnected` only behind the toggle (its state survives the 5 s refresh). */
+const KEY = 'bauherr:team-show-disconnected'
+
+/** The Sessions list: `rows` are always shown, `disconnected` only behind the toggle (its state survives the 5 s refresh and, in `sessionStorage`, a visit to an agent page and Back). */
 export function SessionsSection({ rows, disconnected, count }: { rows: ReactNode[]; disconnected: ReactNode[]; count: number }) {
   const [show, setShow] = useState(false)
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(KEY) === '1') setShow(true)
+      const y = Number(sessionStorage.getItem(LIST_SCROLL))
+      sessionStorage.removeItem(LIST_SCROLL)
+      if (y > 0) requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y)))
+    } catch {}
+  }, [])
   const shown = rows.length > 0 || (show && disconnected.length > 0)
   return (
     <section aria-labelledby="sessions-heading" className="flex flex-col gap-4">
@@ -12,7 +23,12 @@ export function SessionsSection({ rows, disconnected, count }: { rows: ReactNode
         <h2 id="sessions-heading" className="heading">Sessions</h2>
         {count > 0 && (
           <label className="small flex items-center gap-2">
-            <Switch checked={show} onChange={(e) => setShow(e.target.checked)} />
+            <Switch checked={show} onChange={(e) => {
+              setShow(e.target.checked)
+              try {
+                sessionStorage.setItem(KEY, e.target.checked ? '1' : '0')
+              } catch {}
+            }} />
             {show ? 'Hide disconnected' : `Show ${count} disconnected`}
           </label>
         )}

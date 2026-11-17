@@ -169,3 +169,111 @@ test('the header pill and the sidebar dot show who is working on every page; Set
   await page.goto('/settings/profile')
   await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Team' })).toHaveCount(0)
 })
+
+const lineCount = (el: Element) => {
+  const boxes = [...el.children].map((c) => c.getBoundingClientRect()).sort((a, b) => a.top - b.top)
+  let lines = 0
+  let bottom = -Infinity
+  for (const b of boxes) {
+    if (b.top >= bottom - 1) lines++
+    bottom = lines && b.top >= bottom - 1 ? b.bottom : Math.max(bottom, b.bottom)
+  }
+  return lines
+}
+
+const phones = [375, 640]
+for (const width of phones) {
+  test(`no horizontal page scroll at ${width}px on /team and the agent page; Copy prompt is full width and 36px high`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await signIn(page, 'member@example.com') // keyless: First-time setup is open, the widest content
+    for (const url of ['/team', '/team/ses_e2e_working']) {
+      await page.goto(url)
+      await page.locator('h1').first().waitFor()
+      const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth])
+      expect(scroll, url).toBeLessThanOrEqual(client)
+    }
+    await page.goto('/team')
+    const copy = await page.getByRole('button', { name: 'Copy prompt' }).boundingBox()
+    const panel = await connect(page).boundingBox()
+    expect(copy!.height).toBe(36)
+    expect(copy!.width).toBeGreaterThanOrEqual(panel!.width - 2 * 25) // p-6 and the 1px border are the only gap
+  })
+}
+
+test('on a phone the session rows wrap and the agent page stacks its panels in one column, Runs rows on two lines', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await signIn(page)
+  await page.goto('/team')
+  const row = page.locator('#ses_e2e_working')
+  const lines = await row.evaluate(lineCount)
+  expect(lines).toBeGreaterThanOrEqual(2)
+  expect(lines).toBeLessThanOrEqual(3)
+  await page.goto('/team/ses_e2e_working')
+  const panels = ['Current Run', 'Cost', 'Milestones', 'Runs'].map((name) => page.getByRole('region', { name, exact: true }))
+  const boxes = await Promise.all(panels.map((p) => p.boundingBox()))
+  boxes.forEach((b, i) => {
+    expect(b!.x, `panel ${i} left`).toBe(boxes[0]!.x)
+    expect(b!.width, `panel ${i} width`).toBe(boxes[0]!.width)
+    if (i) expect(b!.y, `panel ${i} below the previous`).toBeGreaterThanOrEqual(boxes[i - 1]!.y + boxes[i - 1]!.height)
+  })
+  const details = await page.getByTestId('agent-details').boundingBox()
+  expect(details!.y).toBeGreaterThanOrEqual(boxes[3]!.y + boxes[3]!.height)
+  const run = page.getByTestId('agent-run').first()
+  if (await run.count()) {
+    const tops = await run.evaluate(lineCount)
+    expect(tops).toBe(2)
+  }
+})
+
+test('prefers-reduced-motion stops the spinner and the avatar loops', async ({ page }) => {
+  await signIn(page)
+  const running = () => page.evaluate(() => [...document.querySelectorAll('[data-testid=session-row] *')].filter((e) => getComputedStyle(e).animationName !== 'none').length)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.goto('/team')
+  await expect(page.locator('#ses_e2e_working')).toBeVisible()
+  expect(await running(), 'a working row animates when motion is allowed').toBeGreaterThan(0)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/team')
+  await expect(page.locator('#ses_e2e_working')).toBeVisible()
+  expect(await running()).toBe(0)
+  await page.goto('/team/ses_e2e_working')
+  await expect(page.getByTestId('agent-name')).toBeVisible()
+  expect(await page.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => getComputedStyle(e).animationName !== 'none').length)).toBe(0)
+})
+
+test('Tab reaches role select, Copy prompt, setup disclosure, toggle, Connect and row links in visual order', async ({ page }) => {
+  await signIn(page, keyed)
+  await page.goto('/team')
+  await role(page).focus()
+  const stops: string[] = ['Role']
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Tab')
+    stops.push(await page.evaluate(() => {
+      const el = document.activeElement as HTMLInputElement
+      return (el.getAttribute('aria-label') ?? el.labels?.[0]?.textContent ?? el.textContent ?? '').trim()
+    }))
+  }
+  const at = (re: RegExp) => stops.findIndex((s) => re.test(s))
+  const order = [/^Role$/, /^Copy prompt$/, /^First-time setup$/, /^Show 1 disconnected$/, /^Connect$/, /^orchestrator-1@laptop/].map(at)
+  expect(order, stops.join(' | ')).not.toContain(-1)
+  expect(order, stops.join(' | ')).toEqual([...order].sort((a, b) => a - b))
+})
+
+test('Back from an agent page returns to /team with "Show disconnected" on and the scroll position', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 400 })
+  await signIn(page)
+  await page.goto('/team')
+  await page.getByLabel('Show 1 disconnected').check()
+  const link = page.getByRole('link', { name: 'orchestrator-1@laptop' })
+  await link.scrollIntoViewIfNeeded()
+  await page.evaluate(() => scrollBy(0, 150))
+  const y = await page.evaluate(() => scrollY)
+  expect(y).toBeGreaterThan(0)
+  await link.click()
+  await expect(page).toHaveURL(/\/team\/ses_e2e_working$/)
+  await page.getByRole('link', { name: 'Agent team', exact: true }).first().click()
+  await expect(page).toHaveURL(/\/team$/)
+  await expect(page.getByLabel('Hide disconnected')).toBeChecked()
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0)
+  expect(Math.abs((await page.evaluate(() => scrollY)) - y)).toBeLessThan(20)
+})
