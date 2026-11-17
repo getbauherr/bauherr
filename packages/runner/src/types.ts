@@ -40,7 +40,7 @@ export type RunCtx = {
   /** Agent Run: the workflow stage, its skill, the role profile and the outcome keys the agent may report. */
   agent?: { stage: string; title: string; skill: string; roleProfile: string; outcomes: string[] };
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
-  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string; /** Docs Run: the Product's docs path globs and the Tickets merged since the last check. */ docs?: { paths: string[]; merged: { number: number; title: string; mergeSha: string }[] } };
+  product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string; /** Review Run: `REVIEW.md` of the base branch (untrusted, capped at 20 KB). */ reviewMd?: string; /** Docs Run: the Product's docs path globs and the Tickets merged since the last check. */ docs?: { paths: string[]; merged: { number: number; title: string; mergeSha: string }[] } };
   /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
   /** Review Run: the review round (1 = first), and from round 2 the head the previous review covered; review only the diff from it to the new head (the fix). */

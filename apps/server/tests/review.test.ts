@@ -1140,3 +1140,30 @@ it('the autonomous path moves a refused finding to open instead of failing the R
   expect(actions.normalizeReview({ ...raw, findings: [correctness] }, { round: 1, demote: true })).toMatchObject({ verdict: 'clean' })
   expect(actions.normalizeReview({ ...raw, findings: [] , verdict: 'changes' }, { demote: true }).problem).toMatch(/contradicts/)
 })
+
+const nit = (i: number) => ({ severity: 'low', class: 'low', file: 'n.ts', line: i, msg: `nit ${i}`, scenario: 's' })
+const old = { severity: 'low', class: 'pre-existing', file: 'old.ts', line: 9, msg: 'old bug', scenario: 'when x, then y' }
+
+it('at most 5 nits are kept, the rest is dropped with a count in the markdown', () => {
+  const r = actions.normalizeReview({ verdict: 'clean', findings: Array.from({ length: 8 }, (_, i) => nit(i)), checked, markdown: 'm' })
+  expect(r.findings).toHaveLength(5)
+  expect(r.markdown).toContain('3 more nits not posted')
+  expect(actions.normalizeReview({ verdict: 'clean', findings: [nit(1)], checked, markdown: 'm' }).markdown).not.toContain('nits not posted')
+})
+
+it('a pre-existing finding never counts, is listed under Pre-existing and stored on the Ticket', async () => {
+  expect(actions.normalizeReview({ verdict: 'clean', findings: [old, { ...old, severity: 'high' }], checked, markdown: 'm' })).toMatchObject({ verdict: 'clean', markdown: expect.stringMatching(/## Pre-existing\n- 🟣 Pre-existing old\.ts:9 old bug/) })
+  const { id, pr } = await seed({ checks: green })
+  expect(await submit(await review(id), [old])).toMatchObject({ verdict: 'clean', outcome: 'merged' })
+  expect(await prState(pr.number)).toBe('merged')
+  expect((await reload(id)).preExisting).toEqual([{ file: 'old.ts', line: 9, msg: 'old bug', scenario: 'when x, then y' }])
+  expect((await fake.forge.listPullRequestComments(repo, pr.number)).find((c) => c.body.startsWith(actions.REVIEW_MARKER))!.body).toContain('## Pre-existing')
+  expect(actions.severityLabel({ class: 'security' })).toBe('🔴 Important')
+  expect(actions.severityLabel({ class: 'low' })).toBe('🟡 Nit')
+})
+
+it('a counting finding without a scenario is refused (autonomous: open, no-evidence)', () => {
+  const raw = { verdict: 'changes', findings: [{ ...medium, scenario: ' ' }], checked, markdown: 'm' }
+  expect(() => actions.normalizeReview(raw)).toThrow('no-evidence')
+  expect(actions.normalizeReview(raw, { demote: true })).toMatchObject({ verdict: 'clean', findings: [], open: [{ reason: 'no-evidence' }] })
+})

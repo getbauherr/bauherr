@@ -1335,13 +1335,14 @@ const FILE = new RegExp(FILE_PATTERN)
 /** Areas a review must account for, each with a one-line justification. */
 export const CHECKED_AREAS = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence']
 
-/** `low` never sends the Ticket back; the others do, subject to the proof and round rules in `normalizeReview`. */
-export const FINDING_CLASSES = ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low'] as const
+/** Important = every class but `low` and `pre-existing`; `low` is a Nit (at most `MAX_NITS` per review), `pre-existing` a real bug the MR did not introduce. Neither sends the Ticket back; the others do, subject to the proof and round rules in `normalizeReview`. */
+export const FINDING_CLASSES = ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low', 'pre-existing'] as const
+export const MAX_NITS = 5
 /** Classes that need a failing test on the MR head: the reviewer states how to see the defect, not only a scenario. */
 const NEEDS_TEST = ['correctness', 'wrong-results', 'data-loss']
 /** Classes a round after the first may still raise, on the fix only. */
 const SEVERE = ['security', ...NEEDS_TEST]
-export const OPEN_REASONS = ['no-failing-test', 'constructed-input', 'out-of-round-scope'] as const
+export const OPEN_REASONS = ['no-failing-test', 'constructed-input', 'out-of-round-scope', 'no-evidence'] as const
 export const MAX_PATCH = 4000
 
 export type FindingClass = (typeof FINDING_CLASSES)[number]
@@ -1354,11 +1355,15 @@ export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdo
 export type ReviewOutcome = 'merged' | 'queued' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'slice_passed' | 'noop'
 
 /** A finding the factory counts: it sends the Ticket back to Build. */
-const counts = (f: Finding) => f.class !== 'low'
+const counts = (f: Finding) => f.class !== 'low' && f.class !== 'pre-existing'
+
+/** Derived label of a finding's severity class. */
+export const severityLabel = (f: Pick<Finding, 'class'>): string => (f.class === 'low' ? '🟡 Nit' : f.class === 'pre-existing' ? '🟣 Pre-existing' : '🔴 Important')
 const loc = (f: { file: string; line: number }) => `${f.file}:${f.line}`
 
 /**
- * Validates a reviewer's output. The verdict is derived: `changes` iff a counted finding (any class but `low`) exists.
+ * Validates a reviewer's output. The verdict is derived: `changes` iff a counted finding (any class but `low` and `pre-existing`) exists.
+ * Nits beyond `MAX_NITS` are dropped and counted in the markdown; pre-existing findings are listed under `## Pre-existing`.
  * A correctness, wrong-results or data-loss finding needs `test: {command, failure}`; from the second round on only security and those classes count.
  * A finding that breaks one of these is refused with the instruction to move it to `open`; with `demote` (the autonomous Run cannot be asked again) it is moved there instead.
  * The old shape (no `class`) is refused with a message naming the classes.
@@ -1387,7 +1392,7 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
       throw new Error(`finding ${i} needs severity (high|medium|low), file (path characters incl. ()[], no "..", max 300), line (integer >= 0), msg and scenario (max ${MAX_TEXT} characters)`)
     }
     if (!FINDING_CLASSES.includes(f.class)) throw new Error(`finding ${i} needs class (${FINDING_CLASSES.join('|')}); a scenario without a failing test belongs in open`)
-    if ((f.class === 'low') !== (f.severity === 'low')) throw new Error(`finding ${i}: class low goes with severity low, every other class with high or medium`)
+    if (f.class !== 'pre-existing' && (f.class === 'low') !== (f.severity === 'low')) throw new Error(`finding ${i}: class low goes with severity low, every other class with high or medium`)
     const t = f.test
     if (t !== undefined && (!t || typeof t.command !== 'string' || !t.command.trim() || t.command.length > MAX_TEXT || typeof t.failure !== 'string' || !t.failure.trim() || t.failure.length > MAX_TEXT || (t.patch !== undefined && (typeof t.patch !== 'string' || t.patch.length > MAX_PATCH)))) {
       throw new Error(`finding ${i}: test needs command and failure (max ${MAX_TEXT} characters) and optionally patch (max ${MAX_PATCH})`)
@@ -1396,9 +1401,11 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
     const finding: Finding = { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(f.slice !== undefined && { slice: f.slice }), ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
     const refusal = NEEDS_TEST.includes(f.class) && !t
       ? { reason: 'no-failing-test' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no failing test: add test {command, failure} (the test that fails on the MR head and what it prints) or move it to open with reason no-failing-test` }
-      : round > 1 && counts(finding) && !SEVERE.includes(f.class)
-        ? { reason: 'out-of-round-scope' as const, text: `finding ${i} (${f.class}, ${loc(f)}) is outside round ${round}: after the first round only security, correctness, wrong-results and data-loss findings on the fix count; move it to open with reason out-of-round-scope` }
-        : null
+      : counts(finding) && !f.scenario.trim()
+        ? { reason: 'no-evidence' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no scenario: state "when X, then Y instead of Z" or move it to open with reason no-evidence` }
+        : round > 1 && counts(finding) && !SEVERE.includes(f.class)
+          ? { reason: 'out-of-round-scope' as const, text: `finding ${i} (${f.class}, ${loc(f)}) is outside round ${round}: after the first round only security, correctness, wrong-results and data-loss findings on the fix count; move it to open with reason out-of-round-scope` }
+          : null
     if (!refusal) return void findings.push(finding)
     if (!o.demote) throw new Error(refusal.text)
     demoted = true
@@ -1415,11 +1422,18 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
   const missing = CHECKED_AREAS.filter((a) => !noted.has(a))
   const contradicts = raw.verdict !== derived && !demoted
   const problem = contradicts ? `the declared verdict "${raw.verdict}" contradicts the findings (${derived})` : missing.length ? `the review did not account for: ${missing.join(', ')}` : undefined
-  return { verdict: contradicts ? 'changes' : derived, findings, markdown: raw.markdown, open, ...(problem && { problem }) }
+  const nits = findings.filter((f) => f.class === 'low')
+  const kept = findings.filter((f) => f.class !== 'low' || nits.indexOf(f) < MAX_NITS)
+  const pre = kept.filter((f) => f.class === 'pre-existing')
+  const extra = [
+    pre.length && `## Pre-existing\n${pre.map((f) => `- ${severityLabel(f)} ${loc(f)} ${oneLine(f.msg)} Scenario: ${oneLine(f.scenario)}`).join('\n')}`,
+    nits.length > MAX_NITS && `${nits.length - MAX_NITS} more nits not posted`,
+  ].filter(Boolean)
+  return { verdict: contradicts ? 'changes' : derived, findings: kept, markdown: [raw.markdown, ...extra].join('\n\n'), open, ...(problem && { problem }) }
 }
 
 /** Words for an Open reason, on the Ticket page and in the cap decision. */
-export const OPEN_WORDS: Record<OpenItem['reason'], string> = { 'no-failing-test': 'no failing test', 'constructed-input': 'needs an input no real path produces', 'out-of-round-scope': 'outside this round' }
+export const OPEN_WORDS: Record<OpenItem['reason'], string> = { 'no-failing-test': 'no failing test', 'constructed-input': 'needs an input no real path produces', 'out-of-round-scope': 'outside this round', 'no-evidence': 'no evidence beyond naming' }
 export const openLine = (x: OpenItem) => `- [${OPEN_WORDS[x.reason]}] ${oneLine(x.text)}`
 
 const oneLine = (v: unknown) => String(v).replace(/\s+/g, ' ').trim()
@@ -1824,6 +1838,11 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
     const body = `${REVIEW_MARKER}\n${reviewComment(review)}`
     if (!resume || !(await mr.backend.forge.listPullRequestComments(mr.repo, mr.pr.number)).some((c) => c.body === body)) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
     await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_return_base" = NULL WHERE "id" = ${t.id}`)
+    const pre = review.findings.filter((f) => f.class === 'pre-existing').map(({ file, line, msg, scenario }) => ({ file, line, msg, scenario }))
+    if (pre.length) {
+      const kept = ((t.preExisting ?? []) as typeof pre).filter((x) => !pre.some((y) => y.file === x.file && y.line === x.line && y.msg === x.msg))
+      await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "pre_existing" = ${JSON.stringify([...kept, ...pre])}::jsonb WHERE "id" = ${t.id}`)
+    }
     if (review.problem) return { outcome: await handOver(payload, t, mr, `Review needs a human: ${review.problem}.`) }
     const blocking = review.findings.filter(counts)
     const outcome = blocking.length

@@ -68,6 +68,14 @@ export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, re
   return stdout.split(' ')[0]!.trim();
 }
 
+export const REVIEW_MD_CAP = 20_000;
+
+/** `REVIEW.md` at the root of `origin/<base>` (never the MR head, so an MR cannot change its own review rules), capped at 20 KB; empty when absent. */
+export async function baseReviewMd(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<string> {
+  const text = await git(c.dir, env, 'show', `origin/${base}:REVIEW.md`).catch(() => '');
+  return Buffer.from(text).subarray(0, REVIEW_MD_CAP).toString();
+}
+
 /** Writes the difference between the MR-only diff at `reviewedSha` and at HEAD to `out`; falls back to the full MR-only diff when `reviewedSha` is not in the clone. */
 export async function interdiff(c: Clone, env: NodeJS.ProcessEnv, base: string, reviewedSha: string, out: string): Promise<void> {
   if (!(await git(c.dir, env, 'cat-file', '-t', reviewedSha).catch(() => ''))) {
