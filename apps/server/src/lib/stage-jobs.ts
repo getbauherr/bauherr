@@ -35,9 +35,29 @@ const visitOf = async (payload: Payload, ticket: number | string, stage: string)
   return { since, runs, skipped }
 }
 
+export const visitWorst = (t: Doc, runs: Doc[]): Doc | undefined => worstRun(runs.filter((r) => r.stage === t.stage && (!t.stageSince || r.createdAt >= t.stageSince)))
+
+const closeAndAdvance = async (payload: Payload, t: Doc, to: string, claim: ReturnType<typeof sql>, by: { blocker?: Doc; run?: Doc; note?: string } = {}): Promise<void> => {
+  const { blocker, note } = by
+  const run = by.run ?? blocker
+  const db = payload.db.drizzle
+  const before = ((await db.execute(sql`SELECT "stage_since"::text AS since FROM "tickets" WHERE "id" = ${t.id}`)).rows[0] as { since: string | null }).since
+  if (!(await cas(payload, t.id, sql`"stage_since" = now()`, claim))) return
+  try {
+    if (blocker) await db.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "error" = ${`cancelled: ${blocker.job} reported ${blocker.outcome}`}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "ticket_id" = ${t.id} AND "stage" = ${blocker.stage} AND "id" <> ${blocker.id} AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
+    await advance(payload, null, t, to, { by: 'factory', ...(run && { run }), note })
+  } catch (e) {
+    await db.execute(sql`UPDATE "tickets" SET "stage_since" = ${before}::timestamptz WHERE "id" = ${t.id} AND "stage" = ${t.stage}`)
+    throw e
+  }
+}
+
+const blockedClaim = (stage: string, run: number) => sql`"stage" = ${stage} AND ("stage_since" IS NULL OR "stage_since" <= (SELECT "created_at" FROM "runs" WHERE "id" = ${run}))`
+
 /**
  * Starts every Job of the Ticket's stage that is ready (all `needs` done or skipped, `when` matching) and has no Run in this visit; a Job whose `when` does not match is skipped and recorded.
- * A Job is done when its Run succeeded and reported its outcome. When all Jobs are done the stage applies its first outcome; one conditional UPDATE of `stage_since` decides which concurrent caller advances.
+ * A Job is done when its Run succeeded with an outcome that maps to `done`. A blocking Job whose recorded outcome maps to a stage outcome applies it (the recovery of a `finishJob` that did not finish).
+ * When all Jobs are done the stage applies its first outcome; one conditional UPDATE of `stage_since` decides which concurrent caller advances.
  */
 export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<void> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })) as Doc
@@ -48,7 +68,13 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
   let facts
   for (const j of def.jobs) {
     const mine = runs.filter((r) => r.job === j.id)
-    if (mine.some((r) => r.status === 'succeeded' && r.outcome) || skipped.has(j.id)) done.add(j.id)
+    const finished = mine.find((r) => r.status === 'succeeded' && r.outcome)
+    const to = finished && j.outcomes[finished.outcome!]
+    if (finished && j.blocking && to !== 'done') {
+      const run = (await payload.findByID({ collection: 'runs', id: finished.id, ...o })) as Doc
+      return closeAndAdvance(payload, t, to!, blockedClaim(t.stage, run.id), { blocker: run })
+    }
+    if (to === 'done' || finished || skipped.has(j.id)) done.add(j.id)
     else if (!mine.length && j.needs.every((n) => done.has(n))) {
       const verdict = j.when ? evalWhen(j.when, (facts ??= await factsOf(payload, t)), matches) : null
       if (verdict && !verdict.match) {
@@ -58,9 +84,9 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<voi
     }
   }
   if (done.size < def.jobs.length) return
-  if (!(await cas(payload, t.id, sql`"stage_since" = now()`, sql`"stage" = ${t.stage} AND "stage_since" IS NOT DISTINCT FROM ${since}::timestamptz`))) return
   const last = runs.findLast((r) => r.status === 'succeeded')
-  await advance(payload, null, t, def.outcomeOrder![0]!, { by: 'factory', ...(last && { run: (await payload.findByID({ collection: 'runs', id: last.id, ...o })) as Doc }) })
+  const claim = sql`"stage" = ${t.stage} AND "stage_since" IS NOT DISTINCT FROM ${since}::timestamptz`
+  await closeAndAdvance(payload, t, def.outcomeOrder![0]!, claim, { run: last && ((await payload.findByID({ collection: 'runs', id: last.id, ...o })) as Doc) })
 }
 
 /**
@@ -71,8 +97,5 @@ export const finishJob = async (payload: Payload, run: Doc, ticket: Doc, outcome
   const job = jobOf(stageDef(workflowFor(run.workspace), run.stage)!, run)!
   const to = job.outcomes[outcome]!
   if (!job.blocking || to === 'done') return startReadyJobs(payload, ticket)
-  const closed = await cas(payload, ticket.id, sql`"stage_since" = now()`, sql`"stage" = ${run.stage} AND ("stage_since" IS NULL OR "stage_since" <= (SELECT "created_at" FROM "runs" WHERE "id" = ${run.id}))`)
-  if (!closed) return
-  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "error" = ${`cancelled: ${run.job} reported ${outcome}`}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "ticket_id" = ${ticket.id} AND "stage" = ${run.stage} AND "id" <> ${run.id} AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
-  await advance(payload, null, ticket, to, { by: 'factory', run, note })
+  await closeAndAdvance(payload, ticket, to, blockedClaim(run.stage, run.id), { blocker: { ...run, outcome }, note })
 }

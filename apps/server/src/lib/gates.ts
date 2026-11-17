@@ -20,7 +20,7 @@ import { askedOf, needBy } from './addressee'
 import { productOwnersOfTicket } from './people'
 import { decisionComments, gateOwnersOf, logins } from './forge-channel'
 import { rejoin } from './wip'
-import { worstRun } from './stage-jobs'
+import { visitWorst } from './stage-jobs'
 import { is, stage as stageDef, wipStages } from './workflow'
 
 type Doc = Record<string, any>
@@ -163,7 +163,7 @@ export const syncGates = async (payload: Payload, expediteOnly = false): Promise
   const latest = new Map<number, Doc>()
   for (const t of tickets) {
     const runs = runsOf.get(t.id) ?? []
-    const run = stageDef(workflowFor(t.workspace), t.stage)?.jobs ? worstRun(runs.filter((r) => r.stage === t.stage && (!t.stageSince || r.createdAt >= t.stageSince))) : runs[0]
+    const run = stageDef(workflowFor(t.workspace), t.stage)?.jobs ? visitWorst(t, runs) : runs[0]
     if (run) latest.set(t.id, run)
   }
   let changed = 0

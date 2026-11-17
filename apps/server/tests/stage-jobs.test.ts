@@ -171,3 +171,45 @@ it('an autonomous Job Run gets the skill, role profile and outcomes of its Job',
   await (jobs.runStage.handler as (a: unknown) => Promise<unknown>)({ input: { runId: ux.id }, req: { payload } })
   expect(await get('runs', ux.id)).toMatchObject({ status: 'succeeded', outcome: 'pass', role: 'ux' })
 })
+
+const commit = async (ticket: number, job: string, outcome: string) => {
+  const run = (await byJob(ticket, job)).at(-1)!
+  await payload.update({ collection: 'runs', id: run.id, data: { status: 'succeeded', outcome }, ...o })
+}
+
+it('a blocking Job whose findings are recorded but not yet applied is applied by the next pass, not read as done', async () => {
+  const id = await audited('ui', ['src/app/page.tsx'])
+  await finish(id, 'ux', 'pass')
+  await finish(id, 'test', 'pass')
+  await commit(id, 'security', 'findings')
+  const { startReadyJobs } = await import('../src/lib/stage-jobs')
+  await startReadyJobs(payload, { id })
+  expect(await get('tickets', id)).toMatchObject({ stage: 'build' })
+  expect(await byJob(id, 'verify')).toHaveLength(0)
+})
+
+it('an advance that fails leaves the visit as it was, so the next pass applies the outcome instead of restarting the Jobs', async () => {
+  const id = await audited('ui', ['src/app/page.tsx'])
+  const since = async () => ((await payload.db.drizzle.execute(sql`SELECT "stage_since"::text AS s FROM "tickets" WHERE "id" = ${id}`)).rows[0] as { s: string }).s
+  const before = await since()
+  const forge = fake.tickets(repo)
+  const comment = forge.comment.bind(forge)
+  const spy = vi.spyOn(forge, 'comment').mockImplementation(async (n, body) => (body.startsWith('<!-- bauherr:worklog') ? Promise.reject(new Error('forge down')) : comment(n, body)))
+  await expect(finish(id, 'security', 'findings')).rejects.toThrow('forge down')
+  spy.mockRestore()
+  expect(await since()).toBe(before)
+  expect(await get('tickets', id)).toMatchObject({ stage: 'audit' })
+  const { startReadyJobs } = await import('../src/lib/stage-jobs')
+  await startReadyJobs(payload, { id })
+  expect(await get('tickets', id)).toMatchObject({ stage: 'build' })
+  expect(await runsOf(id)).toHaveLength(3)
+})
+
+it('liveness sees a failed Job Run although a sibling succeeded after it', async () => {
+  const id = await audited('ui', ['src/app/page.tsx'])
+  await payload.update({ collection: 'runs', id: (await byJob(id, 'security'))[0]!.id, data: { status: 'failed', error: 'boom' }, ...o })
+  await commit(id, 'ux', 'pass')
+  await commit(id, 'test', 'pass')
+  const { deadTickets } = await import('../src/lib/liveness')
+  expect((await deadTickets(payload, ws)).find((d) => d.ticket.id === id)).toMatchObject({ cause: 'run-failed' })
+})
