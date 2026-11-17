@@ -156,6 +156,7 @@ export const buildRunCtx = async (
     ...(reviewing && ticket.conflictReturnBase && { conflictBase: ticket.conflictReturnBase }),
     ...(reviewing && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixBase }) }),
     ...(candidates.length && { candidates }),
+    ...(def?.kind === 'release' && { staging: { url: productDoc.stagingUrl ?? null, sha: ticket.mergeSha ?? null } }),
     ...(kind === 'build' && existingPr && ticket.conflictReturnBase && { mergeBase: true }),
     product: { id: String(id(ticket.product)), repo, defaultBranch: repoInfo.defaultBranch, reviewChecks: withProofDefaults(productDoc.reviewChecks, productDoc.pathSets),
       ...(kind === 'docs' && { docs: await docsContext(payload, productDoc) }),

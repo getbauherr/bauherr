@@ -40,6 +40,8 @@ export type RunCtx = {
   /** Agent Run: the workflow stage, its skill, the role profile and the outcome keys the agent may report. */
   agent?: { stage: string; title: string; skill: string; roleProfile: string; outcomes: string[]; /** A Job of a review stage: also reports `findings` and `open` in the outcome file. */ findings?: boolean };
   /** Review stage Runs: the findings and open items the Jobs they need reported, as candidates to verify or rank. Written to `.bauherr/candidates.json`. */
+  /** Release stage Jobs (the staging walk): where staging runs and the merge commit it must run. */
+  staging?: { url: string | null; sha: string | null };
   candidates?: { job: string; findings: unknown[]; open: unknown[] }[];
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
   product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string; /** Review Run: `REVIEW.md` of the base branch (untrusted, capped at 20 KB). */ reviewMd?: string; /** Docs Run: the Product's docs path globs and the Tickets merged since the last check. */ docs?: { paths: string[]; merged: { number: number; title: string; mergeSha: string }[] } };

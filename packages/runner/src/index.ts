@@ -212,6 +212,10 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       } catch {
         return finish('failed', `${OUTCOME_FILE} is not valid JSON`);
       }
+      if (ctx.staging) {
+        const walked = readManifest(clone.dir);
+        if (walked.length) artifacts.proof = walked;
+      }
       return finish('succeeded');
     }
     if (ctx.run.kind === 'triage') {

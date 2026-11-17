@@ -63,7 +63,7 @@ export const needsYou = (
   // `stuck` is the factory's to escalate to a stronger model; the other kinds, and a Run that never said, are the owner's.
   if (run?.status === 'needs_human' && !(at('release') && run.stage !== stage) && !runIs('triage') && run.reasonKind !== 'stuck') return 'Run needs you'
   if (at('release') && !accepted) {
-    if (ticket.releaseState === 'on_staging' && gates.includes('staging')) return 'Accept on staging'
+    if (ticket.releaseState === 'on_staging' && gates.includes('staging') && !ticket.jobsOpen) return 'Accept on staging'
     if (ticket.releaseState === 'timed_out') return 'Staging not confirmed'
   }
   if (at('release') && accepted) {

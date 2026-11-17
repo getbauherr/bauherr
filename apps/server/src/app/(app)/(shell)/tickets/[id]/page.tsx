@@ -58,6 +58,7 @@ import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { board, is, kindOf, nameOf, roleOfRun, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
 import { activeVersion, workflowFor } from '../../../../../lib/factory'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, decisionsShown, fastLaneOf, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { jobsOpen } from '../../../../../lib/stage-jobs'
 import { ago } from '../../../lib/format'
 import { waitingStepOf } from '../../../../../lib/waiting-step'
 import { parkedWhyOf, runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
@@ -115,7 +116,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const { decisions, answers } = decisionsShown(ticket.decisionsAtApproval, sheet ? parseDecisions(sheet) : [], parseAnswers(answersOf(comments)?.body ?? ''), approved)
   const view = decisionView(decisions, answers, { stageKind: kindOf(wf, ticket.stage), approved, fastLane: fastLaneOf(ticket) })
   const missing = view.answerable ? unansweredCritical(decisions, answers) : []
-  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
+  const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor, jobsOpen: await jobsOpen(payload, ticket) }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
   const waiting = ticket.state === 'open' && !blockers.some((b) => b.state !== 'closed') ? await waitingLabel(payload, ticket) : null
   const summary = plan ? planSummary(plan) : null
   const gate = todo ? GATES[todo] : null

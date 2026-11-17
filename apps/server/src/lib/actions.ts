@@ -1140,6 +1140,7 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   const t = await loadGate(payload, user, a, 'staging')
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'release')) throw new Error('the Ticket is not in release')
+  if (await jobsOpen(payload, t)) throw new Error('Staging is not ready: its checks are still running')
   return passStaging(payload, t, () => touch(payload, user, t, 'accept:staging', checkpointBy(wf, 'staging')))
 }
 
@@ -1285,6 +1286,14 @@ export const tagFixes = async (payload: Payload, parent: Doc, head?: string | nu
   return { tagged, untagged: loose.length }
 }
 
+/** The Ticket leaves the release stage for Build: no staging or production state, no approval label, and the live Runs of the release stage (the staging walk) are cancelled. */
+export const leaveRelease = async (payload: Payload, ts: TicketSource, t: Doc): Promise<void> => {
+  const release = byKind(workflowFor(t.workspace), 'release')?.name ?? ''
+  await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
+  await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "ticket_id" = ${t.id} AND "stage" = ${release} AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
+  await clearApprovalLabel(payload, ts, String(t.number))
+}
+
 /** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
 export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
   const rawNote = a.note?.trim()
@@ -1303,8 +1312,8 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
     const { run } = await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, nameOf(wf, 'build'))
     runId = run.id
     await moveStage(payload, src.ts, t, nameOf(wf, 'build'), 'request_changes')
-    await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
-    await clearApprovalLabel(payload, src.ts, src.n)
+    await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build') }, overrideAccess: true })
+    await leaveRelease(payload, src.ts, t)
     return true
   }
   const touched = { kind: 'request-changes:staging', addressee: checkpointBy(wf, 'staging') }

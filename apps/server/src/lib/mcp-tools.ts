@@ -252,7 +252,7 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const epic = await epicContext(c, ticket)
   const escalated = await isEscalated(c.payload, won)
   if (escalated && kind === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
-  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(reviewing && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(reviewing && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }), ...(epic && { epic }) }, ...(candidates.length && { candidates }), ...(kind === 'review' && epic && 'slices' in epic && { slices: epic.slices }), goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(reviewing && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(reviewing && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }), ...(epic && { epic }) }, ...(candidates.length && { candidates }), ...(kind === 'review' && epic && 'slices' in epic && { slices: epic.slices }), goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }), ...(stageDef(wf, run.stage)?.kind === 'release' && { staging: { url: ((await c.payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, overrideAccess: true })) as Doc).stagingUrl ?? null, sha: ticket.mergeSha ?? null } }) }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null>; claimable: Map<unknown, Doc[]> }
@@ -512,11 +512,14 @@ export const tools: Tool[] = [
     inputSchema: obj({ ...runId, ...leaseToken, kind: { enum: [...ARTIFACT_KINDS] }, title: str('Plain-language caption, also the image alt text'), criterion: str('The acceptance criterion this proves'), rule: str('Name of the Product rule this satisfies'), pair: { enum: ['before', 'after'], description: 'Images only' }, url: str('preview: an http(s) address'), text: str('transcript, sample, report: the text'), file: { type: 'object', description: 'image, recording: the file', properties: { name: str('File name, only a label'), base64: str('Base64 of the bytes') }, required: ['base64'] } }, ['runId', 'leaseToken', 'kind', 'title']),
     async run(a, c) {
       const run = await getRun(c, a.runId, a)
-      if (kindOfRun(workflowFor(run.workspace), run) !== 'build') throw new Error(`run ${run.id} is a ${run.stage} Run: only a Build Run attaches proof`)
+      const wf = workflowFor(run.workspace)
+      const walk = !!run.job && stageDef(wf, run.stage)?.kind === 'release'
+      if (kindOfRun(wf, run) !== 'build' && !walk) throw new Error(`run ${run.id} is a ${run.stage} Run: only a Build Run or a release Job attaches proof`)
       const leaseExpiresAt = await renewLease(c, run, a.leaseToken)
       const ticket = await getTicket(c, id(run.ticket))
+      if (walk && !ticket.mergeSha) throw new Error('the Ticket has no merge commit on staging to attach proof to')
       try {
-        const { id: artifact, created } = await attachProof(c.payload, ticket, { run: run.id, sha: await headShaOf(c.payload, ticket), item: { kind: a.kind, title: a.title, criterion: a.criterion, rule: a.rule, pair: a.pair, url: a.url, text: a.text, file: a.file } })
+        const { id: artifact, created } = await attachProof(c.payload, ticket, { run: run.id, sha: walk ? ticket.mergeSha : await headShaOf(c.payload, ticket), item: { kind: a.kind, title: a.title, criterion: a.criterion, rule: a.rule, pair: a.pair, url: a.url, text: a.text, file: a.file } })
         return { ok: true, artifact, created, leaseExpiresAt }
       } catch (e) {
         if (e instanceof ArtifactRejected) throw new Error(e.message)

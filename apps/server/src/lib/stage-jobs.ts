@@ -84,10 +84,10 @@ const closeAndAdvance = async (payload: Payload, t: Doc, to: string, claim: Retu
 
 const blockedClaim = (stage: string, run: number) => sql`"stage" = ${stage} AND ("stage_since" IS NULL OR "stage_since" <= (SELECT "created_at" FROM "runs" WHERE "id" = ${run}))`
 
-/** Whether a plan stage's extra Jobs (the agent Jobs besides its own Run, e.g. the agent-experience scan) are not all done in this visit; the plan cannot be approved or advance meanwhile. */
+/** Whether a plan stage's extra Jobs (the agent Jobs besides its own Run, e.g. the agent-experience scan) or a release stage's Jobs (the staging walk) are not all done in this visit; the plan cannot be approved or advance, and staging cannot be accepted, meanwhile. */
 export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
   const def = stageDef(workflowFor(t.workspace), t.stage)
-  if (def?.kind !== 'plan' || !def.jobs) return false
+  if ((def?.kind !== 'plan' && def?.kind !== 'release') || !def.jobs) return false
   const { runs, skipped } = await visitOf(payload, t.id, t.stage)
   return def.jobs.some((j) => j.id !== def.name && !skipped.has(j.id) && !runs.some((r) => r.job === j.id && r.status === 'succeeded' && r.outcome))
 }
@@ -100,7 +100,8 @@ export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
 export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boolean> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })) as Doc
   const def = stageDef(workflowFor(t.workspace), t.stage)
-  if (!def?.jobs || def.kind === 'release' || t.state !== 'open') return false
+  if (!def?.jobs || t.state !== 'open') return false
+  if (def.kind === 'release' && (t.releaseState !== 'on_staging' || t.productionState)) return false
   if (def.kind === 'review' && (t.reviewState || t.parked || t.waitingFor)) return false
   const { since, runs, skipped } = await visitOf(payload, t.id, t.stage)
   const own = def.kind === 'review' ? def.jobs.find((j) => j.id === def.name) : undefined

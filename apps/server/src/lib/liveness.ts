@@ -86,7 +86,7 @@ const runEnd = (latest: Doc): Cause | null => {
  */
 export const deadTickets = async (payload: Payload, workspace?: number | string): Promise<Dead[]> => {
   const workspaces = workspace === undefined ? (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, ...o })).docs.map((w) => w.id) : [workspace]
-  const byWorkspace: Where[] = workspaces.map((w) => ({ and: [{ workspace: { equals: w } }, { or: [{ stage: { in: liveStages(workflowFor(w)) } }, { stage: { exists: false } }] }] as Where[] }))
+  const byWorkspace: Where[] = workspaces.map((w) => ({ and: [{ workspace: { equals: w } }, { or: [{ stage: { in: [...liveStages(workflowFor(w)), ...workflowFor(w).stages.filter((s) => s.jobs).map((s) => s.name)] } }, { stage: { exists: false } }] }] as Where[] }))
   const where: Where = { and: [{ state: { equals: 'open' } }, { or: byWorkspace }] }
   const tickets = ((await payload.find({ collection: 'tickets', where, pagination: false, ...o })).docs as Doc[]).filter((t) => !t.parked && !t.waitingFor && !(t.blockedBy?.length ?? 0))
   if (!tickets.length) return []
