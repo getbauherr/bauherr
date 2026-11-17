@@ -34,6 +34,15 @@ test('the graph draws the stages of the workflow in order, with the counts of th
   await expect(page.locator('[data-edge="build>plan"][data-back][data-outcome=replan]')).toHaveCount(1)
 })
 
+test('a stage with Jobs lists them as chips under its card, in order; the other stages list none', async ({ page }) => {
+  test.skip(!!process.env.E2E_GATED_PACK, 'the gated pack has no plan Jobs; workflow-stage.spec.ts owns its factory file')
+  await expect(page.locator('[data-testid=job-chips][data-stage=plan] [data-testid=job-chip]')).toHaveText([/^Plan\d/, /^AX scan\d/, /^Approve\d/])
+  await expect(page.getByTestId('job-chips')).toHaveCount(1)
+  await page.locator('[data-testid=job-chip][data-job=ax-scan]').click()
+  await expect(page).toHaveURL(/\/workflow\/plan\?job=ax-scan$/)
+  await expect(page.getByTestId('job-card')).toHaveCount(3)
+})
+
 test('a checkpoint node counts the Tickets waiting at it and filters the list', async ({ page }) => {
   const refine = page.locator('[data-testid=checkpoint-node][data-checkpoint="triage:refine"]')
   // the node and the waiting rows are read in one go (Triage specs answer their Tickets while this runs)

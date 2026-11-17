@@ -22,7 +22,9 @@ type Arc = { key: string; from: number; to: number; outcome: string; up: boolean
  * forward edges that skip nodes as arcs above, backward edges as dashed arcs below, nested by span so no two arcs share a lane where they overlap. A checkpoint that sits on the
  * way (plan gate, staging gate, production) joins its stage to the next stage; the refine checkpoint only hangs on its stage.
  */
-export const layoutFlow = (g: Graph, variant: Size): Layout => {
+export const JOB_ROW = 26
+
+export const layoutFlow = (g: Graph, variant: Size, jobRows = 0): Layout => {
   const z = SIZE[variant]
   const index = new Map(g.nodes.map((n, i) => [n.id, i]))
   const isCheck = (i: number) => g.nodes[i]!.checkpoint && g.nodes[i]!.id.includes(':')
@@ -81,7 +83,7 @@ export const layoutFlow = (g: Graph, variant: Size): Layout => {
   const lanes = (up: boolean) => Math.max(0, ...arcs.filter((a) => a.up === up).map((a) => a.level))
   const top = lanes(true) ? lanes(true) * z.step + 22 : 10
   const bottom = lanes(false) ? lanes(false) * z.step + 26 : 10
-  const rowH = z.stage[1]
+  const rowH = z.stage[1] + jobRows * JOB_ROW
   const cy = top + rowH / 2
   const nodes: Placed[] = g.nodes.map((n, i) => {
     const h = isCheck(i) ? z.check[1] : rowH

@@ -3,12 +3,13 @@ import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import { graph, title, type Workflow } from '../../../../lib/workflow'
+import type { JobChip } from '../../lib/job-view'
 import { duration } from '../../lib/format'
 import type { NodeStats, StageAgents } from '../../lib/workflow-view'
 import { RoleAvatar } from '../team/RoleAvatar'
-import { layoutFlow, type Edge, type Layout, type Variant } from './layout'
+import { JOB_ROW, layoutFlow, type Edge, type Layout, type Variant } from './layout'
 
-export type FlowStats = { stages: Map<string, NodeStats>; checkpoints: Map<string, number>; agents?: Map<string, StageAgents>; executors?: Map<string, Executor> }
+export type FlowStats = { stages: Map<string, NodeStats>; checkpoints: Map<string, number>; jobs?: Map<string, JobChip[]>; agents?: Map<string, StageAgents>; executors?: Map<string, Executor> }
 /** What one Ticket did: visits per stage, the current stage, and how often each transition `from>to` was taken. */
 export type TicketPath = { visits: Map<string, number>; current: string; taken: Map<string, number> }
 
@@ -40,7 +41,7 @@ function Executors({ execs }: { execs: NodeStats['execs'] }) {
   )
 }
 
-function StageCard({ id, name, stats, agent, executor, href, selected, terminals }: { id: string; name: string; stats: NodeStats; agent?: StageAgents; executor?: Executor; href: string; selected: boolean; terminals: { outcome: string; to: string }[] }) {
+function StageCard({ id, name, stats, agent, executor, href, selected, terminals, chips }: { chips: number; id: string; name: string; stats: NodeStats; agent?: StageAgents; executor?: Executor; href: string; selected: boolean; terminals: { outcome: string; to: string }[] }) {
   const { bar } = stats
   const total = Math.max(1, bar.working + bar.human + bar.ci + bar.queued)
   const full = stats.limit != null && stats.count >= stats.limit
@@ -48,7 +49,7 @@ function StageCard({ id, name, stats, agent, executor, href, selected, terminals
   // The compact card drops the median and the executors from view; the tooltip keeps them.
   const tip = [name, median, executor?.line, agent?.text && `${agent.role.title}: ${agent.text}`, ...stats.execs.map((e) => e.tip)].filter(Boolean).join('\n')
   return (
-    <Link href={href} scroll={false} title={tip} aria-current={selected ? 'true' : undefined} data-testid="stage-node" data-stage={id} data-state={stats.state} className={cn('flex h-full flex-col gap-1.5 overflow-hidden rounded-md border border-border border-t-4 bg-card p-1.5 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring @min-[900px]:p-2 aria-[current]:bg-accent aria-[current]:ring-2 aria-[current]:ring-primary [&>*]:shrink-0', TOP[stats.state])}>
+    <Link href={href} scroll={false} title={tip} aria-current={selected ? 'true' : undefined} data-testid="stage-node" data-stage={id} data-state={stats.state} style={chips ? ({ '--jp': `${chips * JOB_ROW + 4}px` } as CSSProperties) : undefined} className={cn('@min-[560px]:pb-[var(--jp,0px)] flex h-full flex-col gap-1.5 overflow-hidden rounded-md border border-border border-t-4 bg-card p-1.5 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring @min-[900px]:p-2 aria-[current]:bg-accent aria-[current]:ring-2 aria-[current]:ring-primary [&>*]:shrink-0', TOP[stats.state])}>
       <span className="truncate text-[11px] leading-4 font-semibold capitalize @min-[900px]:text-[13px]">{name}</span>
       <span className="mono flex items-baseline gap-1 text-[12px] @min-[900px]:text-[13px]">
         <span data-testid="stage-count" className={cn('font-semibold whitespace-nowrap', stats.limit != null && stats.count > stats.limit && 'text-destructive', full && 'text-warn')}>{stats.count}{stats.limit != null && ` / ${stats.limit}`}</span>
@@ -77,6 +78,22 @@ function StageCard({ id, name, stats, agent, executor, href, selected, terminals
         </span>
       )}
     </Link>
+  )
+}
+
+/** The Jobs of a stage in order, each with the Tickets in it, linking to the stage drill-down; a sibling of the card link (links do not nest), laid over the card's bottom. */
+function JobChips({ stage, name, jobs }: { stage: string; name: string; jobs: JobChip[] }) {
+  return (
+    <ol className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0 @min-[560px]:absolute @min-[560px]:inset-x-1 @min-[560px]:bottom-1 @min-[560px]:mt-0" aria-label={`Jobs of ${name}`} data-testid="job-chips" data-stage={stage}>
+      {jobs.map((j) => (
+        <li key={j.id}>
+          <Link href={`/workflow/${stage}?job=${j.id}`} data-testid="job-chip" data-job={j.id} data-count={j.count} className="flex min-h-6 items-center justify-between gap-1 rounded-sm border border-border bg-card px-1.5 text-[10px] leading-4 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="truncate">{j.title}</span>
+            <span className={cn('mono', j.count > 0 ? 'font-semibold' : 'text-muted-foreground')}>{j.count}<span className="sr-only"> {j.count === 1 ? 'Ticket' : 'Tickets'}</span></span>
+          </Link>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -145,8 +162,9 @@ function Edges({ L, variant, path, main, className }: { L: Layout; variant: Vari
  */
 export function WorkflowGraph({ wf, variant, hrefOf, selected, stats, path }: { wf: Workflow; variant: Variant; hrefOf?: (id: string) => string; selected?: string; stats?: FlowStats; path?: TicketPath }) {
   const g = graph(wf)
-  const L = layoutFlow(g, variant)
-  const C = layoutFlow(g, variant === 'full' ? 'fullCompact' : 'pathCompact')
+  const rows = variant === 'full' ? Math.max(0, ...[...(stats?.jobs?.values() ?? [])].map((j) => j.length)) : 0
+  const L = layoutFlow(g, variant, rows)
+  const C = layoutFlow(g, variant === 'full' ? 'fullCompact' : 'pathCompact', rows)
   const wide = new Map(L.nodes.map((n) => [n.id, n]))
   const narrow = new Map(C.nodes.map((n) => [n.id, n]))
   const pct = (x: number, W: number) => `${(x / W) * 100}%`
@@ -167,8 +185,9 @@ export function WorkflowGraph({ wf, variant, hrefOf, selected, stats, path }: { 
               ) : n.checkpoint ? (
                 <CheckpointCard id={n.id} name={n.title} count={n.id.includes(':') ? (stats?.checkpoints.get(n.id) ?? 0) : (stats?.stages.get(n.id)?.count ?? 0)} href={hrefOf!(n.id)} selected={selected === n.id} />
               ) : (
-                <StageCard id={n.id} name={n.title} stats={stats!.stages.get(stage)!} agent={stats!.agents?.get(stage)} executor={stats!.executors?.get(stage)} href={hrefOf!(n.id)} selected={selected === n.id} terminals={L.terminals.get(n.id)?.map((t) => ({ outcome: t.outcome, to: t.to })) ?? []} />
+                <StageCard id={n.id} name={n.title} stats={stats!.stages.get(stage)!} agent={stats!.agents?.get(stage)} executor={stats!.executors?.get(stage)} href={hrefOf!(n.id)} selected={selected === n.id} terminals={L.terminals.get(n.id)?.map((t) => ({ outcome: t.outcome, to: t.to })) ?? []} chips={stats!.jobs?.get(stage)?.length ?? 0} />
               )}
+              {variant === 'full' && !n.checkpoint && stats?.jobs?.get(stage) && <JobChips stage={stage} name={n.title} jobs={stats.jobs.get(stage)!} />}
               {out.length > 0 && (
                 <ul className="small m-0 mt-1 flex list-none flex-col gap-0.5 p-0 text-muted-foreground @min-[560px]:hidden" aria-label={`Transitions of ${n.title}`}>
                   {out.map((e) => <li key={`${e.outcome}>${e.to}`} className="capitalize">{e.outcome.replace(/_/g, ' ')} → {e.to === 'escalate' || e.to === 'backlog' ? e.to : title(wf, e.to)}{e.back && ' (back)'}</li>)}

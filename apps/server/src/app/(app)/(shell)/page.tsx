@@ -18,7 +18,8 @@ import { releaseReminders } from '../../../lib/ship-release'
 import { workflowFor } from '../../../lib/factory'
 import { board, byKind, graph as workflowGraph } from '../../../lib/workflow'
 import { executorsOf } from '../../../lib/executors'
-import { checkpointOf, nodeStats, stageAgents, stageMedians } from '../lib/workflow-view'
+import { checkpointOf, liveJobRuns, nodeStats, stageAgents, stageMedians } from '../lib/workflow-view'
+import { chipsOf, jobTickets } from '../lib/job-view'
 import { BAR_LEGEND } from '../components/workflow/legend'
 
 export const dynamic = 'force-dynamic'
@@ -57,9 +58,9 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const onWorkflow = !graph && !list && shown.length > 0
   const payload = await payloadClient()
   const modes = onWorkflow ? ((await payload.findByID({ collection: 'workspaces', id: workspace!.id, select: { defaultMode: true, modeByStage: true }, depth: 0, overrideAccess: true })) as { defaultMode?: string | null; modeByStage?: Record<string, unknown> | null }) : {}
-  const [medians, team] = onWorkflow ? await Promise.all([stageMedians(payload, workspace!.id, product), loadTeam(payload, workspace!.id)]) : [{}, null]
+  const [medians, team, live] = onWorkflow ? await Promise.all([stageMedians(payload, workspace!.id, product), loadTeam(payload, workspace!.id), liveJobRuns(payload, workspace!.id)]) : [{}, null, []]
   const executors = onWorkflow ? await executorsOf(payload, workspace!.id, wf.stages, team!.roles) : null
-  const stats = onWorkflow ? { ...nodeStats(wf, shown, data.wip, medians), agents: stageAgents(wf, team!.roles, (st) => resolveMode(wf, modes, st)), executors: executors! } : null
+  const stats = onWorkflow ? { ...nodeStats(wf, shown, data.wip, medians), agents: stageAgents(wf, team!.roles, (st) => resolveMode(wf, modes, st)), executors: executors!, jobs: chipsOf(wf, jobTickets(wf, shown, live)) } : null
   const pickedStage = picked?.split(':')[0]
   const groups: Group[] = board(wf)
     .filter((s) => !pickedStage || s === pickedStage)

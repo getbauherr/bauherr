@@ -73,6 +73,15 @@ test('Admin opens the editor from the Workflow page and sees where they are aske
   await expect(page).toHaveURL(/\/workflow\/edit$/)
 })
 
+test('a step with Jobs lists them read-only and points to the YAML tab', async ({ page }) => {
+  test.skip(!!process.env.E2E_GATED_PACK, 'the gated pack has no plan Jobs')
+  await open(page)
+  await page.getByTestId('step').filter({ hasText: /^Plan/ }).first().click()
+  const jobs = page.getByTestId('editor-jobs')
+  await expect(jobs.locator('li')).toHaveText([/^Plan/, /^AX scan/, /^Approve/])
+  await expect(jobs).toContainText('edit them in the YAML tab')
+})
+
 test('every checkpoint says whom it asks in a select; changing it regroups the strip on top and is reviewed in words', async ({ page }) => {
   await open(page)
   const strip = page.getByTestId('checkpoint-strip')

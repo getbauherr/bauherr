@@ -24,7 +24,7 @@ const PO_PAGES: Record<string, string> = {
   'tickets/[id]': 'the reduced Ticket page and, where a checkpoint asks them, its decision card and the refinement conversation; 404 outside the assignment',
   inbox: 'only the cards that ask a Product owner (`tickets.needsBy`) on assigned Products',
 }
-const BAUHERR_PAGES = ['', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'team/[id]', 'tickets/n/[number]', 'workflow/edit']
+const BAUHERR_PAGES = ['', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'team/[id]', 'tickets/n/[number]', 'workflow/[stage]', 'workflow/edit']
 /** Route handlers (relative to src/app, `<path> <METHOD>`) that answer a Product owner's session. */
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',

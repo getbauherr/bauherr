@@ -9,7 +9,7 @@ notes:
 
     An urgent bug does not wait in the queue. In the request card the type Bug offers the urgency "Urgent: something is broken for users now" (not for other types, and only while Settings › Factory › Workflow has the fast lane on; when it is off the select says why). It needs the reason: what is broken, for whom, since when. An Admin who sends it puts the Ticket on the fast lane at once (`bauherr:expedite`, the same path as the button, vouched for by an `expedite` touch). Anyone else's request is filed with `bauherr:expedite-proposed`: the Inbox shows "Fast lane for <title>?" first, with the requester's reason, as soon as the Ticket exists (no Triage Run has to finish first), and an Admin decides with one click. The request row reads "Urgent · waiting for the Bauherr", then "Fast lane". On the Ticket page the button "Put on the fast lane" does the same for any open Ticket (tooltip: "Skips Triage and plan approval, jumps the queue. One at a time."). One Ticket per Workspace is on the lane at a time; a second waits. The rules of the lane itself are in [spec/workflow.md](spec/workflow.md) (Expedite lane).
   Known gaps: |-
-    - No UI, by design: `return_to_build` (agent repair), the connection slug, job-level status; see "Not in the UI" in [ui.md](ui.md).
+    - No UI, by design: `return_to_build` (agent repair), the connection slug; see "Not in the UI" in [ui.md](ui.md).
     - Written but never shown: `oidcSynced`, `productionApprovedSha`.
     - Security scan findings have no page of their own: the last scan links its Run and the finding Tickets. The same holds for the docs check.
 features:
@@ -32,6 +32,28 @@ features:
       - apps/server/e2e/overview.spec.ts
     drive: pnpm verify workflow-graph
     proof: screenshot
+    gotchas: []
+    guards: []
+    debt: []
+  - id: workflow-stage-drilldown
+    area: Workflow
+    title: Stage drill-down and Jobs
+    summary: Jobs of a stage as chips on the Workflow graph, the stage page `/workflow/<stage>` with its Job graph and the Tickets in each Job, and the Jobs nested under their stage in the Ticket's Steps
+    status: live
+    page: /workflow/[stage]
+    reach: "`/` (a Job chip on a stage), `/workflow/<stage>?job=<id>`, a Ticket's History tab"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/workflow/[stage]/page.tsx
+      - apps/server/src/app/(app)/components/workflow/StageJobs.tsx
+      - apps/server/src/app/(app)/components/workflow/TicketSteps.tsx
+      - apps/server/src/app/(app)/lib/job-view.ts
+      - apps/server/src/app/(app)/lib/steps.ts
+    tests:
+      - apps/server/tests/job-view.test.ts
+      - apps/server/e2e/workflow-stage.spec.ts
+    drive: null
+    proof: tests
     gotchas: []
     guards: []
     debt: []
