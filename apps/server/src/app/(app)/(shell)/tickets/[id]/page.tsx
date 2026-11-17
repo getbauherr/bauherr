@@ -424,7 +424,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   return (
     <div className="flex flex-col gap-4">
       <PageTitle>{`#${ticket.number}`}</PageTitle>
-      <AutoRefresh src={`/api/tickets/${ticket.id}/live`} ms={['queued', 'awaiting_session', 'running'].includes(latest?.status) ? 3000 : 15000} />
+      <AutoRefresh src={`/api/tickets/${ticket.id}/live`} ms={['queued', 'awaiting_session', 'running'].includes(latest?.status) ? 3000 : 5000} />
       <header className="flex flex-col gap-2">
         <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
         {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
