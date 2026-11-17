@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { DecisionOption } from '../../../lib/decision'
 import type { InboxGroup, InboxItem } from '../lib/inbox'
 import { announcement, emptyPane, inboxHref, isUnseen, KEY_HELP, keyAction, moveSelection, newRows, pinSelection, redirectHref, removeRow, restoreRow, SEEN_AFTER_MS, selectionChanged, settleRow, syncRows, type InboxFilters, type InboxKey } from '../lib/inbox-view'
+import { markSeen } from '../lib/actions'
 import { InboxList } from './InboxList'
 import { InboxPane } from './InboxPane'
 import { SplitPane } from './SplitPane'
@@ -92,9 +93,7 @@ export function InboxView({ groups, selected, detail, admin, filters, workflowHr
     const k = keyRef.current
     if (!k || k.ticket !== ticket) return
     setLocal((x) => ({ ...x, [ticket]: !seen }))
-    void fetch('/api/inbox-seen', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: k, seen }) })
-      .then((r) => { if (!r.ok) throw new Error(String(r.status)) })
-      .catch(() => setLocal((x) => ({ ...x, [ticket]: seen })))
+    void markSeen(k, seen).catch(() => setLocal((x) => ({ ...x, [ticket]: seen })))
   }
   useEffect(() => {
     if (!item?.id || !unseen.current) return
