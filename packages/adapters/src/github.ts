@@ -541,7 +541,8 @@ class GithubForge implements Forge {
     try {
       return (await this.h.json('GET', `/repos/${repo}/commits/${enc(tag)}`)).sha as string;
     } catch (e) {
-      if (e instanceof GithubError && e.status === 404) return null;
+      // GitHub answers an unknown ref with 422 "No commit found for SHA", not 404.
+      if (e instanceof GithubError && (e.status === 404 || e.status === 422)) return null;
       throw e;
     }
   }
