@@ -102,8 +102,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - run: |
-          # drafts are not found by tag, only in the list
-          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n1)
+          # drafts are not found by tag, only in the list; an untagged draft keeps only its name
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and (.tag_name == \"$GITHUB_REF_NAME\" or .name == \"$GITHUB_REF_NAME\")) | .id" | head -n1)
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F draft=false -f make_latest=true > /dev/null
           else
