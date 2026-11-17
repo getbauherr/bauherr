@@ -87,3 +87,17 @@ test('/requests/new?session=<id> opens that draft; an unknown one opens an empty
   await expect(page).not.toHaveURL(new RegExp(`${href}$`))
   await expect(page.getByTestId('empty-state')).toBeVisible()
 })
+
+test('a Needs you button opens its Inbox card by ?t=', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /^Requests/ }).click()
+  await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible()
+  const button = page.getByTestId('needs-row').locator('a[data-slot=button]')
+  await expect(button).toHaveAttribute('href', /^\/inbox\?t=\d+$/)
+  await button.click()
+  await expect(page).toHaveURL(/\/inbox\?t=\d+$/)
+  await expect(page.getByTestId('inbox-pane')).toBeVisible()
+})
