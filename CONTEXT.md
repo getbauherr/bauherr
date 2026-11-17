@@ -192,12 +192,16 @@ _Avoid_: Agent (it names the model or client, not who executed)
 A typed piece of proof attached to a Ticket for a person to judge: a screenshot (alone or before and after), a recording, a preview link, a terminal session, a sample or a test or contract report. A Product's rules say which changes need which proof; the acceptance card shows it next to each acceptance criterion.
 _Avoid_: Attachment (a file a person adds to a request), screenshot (one kind of it)
 
+**Job**:
+One unit of work in a Stage (Workflow → Stage → Job): it has `needs`, an optional `when`, `by` / `role`, a `kind`, `blocking` and `outcomes` that map to `done` or a Stage Outcome. Every Stage has one own Job; an agent Job is executed by a Run. Not a background task (Payload jobs in `src/jobs/`: say background task).
+_Avoid_: Task, step
+
 **Run**:
-One agent execution on exactly one Ticket. Work that starts without a Ticket first creates one.
-_Avoid_: Job, execution, session
+One agent execution on exactly one Ticket, of one agent Job. Work that starts without a Ticket first creates one.
+_Avoid_: execution, session
 
 **Step**:
-One recorded unit inside a Run (an agent turn or tool call), kept for audit and cost.
+One recorded unit inside a Run (an agent turn or tool call), kept for audit and cost; it is not a Job.
 _Avoid_: Action, event
 
 **Chat thread**:

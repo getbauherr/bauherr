@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as w from '../src/lib/workflow'
@@ -184,5 +185,90 @@ it('graph of the default file', () => {
       { from: 'release', to: 'done', outcome: 'accepted', back: false },
       { from: 'release', to: 'build', outcome: 'changes', back: true },
     ],
+  })
+})
+
+const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as any)[k])])) : v)
+const hashFile = (path: string) => createHash('sha256').update(JSON.stringify(canon(w.compile(w.parseFactory(readFileSync(path, 'utf8')))))).digest('hex')
+
+it('files without jobs compile to the same hash as before jobs existed', () => {
+  const root = fileURLToPath(new URL('../../..', import.meta.url))
+  const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
+  const expected: Record<string, string> = {
+    [`${root}pack/factory.yaml`]: '6c983450d69e8e6c8ceb4bf403b1ecd307dcf97f95ae64572a669e98435d557e',
+    [`${root}pack/presets/solo.yaml`]: '454b110bd5170fce5f0133a90dee014f587aa2ff8b69df837b3ccce5be3bca10',
+    [`${root}pack/presets/standard.yaml`]: 'b4316d2a1ef062fdfccf39fbaef038f42857fe8b51833effeb5aceb472cd82c0',
+    [`${root}pack/presets/careful.yaml`]: 'c7cd7c49966df5e8d1a2c405753d0bde391fd529f69810da99f1ab6128b42d7a',
+    [`${fixtures}/bare-pack/factory.yaml`]: '4dd0536b8bfd0ec5a131fa8517d8e04e1b7db170e311d736820c65a7e000fb30',
+    [`${fixtures}/custom-pack/factory.yaml`]: '3e5b636c36941e08c0b3270a4516320c781e3b6ecf94a48f3208c2fd73d18de0',
+    [`${fixtures}/gated-pack/factory.yaml`]: 'c7c1856377b135e59f3afc3bb505c955153ac0b32eb9909e81007a9530834afa',
+    [`${fixtures}/owner-pack/factory.yaml`]: 'f0585cef728d8a031d9e9560ca3ece1a132b33826c1f3cee8fc9b6f5c3264918',
+    [`${fixtures}/renamed-pack/factory.yaml`]: '77bd6b01a9c6a0c762eedfcb939bf2fa1b6484f1fcf5e006ba8edc65036c74c9',
+    [`${fixtures}/routing-pack/factory.yaml`]: '04a2fc4931b99cad01f94a0651c0020570e5494e614a243dfbf2b71630cc622d',
+  }
+  expect(readdirSync(fixtures).filter((d) => d.endsWith('-pack')).length).toBe(Object.keys(expected).length - 4)
+  for (const [file, hash] of Object.entries(expected)) expect(hashFile(file), file).toBe(hash)
+})
+
+describe('jobs in stages', () => {
+  const withJobs = (jobs: unknown, extra: Record<string, unknown> = {}) => {
+    const d = defaultDoc()
+    d.team.roles.ux = { title: 'UX', provider: 'anthropic', model: 'x' }
+    const st = d.workflow.stages
+    st.find((x: any) => x.name === 'build').outcomes.done = 'audit'
+    st.splice(st.findIndex((x: any) => x.name === 'review'), 0, { name: 'audit', kind: 'agent', jobs, outcomes: { pass: 'review', findings: 'build' }, ...extra })
+    return d
+  }
+  const two = [
+    { id: 'security', role: 'security', skill: 'security-scan', outcomes: { pass: 'done', findings: 'findings' } },
+    { id: 'ux', role: 'ux', skill: 'ux-review', when: { touches: 'ui' }, blocking: false, needs: ['security'] },
+  ]
+  it('compile normalises jobs and leaves the stage keys alone', () => {
+    const c = w.compile(withJobs(two))
+    const s = w.stage(c, 'audit')!
+    expect(s.jobs).toEqual([
+      { id: 'security', kind: 'agent', role: 'security', skill: 'security-scan', needs: [], blocking: true, outcomes: { pass: 'done', findings: 'findings' }, outcomeOrder: ['pass', 'findings'] },
+      { id: 'ux', kind: 'agent', role: 'ux', skill: 'ux-review', needs: ['security'], when: { touches: 'ui' }, blocking: false, outcomes: { pass: 'done', findings: 'findings' }, outcomeOrder: ['pass', 'findings'] },
+    ])
+    expect(s.role).toBeUndefined()
+    expect(w.jobsOf(s)).toBe(s.jobs)
+    expect(w.jobOf(s, { job: 'ux' })?.id).toBe('ux')
+    expect(w.jobOf(s, {})?.id).toBe('security')
+  })
+  it('the own Job of a stage without jobs is the stage itself', () => {
+    const b = w.stage(wf, 'build')!
+    expect(w.jobsOf(b)).toEqual([expect.objectContaining({ id: 'build', role: 'engineer', needs: [], blocking: true, outcomes: { done: 'done', stuck: 'stuck', replan: 'replan' } })])
+    expect(w.jobOf(b, { job: null })?.id).toBe('build')
+  })
+  const stageDoc = (d: any) => d.workflow.stages.find((x: any) => x.name === 'audit')
+  const bad: [string, (d: any) => void, string][] = [
+    ['jobs on a build stage', (d) => (d.workflow.stages.find((x: any) => x.name === 'build').jobs = two), 'jobs are only allowed on agent stages'],
+    ['empty jobs', (d) => (stageDoc(d).jobs = []), 'jobs must be a non-empty list'],
+    ['stage role', (d) => (stageDoc(d).role = 'security'), 'no role or skill of its own'],
+    ['id pattern', (d) => (stageDoc(d).jobs[0].id = 'Bad_Id'), 'id must match'],
+    ['id is the stage name', (d) => (stageDoc(d).jobs[0].id = 'audit'), 'id must not be the stage name'],
+    ['duplicate id', (d) => (stageDoc(d).jobs[1].id = 'security'), 'duplicate job id'],
+    ['kind ci', (d) => (stageDoc(d).jobs[0].kind = 'ci'), 'not supported yet'],
+    ['kind human', (d) => (stageDoc(d).jobs[0].kind = 'human'), 'not supported yet'],
+    ['unknown role', (d) => (stageDoc(d).jobs[0].role = 'ghost'), 'role "ghost" is not in team.roles'],
+    ['role required', (d) => delete stageDoc(d).jobs[0].role, 'role is required'],
+    ['skill required', (d) => delete stageDoc(d).jobs[0].skill, 'skill is required'],
+    ['by on agent job', (d) => (stageDoc(d).jobs[0].by = 'bauherr'), 'by is only allowed on a human job'],
+    ['needs a later job', (d) => (stageDoc(d).jobs[0].needs = ['ux']), 'not an earlier job'],
+    ['needs itself', (d) => (stageDoc(d).jobs[1].needs = ['ux']), 'not an earlier job'],
+    ['needs not a list', (d) => (stageDoc(d).jobs[1].needs = 'security'), 'needs must be a list'],
+    ['when', (d) => (stageDoc(d).jobs[1].when = { bogus: 1 }), 'job "ux": when has an unknown key "bogus"'],
+    ['blocking', (d) => (stageDoc(d).jobs[1].blocking = 'yes'), 'blocking must be true or false'],
+    ['outcome target', (d) => (stageDoc(d).jobs[0].outcomes.findings = 'nowhere'), 'neither done nor an outcome of the stage'],
+    ['no done outcome', (d) => (stageDoc(d).jobs[0].outcomes = { findings: 'findings' }), 'at least one outcome must map to done'],
+    ['jobs on review', (d) => (d.workflow.stages.find((x: any) => x.name === 'review').jobs = two), 'jobs are only allowed on agent stages'],
+  ]
+  it('accepts a valid stage with jobs', () => {
+    expect(w.lint(withJobs(two))).toEqual([])
+  })
+  it.each(bad)('rejects %s', (_n, mutate, message) => {
+    const d = withJobs(JSON.parse(JSON.stringify(two)))
+    mutate(d)
+    expect(w.lint(d).join('\n')).toContain(message)
   })
 })
