@@ -223,6 +223,7 @@ for (const width of phones) {
         return [document.documentElement.scrollWidth, w, out.join(' | ')] as const
       })
       expect(scroll, `${url}: ${wide}`).toBeLessThanOrEqual(client)
+      if (url === '/team') { const [sw, cw, cols] = await page.getByTestId('roles-table').evaluate((t) => [t.scrollWidth, t.parentElement!.clientWidth, [...t.querySelectorAll('tr:first-child > *')].map((c) => Math.round(c.getBoundingClientRect().width)).join(',')]); expect(sw, `Roles table fits its box: ${sw} > ${cw} (${cols})`).toBeLessThanOrEqual(cw as number) }
     }
     await page.goto('/team')
     const copy = await page.getByRole('button', { name: 'Copy prompt' }).boundingBox()
