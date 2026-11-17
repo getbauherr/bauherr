@@ -20,6 +20,7 @@ import { Button } from '../../../components/ui/button'
 import { decisionComments } from '../../../../../lib/forge-channel'
 import { NEEDS_REFINEMENT } from '../../../../../lib/needs-you'
 import { AutoRefresh } from '../../../components/AutoRefresh'
+import { TicketMilestones } from '../../../components/TicketMilestones'
 import { FixState } from '../../../components/FixState'
 import { EpicChildren, EpicProgress } from '../../../components/Epics'
 import { ForgeLink } from '../../../components/ForgeLink'
@@ -54,7 +55,7 @@ import { nextStep } from '../../../../../lib/next-step'
 import { needsYou, reviewWord, stageOf } from '../../../lib/needs-you'
 import { board, is, kindOf, nameOf, roleOf, title as stageTitle, type Workflow } from '../../../../../lib/workflow'
 import { activeVersion, workflowFor } from '../../../../../lib/factory'
-import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, fastLaneOf, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
+import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, decisionsShown, fastLaneOf, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
 import { parkedWhyOf, runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
@@ -107,9 +108,8 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const investigation = latestWith(comments, INVESTIGATION_MARKER)?.body
   const escalations = latestWith(comments, ESCALATION_MARKER)?.body
   const sheet = sheetOf(comments)?.body
-  const decisions = sheet ? parseDecisions(sheet) : []
-  const answers = parseAnswers(answersOf(comments)?.body ?? '')
   const approved = labels.includes(APPROVED_PLAN)
+  const { decisions, answers } = decisionsShown(ticket.decisionsAtApproval, sheet ? parseDecisions(sheet) : [], parseAnswers(answersOf(comments)?.body ?? ''), approved)
   const view = decisionView(decisions, answers, { stageKind: kindOf(wf, ticket.stage), approved, fastLane: fastLaneOf(ticket) })
   const missing = view.answerable ? unansweredCritical(decisions, answers) : []
   const todo = needsYou(wf, { stage: ticket.stage, labels, releaseState: ticket.releaseState, productionState: ticket.productionState, productionChecksMissing: !hasProductionChecks(product), releaseChecksState: ticket.releaseChecksState, reviewState: ticket.reviewState, reviewRounds: ticket.reviewRounds, expedite: ticket.expedite, waitingFor: ticket.waitingFor }, (runs[0] as { stage: string; status: string; reasonKind?: string | null } | undefined) ?? null, missing.length)
@@ -334,6 +334,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       ) : (
         <StageStrip stages={stages} steps={steps} />
       )}
+      <TicketMilestones ticket={ticket.id} />
       {ci && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} forge={<Suspense fallback={null}><PanelForge P={P} d={d} at="panel" /></Suspense>} />}
       <div className="flex min-w-0 flex-col gap-4" data-testid="current-block">
         {card && <DecisionCard compact item={{ ...card, product: undefined }} admin={admin} />}
@@ -423,7 +424,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   return (
     <div className="flex flex-col gap-4">
       <PageTitle>{`#${ticket.number}`}</PageTitle>
-      <AutoRefresh />
+      <AutoRefresh src={`/api/tickets/${ticket.id}/live`} ms={['queued', 'awaiting_session', 'running'].includes(latest?.status) ? 3000 : 15000} />
       <header className="flex flex-col gap-2">
         <h1 className="title m-0">#{ticket.number} {ticket.title}</h1>
         {kindOfLabels(ticket.labels) && <p className="m-0 flex flex-wrap gap-2"><KindChip kind={kindOfLabels(ticket.labels)} /></p>}
