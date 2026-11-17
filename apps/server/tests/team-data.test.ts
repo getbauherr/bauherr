@@ -180,6 +180,36 @@ describe('loadTeam: session fields', () => {
   })
 })
 
+describe('report_step state: waiting on CI', () => {
+  const open = async () => {
+    const s = await call('connect', { role: 'engineer', session: `k${++n}` })
+    const t = await ticket('build')
+    const w = (await call('next_work', { sessionId: s.sessionId })).work
+    const step = (a: Doc) => call('report_step', { sessionId: s.sessionId, runId: w.run.id, leaseToken: w.leaseToken, ...a })
+    const row = async () => (await engineer()).sessions.find((x) => x.publicId === s.sessionId)!
+    return { t, step, row }
+  }
+  it('stores the state; no state is stored as null', async () => {
+    const { step } = await open()
+    const a = await step({ summary: 'start' })
+    const b = await step({ summary: 'pipeline 4411', state: 'waiting_ci' })
+    const rows = (await db().execute(sql`SELECT "seq"::int AS "seq", "state"::text AS "state" FROM "steps" ORDER BY "seq"`)).rows
+    expect(rows).toEqual([{ seq: a.seq, state: null }, { seq: b.seq, state: 'waiting_ci' }])
+    await expect(step({ summary: 'x', state: 'napping' })).rejects.toThrow()
+  })
+  it('the Team row shows the Ticket chip and the agent words until a later working Step', async () => {
+    const { t, step, row } = await open()
+    expect((await row()).waiting).toBeUndefined()
+    await step({ summary: 'pipeline 4411\nsecond line', state: 'waiting_ci' })
+    expect((await row()).waiting).toEqual({ chip: 'Waiting for CI', words: 'pipeline 4411' })
+    await payload.update({ collection: 'tickets', id: t.id, data: { ciSummary: { total: 3, passed: 2, pending: 1, failed: [], url: null, updatedAt: new Date().toISOString(), rows: [] } }, ...o })
+    expect((await row()).waiting).toEqual({ chip: 'Waiting for CI 2/3', words: 'pipeline 4411' })
+    expect((await row()).status).toBe('working')
+    await step({ summary: 'fixing lint', state: 'working' })
+    expect((await row()).waiting).toBeUndefined()
+  })
+})
+
 describe('loadSession', () => {
   it('an unknown id and one of another Workspace are null', async () => {
     const { publicId } = await claim()
@@ -191,6 +221,16 @@ describe('loadSession', () => {
     const { publicId, t } = await claim()
     const v = (await sessions.loadSession(payload, ws, publicId))!
     expect(v.session).toMatchObject({ publicId, role: 'engineer', health: 'working', activity: 'building', run: t.run, ticket: { number: t.number, title: t.title, stage: 'build' } })
+  })
+
+  it('carries the stored check summary of the running Run while checks are pending, else none', async () => {
+    const { publicId, t } = await claim()
+    expect((await sessions.loadSession(payload, ws, publicId))!.ci).toBeUndefined()
+    const summary = (pending: number) => JSON.stringify({ total: 4, passed: 3, pending, failed: [], url: null, updatedAt: new Date().toISOString(), rows: [] })
+    await db().execute(sql`UPDATE "tickets" SET "ci_summary" = ${summary(1)}::jsonb WHERE "id" = ${t.id}`)
+    expect((await sessions.loadSession(payload, ws, publicId))!.ci).toEqual({ passed: 3, total: 4 })
+    await db().execute(sql`UPDATE "tickets" SET "ci_summary" = ${summary(0)}::jsonb WHERE "id" = ${t.id}`)
+    expect((await sessions.loadSession(payload, ws, publicId))!.ci).toBeUndefined()
   })
 
   it('lists the Runs newest first with ticket, stage, outcome, duration and cost, also a released one', async () => {

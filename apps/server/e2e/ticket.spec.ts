@@ -50,8 +50,10 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
-        y ??= box.y
-        expect(box.y).toBe(y)
+        // The Holding up work strip (data-driven, other specs' Tickets can raise it) pushes the whole page down; the bar is measured below it.
+        const top = await page.evaluate(() => document.querySelector('[data-testid=action-bar]')!.getBoundingClientRect().top - (document.querySelector('[data-testid=holds-strip]')?.getBoundingClientRect().height ?? 0))
+        y ??= top
+        expect(top).toBe(y)
       } else {
         expect(Math.round(box.y + box.height)).toBe(viewport.height)
       }
@@ -282,11 +284,11 @@ test('a conditional step the Ticket passed is listed as skipped with the reason:
   await expect(steps.locator('[data-testid=visit][data-stage=e2e-security-review]')).toHaveCount(0)
 })
 
-// Own seeded Ticket #27 (read-only here): `/api/changes` is stubbed and time is the page's fake clock, so no step waits on real time.
+// Own seeded Ticket #27 (read-only here): `/api/tickets/<id>/live` is stubbed and time is the page's fake clock, so no step waits on real time.
 test('the Ticket page refreshes within 5 s of a change, keeps the composer draft and scroll, and asks nothing while the tab is hidden', async ({ page }) => {
   let v = 1
   let asked = 0
-  await page.route('**/api/changes', (route) => {
+  await page.route('**/api/tickets/*/live', (route) => {
     asked++
     return route.fulfill({ json: { v } })
   })
@@ -325,6 +327,14 @@ test('a fast lane Ticket in Build asks nothing and lists its decisions as defaul
   const about = page.getByTestId('ticket-about')
   await expect(about).toContainText('D1 Where to store the choice: default taken (fast lane)')
   await expect(about).toContainText('D2 Follow the system setting: default taken (fast lane)')
+})
+
+// Ticket #581 of Acme CI (seed-e2e.ts, twin of ci-panel.spec.ts): waiting for checks, with a pull request.
+test('a Ticket in Build waiting for CI says so and offers the forge link', async ({ page }) => {
+  await login(page)
+  await openTicket(page, 581, 'Show CI on the ticket')
+  await expect(page.getByTestId('ticket-status')).toContainText('Waiting for CI: 0 of 2 checks passed, 1 running. The agent resumes when they finish.')
+  await expect(page.getByTestId('forge-link')).toHaveAttribute('href', 'https://github.com/acme/ci/pull/88')
 })
 
 test('a review that needs the owner is sent back to Build from the Send back dialog', async ({ page }, testInfo) => {

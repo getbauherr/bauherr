@@ -14,12 +14,13 @@ const chips: Record<string, [variant: Variant, text: string]> = {
   abandoned: ['muted', 'Abandoned'],
 }
 
-export function StatusChip({ status, reason }: { status: string; reason?: string | null }) {
+/** `label` replaces the text ('Building' for a running Run). */
+export function StatusChip({ status, reason, label }: { status: string; reason?: string | null; label?: string }) {
   const [variant, text] = chips[status] ?? chips.queued
   return (
     <Badge variant={variant} title={status === 'needs_human' && reason ? reason : undefined}>
       {variant === 'accent' && <span className="size-3 animate-[spin_1.6s_linear_infinite] rounded-full border-[1.5px] border-border border-t-primary motion-reduce:animate-none" />}
-      {text}
+      {label ?? text}
     </Badge>
   )
 }

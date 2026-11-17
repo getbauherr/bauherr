@@ -29,7 +29,7 @@ import { syncProgress } from '../lib/progress'
 import { record } from '../lib/history'
 import { isForward, moveStage, stageOf } from '../lib/stage-move'
 import { holdOverlap } from '../lib/overlap'
-import { enterStage, pullWaiting } from '../lib/wip'
+import { enterStage, pullWaiting, rejoin } from '../lib/wip'
 import { GATE_LABELS, REJECTED_MARKER, verifyGateLabels } from '../lib/gate-labels'
 import { NO_PRODUCTION, forgeOf, prOf, publishReleases, watchProduction, watchReleaseChecks, watchRelease } from '../lib/release'
 import { fileFindings } from '../lib/security-scan'
@@ -73,6 +73,16 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
       overrideAccess: true,
     })
   ).docs[0]
+
+/**
+ * `startRunIfNeeded` for a Ticket that may be parked in `stage` (the owner's Retry of its stopped Run): it takes its slot back first (`rejoin`). With the column full it waits for it,
+ * no Run starts and the result is null; `pullWaiting` starts the Run when a slot frees.
+ */
+export const startRunOrRejoin = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string) => {
+  const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true })) as Record<string, any>
+  if (t.parkedNeed && t.stage === stage && (await rejoin(payload, t)) === 'waiting') return null
+  return startRunIfNeeded(payload, ticket, stage)
+}
 
 /** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
 export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}, req?: Partial<PayloadRequest>) => {

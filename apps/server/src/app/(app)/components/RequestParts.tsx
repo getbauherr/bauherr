@@ -22,5 +22,5 @@ export const StatusLine = ({ status, waits }: { status: string; waits: Waits | n
 export function NeedButton({ ticket, need }: { ticket: number; need: Need }) {
   if (need === 'Answer questions' || need === 'Answer decisions') return <Button asChild size="sm"><Link href={`/tickets/${ticket}?view=conversation`}>{need}</Link></Button>
   const label = need === 'Accept on staging' ? 'Test and accept' : need === 'Expedite?' ? 'Decide on the fast lane' : need
-  return <Button asChild size="sm"><Link href={`/inbox#t${ticket}`}>{label}</Link></Button>
+  return <Button asChild size="sm"><Link href={`/inbox?t=${ticket}`}>{label}</Link></Button>
 }

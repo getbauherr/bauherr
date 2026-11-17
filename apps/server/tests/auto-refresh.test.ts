@@ -25,7 +25,7 @@ beforeEach(() => {
   fetchMock.mockClear()
   h.refresh.mockClear()
   vi.stubGlobal('fetch', fetchMock)
-  vi.stubGlobal('document', { get visibilityState() { return visibility }, addEventListener: (e: string, f: () => void) => (listeners[e] = f), removeEventListener: () => {} })
+  vi.stubGlobal('document', { get visibilityState() { return visibility }, querySelector: () => null, addEventListener: (e: string, f: () => void) => (listeners[e] = f), removeEventListener: () => {} })
 })
 afterEach(() => {
   h.cleanups.splice(0).forEach((c) => c())
@@ -47,6 +47,24 @@ describe('AutoRefresh', () => {
     version = 2
     await vi.advanceTimersByTimeAsync(5000)
     expect(h.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds a change back for 1.5 s after a key or pointer press, then refreshes', async () => {
+    await mount()
+    version = 2
+    listeners.pointerdown!()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.refresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('polls the given `src` at the given interval', async () => {
+    const { AutoRefresh } = await import('../src/app/(app)/components/AutoRefresh')
+    AutoRefresh({ src: '/api/tickets/7/live', ms: 3000 })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/tickets/7/live', { cache: 'no-store' })
   })
 
   it('makes no request while the tab is hidden, and catches up when it shows again', async () => {

@@ -16,6 +16,7 @@ const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
   [/^#(step|cp)-|^select\[aria-label="Asked: |^(?=.*\.gap-1(\.|$))(?=.*\.small(\.|$))(?=.*\.text-muted-foreground(\.|$))(\.[\w-]+){3}$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
   [/^\.flex-\\\[1_1_20ch\\\]$/, 'Ticket page ActionBar sentence at 390 px on the Conversation tab: the fixed bar (opaque bg-card, painted above in the browser) covers the conversation composer\'s sticky artifact bar, which axe sorts above it; the text sits on the plain card background (same token pair as the states that pass)'],
+  [/^\.[\w-]*svg\[width="\d+"\]\[height="\d+"\] > text$/, 'Role avatar without its own drawing: one or two initials on a tile, nothing for axe to measure against (the class is `avatars-module__<hash>__svg` in dev and `<hash>_svg` in the production build)'],
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
 ]
 
@@ -90,6 +91,7 @@ const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/settings/workspace': '/settings/workspace',
   '/setup': '/setup',
   '/team': '/team',
+  '/team/[id]': linkOn('/team', /^\/team\/[^/?#]+$/),
   '/tickets/[id]': linkOn('/', /^\/tickets\/\d+$/),
   '/tickets/n/[number]': '/tickets/n/1', // a number two Products share: the chooser, not the redirect to one Ticket
   '/workflow/edit': '/workflow/edit',
@@ -198,8 +200,62 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
   })
 })
 
+test.describe('axe on the Agent team pages at 375 px, light and dark', () => {
+  let session: Awaited<ReturnType<BrowserContext['storageState']>>
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext()
+    await signIn(await context.newPage())
+    session = await context.storageState()
+    await context.close()
+  })
+  for (const route of ['/team', '/team/[id]'] as const) {
+    test(route, async ({ browser }) => {
+      test.setTimeout(120_000)
+      const page = await (await browser.newContext({ storageState: session, viewport: { width: 375, height: 844 } })).newPage()
+      const target = routes[route]!
+      const url = typeof target === 'string' ? target : await target(page)
+      await page.goto(url)
+      await expect(page.getByRole('banner')).toBeVisible()
+      await page.locator('h1').first().waitFor({ timeout: 10_000 })
+      for (const t of ['light', 'dark'] as const) {
+        await setTheme(page, t)
+        expect(await scan(page), `${url} 375px (${t})`).toEqual([])
+      }
+      if (route === '/team') {
+        await page.getByRole('button', { name: 'Role settings' }).first().click()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        expect(await scan(page), `${url} 375px Role settings`).toEqual([])
+      }
+      await page.context().close()
+    })
+  }
+})
+
+test('Inbox: list, detail and the keys dialog at 1280 and 390 px, light and dark', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const context = await browser.newContext()
+  await signIn(await context.newPage())
+  const session = await context.storageState()
+  await context.close()
+  for (const width of [1280, 390]) {
+    const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
+    await page.goto('/inbox')
+    await expect(page.getByTestId('inbox-row').first()).toBeVisible()
+    await page.getByTestId('inbox-row').first().click()
+    await expect(page.getByTestId('inbox-pane')).toBeVisible()
+    for (const t of ['light', 'dark'] as const) {
+      await setTheme(page, t)
+      expect(await scan(page), `Inbox ${width}px (${t})`).toEqual([])
+    }
+    await page.keyboard.press('?')
+    await expect(page.getByRole('dialog', { name: 'Keyboard' })).toBeVisible()
+    expect(await scan(page), `Inbox keys dialog ${width}px`).toEqual([])
+    await page.context().close()
+  }
+})
+
 test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {
-  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser']] as const
+  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser'], ['Build waiting for CI', 'Show CI on the ticket']] as const
   let session: Awaited<ReturnType<BrowserContext['storageState']>>
   test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext()

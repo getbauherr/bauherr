@@ -1,7 +1,8 @@
 import type { ModelOption, TeamRole, TeamSession } from './types'
 
-/** Pinned: the screenshots and tests do not drift with the clock. */
-const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 6e4).toISOString()
+/** Pinned to one clock reading: the screenshots and tests do not drift with the clock, and equal offsets give equal times (one `Date.now()` per call made ties order by the millisecond). */
+const NOW = Date.now()
+const at = (minutesAgo: number) => new Date(NOW - minutesAgo * 6e4).toISOString()
 const session = (publicId: string, label: string, status: TeamSession['status'], extra: Partial<TeamSession> = {}): TeamSession => ({
   publicId,
   label,

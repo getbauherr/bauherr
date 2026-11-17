@@ -71,6 +71,9 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
   access: { read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly, ...extra.access },
 })
 
+/** A person sees and changes only their own rows (`user`). */
+const ownRow = ({ req }: { req: { user?: object | null } }) => (isBauherr(req.user as Doc | null) ? { user: { equals: (req.user as Doc).id } } : false)
+
 /** What a Product owner may write on their own account. */
 const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
 
@@ -544,6 +547,7 @@ const tickets = col('tickets', [
   text('needsYou', { index: true, admin: { readOnly: true, description: 'What the Ticket needs from the owner (needsOf), written by the gate sweep; the top bar counts it. Null = nothing.' } }),
   text('waitingFor', { validate: (v: unknown, { data, siblingData }: { data?: Doc; siblingData?: Doc }) => waitingForError(wfOfDoc(data, siblingData), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
   { name: 'openOwnerRows', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'Unanswered rows of the decision sheet that name the Product owner (`for: product-owner`), as last read from the forge comments; with needsYou Answer questions or Answer decisions they put the Ticket in a Product owner\'s Inbox even where the checkpoint asks the Bauherr.' } },
+  text('parkedNeed', { index: true, admin: { readOnly: true, description: 'The `needsYou` value that parks the Ticket (a Run or a decision waits for the owner on something outside an approval and no Run is live): it keeps its card and stage but holds no WIP slot. Written by the gate sweep (parkingNeed); null = not parked.' } }),
   select('needsBy', ['bauherr', 'product-owner'], { index: true, admin: { readOnly: true, description: 'Who `needsYou` asks (needBy and the Product owner fallback), written with it by the gate sweep; the Inbox and the top bar of a Product owner count only what asks them. Null = nothing.' } }),
   date('expediteAt'),
   text('gateNoticeClaim'),
@@ -599,6 +603,8 @@ const tickets = col('tickets', [
   { name: 'decision', type: 'json', admin: { readOnly: true, description: 'The open human checkpoint, prepared for the Inbox and the Ticket page (`buildDecision`): {need, checkpoint, title, ask, recommendation, why, options, next, evidence, details, preparedBy, preparedAt, openSince}. Written by the gate sweep together with `needsYou`; null = nothing is waiting.' } },
   { name: 'planTldr', type: 'json', admin: { readOnly: true, description: 'Parsed `## TL;DR` of the latest plan: {decision, recommendation, why, risk, options}. Stored when the plan is posted, so no page or sweep reads the forge for it.' } },
   { name: 'stagingTldr', type: 'json', admin: { readOnly: true, description: 'First two sections of the posted staging summary: {whatYouGet, found}.' } },
+  { name: 'decisionsAtApproval', type: 'json', admin: { readOnly: true, description: 'The decision rows as they stood when the plan was approved: [{id, title, status: answered|default, answer?, default?}]. The read-only chips show these, so later edits of the sheet change nothing.' } },
+  { name: 'approvalBrief', type: 'json', admin: { readOnly: true, description: 'What the owner approves at Accept on staging and Approve production, frozen once per merge commit from the MR body\'s `## Approval brief`: {sha, changes[{text, kind}], notIncluded, risk, proof, noted, checks, links}. Pages read this instead of the forge.' } },
   { name: 'decidedAt', type: 'date', admin: { readOnly: true, description: 'When the owner last decided a checkpoint in the UI; the sweep does not reopen `decidedNeed` for 2 minutes.' } },
   { name: 'decidedNeed', type: 'text', admin: { readOnly: true } },
   text('progressHash', { admin: { readOnly: true, description: 'Hash of the body of the progress Comment last written to the issue; unchanged = no forge call. Claimed before the write, released when it fails.' } }),
@@ -801,6 +807,7 @@ export const collections: CollectionConfig[] = [
     date('startedAt'),
     text('summary'),
     date('finishedAt'),
+    select('state', ['working', 'waiting_ci']),
   ]),
   col('tool_calls', [
     text('toolUseId'),
@@ -984,6 +991,13 @@ export const collections: CollectionConfig[] = [
     text('claudeSession', { required: true, admin: { description: "The client's own session id (Claude Code `session_id`)." } }),
     json('totals'),
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['session', 'claudeSession'], unique: true }] }),
+  col('inbox_seen', [
+    rel('user', 'bauherren', { required: true }),
+    rel('ticket', 'tickets', { required: true }),
+    text('need', { required: true }),
+    text('since', { required: true, admin: { description: 'The `openSince` of the decision that was opened; a newer decision of the same need is unread again.' } }),
+    date('seenAt'),
+  ], { access: { read: ownRow, create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['user', 'ticket', 'need', 'since'], unique: true }] }), // written only by `markSeen` (overrideAccess), which ties `user` to the caller
   col('instance_state', [text('key', { required: true, unique: true }), json('value')], { access: { read: () => false, create: () => false, update: () => false, delete: () => false } }),
   ...chatCollections,
 ]

@@ -5,7 +5,7 @@ import { cloneRepo, commitAll, commitAndPush, git, interdiff, mergeBase, patchId
 import { makeProof, readManifest } from './artifacts.js';
 import { buildEvidence, screenshotTable } from './evidence.js';
 import { readGoal } from './goal.js';
-import { DIFF_FILE, DOCS_FINDINGS_FILE, EPIC_WORKLOG_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
+import { BRIEF_FILE, DIFF_FILE, DOCS_FINDINGS_FILE, EPIC_WORKLOG_FILE, FINDINGS_FILE, GOAL_FILE, INVESTIGATION_FILE, OUTCOME_FILE, PLAN_FILE, REVIEW_FILE, SELF_REVIEW_FILE, TRIAGE_FILE, materialise } from './materialise.js';
 import { SELF_REVIEW_MIN_LINES, changedLines, matchingArtifactRules, planStepCount, preReviewChecks, type ProofItem } from './pre-review.js';
 import { startProxy } from './proxy.js';
 import type { RunCtx, RunResult } from './types.js';
@@ -21,7 +21,8 @@ export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, UI_PROOF_PAIRS, UI_PROOF_RULE, a
 export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
 /** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
-export const mrBody = (ticketUrl: string, evidence: string, screenshots = ''): string => `Refs ${ticketUrl}\n\n${evidence}\n${screenshots ? `\n${screenshots}\n` : ''}`;
+/** `brief` is the agent's `## Approval brief` section, appended after the Evidence; `screenshots` is the before/after table (`screenshotTable`), last. */
+export const mrBody = (ticketUrl: string, evidence: string, brief = '', screenshots = ''): string => `Refs ${ticketUrl}\n\n${evidence}\n${brief.trim() ? `\n${brief.trim()}\n` : ''}${screenshots ? `\n${screenshots}\n` : ''}`;
 
 export const PLAN_MARKER = '<!-- bauherr:plan -->';
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
@@ -305,7 +306,7 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
     const pr = await ctx.forge.openPullRequest({
       repo: ctx.product.repo, head: clone.branch, base: ctx.product.defaultBranch,
       title: ctx.prTitle ?? `${ctx.ticket.title} (#${ctx.ticket.number})`,
-      body: mrBody(ctx.epic?.parentUrl ?? ctx.ticket.url, artifacts.evidence, screenshotTable(proof)),
+      body: mrBody(ctx.epic?.parentUrl ?? ctx.ticket.url, artifacts.evidence, existsSync(join(clone.dir, BRIEF_FILE)) ? readFileSync(join(clone.dir, BRIEF_FILE), 'utf8') : '', screenshotTable(proof)),
     });
     artifacts.prUrl = pr.url;
     await ctx.forge.comment(ctx.ticket.number, `Link: ${pr.url}`);

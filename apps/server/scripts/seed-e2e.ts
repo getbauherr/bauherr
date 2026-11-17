@@ -37,6 +37,9 @@ for (const w of [1, 2]) workerAdmins.push((await ensure('bauherren', { email: em
 const draftOwner = (await ensure('bauherren', { email: 'draft-owner@example.com' }, { email: 'draft-owner@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-draft-owner' })).id // owns the seeded Draft; only requests.spec signs in as this user, and its tests run in one worker
 const workspace = (await ensure('workspaces', { slug: 'acme' }, { name: 'Acme', slug: 'acme', wipLimits: {} })).id
 await ensure('bauherren', { email: 'member@example.com' }, { email: 'member@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'bauherr', tenants: [{ tenant: workspace }] })
+// team.spec.ts: an Admin who holds an agent key (everyone else has none: the no-key state of the Connect panel); only team.spec signs in as this user.
+const keyed = await ensure('bauherren', { email: 'team-key@example.com' }, { email: 'team-key@example.com', password: readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim(), role: 'admin', githubLogin: 'e2e-team-key' })
+await ensure('agent_keys', { owner: keyed.id, label: 'e2e' }, { owner: keyed.id, label: 'e2e', keyHash: 'e2e-team-key-hash', prefix: 'bha_e2e0' })
 const zeta = (await ensure('workspaces', { slug: 'zeta' }, { name: 'Zeta', slug: 'zeta' })).id
 const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
 await ensure('bauherren', { email: 'solo@example.com' }, { email: 'solo@example.com', password, role: 'bauherr', tenants: [{ tenant: zeta }] })
@@ -69,6 +72,17 @@ const editorProduct = (await ensure('products', { slug: 'editor-app' }, { name: 
 await ensure('repositories', { fullName: 'acme/editor' }, { fullName: 'acme/editor', product: editorProduct, workspace: editorWs })
 await ensure('ticket_sources', { repo: 'acme/editor' }, { repo: 'acme/editor', product: editorProduct, connection: editorGithub, cursor: '2026-10-30T09:00:00Z', workspace: editorWs })
 await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: build the thing', externalId: 'e2e-editor-1', number: 1, url: 'https://github.com/acme/editor/issues/1', state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: editorProduct, workspace: editorWs, rank: '000030' })
+// board-parked.spec.ts: a Workspace of its own (`bauherr-ws=park`, Build limit 3), an Admin that only that spec signs in as, one Product and three Build Tickets: one parked on `Run needs you` (its Run waits for the owner) and two with a running Run. Twin in `src/lib/fake-forge.ts` (acme/park).
+const parkWs = (await ensure('workspaces', { slug: 'park' }, { name: 'Park Lab', slug: 'park', wipLimits: { build: 3 } })).id
+await ensure('bauherren', { email: 'park-admin@example.com' }, { email: 'park-admin@example.com', password, role: 'admin', githubLogin: 'e2e-park-admin' })
+const parkGithub = (await ensure('connections', { name: 'GitHub Park' }, { name: 'GitHub Park', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: parkWs })).id
+const parkProduct = (await ensure('products', { slug: 'park-app' }, { name: 'Park App', slug: 'park-app', workspace: parkWs })).id
+await ensure('repositories', { fullName: 'acme/park' }, { fullName: 'acme/park', product: parkProduct, workspace: parkWs })
+await ensure('ticket_sources', { repo: 'acme/park' }, { repo: 'acme/park', product: parkProduct, connection: parkGithub, cursor: '2026-10-30T09:00:00Z', workspace: parkWs })
+for (const [n, title, status] of [[1, 'Parked: needs cloud credentials', 'needs_human'], [2, 'Working: first', 'running'], [3, 'Working: second', 'running']] as const) {
+  const t = (await ensure('tickets', { externalId: `e2e-park-${n}` }, { title, externalId: `e2e-park-${n}`, number: n, url: `https://github.com/acme/park/issues/${n}`, state: 'open', labels: ['bauherr:stage:build'], stage: 'build', product: parkProduct, workspace: parkWs, rank: `00005${n}`, ...(n === 1 ? { needsYou: 'Run needs you', parkedNeed: 'Run needs you' } : {}) })).id
+  await ensure('runs', { ticket: t, stage: 'build', status }, { ticket: t, stage: 'build', status, mode: 'autonomous', workspace: parkWs })
+}
 // request-conversation.spec.ts: a Workspace of its own (`bauherr-ws=rc`) with two Products (Rc Web, Rc Api), models as `<connection>/<model>` (the short name is what is shown), a Bauherr and a Product owner (assigned to Rc Web only) that only that spec signs in as. Twins in `src/lib/fake-forge.ts` (acme/rc-web, acme/rc-api).
 const rcWs = (await ensure('workspaces', { slug: 'rc' }, { name: 'Request Lab', slug: 'rc', wipLimits: {}, modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } })).id
 await ensure('bauherren', { email: 'rc-bauherr@example.com' }, { email: 'rc-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: rcWs }] })
@@ -326,6 +340,28 @@ for (const item of [
   { kind: 'transcript', title: 'Download from a terminal', criterion: 'Clicking it saves a CSV file', text: '$ curl -sO https://staging.example.com/proof/export.csv\n$ head -2 export.csv\ninvoice,total\nINV-1001,120.00' },
   { kind: 'preview', title: 'Try the export page', criterion: 'Clicking it saves a CSV file', url: 'https://preview.example.com/proof/1' },
 ] as const) await attachProof(payload, proofDoc, { sha: proofSha, item: item as never })
+// approval-brief.spec.ts: a Workspace of its own (`brief-lab`, the shipped default factory file) with a Bauherr and a Product owner assigned to its Product (so Accept on staging is asked), and two Tickets on staging with a stored approval brief; the second one has no visible bullet.
+const briefWs = (await ensure('workspaces', { slug: 'brief-lab' }, { name: 'Brief Lab', slug: 'brief-lab', wipLimits: {} })).id
+{
+  const doc = parseDocument(readFileSync(resolve(corePack(), 'factory.yaml'), 'utf8')).toJS() as Record<string, any>
+  inlineProfiles(doc, corePack(), [])
+  const applied = await applyFactory(payload, briefWs as number, stringify(doc), { by: 'seed', via: 'seed', note: 'brief-lab: the shipped default' })
+  if (!applied.ok) throw new Error(`brief-lab factory file: ${applied.findings.join('; ')}`)
+}
+const briefHub = (await ensure('connections', { name: 'GitHub Brief' }, { name: 'GitHub Brief', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: briefWs })).id
+await ensure('bauherren', { email: 'brief-bauherr@example.com' }, { email: 'brief-bauherr@example.com', password, role: 'bauherr', tenants: [{ tenant: briefWs }], githubLogin: 'e2e-brief-bauherr' })
+const briefProduct = (await ensure('products', { slug: 'brief-web' }, { name: 'Brief Web', slug: 'brief-web', workspace: briefWs, stagingUrl: 'https://staging.example.com/brief', productOwnerTestsStaging: true })).id
+await ensure('repositories', { fullName: 'acme/brief' }, { fullName: 'acme/brief', product: briefProduct, workspace: briefWs })
+await ensure('ticket_sources', { repo: 'acme/brief' }, { repo: 'acme/brief', product: briefProduct, connection: briefHub, cursor: '2026-10-30T09:00:00Z', workspace: briefWs })
+await ensure('bauherren', { email: 'brief-po@example.com' }, { email: 'brief-po@example.com', password, role: 'product-owner', assignments: [{ workspace: briefWs, scope: 'products', products: [briefProduct] }] })
+const briefOf = (changes: { text: string; kind: string }[]) => ({
+  sha: 'abc1234def', changes, notIncluded: ['Bulk export of all invoices'], risk: 'Low. Revert the merge; no data is changed.', noted: [{ text: 'The button has no loading state', reason: 'low' }],
+  proof: { ticket: 0, rows: [{ criterion: 'The export page shows a Download button', items: [] }], waived: [{ rule: 'UI change: before/after', reason: 'no browser on the build host' }], staging: null },
+  checks: { ci: 'CI: 4 of 4 checks passed', testsAdded: 2, noProof: [{ rule: 'The export page shows a Download button', reason: 'No proof attached' }, { rule: 'UI change: before/after', reason: 'no browser on the build host' }] },
+  links: [{ label: 'Merge request #7', href: 'https://github.com/acme/brief/pull/7' }, { label: 'Staging', href: 'https://staging.example.com/brief' }],
+})
+await ensure('tickets', { externalId: 'e2e-brief-1' }, { title: 'Ship the invoice download', externalId: 'e2e-brief-1', number: 1, url: 'https://github.com/acme/brief/issues/1', state: 'open', labels: ['bauherr:stage:release'], releaseAt: new Date().toISOString(), ...rel, approvalBrief: briefOf([{ kind: 'visible', text: 'Finance clerks get a Download button on the invoice page' }, { kind: 'behaviour', text: 'The factory keeps the file for 7 days' }, { kind: 'internal', text: 'A CSV writer module and its tests' }]), product: briefProduct, workspace: briefWs, rank: '000331' })
+await ensure('tickets', { externalId: 'e2e-brief-2' }, { title: 'Speed up the invoice query', externalId: 'e2e-brief-2', number: 2, url: 'https://github.com/acme/brief/issues/2', state: 'open', labels: ['bauherr:stage:release'], releaseAt: new Date().toISOString(), ...rel, approvalBrief: briefOf([{ kind: 'internal', text: 'The invoice query uses an index' }]), product: briefProduct, workspace: briefWs, rank: '000332' })
 const minutesAgo = (m: number) => new Date(now - m * 6e4).toISOString()
 const session = (publicId: string, role: string, label: string, extra: Record<string, unknown> = {}) =>
   ensure('agent_sessions', { publicId }, { publicId, role, label, clientName: 'claude-code', clientVersion: '2.1.0', model: 'claude-sonnet-4-5', provider: 'anthropic', connectedAt: minutesAgo(95), lastSeenAt: minutesAgo(0), workspace, ...extra })

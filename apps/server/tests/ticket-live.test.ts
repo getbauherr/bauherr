@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ticketStatus, type StatusRow } from '../src/app/(app)/lib/status'
 import { nextStep } from '../src/lib/next-step'
-import { ciWait, ticketLive } from '../src/lib/ticket-live'
+import { ciWait, stepOf, ticketLive } from '../src/lib/ticket-live'
 import { DEFAULT } from '../src/lib/workflow'
 
 const wf = DEFAULT()
@@ -39,5 +39,51 @@ describe('ticketLive', () => {
     expect(ticketLive({ ci: true, run: running, counts }, now)).toMatchObject({ chip: 'Waiting for CI 1/2', sentence: expect.stringContaining('1 of 2 checks passed') })
     const step = nextStep({ wf, ticket: { stage: 'build', waitingFor: 'checks' }, need: 'Approve plan', run: running, waiting: null, blockers: [], admin: false, ci: counts })
     expect(step.label).toBe('Approve plan')
+  })
+  describe('a Step reported as waiting_ci', () => {
+    const words = 'pipeline 4411 on the MR'
+    const counts = { passed: 2, total: 3, pending: 1 }
+    const waiting = { ...running, waitingStep: words }
+    it('reads Waiting for CI with the agent words, same on every surface', () => {
+      const live = ticketLive({ ci: false, run: waiting, counts }, now)!
+      expect(live).toMatchObject({ chip: 'Waiting for CI 2/3', sentence: `Waiting for CI: ${words}` })
+      const s = ticketStatus(wf, { ...row('build', {}), ci: counts, run: { ...row('build', {}).run!, waitingStep: words } }, now)
+      const step = nextStep({ wf, ticket: { stage: 'build' }, need: null, run: waiting, waiting: null, blockers: [], admin: false, ci: counts })
+      expect([s.phase, s.label, step.label]).toEqual(['ci', live.chip, live.chip])
+      expect(s.detail).toBe(words)
+      expect(step).toMatchObject({ enabled: false, reason: `Waiting for CI: ${words}.` })
+    })
+    it('without counts the chip is plain Waiting for CI; no waiting Step stays Working', () => {
+      expect(ticketLive({ ci: false, run: waiting }, now)).toMatchObject({ chip: 'Waiting for CI', sentence: `Waiting for CI: ${words}` })
+      expect(ticketLive({ ci: false, run: { ...running, waitingStep: null } }, now)).toMatchObject({ chip: 'Working' })
+      expect(ticketStatus(wf, { ...row('build', {}), run: { ...row('build', {}).run!, waitingStep: null } }, now).label).toBe('In progress')
+    })
+    it('a Run that is not running is not waiting', () => expect(ticketLive({ ci: false, run: { status: 'queued', waitingStep: words } }, now)).toBeNull())
+  })
+})
+
+describe('ticketLive liveness and sentences', () => {
+  const ago = (min: number) => new Date(now - min * 60000).toISOString()
+  const sess = (health: string, extra = {}) => ({ publicId: 'eng-2a1', health, lastSeenAt: ago(14), ...extra })
+  const table: [string, Parameters<typeof ticketLive>[0], { chip: string; sentence: string; release?: boolean }][] = [
+    ['stuck, Admin', { ci: false, run: running, session: sess('stuck'), admin: true }, { chip: 'Stuck', sentence: 'Not responding for 14 min. Session eng-2a1 last seen 14 min ago.', release: true }],
+    ['stuck, other', { ci: false, run: running, session: sess('stuck') }, { chip: 'Stuck', sentence: 'Not responding for 14 min. Session eng-2a1 last seen 14 min ago. An Admin can release it.', release: false }],
+    ['disconnected, Admin', { ci: false, run: running, session: sess('disconnected', { disconnectedAt: ago(5), endReason: 'timeout' }), admin: true }, { chip: 'Session gone', sentence: 'Session eng-2a1 disconnected (timeout) 5 min ago.', release: true }],
+    ['disconnected, other', { ci: false, run: running, session: sess('disconnected', { disconnectedAt: ago(5), endReason: 'disconnect' }) }, { chip: 'Session gone', sentence: 'Session eng-2a1 disconnected (disconnect) 5 min ago. An Admin can release it.', release: false }],
+    ['stale session beats a step report', { ci: false, run: running, session: sess('stuck'), step: { n: 3, m: 5, at: ago(2) } }, { chip: 'Stuck', sentence: expect.stringContaining('Not responding') as never }],
+    ['review requested', { ci: false, run: running, session: sess('working'), review: ago(3) }, { chip: 'Waiting for review', sentence: 'Review requested 3 min ago.' }],
+    ['plan step report', { ci: false, run: running, session: sess('working', { lastSeenAt: ago(0) }), step: { n: 3, m: 5, at: ago(2) } }, { chip: 'Working', sentence: 'Working on plan step 3 of 5. Last report 2 min ago.' }],
+    ['no report', { ci: false, run: running, session: sess('working') }, { chip: 'Working', sentence: 'Working. Started 3 min ago.' }],
+  ]
+  it.each(table)('%s', (_n, row, want) => {
+    const live = ticketLive(row, now)!
+    expect(live).toMatchObject(want)
+    if (row.session?.health === 'stuck' || row.session?.health === 'disconnected') expect(live.chip).not.toBe('Working')
+  })
+  it('a stale session without a running Run says nothing', () => expect(ticketLive({ ci: false, run: { status: 'queued' }, session: sess('stuck') }, now)).toBeNull())
+  it('a Step names "plan step n of m" or none', () => {
+    expect(stepOf('Finished plan step 2 of 4: schema', 'T')).toEqual({ n: 2, m: 4, at: 'T' })
+    expect(stepOf('Added the migration', 'T')).toBeNull()
+    expect(stepOf(undefined, undefined)).toBeNull()
   })
 })

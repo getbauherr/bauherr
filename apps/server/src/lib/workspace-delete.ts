@@ -97,7 +97,7 @@ const ticketsOf = (ws: number) => sql`(SELECT "id" FROM "tickets" WHERE "workspa
  * `human_touches` keeps its `workspace:*` audit rows (detached), the others go.
  */
 export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typeof sql> }[] = [
-  ...['usage_entries', 'usage_cursors', 'tool_calls', 'steps', 'session_spans', 'artifacts', 'skill_proposals', 'ticket_events', 'check_flakes'].map((table) => ({ table, where: ofWorkspace })),
+  ...['usage_entries', 'usage_cursors', 'tool_calls', 'steps', 'session_spans', 'artifacts', 'skill_proposals', 'ticket_events', 'check_flakes', 'inbox_seen'].map((table) => ({ table, where: ofWorkspace })),
   { table: 'human_touches', where: (ws) => sql`("workspace_id" = ${ws} OR "ticket_id" IN ${ticketsOf(ws)}) AND "kind" NOT LIKE 'workspace:%'` },
   ...['chat_messages', 'chat_threads', 'runs', 'agent_sessions'].map((table) => ({ table, where: ofWorkspace })),
   { table: 'media', where: (ws) => mediaOf(ws) },

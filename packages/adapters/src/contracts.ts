@@ -197,7 +197,8 @@ export interface Forge {
   createBranch(repo: RepoRef, name: string, from?: string): Promise<Branch>;
   openPullRequest(repo: RepoRef, pr: NewPullRequest): Promise<PullRequest>;
   getPullRequest(repo: RepoRef, number: number): Promise<PullRequest>;
-  listPullRequests(repo: RepoRef, state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>;
+  /** PRs in `state`; with `head` only those from that source branch (one request instead of paging every PR). */
+  listPullRequests(repo: RepoRef, state?: 'open' | 'closed' | 'all', head?: string): Promise<PullRequest[]>;
   /** The most recently merged PRs, newest first, at most `limit` (at most 100). */
   listMergedPullRequests(repo: RepoRef, limit: number): Promise<PullRequest[]>;
   /** Closes an open PR without merging; idempotent. */

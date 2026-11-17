@@ -18,8 +18,10 @@ import { inKindStage } from './stage-scope'
 import { moveStage } from './stage-move'
 import { personOf } from './person'
 import { decidingAs, ownerAssigned, productOwnersOf } from './people'
-import { SUMMARY_MARKER, buildStagingSummary } from './summary'
+import { SUMMARY_MARKER, bullets, buildStagingSummary, section } from './summary'
 import { proofMarkdown } from './artifacts'
+import { type ApprovalBrief, approvalBriefMarkdown, freezeApprovalBrief, storeApprovalBrief } from './approval-brief'
+import { loadProof } from '../app/(app)/lib/proof'
 import { publicUrl } from './oidc'
 import { workflowFor } from './factory'
 import { stagingTldrOf, storeStagingTldr } from './decision'
@@ -67,7 +69,7 @@ export const forgeOf = async (payload: Payload, product: number | string, req?: 
   return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo), kind: connection.kind === 'gitlab' ? ('gitlab' as const) : ('github' as const) }
 }
 
-/** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. */
+/** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. Also freezes the approval brief of the merge commit once (`approvalBrief.sha`), so its MR body is parsed once per merge commit. */
 export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{ posted: boolean }> => {
   const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
@@ -79,16 +81,27 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
     const numbers = [...new Set(runs.map((r) => prNumber(r.artifacts?.prUrl, repo, web)).filter((x): x is number => x !== null))]
     const mrs = await Promise.all(numbers.map((num) => backend.forge.getPullRequest(repo, num)))
     const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
+    const plan = latestWith(comments, PLAN_MARKER)?.body ?? null
+    let brief = t.approvalBrief as ApprovalBrief | null | undefined
+    if (brief?.sha !== (mergeSha ?? '')) try {
+      const reviews = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true, kind: true, status: true }, ...o })).docs as Doc[]
+      const proof = (await loadProof(payload, [{ ...t, product: id(t.product) }], new Map([[id(t.product) as number, product]]), () => bullets(section(plan ?? '', 'Goal')))).get(t.id) ?? null
+      brief = await freezeApprovalBrief({ mergeSha, mrs, runs: [...reviews, ...runs], forge: backend.forge, repo, stagingUrl: product.stagingUrl || null, proof })
+      await storeApprovalBrief(payload, t.id, brief)
+    } catch (e) {
+      payload.logger.warn({ err: e, ticket: t.id }, 'approval brief not frozen')
+    }
     const tpl = await template(payload, id(t.workspace), 'staging-summary')
     const summary = buildStagingSummary({
         ticket: { number: t.number, title: t.title, url: t.url },
-        plan: latestWith(comments, PLAN_MARKER)?.body ?? null,
+        plan,
         worklog: firstWith(comments, WORKLOG_MARKER)?.body ?? null,
         mrs,
         evidence: runs.find((r) => r.artifacts?.evidence)?.artifacts.evidence ?? null,
         stagingUrl: product.stagingUrl || null,
         mergeSha,
         proof: await proofMarkdown(payload, t, `${publicUrl()}/tickets/${t.id}`),
+        brief: brief ? approvalBriefMarkdown(brief) : undefined,
       }, tpl)
     await ts.comment(n, summary)
     await storeStagingTldr(payload, t.id, stagingTldrOf(summary, { whatYouGet: headingOf(tpl, 'what-you-get'), found: headingOf(tpl, 'found') }))
@@ -246,7 +259,7 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
   return { approved: APPROVED_STAGING, stage }
 }
 
-/** Review Tickets whose MR merged move to `release`; release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
+/** Review Tickets whose MR merged move to `release`, and so do Build Tickets whose factory MR merged during the Build (a human merged a review fix round; no Run can end that Build); release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
   const tips = new Map<string, Promise<Tip>>()
@@ -255,7 +268,8 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const wf = workflowFor(w.id)
       const review = byKind(wf, 'review')?.name
       const release = byKind(wf, 'release')?.name
-      return review && release ? [[Number(w.id), { review, release, auto: !gateOn(wf, 'release'), wf }] as const] : []
+      const build = byKind(wf, 'build')?.name ?? review
+      return review && release && build ? [[Number(w.id), { build, review, release, auto: !gateOn(wf, 'release'), wf }] as const] : []
     }),
   )
   if (!stages.size) return out
@@ -267,14 +281,14 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
     return stagingGateOn(wf, p, ownerAssigned(await owners.get(ws)!, { id: p.id, workspace: ws }))
   }
   /** `auto`: staging acceptance is not asked of every Product, so every Ticket on staging is looked at (a gate that asks the Product owner is decided per Product below). */
-  const whereOf = (ws: number, { review, release, auto }: { review: string; release: string; auto: boolean }): Where => {
+  const whereOf = (ws: number, { build, review, release, auto }: { build: string; review: string; release: string; auto: boolean }): Where => {
     const waiting: Where = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [{ and: [{ releaseState: { equals: 'on_staging' } }, { expedite: { equals: true } }] }])] }
-    return { and: [{ workspace: { equals: ws } }, { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { equals: review } }, { and: [{ stage: { equals: release } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: [review, release] } }] }] }] }
+    return { and: [{ workspace: { equals: ws } }, { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { in: [build, review] } }, { and: [{ stage: { equals: release } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: [review, release] } }] }] }] }
   }
   const tickets = (await payload.find({ collection: 'tickets', where: { or: [...stages].map(([ws, st]) => whereOf(ws, st)) }, limit: 200, pagination: false, ...o })).docs as Doc[]
   for (const t of tickets) {
     try {
-      const { review, release, wf, auto: loose } = stages.get(Number(id(t.workspace)))!
+      const { build, review, release, wf, auto: loose } = stages.get(Number(id(t.workspace)))!
       const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
       const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
       const n = String(t.number)
@@ -286,22 +300,28 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
         continue
       }
       if (t.stage === release && t.releaseState && t.releaseState !== 'waiting') continue
-      if (t.stage === review) {
+      const inBuild = t.stage === build && build !== review
+      if (t.stage === review || inBuild) {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
+        // A running Build may still push to its MR; the next pass looks again once it ended.
+        if (inBuild && runs.some((r) => r.stage === build && r.status === 'running')) continue
         const urls = [t.epic?.pr, ...runs.map((r) => r.artifacts?.prUrl)].filter(Boolean)
         const num = urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null)
         if (num == null) {
-          if (urls.length) payload.logger.warn({ ticket: t.id, urls }, 'ignoring pull request URL outside the ticket source repo')
+          if (urls.length && !inBuild) payload.logger.warn({ ticket: t.id, urls }, 'ignoring pull request URL outside the ticket source repo')
           continue
         }
         const pr = await backend.forge.getPullRequest(repo, num)
+        // In Build only a merged factory MR that was not released before counts: a Ticket sent back from release keeps its old merge.
+        if (inBuild && (pr.state !== 'merged' || !isFactoryPr(pr, repo, t) || (t.mergeSha && pr.mergeSha === t.mergeSha))) continue
         if (pr.state === 'closed') {
           const marker = `<!-- bauherr:mr-closed:${num} -->`
           if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr: the MR was closed without merge; re-run Build or close the Ticket.`)
         }
         if (pr.state !== 'merged') continue
         const at = new Date(now).toISOString()
-        if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = ${review}`))) continue
+        if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL`, sql`"stage" = ${t.stage}`))) continue
+        if (inBuild) for (const r of runs.filter((x) => x.stage === build && ['queued', 'awaiting_session'].includes(x.status))) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'the MR merged during Build', finishedAt: new Date(now).toISOString() }, ...o })
         Object.assign(t, await payload.findByID({ collection: 'tickets', id: t.id, ...o }))
         await moveStage(payload, ts, t, release, 'merged')
         await clearApprovalLabel(payload, ts, n)
@@ -475,7 +495,7 @@ export const changelogPr = async (forge: Forge, repo: string, release: Release, 
     await forge.createBranch(repo, branch, base)
     await forge.putFile(repo, { branch, path: 'CHANGELOG.md', content: file.content.replace(/^(## Unreleased.*)$/m, `$1\n\n${entry}`), message: `docs(changelog): ${release.tag}`, expectSha: file.sha })
   }
-  if (!(await forge.listPullRequests(repo, 'all')).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
+  if (!(await forge.listPullRequests(repo, 'all', branch)).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
 }
 
 /** While a `notes-only` Product's tooling has not made the release yet, look again after this long. */

@@ -19,12 +19,53 @@ export const tagline = (profile: string): string => {
 
 export const live = (sessions: TeamSession[]): number => sessions.filter((s) => s.status !== 'offline').length
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
-/** "6 roles · 3 sessions connected · 2 working". */
+/** Roles with Tickets waiting for a session and no connected agent, most waiting first (a tie keeps the workflow order). */
+export const needAgent = (roles: TeamRole[]): TeamRole[] => roles.filter((r) => r.waiting > 0 && live(r.sessions) === 0).sort((a, b) => b.waiting - a.waiting)
+
+/** "2 working · 1 idle · 3 roles need an agent". */
 export const teamSummary = (roles: TeamRole[]): string => {
   const all = roles.flatMap((r) => r.sessions)
-  return [plural(roles.length, 'role'), `${plural(live(all), 'session')} connected`, `${all.filter((s) => s.status === 'working').length} working`].join(' · ')
+  const working = all.filter((s) => s.status === 'working').length
+  const idle = all.filter((s) => s.status === 'idle').length
+  const needy = needAgent(roles).length
+  return [...(working ? [`${working} working`] : []), ...(idle ? [`${idle} idle`] : []), ...(working || idle ? [] : ['No agents connected']), ...(needy ? [`${plural(needy, 'role')} ${needy === 1 ? 'needs' : 'need'} an agent`] : [])].join(' · ')
+}
+
+/** The role the Connect panel starts on and the rule that picked it: waiting work without an agent, else last used, else most recently connected, else the first role. */
+export const defaultRole = (roles: TeamRole[], lastUsed?: string): { id: string; hint: string } | undefined => {
+  const needy = needAgent(roles)[0]
+  if (needy) return { id: needy.id, hint: `Default: ${plural(needy.waiting, 'ticket')} waiting, no agent` }
+  if (lastUsed && roles.some((r) => r.id === lastUsed)) return { id: lastUsed, hint: 'Default: last used' }
+  const newest = roles.flatMap((r) => r.sessions.map((s) => ({ role: r.id, at: s.connectedAt ?? '' }))).sort((a, b) => b.at.localeCompare(a.at))[0]
+  if (newest?.at) return { id: newest.role, hint: 'Default: most recently connected' }
+  return roles[0] && { id: roles[0].id, hint: 'Default: first role' }
+}
+
+export type ListRow = { key: string; kind: 'needs'; role: TeamRole } | { key: string; kind: 'session'; session: TeamSession; role?: TeamRole; orphanRole?: string } | { key: string; kind: 'autonomous'; role: TeamRole; run: TeamRole['autonomous'][number] }
+
+const since = (r: ListRow): string => (r.kind === 'session' ? (r.session.runStartedAt ?? r.session.lastSeenAt ?? '') : r.kind === 'autonomous' ? (r.run.startedAt ?? '') : '')
+
+/**
+ * The flat Sessions list: "needs an agent" rows first, then working (Runner and CI included, longest first), then idle (most recently seen first), then sessions without a role; `disconnected` is what the toggle reveals (latest first).
+ */
+export const listRows = (roles: TeamRole[], orphans: (TeamSession & { role: string })[]): { rows: ListRow[]; disconnected: ListRow[] } => {
+  const sessions: ListRow[] = [
+    ...roles.flatMap((role) => role.sessions.map((session): ListRow => ({ key: session.publicId, kind: 'session', session, role }))),
+    ...orphans.map((session): ListRow => ({ key: session.publicId, kind: 'session', session, orphanRole: session.role })),
+  ]
+  const autonomous = roles.flatMap((role) => role.autonomous.map((run): ListRow => ({ key: `run-${run.run}`, kind: 'autonomous', role, run })))
+  const gone = (r: ListRow) => r.kind === 'session' && r.session.health === 'disconnected'
+  const holds = (r: ListRow) => r.kind === 'autonomous' || (r.kind === 'session' && !!r.session.run)
+  const shown = [...sessions, ...autonomous].filter((r) => !gone(r))
+  const orphan = (r: ListRow) => r.kind === 'session' && !!r.orphanRole
+  const working = shown.filter((r) => holds(r) && !orphan(r)).sort((a, b) => since(a).localeCompare(since(b)))
+  const idle = shown.filter((r) => !holds(r) && !orphan(r)).sort((a, b) => since(b).localeCompare(since(a)))
+  return {
+    rows: [...needAgent(roles).map((role): ListRow => ({ key: `needs-${role.id}`, kind: 'needs', role })), ...working, ...idle, ...shown.filter(orphan)],
+    disconnected: sessions.filter(gone).sort((a, b) => (b.kind === 'session' ? (b.session.disconnectedAt ?? '') : '').localeCompare(a.kind === 'session' ? (a.session.disconnectedAt ?? '') : '')),
+  }
 }
 
 /** "1 agent", "3 agents", "No limit". */

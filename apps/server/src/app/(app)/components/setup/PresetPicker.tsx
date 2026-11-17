@@ -4,12 +4,12 @@ import { cn } from '@/lib/utils'
 import { applyPreset } from '../../(shell)/setup/actions'
 import { SettingsForm } from '../SettingsForm'
 import { RoleAvatar } from '../team/RoleAvatar'
-import { TeamSelect } from '../team/TeamSelect'
+import { RolesTable } from '../team/RolesTable'
 import type { TeamRole } from '../team/types'
 
 export type PresetCard = { id: string; title: string; blurb: string; roles: { id: string; title: string; avatar: string }[]; asks: string[]; team: TeamRole[] }
 
-/** Three preset cards, the read-only roster of the chosen one and the two ways forward: "Use this team" or skip (Standard). Edits of models and agents happen on /team. */
+/** Three preset cards, the read-only Roles table of the chosen one and the two ways forward: "Use this team" or skip (Standard). Edits of models and agents happen on /team. */
 export function PresetPicker({ presets }: { presets: PresetCard[] }) {
   const [id, setId] = useState('standard')
   const chosen = presets.find((p) => p.id === id)!
@@ -34,7 +34,7 @@ export function PresetPicker({ presets }: { presets: PresetCard[] }) {
           </button>
         ))}
       </div>
-      <TeamSelect key={id} preview roles={chosen.team} modelOptions={[]} canEdit={false} onSave={() => {}} docsHref="" mcpLine="" />
+      <RolesTable key={id} roles={chosen.team} />
       <div className="flex flex-wrap items-center gap-3">
         <SettingsForm action={applyPreset} submit="Use this team" primary>
           <input type="hidden" name="preset" value={id} />

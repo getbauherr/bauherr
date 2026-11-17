@@ -38,10 +38,10 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$final" -f target_commitish="$sha" \
             ${last:+-f previous_tag_name="$last"} --jq .body > "$RUNNER_TEMP/notes.md"
           printf 'Release candidate %s (image ghcr.io/getbauherr/bauherr:%s). Promote it with the "promote" workflow.\n\n' "$tag" "$version" | cat - "$RUNNER_TEMP/notes.md" > "$RUNNER_TEMP/body.md"
-          # drafts are not found by tag, only in the list
-          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$final\") | .id" | head -n1)
+          # drafts are not found by tag, only in the list; an untagged draft keeps only its name
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and (.tag_name == \"$final\" or .name == \"$final\")) | .id" | head -n1)
           if [ -n "$id" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f target_commitish="$sha" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f tag_name="$final" -f target_commitish="$sha" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
           else
             gh release create "$final" --draft --target "$sha" --title "$final" --notes-file "$RUNNER_TEMP/body.md"
           fi

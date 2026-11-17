@@ -16,8 +16,11 @@ describe('team helpers', () => {
     expect(profileMarkdown('Just some free text. No label.')).toBe('Just some free text. No label.')
   })
   it('summarises roles, connected and working sessions', () => {
-    expect(teamSummary(roles)).toBe('6 roles · 3 sessions connected · 1 working')
-    expect(teamSummary(roles.slice(0, 1))).toBe('1 role · 1 session connected · 0 working')
+    expect(teamSummary(roles)).toBe('1 working · 2 idle')
+    expect(teamSummary(roles.slice(0, 1))).toBe('1 idle')
+    expect(teamSummary(roles.slice(2))).toBe('No agents connected')
+    expect(teamSummary([{ ...roles[2]!, waiting: 2 }, { ...roles[3]!, waiting: 1 }])).toBe('No agents connected · 2 roles need an agent')
+    expect(teamSummary([{ ...roles[2]!, waiting: 1 }])).toBe('No agents connected · 1 role needs an agent')
   })
   it('lists tiers before provider groups', () => {
     expect(groupOptions([...modelOptions].reverse()).map(([g]) => g)).toEqual(['Tier', 'Anthropic'])
