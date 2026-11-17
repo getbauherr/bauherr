@@ -13,8 +13,10 @@ export function TicketMilestones({ ticket }: { ticket: number }) {
     return () => es.close()
   }, [ticket])
   return (
-    <ol role="log" aria-live="off" aria-label="Milestones" className="small m-0 flex list-none flex-col gap-1 p-0" data-testid="ticket-milestones">
+    <div role="log" aria-live="off" aria-label="Milestones" data-testid="ticket-milestones">
+    <ol className="small m-0 flex list-none flex-col gap-1 p-0">
       {rows.map((r) => <li key={r.key}><span className="mono text-muted-foreground">{new Date(r.at).toLocaleTimeString()}</span> {r.text}</li>)}
     </ol>
+    </div>
   )
 }
