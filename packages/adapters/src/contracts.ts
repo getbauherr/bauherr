@@ -41,6 +41,12 @@ export interface Comment {
   createdAt: string;
 }
 
+export interface InlineComment {
+  path: string;
+  line: number;
+  body: string;
+}
+
 export interface ListOptions {
   state?: TicketState | 'all';
   labels?: string[];
@@ -204,6 +210,8 @@ export interface Forge {
   /** Closes an open PR without merging; idempotent. */
   closePullRequest(repo: RepoRef, number: number): Promise<void>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
+  /** One review: `body` as the summary plus line comments on the head diff (`line` on the new side). Throws when the forge rejects a line (outside the diff); GitLab posts the line comments first, so a failure there leaves the summary unposted. The summary is listed by `listPullRequestComments`. */
+  reviewPullRequest(repo: RepoRef, number: number, review: { body: string; comments: InlineComment[] }): Promise<Comment>;
   listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
   /** Unified diff text from `base` to `head` (shas or refs). */

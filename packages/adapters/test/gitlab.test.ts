@@ -264,6 +264,18 @@ describe('gitlab forge', () => {
     assert.equal(calls.at(-1)!.path, `${P}/merge_requests/196/notes`);
   });
 
+  it('reviewPullRequest opens one positioned discussion per line on the head diff_refs, then the summary note', async () => {
+    const { forge, calls } = setup((m, path) => {
+      if (path.endsWith('/merge_requests/196')) return { diff_refs: { base_sha: 'b', start_sha: 's', head_sha: 'h' } };
+      if (path.endsWith('/notes')) return { id: 1, body: 'sum', author: { username: 'bot' }, created_at: '2026-10-30T09:00:00.000Z' };
+      return {};
+    });
+    const c = await forge.reviewPullRequest('g/p', 196, { body: 'sum', comments: [{ path: 'a.ts', line: 3, body: 'x' }] });
+    assert.deepEqual(calls.map((x) => [x.method, x.path]), [['GET', `${P}/merge_requests/196`], ['POST', `${P}/merge_requests/196/discussions`], ['POST', `${P}/merge_requests/196/notes`]]);
+    assert.deepEqual(calls[1]!.body, { body: 'x', position: { position_type: 'text', base_sha: 'b', start_sha: 's', head_sha: 'h', new_path: 'a.ts', new_line: 3 } });
+    assert.equal(c.body, 'sum');
+  });
+
   it('listPullRequestComments lists MR notes without system notes', async () => {
     const { forge, calls } = setup(() => fx('notes'));
     assert.deepEqual((await forge.listPullRequestComments('g/p', 196)).map((c) => [c.id, c.author]), [['12', 'bauherr-bot'], ['13', 'sebastian']]);

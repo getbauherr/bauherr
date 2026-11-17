@@ -552,6 +552,31 @@ const countComments = () => {
   return { calls, restore: () => void (fake.forge.commentOnPullRequest = spy) }
 }
 
+it('Important findings go inline on the MR with the summary as the review body; Nits stay in the summary', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const nit = { severity: 'low', class: 'low', file: 'b.ts', line: 1, msg: 'nit', scenario: 's' }
+  await submit(await review(id), [medium, nit], 'the review')
+  const posted = fake.reviews(repo).filter((x) => x.number === pr.number)
+  expect(posted).toHaveLength(1)
+  expect(posted[0]!.body).toBe(`${actions.REVIEW_MARKER}\nthe review`)
+  expect(posted[0]!.comments).toEqual([{ path: 'a.ts', line: 3, body: expect.stringContaining('off by one') }])
+  expect((await fake.forge.listPullRequestComments(repo, pr.number)).filter((c) => c.body.startsWith(actions.REVIEW_MARKER))).toHaveLength(1)
+})
+
+it('a forge that rejects the inline review gets the single summary comment instead', async () => {
+  const { id, pr } = await seed({ checks: green })
+  const spy = fake.forge.reviewPullRequest
+  fake.forge.reviewPullRequest = async () => {
+    throw new Error('422 line outside the diff')
+  }
+  try {
+    expect(await submit(await review(id), [medium], 'the review')).toMatchObject({ outcome: 'build' })
+  } finally {
+    fake.forge.reviewPullRequest = spy
+  }
+  expect((await fake.forge.listPullRequestComments(repo, pr.number)).filter((c) => c.body.startsWith(actions.REVIEW_MARKER))).toHaveLength(1)
+})
+
 it('resume: a recorded changes verdict ends in a Build Run without a second MR comment', async () => {
   const { id, pr } = await seed({ checks: green })
   await crashed(id, pr, [medium])
@@ -565,6 +590,16 @@ it('resume: a recorded changes verdict ends in a Build Run without a second MR c
   expect(c.calls).toHaveLength(0)
   expect((await reload(id)).stage).toBe('build')
   expect(await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, { status: { equals: 'awaiting_session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
+})
+
+it('resume: an inline review already posted is not posted again', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await crashed(id, pr, [medium])
+  await fake.forge.reviewPullRequest(repo, pr.number, { body: `${actions.REVIEW_MARKER}\nm`, comments: [] })
+  const before = fake.reviews(repo).length
+  await actions.resumeReviews(payload)
+  expect(fake.reviews(repo)).toHaveLength(before)
+  expect((await fake.forge.listPullRequestComments(repo, pr.number)).filter((c) => c.body.startsWith(actions.REVIEW_MARKER))).toHaveLength(1)
 })
 
 it('resume: the MR comment is posted when the crash happened before it, once', async () => {

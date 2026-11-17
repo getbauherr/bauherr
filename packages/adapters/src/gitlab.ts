@@ -2,7 +2,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary,
 } from './contracts.js';
-import { Conflict, MergePendingError, NotQueueableError, linkLabel } from './contracts.js';
+import { Conflict, type InlineComment, MergePendingError, NotQueueableError, linkLabel } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 import { MAX_WAIT_MS } from './github.js';
 import { timedFetch } from './http.js';
@@ -336,6 +336,17 @@ class GitlabForge implements Forge {
   }
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return note(await this.h.json('POST', `/projects/${enc(repo)}/merge_requests/${n}/notes`, { body }));
+  }
+  async reviewPullRequest(repo: RepoRef, n: number, r: { body: string; comments: InlineComment[] }) {
+    if (r.comments.length) {
+      const refs = (await this.h.json('GET', `/projects/${enc(repo)}/merge_requests/${n}`)).diff_refs;
+      for (const c of r.comments) {
+        await this.h.json('POST', `/projects/${enc(repo)}/merge_requests/${n}/discussions`, {
+          body: c.body, position: { position_type: 'text', base_sha: refs.base_sha, start_sha: refs.start_sha, head_sha: refs.head_sha, new_path: c.path, new_line: c.line },
+        });
+      }
+    }
+    return this.commentOnPullRequest(repo, n, r.body);
   }
   async listPullRequestComments(repo: RepoRef, n: number) {
     return (await this.h.paginate(`/projects/${enc(repo)}/merge_requests/${n}/notes?sort=asc&order_by=created_at&per_page=100`)).filter((m) => !m.system).map(note);

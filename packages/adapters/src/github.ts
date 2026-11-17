@@ -3,7 +3,7 @@ import type {
   Backend, Branch, Capabilities, Check, CloseReason, Comment, Forge, LabelEvent, ListOptions, NewPullRequest, NewTicket,
   PullRequest, PullRequestFile, Release, RepoRef, Repository, Ticket, TicketSource, TicketSummary, Webhooks,
 } from './contracts.js';
-import { Conflict, NotQueueableError, linkLabel } from './contracts.js';
+import { Conflict, type InlineComment, NotQueueableError, linkLabel } from './contracts.js';
 import { timedFetch } from './http.js';
 import { parseRelations, renderRelations } from './body-convention.js';
 
@@ -369,8 +369,18 @@ class GithubForge implements Forge {
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return comment(await this.h.json('POST', `/repos/${repo}/issues/${n}/comments`, { body }));
   }
+  async reviewPullRequest(repo: RepoRef, n: number, r: { body: string; comments: InlineComment[] }) {
+    const x = await this.h.json('POST', `/repos/${repo}/pulls/${n}/reviews`, {
+      event: 'COMMENT', body: r.body, comments: r.comments.map((c) => ({ path: c.path, line: c.line, side: 'RIGHT', body: c.body })),
+    });
+    return { id: String(x.id), author: x.user?.login ?? '', body: x.body ?? '', createdAt: x.submitted_at ?? '' };
+  }
   async listPullRequestComments(repo: RepoRef, n: number) {
-    return (await this.h.paginate(`/repos/${repo}/issues/${n}/comments?per_page=100`)).map(comment);
+    const reviews = (await this.h.paginate(`/repos/${repo}/pulls/${n}/reviews?per_page=100`)).filter((x) => x.body);
+    return [
+      ...(await this.h.paginate(`/repos/${repo}/issues/${n}/comments?per_page=100`)).map(comment),
+      ...reviews.map((x) => ({ id: `review-${x.id}`, author: x.user?.login ?? '', body: x.body as string, createdAt: x.submitted_at ?? '' })),
+    ];
   }
   async listPullRequestFiles(repo: RepoRef, n: number): Promise<PullRequestFile[]> {
     return (await this.h.paginate(`/repos/${repo}/pulls/${n}/files?per_page=100`)).map((f) => ({
