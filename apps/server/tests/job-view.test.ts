@@ -10,7 +10,7 @@ describe('stageJobs', () => {
   it('lists the Jobs of the shipped Plan stage with its approval last, by depth', () => {
     expect(stageJobs(plan).map(({ id, title, kind, depth, blocking }) => ({ id, title, kind, depth, blocking }))).toEqual([
       { id: 'plan', title: 'Plan', kind: 'agent', depth: 0, blocking: true },
-      { id: 'ax-scan', title: 'Ax scan', kind: 'agent', depth: 1, blocking: false },
+      { id: 'ax-scan', title: 'AX scan', kind: 'agent', depth: 1, blocking: false },
       { id: 'approve', title: 'Approve', kind: 'human', depth: 2, blocking: true },
     ])
     expect(stageJobs(plan).at(-1)).toMatchObject({ by: 'bauherr', needs: ['plan', 'ax-scan'] })
@@ -36,7 +36,7 @@ describe('jobTickets', () => {
   })
 
   it('makes one chip per Job with the count', () => {
-    expect(chipsOf(wf, jobTickets(wf, rows, live)).get('plan')).toEqual([{ id: 'plan', title: 'Plan', count: 1 }, { id: 'ax-scan', title: 'Ax scan', count: 1 }, { id: 'approve', title: 'Approve', count: 1 }])
+    expect(chipsOf(wf, jobTickets(wf, rows, live)).get('plan')).toEqual([{ id: 'plan', title: 'Plan', count: 1 }, { id: 'ax-scan', title: 'AX scan', count: 1 }, { id: 'approve', title: 'Approve', count: 1 }])
   })
 })
 
@@ -45,6 +45,7 @@ describe('layoutJobs', () => {
     const L = layoutJobs(stageJobs(plan))
     expect([...L.nodes.values()].map((n) => n.x)).toEqual([2, 290, 578])
     expect(L.edges.map((e) => [e.key, e.skip])).toEqual([['plan>ax-scan', false], ['plan>approve', true], ['ax-scan>approve', false]])
+    expect(L.edges.every((e) => e.segs.every(([a, b, c, d]) => (b === d && b < L.top) || L.gaps.some((g) => Math.min(a, c) >= g.x && Math.max(a, c) <= g.x + g.w)))).toBe(true)
   })
 })
 

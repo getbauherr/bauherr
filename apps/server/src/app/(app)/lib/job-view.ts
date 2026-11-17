@@ -13,7 +13,7 @@ export const hasJobs = (def: StageDef): boolean => !!def.jobs?.length
 
 /** The Jobs of a stage in order, with their depth in the `needs` graph; a plan stage with an approval gate gets its human `approve` Job last (the gate is compiled out of `jobs`). */
 export const stageJobs = (def: StageDef): ViewJob[] => {
-  const list = jobsOf(def).map((j) => ({ id: j.id, title: j.id === def.name ? def.title : humanize(j.id), kind: j.kind, role: j.role, skill: j.skill, by: j.by, needs: j.needs, when: j.when, blocking: j.blocking }))
+  const list = jobsOf(def).map((j) => ({ id: j.id, title: j.id === def.name ? def.title : humanize(j.id).replace(/\bAx\b/g, 'AX'), kind: j.kind, role: j.role, skill: j.skill, by: j.by, needs: j.needs, when: j.when, blocking: j.blocking }))
   if (def.kind === 'plan' && def.jobs && def.gate === 'human') list.push({ id: 'approve', title: 'Approve', kind: 'human', role: undefined, skill: undefined, by: def.gate_by ?? 'bauherr', needs: list.map((j) => j.id), when: undefined, blocking: true })
   const depth = new Map<string, number>()
   return list.map((j) => {
@@ -41,13 +41,15 @@ export const chipsOf = (wf: Workflow, counts: Map<string, Map<string, number[]>>
   new Map(wf.stages.filter((s) => counts.has(s.name) && hasJobs(s)).map((s) => [s.name, stageJobs(s).map((j) => ({ id: j.id, title: j.title, count: counts.get(s.name)!.get(j.id)!.length }))]))
 
 export const BOX = { w: 232, h: 272, gap: 56, row: 16, lane: 8 }
-export type JobLayout = { width: number; height: number; nodes: Map<string, { x: number; y: number }>; edges: { key: string; d: string; skip: boolean }[] }
+export type Seg = [x1: number, y1: number, x2: number, y2: number]
+export type JobLayout = { width: number; height: number; top: number; gaps: { x: number; w: number }[]; nodes: Map<string, { x: number; y: number }>; edges: { key: string; skip: boolean; segs: Seg[] }[] }
 
-/** Columns by dependency depth, one row per Job of a column in order; a `needs` edge runs from the right side of the needed Job to the left side of the Job, a skip over a column along a lane above all cards. Coordinates are pixels (fixed card size, so it renders on the server). */
+/** Columns by dependency depth, one row per Job of a column in order; a `needs` edge runs from the right side of the needed Job to the left side of the Job, a skip over a column along a lane above all cards. Every edge is a list of axis-aligned segments that lie in the gaps between columns or in the lane above (never over a card), so each can be drawn by a small SVG that overlaps no card. Coordinates are pixels (fixed card size, so it renders on the server). */
 export const layoutJobs = (jobs: ViewJob[]): JobLayout => {
   const rows = new Map<number, number>()
   const nodes = new Map<string, { x: number; y: number }>()
-  const skips = jobs.flatMap((j) => j.needs.filter((n) => j.depth - jobs.find((x) => x.id === n)!.depth > 1).map((n) => `${n}>${j.id}`))
+  const depthOf = new Map(jobs.map((j) => [j.id, j.depth]))
+  const skips = jobs.flatMap((j) => j.needs.filter((n) => j.depth - depthOf.get(n)! > 1).map((n) => `${n}>${j.id}`))
   const top = skips.length ? skips.length * BOX.lane + BOX.lane : 2
   for (const j of jobs) {
     const row = rows.get(j.depth) ?? 0
@@ -59,11 +61,15 @@ export const layoutJobs = (jobs: ViewJob[]): JobLayout => {
       const a = nodes.get(n)!
       const b = nodes.get(j.id)!
       const [x1, y1, x2, y2] = [a.x + BOX.w, a.y + BOX.h / 2, b.x, b.y + BOX.h / 2]
-      const skip = j.depth - jobs.find((x) => x.id === n)!.depth > 1
-      const lane = BOX.lane * (skips.length - skips.indexOf(`${n}>${j.id}`))
-      return { key: `${n}>${j.id}`, skip, d: skip ? `M${x1} ${y1}H${x1 + BOX.gap / 2}V${lane}H${x2 - BOX.gap / 2}V${y2}H${x2}` : `M${x1} ${y1}H${x1 + BOX.gap / 2}V${y2}H${x2}` }
+      const skip = j.depth - depthOf.get(n)! > 1
+      const key = `${n}>${j.id}`
+      const [xa, xb] = [x1 + BOX.gap / 2, x2 - BOX.gap / 2]
+      const lane = BOX.lane * (skips.length - skips.indexOf(key))
+      const path: Seg[] = skip ? [[x1, y1, xa, y1], [xa, y1, xa, lane], [xa, lane, xb, lane], [xb, lane, xb, y2], [xb, y2, x2, y2]] : [[x1, y1, xa, y1], [xa, y1, xa, y2], [xa, y2, x2, y2]]
+      return { key, skip, segs: path.filter(([p, q, r, s]) => p !== r || q !== s) }
     }),
   )
   const depth = Math.max(...jobs.map((j) => j.depth)) + 1
-  return { width: depth * BOX.w + (depth - 1) * BOX.gap + 4, height: top + Math.max(...rows.values()) * (BOX.h + BOX.row) - BOX.row + 2, nodes, edges }
+  const gaps = Array.from({ length: depth - 1 }, (_, c) => ({ x: 2 + c * (BOX.w + BOX.gap) + BOX.w, w: BOX.gap }))
+  return { width: depth * BOX.w + (depth - 1) * BOX.gap + 4, height: top + Math.max(...rows.values()) * (BOX.h + BOX.row) - BOX.row + 2, top, gaps, nodes, edges }
 }

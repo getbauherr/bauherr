@@ -78,7 +78,7 @@ test('a step with Jobs lists them read-only and points to the YAML tab', async (
   await open(page)
   await page.getByTestId('step').filter({ hasText: /^Plan/ }).first().click()
   const jobs = page.getByTestId('editor-jobs')
-  await expect(jobs.locator('li')).toHaveText([/^Plan/, /^Ax scan/, /^Approve/])
+  await expect(jobs.locator('li')).toHaveText([/^Plan/, /^AX scan/, /^Approve/])
   await expect(jobs).toContainText('edit them in the YAML tab')
 })
 

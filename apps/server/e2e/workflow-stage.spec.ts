@@ -28,7 +28,7 @@ const ticketPage = async (page: Page, title: string) => {
 
 test('the Plan node lists its Jobs in order with the Tickets in each; a stage without Jobs shows none', async ({ page }) => {
   const chips = page.locator('[data-testid=job-chips][data-stage=plan]')
-  await expect(chips.getByTestId('job-chip')).toHaveText([/^Plan\d/, /^Ax scan\d/, /^Approve\d/])
+  await expect(chips.getByTestId('job-chip')).toHaveText([/^Plan\d/, /^AX scan\d/, /^Approve\d/])
   await expect(chip(page, 'ax-scan')).toHaveAttribute('data-count', '1')
   await expect(chip(page, 'approve')).toHaveAttribute('data-count', '2')
   await expect(chip(page, 'plan')).toHaveAttribute('data-count', '0')
@@ -45,7 +45,7 @@ test('the drill-down draws the Job graph with what each Job is and who is in it,
   const cards = page.getByTestId('job-card')
   await expect(cards).toHaveCount(3)
   expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-job')))).toEqual(['plan', 'ax-scan', 'approve'])
-  expect(await page.locator('[data-edge]').evaluateAll((els) => els.map((e) => e.getAttribute('data-edge')))).toEqual(['plan>ax-scan', 'plan>approve', 'ax-scan>approve'])
+  expect((await page.locator('[data-edge]').evaluateAll((els) => els.map((e) => e.getAttribute('data-edge')))).sort()).toEqual(['ax-scan>approve', 'plan>approve', 'plan>ax-scan'])
   await expect(page.locator('[data-edge="plan>approve"]')).toHaveAttribute('data-skip', 'true')
   const scan = page.locator('[data-testid=job-card][data-job=ax-scan]')
   await expect(scan.getByTestId('job-who')).toHaveText('Worked by Agent experience engineer')
@@ -61,7 +61,7 @@ test('the drill-down draws the Job graph with what each Job is and who is in it,
 
   await scan.getByRole('link', { name: 'Show only these in the list' }).click()
   await expect(page).toHaveURL(/\?job=ax-scan$/)
-  await expect(page.getByTestId('job-filter')).toContainText('Ax scan')
+  await expect(page.getByTestId('job-filter')).toContainText('AX scan')
   await expect(page.locator('.col[data-stage=plan] tbody tr')).toHaveCount(1)
   await expect(page.locator('.col[data-stage=plan]')).toContainText('Stage lab: scan in flight')
   await page.getByTestId('job-filter').getByRole('link', { name: 'Show all Tickets of the stage' }).click()
@@ -94,7 +94,7 @@ test('the Ticket page nests the Jobs under Plan: working, failed with the reason
   await expect(job(jobs, 'plan').getByTestId('step-job-duration')).toBeVisible()
   await expect(job(jobs, 'ax-scan')).toHaveAttribute('data-status', 'working')
   await expect(job(jobs, 'approve')).toHaveAttribute('data-status', 'pending')
-  await expect(page.getByTestId('strip-jobs')).toContainText('Ax scan working')
+  await expect(page.getByTestId('strip-jobs')).toContainText('AX scan working')
 
   jobs = await ticketPage(page, 'scan failed')
   await expect(job(jobs, 'ax-scan')).toHaveAttribute('data-status', 'failed')

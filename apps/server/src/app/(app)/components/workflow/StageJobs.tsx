@@ -47,16 +47,21 @@ export function StageJobs({ wf, jobs, tickets, selected, hrefOf }: { wf: Workflo
   return (
     <div className="overflow-x-auto" data-testid="stage-jobs">
       <ol className="relative m-0 flex list-none flex-col gap-2 p-0 sm:block sm:[height:var(--h)] sm:[width:var(--w)]" style={{ '--h': `${L.height}px`, '--w': `${L.width}px` } as CSSProperties} aria-label="Jobs">
-        <svg className="pointer-events-none absolute top-0 left-0 hidden text-muted-foreground sm:block" width={L.width} height={L.height} aria-hidden>
-          <defs>
-            <marker id="job-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" fill="currentColor" /></marker>
-          </defs>
-          {L.edges.map((e) => <path key={e.key} data-edge={e.key} data-skip={e.skip || undefined} d={e.d} className={cn('fill-none stroke-current [stroke-width:1.5]', e.skip && '[stroke-dasharray:5_4]')} markerEnd="url(#job-arrow)" />)}
-        </svg>
+        {[{ x: 0, w: L.width, h: L.top, lane: true }, ...L.gaps.map((g) => ({ ...g, h: L.height, lane: false }))].map((r, i) => {
+          const mine = L.edges.flatMap((e) => e.segs.flatMap((s, k) => ((s[1] === s[3] && s[1] < L.top) === r.lane && (r.lane || (Math.min(s[0], s[2]) >= r.x && Math.max(s[0], s[2]) <= r.x + r.w)) ? [{ e, s, last: k === e.segs.length - 1 }] : [])))
+          return (
+            <svg key={r.x + (r.lane ? 'lane' : '')} className="pointer-events-none absolute top-0 hidden text-muted-foreground sm:block" style={{ left: r.x }} width={r.w} height={r.h} aria-hidden>
+              {i === 0 && <defs><marker id="job-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" fill="currentColor" /></marker></defs>}
+              <g transform={`translate(${-r.x} 0)`}>
+                {mine.map(({ e, s, last }, k) => <path key={`${e.key}${k}`} {...(last && { 'data-edge': e.key, 'data-skip': e.skip || undefined, markerEnd: 'url(#job-arrow)' })} d={`M${s[0]} ${s[1]}L${s[2]} ${s[3]}`} className={cn('fill-none stroke-current [stroke-width:1.5]', e.skip && '[stroke-dasharray:5_4]')} />)}
+              </g>
+            </svg>
+          )
+        })}
         {jobs.map((j) => {
           const p = L.nodes.get(j.id)!
           return (
-            <li key={j.id} className="sm:absolute sm:[height:var(--bh)] sm:[left:var(--x)] sm:[top:var(--y)] sm:[width:var(--bw)]" style={{ '--x': `${p.x}px`, '--y': `${p.y}px`, '--bw': `${BOX.w}px`, '--bh': `${BOX.h}px` } as CSSProperties}>
+            <li key={j.id} className="sm:absolute sm:z-10 sm:[height:var(--bh)] sm:[left:var(--x)] sm:[top:var(--y)] sm:[width:var(--bw)]" style={{ '--x': `${p.x}px`, '--y': `${p.y}px`, '--bw': `${BOX.w}px`, '--bh': `${BOX.h}px` } as CSSProperties}>
               <JobCard wf={wf} job={j} after={j.needs.map((n) => titleOf.get(n) ?? n)} tickets={tickets.get(j.id) ?? []} selected={selected === j.id} href={hrefOf(j.id)} />
             </li>
           )

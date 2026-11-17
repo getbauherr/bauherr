@@ -86,7 +86,7 @@ export function StepPanel({ yaml, doc, findings, name, roles, skills, pathSets, 
         <div className="flex flex-col gap-1.5" data-testid="editor-jobs">
           <span className="small font-medium">Jobs</span>
           <ol className="small m-0 flex list-none flex-col gap-1 p-0">
-            {(s.jobs as Doc[]).map((j) => <li key={j.id} data-job={j.id}>{humanize(j.id)} <span className="text-muted-foreground">{j.kind === 'human' ? (j.by === 'product-owner' ? 'asked of the Product owner' : 'asked of you') : (roles.find((r) => r.id === (j.role ?? s.role))?.title ?? 'agent')}</span></li>)}
+            {(s.jobs as Doc[]).map((j) => <li key={j.id} data-job={j.id}>{humanize(j.id).replace(/\bAx\b/g, 'AX')} <span className="text-muted-foreground">{j.kind === 'human' ? (j.by === 'product-owner' ? 'asked of the Product owner' : 'asked of you') : (roles.find((r) => r.id === (j.role ?? s.role))?.title ?? 'agent')}</span></li>)}
           </ol>
           <span className="small text-muted-foreground">Jobs are read-only here: edit them in the YAML tab.</span>
         </div>
