@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { tools } from '../src/lib/mcp-tools'
-import { loadMap, outputs, render, root, STATUSES } from '../scripts/feature-map'
+import { loadMap, outputs, PROOFS, render, root, STATUSES } from '../scripts/feature-map'
 
 const map = loadMap()
 const features = map.features
@@ -39,6 +39,11 @@ describe('feature map', () => {
     const ids = features.map((f) => f.id)
     const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))]
     expect(dupes, 'docs/feature-map.yaml: feature ids must be unique, rename these').toEqual([])
+  })
+
+  it('names a proof kind for every feature', () => {
+    const bad = features.filter((f) => !PROOFS.includes(f.proof)).map((f) => `${f.id}: ${f.proof}`)
+    expect(bad, `docs/feature-map.yaml: proof must be one of ${PROOFS.join(', ')}`).toEqual([])
   })
 
   it('lists only source and test paths that exist', () => {
