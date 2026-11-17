@@ -1,0 +1,2141 @@
+intro: "Every capability of Bauherr on `main`, where you reach it, and how well it is reachable. Paths are in the app at `/`. Settings pages are under `/settings/`, grouped by scope: Account, Factory, Workspace, Admin."
+legend: |-
+  Status: **Live** (in the UI and easy to find), **Live, hard to find** (in the UI, but behind an Admin disclosure or a conditional page), **No UI** (works, but only a job, the MCP server, the CLI or the environment shows or drives it), **In progress** (built, not on `main` yet).
+
+  Taken from a code audit of the UI and the backend. The workflow itself: [spec/workflow.md](spec/workflow.md). The pages: [ui.md](ui.md).
+notes:
+  Requests: |-
+    ### Urgent work
+
+    An urgent bug does not wait in the queue. In the request card the type Bug offers the urgency "Urgent: something is broken for users now" (not for other types, and only while Settings › Factory › Workflow has the fast lane on; when it is off the select says why). It needs the reason: what is broken, for whom, since when. An Admin who sends it puts the Ticket on the fast lane at once (`bauherr:expedite`, the same path as the button, vouched for by an `expedite` touch). Anyone else's request is filed with `bauherr:expedite-proposed`: the Inbox shows "Fast lane for <title>?" first, with the requester's reason, as soon as the Ticket exists (no Triage Run has to finish first), and an Admin decides with one click. The request row reads "Urgent · waiting for the Bauherr", then "Fast lane". On the Ticket page the button "Put on the fast lane" does the same for any open Ticket (tooltip: "Skips Triage and plan approval, jumps the queue. One at a time."). One Ticket per Workspace is on the lane at a time; a second waits. The rules of the lane itself are in [spec/workflow.md](spec/workflow.md) (Expedite lane).
+  Known gaps: |-
+    - No UI, by design: `return_to_build` (agent repair), the connection slug, job-level status; see "Not in the UI" in [ui.md](ui.md).
+    - Written but never shown: `oidcSynced`, `productionApprovedSha`.
+    - Security scan findings have no page of their own: the last scan links its Run and the finding Tickets. The same holds for the docs check.
+features:
+  - id: workflow-graph
+    area: Workflow
+    title: Workflow graph
+    summary: The stages as a graph with open Tickets, who waits on whom, medians and the human checkpoints; the home page
+    status: live
+    page: /
+    reach: "`/`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/page.tsx
+      - apps/server/src/app/(app)/components/workflow/WorkflowGraph.tsx
+      - apps/server/src/app/(app)/lib/workflow-view.ts
+    tests:
+      - apps/server/tests/graph.test.ts
+      - apps/server/tests/overview.test.ts
+      - apps/server/e2e/graph.spec.ts
+      - apps/server/e2e/overview.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: graph-and-epics-views
+    area: Workflow
+    title: Graph and Epics views
+    summary: The Ticket dependency graph, and parent Tickets with their sub-tickets
+    status: live
+    page: /
+    reach: "`/?view=graph`, `/?view=epics`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/TicketGraph.tsx
+      - apps/server/src/app/(app)/components/Epics.tsx
+      - apps/server/src/app/(app)/lib/graph.ts
+    tests:
+      - apps/server/tests/graph.test.ts
+      - apps/server/tests/epics.test.ts
+      - apps/server/e2e/graph.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: stage-table-and-ranking
+    area: Workflow
+    title: Stage table and ranking
+    summary: Tickets per stage; drag, Alt+arrows or the row menu rank them
+    status: live
+    page: /
+    reach: "`/`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/workflow/SortableRows.tsx
+      - apps/server/src/app/(app)/components/workflow/TicketList.tsx
+      - apps/server/src/lib/stage-move.ts
+    tests:
+      - apps/server/tests/rank.test.ts
+      - apps/server/tests/stage-guard.test.ts
+      - apps/server/tests/backlog.test.ts
+      - apps/server/e2e/workflow-rank.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: stages-from-the-factory-file
+    area: Workflow
+    title: Stages from the factory file
+    summary: Stage kinds (triage, plan, build, review, release, container, done, agent, human), roles, outcomes and WIP in one file; [`pack/factory.yaml`](https://github.com/getbauherr/bauherr/blob/main/pack/factory.yaml) is the default
+    status: live
+    page: /workflow/edit
+    reach: '`/workflow/edit`; "Edit workflow" on `/` (Admin)'
+    mcp: []
+    source:
+      - apps/server/src/lib/factory.ts
+      - apps/server/src/lib/workflow.ts
+      - pack/factory.yaml
+    tests:
+      - apps/server/tests/factory.test.ts
+      - apps/server/tests/workflow.test.ts
+      - apps/server/tests/factory-cache-race.test.ts
+      - apps/server/tests/default-workflow-guard.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: wip-limits
+    area: Workflow
+    title: WIP limits
+    summary: A cap on open Tickets per stage
+    status: live
+    page: /workflow/edit
+    reach: Workflow editor, "at most N tickets at a time" on a step (`/workflow/edit`, Admin)
+    mcp: []
+    source:
+      - apps/server/src/lib/wip.ts
+      - apps/server/src/lib/wip-limits.ts
+    tests:
+      - apps/server/tests/wip.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: overlap-hold
+    area: Workflow
+    title: Overlap hold
+    summary: A Build waits while another Ticket touches the same paths; paths that never hold, with suggestions
+    status: live
+    page: /settings/workflow
+    reach: Settings › Factory › Workflow (Admin)
+    mcp: []
+    source:
+      - apps/server/src/lib/overlap.ts
+      - apps/server/src/lib/holds.ts
+      - apps/server/src/app/(app)/components/HoldsStrip.tsx
+      - apps/server/src/app/(app)/(shell)/settings/workflow/page.tsx
+    tests:
+      - apps/server/tests/overlap.test.ts
+      - apps/server/tests/holds.test.ts
+      - apps/server/tests/holds-strip.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: fast-lane
+    area: Workflow
+    title: Fast lane (expedite lane)
+    summary: An urgent bug skips Triage and plan approval and, per Product, staging approval; see [Urgent work](#urgent-work)
+    status: live
+    page: null
+    reach: Request card "Urgent"; Ticket page "Put on the fast lane"; switch in the workflow editor
+    mcp:
+      - release_fast_lane
+    source:
+      - apps/server/src/lib/expedite.ts
+    tests:
+      - apps/server/tests/expedite.test.ts
+      - apps/server/tests/expedite-gates.test.ts
+      - apps/server/tests/fast-lane-hold.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: run-mode-per-stage
+    area: Workflow
+    title: Run mode per stage
+    summary: Autonomous (the Runner) or session (your Claude Code)
+    status: live
+    page: /settings/models
+    reach: Settings › Factory › Models & budget (`/settings/models`)
+    mcp: []
+    source:
+      - apps/server/src/lib/mode.ts
+      - apps/server/src/app/(app)/(shell)/settings/models/page.tsx
+    tests:
+      - apps/server/tests/workflow.test.ts
+      - apps/server/tests/run-tier.test.ts
+      - apps/server/tests/agent-stage-autonomous.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: one-factory-file-per-workspace
+    area: Workflow
+    title: One factory file per Workspace
+    summary: Edit visually or as YAML in a draft, review the changes in words, apply (versioned), history with restore, download; stages can be added, renamed, removed and reordered, with exactly one build, review, release chain
+    status: live
+    page: /workflow/edit
+    reach: "`/workflow/edit`; `bauherr apply -f <file> --workspace <slug> [--dry-run]`, `bauherr export`; `GET`/`PUT /api/workspaces/<slug>/factory`; `BAUHERR_FACTORY_FILE` at boot"
+    mcp: []
+    source:
+      - apps/server/src/lib/workflow-edit.ts
+      - apps/server/src/app/(app)/components/workflow-editor/WorkflowEditor.tsx
+      - apps/server/src/app/(app)/(shell)/workflow/edit/page.tsx
+      - apps/server/src/app/api/workspaces/[slug]/factory/route.ts
+      - packages/cli/src/factory.ts
+    tests:
+      - apps/server/tests/workflow-edit.test.ts
+      - apps/server/tests/custom-apply.test.ts
+      - apps/server/e2e/workflow-editor.spec.ts
+      - packages/cli/test/cli.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: custom-agent-and-human-stages
+    area: Workflow
+    title: Custom `agent` and `human` stages
+    summary: A role works the Ticket and reports an outcome, or a person picks one; outcomes route Tickets; shown in the graph, Inbox, Path and Steps, Insights
+    status: live
+    page: null
+    reach: Factory file
+    mcp:
+      - decide
+    source:
+      - apps/server/src/lib/agent-stage.ts
+      - apps/server/src/lib/workflow-rules.ts
+    tests:
+      - apps/server/tests/custom-flow.test.ts
+      - apps/server/tests/custom-ui.test.ts
+      - apps/server/tests/human-gates.test.ts
+      - apps/server/tests/agent-stage-autonomous.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: conditional-steps
+    area: Workflow
+    title: Conditional steps
+    summary: A specialist step (security, UX, tests) runs only when the change touches a path set of the Product, has a label or is of a request type; otherwise it is skipped and the Steps list says why
+    status: live
+    page: /workflow/edit
+    reach: Workflow editor, "When does this step run?" (`/workflow/edit`); Product › Checks & merging › Path sets; presets Standard and Careful
+    mcp: []
+    source:
+      - apps/server/src/lib/workflow-when.ts
+      - apps/server/src/lib/path-sets.ts
+      - apps/server/src/lib/glob.ts
+      - apps/server/src/app/(app)/components/workflow-editor/When.tsx
+    tests:
+      - apps/server/tests/workflow-when.test.ts
+      - apps/server/tests/conditional-stages.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: approve-plan-on-by-default
+    area: Workflow
+    title: Approve plan on by default
+    summary: Every plan waits for the owner; remove the gate in the factory file to let plans through
+    status: live
+    page: null
+    reach: Factory file
+    mcp: []
+    source:
+      - pack/factory.yaml
+      - apps/server/src/lib/gates.ts
+    tests:
+      - apps/server/tests/gates.test.ts
+      - apps/server/tests/default-workflow-guard.test.ts
+      - apps/server/tests/human-gates.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: triage
+    area: Workflow
+    title: Triage
+    summary: A Triage Run reads a new Ticket and either sends it to planning or posts questions for the owner; it can propose the fast lane
+    status: live
+    page: null
+    reach: Automatic for every new Ticket; questions appear in the Inbox
+    mcp:
+      - submit_triage
+    source:
+      - pack/skills/triage/SKILL.md
+      - apps/server/src/lib/mcp-tools.ts
+    tests:
+      - apps/server/tests/triage.test.ts
+      - apps/server/tests/triage-stop.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: plan-stage
+    area: Workflow
+    title: Plan stage
+    summary: A Plan Run writes the plan comment; it starts with a TL;DR (decision, recommendation, why, risk) and waits for approval
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`, Inbox card"
+    mcp:
+      - submit_plan
+    source:
+      - apps/server/src/lib/tldr.ts
+      - pack/skills/plan/hotfix.md
+    tests:
+      - apps/server/tests/plan.test.ts
+      - apps/server/tests/submit-plan.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: failure-investigation
+    area: Workflow
+    title: Failure investigation
+    summary: A Ticket whose Build failed twice gets an investigation Plan Run that records the cause and one decision in its investigation Comment
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`"
+    mcp:
+      - submit_investigation
+    source:
+      - apps/server/src/lib/investigation.ts
+      - pack/skills/plan/investigation.md
+    tests:
+      - apps/server/tests/investigation.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: ticket-page
+    area: Tickets
+    title: Ticket page
+    summary: Next-step bar, the decision sheet, plan, review findings, escalations, investigation and worklog
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/tickets/[id]/page.tsx
+      - apps/server/src/lib/next-step.ts
+      - apps/server/src/app/(app)/components/NextStepBar.tsx
+      - apps/server/src/app/(app)/components/TicketStatus.tsx
+    tests:
+      - apps/server/tests/next-step.test.ts
+      - apps/server/tests/ticket-live.test.ts
+      - apps/server/e2e/ticket.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: ticket-path
+    area: Tickets
+    title: Path
+    summary: The stages this Ticket visited, on the same graph
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/TicketGraph.tsx
+      - apps/server/src/lib/history.ts
+    tests:
+      - apps/server/tests/history.test.ts
+      - apps/server/tests/history-phase.test.ts
+      - apps/server/e2e/ticket.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: steps-timeline
+    area: Tickets
+    title: Steps timeline
+    summary: Every wait and every piece of work with its executor, session, client, model, outcome and cost
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/workflow/TicketSteps.tsx
+      - apps/server/src/app/(app)/lib/steps.ts
+    tests:
+      - apps/server/tests/history-runner.test.ts
+      - apps/server/tests/history.test.ts
+      - apps/server/e2e/ticket.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: epics-and-sub-tickets
+    area: Tickets
+    title: Epics and sub-tickets
+    summary: "Split a plan into slices that inherit the approval: built one after the other on one epic branch, each reviewed on its own range, then one epic review and one merge"
+    status: live
+    page: /
+    reach: "`/?view=epics`, `/tickets/[id]`"
+    mcp: []
+    source:
+      - apps/server/src/lib/epic.ts
+      - apps/server/src/app/(app)/lib/epics.ts
+      - apps/server/src/app/(app)/components/Epics.tsx
+      - apps/server/src/app/(app)/components/EpicControls.tsx
+      - apps/server/src/app/(app)/components/TicketSplit.tsx
+    tests:
+      - apps/server/tests/epics.test.ts
+      - apps/server/tests/epic-flow.test.ts
+      - apps/server/tests/epic-mcp.test.ts
+      - apps/server/tests/sub-tickets.test.ts
+      - apps/server/tests/ticket-split.test.ts
+      - apps/server/tests/epic-run-ctx.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: repair
+    area: Tickets
+    title: Repair
+    summary: Set the stage, clear a wait, reset counters (with the counters' values), move to the top
+    status: hard-to-find
+    page: /tickets/[id]
+    reach: "`/tickets/[id]` details (Admin)"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/FixState.tsx
+      - apps/server/src/lib/actions.ts
+    tests:
+      - apps/server/tests/repair.test.ts
+      - apps/server/tests/state-guards.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: ticket-by-number
+    area: Tickets
+    title: Ticket by number
+    summary: A link such as `/tickets/n/42`, used by the chat
+    status: live
+    page: /tickets/n/[number]
+    reach: "`/tickets/n/[number]`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/tickets/n/[number]/page.tsx
+    tests:
+      - apps/server/e2e/team.spec.ts
+      - apps/server/e2e/chat-dock.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: run-page
+    area: Tickets
+    title: Run page
+    summary: Timeline and list of Steps, tool calls, evidence, goal, gateway tokens, re-run, release lock, relink MR
+    status: hard-to-find
+    page: /runs/[id]
+    reach: "`/runs/[id]` (Admin)"
+    mcp:
+      - relink_mr
+    source:
+      - apps/server/src/app/(app)/(shell)/runs/[id]/page.tsx
+      - apps/server/src/app/(app)/components/RunViews.tsx
+      - apps/server/src/app/(app)/lib/run.ts
+    tests:
+      - apps/server/e2e/run.spec.ts
+      - apps/server/tests/run-claim.test.ts
+      - apps/server/tests/repair.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: run-list
+    area: Tickets
+    title: Run list
+    summary: All Runs of the Workspace with status
+    status: live
+    page: /runs
+    reach: "`/runs` (Admin)"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/runs/page.tsx
+      - apps/server/src/app/(app)/components/RunsTable.tsx
+    tests:
+      - apps/server/e2e/run.spec.ts
+      - apps/server/tests/run-kind.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: successor-run-chain
+    area: Tickets
+    title: Successor-run chain
+    summary: 'Which Run replaced a failed one: "Continues Run #x" and "Continued by Run #y"'
+    status: live
+    page: /runs/[id]
+    reach: "`/runs/[id]`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/lib/run.ts
+      - apps/server/src/lib/liveness.ts
+    tests:
+      - apps/server/tests/liveness.test.ts
+      - apps/server/tests/lease.test.ts
+      - apps/server/tests/escalation.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: return-to-build
+    area: Tickets
+    title: Agent repair of a dead Ticket (`return_to_build`)
+    summary: An agent sends a stuck Ticket back to Build
+    status: no-ui
+    page: null
+    reach: MCP only
+    mcp:
+      - return_to_build
+    source:
+      - apps/server/src/lib/mcp-tools.ts
+      - apps/server/src/lib/liveness.ts
+    tests:
+      - apps/server/tests/agent-sessions.test.ts
+      - apps/server/tests/liveness.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: inbox
+    area: Decisions
+    title: Inbox
+    summary: "One prepared card per decision: the ask, a recommendation, the facts and the real options; grouped by checkpoint, filtered by Product"
+    status: live
+    page: /inbox
+    reach: "`/inbox`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/inbox/page.tsx
+      - apps/server/src/app/(app)/components/InboxView.tsx
+      - apps/server/src/app/(app)/lib/inbox.ts
+      - apps/server/src/app/(app)/lib/inbox-view.ts
+    tests:
+      - apps/server/tests/inbox.test.ts
+      - apps/server/tests/inbox-view.test.ts
+      - apps/server/tests/needs-you-column.test.ts
+      - apps/server/e2e/inbox.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: approve-plan
+    area: Decisions
+    title: Approve plan
+    summary: Approve the plan, refused while a critical decision is open
+    status: live
+    page: /inbox
+    reach: Inbox card, Ticket page, chat
+    mcp:
+      - approve
+    source:
+      - apps/server/src/app/(app)/components/DecisionCard.tsx
+      - apps/server/src/lib/decision.ts
+      - apps/server/src/lib/gates.ts
+    tests:
+      - apps/server/tests/decision.test.ts
+      - apps/server/tests/gates.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: answer-questions-and-decisions
+    area: Decisions
+    title: Answer questions and decisions
+    summary: 'The Ticket page of a Ticket that waits for answers is the conversation: chat on the left (the role as partner, who really speaks, question card, options and free text, model and cost chips, screenshots), the refined Ticket as a living artifact on the right (open-points checklist, changed sections highlighted, reviewable diff, version), "Send to planning" at its foot; the Inbox card links to it'
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`, Inbox"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/conversation/RefineConversation.tsx
+      - apps/server/src/lib/refine/engine.ts
+      - apps/server/src/lib/refine/artifact.ts
+      - apps/server/src/lib/refine/model.ts
+      - apps/server/src/app/api/refine/[ticket]/turn/route.ts
+    tests:
+      - apps/server/tests/refine-engine.test.ts
+      - apps/server/tests/refine-artifact.test.ts
+      - apps/server/tests/refine-model.test.ts
+      - apps/server/tests/conversation-view.test.ts
+      - apps/server/e2e/conversation.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: accept-staging-approve-production
+    area: Decisions
+    title: Accept on staging (optional), approve production
+    summary: Accept a change on staging, then approve the deploy
+    status: live
+    page: /inbox
+    reach: Inbox card, Ticket page, chat
+    mcp:
+      - accept_staging
+      - approve_production
+      - post_staging_summary
+    source:
+      - apps/server/src/lib/staging.ts
+      - apps/server/src/lib/release.ts
+      - apps/server/src/app/(app)/components/ApprovalBrief.tsx
+    tests:
+      - apps/server/tests/production-gate.test.ts
+      - apps/server/tests/approval-brief.test.ts
+      - apps/server/tests/human-gates.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: review-round-cap
+    area: Decisions
+    title: Review round cap
+    summary: Give the review one more round, or stop
+    status: live
+    page: /inbox
+    reach: Inbox card, Ticket page
+    mcp:
+      - grant_review_round
+      - stop_review
+    source:
+      - apps/server/src/lib/actions.ts
+      - apps/server/src/lib/mcp-tools.ts
+    tests:
+      - apps/server/tests/review.test.ts
+      - apps/server/tests/decision.test.ts
+      - apps/server/tests/inbox.test.ts
+      - apps/server/e2e/review.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: request-changes-back-to-build-or-backlog
+    area: Decisions
+    title: Request changes, back to Build or backlog
+    summary: Send a Ticket back with a note
+    status: live
+    page: /tickets/[id]
+    reach: Ticket page, Inbox
+    mcp:
+      - request_changes
+      - send_back
+    source:
+      - apps/server/src/app/(app)/components/SendBackDialog.tsx
+      - apps/server/src/lib/send-back-options.ts
+    tests:
+      - apps/server/tests/send-back.test.ts
+      - apps/server/tests/send-back-dialog.test.ts
+      - apps/server/e2e/send-back.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: notifications-at-checkpoints
+    area: Decisions
+    title: Notifications at checkpoints
+    summary: The Inbox badge counts what needs you
+    status: live
+    page: /inbox
+    reach: Sidebar badge
+    mcp: []
+    source:
+      - apps/server/src/lib/needs-you.ts
+      - apps/server/src/app/(app)/lib/needs-you.ts
+      - apps/server/src/app/(app)/components/AppSidebar.tsx
+    tests:
+      - apps/server/tests/needs-you-column.test.ts
+      - apps/server/tests/checkpoints-who.test.ts
+      - apps/server/e2e/checkpoints-who.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: plain-word-progress-for-product-owners
+    area: Decisions
+    title: Plain-word progress for product owners
+    summary: "One Comment on the issue, edited in place: where it is, what happens next, a six-step path; a new Comment mentions the author only for a question, ready on staging, released, stuck. The same path on the Requests pages. Text from the editable `progress` template"
+    status: live
+    page: /requests
+    reach: The issue; `/requests`, `/requests/[id]`; switch in Settings › Workspace › General
+    mcp: []
+    source:
+      - apps/server/src/lib/progress.ts
+      - apps/server/src/app/(app)/components/ProgressPath.tsx
+    tests:
+      - apps/server/tests/progress.test.ts
+      - apps/server/e2e/request-page.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: docked-chat
+    area: Chat
+    title: Docked chat
+    summary: Ask about the page you are on; reads the factory
+    status: live
+    page: null
+    reach: Every page, `Ctrl+J`
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/chat/ChatDock.tsx
+      - apps/server/src/lib/chat/engine.ts
+      - apps/server/src/lib/chat/tools.ts
+      - apps/server/src/app/api/chat/threads/[id]/run/route.ts
+    tests:
+      - apps/server/tests/chat.test.ts
+      - apps/server/tests/chat-guard.test.ts
+      - apps/server/e2e/chat-dock.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: stored-threads
+    area: Chat
+    title: Stored threads
+    summary: Threads per person and Workspace, with titles and a thread list
+    status: live
+    page: null
+    reach: Chat dock
+    mcp: []
+    source:
+      - apps/server/src/lib/chat/threads.ts
+      - apps/server/src/app/(app)/components/chat/thread-list.tsx
+    tests:
+      - apps/server/tests/chat.test.ts
+      - apps/server/e2e/chat-dock.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: confirm-cards
+    area: Chat
+    title: Confirm cards
+    summary: An action (approve, accept, stop) is shown as a card and runs only when you confirm
+    status: live
+    page: null
+    reach: Chat dock
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/chat/tools.tsx
+      - apps/server/src/app/api/chat/threads/[id]/confirm/route.ts
+    tests:
+      - apps/server/tests/chat-guard.test.ts
+      - apps/server/e2e/chat-dock.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: chat-images
+    area: Chat
+    title: Images
+    summary: Paste or drop a screenshot into the composer
+    status: live
+    page: null
+    reach: Chat dock
+    mcp: []
+    source:
+      - apps/server/src/lib/intake/media.ts
+      - apps/server/src/app/(app)/components/conversation/Composer.tsx
+    tests:
+      - apps/server/tests/media.test.ts
+      - apps/server/tests/chat.test.ts
+      - apps/server/e2e/composer-attach.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: chat-feedback
+    area: Chat
+    title: Feedback
+    summary: Thumbs and reasons per answer; read by Admins
+    status: live
+    page: /settings/chat-feedback
+    reach: Chat dock; `/settings/chat-feedback`
+    mcp: []
+    source:
+      - apps/server/src/app/api/chat/threads/[id]/feedback/route.ts
+      - apps/server/src/app/(app)/components/chat/feedback.tsx
+      - apps/server/src/app/(app)/(shell)/settings/chat-feedback/page.tsx
+    tests:
+      - apps/server/tests/chat.test.ts
+      - apps/server/e2e/chat-dock.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: command-palette
+    area: Chat
+    title: Command palette
+    summary: Pages, Tickets by number or words, and actions
+    status: live
+    page: null
+    reach: "`Ctrl+K`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/CommandMenu.tsx
+      - apps/server/src/app/(app)/lib/search.ts
+    tests:
+      - apps/server/e2e/shell.spec.ts
+      - apps/server/e2e/chat-dock.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: new-request
+    area: Requests
+    title: New request
+    summary: "A conversation with the Factory assistant: the chat in the middle, the request card on the right that the assistant keeps up to date while you talk (changed fields marked, what is missing as placeholders); you file it when it reads right, and it stays as read-only history with a handoff. The same for a Product owner (model as a label, no cost)"
+    status: live
+    page: /requests/new
+    reach: Header "New request", `/requests/new`
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/requests/new/page.tsx
+      - apps/server/src/app/(app)/components/conversation/RequestConversation.tsx
+      - apps/server/src/lib/request-conversation.ts
+      - apps/server/src/lib/intake/engine.ts
+    tests:
+      - apps/server/tests/request-conversation.test.ts
+      - apps/server/tests/intake.test.ts
+      - apps/server/e2e/request-conversation.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: request-card
+    area: Requests
+    title: Request card
+    summary: Title, type (Bug, Feature, Change, Question), product, urgency, what is wrong or wanted, "It is done when" and attachments; the assistant fills it, every field is editable; "File request" says what is missing and what happens next
+    status: live
+    page: /requests/[id]
+    reach: Right side of the request conversation (`/requests/[id]` of a draft), read-only on the request page
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/RequestCard.tsx
+      - apps/server/src/lib/intake/card.ts
+      - apps/server/src/lib/intake/kinds.ts
+    tests:
+      - apps/server/tests/request-card.test.ts
+      - apps/server/e2e/request-card.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: requests-workbench
+    area: Requests
+    title: Requests workbench
+    summary: "Four sections with counts: Needs you, Drafts, In the factory (plain-word status and who it waits for; order your own by drag or Move up/down), Done (release note, Report a problem); filters Product and Type; a Bauherr also sees By and Mine"
+    status: live
+    page: /requests
+    reach: "`/requests`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/requests/page.tsx
+      - apps/server/src/app/(app)/components/OrderedRequests.tsx
+      - apps/server/src/app/(app)/lib/requests.ts
+      - apps/server/src/lib/request-order.ts
+    tests:
+      - apps/server/tests/requests.test.ts
+      - apps/server/tests/request-card.test.ts
+      - apps/server/e2e/requests.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: request-page
+    area: Requests
+    title: Request page
+    summary: The card, a plain-word timeline, who it waits for, the Tickets with progress, comments through the dock, a link to the conversation
+    status: live
+    page: /requests/[id]
+    reach: "`/requests/[id]`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/requests/[id]/page.tsx
+      - apps/server/src/app/(app)/components/RequestComments.tsx
+    tests:
+      - apps/server/tests/requests.test.ts
+      - apps/server/e2e/request-page.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: product-owner-view
+    area: Requests
+    title: Product owner view
+    summary: "A Product owner lands on Requests and sees only their assigned Products: the four sections, a request and a reduced Ticket page (card, plain-word path and timeline, who it waits for, proof for review, release note, comments). No Runs, cost, tokens, plan, settings, Inbox, dock or question card; a Ticket of another Product is a 404. Writing, answering and accepting come later"
+    status: live
+    page: /requests
+    reach: "`/requests`, `/requests/[id]`, `/tickets/[id]`; [spec/people.md](spec/people.md)"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/tickets/[id]/ProductOwnerTicket.tsx
+      - apps/server/src/lib/person.ts
+    tests:
+      - apps/server/tests/product-owner-view.test.ts
+      - apps/server/tests/product-owner-guard.test.ts
+      - apps/server/e2e/product-owner-view.spec.ts
+      - apps/server/e2e/product-owner.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: forge-channel
+    area: Requests
+    title: Forge channel
+    summary: A gate label or answers comment on the forge counts only from a login linked to a Bauherr or Admin, or to an assigned Product owner where the checkpoint or row asks them; anything else is ignored with one comment saying why
+    status: live
+    page: /settings/profile
+    reach: Profile and People (link a login), Settings › Health; [spec/people.md](spec/people.md)
+    mcp: []
+    source:
+      - apps/server/src/lib/forge-channel.ts
+      - apps/server/src/lib/gate-labels.ts
+    tests:
+      - apps/server/tests/forge-channel.test.ts
+      - apps/server/tests/label-gate.test.ts
+      - apps/server/tests/checkpoints-who-gates.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: website-widget
+    area: Requests
+    title: Website widget
+    summary: An embeddable request form per Product with its own token
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tab Widget
+    mcp: []
+    source:
+      - apps/server/src/lib/intake/embed.ts
+      - apps/server/src/lib/intake/api.ts
+      - apps/server/src/app/(app)/components/ProductForms.tsx
+    tests:
+      - apps/server/tests/embed.test.ts
+      - apps/server/tests/widget-size.test.ts
+      - apps/server/e2e/embed-widget.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: widget-rate-limit-per-token
+    area: Requests
+    title: Widget rate limit per token
+    summary: Sessions per hour of a token (default 20)
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tab Widget
+    mcp: []
+    source:
+      - apps/server/src/lib/intake/api.ts
+    tests:
+      - apps/server/tests/embed.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: release-train-and-merge-queue
+    area: Releases
+    title: Release train and merge queue
+    summary: Merge direct, through the forge's queue, or as a train; preflight finds what blocks a mode
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tab Checks & merging (`?tab=checks`)
+    mcp: []
+    source:
+      - apps/server/src/lib/train.ts
+      - apps/server/src/lib/merge-mode.ts
+      - apps/server/src/lib/merge-preflight.ts
+    tests:
+      - apps/server/tests/train.test.ts
+      - apps/server/tests/merge-queue.test.ts
+      - apps/server/tests/merge-preflight.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: train-state
+    area: Releases
+    title: Train state
+    summary: Who waits in the queue or train, what is building, who was dropped back to Build
+    status: live
+    page: /releases
+    reach: "`/releases` strip above the panel"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/releases/page.tsx
+      - apps/server/src/app/(app)/components/ReleasePanel.tsx
+      - apps/server/src/app/(app)/lib/merge-strip.ts
+    tests:
+      - apps/server/tests/train.test.ts
+      - apps/server/tests/holds.test.ts
+      - apps/server/e2e/releases.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: release-notes-and-shipping
+    area: Releases
+    title: Release notes and shipping
+    summary: Group done Tickets per Product, write the notes, publish the release; optionally as a pre-release (rc)
+    status: live
+    page: /releases
+    reach: "`/releases`; Product page, tab Releases"
+    mcp: []
+    source:
+      - apps/server/src/lib/ship-release.ts
+      - apps/server/src/lib/release-notes.ts
+      - apps/server/src/lib/summary.ts
+    tests:
+      - apps/server/tests/ship-release.test.ts
+      - apps/server/tests/release-notes.test.ts
+      - apps/server/tests/release-publish.test.ts
+      - apps/server/e2e/release.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: release-candidates
+    area: Releases
+    title: Release candidates
+    summary: "Cut an rc from done Tickets (GitHub and GitLab), test it, promote it: the final is tagged on the rc's commit with the notes of the whole line; CI only builds the tag"
+    status: live
+    page: /releases
+    reach: "`/releases`"
+    mcp: []
+    source:
+      - apps/server/src/lib/release.ts
+      - apps/server/src/lib/ship-release.ts
+    tests:
+      - apps/server/tests/release-workflow.test.ts
+      - apps/server/tests/ship-release.test.ts
+      - apps/server/e2e/releases.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: release-reminder
+    area: Releases
+    title: Release reminder
+    summary: A banner when done Tickets wait too long for a release
+    status: live
+    page: /
+    reach: "`/` banner; Product page, tab Releases"
+    mcp: []
+    source:
+      - apps/server/src/lib/ship-release.ts
+      - apps/server/src/app/(app)/lib/settings.ts
+    tests:
+      - apps/server/tests/ship-release.test.ts
+      - apps/server/tests/settings-rework.test.ts
+      - apps/server/e2e/releases.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: staging-and-production-checks
+    area: Releases
+    title: Staging and production checks
+    summary: Deploy checks, webhook, production gate, auto-merge, check retries
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tabs Deploy, Approvals, Checks & merging
+    mcp: []
+    source:
+      - apps/server/src/lib/staging.ts
+      - apps/server/src/lib/ci-summary.ts
+      - apps/server/src/lib/check-retry.ts
+    tests:
+      - apps/server/tests/production-gate.test.ts
+      - apps/server/tests/ci-summary.test.ts
+      - apps/server/tests/check-retry.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: app-changelog
+    area: Releases
+    title: App changelog
+    summary: The release notes of Bauherr itself
+    status: live
+    page: /release-notes
+    reach: "`/release-notes` via the user menu"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/release-notes/page.tsx
+      - apps/server/src/app/(app)/lib/version.ts
+      - apps/server/src/lib/release-notes.ts
+    tests:
+      - apps/server/tests/release-notes.test.ts
+      - apps/server/tests/version.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: review-stage
+    area: Quality and security
+    title: Review stage
+    summary: A reviewer agent without memory of the change; findings with severity and scenario
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`"
+    mcp:
+      - submit_review
+    source:
+      - pack/skills/review/SKILL.md
+      - apps/server/src/lib/mcp-tools.ts
+    tests:
+      - apps/server/tests/review.test.ts
+      - apps/server/e2e/review.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: pre-review-checks
+    area: Quality and security
+    title: Pre-review checks
+    summary: Commands that must pass before a review
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tab Checks & merging
+    mcp:
+      - request_review
+      - run_checks
+    source:
+      - apps/server/src/lib/pre-review.ts
+      - packages/runner/src/pre-review.ts
+    tests:
+      - apps/server/tests/pre-review.test.ts
+      - packages/runner/test/units.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: flaky-check-tracking
+    area: Quality and security
+    title: Flaky-check tracking
+    summary: Retries a failing check once and records flakes
+    status: live
+    page: /settings/health
+    reach: Product page; Settings › Admin › Health
+    mcp: []
+    source:
+      - apps/server/src/lib/check-retry.ts
+    tests:
+      - apps/server/tests/check-retry.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: security-scan
+    area: Quality and security
+    title: Security scan
+    summary: An hourly tick starts a scan Run per Product that has one enabled; the last scan links its Run and the finding Tickets
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tab Security scan
+    mcp: []
+    source:
+      - apps/server/src/lib/security-scan.ts
+      - pack/skills/security-scan/SKILL.md
+    tests:
+      - apps/server/tests/security-scan.test.ts
+      - apps/server/tests/security-tick.test.ts
+      - apps/server/tests/security-findings.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: docs-check
+    area: Quality and security
+    title: Docs check
+    summary: An Admin starts a read-only Run that compares the docs with the Tickets merged since the last check; findings become one docs Ticket in Plan, updated in place while it is open
+    status: live
+    page: /settings/products/[id]
+    reach: Product page, tab Docs
+    mcp: []
+    source:
+      - apps/server/src/lib/docs-check.ts
+      - pack/skills/docs-check/SKILL.md
+    tests:
+      - apps/server/tests/docs-check.test.ts
+      - apps/server/tests/docs-check-actions.test.ts
+      - apps/server/e2e/docs-check.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: run-evidence
+    area: Quality and security
+    title: Evidence
+    summary: Commands, exit codes and test results attached to a Run and its merge request
+    status: live
+    page: /runs/[id]
+    reach: "`/runs/[id]`, merge request"
+    mcp:
+      - attach_evidence
+    source:
+      - packages/runner/src/evidence.ts
+      - pack/rules/evidence.md
+    tests:
+      - apps/server/tests/review.test.ts
+      - apps/server/tests/merge-queue.test.ts
+      - packages/runner/test/units.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: review-artifacts
+    area: Quality and security
+    title: Review artifacts
+    summary: Proof a person can judge (screenshots with before/after, recordings, preview links, terminal sessions, samples, reports) per acceptance criterion; a Product's rules require it before review, a waiver line is shown as "No proof"
+    status: live
+    page: /tickets/[id]
+    reach: Product page, tab Checks & merging (Proof for review); proof table on the Ticket page, Inbox cards and chat cards for accept and approve
+    mcp:
+      - attach_artifact
+    source:
+      - apps/server/src/lib/artifacts.ts
+      - apps/server/src/app/(app)/lib/proof.ts
+      - apps/server/src/app/(app)/components/ProofList.tsx
+      - packages/runner/src/artifacts.ts
+    tests:
+      - apps/server/tests/artifacts.test.ts
+      - apps/server/e2e/proof.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: skill-proposals
+    area: Quality and security
+    title: Skill proposals
+    summary: The factory proposes a skill from a solved Ticket; an Admin approves or rejects it; skipped and rejected ones show their reason and results
+    status: live
+    page: /knowledge
+    reach: Inbox card (Admin); `/knowledge` (Admin, needs a Knowledge repo)
+    mcp:
+      - approve_skill_proposal
+      - reject_skill_proposal
+    source:
+      - apps/server/src/lib/skill-distill.ts
+    tests:
+      - apps/server/tests/skill-distill.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: audit-log
+    area: Quality and security
+    title: Audit
+    summary: Human touches and tool calls (argument names and hash, never payloads)
+    status: live
+    page: /settings/audit
+    reach: "`/settings/audit` (Admin)"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/audit/page.tsx
+      - apps/server/src/collections.ts
+    tests:
+      - apps/server/e2e/admin-pages.spec.ts
+      - apps/server/e2e/settings.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: your-own-claude-code-session
+    area: Agent team and sessions
+    title: Your own Claude Code session
+    summary: "`claim_run`, `claim_next`, `heartbeat` and the other tools over `/mcp`; an agent key per laptop"
+    status: live
+    page: /settings/api-key
+    reach: Settings › Account › API keys (`/settings/api-key`); [session-mode.md](session-mode.md)
+    mcp:
+      - list_frontier
+      - get_ticket
+      - claim_run
+      - claim_next
+      - heartbeat
+    source:
+      - apps/server/src/lib/sessions.ts
+      - apps/server/src/lib/api-key.ts
+      - apps/server/src/lib/frontier.ts
+      - apps/server/src/app/mcp/route.ts
+    tests:
+      - apps/server/tests/agent-sessions.test.ts
+      - apps/server/tests/session.test.ts
+      - apps/server/tests/claim-stages.test.ts
+      - apps/server/tests/lease.test.ts
+      - apps/server/tests/mcp.e2e.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: agent-keys-and-personal-key
+    area: Agent team and sessions
+    title: Agent keys and personal key
+    summary: Create, list and revoke keys
+    status: live
+    page: null
+    reach: Settings › Account › API keys
+    mcp: []
+    source:
+      - apps/server/src/lib/api-key.ts
+      - apps/server/src/app/(app)/(shell)/settings/api-key/page.tsx
+    tests:
+      - apps/server/tests/api-key.test.ts
+      - apps/server/tests/agent-keys-migration.test.ts
+      - apps/server/tests/agent-identity.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: account-profile
+    area: Agent team and sessions
+    title: Profile
+    summary: Your email, role and Workspaces, your linked forge login (editable, a Product owner's too), and the theme
+    status: live
+    page: /settings/profile
+    reach: Settings › Account › Profile (`/settings/profile`)
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/profile/page.tsx
+      - apps/server/src/lib/person.ts
+    tests:
+      - apps/server/e2e/settings.spec.ts
+      - apps/server/e2e/shell.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: agent-roles
+    area: Agent team and sessions
+    title: Agent roles
+    summary: "Orchestrator, engineer, reviewer, security, UX and test: profile, skills, model or tier, agent limit, declared in the factory file"
+    status: live
+    page: /team
+    reach: Factory file; [session-mode.md](session-mode.md#connect-as-a-role)
+    mcp: []
+    source:
+      - pack/roles/engineer.md
+      - apps/server/src/app/(app)/components/team/RolesTable.tsx
+      - apps/server/src/app/(app)/components/team/RoleSettings.tsx
+    tests:
+      - apps/server/tests/roles-table.test.ts
+      - apps/server/tests/team-data.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: connect-as-a-role
+    area: Agent team and sessions
+    title: Connect as a role
+    summary: "`connect {role}`, then `next_work` pulls the Runs of the role's stages; the orchestrator also gets stuck Tickets"
+    status: live
+    page: /team
+    reach: MCP; [session-mode.md](session-mode.md#connect-as-a-role)
+    mcp:
+      - connect
+      - next_work
+      - disconnect
+    source:
+      - apps/server/src/lib/sessions.ts
+      - apps/server/src/app/(app)/components/team/ConnectPanel.tsx
+    tests:
+      - apps/server/tests/agent-sessions.test.ts
+      - apps/server/tests/team-connect.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: agent-presence
+    area: Agent team and sessions
+    title: Presence
+    summary: Sessions show as Working, Idle or Offline with their active time; Ticket status and Steps name who works ("<session> (<role>)", Runner, CI); the chat answers who is working
+    status: live
+    page: /team
+    reach: Ticket page, chat
+    mcp: []
+    source:
+      - apps/server/src/lib/presence.ts
+      - apps/server/src/app/(app)/components/Presence.tsx
+      - apps/server/src/app/(app)/components/team/agent-status.ts
+    tests:
+      - apps/server/tests/presence.test.ts
+      - apps/server/tests/agent-status.test.ts
+      - apps/server/e2e/agent-view.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: agent-team-page
+    area: Agent team and sessions
+    title: Agent team page
+    summary: Pick a role (avatar, profile, skills), set its model and agent limit (saved to the factory file), connect a session in three steps, live session list (Working, Idle, Offline, ticket, active time); agents on the Workflow graph; who is working (sidebar dot, header pill) on every page; team time in Insights
+    status: live
+    page: /team
+    pages:
+      - /team/[id]
+    reach: "`/team`, `/`, `/insights`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/team/page.tsx
+      - apps/server/src/app/(app)/(shell)/team/[id]/page.tsx
+      - apps/server/src/app/(app)/components/team/TeamView.tsx
+      - apps/server/src/app/(app)/lib/team.ts
+    tests:
+      - apps/server/tests/team-data.test.ts
+      - apps/server/tests/team-helpers.test.ts
+      - apps/server/e2e/team.spec.ts
+      - apps/server/e2e/agent-view.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: people-and-roles
+    area: Agent team and sessions
+    title: People and roles
+    summary: Admin or Bauherr per person, Workspaces, forge login (the column shows who has none), SSO subject, unlock, remove
+    status: live
+    page: /settings/bauherren
+    reach: Settings › Workspace › People (`/settings/bauherren`)
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/bauherren/page.tsx
+      - apps/server/src/lib/people.ts
+    tests:
+      - apps/server/tests/people.test.ts
+      - apps/server/e2e/people.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: workspaces
+    area: Agent team and sessions
+    title: Workspaces
+    summary: Isolation boundary with its own Connections, budget and keys; Admins always have the menu with settings and New Workspace
+    status: live
+    page: /settings/workspace
+    reach: Settings › Workspace › General (`/settings/workspace`), workspace menu
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/workspace/page.tsx
+      - apps/server/src/lib/workspace-delete.ts
+      - apps/server/src/app/(app)/components/WorkspaceSwitcher.tsx
+    tests:
+      - apps/server/tests/workspace-delete.test.ts
+      - apps/server/tests/isolation.test.ts
+      - apps/server/e2e/workspace-delete.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: oidc-sign-in
+    area: Agent team and sessions
+    title: OIDC sign-in
+    summary: SSO with role and Workspace mapping
+    status: live
+    page: null
+    reach: "`/login`; [auth.md](auth.md)"
+    mcp: []
+    source:
+      - apps/server/src/lib/oidc.ts
+      - apps/server/src/lib/oidc-session.ts
+    tests:
+      - apps/server/tests/oidc.test.ts
+      - apps/server/tests/oidc-callback.test.ts
+      - apps/server/e2e/oidc.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: agent-run-protocol
+    area: Agent team and sessions
+    title: Session Run protocol
+    summary: "The tools a session uses while it holds a Run: read and update the worklog, report Steps, finish or give the Run back"
+    status: no-ui
+    page: null
+    reach: "MCP only: `/mcp`; [session-mode.md](session-mode.md)"
+    mcp:
+      - read_worklog
+      - update_worklog
+      - report_step
+      - finish_run
+      - release_run
+    source:
+      - apps/server/src/lib/mcp-tools.ts
+      - pack/skills/run-contract/SKILL.md
+      - pack/skills/worklog/SKILL.md
+    tests:
+      - apps/server/tests/lease.test.ts
+      - apps/server/tests/lease-renewal.test.ts
+      - apps/server/tests/run-claim.test.ts
+      - apps/server/tests/epic-mcp.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: knowledge-repo
+    area: Knowledge
+    title: Knowledge repo
+    summary: Search and read the documents of a connected repository
+    status: live
+    page: /knowledge
+    reach: "`/knowledge` (only with a Knowledge repo)"
+    mcp:
+      - read_knowledge
+      - search_knowledge
+    source:
+      - apps/server/src/app/(app)/(shell)/knowledge/page.tsx
+      - apps/server/src/lib/knowledge.ts
+      - apps/server/src/app/(app)/components/KnowledgeRepo.tsx
+    tests:
+      - apps/server/tests/knowledge.test.ts
+      - apps/server/tests/knowledge-page.test.ts
+      - apps/server/e2e/knowledge.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: write-backs
+    area: Knowledge
+    title: Write-backs
+    summary: Agents propose changes to the repository as merge requests
+    status: live
+    page: /knowledge
+    reach: "`/knowledge` (Admin)"
+    mcp: []
+    source:
+      - apps/server/src/lib/knowledge-edit.ts
+    tests:
+      - apps/server/tests/knowledge-edit.test.ts
+      - apps/server/e2e/knowledge-edit.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: knowledge-repo-setting
+    area: Knowledge
+    title: Knowledge repo setting
+    summary: The Connection and repository of the Knowledge repo
+    status: live
+    page: /settings/knowledge
+    reach: Settings › Workspace › Knowledge (`/settings/knowledge`)
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/knowledge/page.tsx
+      - apps/server/src/app/(app)/lib/knowledge.ts
+    tests:
+      - apps/server/tests/knowledge.test.ts
+      - apps/server/tests/settings-rework.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: knowledge-editor
+    area: Knowledge
+    title: Knowledge editor
+    summary: Edit a document in the UI
+    status: live
+    page: /knowledge/edit
+    reach: '"Edit" on a document of `/knowledge` (Admin), `/knowledge/edit`'
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/knowledge/edit/page.tsx
+      - apps/server/src/app/(app)/components/KnowledgeEditor.tsx
+    tests:
+      - apps/server/tests/knowledge-edit.test.ts
+      - apps/server/e2e/knowledge-edit.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: pack
+    area: Knowledge
+    title: Pack
+    summary: Skills, rules, hooks and templates added to every Run, never committed
+    status: live
+    page: null
+    reach: "[`pack/`](https://github.com/getbauherr/bauherr/blob/main/pack/README.md)"
+    mcp:
+      - load_skill
+    source:
+      - pack/pack.yaml
+      - pack/README.md
+      - packages/cli/src/lint.ts
+    tests:
+      - packages/cli/test/lint.test.ts
+      - apps/server/tests/template-parity.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: editable-text-templates
+    area: Knowledge
+    title: Editable text templates
+    summary: The comment and request texts, with a live preview
+    status: live
+    page: /settings/templates
+    pages:
+      - /settings/templates/[name]
+    reach: "`/settings/templates`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/templates/page.tsx
+      - apps/server/src/app/(app)/(shell)/settings/templates/[name]/page.tsx
+      - apps/server/src/lib/templates.ts
+      - apps/server/src/app/(app)/components/TemplateEditor.tsx
+    tests:
+      - apps/server/tests/templates.test.ts
+      - apps/server/tests/template-parity.test.ts
+      - apps/server/e2e/templates.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: ai-gateway-with-budgets
+    area: Models and cost
+    title: AI gateway with budgets
+    summary: Every request goes through the bundled gateway with the Workspace's own key and a rolling 30-day budget
+    status: live
+    page: /settings/models
+    reach: Settings › Factory › Models & budget, AI usage (`/settings/models`, `/settings/usage`)
+    mcp: []
+    source:
+      - apps/server/src/lib/gateway.ts
+      - apps/server/src/app/(app)/components/gateway/GatewayStatus.tsx
+      - apps/server/src/app/(app)/(shell)/settings/models/page.tsx
+    tests:
+      - apps/server/tests/gateway-config.test.ts
+      - apps/server/tests/gateway-select.test.ts
+      - apps/server/e2e/gateway.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: model-tiers
+    area: Models and cost
+    title: Model tiers
+    summary: "`cheap`, `standard`, `strong` per Workspace mapped to models"
+    status: live
+    page: /settings/models
+    reach: Settings › Factory › Models & budget
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/lib/models.ts
+      - apps/server/src/lib/run-ctx.ts
+    tests:
+      - apps/server/tests/run-tier.test.ts
+      - apps/server/tests/router.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: cost-per-product
+    area: Models and cost
+    title: Cost per Product
+    summary: Spend of the last 30 days; per Ticket and stage see Tokens and cost
+    status: live
+    page: /settings/usage
+    reach: "`/settings/usage`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/usage/page.tsx
+      - apps/server/src/app/(app)/lib/usage.ts
+    tests:
+      - apps/server/tests/usage.test.ts
+      - apps/server/tests/cost-aggregate.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: connections
+    area: Models and cost
+    title: Connections
+    summary: Forge and model provider credentials, verified
+    status: live
+    page: /settings/connections
+    reach: "`/settings/connections` (Admin)"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/connections/page.tsx
+      - apps/server/src/lib/connection.ts
+      - apps/server/src/lib/providers.ts
+    tests:
+      - apps/server/tests/providers.test.ts
+      - apps/server/tests/providers-db.test.ts
+      - apps/server/tests/providers-security.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: gateway-key-rotation
+    area: Models and cost
+    title: Gateway key rotation
+    summary: Rotate the Workspace's consumer key
+    status: live
+    page: /settings/workspace
+    reach: Settings › Workspace › General
+    mcp: []
+    source:
+      - apps/server/src/lib/gateway.ts
+    tests:
+      - apps/server/tests/gateway-config.test.ts
+      - apps/server/tests/monitoring.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: insights-metrics
+    area: Models and cost
+    title: Insights
+    summary: Lead time, cycle time, time per stage with the bottleneck, throughput per week
+    status: live
+    page: /insights
+    reach: "`/insights`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/insights/page.tsx
+      - apps/server/src/app/(app)/components/insights/InsightsView.tsx
+      - apps/server/src/app/(app)/lib/insights.ts
+    tests:
+      - apps/server/tests/insights.test.ts
+      - apps/server/e2e/insights.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: measure-session-cost
+    area: Models and cost
+    title: Measure session cost
+    summary: Your own coding sessions go through the gateway with one pasted block per tool (Claude Code, Codex, Gemini CLI, Copilot, opencode, Aider, Cline); each call is measured per session, with the gateway status and a notice on Insights when session cost is not measured
+    status: live
+    page: /settings/usage
+    reach: "`/settings/usage#measure`, `/team`, [gateway.md](gateway.md)"
+    mcp: []
+    source:
+      - apps/server/src/lib/session-usage.ts
+      - apps/server/src/app/(app)/components/gateway/HarnessSetup.tsx
+      - apps/server/src/app/(app)/lib/harnesses.ts
+    tests:
+      - apps/server/tests/session-usage.test.ts
+      - apps/server/tests/harnesses.test.ts
+      - apps/server/e2e/gateway.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: prices-and-models
+    area: Models and cost
+    title: Prices and models
+    summary: The model price catalog and the model lists refresh daily from the catalog the gateway project publishes; guards keep the previous prices on a bad answer; status and Update now
+    status: live
+    page: /settings/models
+    reach: "`/settings/models#prices`, [gateway.md](gateway.md#prices-and-models-update-themselves)"
+    mcp: []
+    source:
+      - apps/server/src/lib/prices.ts
+      - apps/server/src/app/(app)/components/gateway/PricesStatus.tsx
+    tests:
+      - apps/server/tests/prices.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: tokens-and-cost
+    area: Models and cost
+    title: Tokens and cost
+    summary: Tokens and cost per model, role, session, stage and Ticket, cost per finished Ticket, source coverage; sessions are measured by the gateway, else report usage by tool argument or a Claude Code hook; cost per session and role on the Team page; `cost_summary` in the chat
+    status: live
+    page: /insights
+    reach: "`/insights#cost`, `/team`, [cost.md](cost.md)"
+    mcp: []
+    source:
+      - apps/server/src/lib/cost.ts
+      - apps/server/src/app/(app)/lib/cost.ts
+      - apps/server/src/app/(app)/components/insights/CostSection.tsx
+      - apps/server/src/lib/chat/insights.ts
+    tests:
+      - apps/server/tests/cost.test.ts
+      - apps/server/tests/cost-aggregate.test.ts
+      - apps/server/tests/cost-tools.test.ts
+      - apps/server/tests/reconcile.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: health-page
+    area: Models and cost
+    title: Health
+    summary: Jobs, oldest queued, dead Tickets, last poll, expedite lead time, gateway budget, flaky checks
+    status: live
+    page: /settings/health
+    reach: Settings › Admin › Health (`/settings/health`)
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/health/page.tsx
+      - apps/server/src/lib/health.ts
+      - apps/server/src/lib/monitoring.ts
+    tests:
+      - apps/server/tests/monitoring.test.ts
+      - apps/server/tests/stale-jobs.test.ts
+      - apps/server/e2e/monitoring.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: products-and-repositories
+    area: Administration
+    title: Products and repositories
+    summary: Repository, Ticket source, staging, approvals, production, merging, releases, scan, docs, widget, in tabs
+    status: live
+    page: /settings/products
+    pages:
+      - /settings/products/[id]
+      - /settings/products/new
+    reach: "`/settings/products` (`?tab=`)"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/products/page.tsx
+      - apps/server/src/app/(app)/(shell)/settings/products/[id]/page.tsx
+      - apps/server/src/app/(app)/(shell)/settings/products/new/page.tsx
+      - apps/server/src/app/(app)/components/ProductForms.tsx
+      - apps/server/src/app/(app)/lib/product-setup.ts
+    tests:
+      - apps/server/tests/product-settings.test.ts
+      - apps/server/e2e/product-settings.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: setup-wizard
+    area: Administration
+    title: Setup wizard
+    summary: "Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new)"
+    status: live
+    page: /setup
+    reach: '`/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist"'
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/setup/page.tsx
+      - apps/server/src/app/(app)/lib/setup.ts
+      - apps/server/src/lib/presets.ts
+      - apps/server/src/app/(app)/components/setup/StepCard.tsx
+    tests:
+      - apps/server/tests/setup-wizard.test.ts
+      - apps/server/tests/setup-steps.test.ts
+      - apps/server/tests/setup.test.ts
+      - apps/server/e2e/setup.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: settings-by-scope
+    area: Administration
+    title: Settings by scope
+    summary: Account, Factory, Workspace and Admin groups; Product page in tabs; a place in the UI for every feature
+    status: live
+    page: /settings
+    reach: "`/settings/*`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/(shell)/settings/page.tsx
+      - apps/server/src/app/(app)/components/SettingsNav.tsx
+      - apps/server/src/lib/settings-guards.ts
+    tests:
+      - apps/server/tests/settings.test.ts
+      - apps/server/tests/settings-rework.test.ts
+      - apps/server/e2e/settings.spec.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: background-jobs
+    area: Administration
+    title: Background jobs
+    summary: "19 jobs: polling, Runs, merging, releases, scans, pruning"
+    status: no-ui
+    page: null
+    reach: Counts on Health
+    mcp: []
+    source:
+      - apps/server/src/jobs/index.ts
+      - apps/server/src/lib/schedule.ts
+    tests:
+      - apps/server/tests/stale-jobs.test.ts
+      - apps/server/tests/run-pool.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: health-endpoint
+    area: Administration
+    title: Health endpoint
+    summary: Unauthenticated JSON of stale jobs
+    status: no-ui
+    page: null
+    reach: "`/api/health`"
+    mcp: []
+    source:
+      - apps/server/src/app/api/health/route.ts
+    tests:
+      - apps/server/tests/stale-jobs.test.ts
+      - apps/server/tests/monitoring.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: payload-admin
+    area: Administration
+    title: Payload admin
+    summary: Developer escape hatch
+    status: no-ui
+    page: null
+    reach: "`/admin` with `BAUHERR_ENABLE_ADMIN=1`"
+    mcp: []
+    source:
+      - apps/server/src/payload.config.ts
+      - apps/server/src/app/(app)/lib/admin-proxy.ts
+    tests:
+      - apps/server/tests/admin-proxy.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: bauherr-cli
+    area: CLI and API
+    title: "`bauherr` CLI"
+    summary: "`init`, `up`, `down`, `status`, `seed`, `eval`, `apply`, `export`, `pack lint`"
+    status: no-ui
+    page: null
+    reach: "CLI only: `npx bauherr`; [`packages/cli`](https://github.com/getbauherr/bauherr/tree/main/packages/cli)"
+    mcp: []
+    source:
+      - packages/cli/src/cli.ts
+    tests:
+      - packages/cli/test/cli.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: pack-lint
+    area: CLI and API
+    title: Pack lint
+    summary: "Checks the pack: size caps, cited paths, glossary terms, tiers vs the spec, no stack names in core, hook citations; red in CI on a finding"
+    status: no-ui
+    page: null
+    reach: CI job `cli`; `bauherr pack lint`
+    mcp: []
+    source:
+      - packages/cli/src/lint.ts
+    tests:
+      - packages/cli/test/lint.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: skill-eval
+    area: CLI and API
+    title: Skill eval
+    summary: Replays a skill against cases and scores it
+    status: no-ui
+    page: null
+    reach: "CLI only: `bauherr eval`"
+    mcp: []
+    source:
+      - packages/eval/src/index.ts
+    tests:
+      - packages/eval/test/eval.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: mcp-server
+    area: CLI and API
+    title: MCP server
+    summary: Frontier, claim, finish, worklog, evidence, knowledge; human gates refused for agent keys
+    status: no-ui
+    page: null
+    reach: "MCP only: `/mcp`"
+    mcp: []
+    source:
+      - apps/server/src/lib/mcp-tools.ts
+      - apps/server/src/app/mcp/route.ts
+    tests:
+      - apps/server/tests/mcp.e2e.ts
+      - apps/server/tests/agent-identity.test.ts
+      - apps/server/tests/chat-guard.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: rest-api
+    area: CLI and API
+    title: REST API
+    summary: Payload's API; chat and intake endpoints
+    status: no-ui
+    page: null
+    reach: "API only: `/api`, [chat.md](chat.md), [intake-embed.md](intake-embed.md)"
+    mcp: []
+    source:
+      - apps/server/src/collections.ts
+      - apps/server/src/lib/intake/api.ts
+      - apps/server/src/app/api/chat/threads/route.ts
+    tests:
+      - apps/server/tests/chat.test.ts
+      - apps/server/tests/intake.test.ts
+      - apps/server/tests/embed.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: runner
+    area: CLI and API
+    title: Runner
+    summary: Runs one stage with the Claude Agent SDK in a fresh clone
+    status: no-ui
+    page: null
+    reach: "job: [`packages/runner`](https://github.com/getbauherr/bauherr/tree/main/packages/runner)"
+    mcp: []
+    source:
+      - packages/runner/src/index.ts
+      - packages/runner/src/agent.ts
+    tests:
+      - packages/runner/test/run.test.ts
+      - packages/runner/test/units.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
+  - id: environment-flags
+    area: CLI and API
+    title: Environment flags
+    summary: "`BAUHERR_DEFAULT_MODE`, `BAUHERR_ENABLE_ADMIN`, `OIDC_*`, `MEDIA_*`, `GATEWAY_URL`, `GATEWAY_PUBLIC_URL`, `GATEWAY_UI_URL`, `BAUHERR_PRICES_REFRESH`, `BAUHERR_PRICES_URL`, retention"
+    status: no-ui
+    page: null
+    reach: "env only: Environment"
+    mcp: []
+    source:
+      - apps/server/src/lib/mode.ts
+      - apps/server/src/lib/secrets.ts
+      - apps/server/src/lib/gateway.ts
+    tests:
+      - apps/server/tests/gateway-config.test.ts
+      - apps/server/tests/media-storage-config.test.ts
+      - apps/server/tests/gateway-public-url.test.ts
+    drive: null
+    proof: null
+    gotchas: []
+    guards: []
+    debt: []
