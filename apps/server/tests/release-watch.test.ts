@@ -327,6 +327,14 @@ it('moves a Build Ticket whose factory MR merged during the Build to release, ca
   expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
   expect((await payload.findByID({ collection: 'runs', id: running.id, ...o })).status).toBe('cancelled')
 
+  // The Build Run that ended needs_human is history in release: no "Run needs you" card.
+  const { needsYou } = await import('../src/lib/needs-you')
+  const { DEFAULT } = await import('../src/lib/workflow')
+  const stale = { stage: 'build', status: 'needs_human', reasonKind: 'decision' }
+  expect(needsYou(DEFAULT(), { stage: 'release', labels: [], releaseState: 'waiting' }, stale)).toBeNull()
+  expect(needsYou(DEFAULT(), { stage: 'build', labels: [] }, stale)).toBe('Run needs you')
+  expect(needsYou(DEFAULT(), { stage: 'release', labels: [] }, { ...stale, status: 'failed' })).toBeNull()
+
   // Sent back to Build after release: the old merge does not release it again.
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...o })
   await release.watchRelease(payload)
