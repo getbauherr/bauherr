@@ -15,6 +15,9 @@ const signIn = async (page: Page, who: string) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
+/** The Run page seed lives in a Workspace of its own, so it never shows on the Workflow, Overview or Team pages. */
+const inRunLab = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'runpage', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+
 /** Opens the Run of the Ticket whose title the row of /runs shows. */
 const openRun = async (page: Page, title: string | RegExp) => {
   await page.goto('/runs')
@@ -35,6 +38,7 @@ const touch = (page: Page) => page.evaluate(async () => (await fetch(`/api/runs/
 
 test('working: chip Working, the not-reported-yet text, no button, never "No steps recorded."', async ({ page }) => {
   await signIn(page, email)
+  await inRunLab(page)
   await openRun(page, 'Run page: working session')
   await touch(page)
   await page.reload()
@@ -74,6 +78,7 @@ test('waiting for a session: one primary Connect an agent with the role preselec
 
 test('stuck: an Admin gets Release lock as a secondary behind a dialog; the owner only reads that an Admin can release it', async ({ page, browser }) => {
   await signIn(page, email)
+  await inRunLab(page)
   const url = await openRun(page, 'Run page: stuck session')
   await expect(chip(page, /^Stuck$/)).toBeVisible()
   await expect(bar(page)).toContainText(/Not responding for \d+ min\. Session eng-stuck@laptop last seen/)
@@ -87,7 +92,7 @@ test('stuck: an Admin gets Release lock as a secondary behind a dialog; the owne
   await expect(dialog).toHaveCount(0)
 
   const owner = await (await browser.newContext()).newPage()
-  await signIn(owner, 'member@example.com')
+  await signIn(owner, 'run-owner@example.com')
   await owner.goto(url)
   await expect(chip(owner, /^Stuck$/)).toBeVisible()
   await expect(owner.getByTestId('run-sentence')).toContainText('An Admin can release it.')
@@ -98,6 +103,7 @@ test('stuck: an Admin gets Release lock as a secondary behind a dialog; the owne
 
 test('session gone: names the session and why, links the agent, Release lock is secondary', async ({ page }) => {
   await signIn(page, email)
+  await inRunLab(page)
   await openRun(page, 'Run page: session gone')
   await expect(chip(page, /^Session gone$/)).toBeVisible()
   await expect(bar(page)).toContainText(/Session eng-gone@laptop disconnected \d+ d ago\./)
@@ -141,12 +147,13 @@ test('succeeded: milestones for everyone, bars, tool calls and cost data for an 
 
 test('failed: the first line of the error and one primary Re-run build; the owner has it too', async ({ page, browser }) => {
   await signIn(page, email)
+  await inRunLab(page)
   const url = await openRun(page, 'Run page: failed build')
   await expect(chip(page, /Failed$/)).toBeVisible()
   await expect(bar(page)).toContainText('Checks failed: lint Re-run build starts a new Run.')
   await expect(primaries(page)).toHaveCount(1)
   const owner = await (await browser.newContext()).newPage()
-  await signIn(owner, 'member@example.com')
+  await signIn(owner, 'run-owner@example.com')
   await owner.goto(url)
   await expect(owner.getByRole('button', { name: 'Re-run build' })).toBeVisible()
   await owner.context().close()

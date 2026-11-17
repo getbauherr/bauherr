@@ -210,11 +210,13 @@ test.describe('Run page: axe in each state at 1280 and 390 px', () => {
     session = await context.storageState()
     await context.close()
   })
+  const inRunLab = new Set<string>(['Run page: working session', 'Run page: stuck session', 'Run page: session gone', 'Run page: failed build']) // the Run page seed has a Workspace of its own
   for (const title of states) {
     test(title, async ({ browser }) => {
       test.setTimeout(120_000)
       for (const width of [1280, 390]) {
         const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
+        if (inRunLab.has(title)) await page.context().addCookies([{ name: 'bauherr-ws', value: 'runpage', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
         await page.goto('/runs')
         await page.locator('table tbody tr').filter({ hasText: title }).getByRole('link').first().click()
         await expect(page).toHaveURL(/\/runs\/\d+$/)
