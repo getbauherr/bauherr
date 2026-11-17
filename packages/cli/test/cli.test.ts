@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
+import { installHook } from '../src/hook.js'
 import { CliError, portFree, preflight } from '../src/preflight.js'
 import { projectName, readEnv, renderCompose, writeProject } from '../src/render.js'
 
@@ -170,4 +171,28 @@ test('apply inlines profile_file relative to the file, sends it with the key and
   await assert.rejects(applyFile({ ...call, key: undefined, fetch: reply({}) }), /BAUHERR_API_KEY/)
   await assert.rejects(applyFile({ ...call, fetch: reply({ error: 'an agent key cannot change the workflow' }, 403) }), /403: an agent key/)
   assert.equal(await exportFile({ url: 'http://x', workspace: 'acme', key: 'k1', fetch: reply('version: 1\n') }), 'version: 1\n')
+})
+
+test('hook install merges Stop and SubagentStop once, keeps other hooks, and copies the script', () => {
+  const home = tmp()
+  const source = new URL('../templates/hooks/report-usage.ts', import.meta.url)
+  mkdirSync(join(home, '.claude'))
+  writeFileSync(join(home, '.claude/settings.json'), JSON.stringify({ model: 'x', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo other' }] }] } }))
+  const file = installHook({ project: false, home, source })
+  installHook({ project: false, home, source })
+  const s = JSON.parse(readFileSync(file, 'utf8'))
+  const script = join(home, '.claude/bauherr-report-usage.ts')
+  assert.equal(s.model, 'x')
+  assert.deepEqual(s.hooks.Stop.map((e: { hooks: { command: string }[] }) => e.hooks[0]!.command), ['echo other', `node ${script}`])
+  assert.deepEqual(s.hooks.SubagentStop.map((e: { hooks: { command: string }[] }) => e.hooks[0]!.command), [`node ${script}`])
+  assert.equal(readFileSync(script, 'utf8'), readFileSync(source, 'utf8'))
+  assert.doesNotMatch(readFileSync(file, 'utf8'), /BAUHERR_AGENT_KEY|bha_/)
+})
+
+test('hook install --project writes under the project and refuses invalid settings', () => {
+  const cwd = tmp()
+  const source = new URL('../templates/hooks/report-usage.ts', import.meta.url)
+  assert.equal(installHook({ project: true, cwd, source }), join(cwd, '.claude/settings.json'))
+  writeFileSync(join(cwd, '.claude/settings.json'), '{nope')
+  assert.throws(() => installHook({ project: true, cwd, source }), CliError)
 })

@@ -1,44 +1,50 @@
-// Claude Code `Stop` hook (client side, not a Runner hook): reports this session's token usage to the factory.
-// Env: BAUHERR_URL (e.g. https://bauherr.example.com), BAUHERR_AGENT_KEY (the bha_ key of the MCP connection), optional BAUHERR_SESSION (the `session` key passed to connect).
-// Reads session_id and transcript_path from stdin, sums the assistant messages' usage per model (one count per message id) and posts the cumulative totals; the server stores the delta.
-// Never fails the session and never prints the key.
+// Claude Code `Stop`/`SubagentStop` hook (client side): reports token usage. Install: `npx bauherr hook install`.
+// Env: BAUHERR_URL, BAUHERR_AGENT_KEY, optional BAUHERR_SESSION. A subagent is posted as `<session_id>:<agent_id>`. Never fails the session.
 import { readFileSync } from 'node:fs'
-
-const url = process.env.BAUHERR_URL
-const key = process.env.BAUHERR_AGENT_KEY
-if (!url || !key) process.exit(0)
-
-try {
-  const input = JSON.parse(readFileSync(0, 'utf8')) as { session_id?: string; transcript_path?: string }
-  if (!input.session_id || !input.transcript_path) process.exit(0)
-  const messages = new Map<string, { model: string; u: Record<string, number> }>()
+import { fileURLToPath } from 'node:url'
+export type Totals = Record<string, number[]>
+type Msg = { id?: string; model?: string; usage?: Record<string, number> }; type Input = { session_id?: string; transcript_path?: string; agent_id?: string; agent_transcript_path?: string }
+const KEYS = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']
+export const sumTranscript = (text: string): { models: Totals; firstAt?: string } => {
+  const seen = new Map<string, Required<Msg>>()
   let firstAt: string | undefined
-  for (const line of readFileSync(input.transcript_path, 'utf8').split('\n')) {
-    if (!line) continue
-    let e: { type?: string; timestamp?: string; message?: { id?: string; model?: string; usage?: Record<string, number> } }
+  for (const line of text.split('\n')) {
+    let e: { type?: string; timestamp?: string; message?: Msg }
     try {
       e = JSON.parse(line)
     } catch {
       continue
     }
     if (e.timestamp && (!firstAt || e.timestamp < firstAt)) firstAt = e.timestamp
-    if (e.type === 'assistant' && e.message?.id && e.message.usage && e.message.model && e.message.model !== '<synthetic>') messages.set(e.message.id, { model: e.message.model, u: e.message.usage })
+    const m = e.message
+    if (e.type === 'assistant' && m?.id && m.usage && m.model && m.model !== '<synthetic>') seen.set(m.id, m as Required<Msg>)
   }
-  const models: Record<string, [number, number, number, number]> = {}
-  for (const { model, u } of messages.values()) {
+  const models: Totals = {}
+  for (const { model, usage } of seen.values()) {
     const t = (models[model] ??= [0, 0, 0, 0])
-    t[0] += u.input_tokens ?? 0
-    t[1] += u.output_tokens ?? 0
-    t[2] += u.cache_read_input_tokens ?? 0
-    t[3] += u.cache_creation_input_tokens ?? 0
+    KEYS.forEach((k, i) => (t[i] = (t[i] ?? 0) + (usage[k] ?? 0)))
   }
-  const res = await fetch(`${url.replace(/\/$/, '')}/api/usage`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ claudeSession: input.session_id, firstAt, models, clientKey: process.env.BAUHERR_SESSION || undefined }),
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!res.ok) console.error(`bauherr usage hook: ${res.status} ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? ''}`)
-} catch (e) {
-  console.error(`bauherr usage hook: ${e instanceof Error ? e.message : 'failed'}`)
+  return { models, ...(firstAt && { firstAt }) }
+}
+export const reportOf = (i: Input): { claudeSession: string; path: string } | null => {
+  const path = i.agent_transcript_path ?? i.transcript_path
+  if (!i.session_id || !path) return null
+  return { claudeSession: i.agent_transcript_path && i.agent_id ? `${i.session_id}:${i.agent_id}` : i.session_id, path }
+}
+const { BAUHERR_URL: url, BAUHERR_AGENT_KEY: key, BAUHERR_SESSION: clientKey } = process.env
+if (url && key && process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    const r = reportOf(JSON.parse(readFileSync(0, 'utf8')) as Input)
+    if (r) {
+      const res = await fetch(`${url.replace(/\/$/, '')}/api/usage`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ claudeSession: r.claudeSession, ...sumTranscript(readFileSync(r.path, 'utf8')), clientKey: clientKey || undefined }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!res.ok) console.error(`bauherr usage hook: ${res.status}`)
+    }
+  } catch (e) {
+    console.error(`bauherr usage hook: ${e instanceof Error ? e.message : 'failed'}`)
+  }
 }

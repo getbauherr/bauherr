@@ -163,6 +163,12 @@ Run stages from your laptop instead of the Runner. Create an agent key under **A
 claude mcp add --transport http bauherr http://localhost:3000/mcp --header "Authorization: Bearer $(cat ~/.config/bauherr/mcp-key)"
 ```
 
+To count the session's cost per Ticket, install the usage hook once (`Stop` and `SubagentStop`, see [docs/cost.md](docs/cost.md#the-usage-hook)):
+
+```bash
+npx bauherr hook install
+```
+
 The session lists the frontier, claims a Run, works in your worktree and finishes it with evidence. Agent keys cannot pass a human gate. Set the mode per stage and Workspace: [docs/session-mode.md](docs/session-mode.md).
 
 ## 🧑‍💻 Connect a session as a role

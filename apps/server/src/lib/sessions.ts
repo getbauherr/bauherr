@@ -115,6 +115,9 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
   const db = c.payload.db.drizzle
   const before = key ? ((await c.payload.find({ collection: 'agent_sessions', where: { and: [{ workspace: { equals: ws.id } }, { owner: { equals: c.user.id } }, { clientKey: { equals: key } }] }, limit: 1, ...o })).docs[0] as Doc | undefined) : undefined
   if (before) await releaseRuns(c, before)
+  const hookMissing =
+    c.actor.kind === 'agent' &&
+    (await db.execute(sql`SELECT 1 FROM (SELECT "id" FROM "agent_sessions" WHERE "agent_key_id" = ${c.actor.keyId} ORDER BY "connected_at" DESC LIMIT 1) p WHERE EXISTS (SELECT 1 FROM "runs" r WHERE r."session_id" = p."id" AND r."status" NOT IN ('queued', 'awaiting_session', 'running')) AND NOT EXISTS (SELECT 1 FROM "usage_cursors" u WHERE u."session_id" = p."id")`)).rows.length > 0
   const row = (
     await db.execute(sql`
       INSERT INTO "agent_sessions" ("workspace_id", "public_id", "owner_id", "agent_key_id", "role", "label", "client_key", "client_name", "client_version", "provider", "model", "connected_at", "last_seen_at")
@@ -139,6 +142,7 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
       model: { ...(role.tier && { tier: role.tier }), ...(role.provider && { provider: role.provider }), ...(role.model && { model: role.model }) },
     },
     ...(modelHint && { modelHint }),
+    ...(hookMissing && { notice: 'Your previous session finished Runs but the usage hook never reported, so their cost is not counted. Run `npx bauherr hook install` once (needs BAUHERR_URL and BAUHERR_AGENT_KEY in the shell that starts Claude Code).' }),
     usage: 'Report your token usage and cost: pass usage {tokensIn, tokensOut, cacheRead, cacheWrite, costUsd, model} (cumulative for the Run so far) to heartbeat and finish_run, unless the Bauherr usage hook is installed in your client (it reports for you).',
     pollAfterSeconds: POLL_AFTER_SECONDS,
     next: 'Call next_work with this sessionId.',

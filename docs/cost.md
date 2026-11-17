@@ -30,9 +30,15 @@ Without the gateway, chosen: a `Stop` hook that reads the transcript. It needs n
 
 ## The usage hook
 
-`pack/hooks/report-usage.ts` runs after each turn (`Stop`). It sums the transcript per model and posts the cumulative totals to `POST /api/usage` with the agent key. The server stores only the delta since the last report of that Claude session (a repeat adds 0) on the Run the session holds now, or on a Run-less row of the session between Runs, and prices tokens at list price from the gateway catalogs (`deploy/gateway/catalogs`). History from before the factory session (the Claude session began more than 15 minutes before `connect`) is the baseline and not counted.
+`pack/hooks/report-usage.ts` runs after each turn (`Stop`) and when a subagent ends (`SubagentStop`, its own transcript under the session key `<session_id>:<agent_id>`; this is where most Run work happens). It sums the transcript per model and posts the cumulative totals to `POST /api/usage` with the agent key. The server stores only the delta since the last report of that Claude session (a repeat adds 0) on the Run the session holds now, or on a Run-less row of the session between Runs, and prices tokens at list price from the gateway catalogs (`deploy/gateway/catalogs`). History from before the factory session (the Claude session began more than 15 minutes before `connect`) is the baseline and not counted.
 
-Install: copy the script somewhere stable, set two variables in the shell that starts Claude Code, and add the hook to `~/.claude/settings.json`:
+Install once per machine (`--project` writes `.claude/settings.json` of the current project instead of `~/.claude/settings.json`; running it again changes nothing):
+
+```bash
+npx bauherr hook install
+```
+
+It copies the script next to the settings file and merges the `Stop` and `SubagentStop` entries; it writes no secrets. Set two variables in the shell that starts Claude Code:
 
 ```bash
 export BAUHERR_URL=https://bauherr.example.com   # PUBLIC_URL of the factory
@@ -40,9 +46,7 @@ export BAUHERR_AGENT_KEY=<the bha_ key of the MCP connection>
 export BAUHERR_SESSION=<the session key you pass to connect>   # only with several sessions on one key
 ```
 
-```json
-{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "node /path/to/report-usage.ts" }] }] } }
-```
+`connect` adds a `notice` when the key's previous session finished Runs without ever reporting. The Ticket page's Cost block shows "N session Runs did not report usage" for session Runs without usage instead of pricing them at $0, and labels a total "estimated" unless the gateway priced it.
 
 The hook never fails the session and never prints the key. Once it has reported, the server ignores `usage` arguments of that session (the hook is exact).
 
@@ -58,4 +62,4 @@ The gateway tells sessions apart by a fixed header, `x-bauherr-session: <name>`,
 
 Every breakdown table (model, role, session, stage) adds up to the total: usage without a role is its own row ("Runner, no role", "CI, no role", "Session, no role", "Chat"), usage without a stage is "Chat" or "No stage", and a missing model is "Not recorded" (Runs from before models were recorded). `cost_summary` uses the same labels.
 
-Every number on the page shows how many finished Runs have usage ("82 % of session Runs (gateway or reported)"); a Run without usage counts as 0, not as unknown cost. Tokens without a catalog price add to the "unpriced" count and not to the cost until the daily price refresh knows the model; the count then goes down by itself ([gateway.md](gateway.md#prices-and-models-update-themselves)). When session Runs have little or no usage, the page says "Session cost is not measured" and links to the setup. Subagent transcripts of Claude Code are separate files and are not summed by the hook. Chat cost covers answers stored with `answer.costUsd`. Runs from before this table are backfilled only when the gateway priced them.
+Every number on the page shows how many finished Runs have usage ("82 % of session Runs (gateway or reported)"); a Run without usage counts as 0, not as unknown cost. Tokens without a catalog price add to the "unpriced" count and not to the cost until the daily price refresh knows the model; the count then goes down by itself ([gateway.md](gateway.md#prices-and-models-update-themselves)). When session Runs have little or no usage, the page says "Session cost is not measured" and links to the setup. Chat cost covers answers stored with `answer.costUsd`. Runs from before this table are backfilled only when the gateway priced them.

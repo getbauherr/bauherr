@@ -9,7 +9,7 @@
   "bin": { "bauherr": "dist/cli.js" },
   "files": ["dist", "templates"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && rm -rf templates && mkdir templates && cp ../../compose.yaml templates/ && cp -r ../../deploy templates/",
+    "build": "tsc -p tsconfig.json && rm -rf templates && mkdir templates && cp ../../compose.yaml templates/ && cp -r ../../deploy templates/ && mkdir templates/hooks && cp ../../pack/hooks/report-usage.ts templates/hooks/",
     "typecheck": "pnpm build && tsc -p tsconfig.test.json --noEmit",
     "test": "pnpm build && tsc -p tsconfig.test.json && cp -r package.json templates .test-dist/ && node --test .test-dist/test/*.test.js"
   },

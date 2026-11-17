@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
 import { applyFile, exportFile } from './factory.js'
+import { installHook } from './hook.js'
 import { formatFindings, lintPack } from './lint.js'
 import { CliError, preflight } from './preflight.js'
 import { cliVersion, readEnv, writeProject } from './render.js'
@@ -21,6 +22,7 @@ Usage: bauherr <command> [options]
   seed     create the Admin user and first Workspace (needs BAUHERR_ADMIN_EMAIL, GITHUB_TOKEN)
   apply    apply a factory.yaml to a Workspace: apply -f factory.yaml --workspace <slug> [--dry-run]  (needs BAUHERR_API_KEY)
   export   print the Workspace's active factory.yaml: export --workspace <slug> [--out <file>]
+  hook install  add the usage hook (Stop, SubagentStop) to Claude Code's settings: hook install [--project]; needs BAUHERR_URL, BAUHERR_AGENT_KEY in the shell that starts Claude Code
   pack lint  check a pack: pack lint [--pack pack] [--context CONTEXT.md] [--spec docs/spec/workflow.md]; exit 1 on findings
 
 Options: --dir <path> (default ./bauherr)  --port <n>  --gateway-port <n> (default 4000, loopback)  --url <public url; for apply/export the instance, default $BAUHERR_URL or http://localhost:3000>  --yes  --volumes
@@ -150,7 +152,7 @@ const main = async () => {
       model: { type: 'string', default: 'cheap-default' }, 'judge-model': { type: 'string', default: 'judge-default' }, baseline: { type: 'string' },
       out: { type: 'string' }, summary: { type: 'string' }, 'case-threshold': { type: 'string' }, 'suite-threshold': { type: 'string' }, 'max-cases': { type: 'string' }, 'max-usd': { type: 'string' },
       pack: { type: 'string', default: 'pack' }, context: { type: 'string', default: 'CONTEXT.md' }, spec: { type: 'string', default: 'docs/spec/workflow.md' },
-      file: { type: 'string', short: 'f' }, workspace: { type: 'string' }, 'dry-run': { type: 'boolean', default: false },
+      file: { type: 'string', short: 'f' }, workspace: { type: 'string' }, 'dry-run': { type: 'boolean', default: false }, project: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false }, version: { type: 'boolean', short: 'v', default: false },
     },
   })
@@ -161,6 +163,10 @@ const main = async () => {
   if (values.help || !cmd) return console.log(usage)
   if (cmd === 'init') return init(opts)
   if (cmd === 'eval') return evalSkills(values)
+  if (cmd === 'hook') {
+    if (positionals[1] !== 'install') throw new CliError(`Unknown command: hook ${positionals[1] ?? ''}\n\n${usage}`)
+    return console.log(`Usage hook installed in ${installHook({ project: values.project })}\nSet BAUHERR_URL and BAUHERR_AGENT_KEY in the shell that starts Claude Code.`)
+  }
   if (cmd === 'pack') {
     if (positionals[1] !== 'lint') throw new CliError(`Unknown command: pack ${positionals[1] ?? ''}\n\n${usage}`)
     const findings = lintPack({ packDir: resolve(values.pack), contextFile: values.context, specFile: values.spec })
