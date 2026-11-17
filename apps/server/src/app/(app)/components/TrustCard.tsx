@@ -1,14 +1,18 @@
 import { cn } from '@/lib/utils'
 import type { Grade, TicketTrust } from '../../../lib/trust'
 import { usd } from '../lib/format'
+import { Check, Minus, X } from './icons'
 import { Card } from './ui/card'
 
 export const GRADE_TONE: Record<Grade, string> = { A: 'text-ok', B: 'text-ok', C: 'text-warn', D: 'text-destructive' }
-const MARK = { true: '✓', false: '✗', null: '–' } as const
+const MARK = { true: Check, false: X, null: Minus } as const
 const TONE = { true: 'text-ok', false: 'text-destructive', null: 'text-muted-foreground' } as const
 const WORD = { true: 'passed', false: 'failed', null: 'not applicable or unknown' } as const
 
-const Mark = ({ pass }: { pass: boolean | null }) => <span className={cn('mono inline-block w-4', TONE[`${pass}`])} role="img" aria-label={WORD[`${pass}`]}>{MARK[`${pass}`]}</span>
+const Mark = ({ pass }: { pass: boolean | null }) => {
+  const Icon = MARK[`${pass}`]
+  return <span className={cn('mr-1 inline-flex size-4 shrink-0 items-center', TONE[`${pass}`])} role="img" aria-label={WORD[`${pass}`]}><Icon className="size-4" /></span>
+}
 
 export function TrustCard({ trust, cost }: { trust: TicketTrust; cost: boolean }) {
   const { vsMedian, usd: total, estimated } = trust.cost
