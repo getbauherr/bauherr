@@ -605,6 +605,7 @@ const tickets = col('tickets', [
   { name: 'stagingTldr', type: 'json', admin: { readOnly: true, description: 'First two sections of the posted staging summary: {whatYouGet, found}.' } },
   { name: 'decisionsAtApproval', type: 'json', admin: { readOnly: true, description: 'The decision rows as they stood when the plan was approved: [{id, title, status: answered|default, answer?, default?}]. The read-only chips show these, so later edits of the sheet change nothing.' } },
   { name: 'approvalBrief', type: 'json', admin: { readOnly: true, description: 'What the owner approves at Accept on staging and Approve production, frozen once per merge commit from the MR body\'s `## Approval brief`: {sha, changes[{text, kind}], notIncluded, risk, proof, noted, checks, links}. Pages read this instead of the forge.' } },
+  { name: 'preExisting', type: 'json', admin: { readOnly: true, description: 'Pre-existing bugs the reviews found that the MR did not introduce: [{file, line, msg, scenario}]. The AX role can move them to the feature map\'s `debt[]`.' } },
   { name: 'decidedAt', type: 'date', admin: { readOnly: true, description: 'When the owner last decided a checkpoint in the UI; the sweep does not reopen `decidedNeed` for 2 minutes.' } },
   { name: 'decidedNeed', type: 'text', admin: { readOnly: true } },
   text('progressHash', { admin: { readOnly: true, description: 'Hash of the body of the progress Comment last written to the issue; unchanged = no forge call. Claimed before the write, released when it fails.' } }),
