@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { ACTIVE, startRunIfNeeded } from '../jobs'
 import { advance } from './advance'
+import type { Finding, OpenItem } from './actions'
 import { workflowFor } from './factory'
 import { matches } from './glob'
 import { jobEvent, SKIP_CAUSE, skipEvent } from './history'
@@ -36,6 +37,18 @@ const visitOf = async (payload: Payload, ticket: number | string, stage: string)
 }
 
 export const visitWorst = (t: Doc, runs: Doc[]): Doc | undefined => worstRun(runs.filter((r) => r.stage === t.stage && (!t.stageSince || r.createdAt >= t.stageSince)))
+
+export type Candidates = { job: string; findings: Finding[]; open: OpenItem[] }[]
+
+/** The findings and open items of the latest succeeded Run of each Job `run` needs, in this visit of the stage; a review stage's Jobs report them, the Jobs that need them read them. */
+export const candidatesOf = async (payload: Payload, t: Doc, run: Doc): Promise<Candidates> => {
+  const def = stageDef(workflowFor(t.workspace), run.stage)
+  const needs = (def && jobOf(def, run)?.needs) ?? []
+  if (!needs.length) return []
+  const { since } = await visitOf(payload, t.id, run.stage)
+  const rows = (await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("job") "job", "findings", "artifacts"->'open' AS "open" FROM "runs" WHERE "ticket_id" = ${t.id} AND "stage" = ${run.stage} AND "status" = 'succeeded' AND "job" IN (${sql.join(needs.map((n) => sql`${n}`), sql`, `)}) AND (${since}::timestamptz IS NULL OR "created_at" >= ${since}::timestamptz) ORDER BY "job", "id" DESC`)).rows as { job: string; findings: Finding[] | null; open: OpenItem[] | null }[]
+  return needs.flatMap((n) => rows.filter((r) => r.job === n).map((r) => ({ job: n, findings: r.findings ?? [], open: r.open ?? [] })))
+}
 
 const closeAndAdvance = async (payload: Payload, t: Doc, to: string, claim: ReturnType<typeof sql>, by: { blocker?: Doc; run?: Doc; note?: string } = {}): Promise<void> => {
   const { blocker, note } = by

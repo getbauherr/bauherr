@@ -6,7 +6,7 @@ import type { Payload } from 'payload'
 import { settleDecision } from './decision'
 import type { EpicField, SliceField } from './epic'
 import { SKILL_TEMPLATES, template, templateBlock } from './templates'
-import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, sendBack, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
+import { FILE_PATTERN, decide, acceptStaging, approveSkillProposal, rejectSkillProposal, approvePlan, approveProduction, concludeReview, grantReviewRound, sendBackToBuild, stopReview, fixBaseOf, normalizeCandidates, normalizeReview, normalizeTriage, tagFixes, setEpicPr, reviewRoundOf, postStagingSummary, readWorklog, requestChanges, requestReview, sendBack, scoped as scopedUser, sourceOf, submitPlan, submitTriage, tenantsOf, updateWorklog } from './actions'
 import { SESSION_TIMEOUT_MS, startReviewIfReady } from '../jobs'
 import { assertOpenFactoryMr, mergedOwnMr, prOf, releaseMerged } from './release'
 import { preReviewReport } from './pre-review'
@@ -24,6 +24,7 @@ import { executionOrder, frontierOrder, type FrontierTicket } from './frontier'
 import { kindOfRun } from './stage-text'
 import { advance } from './advance'
 import { workflowFor } from './factory'
+import { candidatesOf } from './stage-jobs'
 import { is, jobOf, pullRank, stage as stageDef, type Workflow } from './workflow'
 import { assertOutcome, finishAgentRun } from './agent-stage'
 import { untrustedBlock } from '@bauherr/runner'
@@ -100,6 +101,9 @@ const renewLease = async (c: Ctx, run: Doc, token: unknown, set: ReturnType<type
   return renew ? new Date(Number(r.rows[0].ms) + SESSION_TIMEOUT_MS).toISOString() : '' // no lease after release
 }
 const ownerWrite = renewLease
+
+const FINDING_ITEM = { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, class: { enum: ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low', 'pre-existing'] }, test: { type: 'object', properties: { command: { type: 'string', maxLength: 1000 }, failure: { type: 'string', maxLength: 1000 }, patch: { type: 'string', maxLength: 4000 } }, required: ['command', 'failure'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, slice: { type: 'integer', minimum: 1, description: 'Epic review: the Ticket number of the slice the finding belongs to; required on every finding of a changes verdict for an epic' }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'class', 'file', 'line', 'msg', 'scenario'] }
+const OPEN_ITEM = { type: 'object', properties: { text: { type: 'string', maxLength: 1000 }, reason: { enum: ['no-failing-test', 'constructed-input', 'out-of-round-scope', 'no-evidence'] } }, required: ['text', 'reason'] }
 
 /** Loads a Run in the caller's Workspace; `own` additionally requires the live lease. */
 const getRun = async (c: Ctx, runId: number | string, own?: { leaseToken?: unknown }): Promise<Doc> => {
@@ -242,11 +246,13 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const fence = kind === 'triage' || kind === 'review' || kind === 'agent'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label, stages)
-  const fixBase = kind === 'review' ? await fixBaseOf(c.payload, ticket) : null
+  const reviewing = kind === 'review' || stageDef(wf, run.stage)?.kind === 'review'
+  const fixBase = reviewing ? await fixBaseOf(c.payload, ticket) : null
+  const candidates = reviewing ? await candidatesOf(c.payload, ticket, run) : []
   const epic = await epicContext(c, ticket)
   const escalated = await isEscalated(c.payload, won)
   if (escalated && kind === 'build') await noteEscalatedBuild(c.payload, won, escalatedCaps('build', baseCaps('build')))
-  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(kind === 'review' && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(kind === 'review' && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }), ...(epic && { epic }) }, ...(kind === 'review' && epic && 'slices' in epic && { slices: epic.slices }), goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
+  return { run: escalated ? { ...won, tier: 'strong', ...(won.investigation && !won.escalation && { escalation: { step: 3, reason: 'failed twice: investigate', previousRuns: won.investigation.failedRuns } }) } : won, leaseToken, skipped, ticket: { id: ticket.id, number: ticket.number, url: ticket.url, ...shown, ...(reviewing && ticket.conflictReturnBase && { conflictReturnBase: ticket.conflictReturnBase }), ...(reviewing && { reviewRound: reviewRoundOf(ticket), ...(fixBase && { fixReviewBase: fixBase }) }), ...(epic && { epic }) }, ...(candidates.length && { candidates }), ...(kind === 'review' && epic && 'slices' in epic && { slices: epic.slices }), goal: kind === 'triage' ? [untrustedBlock(statements.map((s) => `- ${s}`).join('\n'))] : statements, assignedTo: login ?? null, ...(kind === 'agent' && { agent: agentBrief(wf, run) }) }
 }
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null>; claimable: Map<unknown, Doc[]> }
@@ -582,7 +588,7 @@ export const tools: Tool[] = [
     name: 'finish_run',
     access: 'agent',
     description: 'End your session Run. Exit rule: succeeded needs an MR (prUrl) or the stage output (an agent stage: outcome, optionally one comment; a Build Run that cannot go on: outcome replan); otherwise failed or needs_human with a reason. reasonKind says why you stopped: decision (a product question for the owner), access (a credential, repo setting or permission) or stuck (anything else; the factory then retries on a stronger model). It is required with needs_human; a missing value counts as decision. A Build Run may end succeeded on an MR of its own Ticket that already merged (a human merged it during the Build): the Ticket then moves to Release. A Build whose open MR head has red required checks is refused (fix and push); pending checks leave the Ticket in Build, waiting for checks, and the factory moves it to Review once they are green.',
-    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket'), outcome: str('agent stages (required with succeeded): one of the outcome keys of the claim\'s agent.outcomes; a Build Run may report replan'), comment: str('agent stages: one markdown comment posted on the Ticket'), ...USAGE_ARG }, ['runId', 'leaseToken', 'status']),
+    inputSchema: obj({ ...runId, ...leaseToken, status: { enum: ['succeeded', 'failed', 'needs_human'] }, reason: str('Required unless succeeded'), reasonKind: { enum: ['decision', 'access', 'stuck'], description: 'Why the Run stopped, see the tool description' }, prUrl: str('MR/PR URL, linked on the Ticket'), outcome: str('agent stages (required with succeeded): one of the outcome keys of the claim\'s agent.outcomes; a Build Run may report replan'), comment: str('agent stages: one markdown comment posted on the Ticket'), findings: { type: 'array', maxItems: 50, items: FINDING_ITEM, description: 'Review-stage Jobs only: candidate findings, same shape as submit_review; they never send the Ticket back, the stage\'s own Review Run decides' }, open: { type: 'array', maxItems: 50, items: OPEN_ITEM, description: 'Review-stage Jobs only: noted items without proof' }, ...USAGE_ARG }, ['runId', 'leaseToken', 'status']),
     async run(a, c) {
       if (!['succeeded', 'failed', 'needs_human'].includes(a.status)) throw new Error('status must be succeeded|failed|needs_human')
       if (a.status !== 'succeeded' && !a.reason) throw new Error('reason is required unless succeeded')
@@ -598,6 +604,8 @@ export const tools: Tool[] = [
         if (a.prUrl) throw new Error('an agent stage cannot link an MR')
         if (a.status === 'succeeded') assertOutcome(run, a.outcome)
       } else if (a.outcome !== undefined && !replan) throw new Error('outcome is for agent stages (and replan on a Build Run)')
+      const candidates = a.findings === undefined && a.open === undefined ? null : normalizeCandidates(a)
+      if (candidates && !(run.job && stageDef(workflowFor(run.workspace), run.stage)?.kind === 'review')) throw new Error('findings and open are only for the Jobs of a review stage')
       const { ts, n } = await sourceOf(c.payload, ticket)
       const merged = a.prUrl && kind === 'build' && a.status === 'succeeded' && !replan ? await mergedOwnMr(c.payload, ticket, a.prUrl) : null
       if (a.prUrl) {
@@ -613,7 +621,7 @@ export const tools: Tool[] = [
         c,
         run,
         a.leaseToken,
-        sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify(a.prUrl ? { prUrl: a.prUrl } : {})}::jsonb, ${U}`,
+        sql`"status" = ${a.status}, "error" = ${a.status === 'succeeded' ? null : a.reason}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "artifacts" = COALESCE("artifacts", '{}'::jsonb) || ${JSON.stringify({ ...(a.prUrl && { prUrl: a.prUrl }), ...(candidates && { open: candidates.open }) })}::jsonb, ${candidates ? sql`"findings" = ${JSON.stringify(candidates.findings)}::jsonb, ` : sql``}${U}`,
       )
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
       if (a.prUrl) await setEpicPr(c.payload, ticket, a.prUrl)
@@ -655,9 +663,9 @@ export const tools: Tool[] = [
         findings: {
           type: 'array',
           maxItems: 50,
-          items: { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, class: { enum: ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low', 'pre-existing'] }, test: { type: 'object', properties: { command: { type: 'string', maxLength: 1000 }, failure: { type: 'string', maxLength: 1000 }, patch: { type: 'string', maxLength: 4000 } }, required: ['command', 'failure'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, slice: { type: 'integer', minimum: 1, description: 'Epic review: the Ticket number of the slice the finding belongs to; required on every finding of a changes verdict for an epic' }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'class', 'file', 'line', 'msg', 'scenario'] },
+          items: FINDING_ITEM,
         },
-        open: { type: 'array', maxItems: 50, description: 'Noted, not sent back: scenarios without a failing test, findings that need an input no real path produces, findings outside the round.', items: { type: 'object', properties: { text: { type: 'string', maxLength: 1000 }, reason: { enum: ['no-failing-test', 'constructed-input', 'out-of-round-scope', 'no-evidence'] } }, required: ['text', 'reason'] } },
+        open: { type: 'array', maxItems: 50, description: 'Noted, not sent back: scenarios without a failing test, findings that need an input no real path produces, findings outside the round.', items: OPEN_ITEM },
         checked: { type: 'array', description: 'One entry per area: correctness, over-engineering, spec-vs-plan, evidence. A review without all four goes to a human.', items: { type: 'object', properties: { area: { enum: ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'] }, note: { type: 'string', maxLength: 1000, description: 'One-line justification' } }, required: ['area', 'note'] } },
         markdown: { type: 'string', maxLength: 60000, description: 'Review comment: verdict, findings, Open (low findings and what you could not check; the factory adds the failing tests and the open items)' },
         ...USAGE_ARG,

@@ -1363,6 +1363,41 @@ const counts = (f: Finding) => f.class !== 'low' && f.class !== 'pre-existing'
 export const severityLabel = (f: Pick<Finding, 'class'>): string => (f.class === 'low' ? '🟡 Nit' : f.class === 'pre-existing' ? '🟣 Pre-existing' : '🔴 Important')
 const loc = (f: { file: string; line: number }) => `${f.file}:${f.line}`
 
+const normalizeOpen = (raw: unknown): OpenItem[] =>
+  (raw === undefined ? [] : Array.isArray(raw) ? raw : [null]).map((x: any, i: number) => {
+    if (!x || typeof x.text !== 'string' || !x.text.trim() || x.text.length > MAX_TEXT || !OPEN_REASONS.includes(x.reason)) {
+      throw new Error(`open ${i} needs text (1-${MAX_TEXT} characters) and reason (${OPEN_REASONS.join('|')})`)
+    }
+    return { text: x.text, reason: x.reason }
+  })
+
+export const normalizeFinding = (f: any, i: number): Finding => {
+  if (
+    !f || !BLOCKING.concat('low').includes(f.severity) || typeof f.file !== 'string' || !FILE.test(f.file) || !Number.isInteger(f.line) || f.line < 0 ||
+    typeof f.msg !== 'string' || f.msg.length > MAX_TEXT || typeof f.scenario !== 'string' || f.scenario.length > MAX_TEXT
+  ) {
+    throw new Error(`finding ${i} needs severity (high|medium|low), file (path characters incl. ()[], no "..", max 300), line (integer >= 0), msg and scenario (max ${MAX_TEXT} characters)`)
+  }
+  if (!FINDING_CLASSES.includes(f.class)) throw new Error(`finding ${i} needs class (${FINDING_CLASSES.join('|')}); a scenario without a failing test belongs in open`)
+  if (f.class !== 'pre-existing' && (f.class === 'low') !== (f.severity === 'low')) throw new Error(`finding ${i}: class low goes with severity low, every other class with high or medium`)
+  const t = f.test
+  if (t !== undefined && (!t || typeof t.command !== 'string' || !t.command.trim() || t.command.length > MAX_TEXT || typeof t.failure !== 'string' || !t.failure.trim() || t.failure.length > MAX_TEXT || (t.patch !== undefined && (typeof t.patch !== 'string' || t.patch.length > MAX_PATCH)))) {
+    throw new Error(`finding ${i}: test needs command and failure (max ${MAX_TEXT} characters) and optionally patch (max ${MAX_PATCH})`)
+  }
+  if (f.slice !== undefined && !(Number.isInteger(f.slice) && f.slice > 0)) throw new Error(`finding ${i}: slice must be a positive integer (the slice Ticket number)`)
+  return { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(f.slice !== undefined && { slice: f.slice }), ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
+}
+
+/** The findings and open items a find Job of a review stage reports: shape and `MAX_FINDINGS` only; proof, round scope and the verdict are the stage's own Job's. */
+export const normalizeCandidates = (raw: { findings?: unknown; open?: unknown }): { findings: Finding[]; open: OpenItem[] } => {
+  const list = raw.findings ?? []
+  if (!Array.isArray(list)) throw new Error('findings must be a list')
+  if (list.length > MAX_FINDINGS) throw new Error(`at most ${MAX_FINDINGS} findings`)
+  const open = normalizeOpen(raw.open)
+  if (open.length > MAX_FINDINGS) throw new Error(`at most ${MAX_FINDINGS} open items`)
+  return { findings: list.map(normalizeFinding), open }
+}
+
 /**
  * Validates a reviewer's output. The verdict is derived: `changes` iff a counted finding (any class but `low` and `pre-existing`) exists.
  * Nits beyond `MAX_NITS` are dropped and counted in the markdown; pre-existing findings are listed under `## Pre-existing`.
@@ -1377,30 +1412,12 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
   }
   if (raw.findings.length > MAX_FINDINGS) throw new Error(`at most ${MAX_FINDINGS} findings`)
   if (raw.markdown.length > MAX_MARKDOWN) throw new Error(`markdown is limited to ${MAX_MARKDOWN} characters`)
-  const open: OpenItem[] = []
+  const open = normalizeOpen(raw.open)
   let demoted = false
-  for (const [i, x] of (raw.open === undefined ? [] : Array.isArray(raw.open) ? raw.open : [null]).entries()) {
-    if (!x || typeof x.text !== 'string' || !x.text.trim() || x.text.length > MAX_TEXT || !OPEN_REASONS.includes(x.reason)) {
-      throw new Error(`open ${i} needs text (1-${MAX_TEXT} characters) and reason (${OPEN_REASONS.join('|')})`)
-    }
-    open.push({ text: x.text, reason: x.reason })
-  }
   const findings: Finding[] = []
   raw.findings.forEach((f: any, i: number) => {
-    if (
-      !f || !BLOCKING.concat('low').includes(f.severity) || typeof f.file !== 'string' || !FILE.test(f.file) || !Number.isInteger(f.line) || f.line < 0 ||
-      typeof f.msg !== 'string' || f.msg.length > MAX_TEXT || typeof f.scenario !== 'string' || f.scenario.length > MAX_TEXT
-    ) {
-      throw new Error(`finding ${i} needs severity (high|medium|low), file (path characters incl. ()[], no "..", max 300), line (integer >= 0), msg and scenario (max ${MAX_TEXT} characters)`)
-    }
-    if (!FINDING_CLASSES.includes(f.class)) throw new Error(`finding ${i} needs class (${FINDING_CLASSES.join('|')}); a scenario without a failing test belongs in open`)
-    if (f.class !== 'pre-existing' && (f.class === 'low') !== (f.severity === 'low')) throw new Error(`finding ${i}: class low goes with severity low, every other class with high or medium`)
-    const t = f.test
-    if (t !== undefined && (!t || typeof t.command !== 'string' || !t.command.trim() || t.command.length > MAX_TEXT || typeof t.failure !== 'string' || !t.failure.trim() || t.failure.length > MAX_TEXT || (t.patch !== undefined && (typeof t.patch !== 'string' || t.patch.length > MAX_PATCH)))) {
-      throw new Error(`finding ${i}: test needs command and failure (max ${MAX_TEXT} characters) and optionally patch (max ${MAX_PATCH})`)
-    }
-    if (f.slice !== undefined && !(Number.isInteger(f.slice) && f.slice > 0)) throw new Error(`finding ${i}: slice must be a positive integer (the slice Ticket number)`)
-    const finding: Finding = { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(f.slice !== undefined && { slice: f.slice }), ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
+    const finding = normalizeFinding(f, i)
+    const t = finding.test
     const refusal = NEEDS_TEST.includes(f.class) && !t
       ? { reason: 'no-failing-test' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no failing test: add test {command, failure} (the test that fails on the MR head and what it prints) or move it to open with reason no-failing-test` }
       : counts(finding) && !f.scenario.trim()

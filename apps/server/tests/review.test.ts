@@ -1202,3 +1202,14 @@ it('a counting finding without a scenario is refused (autonomous: open, no-evide
   expect(() => actions.normalizeReview(raw)).toThrow('no-evidence')
   expect(actions.normalizeReview(raw, { demote: true })).toMatchObject({ verdict: 'clean', findings: [], open: [{ reason: 'no-evidence' }] })
 })
+
+it('normalizeCandidates checks shape and size only: no proof, round or verdict rules', () => {
+  const correctness = { severity: 'high', class: 'correctness', file: 'a.ts', line: 1, msg: 'm', scenario: ' ' }
+  expect(actions.normalizeCandidates({ findings: [correctness, { ...medium, class: 'security' }], open: [{ text: 'x', reason: 'no-evidence' }] })).toEqual({ findings: [correctness, { ...medium, class: 'security' }], open: [{ text: 'x', reason: 'no-evidence' }] })
+  expect(actions.normalizeCandidates({})).toEqual({ findings: [], open: [] })
+  expect(() => actions.normalizeCandidates({ findings: [{ ...medium, line: -1 }] })).toThrow('finding 0')
+  expect(() => actions.normalizeCandidates({ findings: [{ ...medium, class: 'nope' }] })).toThrow('needs class')
+  expect(() => actions.normalizeCandidates({ findings: 'x' })).toThrow('findings must be a list')
+  expect(() => actions.normalizeCandidates({ findings: Array.from({ length: 51 }, () => medium) })).toThrow('at most 50')
+  expect(() => actions.normalizeCandidates({ open: [{ text: 'x', reason: 'bogus' }] })).toThrow('open 0')
+})

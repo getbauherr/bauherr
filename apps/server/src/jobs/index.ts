@@ -20,7 +20,7 @@ import { gatewayDbEnabled, pruneRequestLogs, queueReconcile, reconcileRun, reten
 import { refreshPrices } from '../lib/prices'
 import { checkGateway, reconcileSessions } from '../lib/session-usage'
 import { runTrains } from '../lib/train'
-import { advanceEpics, advancePlan, noteMergeFailure, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
+import { advanceEpics, advancePlan, noteMergeFailure, closeFinishedParents, setEpicPr, holdsRefine, concludeReview, lastRankAfter, normalizeCandidates, normalizeReview, reviewRoundOf, normalizeTriage, rebindReview, restartParkedReviews, resumeReviews, spawnSubTickets, submitTriage, tagFixes, upsertTicket, watchChecks, watchQueued, watchReviews, checksGate, parkForChecks } from '../lib/actions'
 import { EXPEDITE_LABEL, NEEDS_REFINEMENT } from '../lib/needs-you'
 import { isExpediting, laneOn, noteIgnored, startExpedites } from '../lib/expedite'
 import { logins } from '../lib/forge-channel'
@@ -44,7 +44,7 @@ import { inLiveWorkspace, live, purgeDueWorkspaces } from '../lib/workspace-dele
 import { PREEMPT_GRACE_MS, preemptSweep, preemptedRun } from '../lib/preempt'
 import { startReadyJobs } from '../lib/stage-jobs'
 import { kindOfRun } from '../lib/stage-text'
-import { byKind, is, nameOf, roleOfRun, type Kind, type Workflow } from '../lib/workflow'
+import { byKind, is, nameOf, roleOfRun, stage as stageDef, type Kind, type Workflow } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
 /** The lease of a session Run lasts this long after its last heartbeat. */
@@ -791,12 +791,14 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       }
       const review = kind === 'review' && r.status === 'succeeded' ? normalizeReview(r.artifacts.review, { round: reviewRoundOf(ticket), demote: true }) : null
       let agent: { outcome: string; comment?: string } | null = null
+      let candidates: ReturnType<typeof normalizeCandidates> | null = null
       let agentError: string | undefined
       if (kind === 'agent' && r.status === 'succeeded') {
-        const reported = r.artifacts.agentOutcome as { outcome?: unknown; comment?: unknown } | undefined
+        const reported = r.artifacts.agentOutcome as { outcome?: unknown; comment?: unknown; findings?: unknown; open?: unknown } | undefined
         try {
           if (!reported) throw new Error('no outcome reported')
           agent = { outcome: assertOutcome(run, reported.outcome), ...(typeof reported.comment === 'string' && { comment: reported.comment }) }
+          if (run.job && stageDef(wf, run.stage)?.kind === 'review') candidates = normalizeCandidates(reported)
         } catch (e) {
           agentError = e instanceof Error ? e.message : String(e)
         }
@@ -820,7 +822,8 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         id: run.id,
         data: {
           status: agentError ? 'failed' : r.status,
-          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, open: review.open, ...(review.problem && { problem: review.problem }) } } : r.artifacts,
+          artifacts: review ? { ...r.artifacts, review: { markdown: review.markdown, open: review.open, ...(review.problem && { problem: review.problem }) } } : candidates && !agentError ? { ...r.artifacts, open: candidates.open } : r.artifacts,
+          ...(candidates && !agentError && { findings: candidates.findings }),
           error: agentError ?? (r.status === 'succeeded' ? null : r.reason),
           ...(r.status === 'needs_human' && { reasonKind: r.reasonKind ?? 'decision' }),
           ...(review && { verdict: review.verdict, findings: review.findings, reviewedSha: r.artifacts.reviewedSha ?? null, reviewedPatchId: r.artifacts.reviewedPatchId || null }),
