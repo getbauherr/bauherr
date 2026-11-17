@@ -279,6 +279,7 @@ test('j and k, the arrows, o, ? and / work outside fields and stop inside them',
 })
 
 test('e takes the single primary and r opens the send-back dialog, without a native dialog', async ({ page }) => {
+  test.skip(!process.env.E2E_GATED_PACK, 'the staging checkpoint exists with the gated pack')
   const native: string[] = []
   page.on('dialog', (d) => { native.push(d.type()); void d.dismiss() })
   await login(page)
@@ -298,6 +299,7 @@ test('e takes the single primary and r opens the send-back dialog, without a nat
 })
 
 test('a row opened for a second is marked seen, u toggles it and the state survives a reload', async ({ page }) => {
+  test.skip(!process.env.E2E_GATED_PACK, 'the staging checkpoint exists with the gated pack')
   await login(page)
   await page.goto('/inbox')
   const a = rowOf(page, 'Stop the export retry loop')
@@ -326,7 +328,7 @@ test('the page refreshes every few seconds when the Workspace changed and keeps 
   await page.route('**/api/changes', (r) => r.fulfill({ json: { v } }))
   await login(page)
   await page.goto('/inbox')
-  await pick(page, 'Check the new header on staging')
+  await pick(page, 'Stop the export retry loop')
   const url = page.url()
   await page.getByTestId('inbox-row').first().evaluate((el) => { el.setAttribute('data-marker', 'before') })
   const refreshed = page.waitForRequest((r) => r.headers()['rsc'] === '1' && r.url().includes('/inbox?t='), { timeout: 15_000 })
@@ -334,8 +336,8 @@ test('the page refreshes every few seconds when the Workspace changed and keeps 
   await refreshed
   await expect(page.getByTestId('inbox-new')).toHaveText('')
   expect(page.url()).toBe(url)
-  await expect(selectedRow(page)).toContainText('Check the new header on staging')
-  await expect(page.getByTestId('inbox-pane')).toContainText('Check the new header on staging')
+  await expect(selectedRow(page)).toContainText('Stop the export retry loop')
+  await expect(page.getByTestId('inbox-pane')).toContainText('Stop the export retry loop')
 })
 
 test('on a phone the list is the page, a row opens the detail and Inbox (or Esc) goes back', async ({ page }) => {
@@ -343,14 +345,14 @@ test('on a phone the list is the page, a row opens the detail and Inbox (or Esc)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/inbox')
   await expect(page.getByTestId('inbox-pane')).toBeHidden()
-  await rowOf(page, 'Check the new header on staging').click()
+  await rowOf(page, 'Stop the export retry loop').click()
   await expect(page).toHaveURL(/\/inbox\?t=\d+$/)
   await expect(page.getByTestId('inbox-pane')).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Decisions' })).toBeHidden()
   await page.getByRole('link', { name: 'Inbox', exact: true }).click()
   await expect(page).toHaveURL(/\/inbox$/)
   await expect(page.getByRole('navigation', { name: 'Decisions' })).toBeVisible()
-  await rowOf(page, 'Check the new header on staging').click()
+  await rowOf(page, 'Stop the export retry loop').click()
   await expect(page).toHaveURL(/\/inbox\?t=\d+$/)
   await page.keyboard.press('Escape')
   await expect(page).toHaveURL(/\/inbox$/)
