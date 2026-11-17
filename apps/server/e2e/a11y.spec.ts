@@ -221,6 +221,11 @@ test.describe('axe on the Agent team pages at 375 px, light and dark', () => {
         await setTheme(page, t)
         expect(await scan(page), `${url} 375px (${t})`).toEqual([])
       }
+      if (route === '/team') {
+        await page.getByRole('button', { name: 'Role settings' }).first().click()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        expect(await scan(page), `${url} 375px Role settings`).toEqual([])
+      }
       await page.context().close()
     })
   }

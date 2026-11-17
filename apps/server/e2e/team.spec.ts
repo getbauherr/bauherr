@@ -271,6 +271,24 @@ test('prefers-reduced-motion stops the spinner and the avatar loops', async ({ p
   expect(await page.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => getComputedStyle(e).animationName !== 'none').length)).toBe(0)
 })
 
+test('on a phone Role settings is a full-height sheet without motion under reduced motion; Tab stays inside, Esc returns focus', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await signIn(page, 'member@example.com')
+  await page.goto('/team')
+  const trigger = page.locator('[data-testid=roles-table] tr[data-role=engineer]').getByRole('button', { name: 'Role settings' })
+  await trigger.click()
+  const drawer = page.getByRole('dialog', { name: 'Software engineer' })
+  await expect(drawer).toBeVisible()
+  expect(await drawer.boundingBox()).toMatchObject({ x: 0, y: 0, width: 375, height: 700 })
+  expect(await page.evaluate(() => [...document.querySelectorAll('[role=dialog], [role=dialog] *, [data-slot=dialog-overlay]')].filter((e) => getComputedStyle(e).animationName !== 'none' || getComputedStyle(e).transitionDuration.split(',').some((d) => parseFloat(d) > 0)).length)).toBe(0)
+  for (let i = 0; i < 12; i++) await page.keyboard.press('Tab')
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role=dialog]'))).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(drawer).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+})
+
 test('Tab reaches role select, Copy prompt, setup disclosure, toggle, Connect and row links in visual order', async ({ page }) => {
   await signIn(page, keyed)
   await page.goto('/team')
