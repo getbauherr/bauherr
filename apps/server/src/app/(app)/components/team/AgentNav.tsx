@@ -16,7 +16,7 @@ const store = (fn: (s: Storage) => void) => {
 export const AgentLink = (props: ComponentProps<typeof Link>) => <Link {...props} onClick={() =>
       store((s) => {
         s.setItem(FROM_TEAM, '1')
-        s.setItem(LIST_SCROLL, String(scrollY))
+        s.setItem(LIST_SCROLL, `${scrollY}:${Date.now()}`)
       })
     } />
 
@@ -32,6 +32,7 @@ export function BackLink({ className }: { className?: string }) {
         store((s) => {
           from = s.getItem(FROM_TEAM) === '1'
           s.removeItem(FROM_TEAM)
+          if (!from) s.removeItem(LIST_SCROLL)
         })
         if (from && !e.metaKey && !e.ctrlKey) {
           e.preventDefault()

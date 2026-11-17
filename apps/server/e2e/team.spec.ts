@@ -219,10 +219,8 @@ test('on a phone the session rows wrap and the agent page stacks its panels in o
   const details = await page.getByTestId('agent-details').boundingBox()
   expect(details!.y).toBeGreaterThanOrEqual(boxes[3]!.y + boxes[3]!.height)
   const run = page.getByTestId('agent-run').first()
-  if (await run.count()) {
-    const tops = await run.evaluate(lineCount)
-    expect(tops).toBe(2)
-  }
+  await expect(run).toBeVisible()
+  expect(await run.evaluate(lineCount)).toBe(2)
 })
 
 test('prefers-reduced-motion stops the spinner and the avatar loops', async ({ page }) => {

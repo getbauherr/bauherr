@@ -31,7 +31,7 @@ export function TeamView({ workspaceId, initialRole, roles, orphans, presence, m
     <div className="flex flex-col gap-8">
       <p className="small m-0 text-muted-foreground" role="status" data-testid="team-summary">{teamSummary(roles)}</p>
       <ConnectPanel workspaceId={workspaceId} roles={roles} initialRole={initialRole} presence={presence} docsHref={docsHref} mcpLine={mcpLine} gateway={gateway} />
-      <SessionsSection rows={rows.map(row)} disconnected={disconnected.map(row)} count={disconnected.length} />
+      <SessionsSection workspaceId={workspaceId} rows={rows.map(row)} disconnected={disconnected.map(row)} count={disconnected.length} />
       <section aria-labelledby="roles-heading" className="flex flex-col gap-4">
         <h2 id="roles-heading" className="heading">Roles</h2>
         <RolesPart roles={roles} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />
