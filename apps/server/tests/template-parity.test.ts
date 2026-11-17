@@ -5,7 +5,7 @@ import { renderNotes } from '../src/lib/release-notes'
 
 const draft = { problem: 'Export totals drift', context: 'Finance, since March', acceptance_criteria: ['Totals match the invoice', 'No rounding drift'], type: 'bug', severity: 'high', links: ['https://x/doc'] } as never
 const triage = { outcome: 'refine', reason: 'the export scope is open', questions: [{ title: 'Scope', default: 'all invoices', alternatives: ['paid only'] }] } as never
-const item = { number: 7, title: 'CSV export', url: 'https://x/7', fix: false, bullets: ['Download invoices as CSV'], mrs: ['[#3 Export](https://x/pull/3)'] }
+const item = { number: 7, title: 'CSV export', url: 'https://x/7', line: 'CSV export', type: 'feat', breaking: false, bullets: ['Download invoices as CSV'] }
 
 it('the default request body', () => {
   expect(intakeTicket(draft, 5, ['screenshot'], 'web', undefined, [{ name: 's.png', url: 'https://x/m/1' }]).body).toMatchInlineSnapshot(`
@@ -98,13 +98,12 @@ it('the default staging summary', () => {
   `)
 })
 it('the default release notes', () => {
-  expect(renderNotes([item, { ...item, number: 8, title: 'Totals', fix: true, bullets: [], mrs: [] }])).toMatchInlineSnapshot(`
-    "### Features
-    - CSV export ([#7](https://x/7), [#3 Export](https://x/pull/3))
-      - Download invoices as CSV
+  expect(renderNotes([{ ...item, line: 'Download invoices as CSV' }, { ...item, number: 8, title: 'Totals', line: 'Totals', breaking: true }])).toMatchInlineSnapshot(`
+    "### Changed behaviour
+    - Totals ([#8](https://x/7))
 
-    ### Fixes
-    - Totals ([#8](https://x/7))"
+    ### Changes
+    - Download invoices as CSV ([#7](https://x/7))"
   `)
 })
 

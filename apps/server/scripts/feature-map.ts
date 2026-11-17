@@ -1,41 +1,16 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parse } from 'yaml'
+import { type FeatureMap, parseMap, STATUSES } from '../src/lib/feature-map'
+
+export { STATUSES }
 
 export const root = fileURLToPath(new URL('../../../', import.meta.url))
 export const mapFile = `${root}docs/feature-map.yaml`
 export const outputs = [`${root}docs/features.md`, `${root}docs/site/docs/features.md`]
 
-export const STATUSES = ['live', 'hard-to-find', 'no-ui', 'in-progress'] as const
 const LABEL = { live: 'Live', 'hard-to-find': 'Live, hard to find', 'no-ui': 'No UI', 'in-progress': 'In progress' }
 
-export interface Feature {
-  id: string
-  area: string
-  title: string
-  summary: string
-  status: (typeof STATUSES)[number]
-  page: string | null
-  pages?: string[]
-  reach: string
-  mcp: string[]
-  source: string[]
-  tests: string[]
-  drive: string | null
-  proof: string | null
-  gotchas: string[]
-  guards: string[]
-  debt: string[]
-}
-
-export interface FeatureMap {
-  intro: string
-  legend: string
-  notes: Record<string, string>
-  features: Feature[]
-}
-
-export const loadMap = (): FeatureMap => parse(readFileSync(mapFile, 'utf8')) as FeatureMap
+export const loadMap = (): FeatureMap => parseMap(readFileSync(mapFile, 'utf8'))
 
 export const render = (map: FeatureMap): string => {
   const areas = [...new Set(map.features.map((f) => f.area))]

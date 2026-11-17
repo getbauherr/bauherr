@@ -11,6 +11,7 @@
     "start": "next start",
     "jobs": "tsx scripts/jobs-runs.ts",
     "feature-map": "tsx scripts/feature-map.ts",
+    "regen-release-notes": "tsx scripts/regen-release-notes.ts",
     "jobs:poll": "tsx scripts/reclaim-orphans.ts; payload jobs:run --queue poll --handle-schedules --cron \"*/5 * * * * *\"",
     "importmap": "payload generate:importmap",
     "seed:e2e": "tsx scripts/seed-e2e.ts",

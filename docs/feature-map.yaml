@@ -1044,7 +1044,10 @@ features:
     source:
       - apps/server/src/lib/ship-release.ts
       - apps/server/src/lib/release-notes.ts
+      - apps/server/src/lib/release-items.ts
+      - apps/server/src/lib/feature-map.ts
       - apps/server/src/lib/summary.ts
+      - pack/templates/release-note.md
     tests:
       - apps/server/tests/ship-release.test.ts
       - apps/server/tests/release-notes.test.ts
@@ -1119,7 +1122,7 @@ features:
   - id: app-changelog
     area: Releases
     title: App changelog
-    summary: The release notes of Bauherr itself
+    summary: The release notes of Bauherr itself, filterable by feature area, internal changes collapsed
     status: live
     page: /release-notes
     reach: "`/release-notes` via the user menu"
@@ -1127,6 +1130,7 @@ features:
     source:
       - apps/server/src/app/(app)/(shell)/release-notes/page.tsx
       - apps/server/src/app/(app)/lib/version.ts
+      - apps/server/src/lib/changelog.ts
       - apps/server/src/lib/release-notes.ts
     tests:
       - apps/server/tests/release-notes.test.ts
