@@ -327,6 +327,14 @@ test('a fast lane Ticket in Build asks nothing and lists its decisions as defaul
   await expect(about).toContainText('D2 Follow the system setting: default taken (fast lane)')
 })
 
+// Ticket #581 of Acme CI (seed-e2e.ts, twin of ci-panel.spec.ts): waiting for checks, with a pull request.
+test('a Ticket in Build waiting for CI says so and offers the forge link', async ({ page }) => {
+  await login(page)
+  await openTicket(page, 581, 'Show CI on the ticket')
+  await expect(page.getByTestId('ticket-status')).toContainText('Waiting for CI: 0 of 2 checks passed, 1 running. The agent resumes when they finish.')
+  await expect(page.getByTestId('forge-link')).toHaveAttribute('href', 'https://github.com/acme/ci/pull/88')
+})
+
 test('a review that needs the owner is sent back to Build from the Send back dialog', async ({ page }, testInfo) => {
   test.skip(testInfo.retry > 0, 'the first attempt already sent #44 back')
   await login(page)
