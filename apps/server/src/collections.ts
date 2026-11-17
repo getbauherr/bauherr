@@ -806,6 +806,7 @@ export const collections: CollectionConfig[] = [
     date('startedAt'),
     text('summary'),
     date('finishedAt'),
+    select('state', ['working', 'waiting_ci']),
   ]),
   col('tool_calls', [
     text('toolUseId'),

@@ -23,7 +23,7 @@ export const stepOf = (summary: string | null | undefined, at: string | null | u
  * What a Ticket with a running Run is truthfully doing: waiting for CI (with the check counts when `counts` is known), stuck or gone with its session (never Working then), waiting for review (`review`: when it was requested), or working (`step`: the last plan-step report). Null when none applies.
  * `release` in the result: an Admin sees "Release lock"; anyone else reads that an Admin can.
  */
-export const ticketLive = (row: { ci: boolean; run: { status: string; startedAt?: string | null } | null; counts?: CiCounts | null; session?: Session | null; review?: string | null; step?: Step | null; admin?: boolean }, now = Date.now()): TicketLive | null => {
+export const ticketLive = (row: { ci: boolean; run: { status: string; startedAt?: string | null; /** First line of the latest Step when the agent reported it as waiting_ci. */ waitingStep?: string | null } | null; counts?: CiCounts | null; session?: Session | null; review?: string | null; step?: Step | null; admin?: boolean }, now = Date.now()): TicketLive | null => {
   if (row.ci) return row.counts ? { chip: waitingChip(row.counts), tone: 'neutral', sentence: waitingSentence(row.counts) } : { chip: 'Waiting for CI', tone: 'neutral', sentence: 'Waiting for CI.' }
   if (row.run?.status !== 'running') return null
   const min = (iso?: string | null) => (iso ? Math.max(0, Math.round((now - +new Date(iso)) / 60000)) : null)
@@ -39,6 +39,8 @@ export const ticketLive = (row: { ci: boolean; run: { status: string; startedAt?
       release: !!row.admin,
     }
   }
+  // The agent reported waiting on CI (`report_step` state waiting_ci): its words, the Ticket's counts.
+  if (row.run.waitingStep != null) return { chip: row.counts ? waitingChip(row.counts) : 'Waiting for CI', tone: 'neutral', sentence: row.run.waitingStep ? `Waiting for CI: ${row.run.waitingStep}` : 'Waiting for CI.' }
   if (row.review) return { chip: 'Waiting for review', tone: 'neutral', sentence: `Review requested${ago(row.review)}.` }
   if (row.step) return { chip: 'Working', tone: 'accent', sentence: `Working on plan step ${row.step.n} of ${row.step.m}. Last report${ago(row.step.at)}.` }
   const started = min(row.run.startedAt)

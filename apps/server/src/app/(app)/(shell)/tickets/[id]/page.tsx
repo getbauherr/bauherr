@@ -56,6 +56,7 @@ import { board, is, kindOf, nameOf, roleOf, title as stageTitle, type Workflow }
 import { activeVersion, workflowFor } from '../../../../../lib/factory'
 import { ESCALATION_MARKER, INVESTIGATION_MARKER, PLAN_MARKER, WORKLOG_MARKER, decisionView, fastLaneOf, firstWith, latestWith, parseAnswers, parseDecisions, planSummary, answersOf, sheetOf, unansweredCritical, withoutDecisions, withoutWorklogHeading } from '../../../lib/plan'
 import { ago } from '../../../lib/format'
+import { waitingStepOf } from '../../../../../lib/waiting-step'
 import { parkedWhyOf, runWho, ticketStatus, type StatusRow, type StatusRun } from '../../../lib/status'
 import { isAdmin } from '../../../lib/settings'
 import { isBauherr } from '../../../../../lib/people'
@@ -123,7 +124,7 @@ async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Pag
   const holderNumbers = /^overlaps #(\d+)$/.exec(ticket.waitingReason ?? '')?.[1]
   const q = { depth: 0, overrideAccess: true } as const
   const holders = holderNumbers ? await payload.find({ collection: 'tickets', where: { and: [{ number: { equals: Number(holderNumbers) } }, { product: { equals: ticket.product } }] }, select: { number: true }, pagination: false, ...q }).then((r) => (r.docs as Doc[]).map((d) => ({ id: d.id as number, number: d.number as number }))) : []
-  const live0 = (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null; preemptedFor?: number | null; pausing?: number | null } | undefined) ?? null
+  const live0 = (runs[0] as { id: number; stage: string; status: string; escalation?: { step: number; reason: string } | null; preemptedFor?: number | null; pausing?: number | null; waitingStep?: string | null } | undefined) ?? null
   if (live0?.status === 'awaiting_session' && ticket.expedite) live0.pausing = await pausingFor(payload, live0.id)
   const roleId = live0?.status === 'awaiting_session' ? roleOf(wf, live0.stage)?.id : undefined
   const connected = roleId ? (await connectedOfRole(payload, P.ws.id, roleId)) > 0 : true
@@ -245,6 +246,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
     payload.find({ collection: 'human_touches', where: { ticket: { equals: ticket.id } }, pagination: false, ...q }).then((r) => r.docs as Doc[]),
     forgeKinds(payload, workspace.id),
   ])
+  if (runs[0]?.status === 'running') runs[0].waitingStep = await waitingStepOf(payload, runs[0].id)
   const noted = ((await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, select: { artifacts: true }, ...q })).docs[0] as Doc | undefined)?.artifacts?.review?.open as OpenItem[] | undefined
   const inherited = ticket.inheritedApprovalFrom ? ((await payload.findByID({ collection: 'tickets', id: ticket.inheritedApprovalFrom, select: { number: true, epic: true }, ...q }).catch(() => null)) as { id: number; number: number; epic?: { slices: unknown[] } | null } | null) : null
   const stage = stageOf(wf, ticket)
