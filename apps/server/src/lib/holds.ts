@@ -6,7 +6,7 @@ import { connectedOfRole } from './presence'
 import { id } from './release'
 import { wipCount } from './wip'
 import { wipLimit } from './wip-limits'
-import { byKind, heldStages, title } from './workflow'
+import { byKind, heldStages, title, wipStages } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 1, overrideAccess: true, pagination: false } as const
@@ -17,6 +17,7 @@ export type HoldTicket = { id: number; number: number; href: string }
 export type Hold = { text: string; waiting: HoldTicket[]; href: string } & (
   | { kind: 'fast-lane'; holder: HoldTicket }
   | { kind: 'wip'; stage: string; count: number; limit: number }
+  | { kind: 'parked'; stage: string }
   | { kind: 'overlap'; holder: HoldTicket; stage: string }
   | { kind: 'no-agent'; role: string }
 )
@@ -26,7 +27,7 @@ const OVERLAP = /^overlaps #(\d+)$/
 
 /**
  * The shared holds that stop work in `workspace`, derived from current state (nothing is stored): the fast lane held by an expedite Ticket, a full WIP column,
- * a Build held for shared paths, and a role with Runs waiting and no connected agent. A hold with nobody waiting for it is not listed.
+ * Tickets parked on a need outside an approval (a column's open Tickets that wait for the owner and take no slot), a Build held for shared paths, and a role with Runs waiting and no connected agent. A hold with nobody waiting for it is not listed.
  */
 export const holdsOf = async (payload: Payload, workspace: number | string): Promise<Hold[]> => {
   const wf = workflowFor(workspace)
@@ -55,6 +56,12 @@ export const holdsOf = async (payload: Payload, workspace: number | string): Pro
     if (!waiting.length || limit == null) continue
     const count = await wipCount(payload, workspace, stage)
     holds.push({ kind: 'wip', text: `${title(wf, stage)} is full (${count}/${limit})`, stage, count, limit, waiting: waiting.map(ref), href: `/?stage=${encodeURIComponent(stage)}` })
+  }
+
+  const parkedDocs = (await payload.find({ collection: 'tickets', where: { and: [...open, { parkedNeed: { exists: true } }] }, sort: 'id', ...o })).docs as Doc[]
+  for (const stage of wipStages(wf)) {
+    const parked = parkedDocs.filter((t) => t.stage === stage)
+    if (parked.length) holds.push({ kind: 'parked', text: `${parked.length} parked Ticket${parked.length === 1 ? '' : 's'} not counted in ${title(wf, stage)}`, stage, waiting: parked.map(ref), href: `/?stage=${encodeURIComponent(stage)}` })
   }
 
   const build = byKind(wf, 'build')?.name

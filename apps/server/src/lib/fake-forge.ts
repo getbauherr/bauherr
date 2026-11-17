@@ -127,6 +127,9 @@ const build = (): FakeBackend => {
   // acme/editor: the Product of workflow-editor.spec.ts's own Workspace; its one Ticket (#1) is in Build.
   fake.commit('acme/editor', 'main', 'README.md', '# Editor\n')
   void fake.tickets('acme/editor').create({ title: 'Editor lab: build the thing', labels: ['bauherr:stage:build'] })
+  // acme/park: the Product of board-parked.spec.ts's own Workspace; its three Tickets are in Build.
+  fake.commit('acme/park', 'main', 'README.md', '# Park\n')
+  for (const title of ['Parked: needs cloud credentials', 'Working: first', 'Working: second']) void fake.tickets('acme/park').create({ title, labels: ['bauherr:stage:build'] })
   // acme/rc-web and acme/rc-api: the Products of request-conversation.spec.ts's own Workspace (no Ticket yet; the requests it files create them).
   fake.commit('acme/rc-web', 'main', 'README.md', '# Rc Web\n')
   fake.commit('acme/rc-api', 'main', 'README.md', '# Rc Api\n')
