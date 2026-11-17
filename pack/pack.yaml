@@ -22,6 +22,9 @@ skills:
   - {path: skills/mr-security-review, purpose: Security review of a factory MR between Build and Review - checklist, pass or findings (a conditional step of the Standard and Careful setup presets)}
   - {path: skills/ux-review, purpose: UX review of a factory MR that changes something people see - the Product's own UI rules first, states, copy, accessibility, pass or findings (a conditional step of the Careful preset)}
   - {path: skills/test-review, purpose: Test review of a bug-fix MR - a test that fails without the fix, the cases the request names, pass or findings (a conditional step of the Careful preset)}
+  - {path: skills/harden, purpose: AX role - plan scan, review check, correct a repeated mistake and comment check; moves rules into code, checks and proof}
+  - {path: skills/verify-create, purpose: AX role - write the Product's verify skill and seed feature-map.yaml, proved by one live run}
+  - {path: skills/verify-maintain, purpose: AX role - re-drive a feature when a Ticket touches its source and classify failures}
   - {path: skills/effort-policy, purpose: Model and effort selection}
 rules:
   - {path: rules/team-policy.md, purpose: Agent cap per role, subagents of a session, patterns only via stage config, forbidden patterns}

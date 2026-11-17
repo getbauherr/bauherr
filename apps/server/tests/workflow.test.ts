@@ -90,7 +90,7 @@ describe('lint', () => {
   })
   it('the default team has the specialists, unused by any stage, and one exceptions role', () => {
     const c = w.compile(defaultDoc())
-    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs'])
+    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax'])
     expect(c.roles.filter((r) => r.exceptions).map((r) => r.id)).toEqual(['orchestrator'])
     expect(w.stagesOfRole(c, 'security')).toEqual([])
     expect(c.roles.every((r) => r.profile_file && r.profile_file.startsWith('roles/'))).toBe(true)

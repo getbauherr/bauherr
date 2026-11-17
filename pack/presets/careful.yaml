@@ -11,6 +11,7 @@ team:
     ux:           {title: UX specialist, skills: [Flows, States, Copy, Accessibility], tier: standard, profile_file: roles/ux.md}
     test:         {title: Test specialist, skills: [Failure modes, Regression, Flake hunting], tier: standard, profile_file: roles/test.md}
     docs:         {title: Technical writer, skills: [Doc freshness, Claim checking, Gap finding], tier: standard, profile_file: roles/docs.md}
+    ax:           {title: Agent experience engineer, skills: [Trust pyramid, Guard checks, Verification, Feature map], tier: strong, profile_file: roles/ax.md}
 workflow:
   stages:
     # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
