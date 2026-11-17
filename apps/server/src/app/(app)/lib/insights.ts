@@ -1,9 +1,12 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { flow, type Flow, type Phase } from '../../../lib/history'
+import { forgeOf } from '../../../lib/release'
+import { earnedAutonomy, ESCAPE_DAYS, GRADES, isBug, ticketTrust, type EarnedAutonomy, type Grade, type TicketTrust } from '../../../lib/trust'
 import { sessionTime } from '../../../lib/sessions'
 import { board, byKind, is, title, type Workflow } from '../../../lib/workflow'
 import { duration } from './format'
+import { within } from '../../../lib/within'
 
 export const RANGES = [7, 30, 90] as const
 export type PhaseKey = Exclude<Phase, 'closed'>
@@ -113,4 +116,76 @@ export const loadTeamTime = async (payload: Payload, wf: Workflow, workspace: nu
       return { sessionId: r.public_id, label: r.label ?? r.public_id, role: r.role, roleTitle: titleOf(r.role), seconds, connectedSeconds: r.connected, utilisation: r.connected > 0 ? Math.min(1, seconds / r.connected) : null, runs: r.runs }
     }),
   }
+}
+
+export type ProductTrust = {
+  product: { id: number; name: string }
+  done: number
+  interventionsPerTicket: number | null
+  reworkRate: number | null
+  sendBacksPerTicket: number | null
+  sendBacks: { stage: string; by: 'review' | 'human'; count: number }[]
+  costPerChange: number | null
+  reverts: { reverts: number; merged: number } | null
+  escaped: number
+  grades: Record<Grade, number>
+  earned: EarnedAutonomy
+}
+
+const REVERT = /^Revert "/
+const FORGE_MS = 4000
+
+export const loadReverts = async (payload: Payload, product: number): Promise<{ reverts: number; merged: number } | null> =>
+  within(
+    (async () => {
+      const { backend, repo } = await forgeOf(payload, product)
+      const merged = await backend.forge.listMergedPullRequests(repo, 100)
+      return { reverts: merged.filter((p) => REVERT.test(p.title)).length, merged: merged.length }
+    })(),
+    FORGE_MS,
+  ).catch(() => null)
+
+const escapedDefects = async (payload: Payload, product: number, since: Date): Promise<number> => {
+  const bugs = ((await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { causedBy: { exists: true } }, { createdAt: { greater_than_equal: since.toISOString() } }] }, select: { labels: true, causedBy: true, createdAt: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { labels: string[]; causedBy: number; createdAt: string }[]).filter((b) => isBug(b.labels))
+  if (!bugs.length) return 0
+  const rows = (await payload.db.drizzle.execute(sql`SELECT "ticket_id", max("at") AS "at" FROM "ticket_events" WHERE "phase" = 'closed' AND "ticket_id" IN (${sql.join(bugs.map((b) => sql`${b.causedBy}::int`), sql`, `)}) GROUP BY "ticket_id"`)).rows as { ticket_id: number; at: string }[]
+  const doneAt = new Map(rows.map((r) => [Number(r.ticket_id), +new Date(r.at)]))
+  return bugs.filter((b) => {
+    const at = doneAt.get(b.causedBy)
+    const created = +new Date(b.createdAt)
+    return at != null && at <= created && created - at <= ESCAPE_DAYS * 864e5
+  }).length
+}
+
+export const loadTrust = async (payload: Payload, wf: Workflow, workspace: number, o: { days: number; product: number | null; now?: number; reverts?: typeof loadReverts }): Promise<ProductTrust[]> => {
+  const now = o.now ?? Date.now()
+  const since = new Date(now - o.days * 864e5)
+  const done = byKind(wf, 'done')?.name ?? ''
+  const products = (await payload.find({ collection: 'products', where: { and: [{ workspace: { equals: workspace } }, ...(o.product ? [{ id: { equals: o.product } }] : [])] }, sort: 'name', select: { name: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { id: number; name: string }[]
+  return Promise.all(products.map(async (product): Promise<ProductTrust> => {
+    const ids = (await payload.db.drizzle.execute(sql`
+      SELECT DISTINCT t."id" FROM "tickets" t JOIN "ticket_events" ev ON ev."ticket_id" = t."id"
+      WHERE t."product_id" = ${product.id}::int AND t."stage" = ${done} AND ev."phase" = 'closed' AND ev."at" >= ${since.toISOString()}::timestamptz`)).rows.map((r) => Number((r as { id: number }).id))
+    const trusts: TicketTrust[] = []
+    for (let i = 0; i < ids.length; i += 8) trusts.push(...(await Promise.all(ids.slice(i, i + 8).map((id) => ticketTrust(payload, id, now)))))
+    const n = trusts.length
+    const sendBacks = new Map<string, { stage: string; by: 'review' | 'human'; count: number }>()
+    for (const t of trusts) for (const s of t.facts.sendBacks) sendBacks.set(`${s.stage}|${s.by}`, { ...s, count: (sendBacks.get(`${s.stage}|${s.by}`)?.count ?? 0) + 1 })
+    const total = trusts.reduce((a, t) => a + t.cost.usd, 0)
+    const reworkRate = n ? trusts.filter((t) => t.facts.sendBacks.length).length / n : null
+    const escaped = await escapedDefects(payload, product.id, since)
+    return {
+      product,
+      done: n,
+      interventionsPerTicket: n ? trusts.reduce((a, t) => a + t.facts.interventions, 0) / n : null,
+      reworkRate,
+      sendBacksPerTicket: n ? trusts.reduce((a, t) => a + t.facts.sendBacks.length, 0) / n : null,
+      sendBacks: [...sendBacks.values()].sort((a, b) => b.count - a.count || a.stage.localeCompare(b.stage) || a.by.localeCompare(b.by)),
+      costPerChange: n && total > 0 ? total / n : null,
+      reverts: await (o.reverts ?? loadReverts)(payload, product.id),
+      escaped,
+      grades: Object.fromEntries(GRADES.map((g) => [g, trusts.filter((t) => t.grade === g).length])) as Record<Grade, number>,
+      earned: earnedAutonomy({ done: n, escaped, reworkRate: reworkRate ?? 0 }, o.days),
+    }
+  }))
 }

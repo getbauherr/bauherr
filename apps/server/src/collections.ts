@@ -558,6 +558,7 @@ const tickets = col('tickets', [
   rel('parent', 'tickets'),
   rel('inheritedApprovalFrom', 'tickets', { admin: { description: 'Parent whose plan listed this Ticket at approval; the plan approval was inherited.' } }),
   rel('blockedBy', 'tickets', { hasMany: true }),
+  rel('causedBy', 'tickets', { admin: { description: 'The Ticket whose change introduced this bug, named by Triage; read by the escaped-defect count on Insights.' } }),
   text('mergeSha'),
   date('stageSince'),
   date('releaseAt'),

@@ -85,6 +85,15 @@ describe('Ticket page cost', () => {
     ticket = own
   })
 
+  it('the Trust card shows the grade to everyone and its cost line only to an Admin', async () => {
+    const admin = await html(cookie.admin)
+    expect(admin).toMatch(/data-testid="trust-grade"/)
+    expect(admin).toMatch(/data-testid="trust-cost"[^>]*>(<!-- -->)?<span[^>]*>\$(<!-- -->)?7\.31/)
+    const member = await html(cookie.member)
+    expect(member).toContain('data-testid="ticket-trust"')
+    expect(member).not.toContain('data-testid="trust-cost"')
+  })
+
   it('a non-Admin render carries no cost number', async () => {
     const out = await html(cookie.member)
     expect(out).not.toMatch(/\$7\.31|7\.3142/)

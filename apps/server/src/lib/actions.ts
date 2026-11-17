@@ -36,6 +36,7 @@ import { NoRoom, evenRanks, rankBetween } from './frontier'
 import { retryRed, settleRetries } from './check-retry'
 import { APPROVED_PRODUCTION, NO_PRODUCTION, assertOpenFactoryMr, beginProduction, clearApprovalLabel, forgeOf, id, isFactoryPr, latestChecks, mergeChecks, prOf, passStaging, publishStagingSummary, cas } from './release'
 import { queueDistill } from './skill-distill'
+import { isBug } from './trust'
 import { backendFor } from './adapters'
 import { connectionInput } from './connection'
 import { NOT_PARKED, type EpicField, type SliceField } from './epic'
@@ -2059,7 +2060,7 @@ export const restartParkedReviews = async (payload: Payload): Promise<number> =>
 }
 
 /** `expedite`: Triage proposes the expedite lane (production down, factory blocked); a human decides. */
-export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[]; expedite?: true }
+export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[]; expedite?: true; causedBy?: number }
 export const MAX_QUESTIONS = 10
 
 /** One line without the characters the decision-sheet parser treats as structure. */
@@ -2068,6 +2069,7 @@ const plain = (v: unknown, max: number): string => String(v).replace(/[<>]/g, (c
 /** Validates a triage outcome. `refine` needs 1..MAX_QUESTIONS questions (title, default, optional alternatives); `reason` is always required. */
 export const normalizeTriage = (raw: any): Triage => {
   if (!raw || !['plan', 'refine', 'skip'].includes(raw.outcome) || typeof raw.reason !== 'string' || !raw.reason.trim()) throw new Error('a triage needs outcome (plan|refine|skip) and a reason')
+  if (raw.causedBy !== undefined && (!Number.isInteger(raw.causedBy) || raw.causedBy < 1)) throw new Error('causedBy must be a Ticket number')
   const list = raw.outcome === 'refine' ? raw.questions : []
   if (raw.outcome === 'refine' && (!Array.isArray(list) || !list.length || list.length > MAX_QUESTIONS)) throw new Error(`refine needs 1 to ${MAX_QUESTIONS} questions`)
   const questions = list.map((q: any, i: number) => {
@@ -2075,7 +2077,7 @@ export const normalizeTriage = (raw: any): Triage => {
     if (!title || !def) throw new Error(`question ${i} needs a title and a default`)
     return { title, default: def, alternatives: (Array.isArray(q.alternatives) ? q.alternatives : []).map((a: unknown) => plain(a, 300)).filter(Boolean).slice(0, 5) }
   })
-  return { outcome: raw.outcome, reason: plain(raw.reason, 1000), questions, ...(raw.expedite === true && { expedite: true as const }) }
+  return { outcome: raw.outcome, reason: plain(raw.reason, 1000), questions, ...(raw.expedite === true && { expedite: true as const }), ...(raw.causedBy !== undefined && { causedBy: raw.causedBy }) }
 }
 
 /** The questions as a decision sheet in the plan's format; every row is critical, so the owner answers all of them. */
@@ -2096,6 +2098,10 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
   const { ts, n } = await sourceOf(payload, doc)
   const current = (await ts.get(n)).labels
   if (stageOf(wf, current)) return { outcome: 'noop' }
+  if (t.causedBy && isBug(doc.labels)) {
+    const cause = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(doc.product) } }, { number: { equals: t.causedBy } }, { id: { not_equals: doc.id } }] }, limit: 1, select: {}, depth: 0, overrideAccess: true })).docs[0]
+    if (cause) await payload.update({ collection: 'tickets', id: doc.id, data: { causedBy: cause.id }, depth: 0, overrideAccess: true })
+  }
   if (t.expedite && !current.includes(EXPEDITE_LABEL) && (await laneOn(payload, id(doc.workspace)))) await ts.addLabels(n, [EXPEDITE_PROPOSED])
   if (t.outcome === 'plan') {
     const { entered } = await advance(payload, ts, doc, 'plan', { by: 'factory', why: 'triage' })

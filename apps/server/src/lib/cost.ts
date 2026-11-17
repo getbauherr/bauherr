@@ -4,6 +4,13 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
 type Doc = Record<string, any>
+
+export const costSplit = (runs: Doc[]): { unreported: Doc[]; priced: Doc[]; estimated: boolean; total: number } => {
+  const unreported = runs.filter((r) => r.executor === 'session' && !(Number(r.costUsd) > 0) && !(Number(r.tokensIn) > 0) && !(Number(r.tokensOut) > 0) && !(Number(r.gatewayTokensTotal) > 0))
+  const priced = runs.filter((r) => r.costUsd != null && !unreported.includes(r))
+  return { unreported, priced, estimated: priced.some((r) => r.costSource !== 'gateway'), total: priced.reduce((n, r) => n + Number(r.costUsd), 0) }
+}
+
 export type Usage = { tokensIn: number; tokensOut: number; cacheRead: number; cacheWrite: number; costUsd?: number; model?: string }
 type Rates = { input: number; output: number; cacheRead: number; cacheWrite: number }
 

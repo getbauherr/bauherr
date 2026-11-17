@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Steps } from '../lib/steps'
+import { costSplit } from '../../../lib/cost'
 import { Card } from './ui/card'
 
 type Doc = Record<string, any>
@@ -32,10 +33,7 @@ const usd = (n: number) => '$' + n.toFixed(2)
 
 /** Admin only: what the Ticket cost in total, by stage and by Run (the Runs' `costUsd`). */
 export function CostPanel({ runs }: { runs: Doc[] }) {
-  const unreported = runs.filter((r) => r.executor === 'session' && !(Number(r.costUsd) > 0) && !(Number(r.tokensIn) > 0) && !(Number(r.tokensOut) > 0) && !(Number(r.gatewayTokensTotal) > 0))
-  const priced = runs.filter((r) => r.costUsd != null && !unreported.includes(r))
-  const estimated = priced.some((r) => r.costSource !== 'gateway')
-  const total = priced.reduce((n, r) => n + Number(r.costUsd), 0)
+  const { unreported, priced, estimated, total } = costSplit(runs)
   const sums = new Map<string, number>()
   for (const r of priced) sums.set(r.stage, (sums.get(r.stage) ?? 0) + Number(r.costUsd))
   const byStage = [...sums]

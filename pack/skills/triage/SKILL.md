@@ -22,7 +22,7 @@ Prefer `plan` when a default plus a later correction fixes it cheaply. Do not as
 Set `expedite: true` only when production is down or broken for users, or a factory-blocking bug stops all other work. Never for a feature, a nuisance or "important". It is a proposal: the Bauherr sees an "Expedite?" and decides with one click; it changes nothing by itself. Give the reason in `reason`.
 
 ## Output
-Session Run: call `submit_triage {runId, leaseToken, outcome, reason, questions?, expedite?}`.
-Autonomous Run: write `.bauherr/triage.json` as `{"outcome","reason","questions":[{"title","default","alternatives":[]}]}`, adding `"expedite":true` only to propose the lane for a production-down or factory-blocking bug, then set the Goal statement to verified. You have no shell.
+Session Run: call `submit_triage {runId, leaseToken, outcome, reason, questions?, expedite?, causedBy?}`.
+Autonomous Run: write `.bauherr/triage.json` as `{"outcome","reason","questions":[{"title","default","alternatives":[]}]}`, adding `"expedite":true` only to propose the lane for a production-down or factory-blocking bug, and `"causedBy":<number>` as below, then set the Goal statement to verified. You have no shell.
 
-`reason` is one line, always required.
+`reason` is one line, always required. For a bug, name the Ticket whose change introduced it (blame the fix area) as `causedBy` when you can tell; else omit.
