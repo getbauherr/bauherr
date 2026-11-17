@@ -1,3 +1,4 @@
+import { AutoRefresh } from '../../components/AutoRefresh'
 import { EmptyState } from '../../components/EmptyState'
 import { InboxAnnouncer, InboxView } from '../../components/InboxView'
 import { InboxFilterBar } from '../../components/InboxFilterBar'
@@ -49,6 +50,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       ) : (
         <EmptyState {...emptyCopy({ picked, owner, working })} />
       )}
+      <AutoRefresh />
     </InboxAnnouncer>
   )
 }

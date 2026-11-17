@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { unseenOf } from '../src/lib/inbox-seen'
-import { actionBar, announcement, emptyPane, removeRow, restoreRow, selectionChanged, settleRow, syncRows, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, waitingText, isUnseen, toggleKey } from '../src/app/(app)/lib/inbox-view'
+import { actionBar, announcement, emptyPane, removeRow, restoreRow, selectionChanged, settleRow, syncRows, emptyCopy, inboxHref, nextRow, redirectHref, resolveSelection, ROW_LIMIT, visibleRows, waitingText, isUnseen, keyAction, moveSelection, newRows } from '../src/app/(app)/lib/inbox-view'
 import { buildDecision } from '../src/lib/decision'
 import { NEEDS } from '../src/lib/needs-you'
 
@@ -221,13 +221,28 @@ describe('unread', () => {
     expect(isUnseen({ id: 1, unseen: true }, { 1: false })).toBe(false)
     expect(isUnseen({ id: 1 }, { 1: true })).toBe(true)
   })
-  it('u toggles outside fields and dialogs only', () => {
-    const e = (over: object = {}) => ({ key: 'u', ctrlKey: false, metaKey: false, altKey: false, target: { tagName: 'A', closest: () => null }, ...over })
-    expect(toggleKey(e())).toBe(true)
-    expect(toggleKey(e({ key: 'j' }))).toBe(false)
-    expect(toggleKey(e({ ctrlKey: true }))).toBe(false)
-    expect(toggleKey(e({ target: { tagName: 'INPUT' } }))).toBe(false)
-    expect(toggleKey(e({ target: { tagName: 'DIV', closest: () => ({}) } }))).toBe(false)
+  it('keys map to actions outside fields and dialogs only', () => {
+    const e = (key: string, over: object = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, target: { tagName: 'A', closest: () => null }, ...over })
+    const map = { j: 'next', ArrowDown: 'next', k: 'prev', ArrowUp: 'prev', e: 'primary', o: 'open', r: 'sendBack', u: 'unread', '/': 'filters', '?': 'help', Escape: 'back' }
+    for (const [key, action] of Object.entries(map)) expect(keyAction(e(key))).toBe(action)
+    expect(keyAction(e('x'))).toBeNull()
+    expect(keyAction(e('j', { ctrlKey: true }))).toBeNull()
+    for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) expect(keyAction(e('j', { target: { tagName } }))).toBeNull()
+    expect(keyAction(e('j', { target: { tagName: 'DIV', isContentEditable: true } }))).toBeNull()
+    expect(keyAction(e('Escape', { target: { tagName: 'DIV', closest: () => ({}) } }))).toBeNull()
+  })
+  it('j and k move one row and stop at the ends; without a selection the first row', () => {
+    expect(moveSelection([1, 2, 3], 2, 1)).toBe(3)
+    expect(moveSelection([1, 2, 3], 2, -1)).toBe(1)
+    expect(moveSelection([1, 2, 3], 3, 1)).toBeUndefined()
+    expect(moveSelection([1, 2, 3], 1, -1)).toBeUndefined()
+    expect(moveSelection([1, 2, 3], null, 1)).toBe(1)
+    expect(moveSelection([], null, 1)).toBeUndefined()
+  })
+  it('a live refresh counts only the rows that were not there before', () => {
+    expect(newRows([1, 2], [1, 2])).toEqual([])
+    expect(newRows([1, 2], [3, 1, 4])).toEqual([3, 4])
+    expect(newRows([1, 2], [2])).toEqual([])
   })
   it('an unread row shows a dot with the text "Unread", a read row neither', async () => {
     const { InboxList } = await import('../src/app/(app)/components/InboxList')

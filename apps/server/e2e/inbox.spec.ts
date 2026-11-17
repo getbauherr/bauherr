@@ -14,7 +14,8 @@ const login = async (page: Page, as = email) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 const card = (page: Page, title: string) => page.locator('article[data-decision]').filter({ hasText: title })
-const pick = async (page: Page, title: string) => { await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
+// a live refresh that lands in the instant of the click can swallow it: click again until the pane shows the row
+const pick = (page: Page, title: string) => expect(async () => { await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title, { timeout: 4000 }) }).toPass({ timeout: 20_000 })
 const badge = async (page: Page) => Number((await page.getByRole('navigation', { name: 'Main' }).getByLabel(/need you/).textContent()) ?? 0)
 
 test('every decision that is the owner\'s is a card with the ask, the recommendation, the facts and the real options', async ({ page }) => {
@@ -83,6 +84,7 @@ test('approving the plan on its pane removes the row, selects the next and annou
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 (set E2E_FAKE_FORGE=1 here)')
   await login(page)
   const stale = await context.newPage()
+  await stale.route('**/api/changes', (r) => r.abort()) // no live refresh: this tab must stay behind
   await stale.goto('/inbox')
   await pick(stale, 'Rename the sign-in button')
   await page.goto('/inbox')
@@ -236,4 +238,127 @@ test('on a phone a row is at least 44 px high and a 120-character title with a 2
   await expect(row).toBeVisible()
   expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+const selectedRow = (page: Page) => page.getByTestId('inbox-row').and(page.locator('[aria-current=true]'))
+const dot = (row: ReturnType<typeof rowOf>) => row.locator('[data-slot=unseen] .rounded-full')
+
+test('j and k, the arrows, o, ? and / work outside fields and stop inside them', async ({ page }) => {
+  await login(page)
+  await page.goto('/inbox')
+  await expect(selectedRow(page)).toHaveCount(1)
+  const first = await selectedRow(page).getAttribute('href')
+  await page.keyboard.press('j')
+  await expect(selectedRow(page)).not.toHaveAttribute('href', first!)
+  const second = await selectedRow(page).getAttribute('href')
+  await page.keyboard.press('ArrowDown')
+  await expect(selectedRow(page)).not.toHaveAttribute('href', second!)
+  await page.keyboard.press('ArrowUp')
+  await expect(selectedRow(page)).toHaveAttribute('href', second!)
+  await page.keyboard.press('k')
+  await expect(selectedRow(page)).toHaveAttribute('href', first!)
+  await expect(page).toHaveURL(/\/inbox\?t=\d+$/)
+  await page.keyboard.press('?')
+  const help = page.getByRole('dialog', { name: 'Keyboard' })
+  await expect(help).toContainText('Take the primary action')
+  await page.keyboard.press('j')
+  await expect(selectedRow(page)).toHaveAttribute('href', first!)
+  await page.keyboard.press('Escape')
+  await expect(help).toHaveCount(0)
+  await page.keyboard.press('/')
+  await expect(page.getByLabel('Checkpoint')).toBeFocused()
+  await page.keyboard.press('j')
+  await expect(page.getByLabel('Checkpoint')).toBeFocused()
+  await expect(selectedRow(page)).toHaveAttribute('href', first!)
+  await page.getByLabel('Checkpoint').blur()
+  const id = new URL(first!, page.url()).searchParams.get('t')
+  await page.keyboard.press('o')
+  await expect(page).toHaveURL(new RegExp(`/tickets/${id}`))
+})
+
+test('e takes the single primary and r opens the send-back dialog, without a native dialog', async ({ page }) => {
+  const native: string[] = []
+  page.on('dialog', (d) => { native.push(d.type()); void d.dismiss() })
+  await login(page)
+  await page.goto('/inbox')
+  await pick(page, 'Check the new header on staging')
+  await page.keyboard.press('r')
+  const dialog = page.getByRole('dialog', { name: 'Request changes' })
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('e')
+  await expect(page.getByTestId('inbox-pane')).toContainText('Check the new header on staging')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await pick(page, 'Name the export file')
+  await page.keyboard.press('e')
+  await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
+  expect(native).toEqual([])
+})
+
+test('a row opened for a second is marked seen, u toggles it and the state survives a reload', async ({ page }) => {
+  await login(page)
+  await page.goto('/inbox')
+  const a = rowOf(page, 'Stop the export retry loop')
+  const b = rowOf(page, 'Check the new header on staging')
+  await pick(page, 'Stop the export retry loop')
+  await expect(dot(a)).toHaveCount(0, { timeout: 5000 })
+  await page.keyboard.press('u')
+  await expect(dot(a)).toHaveCount(1)
+  await expect(a).toContainText('Unread')
+  await pick(page, 'Check the new header on staging')
+  await expect(dot(b)).toHaveCount(0, { timeout: 5000 })
+  await a.click()
+  await page.waitForTimeout(300) // allow-wait: the dwell is a time; the dot must still be there well before the second is up
+  await expect(dot(a)).toHaveCount(1)
+  await expect(dot(a)).toHaveCount(0, { timeout: 5000 })
+  await page.keyboard.press('u')
+  await expect(dot(a)).toHaveCount(1)
+  await pick(page, 'Check the new header on staging')
+  await page.waitForLoadState('networkidle') // the toggle is saved by a server action
+  await page.reload()
+  await expect(dot(rowOf(page, 'Stop the export retry loop'))).toHaveCount(1)
+})
+
+test('the page refreshes every few seconds when the Workspace changed and keeps the selection', async ({ page }) => {
+  let v = 1
+  await page.route('**/api/changes', (r) => r.fulfill({ json: { v } }))
+  await login(page)
+  await page.goto('/inbox')
+  await pick(page, 'Check the new header on staging')
+  const url = page.url()
+  await page.getByTestId('inbox-row').first().evaluate((el) => { el.setAttribute('data-marker', 'before') })
+  const refreshed = page.waitForRequest((r) => r.headers()['rsc'] === '1' && r.url().includes('/inbox?t='), { timeout: 15_000 })
+  v = 2
+  await refreshed
+  await expect(page.getByTestId('inbox-new')).toBeHidden()
+  expect(page.url()).toBe(url)
+  await expect(selectedRow(page)).toContainText('Check the new header on staging')
+  await expect(page.getByTestId('inbox-pane')).toContainText('Check the new header on staging')
+})
+
+const opens = (page: Page) => expect(async () => { await rowOf(page, 'Check the new header on staging').click(); await expect(page).toHaveURL(/\/inbox\?t=\d+$/, { timeout: 4000 }) }).toPass({ timeout: 20_000 }) // as `pick`: a refresh can swallow the click
+
+test('on a phone the list is the page, a row opens the detail and Inbox (or Esc) goes back', async ({ page }) => {
+  await login(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/inbox')
+  await expect(page.getByTestId('inbox-pane')).toBeHidden()
+  await opens(page)
+  await expect(page.getByTestId('inbox-pane')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Decisions' })).toBeHidden()
+  await page.getByRole('link', { name: 'Inbox', exact: true }).click()
+  await expect(page).toHaveURL(/\/inbox$/)
+  await expect(page.getByRole('navigation', { name: 'Decisions' })).toBeVisible()
+  await opens(page)
+  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(/\/inbox$/)
+})
+
+test('with reduced motion the Inbox has no transitions', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await login(page)
+  await page.goto('/inbox')
+  await expect(selectedRow(page)).toHaveCount(1)
+  const moving = await page.evaluate(() => [...document.querySelectorAll('main *')].filter((el) => getComputedStyle(el).transitionDuration.split(', ').some((d) => parseFloat(d) > 0)).map((el) => el.tagName + '.' + el.className))
+  expect(moving).toEqual([])
 })

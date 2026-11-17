@@ -61,11 +61,29 @@ export const isUnseen = (i: { id: number; unseen?: boolean }, local: Record<numb
 /** Milliseconds a row stays open before its need counts as seen. */
 export const SEEN_AFTER_MS = 1000
 
-/** A key press that `u` may act on: not in a field, not with a modifier, not behind a dialog. */
-export const toggleKey = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; target: unknown }): boolean => {
+export type InboxKey = 'next' | 'prev' | 'primary' | 'open' | 'sendBack' | 'unread' | 'filters' | 'help' | 'back'
+
+const KEYS: Record<string, InboxKey> = { j: 'next', ArrowDown: 'next', k: 'prev', ArrowUp: 'prev', e: 'primary', o: 'open', r: 'sendBack', u: 'unread', '/': 'filters', '?': 'help', Escape: 'back' }
+
+/** The keys the `?` dialog lists. */
+export const KEY_HELP: [string, string][] = [['j / k, ↓ / ↑', 'Next / previous decision'], ['e', 'Take the primary action'], ['o', 'Open the Ticket'], ['r', 'Send back'], ['u', 'Toggle unread'], ['/', 'Focus the filters'], ['?', 'Show these keys'], ['Esc', 'Back to the list']]
+
+/** What an Inbox key press means: nothing while typing in a field, with a modifier, or behind a dialog. */
+export const keyAction = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; target: unknown }): InboxKey | null => {
   const t = e.target as { tagName?: string; isContentEditable?: boolean; closest?: (s: string) => unknown } | null
-  return e.key === 'u' && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '') && !t?.isContentEditable && !t?.closest?.('[role=dialog]')
+  if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '') || t?.isContentEditable || t?.closest?.('[role=dialog]')) return null
+  return KEYS[e.key] ?? null
 }
+
+/** The row `j` (1) or `k` (-1) selects, none past the ends; without a selection the first row. */
+export const moveSelection = (ids: number[], current: number | null, dir: 1 | -1): number | undefined => {
+  const at = current === null ? -1 : ids.indexOf(current)
+  const to = at < 0 ? 0 : at + dir
+  return to === at ? undefined : ids[to]
+}
+
+/** The ids in `now` that were not in `known`: the rows a live refresh brought in ("1 new"). */
+export const newRows = (known: number[], now: number[]): number[] => now.filter((id) => !known.includes(id))
 
 const PAST: Partial<Record<DecisionOption['action'], string>> = { approvePlan: 'Plan approved', acceptStaging: 'Accepted on staging', approveProduction: 'Production approved', grantRound: 'One more round given', stopReview: 'Review stopped', backToBuild: 'Sent back to build', backToBacklog: 'Sent back to the backlog', requestChanges: 'Changes requested', expedite: 'Put on the fast lane', releaseLane: 'Fast lane released', rerun: 'Re-run started', approveSkill: 'Skill proposal approved', rejectSkill: 'Skill proposal rejected' }
 
