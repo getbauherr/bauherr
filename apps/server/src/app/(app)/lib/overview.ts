@@ -12,7 +12,8 @@ import { fastLaneHolder } from '../../../lib/expedite'
 import { fastLaneText, overlapText } from '../../../lib/hold-text'
 import { waitingText, wipLimit } from '../../../lib/wip-limits'
 import { workflowFor } from '../../../lib/factory'
-import { byKind, is, title, wipStages, type Workflow } from '../../../lib/workflow'
+import { byKind, is, stage as stageDef, title, wipStages, type Workflow } from '../../../lib/workflow'
+import { jobsOpen } from '../../../lib/stage-jobs'
 import { parkedWhyOf, statusLine, type Track } from './status'
 import type { EpicField, SliceField } from '../../../lib/epic'
 
@@ -171,11 +172,12 @@ const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], pr
   const passedOf = (t: Doc) => kids.filter((k) => k.parent === t.id && k.slice?.passed).length
   const byId = new Map(productRows.map((p) => [p.id, p]))
   const gatesFor = await productGates(payload, wf, workspace, productRows)
+  const jobsOpenIds = new Set((await Promise.all(ticketDocs.filter((t) => t.state !== 'closed' && stageDef(wf, t.stage)?.jobs).map(async (t) => ((await jobsOpen(payload, t)) ? t.id : null)))).filter((x) => x !== null))
   return ticketDocs.map((t): TicketRow => {
     const isOpen = t.state !== 'closed'
     const run = latest.get(t.id) ?? null
     const blockedBy = isOpen ? ((t.blockedBy ?? []) as number[]).flatMap((b) => (blockers.get(b)?.open ? [blockers.get(b)!] : [])) : []
-    const need = needsOf(wf, t, run, !hasProductionChecks(byId.get(t.product) ?? {}), gatesFor(t.product))
+    const need = needsOf(wf, { ...t, jobsOpen: jobsOpenIds.has(t.id) }, run, !hasProductionChecks(byId.get(t.product) ?? {}), gatesFor(t.product))
     const overlap = isOpen && t.waitingFor === buildStage ? /^overlaps #(\d+)$/.exec(t.waitingReason ?? '')?.[1] : undefined
     const hold = isOpen && t.waitingFor && !blockedBy.length ? waitingText(wf, t.waitingFor, wip[t.waitingFor]?.count ?? 0, wip[t.waitingFor]?.limit ?? null, t.waitingReason).replace(/^Waiting: /, '') : null
     return {

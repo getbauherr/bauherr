@@ -6,7 +6,7 @@ import { workflowFor } from './factory'
 import { moveStage } from './stage-move'
 import { enterStage, startAfterPull } from './wip'
 import { APPROVED_PLAN } from './needs-you'
-import { handBackToBuild, parkEpicNow, replanEpic, sendToBacklog, sourceOf, startReviewNow } from './actions'
+import { handBackToBuild, leaveRelease, parkEpicNow, replanEpic, sendToBacklog, sourceOf, startReviewNow } from './actions'
 import { routeEntry } from './route'
 import { skipEvent } from './history'
 import { is, isForward, nameOf, stage as stageDef, target } from './workflow'
@@ -61,6 +61,7 @@ export const advance = async (payload: Payload, ts: TicketSource | null, ticket:
   if (def.kind === 'release' || def.kind === 'done' || def.kind === 'container') throw new Error(`stage "${to}" (${def.kind}) is entered by its own logic, not by outcome "${outcome}" of "${from}"`)
   if (def.kind === 'build' && isForward(wf, to, from)) {
     await handBackToBuild(payload, ticket, { ts: source, n: String(ticket.number) }, opts.note ?? `Back to ${to} from ${from} (${outcome}).`)
+    if (is(wf, from, 'release')) await leaveRelease(payload, source, ticket)
     return { stage: to, entered: 'moved' }
   }
   const replan = def.kind === 'plan' && isForward(wf, to, from)

@@ -556,7 +556,7 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
 
 const startMissingJobs = async (payload: Payload): Promise<void> => {
   const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
-    const stages = workflowFor(w.id).stages.filter((s) => s.jobs && s.kind !== 'release').map((s) => s.name)
+    const stages = workflowFor(w.id).stages.filter((s) => s.jobs).map((s) => s.name)
     return stages.length ? [{ and: [{ workspace: { equals: w.id } }, { stage: { in: stages } }] as Where[] }] : []
   })
   if (!or.length) return
@@ -851,6 +851,7 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
         },
         ...opts,
       })
+      if (run.job && stageDef(wf, run.stage)?.kind === 'release' && ticket.mergeSha && proof?.length) await ingestProof(payload, ticket, { run: run.id, sha: ticket.mergeSha, items: proof, config: ctx.product.reviewChecks })
       if (kind === 'build' && r.artifacts.pushedSha && ctx.product.reviewChecks?.artifacts?.length) await ingestProof(payload, ticket, { run: run.id, sha: r.artifacts.pushedSha, items: proof ?? [], evidence: r.artifacts.evidence, config: ctx.product.reviewChecks })
       if (untriageAfter) await untriageLogged(payload, ticket.id)
       await record(payload, ticket.id, { run: run.id, outcome: agentError ? 'failed' : r.status, cause: 'run:finished' })

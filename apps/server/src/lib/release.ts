@@ -109,8 +109,12 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
   }
   await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: 'on_staging' }, overrideAccess: true })
   await record(payload, t.id, { cause: 'release:on_staging' })
+  await (await import('./stage-jobs')).startReadyJobs(payload, t)
   return { posted }
 }
+
+/** Whether the release stage's Jobs (the staging walk) are still open; imported late because stage-jobs imports this module. */
+const walking = async (payload: Payload, t: Doc): Promise<boolean> => (await import('./stage-jobs')).jobsOpen(payload, t)
 
 /** Latest run per check name (highest id; later entry wins without ids). */
 export const latestChecks = (checks: Check[]): Check[] => {
@@ -333,7 +337,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const auto = loose && !(await stagingAsked(wf, product))
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
       // Product `expediteSkipStaging` is the human decision to skip the staging gate for a Hotfix; passStaging still records the staging touch.
-      if (t.stage === release && (auto || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
+      if (t.stage === release && ((auto && !(await walking(payload, t))) || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
         if (!t.productionState) await passStaging(payload, t, undefined, auto ? undefined : product)
         continue
       }
@@ -384,7 +388,7 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       }
       if (onStaging) {
         await publishStagingSummary(payload, t)
-        if (auto) await passStaging(payload, t)
+        if (auto && !(await walking(payload, t))) await passStaging(payload, t)
         out.confirmed++
       } else if (now - new Date(t.releaseAt).getTime() > STAGING_TIMEOUT_MS && (await cas(payload, t.id, sql`"release_state" = 'timed_out'`, sql`("release_state" = 'waiting' OR "release_state" IS NULL)`))) {
         await ts.comment(n, 'Bauherr needs a human: staging not confirmed')
