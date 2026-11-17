@@ -67,7 +67,7 @@ const mrFor = async (number: number) => {
   const head = `bauherr/${number}-feat`
   if (!(await fake.forge.listBranches(repo)).some((b) => b.name === head)) await fake.forge.createBranch(repo, head)
   fake.commit(repo, head, 'a.ts', `x${Math.random()}`)
-  const pr = (await fake.forge.listPullRequests(repo)).find((p) => p.head === head && p.state === 'open') ?? (await fake.forge.openPullRequest(repo, { title: 'custom flow', body: 'Done\n\n## Evidence\n| Goal | verified |\n', head, base: 'main' }))
+  const pr = (await fake.forge.listPullRequests(repo)).find((p) => p.head === head && p.state === 'open') ?? (await fake.forge.openPullRequest(repo, { title: 'custom flow', body: 'Done\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n', head, base: 'main' }))
   fake.setChecks(repo, pr.headSha, green)
   return pr
 }

@@ -53,7 +53,7 @@ const seed = async (files: Record<string, string>) => {
   const head = `bauherr/1-${n}`
   await fake.forge.createBranch(repo, head)
   for (const [path, content] of Object.entries(files)) fake.commit(repo, head, path, content)
-  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: 'b', head, base: 'main' })
+  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: '## Blast radius\nSure: `read the code`', head, base: 'main' })
   return { ticket, run, a: { runId: run.id, leaseToken }, pr }
 }
 const stage = async (id: number) => ((await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>).stage

@@ -25,7 +25,7 @@ Re-run the checks after the last edit; earlier evidence is stale. Format of the 
 
 UI change (`## Files` match the `ui` path set): load `pr-screenshots` before editing.
 
-Each Build writes `## Approval brief` in its MR: [approval-brief](approval-brief.md).
+Each Build writes the [mr-body](mr-body.md) and [approval-brief](approval-brief.md) sections.
 
 ## Return from Review
 The worklog's Unfinished work lists the review findings. For each with a `Failing test:` line, your first step is to add that test (code in the MR review comment, command and failure in the line), run it and see it fail, then fix until it passes. A test that already passes voids the finding: change nothing for it and write one line under Open. Do not work on items under Open.

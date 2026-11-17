@@ -14,7 +14,7 @@ let release: typeof import('../src/lib/release')
 let call: (user: Record<string, any>, name: string, input: unknown) => Promise<any>
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
-const EVIDENCE = 'x\n\n## Evidence\n| Goal | verified |\n'
+const EVIDENCE = 'x\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n'
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 
 let testDb: TestDb

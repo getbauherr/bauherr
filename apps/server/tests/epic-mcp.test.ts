@@ -14,7 +14,7 @@ let jobs: typeof import('../src/jobs')
 let actions: typeof import('../src/lib/actions')
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
-const EVIDENCE = 'Refs it\n\n## Evidence\n| Goal | verified |\n'
+const EVIDENCE = 'Refs it\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n'
 const checked = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence'].map((area) => ({ area, note: `checked ${area}` }))
 
 let testDb: TestDb

@@ -20,7 +20,7 @@ let agent: { kind: 'agent'; keyId: number | string }
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 const MARKER = '<!-- bauherr:escalation -->'
-const EVIDENCE = 'x\n\n## Evidence\n| Goal | verified |\n'
+const EVIDENCE = 'x\n\n## Evidence\n| Goal | verified |\n\n## Blast radius\nSafe because x. Sure: `read the code`\n'
 
 let testDb: TestDb
 beforeAll(async () => {

@@ -14,3 +14,5 @@ The `## Approval brief` section of the MR body is read by the person who accepts
 ```
 3 to 7 bullets, each marked `visible`, `behaviour` or `internal`; a backend-only change has no `visible` bullet and the card then says "No visible change". The proof table, checks and links are added by the factory; do not copy them.
 
+
+The sections `## Why` to `## Verification` ([mr-body](mr-body.md)) go before it, in the same file for an autonomous Run.

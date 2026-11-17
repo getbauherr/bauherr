@@ -59,7 +59,7 @@ const seed = async (files: Record<string, string>) => {
   const head = `bauherr/${number}-${n}`
   await fake.forge.createBranch(repo, head)
   for (const [path, content] of Object.entries(files)) fake.commit(repo, head, path, content)
-  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: 'b', head, base: 'main' })
+  const pr = await fake.forge.openPullRequest(repo, { title: 't', body: '## Blast radius\nSure: `read the code`', head, base: 'main' })
   return { ticket, run, a: { runId: run.id, leaseToken }, pr }
 }
 const shot = { kind: 'image', title: 'Settings page after', rule: RULE.name, criterion: 'The save button is visible', file: { name: 'a.png', base64: PNG } }
