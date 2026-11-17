@@ -38,7 +38,7 @@ Taken from a code audit of the UI and the backend. The workflow itself: [spec/wo
 | Epics and sub-tickets | Split a plan into slices that inherit the approval: built one after the other on one epic branch, each reviewed on its own range, then one epic review and one merge | `/?view=epics`, `/tickets/[id]` | Live |
 | Repair | Set the stage, clear a wait, reset counters (with the counters' values), move to the top | `/tickets/[id]` details (Admin) | Live, hard to find |
 | Ticket by number | A link such as `/tickets/n/42`, used by the chat | `/tickets/n/[number]` | Live |
-| Run page | Timeline and list of Steps, tool calls, evidence, goal, gateway tokens, re-run, release lock, relink MR | `/runs/[id]` (Admin) | Live, hard to find |
+| Run page | Truthful state and the one action, Timeline of reported Steps (everyone), agent, links, relations, times, evidence, goal and tool calls (Admin), re-run, release lock, relink MR | `/runs/[id]` | Live |
 | Run list | All Runs of the Workspace with status | `/runs` (Admin) | Live |
 | Successor-run chain | Which Run replaced a failed one: "Continues Run #x" and "Continued by Run #y" | `/runs/[id]` | Live |
 | Agent repair of a dead Ticket (`return_to_build`) | An agent sends a stuck Ticket back to Build | MCP only | No UI |
