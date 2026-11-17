@@ -307,8 +307,8 @@ const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unkno
   )
 }
 
-/** A Review Run on a Ticket whose latest Build Run came from the caller's own (non-empty) session label. */
-const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && (f.latest.has(t.id) && kindOfRun(workflowFor(t.workspace), f.latest.get(t.id)!)) === 'review' && f.builders.get(t.id) === label
+/** Any Run of the review stage (the review Run and its Jobs) of a Ticket whose latest Build Run came from the caller's own (non-empty) session label. */
+const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && !!f.claimable.get(t.id)?.length && is(workflowFor(t.workspace), t.stage, 'review') && f.builders.get(t.id) === label
 
 /** Why `t` cannot be claimed right now, or null when it can. */
 const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: string | null): string | null => {

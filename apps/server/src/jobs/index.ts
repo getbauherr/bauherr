@@ -556,7 +556,7 @@ const startMissingRuns = async (payload: Payload): Promise<void> => {
 
 const startMissingJobs = async (payload: Payload): Promise<void> => {
   const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
-    const stages = workflowFor(w.id).stages.filter((s) => s.jobs).map((s) => s.name)
+    const stages = workflowFor(w.id).stages.filter((s) => s.jobs && s.kind !== 'release').map((s) => s.name)
     return stages.length ? [{ and: [{ workspace: { equals: w.id } }, { stage: { in: stages } }] as Where[] }] : []
   })
   if (!or.length) return

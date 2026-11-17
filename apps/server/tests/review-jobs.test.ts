@@ -261,3 +261,34 @@ it('finish_run refuses candidates from a review Job whose findings are malformed
   await expect(call('finish_run', { runId: c.run.id, leaseToken: c.leaseToken, status: 'succeeded', outcome: 'done', findings: [{ ...finding, line: -1 }] })).rejects.toThrow('finding 0')
   expect((await get('runs', c.run.id)).status).toBe('running')
 })
+
+it('a session that built the MR cannot claim any Run of the review stage: find, verify or review', async () => {
+  const { id } = await reviewing('own', ['src/app/page.tsx'])
+  await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }] }, data: { sessionLabel: 'dev-1' }, ...o })
+  expect(await call('claim_next', { roles: ['ux'], session: 'dev-1' })).toBeNull()
+  const ux = (await byJob(id, 'ux'))[0]!
+  await expect(call('claim_run', { runId: ux.id, session: 'dev-1' })).rejects.toThrow('your own build')
+  expect((await call('list_frontier', { session: 'dev-1' })).find((t: Doc) => t.ticket === id)).toMatchObject({ claimable: false, reason: 'your own build' })
+  expect((await call('claim_next', { roles: ['ux'], session: 'other' })).run).toMatchObject({ job: 'ux' })
+})
+
+it('candidates are served without test patches and capped at 50 KB per Job with a truncated note', async () => {
+  const { id } = await reviewing('big', ['src/app/page.tsx'])
+  const big = Array.from({ length: 50 }, (_, i) => ({ ...finding, class: 'correctness', line: i, msg: 'm'.repeat(1000), scenario: 's'.repeat(1000), test: { command: 'c', failure: 'f', patch: 'p'.repeat(4000) } }))
+  await finish(id, 'ux', { findings: big })
+  const verify = await claim('reviewer')
+  const [served] = verify.candidates
+  expect(served).toMatchObject({ job: 'ux', truncated: true })
+  expect(served.findings.length).toBeGreaterThan(0)
+  expect(served.findings.length).toBeLessThan(50)
+  expect(JSON.stringify(served).length).toBeLessThanOrEqual(50_000)
+  expect(JSON.stringify(served)).not.toContain('pppp')
+  expect(served.findings[0].test).toEqual({ command: 'c', failure: 'f' })
+})
+
+it('a small candidate list drops only the patch and is not marked truncated', async () => {
+  const { id } = await reviewing('small', ['src/app/page.tsx'])
+  await finish(id, 'ux', { findings: [{ ...finding, class: 'correctness', test: { command: 'c', failure: 'f', patch: 'p' } }] })
+  const verify = await claim('reviewer')
+  expect(verify.candidates).toEqual([{ job: 'ux', findings: [{ ...finding, class: 'correctness', test: { command: 'c', failure: 'f' } }], open: [] }])
+})

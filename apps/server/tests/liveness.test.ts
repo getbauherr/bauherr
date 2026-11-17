@@ -272,3 +272,8 @@ it('review-stalled: a ready_for_human review waiting over 30 minutes without a h
   expect(await causeOf(soon)).toBeUndefined()
   expect(await causeOf(touched)).toBeUndefined()
 })
+
+it('a failed Job Run of another stage as the newest Run does not make a review Ticket dead', async () => {
+  const { id } = await seed('review', { mr: 'open', checks: [{ name: 'ci', status: 'completed', conclusion: 'success' }], runs: [{ stage: 'plan', job: 'ax-scan', kind: 'agent', status: 'failed', error: 'boom' }] })
+  expect(await causeOf(id)).toBeUndefined()
+})

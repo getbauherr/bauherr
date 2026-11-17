@@ -38,7 +38,24 @@ const visitOf = async (payload: Payload, ticket: number | string, stage: string)
 
 export const visitWorst = (t: Doc, runs: Doc[]): Doc | undefined => worstRun(runs.filter((r) => r.stage === t.stage && (!t.stageSince || r.createdAt >= t.stageSince)))
 
-export type Candidates = { job: string; findings: Finding[]; open: OpenItem[] }[]
+export type Candidates = { job: string; findings: Finding[]; open: OpenItem[]; truncated?: true }[]
+
+export const MAX_CANDIDATE_BYTES = 50_000
+const size = (v: unknown) => Buffer.byteLength(JSON.stringify(v))
+
+const served = (job: string, found: Finding[], open: OpenItem[]): Candidates[number] => {
+  const findings = found.map(({ test, ...f }) => (test ? { ...f, test: { command: test.command, failure: test.failure } } : f))
+  if (size({ job, findings, open }) <= MAX_CANDIDATE_BYTES) return { job, findings, open }
+  const kept = { job, findings: [] as Finding[], open: [] as OpenItem[], truncated: true as const }
+  let used = size(kept)
+  for (const [list, items] of [[kept.findings, findings], [kept.open, open]] as [unknown[], unknown[]][])
+    for (const item of items) {
+      used += size(item) + 1
+      if (used > MAX_CANDIDATE_BYTES) return kept
+      list.push(item)
+    }
+  return kept
+}
 
 /** The findings and open items of the latest succeeded Run of each Job `run` needs, in this visit of the stage; a review stage's Jobs report them, the Jobs that need them read them. */
 export const candidatesOf = async (payload: Payload, t: Doc, run: Doc): Promise<Candidates> => {
@@ -47,7 +64,7 @@ export const candidatesOf = async (payload: Payload, t: Doc, run: Doc): Promise<
   if (!needs.length) return []
   const { since } = await visitOf(payload, t.id, run.stage)
   const rows = (await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("job") "job", "findings", "artifacts"->'open' AS "open" FROM "runs" WHERE "ticket_id" = ${t.id} AND "stage" = ${run.stage} AND "status" = 'succeeded' AND "job" IN (${sql.join(needs.map((n) => sql`${n}`), sql`, `)}) AND (${since}::timestamptz IS NULL OR "created_at" >= ${since}::timestamptz) ORDER BY "job", "id" DESC`)).rows as { job: string; findings: Finding[] | null; open: OpenItem[] | null }[]
-  return needs.flatMap((n) => rows.filter((r) => r.job === n).map((r) => ({ job: n, findings: r.findings ?? [], open: r.open ?? [] })))
+  return needs.flatMap((n) => rows.filter((r) => r.job === n).map((r) => served(n, r.findings ?? [], r.open ?? [])))
 }
 
 const closeAndAdvance = async (payload: Payload, t: Doc, to: string, claim: ReturnType<typeof sql>, by: { blocker?: Doc; run?: Doc; note?: string } = {}): Promise<void> => {
@@ -83,7 +100,7 @@ export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
 export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boolean> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })) as Doc
   const def = stageDef(workflowFor(t.workspace), t.stage)
-  if (!def?.jobs || t.state !== 'open') return false
+  if (!def?.jobs || def.kind === 'release' || t.state !== 'open') return false
   if (def.kind === 'review' && (t.reviewState || t.parked || t.waitingFor)) return false
   const { since, runs, skipped } = await visitOf(payload, t.id, t.stage)
   const own = def.kind === 'review' ? def.jobs.find((j) => j.id === def.name) : undefined
