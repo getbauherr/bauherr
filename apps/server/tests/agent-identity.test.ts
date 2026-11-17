@@ -4,7 +4,7 @@ import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { claimOnly } from './helpers/claim'
-import { scanned } from './helpers/plan-scan'
+import { scanned, walked } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -55,6 +55,7 @@ const call = (actor: Parameters<typeof mcp.callTool>[0]['actor'], name: string, 
 const ticket = async (stage: string) => {
   const issue = await fake.tickets(repo).create({ title: 't', labels: [`bauherr:stage:${stage}`] })
   const t = await payload.create({ collection: 'tickets', data: { title: 't', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, product, workspace: ws }, ...o })
+  if (stage === 'release') await walked(payload, t.id, ws)
   return t.id as number
 }
 const count = async (collection: string, where: Record<string, unknown> = {}) => (await payload.count({ collection, where: where as never, ...o })).totalDocs

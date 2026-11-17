@@ -1,3 +1,4 @@
+import { walked } from './helpers/plan-scan'
 import { fileURLToPath } from 'node:url'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
@@ -78,6 +79,7 @@ const releaseTicket = async (title: string) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:release'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', product, workspace: ws, mergeSha: `sha-${issue.number}`, releaseAt: new Date().toISOString(), releaseState: 'waiting' }, ...o })
   fake.setChecks(repo, `sha-${issue.number}`, [{ name: 'ci', status: 'completed', conclusion: 'success' }])
+  await walked(payload, t.id as number, ws)
   return { id: t.id as number, n: String(issue.number) }
 }
 

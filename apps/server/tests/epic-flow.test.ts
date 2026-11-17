@@ -174,6 +174,7 @@ it('red checks send the slice back to Build, pending ones wait, a moved head res
   fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
   expect(await g.run()).toBe('waiting_checks')
   expect(await reload(first!.id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks' })
+  fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'completed', conclusion: 'success' }])
   expect(await actions.mergeGate(payload, await reload(first!.id), g.mr, 'older-sha')).toBe('review_restarted')
   await payload.update({ collection: 'tickets', id: first!.id, data: { reviewState: 'waiting_checks' }, ...o })
   fake.setChecks(repo, pr.headSha, [{ name: 'ci', status: 'completed', conclusion: 'failure' }])

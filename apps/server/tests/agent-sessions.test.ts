@@ -192,7 +192,7 @@ describe('next_work', () => {
     expect(e.leaseToken).toBeTruthy()
     const r = (await call('next_work', { sessionId: rev.sessionId })).work
     expect(r.run.id).toBe(review.run!.id)
-    expect(r.skill).toBe('review')
+    expect(r.skill).toBe('review-rank')
     expect(await runRow(build.run!.id)).toMatchObject({ session_id: (await row(eng.sessionId)).id, role: 'engineer', model: 'claude-e', executor: 'session', status: 'running', session_label: 'e' })
     expect(await runRow(review.run!.id)).toMatchObject({ role: 'reviewer', model: 'claude-r' })
     const events = await rows(sql`SELECT "actor" FROM "ticket_events" WHERE "run_id" = ${build.run!.id} AND "cause" = 'run:claimed'`)
@@ -474,7 +474,7 @@ describe('loadTeam', () => {
     await db().execute(sql`UPDATE "runs" SET "mode" = 'autonomous', "executor" = 'runner', "started_at" = now() WHERE "id" = ${auto.run!.id}`)
 
     const team = await sessions.loadTeam(payload, ws)
-    expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax'])
+    expect(team.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax', 'verifier'])
     const eng = team.roles.find((r) => r.id === 'engineer')!
     expect(eng).toMatchObject({ title: 'Software engineer', avatar: 'engineer', skills: ['Implementation', 'Small diffs', 'Tests first', 'Refactoring'], exceptions: false, tier: 'cheap', stages: [{ name: 'plan', title: 'Plan', kind: 'plan' }, { name: 'build', title: 'Build', kind: 'build' }] })
     expect(eng.profile).toContain('Mission:')

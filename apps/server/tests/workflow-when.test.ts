@@ -10,7 +10,8 @@ import { evalWhen, whenText, type Facts, type When } from '../src/lib/workflow-w
 
 const pack = (f: string) => readFileSync(fileURLToPath(new URL(`../../../pack/${f}`, import.meta.url)), 'utf8')
 const base = pack('factory.yaml')
-const careful = pack('presets/careful.yaml')
+const careful = readFileSync(fileURLToPath(new URL('./fixtures/routing-pack/factory.yaml', import.meta.url)), 'utf8')
+const shippedCareful = pack('presets/careful.yaml')
 const doc = (y: string) => {
   const d = e.readDraft(y)
   if (!d.ok) throw new Error(d.error)
@@ -58,7 +59,7 @@ describe('evalWhen', () => {
 
 describe('lint of when and skip_to', () => {
   it('the shipped presets are clean', () => {
-    expect(findings(careful)).toEqual([])
+    expect(findings(shippedCareful)).toEqual([])
     expect(findings(pack('presets/standard.yaml'))).toEqual([])
   })
   it('when only on agent and human stages', () => {

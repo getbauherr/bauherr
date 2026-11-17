@@ -88,11 +88,12 @@ describe('lint', () => {
     expect(w.board(c)).toEqual(['triage', 'plan', 'build', 'security', 'signoff', 'review', 'release', 'done'])
     expect(w.graph(c).nodes.find((n) => n.id === 'signoff')?.checkpoint).toBe(true)
   })
-  it('the default team has the specialists, unused by any stage, and one exceptions role', () => {
+  it('the default team has the specialists, working only the review Jobs, and one exceptions role', () => {
     const c = w.compile(defaultDoc())
-    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax'])
+    expect(c.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax', 'verifier'])
     expect(c.roles.filter((r) => r.exceptions).map((r) => r.id)).toEqual(['orchestrator'])
-    expect(w.stagesOfRole(c, 'security')).toEqual([])
+    expect(w.stagesOfRole(c, 'security')).toEqual(['review'])
+    expect(w.stagesOfRole(c, 'verifier')).toEqual(['review'])
     expect(c.roles.every((r) => r.profile_file && r.profile_file.startsWith('roles/'))).toBe(true)
   })
   it('compile keeps avatar and an explicit provider and model', () => {
@@ -162,8 +163,8 @@ it('graph of the default file', () => {
       { id: 'plan:gate', title: 'Approve plan', kind: 'human', checkpoint: true },
       { id: 'parent', title: 'Split', kind: 'container', checkpoint: false },
       { id: 'build', title: 'Build', kind: 'build', role: 'engineer', checkpoint: false },
-      { id: 'review', title: 'Review', kind: 'review', role: 'reviewer', checkpoint: false },
-      { id: 'release', title: 'Staging', kind: 'release', checkpoint: false },
+      { id: 'review', title: 'Review', kind: 'review', role: 'reviewer', checkpoint: false, jobs: [{ id: 'correctness', kind: 'agent', role: 'reviewer', blocking: true, needs: [] }, { id: 'security', kind: 'agent', role: 'security', blocking: true, needs: [] }, { id: 'ux', kind: 'agent', role: 'ux', blocking: true, needs: [] }, { id: 'test', kind: 'agent', role: 'test', blocking: true, needs: [] }, { id: 'ax', kind: 'agent', role: 'ax', blocking: true, needs: [] }, { id: 'verify', kind: 'agent', role: 'verifier', blocking: true, needs: ['correctness', 'security', 'ux', 'test', 'ax'] }, { id: 'review', kind: 'agent', role: 'reviewer', blocking: true, needs: ['verify'] }] },
+      { id: 'release', title: 'Staging', kind: 'release', checkpoint: false, jobs: [{ id: 'staging-walk', kind: 'agent', role: 'ax', blocking: true, needs: [] }] },
       { id: 'release:gate', title: 'Accept on staging', kind: 'human', checkpoint: true },
       { id: 'release:production', title: 'Approve production', kind: 'human', checkpoint: true },
       { id: 'done', title: 'Done', kind: 'done', checkpoint: false },
@@ -191,14 +192,14 @@ it('graph of the default file', () => {
 const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as any)[k])])) : v)
 const hashFile = (path: string) => createHash('sha256').update(JSON.stringify(canon(w.compile(w.parseFactory(readFileSync(path, 'utf8')))))).digest('hex')
 
-it('files without jobs keep their hash; the shipped factory, standard and careful files changed only by the plan Jobs and the ax role', () => {
+it('files without jobs keep their hash; the shipped factory, standard and careful files changed only by the plan, review and release Jobs and the ax and verifier roles', () => {
   const root = fileURLToPath(new URL('../../..', import.meta.url))
   const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
   const expected: Record<string, string> = {
-    [`${root}pack/factory.yaml`]: '4b7de56156cdaa4dff99ac2e6f7e3bc269adf70efc62937ef791bb9b28176415',
+    [`${root}pack/factory.yaml`]: 'b8bbaa404077659f2751b69a848e50768f39d8937090af30d86e3681005d6fb2',
     [`${root}pack/presets/solo.yaml`]: '454b110bd5170fce5f0133a90dee014f587aa2ff8b69df837b3ccce5be3bca10',
-    [`${root}pack/presets/standard.yaml`]: '12c85740fd5ce1810a82e7735ef89e4c366be94a4c48e3888ba5deafe5ecf7a8',
-    [`${root}pack/presets/careful.yaml`]: '1a3f9306f01c3724b904d3f3eff1d028ac2c1052996751c33f09e1d1c1305bec',
+    [`${root}pack/presets/standard.yaml`]: 'b8bbaa404077659f2751b69a848e50768f39d8937090af30d86e3681005d6fb2',
+    [`${root}pack/presets/careful.yaml`]: '8c3fa904b8f7dbec04ddd7d3a4b60e0129cd34cbcaa4fcbad4e1fa2be8c3ef46',
     [`${fixtures}/bare-pack/factory.yaml`]: '4dd0536b8bfd0ec5a131fa8517d8e04e1b7db170e311d736820c65a7e000fb30',
     [`${fixtures}/custom-pack/factory.yaml`]: '3e5b636c36941e08c0b3270a4516320c781e3b6ecf94a48f3208c2fd73d18de0',
     [`${fixtures}/gated-pack/factory.yaml`]: 'c7c1856377b135e59f3afc3bb505c955153ac0b32eb9909e81007a9530834afa',
@@ -351,7 +352,7 @@ describe('jobs on review and release stages', () => {
     expect(s.role).toBe('reviewer')
     expect(s.jobs!.map((j) => j.id)).toEqual(['security', 'ux', 'review'])
     expect(s.jobs![0]).toEqual(expect.objectContaining({ blocking: true, outcomes: { done: 'done' }, outcomeOrder: ['done'] }))
-    expect(s.jobs![2]).toEqual({ id: 'review', kind: 'agent', role: 'reviewer', skill: 'review', needs: ['security', 'ux'], blocking: true, outcomes: { clean: 'clean', changes: 'changes', stop: 'stop' }, outcomeOrder: ['clean', 'changes', 'stop'] })
+    expect(s.jobs![2]).toEqual({ id: 'review', kind: 'agent', role: 'reviewer', skill: 'review-rank', needs: ['security', 'ux'], blocking: true, outcomes: { clean: 'clean', changes: 'changes', stop: 'stop' }, outcomeOrder: ['clean', 'changes', 'stop'] })
     expect(w.jobOf(s, {})?.id).toBe('review')
     expect(w.jobOf(s, { job: 'ux' })?.id).toBe('ux')
   })

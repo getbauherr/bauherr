@@ -1167,19 +1167,43 @@ features:
   - id: review-stage
     area: Quality and security
     title: Review stage
-    summary: A reviewer agent without memory of the change; findings with severity and scenario
+    summary: "Find, verify, conclude as stage Jobs, five find Jobs report candidate findings in parallel, a verifier re-checks each against the code, a reviewer without memory of the change ranks them into one verdict with severity and scenario"
     status: live
     page: /tickets/[id]
     reach: "`/tickets/[id]`"
     mcp:
       - submit_review
     source:
+      - pack/factory.yaml
       - pack/skills/review/SKILL.md
+      - pack/skills/review-rank/SKILL.md
+      - pack/skills/verify-findings/SKILL.md
       - apps/server/src/lib/mcp-tools.ts
     tests:
       - apps/server/tests/review.test.ts
+      - apps/server/tests/review-jobs.test.ts
       - apps/server/e2e/review.spec.ts
     drive: pnpm verify review-stage
+    proof: screenshot
+    gotchas: []
+    guards: []
+    debt: []
+  - id: staging-walk
+    area: Quality and security
+    title: Staging walk
+    summary: Once a Ticket is on staging, an agent walks the Product's verify skill against the staging URL before Accept; findings send the Ticket back to Build
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`"
+    mcp: []
+    source:
+      - pack/factory.yaml
+      - pack/skills/verify-maintain/SKILL.md
+      - apps/server/src/lib/stage-jobs.ts
+    tests:
+      - apps/server/tests/release-jobs.test.ts
+      - apps/server/e2e/release.spec.ts
+    drive: pnpm verify staging-walk
     proof: screenshot
     gotchas: []
     guards: []

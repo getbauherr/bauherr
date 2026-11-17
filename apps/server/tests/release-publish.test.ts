@@ -1,3 +1,4 @@
+import { walked } from './helpers/plan-scan'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
@@ -56,6 +57,7 @@ const approved = async (slug: string, title: string, sha: string, labels: string
   const issue = await ts.create({ title, labels: ['bauherr:stage:release', ...labels] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', releaseState: 'on_staging', mergeSha: sha, product: products[slug], workspace: ws }, ...o })
   await ts.comment(String(issue.number), buildStagingSummary({ ticket: { number: issue.number, title, url: issue.url }, plan: `## Goal\n- ${title} works`, worklog: null, mrs: [{ number: 1, url: `https://fake/${repo}/pull/1`, title, body: '' }], evidence: null, stagingUrl: null, mergeSha: sha }))
+  await walked(payload, t.id as number, ws)
   await actions.acceptStaging(payload, user, { ticket: t.id as number })
   await actions.approveProduction(payload, user, { ticket: t.id as number })
   return { id: t.id as number, n: String(issue.number), url: issue.url }
