@@ -21,6 +21,12 @@ Rules every e2e test follows (the mechanical ones are pinned by `apps/server/tes
 - **Prove a change to a spec the way CI does**: `BAUHERR_TEST_BUILD=1` production build, `apps/server/scripts/e2e-burnin.sh <spec files>` (3 passes, 3 workers, no retries, fresh DB each).
 
 
+## Verify
+
+`pnpm verify <feature-id | area | --changed [base]>` runs what `docs/feature-map.yaml` ties to a feature: its vitest files (needs `DATABASE_URL` like `pnpm test`), the node:test suites of its packages and the node:test files under `apps/server/tests`, and lists its Playwright specs. `--changed` takes the files of `git diff <base>...HEAD` (default `origin/main`) and selects every feature whose `source` or `tests` they touch. It prints `feature | tests run | result | proof` and exits non-zero on any failure.
+
+`--e2e` with `BASE_URL` (plus `E2E_EMAIL`, `E2E_PASSWORD_FILE`) also runs the specs and saves a screenshot of every feature with a static `page` to `<out>/proof/<feature-id>.png` (`--out`, default `apps/server/e2e/results`; Playwright empties that default on each run, so pass `--out` to keep them). Run it where Playwright works, e.g. inside the Playwright Docker image. Every feature has `drive` (the command) and `proof` (`screenshot`, `tests`, `recording` or `none`) in the map; the guard test pins the values. A feature that changes needs its tests listed in `tests`.
+
 ## UI rules for agents
 
 Bauherr's own UI rules, for the UX specialist and any agent changing the UI of this repository: [docs/ui.md](docs/ui.md) (pages, states, e2e), [docs/design/README.md](docs/design/README.md) (tokens, patterns, chat), and the shadcn components in `apps/server/src/app/(app)/components/ui`. They are not part of the core pack, which names no Product's paths.

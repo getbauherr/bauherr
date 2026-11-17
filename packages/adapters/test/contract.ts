@@ -208,6 +208,9 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.deepEqual(await f.listPullRequests(repo, 'all', `${branch}-none`), []);
       assert.equal((await f.commentOnPullRequest(repo, p.number, 'lgtm')).body, 'lgtm');
       assert.ok((await f.listPullRequestComments(repo, p.number)).some((c) => c.body === 'lgtm'));
+      const review = await f.reviewPullRequest(repo, p.number, { body: 'review summary', comments: [{ path: 'contract/hello.txt', line: 1, body: 'inline' }] });
+      assert.equal(review.body, 'review summary');
+      assert.ok((await f.listPullRequestComments(repo, p.number)).some((c) => c.body === 'review summary'));
       const files = await f.listPullRequestFiles(repo, p.number);
       assert.deepEqual(files.map((x) => x.filename), ['contract/hello.txt']);
       assert.equal(files[0]?.status, 'added');

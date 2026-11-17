@@ -160,6 +160,7 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 | Setup wizard | Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new) | `/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist" | Live |
 | Settings by scope | Account, Factory, Workspace and Admin groups; Product page in tabs; a place in the UI for every feature | `/settings/*` | Live |
 | Background jobs | 19 jobs: polling, Runs, merging, releases, scans, pruning | Counts on Health | No UI |
+| Verify per feature | `pnpm verify` runs the tests of a feature, an area or the changed files and screenshots the pages of features that have one | `pnpm verify <feature-id | area | --changed [base]> [--e2e]` | No UI |
 | Health endpoint | Unauthenticated JSON of stale jobs | `/api/health` | No UI |
 | Payload admin | Developer escape hatch | `/admin` with `BAUHERR_ENABLE_ADMIN=1` | No UI |
 
