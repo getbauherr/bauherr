@@ -451,6 +451,17 @@ for (const [slug, name, repo] of [['who-alpha', 'Alpha', 'acme/who-alpha'], ['wh
   await whoTicket(3, 'settle the header copy', { labels: ['bauherr:needs-refinement', 'bauherr:type:feature'], stage: null })
   if (slug === 'who-alpha') await ensure('bauherren', { email: 'who-po@example.com' }, { email: 'who-po@example.com', password, role: 'product-owner', assignments: [{ workspace: who, scope: 'products', products: [whoProduct] }] })
 }
+// run.spec.ts (#555): session Runs in each health state, one Ticket each. Only the gone Run has a session row, disconnected two days ago so the Team page (24 h) does not list it, so no seeded role gains a session; the spec's `touch` keeps the working Run's heartbeat fresh.
+const sessionRun = async (n: number, title: string, label: string, extra: Record<string, unknown>) => {
+  const t = await ticket(n, title, 'build', product)
+  return ensure('runs', { ticket: t, stage: 'build', status: 'running' }, { ticket: t, stage: 'build', status: 'running', mode: 'session', executor: 'session', role: 'engineer', sessionLabel: label, workspace, startedAt: minutesAgo(40), ...extra })
+}
+await sessionRun(6810, 'Run page: working session', 'eng-working@laptop', { heartbeatAt: minutesAgo(0) })
+await sessionRun(6811, 'Run page: stuck session', 'eng-stuck@laptop', { heartbeatAt: minutesAgo(30) })
+const goneSession = await session('ses_e2e_run_gone', 'engineer', 'eng-gone@laptop', { disconnectedAt: minutesAgo(3000), endReason: 'disconnect', lastSeenAt: minutesAgo(3000) })
+await sessionRun(6812, 'Run page: session gone', 'eng-gone@laptop', { heartbeatAt: minutesAgo(3000), session: goneSession.id })
+const failedTicket = await ticket(6813, 'Run page: failed build', 'build', product)
+await run(failedTicket, 'build', 'failed', { startedAt: minutesAgo(30), finishedAt: minutesAgo(20), error: 'Checks failed: lint\nsecond line of the error' })
 // No sweeper runs in e2e: fill `tickets.needsYou` (the top bar's count) the way the gate sweep does.
 // ci-panel.spec.ts: a Product of its own with one Ticket in Build whose Run waits on CI: one check running, one failed (stored summary, as the poller writes it).
 const ciProduct = (await ensure('products', { slug: 'acme-ci' }, { name: 'Acme CI', slug: 'acme-ci', workspace })).id

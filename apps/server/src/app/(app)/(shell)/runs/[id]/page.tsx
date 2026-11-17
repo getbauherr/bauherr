@@ -1,137 +1,128 @@
 import { ciSummaryOf } from '../../../../../lib/ci-summary'
-import { forgeLinkOf, pendingCounts, waitingChip, waitingSentence } from '../../../../../lib/ci-text'
+import { forgeLinkOf } from '../../../../../lib/ci-text'
+import { runHealth } from '../../../../../lib/run-health'
+import { sessionTimeoutS } from '../../../../../lib/sessions'
+import { kindOfRun } from '../../../../../lib/stage-text'
+import { roleOf } from '../../../../../lib/workflow'
+import { workflowFor } from '../../../../../lib/factory'
 import { CiPanel } from '../../../components/CiPanel'
 import { ForgeLink } from '../../../components/ForgeLink'
-import { PageTitle } from '../../../components/PageTitle'
-import Link from 'next/link'
-import { notFound } from 'next/navigation'
-import { ListView, TimelineView } from '../../../components/RunViews'
-import { FormPending, NextStepBar } from '../../../components/NextStepBar'
 import { RelinkMr } from '../../../components/FixState'
 import { Markdown } from '../../../components/Markdown'
-import { StatusChip } from '../../../components/StatusChip'
+import { FormPending, NextStepBar, type NextStepPrimary } from '../../../components/NextStepBar'
+import { PageTitle } from '../../../components/PageTitle'
+import { ReleaseLock } from '../../../components/run/ReleaseLock'
+import { RunAgent } from '../../../components/run/RunAgent'
+import { RunLinks } from '../../../components/run/RunLinks'
+import { RunRelations } from '../../../components/run/RunRelations'
+import { RunStatusLine } from '../../../components/run/RunStatusLine'
+import { RunTimeline } from '../../../components/run/RunTimeline'
+import { RunTimes } from '../../../components/run/RunTimes'
+import { Sentence } from '../../../components/run/Sentence'
 import { Badge } from '../../../components/ui/badge'
+import { Button } from '../../../components/ui/button'
 import { Card } from '../../../components/ui/card'
-import { Tab, Tabs } from '../../../components/ui/tabs'
 import { releaseRunLock, rerunStage } from '../../../lib/actions'
-import { RERUNNABLE, durationMs, fmtDuration, loadRun } from '../../../lib/run'
-import { forgeKinds } from '../../../lib/overview'
 import { renderMarkdown } from '../../../lib/markdown'
+import { forgeKinds } from '../../../lib/overview'
+import { loadRun } from '../../../lib/run'
+import { runLinks } from '../../../lib/run-view'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
-import { kindOfRun } from '../../../../../lib/stage-text'
-import { workflowFor } from '../../../../../lib/factory'
+import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-const TABS = ['timeline', 'list'] as const
+/** Phone order of the panels (Links right after the header); written out so Tailwind finds the classes. */
+const ORDER = { links: 'max-sm:order-1', ci: 'max-sm:order-2', timeline: 'max-sm:order-3', proof: 'max-sm:order-4', goal: 'max-sm:order-5', agent: 'max-sm:order-6', relations: 'max-sm:order-7', times: 'max-sm:order-8' }
 
-export default async function RunPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; notice?: string }> }) {
+export default async function RunPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ bars?: string; notice?: string }> }) {
   const { id } = await params
-  const { tab: raw, notice } = await searchParams
-  const tab = TABS.find((t) => t === raw) ?? 'timeline'
+  const { bars, notice } = await searchParams
   const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()
   const admin = user.role === 'admin'
-  const { run, ticket, steps, stepsTotal, admin: adminData, chain } = await loadRun(workspace.id, id, admin)
-  const { callsByStep, owner, agentKeyLabel } = adminData ?? { callsByStep: new Map(), owner: null, agentKeyLabel: null }
+  const { run, ticket, session, connected, steps, stepsTotal, admin: adminData, chain } = await loadRun(workspace.id, id, admin)
+  const now = Date.now()
+  const wf = workflowFor(run.workspace)
+  const health = runHealth({ run, session, ticket, connected, isAdmin: admin, now, timeoutS: sessionTimeoutS(), wf })
   const ci = ciSummaryOf(ticket)
-  const waiting = run.status === 'running' && ticket.waitingFor === 'checks' ? pendingCounts(ci?.summary) : null
-  const forgeLink = forgeLinkOf((await forgeKinds(await payloadClient(), workspace.id)).get(ticket.product), ci?.summary.url ?? run.artifacts?.prUrl)
-  const leased = run.mode === 'session' && run.status === 'running'
-  const rerun = RERUNNABLE.includes(run.status)
-  const details: [string, React.ReactNode][] = [
-    ['Launched by', run.mode === 'session' ? (owner ?? 'session') : 'scheduler'],
-    ...(agentKeyLabel ? [['Claimed by', `agent key ${agentKeyLabel}`] as [string, React.ReactNode]] : []),
-    ['Started', run.startedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
-    ['Ended', run.finishedAt?.slice(0, 19).replace('T', ' ') ?? '—'],
-    ['Duration', fmtDuration(durationMs(run.startedAt, run.finishedAt))],
-    ['Status', <StatusChip key="s" status={run.status} />],
-    ['Kind', run.kind ?? kindOfRun(workflowFor(run.workspace), run) ?? '—'],
-    ['Outcome', run.outcome ?? '—'],
-    ['Goal', Array.isArray(run.goal) && run.goal.length ? <ul key="goal" className="m-0 list-disc pl-4">{run.goal.map((g, i) => <li key={i}>{g}</li>)}</ul> : '—'],
-    ['Executor', run.executor ?? run.mode],
-    ['Session', run.sessionLabel ?? '—'],
-    ['Client', [run.clientName, run.clientVersion].filter(Boolean).join(' ') || '—'],
-    ['Model', run.model ?? '—'],
-    ['Provider', run.provider ?? '—'],
-    ['Tokens in/out/cache', `${run.tokensIn ?? 0} / ${run.tokensOut ?? 0} / ${run.tokensCache ?? 0}`],
-    ['Gateway tokens in/out', run.gatewayTokensIn == null && run.gatewayTokensOut == null ? '—' : `${run.gatewayTokensIn ?? 0} / ${run.gatewayTokensOut ?? 0}`],
-    ['Cost', run.reconcileStatus === 'unpriced' ? `${run.gatewayTokensTotal ?? 0} tokens, unpriced` : run.costUsd != null ? `$${run.costUsd.toFixed(4)} (${run.costSource ?? 'sdk-estimate'})` : '—'],
-  ]
+  const forge = (await forgeKinds(await payloadClient(), workspace.id)).get(ticket.product)
+  const forgeLink = forgeLinkOf(forge, ci?.summary.url ?? run.artifacts?.prUrl)
+  const role = roleOf(wf, run.stage)
+  const { action } = health
+  const primary: NextStepPrimary | undefined =
+    action?.kind === 'connect' ? { label: 'Connect an agent', href: action.href }
+    : action?.kind === 'open_ticket' && health.state === 'needs_human' ? { label: 'Open ticket', href: action.href }
+    : action?.kind === 'rerun' ? { label: `Re-run ${action.stage}`, confirm: `Confirm re-run ${action.stage}`, form: 'run-action' }
+    : undefined
+  const sessionName = session?.label ?? run.sessionLabel
+  const releaseWhy = `${sessionName ? `Session ${sessionName}` : 'The session'} ${health.state === 'stuck' ? 'is not responding.' : 'is gone.'}`
   return (
     <>
-      {(rerun || (admin && leased)) && (
-        <NextStepBar
-          sentence={rerun ? `This ${run.stage} Run ended as ${run.status}. Start it again when ready.` : `This Run holds a lock. Release it if the session is gone.`}
-          primary={rerun ? { label: 'Re-run stage', confirm: `Confirm re-run ${run.stage}`, form: 'run-action' } : { label: 'Release lock', confirm: `Confirm release lock on run ${run.id}`, form: 'run-action' }}
-        >
-          <form id="run-action" action={rerun ? rerunStage.bind(null, run.id) : releaseRunLock.bind(null, run.id)}><FormPending /></form>
+      {action && (
+        <NextStepBar sentence={<Sentence text={health.sentence} />} primary={primary}>
+          {action.kind === 'rerun' && <form id="run-action" action={rerunStage.bind(null, run.id)}><FormPending /></form>}
+          {action.kind === 'release' && <ReleaseLock runId={run.id} why={releaseWhy} action={releaseRunLock.bind(null, run.id)} />}
+          {action.kind === 'open_ticket' && !primary && <Button asChild variant="outline"><a href={action.href}>Open ticket</a></Button>}
         </NextStepBar>
       )}
-      <header className="flex flex-col gap-4">
+      <header className="flex flex-col gap-3">
         <PageTitle>{`#${ticket.number} Run ${run.id}`}</PageTitle>
         <h1 className="title">#{ticket.number} {ticket.title}</h1>
-        <p className="body">{waiting ? <Badge variant="neutral">{waitingChip(waiting)}</Badge> : <StatusChip status={run.status} />} <span className="text-muted-foreground">{run.stage}</span></p>
+        <RunStatusLine health={health} status={run.status} stage={run.stage} runId={run.id} showSentence={!action} />
         {run.preemptedFor && (run.preemptAt || run.reasonKind === 'preempted') && <p className="body" role="status">Preempted by #{run.preemptedFor}</p>}
-        {waiting && <p className="body" role="status">{waitingSentence(waiting)}</p>}
         {forgeLink && <div><ForgeLink {...forgeLink} /></div>}
         {notice === 'active' && <p className="body" role="status">A Run is already active for this stage</p>}
         {notice === 'healthy' && <p className="body" role="status">Not released: the session still reports in.</p>}
       </header>
-      <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-sm:grid-cols-[minmax(0,1fr)]">
-        <div className="flex flex-col gap-4">
-          {ci && run.status === 'running' && ci.summary.rows.length > 0 && <CiPanel summary={ci.summary} />}
-          {run.verdict && (
-            <Card asChild className="gap-4">
-              <section aria-label="Review">
-                <h2 className="label text-muted-foreground">Review verdict <Badge variant={run.verdict === 'clean' ? 'ok' : 'warn'}>{run.verdict === 'clean' ? 'Clean' : 'Changes requested'}</Badge></h2>
-                {run.findings?.length ? (
-                  <ul className="m-0 flex list-none flex-col gap-4 p-0" aria-label="Findings">
-                    {run.findings.map((f, i) => (
-                      <li key={i} className="small">
-                        <Badge variant={f.severity === 'low' ? 'neutral' : 'destructive'}>{f.severity}</Badge> <span className="mono">{f.file}:{f.line}</span> {f.msg}
-                        <div className="text-muted-foreground">Scenario: {f.scenario}</div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="small text-muted-foreground">No findings.</p>}
-              </section>
-            </Card>
+      <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-sm:flex max-sm:flex-col">
+        <div className="flex min-w-0 flex-col gap-6 max-sm:contents">
+          {ci && run.status === 'running' && ci.summary.rows.length > 0 && <div className={ORDER.ci}><CiPanel summary={ci.summary} /></div>}
+          <RunTimeline run={run} steps={steps} total={stepsTotal} calls={adminData?.callsByStep ?? new Map()} state={health.state} now={now} admin={admin} bars={admin && bars === '1'} className={ORDER.timeline} />
+          {(run.verdict || run.evidence || run.error) && (
+            <section aria-labelledby="run-proof" className={`flex min-w-0 flex-col gap-4 ${ORDER.proof}`}>
+              <h2 id="run-proof" className="heading">Proof</h2>
+              {run.verdict && (
+                <Card asChild className="gap-4">
+                  <section aria-label="Review">
+                    <h3 className="label text-muted-foreground">Review verdict <Badge variant={run.verdict === 'clean' ? 'ok' : 'warn'}>{run.verdict === 'clean' ? 'Clean' : 'Changes requested'}</Badge></h3>
+                    {run.findings?.length ? (
+                      <ul className="m-0 flex list-none flex-col gap-4 p-0" aria-label="Findings">
+                        {run.findings.map((f, i) => (
+                          <li key={i} className="small">
+                            <Badge variant={f.severity === 'low' ? 'neutral' : 'destructive'}>{f.severity}</Badge> <span className="mono break-all">{f.file}:{f.line}</span> {f.msg}
+                            <div className="text-muted-foreground">Scenario: {f.scenario}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="small text-muted-foreground">No findings.</p>}
+                  </section>
+                </Card>
+              )}
+              {run.evidence && (
+                <div className="min-w-0 max-w-full overflow-x-auto">
+                  <h3 className="label text-muted-foreground">Evidence</h3>
+                  <Markdown className="small" html={renderMarkdown(run.evidence)} />
+                </div>
+              )}
+              {run.error && <p className="m-0 break-words text-destructive">{run.error}</p>}
+            </section>
           )}
-          {admin && (
-            <>
-          <Tabs className="border-b border-border" aria-label="Run view">
-            {TABS.map((t) => <Tab key={t} href={`?tab=${t}`} aria-current={t === tab ? 'page' : undefined}>{t[0]!.toUpperCase() + t.slice(1)}</Tab>)}
-          </Tabs>
-          {tab === 'timeline' && <TimelineView run={run} steps={steps} calls={callsByStep} now={Date.now()} />}
-          {tab === 'list' && <ListView run={run} steps={steps} total={stepsTotal} calls={callsByStep} />}
-            </>
+          {admin && Array.isArray(run.goal) && run.goal.length > 0 && (
+            <section aria-labelledby="run-goal" className={`flex flex-col gap-2 ${ORDER.goal}`}>
+              <h2 id="run-goal" className="heading">Goal</h2>
+              <ul className="small m-0 list-disc pl-4">{run.goal.map((g, i) => <li key={i}>{g}</li>)}</ul>
+            </section>
           )}
         </div>
-        <Card asChild className="gap-4">
-        <aside>
-          {admin && (
-            <details aria-label="Details">
-              <summary className="label text-muted-foreground">Details</summary>
-              <dl className="m-0 mt-2 flex flex-col gap-2 [&_dd]:m-0">
-                {details.map(([k, v]) => <div key={k}><dt className="label text-muted-foreground">{k}</dt><dd className="mono">{v}</dd></div>)}
-              </dl>
-            </details>
-          )}
-          {(chain.previous || chain.next.length > 0) && (
-            <ul aria-label="Run chain" className="small m-0 flex list-none flex-col gap-1 p-0">
-              {chain.previous && <li>Continues <Link className="text-primary" href={`/runs/${chain.previous}`}>Run #{chain.previous}</Link></li>}
-              {chain.next.map((n) => <li key={n}>Continued by <Link className="text-primary" href={`/runs/${n}`}>Run #{n}</Link></li>)}
-            </ul>
-          )}
-          {run.evidence && <div><h2 className="label text-muted-foreground">Evidence</h2><Markdown className="small" html={renderMarkdown(run.evidence)} /></div>}
-          {run.error && <p className="text-destructive">{run.error}</p>}
-          <p className="flex flex-wrap items-center justify-between gap-3">
-            <Link className="text-primary" href={`/tickets/${ticket.id}#steps`}>Ticket #{ticket.number}, its steps</Link>
-          </p>
-          {admin && kindOfRun(workflowFor(run.workspace), run) === 'build' && <RelinkMr run={run.id} />}
-        </aside>
-        </Card>
+        <div className="flex min-w-0 flex-col gap-4 max-sm:contents lg:sticky lg:top-[calc(var(--next-step-h,0px)+var(--space-4))]">
+          <RunLinks links={runLinks({ forge, prUrl: run.artifacts?.prUrl ?? ci?.summary.url, ciUrl: ci?.summary.url, issueUrl: ticket.url, ticket })} className={ORDER.links}>
+            {admin && kindOfRun(wf, run) === 'build' && <RelinkMr run={run.id} />}
+          </RunLinks>
+          <RunAgent run={run} session={session} role={role && { title: role.title, avatar: role.avatar ?? role.id }} admin={adminData} animate={health.state === 'working'} className={ORDER.agent} />
+          <RunRelations chain={chain} className={ORDER.relations} />
+          <RunTimes run={run} lastReportAt={steps.at(-1)?.at ?? null} now={now} className={ORDER.times} />
+        </div>
       </div>
     </>
   )

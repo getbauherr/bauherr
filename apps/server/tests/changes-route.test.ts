@@ -45,3 +45,11 @@ it('moves when a proof artifact or a human touch of a Ticket changes', async () 
   await payload.create({ collection: 'human_touches', data: { ticket, workspace, kind: 'gate:plan', actor: 'a', at: new Date().toISOString() } as never, ...o })
   expect(await version()).toBeGreaterThan(v1)
 })
+
+it('moves when a Run reports a Step', async () => {
+  const run = (await payload.create({ collection: 'runs', data: { ticket, workspace, stage: 'build', status: 'running', mode: 'session' } as never, ...o })).id as number
+  const v0 = await version()
+  await new Promise((r) => setTimeout(r, 20))
+  await payload.create({ collection: 'steps', data: { run, workspace, seq: 1, summary: 'Read the plan' } as never, ...o })
+  expect(await version()).toBeGreaterThan(v0)
+})

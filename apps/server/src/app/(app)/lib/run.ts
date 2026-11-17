@@ -5,7 +5,7 @@ import { workflowFor } from '../../../lib/factory'
 import { roleOf } from '../../../lib/workflow'
 import { payloadClient } from './session'
 
-export const RERUNNABLE = ['failed', 'needs_human', 'cancelled']
+export const RERUNNABLE = ['failed', 'needs_human', 'cancelled', 'abandoned']
 export const STEP_LIMIT = 500
 
 export type RunDoc = {
@@ -24,6 +24,8 @@ export type RunDoc = {
   startedAt: string | null
   finishedAt: string | null
   workspace: number
+  createdAt: string
+  heartbeatAt?: string | null
   model: string | null
   executor: string | null
   sessionLabel: string | null
@@ -53,10 +55,10 @@ export type ToolCallDoc = { id: number; step: number; name: string | null; input
 
 export type SessionInfo = { label: string | null; role: string; publicId: string; lastSeenAt: string | null; disconnectedAt: string | null; endReason: string | null; /** Admin only. */ clientName?: string | null; clientVersion?: string | null; model?: string | null; provider?: string | null }
 export type UsageRow = { model: string; source: string; tokensIn: number | null; tokensOut: number | null; cacheRead: number | null; cacheWrite: number | null; costUsd: number | null }
-type TicketDoc = { id: number; number: number; title: string; stage: string | null; state: string | null; labels: string[] | null; releaseState: string | null; product: number; waitingFor?: string | null; reviewState?: string | null; releaseChecksState?: string | null; ciSummary?: unknown }
+type TicketDoc = { id: number; number: number; title: string; url?: string | null; stage: string | null; state: string | null; labels: string[] | null; releaseState: string | null; product: number; waitingFor?: string | null; reviewState?: string | null; releaseChecksState?: string | null; ciSummary?: unknown }
 
-const PUBLIC_RUN_KEYS = ['id', 'ticket', 'stage', 'kind', 'status', 'reasonKind', 'preemptedFor', 'preemptAt', 'mode', 'startedAt', 'finishedAt', 'heartbeatAt', 'workspace', 'executor', 'sessionLabel', 'session', 'outcome', 'previousRun', 'evidence', 'error', 'artifacts', 'verdict', 'findings'] as const
-const PUBLIC_TICKET_KEYS = ['id', 'number', 'title', 'stage', 'state', 'labels', 'releaseState', 'product', 'waitingFor', 'reviewState', 'releaseChecksState', 'ciSummary'] as const
+const PUBLIC_RUN_KEYS = ['id', 'ticket', 'stage', 'kind', 'status', 'reasonKind', 'preemptedFor', 'preemptAt', 'mode', 'createdAt', 'startedAt', 'finishedAt', 'heartbeatAt', 'workspace', 'executor', 'sessionLabel', 'session', 'outcome', 'previousRun', 'evidence', 'error', 'artifacts', 'verdict', 'findings'] as const
+const PUBLIC_TICKET_KEYS = ['id', 'number', 'title', 'url', 'stage', 'state', 'labels', 'releaseState', 'product', 'waitingFor', 'reviewState', 'releaseChecksState', 'ciSummary'] as const
 const pick = <T extends object>(o: T, keys: readonly string[]): T => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, (o as Record<string, unknown>)[k]])) as T
 
 /** What a non-Admin sees of a Run: no model, provider, client, tokens, gateway or cost data, no owner, agent key or Goal. Typed as `RunDoc`; the dropped fields are absent at runtime. */
@@ -71,7 +73,7 @@ export const loadRun = cache(async (workspace: number, id: string, isAdmin: bool
   const payload = await payloadClient()
   const q = { depth: 0, overrideAccess: true } as const
   const inWs = { workspace: { equals: workspace } }
-  const [run] = (await payload.find({ collection: 'runs', where: { and: [{ id: { equals: id } }, inWs] }, limit: 1, ...q })).docs as unknown as (RunDoc & { session?: number | null; escalation?: { previousRuns?: number[] } | null; investigation?: { failedRuns?: number[] } | null; heartbeatAt?: string | null })[]
+  const [run] = (await payload.find({ collection: 'runs', where: { and: [{ id: { equals: id } }, inWs] }, limit: 1, ...q })).docs as unknown as (RunDoc & { session?: number | null; escalation?: { previousRuns?: number[] } | null; investigation?: { failedRuns?: number[] } | null })[]
   if (!run) notFound()
   const wf = workflowFor(workspace)
   const role = roleOf(wf, run.stage)?.id
