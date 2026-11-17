@@ -454,10 +454,10 @@ features:
   - id: run-page
     area: Tickets
     title: Run page
-    summary: Timeline and list of Steps, tool calls, evidence, goal, gateway tokens, re-run, release lock, relink MR
-    status: hard-to-find
+    summary: Truthful state and the one action, Timeline of reported Steps (everyone), agent, links, relations, times, evidence, goal and tool calls (Admin), re-run, release lock, relink MR
+    status: live
     page: /runs/[id]
-    reach: "`/runs/[id]` (Admin)"
+    reach: "`/runs/[id]`"
     mcp:
       - relink_mr
     source:
