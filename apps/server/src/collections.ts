@@ -547,6 +547,7 @@ const tickets = col('tickets', [
   text('needsYou', { index: true, admin: { readOnly: true, description: 'What the Ticket needs from the owner (needsOf), written by the gate sweep; the top bar counts it. Null = nothing.' } }),
   text('waitingFor', { validate: (v: unknown, { data, siblingData }: { data?: Doc; siblingData?: Doc }) => waitingForError(wfOfDoc(data, siblingData), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
   { name: 'openOwnerRows', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'Unanswered rows of the decision sheet that name the Product owner (`for: product-owner`), as last read from the forge comments; with needsYou Answer questions or Answer decisions they put the Ticket in a Product owner\'s Inbox even where the checkpoint asks the Bauherr.' } },
+  text('parkedNeed', { index: true, admin: { readOnly: true, description: 'The `needsYou` value that parks the Ticket (a Run or a decision waits for the owner on something outside an approval and no Run is live): it keeps its card and stage but holds no WIP slot. Written by the gate sweep (parkingNeed); null = not parked.' } }),
   select('needsBy', ['bauherr', 'product-owner'], { index: true, admin: { readOnly: true, description: 'Who `needsYou` asks (needBy and the Product owner fallback), written with it by the gate sweep; the Inbox and the top bar of a Product owner count only what asks them. Null = nothing.' } }),
   date('expediteAt'),
   text('gateNoticeClaim'),
@@ -805,6 +806,7 @@ export const collections: CollectionConfig[] = [
     date('startedAt'),
     text('summary'),
     date('finishedAt'),
+    select('state', ['working', 'waiting_ci']),
   ]),
   col('tool_calls', [
     text('toolUseId'),

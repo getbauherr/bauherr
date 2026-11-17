@@ -7,26 +7,41 @@ import { workflowFor } from './factory'
 import { executionOrder } from './frontier'
 import { logins } from './forge-channel'
 import { NEEDS_REFINEMENT } from './needs-you'
-import { isExpediting } from './expedite'
+import { commentOnce, isExpediting } from './expedite'
 import { holdOverlap } from './overlap'
 import { forgeOf, id } from './release'
 import { moveStage } from './stage-move'
 import { waitingText, wipLimit } from './wip-limits'
-import { heldStages, is, wipStages } from './workflow'
+import { heldStages, is, title, wipStages } from './workflow'
 
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** The query behind the count of `stage`: open Tickets in it, none of them parked, all but those still waiting to enter it (one finished here and waiting for the next column still occupies this one), and never parents (their stage is `parent`). Release is never waited for (`waitingFor` cannot hold it). */
-export const wipWhere = (workspace: number | string, stage: string): Where => ({ and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { expedite: { not_equals: true } }, NOT_PARKED, ...(is(workflowFor(workspace), stage, 'release') ? [] : [{ waitingFor: { not_equals: stage } }])] })
+/**
+ * The query behind the count of `stage`: open Tickets in it that take a slot. Not counted: parents (their stage is `parent`), epic-parked Tickets, Tickets parked on a need outside an approval (`parkedNeed`),
+ * and Tickets waiting to enter the column. A Plan Ticket waiting for any column (an approved plan waiting for Build) does not count either; in the other columns a finished Ticket waiting for the next one
+ * still occupies this one. Release is never waited for (`waitingFor` cannot hold it).
+ */
+export const wipWhere = (workspace: number | string, stage: string): Where => {
+  const wf = workflowFor(workspace)
+  const waiting: Where[] = is(wf, stage, 'release') ? [] : [is(wf, stage, 'plan') ? { waitingFor: { exists: false } } : { waitingFor: { not_equals: stage } }]
+  return { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { expedite: { not_equals: true } }, NOT_PARKED, { parkedNeed: { exists: false } }, ...waiting] }
+}
 
 /** The number of Tickets taking a slot in `stage`. This is the only definition of the count; the Board header uses `wipCounts`. */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
   (await payload.count({ collection: 'tickets', where: wipWhere(workspace, stage), overrideAccess: true })).totalDocs
 
-/** `wipCount` of every limited column. */
-export const wipCounts = async (payload: Payload, workspace: number | string): Promise<Record<string, number>> =>
-  Object.fromEntries(await Promise.all(wipStages(workflowFor(workspace)).map(async (s) => [s, await wipCount(payload, workspace, s)])))
+/** `wipCount` of every limited column, with the open Tickets there that are parked (on a need or as an epic) and take no slot. */
+export const wipCounts = async (payload: Payload, workspace: number | string): Promise<Record<string, { count: number; parked: number }>> =>
+  Object.fromEntries(
+    await Promise.all(
+      wipStages(workflowFor(workspace)).map(async (s) => [
+        s,
+        { count: await wipCount(payload, workspace, s), parked: (await payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { stage: { equals: s } }, { state: { equals: 'open' } }, { or: [{ parkedNeed: { exists: true } }, { parked: { equals: true } }] }] }, overrideAccess: true })).totalDocs },
+      ]),
+    ),
+  )
 
 /**
  * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
@@ -46,9 +61,35 @@ export const enterStage = async (payload: Payload, t: Doc, stage: string, move: 
   return payload.db.drizzle.transaction(async (tx: any) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, hashtext(${'wip:' + stage}))`)
     if ((await wipCount(payload, ws, stage)) < limit) return enter()
-    if (t.waitingFor !== stage || t.waitingReason) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: null }, ...o })
+    // A Ticket waiting in its own column (`rejoin`) keeps its reason: without one the Ticket guard drops `waitingFor`.
+    const own = t.stage === stage
+    if (t.waitingFor !== stage || (t.waitingReason && !own)) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: null }, ...o })
     return 'waiting' as const
   })
+}
+
+/**
+ * A parked Ticket whose need cleared takes its slot back without displacing anyone. With room (or no limit, Release, a fast-lane Ticket) it only loses `parkedNeed`; with the column full it waits for its own
+ * column (`waitingFor` with the reason the Ticket guard requires for a Ticket that waits in its own column, no Run) and `pullWaiting` starts it when a slot frees. One Comment per parking says so.
+ */
+export const rejoin = async (payload: Payload, t: Doc): Promise<'moved' | 'waiting'> => {
+  const wf = workflowFor(t.workspace)
+  const ws = Number(id(t.workspace))
+  const stage = String(t.stage)
+  const limit = wipLimit(await payload.findByID({ collection: 'workspaces', id: ws, select: { wipLimits: true }, ...o }), stage, wf)
+  const clear = () => payload.update({ collection: 'tickets', id: t.id, data: { parkedNeed: null }, ...o })
+  if (limit == null || is(wf, stage, 'release') || (await isExpediting(payload, t))) return clear().then(() => 'moved' as const)
+  const count = await payload.db.drizzle.transaction(async (tx: any) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, hashtext(${'wip:' + stage}))`)
+    const n = await wipCount(payload, ws, stage)
+    if (n < limit) await clear()
+    else await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: `${title(wf, stage)} is full (${n}/${limit})`, parkedNeed: null }, ...o })
+    return n
+  })
+  if (count < limit) return 'moved'
+  const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, select: {}, ...o })).docs[0]
+  await commentOnce(payload, (await forgeOf(payload, id(t.product))).tickets, t.number, `<!-- bauherr:unparked:${t.parkedNeed}:${latest?.id ?? ''} -->`, `Bauherr: the need is cleared, but ${title(wf, stage)} is full (${count}/${limit}). This Ticket starts as soon as a slot frees.`)
+  return 'waiting'
 }
 
 /** The move of a waiting Ticket into `stage`: forge label (dropping the Triage hold when it leaves it) and `stage` row; a Ticket already labelled `stage` (a spawned child) only loses its hold. */

@@ -143,7 +143,7 @@ function StageCard({ s, p, order, bad }: { s: Doc; p: FlowProps; order: string[]
       {!takes && !human && kind !== 'done' && <span className="small text-muted-foreground">No agent: the factory does this itself</span>}
       {s.when && <span className="small self-start rounded-sm border border-primary px-2 py-0.5 text-primary" data-testid="when-chip">{whenText(s.when)}</span>}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {typeof s.wip === 'number' && <span className="small rounded-sm border border-border px-2 py-0.5">at most {s.wip} tickets at a time</span>}
+        {typeof s.wip === 'number' && <span className="small rounded-sm border border-border px-2 py-0.5" title="Parked Tickets (waiting for you on something outside an approval) and approved plans waiting for Build do not count.">at most {s.wip} tickets at a time</span>}
         {kind !== 'done' && kind !== 'container' && <span className="small text-muted-foreground">{n === 0 ? 'No tickets here now' : `${n} ${n === 1 ? 'ticket' : 'tickets'} here now`}</span>}
       </div>
       {human ? (
