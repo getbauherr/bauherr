@@ -35,6 +35,7 @@ test('the graph draws the stages of the workflow in order, with the counts of th
 })
 
 test('a stage with Jobs lists them as chips under its card, in order; the other stages list none', async ({ page }) => {
+  test.skip(!!process.env.E2E_GATED_PACK, 'the gated pack has no plan Jobs; workflow-stage.spec.ts owns its factory file')
   await expect(page.locator('[data-testid=job-chips][data-stage=plan] [data-testid=job-chip]')).toHaveText([/^Plan\d/, /^Ax scan\d/, /^Approve\d/])
   await expect(page.getByTestId('job-chips')).toHaveCount(1)
   await page.locator('[data-testid=job-chip][data-job=ax-scan]').click()

@@ -480,6 +480,12 @@ const ciTicket = await ticket(581, 'Show CI on the ticket', 'build', ciProduct, 
 await run(ciTicket, 'build', 'running', { startedAt: new Date().toISOString(), artifacts: { prUrl: 'https://github.com/acme/ci/pull/88' } })
 // workflow-stage.spec.ts: a Workspace of its own (`bauherr-ws=stagelab`, the shipped factory: Plan has the Jobs plan, ax-scan, approve), an Admin that only that spec signs in as, and four Plan Tickets: scan running, scan failed, scan skipped, plan done and waiting for approval (with history, so the Ticket page nests the Jobs under Plan).
 const stageWs = (await ensure('workspaces', { slug: 'stagelab' }, { name: 'Stage Lab', slug: 'stagelab', wipLimits: {} })).id
+{
+  const doc = parseDocument(readFileSync(resolve(corePack(), 'factory.yaml'), 'utf8')).toJS() as Record<string, any>
+  inlineProfiles(doc, corePack(), [])
+  const applied = await applyFactory(payload, stageWs as number, stringify(doc), { by: 'seed', via: 'seed', note: 'stagelab: the shipped default' })
+  if (!applied.ok) throw new Error(`stagelab factory file: ${applied.findings.join('; ')}`)
+}
 await ensure('bauherren', { email: 'stage-admin@example.com' }, { email: 'stage-admin@example.com', password, role: 'admin', githubLogin: 'e2e-stage-admin' })
 const stageGithub = (await ensure('connections', { name: 'GitHub Stage' }, { name: 'GitHub Stage', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: stageWs })).id
 const stageProduct = (await ensure('products', { slug: 'stage-app' }, { name: 'Stage App', slug: 'stage-app', workspace: stageWs })).id

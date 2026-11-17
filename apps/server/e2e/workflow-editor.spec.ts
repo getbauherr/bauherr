@@ -74,6 +74,7 @@ test('Admin opens the editor from the Workflow page and sees where they are aske
 })
 
 test('a step with Jobs lists them read-only and points to the YAML tab', async ({ page }) => {
+  test.skip(!!process.env.E2E_GATED_PACK, 'the gated pack has no plan Jobs')
   await open(page)
   await page.getByTestId('step').filter({ hasText: /^Plan/ }).first().click()
   const jobs = page.getByTestId('editor-jobs')
