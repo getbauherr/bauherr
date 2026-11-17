@@ -313,6 +313,26 @@ it('a failed label add during the merge pass keeps the DB stage; the next poll r
   expect(await reload(t.id as number)).toMatchObject({ stage: 'release' })
 })
 
+it('moves a Build Ticket whose factory MR merged during the Build to release, cancelling its queued Build; a running Build waits', async () => {
+  const { t, pr, n } = await reviewTicket('merged-in-build', true)
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...o })
+  const running = await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', status: 'running', mode: 'session', workspace: ws }, ...o })
+  const sha = fake.merge(repo, pr.number)
+  await release.watchRelease(payload)
+  expect((await reload(t.id as number)).stage).toBe('build')
+
+  await payload.update({ collection: 'runs', id: running.id, data: { status: 'queued' }, ...o })
+  expect(await release.watchRelease(payload)).toMatchObject({ released: 1 })
+  expect(await reload(t.id as number)).toMatchObject({ stage: 'release', mergeSha: sha, releaseState: 'waiting' })
+  expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
+  expect((await payload.findByID({ collection: 'runs', id: running.id, ...o })).status).toBe('cancelled')
+
+  // Sent back to Build after release: the old merge does not release it again.
+  await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...o })
+  await release.watchRelease(payload)
+  expect((await reload(t.id as number)).stage).toBe('build')
+})
+
 describe('staging on a descendant SHA', () => {
   const pending = [{ name: 'ci', status: 'in_progress', conclusion: null }]
   const red = [{ name: 'ci', status: 'completed', conclusion: 'failure' }]
