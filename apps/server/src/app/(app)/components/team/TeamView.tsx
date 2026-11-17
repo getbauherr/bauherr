@@ -2,7 +2,7 @@ import type { TeamCost } from '../../lib/cost'
 import type { GatewaySetup } from '../../lib/harnesses'
 import { ConnectPanel } from './ConnectPanel'
 import { NeedsAgentRow } from './NeedsAgentRow'
-import { RolesPart } from './RolesPart'
+import { RolesTable } from './RolesTable'
 import { SessionRow } from './SessionRow'
 import { SessionsSection } from './SessionsSection'
 import { listRows, teamSummary, type ListRow } from './helpers'
@@ -34,7 +34,7 @@ export function TeamView({ workspaceId, initialRole, roles, orphans, presence, m
       <SessionsSection rows={rows.map(row)} disconnected={disconnected.map(row)} count={disconnected.length} />
       <section aria-labelledby="roles-heading" className="flex flex-col gap-4">
         <h2 id="roles-heading" className="heading">Roles</h2>
-        <RolesPart roles={roles} modelOptions={modelOptions} canEdit={canEdit} onSave={onSave} />
+        <RolesTable roles={roles} settings={{ modelOptions, canEdit, onSave }} />
       </section>
     </div>
   )
