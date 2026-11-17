@@ -75,7 +75,7 @@ await ensure('tickets', { externalId: 'e2e-editor-1' }, { title: 'Editor lab: bu
 // board-parked.spec.ts: a Workspace of its own (`bauherr-ws=park`, Build limit 3), an Admin that only that spec signs in as, one Product and three Build Tickets: one parked on `Run needs you` (its Run waits for the owner) and two with a running Run. Twin in `src/lib/fake-forge.ts` (acme/park).
 const parkWs = (await ensure('workspaces', { slug: 'park' }, { name: 'Park Lab', slug: 'park', wipLimits: { build: 3 } })).id
 await ensure('bauherren', { email: 'park-admin@example.com' }, { email: 'park-admin@example.com', password, role: 'admin', githubLogin: 'e2e-park-admin' })
-const parkGithub = (await ensure('connections', { name: 'GitHub Park' }, { name: 'GitHub Park', kind: 'github', config: {}, secret: 'ghp_e2e_dummy', workspace: parkWs })).id
+const parkGithub = (await ensure('connections', { name: 'GitHub Park' }, { name: 'GitHub Park', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: parkWs })).id
 const parkProduct = (await ensure('products', { slug: 'park-app' }, { name: 'Park App', slug: 'park-app', workspace: parkWs })).id
 await ensure('repositories', { fullName: 'acme/park' }, { fullName: 'acme/park', product: parkProduct, workspace: parkWs })
 await ensure('ticket_sources', { repo: 'acme/park' }, { repo: 'acme/park', product: parkProduct, connection: parkGithub, cursor: '2026-10-30T09:00:00Z', workspace: parkWs })
